@@ -195,23 +195,14 @@ class NamingAndTabsTest {
     }
 
     @Test
-    void versionChoice() throws Exception {
-        CreativeTabs tabs = fixture(); // 1.20.6 (206), 1.21.4 (12), 1.21.11 (112)
-        assertEquals(3, tabs.size());
-        assertEquals(12, stoneOrder(tabs, "1.21.4"));
-        assertEquals(112, stoneOrder(tabs, "1.21.11"));
-        assertEquals(206, stoneOrder(tabs, "1.20.6"));
-        // Nearest lower with the same major.minor.
-        assertEquals(12, stoneOrder(tabs, "1.21.8"));
-        assertEquals(112, stoneOrder(tabs, "1.21.15"));
-        assertEquals(206, stoneOrder(tabs, "1.20.9"));
-        // Nothing lower in that major.minor, another minor, or no version: the newest table.
-        assertEquals(112, stoneOrder(tabs, "1.21.2"));
-        assertEquals(112, stoneOrder(tabs, "1.21"));
-        assertEquals(112, stoneOrder(tabs, "1.20.1"));
-        assertEquals(112, stoneOrder(tabs, "1.22.1"));
-        assertEquals(112, stoneOrder(tabs, null));
-        assertEquals(112, stoneOrder(tabs, "garbage"));
+    void only26CreativeTabsAreSelectable() throws Exception {
+        CreativeTabs tabs = fixture();
+        assertEquals(1, tabs.size());
+        assertEquals(12, stoneOrder(tabs, "26.3"));
+        assertNull(tabs.pick("1.21.4"));
+        assertNull(tabs.pick("1.21.11"));
+        assertNull(tabs.pick(null));
+        assertNull(tabs.pick("invalid"));
     }
 
     private static JsonObject index(String mc) {
@@ -231,7 +222,7 @@ class NamingAndTabsTest {
     @Test
     void fillsMissingAndOtherTabs() throws Exception {
         CreativeTabs tabs = fixture();
-        JsonObject idx = index("1.21.4");
+        JsonObject idx = index("26.3");
         assertEquals(3, tabs.fill(idx));
         JsonArray items = idx.getAsJsonArray("items");
         assertEquals("building_blocks", item(items, "minecraft:stone").get("tab").getAsString());
@@ -246,14 +237,14 @@ class NamingAndTabsTest {
         assertEquals("other", item(items, "minecraft:mystery").get("tab").getAsString());
         assertEquals(1000000, item(items, "minecraft:mystery").get("tabOrder").getAsInt());
 
-        JsonObject newest = index(null);
-        tabs.fill(newest);
-        assertEquals(112, item(newest.getAsJsonArray("items"), "minecraft:stone").get("tabOrder").getAsInt());
+        JsonObject unversioned = index(null);
+        assertEquals(0, tabs.fill(unversioned));
+        assertEquals(1000000, item(unversioned.getAsJsonArray("items"), "minecraft:stone").get("tabOrder").getAsInt());
     }
 
     @Test
     void noTableLeavesItemsAlone() throws Exception {
-        JsonObject idx = index("1.21.4");
+        JsonObject idx = index("26.3");
         JsonObject before = idx.deepCopy();
         assertEquals(0, CreativeTabs.NONE.fill(idx));
         assertEquals(0, CreativeTabs.load(data.resolve("no-such-folder")).fill(idx));
@@ -261,7 +252,7 @@ class NamingAndTabsTest {
 
         IndexStore store = new IndexStore(data, CreativeTabs.NONE);
         store.load();
-        store.putIndex(index("1.21.4"));
+        store.putIndex(index("26.3"));
         String served = new String(store.index("s", "a").bytes(), StandardCharsets.UTF_8);
         assertEquals("other", item(json(served).getAsJsonArray("items"), "minecraft:stone").get("tab").getAsString());
     }
@@ -286,9 +277,9 @@ class NamingAndTabsTest {
     void servedIndexIsFilledButDiskKeepsWhatTheBotSent() throws Exception {
         IndexStore store = new IndexStore(data, fixture());
         store.load();
-        store.putIndex(index("1.21.11"));
+        store.putIndex(index("26.3"));
         JsonObject served = json(new String(store.index("s", "a").bytes(), StandardCharsets.UTF_8));
-        assertEquals(112, item(served.getAsJsonArray("items"), "minecraft:stone").get("tabOrder").getAsInt());
+        assertEquals(12, item(served.getAsJsonArray("items"), "minecraft:stone").get("tabOrder").getAsInt());
         assertEquals("tools_and_utilities", item(served.getAsJsonArray("items"), "minecraft:diamond_sword").get("tab").getAsString());
 
         Path file = data.resolve("indexes").resolve(IndexStore.fileName("s", "a"));
@@ -311,9 +302,21 @@ class NamingAndTabsTest {
     void badTablesAreSkipped() {
         assertNull(CreativeTabs.parse("{\"version\":\"x.y\",\"items\":{}}"));
         assertNull(CreativeTabs.parse("{\"items\":{}}"));
-        CreativeTabs.Table t = CreativeTabs.parse("{\"version\":\"1.21.4\",\"items\":{\"a\":[\"combat\",1],\"b\":\"combat\",\"c\":[1,2],\"d\":[\"other\",3]}}");
+        assertNull(CreativeTabs.parse("{\"version\":\"1.21.4\",\"items\":{}}"));
+        CreativeTabs.Table t = CreativeTabs.parse("{\"version\":\"26.3\",\"items\":{\"a\":[\"combat\",1],\"b\":\"combat\",\"c\":[1,2],\"d\":[\"other\",3]}}");
         assertEquals(1, t.items().size());
         assertTrue(t.items().containsKey("a"));
+    }
+
+    @Test
+    void rejectsExplicitUnsupportedMinecraftIndexes() throws Exception {
+        IndexStore store = new IndexStore(data, CreativeTabs.NONE);
+        for (String version : new String[]{"1.21.4", "1.21.11", "26.4"}) {
+            JsonObject unsupported = index(version);
+            assertEquals("mcVersion must be 26.3", IndexStore.validate(unsupported));
+            assertThrows(IllegalArgumentException.class, () -> store.putIndex(unsupported));
+        }
+        assertNull(IndexStore.validate(index("26.3")));
     }
 
     @Test

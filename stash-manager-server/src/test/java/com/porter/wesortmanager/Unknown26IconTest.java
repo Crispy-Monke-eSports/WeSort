@@ -19,4 +19,13 @@ class Unknown26IconTest {
             assertArrayEquals(old, Files.readAllBytes(icons.resolve("minecraft/unknown.png")));
         }
     }
+    @Test void unsupportedVersionNeverUsesLegacyCachedWikiIcon() throws Exception {
+        Path icons = data.resolve("icons"); Files.createDirectories(icons.resolve("minecraft"));
+        byte[] old = new byte[] {9, 8, 7}; Files.write(icons.resolve("minecraft/unknown.png"), old);
+        try (var service = new IconService(data, id -> null, version -> false, new GameIcons(icons, null, false), true)) {
+            var icon = service.get("minecraft", "unknown", "1.21.11");
+            assertEquals(200, icon.status());
+            assertFalse(java.util.Arrays.equals(old, icon.data()));
+        }
+    }
 }

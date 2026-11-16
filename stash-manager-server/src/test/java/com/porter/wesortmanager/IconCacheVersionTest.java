@@ -29,8 +29,8 @@ class IconCacheVersionTest {
         Path wikiStone = write(icons.resolve("minecraft/stone.png"));
         Path miss = write(icons.resolve("minecraft/some_item.miss"));
         Path modded = write(icons.resolve("somemod/thing.png"));
-        Path game = write(icons.resolve("game-1.21.4/minecraft/stone.png"));
-        Path gameShulker = write(icons.resolve("game-1.21.11/minecraft/red_shulker_box.png"));
+        Path game = write(icons.resolve("game-26.3-v2/minecraft/stone.png"));
+        Path gameShulker = write(icons.resolve("game-26.3-v2/minecraft/red_shulker_box.png"));
 
         IconService s = service(data);
         try {

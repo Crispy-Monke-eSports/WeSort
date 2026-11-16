@@ -33,8 +33,10 @@ class CraftPlannerTest {
     }
 
     @Test
-    void loadsVersionedTables() {
-        for (String v : List.of("1.21.4", "1.21.11", "26.3")) {
+    void loadsOnly26Recipes() {
+        assertNull(Recipes.load("1.21.4"));
+        assertNull(Recipes.load("1.21.11"));
+        for (String v : List.of("26.3")) {
             Recipes r = recipes(v);
             assertEquals(v, r.version());
             assertTrue(r.size() > 800);
@@ -57,7 +59,7 @@ class CraftPlannerTest {
 
     @Test
     void fromStockWhenChestIsThere() {
-        Recipes r = recipes("1.21.4");
+        Recipes r = recipes("26.3");
         CraftPlanner.Result res = plan(r, 1, pool("shulker_shell", 2, "chest", 1));
         assertTrue(res.ok());
         assertEquals(1, res.plan().count());
@@ -70,7 +72,7 @@ class CraftPlannerTest {
 
     @Test
     void threeLevelsShellsPlusChestFromPlanksFromLog() {
-        for (String v : List.of("1.21.4", "1.21.11", "26.3")) {
+        for (String v : List.of("26.3")) {
             Recipes r = recipes(v);
             CraftPlanner.Result res = plan(r, 1, pool("shulker_shell", 2, "oak_log", 2));
             assertTrue(res.ok(), res.refusal());
@@ -88,7 +90,7 @@ class CraftPlannerTest {
 
     @Test
     void needsAreAddedUpBeforeRounding() {
-        Recipes r = recipes("1.21.4");
+        Recipes r = recipes("26.3");
         // 3 boxes need 24 planks = 6 crafts of planks = 6 logs
         CraftPlanner.Result res = plan(r, 3, pool("shulker_shell", 6, "oak_log", 6));
         assertTrue(res.ok(), res.refusal());
@@ -106,7 +108,7 @@ class CraftPlannerTest {
 
     @Test
     void stockBeforeCraftingAndMostAbundantFirst() {
-        Recipes r = recipes("1.21.4");
+        Recipes r = recipes("26.3");
         // Planks in stock are used before logs are crafted; spruce has more than oak
         CraftPlanner.Result res = plan(r, 1, pool("shulker_shell", 2, "oak_planks", 3, "spruce_planks", 5, "oak_log", 4));
         assertTrue(res.ok());
@@ -118,7 +120,7 @@ class CraftPlannerTest {
 
     @Test
     void refusalsWithReasons() {
-        Recipes r = recipes("1.21.4");
+        Recipes r = recipes("26.3");
         assertEquals("shulker shells can't be crafted", plan(r, 1, pool("chest", 1)).refusal());
         assertEquals("shulker shells can't be crafted", plan(r, 1, pool("shulker_shell", 1, "chest", 1)).refusal());
         assertEquals(CraftPlanner.NOT_ENOUGH, plan(r, 1, pool("shulker_shell", 2, "oak_log", 1)).refusal());
@@ -130,7 +132,7 @@ class CraftPlannerTest {
 
     @Test
     void depthIsThree() {
-        Recipes r = recipes("1.21.4");
+        Recipes r = recipes("26.3");
         // A crafting table is made of planks (made of logs)
         CraftPlanner.Result res = CraftPlanner.plan(r, "minecraft:crafting_table", 1, pool("oak_log", 1), Set.of(), CAPS, 0, 0);
         assertTrue(res.ok());
@@ -140,7 +142,7 @@ class CraftPlannerTest {
 
     @Test
     void neverUseListIsHonoured() {
-        Recipes r = recipes("1.21.4");
+        Recipes r = recipes("26.3");
         Map<String, Long> p = pool("shulker_shell", 2, "oak_planks", 8, "spruce_planks", 8);
         CraftPlanner.Result res = CraftPlanner.plan(r, BOX, 1, p, Set.of("minecraft:oak_planks", "minecraft:spruce_planks"), CAPS, 0, 0);
         assertFalse(res.ok());
@@ -152,7 +154,7 @@ class CraftPlannerTest {
 
     @Test
     void capsLimitAndSayWhy() {
-        Recipes r = recipes("1.21.4");
+        Recipes r = recipes("26.3");
         Map<String, Long> big = pool("shulker_shell", 200, "chest", 100);
         CraftPlanner.Result perOrder = CraftPlanner.plan(r, BOX, 40, big, Set.of(), CAPS, 0, 0);
         assertEquals(27, perOrder.plan().count());
@@ -169,7 +171,7 @@ class CraftPlannerTest {
 
     @Test
     void notEnoughMaterialsMakesFewer() {
-        Recipes r = recipes("1.21.4");
+        Recipes r = recipes("26.3");
         CraftPlanner.Result res = plan(r, 5, pool("shulker_shell", 6, "chest", 5));
         assertEquals(3, res.plan().count());
         // Out of shells, which can't be made
@@ -178,7 +180,7 @@ class CraftPlannerTest {
 
     @Test
     void reservationsAreKeptOutOfThePool() {
-        Recipes r = recipes("1.21.4");
+        Recipes r = recipes("26.3");
         // The caller hands over the stash less what the other lines need: 10 planks in the stash, 5 are another line's
         assertTrue(plan(r, 1, pool("shulker_shell", 2, "oak_planks", 10)).ok());
         assertFalse(plan(r, 1, pool("shulker_shell", 2, "oak_planks", 5)).ok());
@@ -187,7 +189,7 @@ class CraftPlannerTest {
 
     @Test
     void doesNotChangeThePool() {
-        Recipes r = recipes("1.21.4");
+        Recipes r = recipes("26.3");
         Map<String, Long> p = pool("shulker_shell", 2, "oak_log", 2);
         plan(r, 1, p);
         assertEquals(2L, p.get("minecraft:oak_log"));

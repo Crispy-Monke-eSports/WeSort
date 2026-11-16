@@ -1,4 +1,4 @@
-name: Baseline build
+name: Minecraft 26.3 and Manager build
 on:
   push:
   pull_request:
@@ -11,11 +11,6 @@ permissions:
 jobs:
   client:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # Add 26.3 only after W-013/W-014 verify its toolchain.
-        mc: ['1.21.11', '1.21.4']
     steps:
       - uses: actions/checkout@v4
         with:
@@ -23,26 +18,26 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21.0.9+10'
+          java-version: '25.0.5+8'
       - uses: gradle/actions/setup-gradle@v4
       - name: Build and test client
-        run: ./gradlew --no-daemon clean build -Pmc=${{ matrix.mc }}
+        run: ./gradlew --no-daemon clean build -Pmc=26.3
       - name: Record tests and build identity
         if: always()
         shell: bash
         run: |
           mkdir -p build/evidence
           {
-            echo "commit=$GITHUB_SHA target=${{ matrix.mc }}"
+            echo "commit=$GITHUB_SHA target=26.3"
             java -version 2>&1
             ./gradlew --version
-            cat .java-version gradle/libs.versions.toml versions/${{ matrix.mc }}.properties
+            cat .java-version gradle/libs.versions.toml versions/26.3.properties
           } > build/evidence/versions.txt
           python3 scripts/test-summary.py build | tee build/evidence/tests.txt >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: client-${{ matrix.mc }}-${{ github.sha }}
+          name: client-26.3-${{ github.sha }}
           path: |
             build/libs/*.jar
             build/test-results/
@@ -60,7 +55,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version-file: .java-version
+          java-version: '21.0.9+10'
       - uses: gradle/actions/setup-gradle@v4
       - name: Build and test Manager
         run: ./gradlew --no-daemon -p stash-manager-server clean build

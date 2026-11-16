@@ -60,6 +60,7 @@ public class Stash {
         public boolean labelFailed;
         // Never used to gather stacks or shulkers for compacting
         public boolean noCompact;
+        public boolean protectedStorage;
         // Its contents are from an earlier visit and are due to be read again. Not saved. Searching and planning go on
         // with what is known, but nothing is taken from it until it has been read
         public boolean stale;
@@ -90,7 +91,7 @@ public class Stash {
          * Joins in sorting: not excluded, read at least once and possible to open.
          */
         public boolean sortable() {
-            return known() && !unreachable && !excluded && !foreign;
+            return known() && !unreachable && !excluded && !foreign && !delivery && !protectedStorage;
         }
 
         public boolean has(BlockPos pos) {
@@ -478,6 +479,7 @@ public class Stash {
             CompoundTag tag = new CompoundTag();
             tag.put("parts", positions(box.parts));
             tag.putBoolean("excluded", box.excluded);
+            tag.putBoolean("protectedStorage", box.protectedStorage);
             tag.putBoolean("dropOff", box.dropOff);
             if (box.lastRead > 0) tag.putLong("readAt", box.lastRead);
             tag.putString("observationSession", box.observationSession);
@@ -865,6 +867,7 @@ public class Stash {
                 Box box = new Box(parts.getFirst(), parts);
                 box.excluded = flag(tag, "excluded");
                 box.dropOff = flag(tag, "dropOff");
+                box.protectedStorage = flag(tag, "protectedStorage");
                 // Saved before read times existed: no tag, which counts as read long ago
                 box.lastRead = longNumber(tag.get("readAt"));
                 box.stale = true;

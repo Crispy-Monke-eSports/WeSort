@@ -1,0 +1,568 @@
+{
+  "probes": [
+    {
+      "item": "minecraft:diamond",
+      "mode": "Signs",
+      "permitted": true,
+      "candidates": [
+        {
+          "container": "c:acbe2dc9165cc8bbbf2ccc0bf4dbbecaebde540e691d405bd123e0e04f363a75",
+          "labels": [],
+          "score": 0,
+          "reason": "DROP_OFF_SOURCE",
+          "eligible": false
+        },
+        {
+          "container": "c:2fe76e9b04067701f2d23279d27d872efd76289c133bccbfe768575141307b65",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:44f824cf837debea8bba5fbce265bbb83c832f33d3dfc3efdcb21912278317c6",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:ead6c4b229eb1591ac6f6fd2c069ac4374532b552a34fbd220471213160f77f3",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:d824718fd7da293e4030e348542942e86ad7e74d76df4b9db729e5fad3e050dd",
+          "labels": [],
+          "score": 0,
+          "reason": "EXCLUDED",
+          "eligible": false
+        },
+        {
+          "container": "c:d950eac2bb4c658a5c1cabe06665d6179ff1deb557557a9d5dbc514b94eedd00",
+          "labels": [],
+          "score": 0,
+          "reason": "PROTECTED",
+          "eligible": false
+        },
+        {
+          "container": "c:a0e3579281d3d8eb374a64ded5e623090e7e522b1a646b2b9581da0b205f7777",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:3934f033047d72ffe51b26f8de086b6df851c48ca868eebbeb725ec8620eebb8",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:1a41e48eef65580181b84c110820064619aae51f81e9b3dff42728e74c746481",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:d1134f173fc97ca4b40ae99b2c84f92340d822ba96f07a384e55888acebf6c14",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:ad0512e61450680d48a128643cddd1566de3d71f0f5455075f6fd5f6452ceed2",
+          "labels": [],
+          "score": 0,
+          "reason": "OUTBOUND_STAGING",
+          "eligible": false
+        }
+      ],
+      "scores": {
+        "dias": 60,
+        "building blocks": 0,
+        "diamond swords": 0,
+        "egaps": 0,
+        "strength": 0,
+        "Unbreaking I": 0,
+        "Do not rename": 0,
+        "misc": 1
+      }
+    },
+    {
+      "item": "minecraft:dirt",
+      "mode": "Signs",
+      "permitted": true,
+      "candidates": [
+        {
+          "container": "c:acbe2dc9165cc8bbbf2ccc0bf4dbbecaebde540e691d405bd123e0e04f363a75",
+          "labels": [],
+          "score": 0,
+          "reason": "DROP_OFF_SOURCE",
+          "eligible": false
+        },
+        {
+          "container": "c:2fe76e9b04067701f2d23279d27d872efd76289c133bccbfe768575141307b65",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:44f824cf837debea8bba5fbce265bbb83c832f33d3dfc3efdcb21912278317c6",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:ead6c4b229eb1591ac6f6fd2c069ac4374532b552a34fbd220471213160f77f3",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:d824718fd7da293e4030e348542942e86ad7e74d76df4b9db729e5fad3e050dd",
+          "labels": [],
+          "score": 0,
+          "reason": "EXCLUDED",
+          "eligible": false
+        },
+        {
+          "container": "c:d950eac2bb4c658a5c1cabe06665d6179ff1deb557557a9d5dbc514b94eedd00",
+          "labels": [],
+          "score": 0,
+          "reason": "PROTECTED",
+          "eligible": false
+        },
+        {
+          "container": "c:a0e3579281d3d8eb374a64ded5e623090e7e522b1a646b2b9581da0b205f7777",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:3934f033047d72ffe51b26f8de086b6df851c48ca868eebbeb725ec8620eebb8",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:1a41e48eef65580181b84c110820064619aae51f81e9b3dff42728e74c746481",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:d1134f173fc97ca4b40ae99b2c84f92340d822ba96f07a384e55888acebf6c14",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:ad0512e61450680d48a128643cddd1566de3d71f0f5455075f6fd5f6452ceed2",
+          "labels": [],
+          "score": 0,
+          "reason": "OUTBOUND_STAGING",
+          "eligible": false
+        }
+      ],
+      "scores": {
+        "dias": 0,
+        "building blocks": 40,
+        "diamond swords": 0,
+        "egaps": 0,
+        "strength": 0,
+        "Unbreaking I": 0,
+        "Do not rename": 0,
+        "misc": 1
+      }
+    },
+    {
+      "item": "minecraft:diamond_sword#a917bd79",
+      "mode": "Signs",
+      "permitted": true,
+      "candidates": [
+        {
+          "container": "c:acbe2dc9165cc8bbbf2ccc0bf4dbbecaebde540e691d405bd123e0e04f363a75",
+          "labels": [],
+          "score": 0,
+          "reason": "DROP_OFF_SOURCE",
+          "eligible": false
+        },
+        {
+          "container": "c:2fe76e9b04067701f2d23279d27d872efd76289c133bccbfe768575141307b65",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:44f824cf837debea8bba5fbce265bbb83c832f33d3dfc3efdcb21912278317c6",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:ead6c4b229eb1591ac6f6fd2c069ac4374532b552a34fbd220471213160f77f3",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:d824718fd7da293e4030e348542942e86ad7e74d76df4b9db729e5fad3e050dd",
+          "labels": [],
+          "score": 0,
+          "reason": "EXCLUDED",
+          "eligible": false
+        },
+        {
+          "container": "c:d950eac2bb4c658a5c1cabe06665d6179ff1deb557557a9d5dbc514b94eedd00",
+          "labels": [],
+          "score": 0,
+          "reason": "PROTECTED",
+          "eligible": false
+        },
+        {
+          "container": "c:a0e3579281d3d8eb374a64ded5e623090e7e522b1a646b2b9581da0b205f7777",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:3934f033047d72ffe51b26f8de086b6df851c48ca868eebbeb725ec8620eebb8",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:1a41e48eef65580181b84c110820064619aae51f81e9b3dff42728e74c746481",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:d1134f173fc97ca4b40ae99b2c84f92340d822ba96f07a384e55888acebf6c14",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:ad0512e61450680d48a128643cddd1566de3d71f0f5455075f6fd5f6452ceed2",
+          "labels": [],
+          "score": 0,
+          "reason": "OUTBOUND_STAGING",
+          "eligible": false
+        }
+      ],
+      "scores": {
+        "dias": 40,
+        "building blocks": 0,
+        "diamond swords": 50,
+        "egaps": 0,
+        "strength": 0,
+        "Unbreaking I": 20,
+        "Do not rename": 0,
+        "misc": 1
+      }
+    },
+    {
+      "item": "minecraft:enchanted_golden_apple",
+      "mode": "Signs",
+      "permitted": true,
+      "candidates": [
+        {
+          "container": "c:acbe2dc9165cc8bbbf2ccc0bf4dbbecaebde540e691d405bd123e0e04f363a75",
+          "labels": [],
+          "score": 0,
+          "reason": "DROP_OFF_SOURCE",
+          "eligible": false
+        },
+        {
+          "container": "c:2fe76e9b04067701f2d23279d27d872efd76289c133bccbfe768575141307b65",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:44f824cf837debea8bba5fbce265bbb83c832f33d3dfc3efdcb21912278317c6",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:ead6c4b229eb1591ac6f6fd2c069ac4374532b552a34fbd220471213160f77f3",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:d824718fd7da293e4030e348542942e86ad7e74d76df4b9db729e5fad3e050dd",
+          "labels": [],
+          "score": 0,
+          "reason": "EXCLUDED",
+          "eligible": false
+        },
+        {
+          "container": "c:d950eac2bb4c658a5c1cabe06665d6179ff1deb557557a9d5dbc514b94eedd00",
+          "labels": [],
+          "score": 0,
+          "reason": "PROTECTED",
+          "eligible": false
+        },
+        {
+          "container": "c:a0e3579281d3d8eb374a64ded5e623090e7e522b1a646b2b9581da0b205f7777",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:3934f033047d72ffe51b26f8de086b6df851c48ca868eebbeb725ec8620eebb8",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:1a41e48eef65580181b84c110820064619aae51f81e9b3dff42728e74c746481",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:d1134f173fc97ca4b40ae99b2c84f92340d822ba96f07a384e55888acebf6c14",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:ad0512e61450680d48a128643cddd1566de3d71f0f5455075f6fd5f6452ceed2",
+          "labels": [],
+          "score": 0,
+          "reason": "OUTBOUND_STAGING",
+          "eligible": false
+        }
+      ],
+      "scores": {
+        "dias": 0,
+        "building blocks": 0,
+        "diamond swords": 0,
+        "egaps": 60,
+        "strength": 0,
+        "Unbreaking I": 0,
+        "Do not rename": 0,
+        "misc": 1
+      }
+    },
+    {
+      "item": "minecraft:potion#67301302",
+      "mode": "Signs",
+      "permitted": true,
+      "candidates": [
+        {
+          "container": "c:acbe2dc9165cc8bbbf2ccc0bf4dbbecaebde540e691d405bd123e0e04f363a75",
+          "labels": [],
+          "score": 0,
+          "reason": "DROP_OFF_SOURCE",
+          "eligible": false
+        },
+        {
+          "container": "c:2fe76e9b04067701f2d23279d27d872efd76289c133bccbfe768575141307b65",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:44f824cf837debea8bba5fbce265bbb83c832f33d3dfc3efdcb21912278317c6",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:ead6c4b229eb1591ac6f6fd2c069ac4374532b552a34fbd220471213160f77f3",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:d824718fd7da293e4030e348542942e86ad7e74d76df4b9db729e5fad3e050dd",
+          "labels": [],
+          "score": 0,
+          "reason": "EXCLUDED",
+          "eligible": false
+        },
+        {
+          "container": "c:d950eac2bb4c658a5c1cabe06665d6179ff1deb557557a9d5dbc514b94eedd00",
+          "labels": [],
+          "score": 0,
+          "reason": "PROTECTED",
+          "eligible": false
+        },
+        {
+          "container": "c:a0e3579281d3d8eb374a64ded5e623090e7e522b1a646b2b9581da0b205f7777",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:3934f033047d72ffe51b26f8de086b6df851c48ca868eebbeb725ec8620eebb8",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:1a41e48eef65580181b84c110820064619aae51f81e9b3dff42728e74c746481",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:d1134f173fc97ca4b40ae99b2c84f92340d822ba96f07a384e55888acebf6c14",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:ad0512e61450680d48a128643cddd1566de3d71f0f5455075f6fd5f6452ceed2",
+          "labels": [],
+          "score": 0,
+          "reason": "OUTBOUND_STAGING",
+          "eligible": false
+        }
+      ],
+      "scores": {
+        "dias": 0,
+        "building blocks": 0,
+        "diamond swords": 0,
+        "egaps": 0,
+        "strength": 50,
+        "Unbreaking I": 0,
+        "Do not rename": 0,
+        "misc": 1
+      }
+    },
+    {
+      "item": "minecraft:spyglass",
+      "mode": "Signs",
+      "permitted": true,
+      "candidates": [
+        {
+          "container": "c:acbe2dc9165cc8bbbf2ccc0bf4dbbecaebde540e691d405bd123e0e04f363a75",
+          "labels": [],
+          "score": 0,
+          "reason": "DROP_OFF_SOURCE",
+          "eligible": false
+        },
+        {
+          "container": "c:2fe76e9b04067701f2d23279d27d872efd76289c133bccbfe768575141307b65",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:44f824cf837debea8bba5fbce265bbb83c832f33d3dfc3efdcb21912278317c6",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:ead6c4b229eb1591ac6f6fd2c069ac4374532b552a34fbd220471213160f77f3",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:d824718fd7da293e4030e348542942e86ad7e74d76df4b9db729e5fad3e050dd",
+          "labels": [],
+          "score": 0,
+          "reason": "EXCLUDED",
+          "eligible": false
+        },
+        {
+          "container": "c:d950eac2bb4c658a5c1cabe06665d6179ff1deb557557a9d5dbc514b94eedd00",
+          "labels": [],
+          "score": 0,
+          "reason": "PROTECTED",
+          "eligible": false
+        },
+        {
+          "container": "c:a0e3579281d3d8eb374a64ded5e623090e7e522b1a646b2b9581da0b205f7777",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:3934f033047d72ffe51b26f8de086b6df851c48ca868eebbeb725ec8620eebb8",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:1a41e48eef65580181b84c110820064619aae51f81e9b3dff42728e74c746481",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:d1134f173fc97ca4b40ae99b2c84f92340d822ba96f07a384e55888acebf6c14",
+          "labels": [],
+          "score": 0,
+          "reason": "RESCAN_REQUIRED",
+          "eligible": false
+        },
+        {
+          "container": "c:ad0512e61450680d48a128643cddd1566de3d71f0f5455075f6fd5f6452ceed2",
+          "labels": [],
+          "score": 0,
+          "reason": "OUTBOUND_STAGING",
+          "eligible": false
+        }
+      ],
+      "scores": {
+        "dias": 0,
+        "building blocks": 0,
+        "diamond swords": 0,
+        "egaps": 0,
+        "strength": 0,
+        "Unbreaking I": 0,
+        "Do not rename": 0,
+        "misc": 1
+      }
+    }
+  ]
+}

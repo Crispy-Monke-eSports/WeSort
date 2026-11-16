@@ -1,10 +1,10 @@
 # Steg 3 – lagergrunden
 
-Steg 3 är påbörjat med W-018 (#19). Övriga issues i steget återstår. Arbetet
+W-018 (#19) och W-019 (#20) är implementerade. W-020–W-024 återstår. Arbetet
 ligger direkt på main och varje issue får en egen commit som pushas innan
 nästa påbörjas. GitHubs checklistor och issuestatusar ändras inte.
 
-## W-018 i denna commit
+## W-018 – observationsgrunden
 
 Fysiska container-ID:n, serverbekräftade observationsbevis, SQLite-revisioner,
 färskhetspolicy, automatisk rescan, guildsaldo, saldo per stash och fysiska
@@ -17,7 +17,7 @@ kör. En verklig borttagen/återställd kista avslöjade den tidigare luckan i
 den aktiva scannerns medlemslista; återupptäckten sker vid nästa säkra
 jobbgräns och kräver sedan ny serveravläsning.
 
-## Verifiering
+## Verifiering av W-018
 
 Lokal JUnit: samtliga klienttargets kör 455 tester vardera utan fel. Manager
 kör 160 tester, 159 passerar och ett befintligt prov mot gamla 1.21.x-speljar
@@ -49,9 +49,21 @@ Manager-versionen höjs till `0.1.0-dev.2` för den nya image-publiceringen;
 redan publicerade versioner ersätts inte. Releaseflödet ska även verifiera
 SBOM och anonym pull/start av den publicerade digesten.
 
+## W-019 – sortering och skydd
+
+Denna commit bevarar och verifierar Signs/Tiers i riktig 26.3 samt rättar
+partial-stack-planering, återläsning av markeringar och Baritone-överlämning.
+Skydd för kit/staging, per-item-diagnostik och ett konservativt exklusivt
+sorteringstillstånd spärrar samtidiga reservationer. Se [W-019](MC_26_3_SORTING.md).
+Manager version är nu `0.1.0-dev.3` med SQLite-schema 2. Klienttargets har
+455 godkända tester vardera, Manager har 166 tester (ett befintligt skip).
+Verklig Sign/Tier-sortering, exakt metadata, overflow, full kapacitet,
+reserverad stock och låg nivå-skydd ligger i `verification/W-019-*`.
+
 ## Återstående i steget
 
-W-019 avser sortering/signkategorier och skyddade varor; W-020 fysisk shulker-
+W-019:s [sortering och reservationsskydd](MC_26_3_SORTING.md) finns i koden.
+Återstående: W-020 fysisk shulker-
 hierarki; W-021 repack/bulk; W-022 exakta kits; W-023 hållbar fysisk journal;
 W-024 global atomisk reservationshierarki. Dessa är inte färdiga genom W-018.
 Orderhållningar är fortfarande aggregerade per stash (`reservationPrecision`

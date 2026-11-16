@@ -22,6 +22,7 @@ import java.util.Objects;
  * Only call this after checking Baritone is installed, it references Baritone classes directly.
  */
 public final class BaritoneHelper {
+    private static long ownReleaseUntil;
     private static final List<Block> protectedBlocks = new ArrayList<>();
 
     // The user's own values, restored by unprotect()
@@ -55,6 +56,7 @@ public final class BaritoneHelper {
         ICustomGoalProcess process = baritone().getCustomGoalProcess();
         if (process.getGoal() != ours) return false;
         process.onLostControl();
+        ownReleaseUntil = System.nanoTime() + 1_000_000_000L;
         return true;
     }
 
@@ -86,8 +88,11 @@ public final class BaritoneHelper {
         if (!isActive()) return false;
         IBaritone baritone = baritone();
         ICustomGoalProcess custom = baritone.getCustomGoalProcess();
-        if (ours == null || custom.getGoal() != ours) return true;
         IBaritoneProcess inControl = baritone.getPathingControlManager().mostRecentInControl().orElse(null);
+        // onLostControl cancels asynchronously. A short tail of our own released route is not a foreign user.
+        // A replacement goal or another process still wins immediately.
+        if (custom.getGoal() == null && (inControl == null || inControl == custom) && System.nanoTime() < ownReleaseUntil) return false;
+        if (ours == null || custom.getGoal() != ours) return true;
         return inControl != null && inControl != custom;
     }
 

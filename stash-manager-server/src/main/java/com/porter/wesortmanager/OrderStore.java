@@ -248,6 +248,22 @@ final class OrderStore {
         }
     }
 
+    AutomationGate.Lease acquireSorting(String server, String agent, String token) throws IOException {
+        synchronized (index) {
+            return hasOpenOnServer(server) ? null : index.automation().acquire(server, agent, token);
+        }
+    }
+
+    boolean hasOpenOnServer(String server) {
+        for (var entry : books.entrySet()) {
+            if (!entry.getKey().server().equals(server)) continue;
+            synchronized (entry.getValue()) {
+                if (entry.getValue().orders.stream().anyMatch(order -> OPEN.contains(order.status))) return true;
+            }
+        }
+        return false;
+    }
+
     // ---------- browser ----------
 
     /** Validates (against the current index and open orders), merges duplicate lines, stores and returns the order. */
@@ -263,6 +279,7 @@ final class OrderStore {
 
     private Order placeWithObservationLock(String server, String stash, List<Line> requested, JsonObject names, String byId, String byName)
         throws OrderException, IOException {
+        if (index.automation().current(server) != null) throw new OrderException(409, "Physical sorting active or awaiting reconciliation", -1);
         if (requested.isEmpty()) throw new OrderException(400, "an order needs at least one line", -1);
         if (requested.size() > MAX_LINES) throw new OrderException(400, "at most " + MAX_LINES + " lines", -1);
         IndexStore.OrderCounts counts = index.orderCounts(server, stash);
@@ -496,7 +513,11 @@ final class OrderStore {
         }
         out.add("orders", list);
         JsonObject available = new JsonObject();
-        IndexStore.OrderCounts counts = index.orderCounts(server, stash);
+        IndexStore.OrderCounts counts;
+        synchronized (index) {
+            try { counts = index.automation().current(server) == null ? index.orderCounts(server, stash) : null; }
+            catch (IOException e) { counts = null; }
+        }
         JsonObject items = new JsonObject();
         JsonObject shulkers = new JsonObject();
         if (counts != null) {

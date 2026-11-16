@@ -446,6 +446,7 @@ public class StashManager extends Module {
 
     @Override
     public void onDeactivate() {
+        sortingUntil = 0;
         selectDelivery.set(false);
         selectAnvil.set(false);
         selectCraftingTable.set(false);
@@ -496,6 +497,45 @@ public class StashManager extends Module {
         StashIndex.clearCache();
     }
 
+    private String sortingToken, sortingScope = "";
+    private long sortingUntil, sortingPoll;
+
+    public boolean sortingAllowed() {
+        if (serverUrl.get().isBlank()) return true;
+        return isActive() && mc.player != null && sortingToken != null && sortingScope.equals(sortingScope())
+            && System.nanoTime() < sortingUntil;
+    }
+    private String sortingScope() {
+        return serverUrl.get() + "|" + Stash.currentServer() + "|" + (mc.player == null ? "" : mc.player.getUUID());
+    }
+    private boolean serviceSorting() {
+        if (mc.player == null || mc.level == null || serverUrl.get().isBlank() || apiKey.get().isBlank() || inFlight) return false;
+        long now = System.nanoTime();
+        if (now < sortingPoll) return false;
+        var sorter = meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashSorter.class);
+        boolean wants = isActive() && sorter != null && sorter.requiresSortingPermit();
+        if (!wants && sortingToken == null) return false;
+        if (!wants && !InventorySync.ready()) return false; // Never release an unverified physical action.
+        URI base = parse(serverUrl.get()); if (base == null) return false;
+        String scope = sortingScope();
+        if (!scope.equals(sortingScope)) { sortingToken = null; sortingUntil = 0; sortingScope = scope; }
+        JsonObject request = new JsonObject(); request.addProperty("server", Stash.currentServer());
+        request.addProperty("agent", mc.player.getUUID().toString()); request.addProperty("token", sortingToken);
+        request.addProperty("action", InventorySync.failed() ? "uncertain" : wants ? "acquire" : "release");
+        sortingPoll = now + 2_000_000_000L;
+        send(base, "/api/v1/automation", bytes(request), apiKey.get().trim(), (code, body) -> {
+            if (code != 200) { sortingUntil = 0; return false; }
+            if (InventorySync.failed()) { sortingUntil = 0; return true; }
+            if (!wants) { sortingToken = null; sortingUntil = 0; return true; }
+            var reply = JsonParser.parseString(body).getAsJsonObject();
+            sortingToken = reply.get("token").getAsString();
+            // Measured from request start, not reply receipt. A delayed reply cannot extend a permit.
+            sortingUntil = now + 5_000_000_000L;
+            return true;
+        });
+        return true;
+    }
+
     @Override
     public String getInfoString() {
         return ordersNote.isEmpty() ? status : status + " " + ordersNote;
@@ -503,6 +543,7 @@ public class StashManager extends Module {
 
     @EventHandler
     private void onTick(TickEvent.Post event) {
+        if (serviceSorting()) return;
         if (com.porter.wesort.compat.NavigationRuntime.paused()) {
             setStatus(com.porter.wesort.compat.NavigationRuntime.status());
             return;

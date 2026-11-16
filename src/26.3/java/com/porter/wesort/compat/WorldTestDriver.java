@@ -138,6 +138,14 @@ public final class WorldTestDriver {
                     mc.gameMode.handleContainerInput(menu.containerId, slot, 0,
                         net.minecraft.world.inventory.ContainerInput.valueOf(command.get("type").getAsString()), mc.player);
                 }
+                case "attempt-protected" -> {
+                    var menu = mc.player.containerMenu;
+                    if (menu == mc.player.inventoryMenu || !InventorySync.ready()) { respond(false, "Open the protected fixture first", state()); return; }
+                    long before = InventorySync.attemptedClicks(); var item = menu.getSlot(0).getItem().copy();
+                    mc.gameMode.handleContainerInput(menu.containerId, 0, 0, net.minecraft.world.inventory.ContainerInput.QUICK_MOVE, mc.player);
+                    respond(before == InventorySync.attemptedClicks() && ItemStack.matches(item, menu.getSlot(0).getItem()),
+                        "protected storage refused before prediction or packet send", state());
+                }
                 case "attempt-unsafe" -> {
                     if (!InventorySync.failed()) { respond(false, "Requires an actually paused production guard", state()); return; }
                     var menu = mc.player.containerMenu;
@@ -193,6 +201,12 @@ public final class WorldTestDriver {
                     if (stash != null) stash.boxes.removeIf(box -> box.has(pos));
                     respond(true, "removed observed absent source", state());
                 }
+                case "manager-unlink-test" -> {
+                    var manager = Modules.get().get(StashManager.class);
+                    if (manager.isActive()) manager.toggle();
+                    ((Setting<String>) manager.settings.get("server-url")).set("");
+                    respond(true, "isolated fixture returned to local sorting", state());
+                }
                 case "manager-pause" -> {
                     var manager = Modules.get().get(StashManager.class); if (manager.isActive()) manager.toggle();
                     respond(true, "production Manager agent paused", state());
@@ -206,6 +220,58 @@ public final class WorldTestDriver {
                     var result = state();
                     if (current != null) result.add("engineIndex", JsonParser.parseString(new String(StashIndex.build(current, false).json(), java.nio.charset.StandardCharsets.UTF_8)));
                     respond(true, "actual production Sorter observation cache", result);
+                }
+                case "sort-start", "sort-config" -> {
+                    if (stash == null) { respond(false, "Capture fixture containers first", null); return; }
+                    stash.save();
+                    var sorter = Modules.get().get(StashSorter.class);
+                    ((Setting<String>) sorter.settings.get("stash-name")).set(stash.name);
+                    ((Setting<Boolean>) sorter.settings.get("sort-items")).set(true);
+                    ((Setting<StashSorter.Mode>) sorter.settings.get("mode")).set(StashSorter.Mode.valueOf(command.has("mode") ? command.get("mode").getAsString() : "Signs"));
+                    ((Setting<Boolean>) sorter.settings.get("barrels")).set(true);
+                    ((Setting<Boolean>) sorter.settings.get("walk")).set(true);
+                    ((Setting<Integer>) sorter.settings.get("radius")).set(32);
+                    ((Setting<Integer>) sorter.settings.get("delay")).set(1);
+                    ((Setting<Integer>) sorter.settings.get("container-delay")).set(0);
+                    if (command.get("action").getAsString().equals("sort-start") && !sorter.isActive()) sorter.toggle();
+                    respond(true, "actual StashSorter configured", state());
+                }
+                case "sort-stop" -> {
+                    var sorter = Modules.get().get(StashSorter.class); if (sorter.isActive()) sorter.toggle();
+                    respond(true, "actual StashSorter stopped", state());
+                }
+                case "sort-mark" -> {
+                    BlockPos pos = position(command);
+                    var current = Modules.get().get(StashSorter.class).currentStash();
+                    for (var source : new Stash[]{stash, current}) {
+                        if (source == null) continue;
+                        var box = source.boxAt(pos); if (box == null) continue;
+                        if (command.has("protected")) { box.protectedStorage = command.get("protected").getAsBoolean(); box.stale = true; box.observationSession = ""; }
+                        if (command.has("excluded")) box.excluded = command.get("excluded").getAsBoolean();
+                        if (command.has("dropOff")) box.dropOff = command.get("dropOff").getAsBoolean();
+                        if (command.has("delivery")) {
+                            box.delivery = command.get("delivery").getAsBoolean(); box.excluded = box.delivery;
+                            if (box.delivery) source.deliveryPos = pos;
+                        }
+                        source.markDirty(); source.save();
+                    }
+                    respond(true, "fixture storage protection configured", state());
+                }
+                case "sort-explain" -> {
+                    var report = new JsonObject();
+                    var sorter = Modules.get().get(StashSorter.class);
+                    JsonArray probes = new JsonArray();
+                    for (var slot : mc.player.containerMenu.slots) {
+                        if (slot.index >= mc.player.containerMenu.slots.size() - 36 || slot.getItem().isEmpty()) continue;
+                        var probe = sorter.explainSort(slot.getItem());
+                        if (command.has("labels")) {
+                            JsonObject scores = new JsonObject();
+                            for (var label : command.getAsJsonArray("labels")) scores.addProperty(label.getAsString(), com.porter.wesort.stash.Categories.signScore(label.getAsString(), slot.getItem()));
+                            probe.add("scores", scores);
+                        }
+                        probes.add(probe);
+                    }
+                    report.add("probes", probes); respond(true, "production category and destination diagnostics", report);
                 }
                 case "stock-scan-settings" -> {
                     var sorter = Modules.get().get(StashSorter.class);
@@ -344,9 +410,16 @@ public final class WorldTestDriver {
             List<BlockPos> parts = new ArrayList<>(); parts.add(pos);
             if (pending.has("second")) parts.add(new BlockPos(pending.get("second").getAsInt(), pos.getY(), pos.getZ()));
             Stash.Box box = new Stash.Box(pos, parts);
+            var previous = stash.boxAt(pos);
+            if (previous != null) {
+                box.excluded = previous.excluded; box.dropOff = previous.dropOff;
+                box.protectedStorage = previous.protectedStorage; box.delivery = previous.delivery;
+            }
             box.contents = new ItemStack[slots];
             for (int i = 0; i < slots; i++) box.contents[i] = menu.getSlot(i).getItem().copy();
             box.lastRead = System.currentTimeMillis();
+            var labels = com.porter.wesort.stash.Containers.read(stash, box);
+            if (labels != null) box.labels.addAll(labels.labels());
             if (!ObservationRuntime.canRead(box)) return;
             ObservationRuntime.record(box);
             stash.boxes.removeIf(b -> b.pos.equals(pos)); stash.boxes.add(box);
@@ -373,6 +446,16 @@ public final class WorldTestDriver {
 
     private JsonObject state() {
         JsonObject out = new JsonObject();
+        var actualSorter = Modules.get().get(StashSorter.class);
+        JsonArray storage = new JsonArray();
+        var actualStash = actualSorter.currentStash();
+        if (actualStash != null) for (var box : actualStash.boxes) {
+            var flags = new JsonObject(); flags.addProperty("x", box.pos.getX()); flags.addProperty("y", box.pos.getY()); flags.addProperty("z", box.pos.getZ());
+            flags.addProperty("excluded", box.excluded); flags.addProperty("protected", box.protectedStorage); flags.addProperty("dropOff", box.dropOff); storage.add(flags);
+        }
+        out.add("sorterStorage", storage);
+        out.addProperty("sorterActive", actualSorter.isActive());
+        out.addProperty("sortingPermitted", Modules.get().get(StashSorter.class).sortingPermitted());
         out.addProperty("server", Stash.currentServer());
         out.addProperty("player", mc.player.getName().getString());
         out.addProperty("dimension", StashIndex.dimension());

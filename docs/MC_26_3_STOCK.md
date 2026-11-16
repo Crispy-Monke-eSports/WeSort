@@ -58,10 +58,12 @@ StashSorter kör scan-only när rescan begärs och sorterar inte varor i testet.
 
 ## Persistens och Docker
 
-`guild.sqlite` med WAL/SHM ligger i den egna WeSort-volymen. Schema 1 använder
+`guild.sqlite` med WAL/SHM ligger i den egna WeSort-volymen. W-018:s schema 1 använder
 application_id W S R T och avvisar främmande/nyare DB-format samt symlänkar.
 `stock_sources`, `stock_parts`, `stock_members`, `stock_indexes`, `stock_meta`
 committas med BEGIN IMMEDIATE, synchronous FULL och busy_timeout 5000 ms.
+W-019 uppgraderar databasen till schema 2 för sorteringslås utan att ta bort
+observationshistorik, se [sortering](MC_26_3_SORTING.md).
 SQLite-indexen är auktoritativa vid förlorad äldre JSON-spegel. En omstart
 behåller historik men kräver ny fysisk avläsning innan order kan tas.
 

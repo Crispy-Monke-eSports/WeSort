@@ -1,0 +1,23 @@
+{
+  "base_commit": "b4645b7d7c8a1eae1a285e9db6a6c02c6d985e2e",
+  "dirty_worktree": true,
+  "client_tests": {
+    "1.21.4": 455,
+    "1.21.11": 455,
+    "26.3": 455,
+    "failures": 0
+  },
+  "manager_tests": {
+    "tests": 166,
+    "passed": 165,
+    "skipped": 1,
+    "failures": 0
+  },
+  "skip_reason": "Existing SpecialModelsTest.realJars needs old 1.21.x game jars.",
+  "web_dom": "PASS",
+  "docker_tls": "PASS",
+  "minecraft_sorting": "Separate W-019-sorting.json (real production engine and Manager).",
+  "ci": "Hosted workflow results bind to the resulting commit and are reported separately.",
+  "sqlite_schema": "2: schema-1 stock preserved; unknown newer schema rejected",
+  "minecraft_navigation": "PASS: actual foreign-goal/cancel/timeout/dimension regressions, separate W-019-navigation-regression.json"
+}

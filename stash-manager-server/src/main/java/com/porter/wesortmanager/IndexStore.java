@@ -36,6 +36,11 @@ public final class IndexStore {
 
     private final Path dir;
     private StockLedger stock;
+    private AutomationGate automation;
+    synchronized AutomationGate automation() throws IOException {
+        if (automation == null) automation = new AutomationGate(stock());
+        return automation;
+    }
     private final Set<StashKey> physicalIndexes = ConcurrentHashMap.newKeySet();
     private final Map<StashKey, Long> freshnessRequests = new ConcurrentHashMap<>();
     synchronized StockLedger stock() throws IOException {

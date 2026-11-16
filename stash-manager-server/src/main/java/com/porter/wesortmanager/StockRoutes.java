@@ -24,6 +24,14 @@ final class StockRoutes {
 
     private JsonObject viewWithObservationLock(Users.Principal who) throws IOException {
         var query = index.stock();
+        Set<String> blockedServers = new HashSet<>(); JsonArray automation = new JsonArray();
+        for (String server : query.sources().stream().filter(source -> who.perms().seesStash(source.server(), source.stash())).map(StockLedger.Source::server).distinct().toList()) {
+            var lease = index.automation().current(server);
+            if (lease != null) {
+                blockedServers.add(server); var entry = new JsonObject(); entry.addProperty("server", server);
+                entry.addProperty("state", lease.state()); automation.add(entry);
+            }
+        }
         var sources = query.sources().stream().filter(s -> who.perms().seesStash(s.server(), s.stash())
             && !s.status().equals("SUPERSEDED")).toList();
         Map<String, JsonObject> items = new TreeMap<>(), details = new LinkedHashMap<>();
@@ -64,13 +72,13 @@ final class StockRoutes {
             var book = entry.getKey(); var stash = new JsonObject();
             stash.addProperty("server", book.server()); stash.addProperty("serverLabel", serverLabel(book.server(), who));
             stash.addProperty("stash", Redact.forced(who) ? Redact.HIDDEN : book.stash());
-            stash.add("items", balances(entry.getValue(), stashReserved.get(book), false, who)); stashes.add(stash);
+            stash.add("items", balances(entry.getValue(), stashReserved.get(book), false, who, blockedServers)); stashes.add(stash);
         }
         JsonObject out = new JsonObject(); out.addProperty("stockEpoch", query.epoch()); out.addProperty("stockRevision", query.revision());
         out.addProperty("maxAgeMillis", query.maxAge()); out.addProperty("asOf", System.currentTimeMillis());
         out.addProperty("reservationPrecision", "aggregate");
-        out.add("items", balances(items, reserved, true, who)); out.add("stashes", stashes);
-        JsonArray physical = new JsonArray(); details.values().forEach(physical::add); out.add("sources", physical);
+        out.add("items", balances(items, reserved, true, who, blockedServers)); out.add("stashes", stashes);
+        JsonArray physical = new JsonArray(); details.values().forEach(physical::add); out.add("sources", physical); out.add("automation", automation);
         return out;
     }
 
@@ -93,12 +101,12 @@ final class StockRoutes {
         }
     }
 
-    private static JsonArray balances(Map<String, JsonObject> rows, Map<String, Long> holds, boolean guild, Users.Principal who) {
+    private static JsonArray balances(Map<String, JsonObject> rows, Map<String, Long> holds, boolean guild, Users.Principal who, Set<String> blockedServers) {
         JsonArray result = new JsonArray();
         for (var item : rows.values()) {
             String key = (guild ? item.get("server").getAsString() + "\u0000" : "") + "item:" + item.get("key").getAsString();
             long held = holds.getOrDefault(key, 0L);
-            item.addProperty("reserved", held); item.addProperty("available", Math.max(0, item.get("fresh").getAsLong() - held));
+            item.addProperty("reserved", held); item.addProperty("available", blockedServers.contains(item.get("server").getAsString()) ? 0 : Math.max(0, item.get("fresh").getAsLong() - held));
             item.remove("fresh"); item.addProperty("serverLabel", serverLabel(item.get("server").getAsString(), who)); result.add(item);
         }
         return result;

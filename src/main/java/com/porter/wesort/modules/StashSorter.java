@@ -1,5 +1,7 @@
 package com.porter.wesort.modules;
 
+import com.google.gson.*;
+
 import com.porter.wesort.WeSortAddon;
 import com.porter.wesort.compat.InventorySync;
 import com.porter.wesort.compat.RightClick;
@@ -162,6 +164,7 @@ public class StashSorter extends Module {
         Exclude("Exclude"),
         DropOff("Drop-off"),
         CompactSkip("Compact skip"),
+        Protect("Protect stock/staging"),
         Delivery("Delivery"),
         Corner1("Area corner 1"),
         Corner2("Area corner 2");
@@ -184,7 +187,7 @@ public class StashSorter extends Module {
         .name("stash-name")
         .description("The name the stash is saved under. Each name on each server is its own stash, scanned once and then kept up to date.")
         .defaultValue("stash")
-        .onChanged(name -> stash = null)
+        .onChanged(name -> { stash = null; triedKey = null; })
         .build()
     );
 
@@ -211,7 +214,7 @@ public class StashSorter extends Module {
 
     private final Setting<Pick> pick = sgGeneral.add(new EnumSetting.Builder<Pick>()
         .name("pick")
-        .description("Right-click containers to mark them. Exclude: never sorted into or out of. Drop-off: emptied into the stash, for others to drop items in. Compact skip: never used to gather stacks or shulkers for compacting. Delivery: where finished wesort-stash-manager orders are put (one per stash, never sorted into or out of). Right-click again to unmark. Area corner 1 and 2: the block you right-click becomes that corner of the stash perimeter. Works while the module is off.")
+        .description("Right-click containers to mark them. Exclude: never sorted into or out of. Drop-off: emptied into the stash, for others to drop items in. Protect stock/staging: never moved by automation. Compact skip: never used to gather stacks or shulkers for compacting. Delivery: where finished wesort-stash-manager orders are put (one per stash, never sorted into or out of). Right-click again to unmark. Area corner 1 and 2: the block you right-click becomes that corner of the stash perimeter. Works while the module is off.")
         .defaultValue(Pick.Off)
         .build()
     );
@@ -1970,6 +1973,7 @@ public class StashSorter extends Module {
 
     @EventHandler
     private void onTick(TickEvent.Pre event) {
+        if (!sortingPermitted()) { step("sorting paused: Manager must exclude reservations before physical moves."); ledgeGuard(false); return; }
         if (!InventorySync.ready() || com.porter.wesort.compat.NavigationRuntime.paused()) { ledgeGuard(false); return; }
         if (stash == null) {
             turnOff();
@@ -2010,6 +2014,7 @@ public class StashSorter extends Module {
         }
 
         if (job == null) {
+            if (sorting() && ticks % 100 == 0) reportBlockedDropOff();
             // Never start while a container is open, it might be one the player is using
             if (mc.player.containerMenu != mc.player.inventoryMenu) return;
             pruneHeld();
@@ -2886,7 +2891,7 @@ public class StashSorter extends Module {
             List<Box> places = new ArrayList<>();
             for (int slot : carried) {
                 for (Box box : destinationsFor(mc.player.getInventory().getItem(slot))) {
-                    if (!blocked(box, Job.Deposit) && !signPending(box) && (box.free() > 0 || misplacedCount(box) > 0)) places.add(box);
+                    if (!blocked(box, Job.Deposit) && !signPending(box) && (roomFor(box, mc.player.getInventory().getItem(slot)) || misplacedCount(box) > 0)) places.add(box);
                 }
             }
 
@@ -2897,7 +2902,7 @@ public class StashSorter extends Module {
             if (place == null) {
                 for (int slot : carried) {
                     for (Box box : destinationsFor(mc.player.getInventory().getItem(slot))) {
-                        if (circular.contains(box) && !signPending(box) && !signHeld.contains(box) && !blockedByFutility(box, Job.Deposit) && (box.free() > 0 || misplacedCount(box) > 0)) places.add(box);
+                        if (circular.contains(box) && !signPending(box) && !signHeld.contains(box) && !blockedByFutility(box, Job.Deposit) && (roomFor(box, mc.player.getInventory().getItem(slot)) || misplacedCount(box) > 0)) places.add(box);
                     }
                 }
                 place = nearest(places);
@@ -3319,8 +3324,18 @@ public class StashSorter extends Module {
         return false;
     }
 
+    private boolean roomForWhole(Box box, ItemStack stack) {
+        if (!box.sortable() || box.contents == null) return false;
+        long room = 0;
+        for (ItemStack here : box.contents) {
+            if (here.isEmpty()) room += stack.getMaxStackSize();
+            else if (ItemStack.isSameItemSameComponents(here, stack)) room += Math.max(0, here.getMaxStackSize() - here.getCount());
+        }
+        return room >= stack.getCount();
+    }
+
     private boolean returnable(Box box, ItemStack stack) {
-        return box != null && stash.boxes.contains(box) && box.known() && !box.stale && !box.excluded && !box.delivery && !box.dropOff && !box.unreachable
+        return box != null && stash.boxes.contains(box) && box.known() && !box.stale && !box.excluded && !box.protectedStorage && !box.delivery && !box.dropOff && !box.unreachable
             && !isKitBox(box) && box.labels.stream().noneMatch(Categories::isKeepWhole)
             && !blocked(box, Job.Return) && !signPending(box) && roomFor(box, stack);
     }
@@ -3378,6 +3393,13 @@ public class StashSorter extends Module {
     /** The loop is running: the module is on, or wesort-stash-manager is driving it. */
     private boolean running() {
         return isActive() || driven;
+    }
+
+    public boolean requiresSortingPermit() { return isActive() && sortItems.get(); }
+    public boolean sortingPermitted() {
+        if (!requiresSortingPermit()) return true;
+        var manager = meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
+        return manager == null || manager.sortingAllowed();
     }
 
     /** Sorting, compacting, labelling, saved kits and ground pickup: only when the module itself is on and sort-items is. */
@@ -7228,6 +7250,7 @@ public class StashSorter extends Module {
         extra += compactor.takeRunSummary();
         if (!stuckCarried.isEmpty()) extra += String.format(" %d stacks I am carrying have nowhere to go.", stuckCarried.size());
         long leftInDropOffs = stash.boxes.stream().filter(b -> b.dropOff && b.known() && !b.unreachable).mapToLong(b -> b.contents.length - b.free()).sum();
+        if (sorting() && leftInDropOffs > 0) reportBlockedDropOff();
         if (sorting() && leftInDropOffs > 0) extra += String.format(" %d stacks are still in drop-offs, there's no room left in the stash.", leftInDropOffs);
 
         // Scan-only: one scan, then off, unless stay-on keeps it watching
@@ -8027,6 +8050,7 @@ public class StashSorter extends Module {
             to.observationSequence = from.observationSequence; to.observationBaseRevision = from.observationBaseRevision;
             to.observationAt = from.observationAt; to.observationBlock = from.observationBlock;
         }
+        to.protectedStorage |= from.protectedStorage;
         to.excluded |= from.excluded;
         to.dropOff |= from.dropOff;
         to.delivery |= from.delivery;
@@ -8077,6 +8101,7 @@ public class StashSorter extends Module {
      * we're already carrying is put away. -1 if there's none.
      */
     private int takeableSlot(Box source) {
+        if (!source.sortable() || isKitBox(source)) return -1;
         // What each destination can still take, so we don't pick up more than we can put away. The room of every
         // container is worked out once per planning pass; what the carried stacks use up is taken off per source
         Map<Box, Integer> base = roomBase;
@@ -8112,7 +8137,8 @@ public class StashSorter extends Module {
                 if (freeCarryCount() >= 2) return i;
                 continue;
             }
-            if (destinationsFor(stack).stream().anyMatch(b -> room.applyAsInt(b) > 0)) return i;
+            if (destinationsFor(stack).stream().anyMatch(b -> room.applyAsInt(b) > 0
+                || used.getOrDefault(b, 0) == 0 && roomForWhole(b, stack))) return i;
             if (spare > 0) return i;
         }
 
@@ -8297,6 +8323,41 @@ public class StashSorter extends Module {
      * Where a stack should go: the boxes it belongs in, all equally good. Empty if it doesn't belong anywhere in
      * particular, in which case it's left where it is. Never an excluded or drop-off container.
      */
+    /** Read-only diagnostic uses the same matching and capacity predicates as the sorter. */
+    public JsonObject explainSort(ItemStack stack) {
+        JsonObject out = new JsonObject(); out.addProperty("item", stack.isEmpty() ? "empty" : StashIndex.keyOf(stack));
+        out.addProperty("mode", mode.get().name()); out.addProperty("permitted", sortingPermitted());
+        JsonArray candidates = new JsonArray(); out.add("candidates", candidates);
+        if (ensureStash() == null || stack.isEmpty()) return out;
+        List<Box> chosen = computeDestinations(stack);
+        Box overflow = chosen.stream().anyMatch(box -> box.sortable() && !box.stale && roomFor(box, stack)) ? null : spareBox();
+        for (Box box : stash.boxes) {
+            JsonObject entry = new JsonObject();
+            entry.addProperty("container", new com.porter.wesort.data.ContainerIdentity(stash.server, StashIndex.dimension(), box.parts.stream()
+                .map(p -> new com.porter.wesort.data.ContainerIdentity.Position(p.getX(), p.getY(), p.getZ())).toList()).id());
+            JsonArray labels = new JsonArray(); box.labels.forEach(labels::add); entry.add("labels", labels);
+            int score = box.labels.stream().mapToInt(label -> Categories.signScore(label, stack)).max().orElse(0);
+            entry.addProperty("score", score);
+            String reason = box.delivery ? "OUTBOUND_STAGING" : box.protectedStorage ? "PROTECTED" : box.excluded ? "EXCLUDED"
+                : isKitBox(box) ? "KIT_STORAGE" : box.dropOff ? "DROP_OFF_SOURCE" : !box.known() || box.stale ? "RESCAN_REQUIRED"
+                : !box.sortable() ? "UNAVAILABLE" : box == overflow ? (isMisc(box) ? "MISC_OVERFLOW" : "UNSIGNED_OVERFLOW") : !chosen.contains(box) ? "NO_MATCH_OR_BETTER_DESTINATION"
+                : !roomFor(box, stack) ? "FULL" : "MATCH";
+            entry.addProperty("reason", reason); entry.addProperty("eligible", reason.equals("MATCH") || reason.endsWith("_OVERFLOW")); candidates.add(entry);
+        }
+        return out;
+    }
+
+    private final Set<String> blockedDropItems = new HashSet<>();
+    private void reportBlockedDropOff() {
+        for (Box box : stash.boxes) {
+            if (!box.sortable() || !box.dropOff || box.stale) continue;
+            for (ItemStack stack : box.contents) {
+                if (!stack.isEmpty() && !canPlace(stack) && blockedDropItems.add(StashIndex.keyOf(stack)))
+                    warning("Drop-off blocked: no unprotected destination has room for %s. Items remain in their source.", StackInfo.label(stack));
+            }
+        }
+    }
+
     private List<Box> destinationsFor(ItemStack stack) {
         if (stack.isEmpty() || orderRunner.claims(stack)) return List.of();
         if (destCache == null) return computeDestinations(stack);
@@ -8434,7 +8495,7 @@ public class StashSorter extends Module {
      */
     private boolean canPlace(ItemStack stack) {
         for (Box box : destinationsFor(stack)) {
-            if (!blocked(box, Job.Deposit) && !signPending(box) && (box.free() > 0 || misplacedCount(box) > 0)) return true;
+            if (!blocked(box, Job.Deposit) && !signPending(box) && (roomFor(box, stack) || misplacedCount(box) > 0)) return true;
         }
         return spareBox() != null;
     }
@@ -8778,6 +8839,11 @@ public class StashSorter extends Module {
                 boolean set = markDelivery(box);
                 notice(set ? "%s is where orders are delivered. It is never sorted." : "%s is a normal container again.", box.pos.toShortString());
             }
+        }
+        else if (pick.get() == Pick.Protect) {
+            box.protectedStorage = !box.protectedStorage;
+            box.stale = true; box.observationSession = "";
+            notice(box.protectedStorage ? "%s is protected from automated moves." : "%s is no longer protected.", box.pos.toShortString());
         }
         else if (pick.get() == Pick.Exclude) {
             box.excluded = !box.excluded;

@@ -36,16 +36,17 @@ final class StockLedger {
                     if (existed && (!r.next() || r.getInt(1) != APPLICATION_ID)) throw new IOException("Foreign guild database format");
                 }
                 s.execute("PRAGMA journal_mode=WAL");
-                try (var r = s.executeQuery("PRAGMA user_version")) { if (r.next() && r.getInt(1) > 1) throw new IOException("Unsupported guild database schema"); }
+                try (var r = s.executeQuery("PRAGMA user_version")) { if (r.next() && r.getInt(1) > 2) throw new IOException("Unsupported guild database schema"); }
                 s.execute("BEGIN IMMEDIATE");
                 try {
+                    s.execute("CREATE TABLE IF NOT EXISTS automation_leases(server TEXT PRIMARY KEY,agent TEXT NOT NULL,token TEXT NOT NULL,deadline INTEGER NOT NULL,state TEXT NOT NULL)");
                     s.execute("CREATE TABLE IF NOT EXISTS stock_meta(id INTEGER PRIMARY KEY CHECK(id=1),epoch TEXT NOT NULL,revision INTEGER NOT NULL)");
                     s.execute("CREATE TABLE IF NOT EXISTS stock_sources(id TEXT PRIMARY KEY,server TEXT NOT NULL,dimension TEXT NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL,proof TEXT NOT NULL,verified_at INTEGER NOT NULL,run TEXT NOT NULL)");
                     s.execute("CREATE TABLE IF NOT EXISTS stock_parts(server TEXT NOT NULL,dimension TEXT NOT NULL,x INTEGER NOT NULL,y INTEGER NOT NULL,z INTEGER NOT NULL,source TEXT NOT NULL,PRIMARY KEY(server,dimension,x,y,z))");
                     s.execute("CREATE TABLE IF NOT EXISTS stock_members(server TEXT NOT NULL,stash TEXT NOT NULL,source TEXT NOT NULL,present INTEGER NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL,verified_at INTEGER NOT NULL,PRIMARY KEY(server,stash,source))");
                     s.execute("CREATE TABLE IF NOT EXISTS stock_indexes(server TEXT NOT NULL,stash TEXT NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL,PRIMARY KEY(server,stash))");
                     try (var p = c.prepareStatement("INSERT OR IGNORE INTO stock_meta VALUES(1,?,0)")) { p.setString(1, UUID.randomUUID().toString()); p.executeUpdate(); }
-                    s.execute("PRAGMA application_id=" + APPLICATION_ID); s.execute("PRAGMA user_version=1"); s.execute("COMMIT");
+                    s.execute("PRAGMA application_id=" + APPLICATION_ID); s.execute("PRAGMA user_version=2"); s.execute("COMMIT");
                 } catch (Exception e) { s.execute("ROLLBACK"); throw e; }
                 try (var r = s.executeQuery("SELECT epoch FROM stock_meta WHERE id=1")) { if (!r.next()) throw new SQLException("Missing stock epoch"); epoch = r.getString(1); }
             }
@@ -57,10 +58,25 @@ final class StockLedger {
         if (seconds < 1 || seconds > 86400) throw new IllegalArgumentException("WESORT_STOCK_MAX_AGE_SECONDS must be 1..86400");
         return seconds * 1000;
     }
-    private Connection open() throws SQLException {
+    Connection open() throws SQLException {
         var c = DriverManager.getConnection("jdbc:sqlite:" + file);
         try (var s = c.createStatement()) { s.execute("PRAGMA foreign_keys=ON"); s.execute("PRAGMA busy_timeout=5000"); s.execute("PRAGMA synchronous=FULL"); }
         return c;
+    }
+    /** Called inside the same transaction that releases/expires an automation lease. */
+    void invalidateServer(Connection c, String server) throws SQLException {
+        long next = Math.addExact(revision(c), 1);
+        try (var p = c.prepareStatement("SELECT id,payload FROM stock_sources WHERE server=?")) {
+            p.setString(1, server);
+            try (var rows = p.executeQuery()) { while (rows.next()) {
+                var value = JsonParser.parseString(rows.getString(2)).getAsJsonObject();
+                value.addProperty("state", "STALE");
+                try (var update = c.prepareStatement("UPDATE stock_sources SET payload=?,revision=? WHERE id=?")) {
+                    update.setString(1, value.toString()); update.setLong(2, next); update.setString(3, rows.getString(1)); update.executeUpdate();
+                }
+            } }
+        }
+        try (var p = c.prepareStatement("UPDATE stock_meta SET revision=? WHERE id=1")) { p.setLong(1, next); p.executeUpdate(); }
     }
     synchronized long revision() throws IOException {
         try (var c = open()) { return revision(c); } catch (SQLException e) { throw new IOException("Cannot read observation revision", e); }
@@ -150,6 +166,15 @@ final class StockLedger {
                         if (overlappingRevision > oldRevision || !run.equals(verifiedRun) || !previous.get("fingerprint").equals(source.get("fingerprint")) || !previous.get("kind").equals(source.get("kind"))
                             || !previous.get("items").equals(source.get("items")) || !previous.get("shulkers").equals(source.get("shulkers"))
                             || !previous.get("state").getAsString().equals("FRESH")) throw new Conflict(before, epoch);
+                        boolean protectedBefore = previous.has("protected") && previous.get("protected").getAsBoolean();
+                        boolean protectedNow = source.has("protected") && source.get("protected").getAsBoolean();
+                        if (protectedBefore && !protectedNow) throw new Conflict(before, epoch);
+                        if (protectedNow && !protectedBefore) {
+                            previous.addProperty("protected", true);
+                            try (var p = c.prepareStatement("UPDATE stock_sources SET payload=?,revision=? WHERE id=?")) {
+                                p.setString(1, previous.toString()); p.setLong(2, next); p.setString(3, id); p.executeUpdate();
+                            }
+                        }
                         memberTimes.put(id, verified); continue;
                     }
                     if (fresh && (overlappingRevision > base || !source.get("epoch").getAsString().isEmpty() && !epoch.equals(source.get("epoch").getAsString())
@@ -218,6 +243,7 @@ final class StockLedger {
                 var value=JsonParser.parseString(r.getString(3)).getAsJsonObject();String state=value.get("state").getAsString();
                 int activeParts=0;try(var p=c.prepareStatement("SELECT count(*) FROM stock_parts WHERE source=?")){p.setString(1,r.getString(8));try(var n=p.executeQuery()){if(n.next())activeParts=n.getInt(1);}}
                 if(activeParts!=value.getAsJsonArray("parts").size())state="SUPERSEDED";
+                else if(value.has("protected") && value.get("protected").getAsBoolean())state="PROTECTED";
                 else if(r.getInt(9)==0)state="WITHDRAWN";
                 else if(state.equals("FRESH") && !run.equals(r.getString(6)))state="STALE_STARTUP";
                 else if(state.equals("FRESH") && (now<r.getLong(5)||now-r.getLong(5)>=maxAge))state="STALE_AGE";

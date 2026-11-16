@@ -82,7 +82,7 @@ public final class ObservationRuntime {
     }
     public static List<Stash.Box> boxes(Stash stash) {
         Set<String> occupied = new HashSet<>(); List<Stash.Box> out = new ArrayList<>();
-        var sorted = stash.boxes.stream().sorted(Comparator.<Stash.Box>comparingInt(b -> b.delivery || b.excluded ? 0 : 1)
+        var sorted = stash.boxes.stream().sorted(Comparator.<Stash.Box>comparingInt(b -> b.delivery || b.excluded || b.protectedStorage ? 0 : 1)
             .thenComparingInt(b -> current(b) ? 0 : 1).thenComparingLong(b -> -b.observationSequence)).toList();
         for (var box : sorted) {
             String dimension = dimension(stash, box);
@@ -99,6 +99,7 @@ public final class ObservationRuntime {
             String dim = dimension(stash, box);
             var identity = new ContainerIdentity(stash.server, dim, box.parts.stream().map(p -> new ContainerIdentity.Position(p.getX(), p.getY(), p.getZ())).toList());
             JsonObject source = new JsonObject(); source.addProperty("id", identity.id()); source.addProperty("dimension", dim);
+            source.addProperty("protected", box.protectedStorage || box.excluded || box.delivery);
             JsonArray parts = new JsonArray();
             for (var pos : identity.parts()) { JsonArray p = new JsonArray(); p.add(pos.x()); p.add(pos.y()); p.add(pos.z()); parts.add(p); }
             source.add("parts", parts); source.addProperty("kind", box.observationBlock);

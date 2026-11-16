@@ -711,6 +711,7 @@
     var physical = data && Array.isArray(data.sources) ? data.sources : [];
     status.textContent = physical.length ? physical.length + " physical sources · revision " + data.stockRevision +
       " · freshness limit " + Math.round(data.maxAgeMillis / 1000) + " s" + (rows.length > 200 ? " · showing 200 of " + rows.length + " item variants" : "") : "No verified physical observations yet. A new scan is required.";
+    if (data && Array.isArray(data.automation) && data.automation.length) status.textContent += " · physical sorting active or awaiting reconciliation; new orders paused";
     balances.replaceChildren(); sources.replaceChildren();
     rows.slice(0, 200).forEach(function (item) {
       var row = document.createElement("tr");
@@ -733,7 +734,7 @@
       var position = Array.isArray(source.parts) ? " · " + source.parts.map(function (p) { return p.join(", "); }).join(" / ") : "";
       var observedDate = new Date(Number(source.verifiedAt));
       var observedLabel = Number(source.verifiedAt) > 0 && Number.isFinite(observedDate.getTime()) ? observedDate.toISOString() : "not verified";
-      var sourceState = ({FRESH: "Fresh", STALE_STARTUP: "Rescan required after restart", STALE_AGE: "Observation expired", STALE: "Rescan required", UNREACHABLE: "Cannot reach container", UNKNOWN: "Not read yet", MISSING: "Container missing", WITHDRAWN: "Absent from latest scan; contents unknown", SHARED_SOURCE: "Shared source; ordering paused"})[source.state] || source.state;
+      var sourceState = ({FRESH: "Fresh", PROTECTED: "Protected stock; automation blocked", STALE_STARTUP: "Rescan required after restart", STALE_AGE: "Observation expired", STALE: "Rescan required", UNREACHABLE: "Cannot reach container", UNKNOWN: "Not read yet", MISSING: "Container missing", WITHDRAWN: "Absent from latest scan; contents unknown", SHARED_SOURCE: "Shared source; ordering paused"})[source.state] || source.state;
       row.textContent = (source.serverLabel || source.server) + " · " + (Array.isArray(source.stashes) ? source.stashes.join(", ") : source.stash) + " · " + (source.dimension || "") + position + " · " + sourceState +
         " · revision " + source.sourceRevision + " · last verified " + observedLabel;
       sources.appendChild(row);

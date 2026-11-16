@@ -39,8 +39,33 @@ final class AddonRoutes {
 
     void register(Router router) {
         router.exact(Router.POST, "/api/v1/index", Router.Guard.ADDON_KEY, this::postIndex)
-            .exact(Router.POST, "/api/v1/heartbeat", Router.Guard.ADDON_KEY, this::heartbeat);
+            .exact(Router.POST, "/api/v1/heartbeat", Router.Guard.ADDON_KEY, this::heartbeat)
+            .exact(Router.POST, "/api/v1/automation", Router.Guard.ADDON_KEY, this::automation);
     }
+
+    private void automation(HttpExchange ex) throws IOException {
+        JsonElement json = readJson(ex);
+        if (json == null || !json.isJsonObject()) { Http.error(ex, 400, "Expected automation request"); return; }
+        var body = json.getAsJsonObject();
+        String server = string(body, "server"), agent = string(body, "agent"), token = string(body, "token"), action = string(body, "action");
+        if (server == null || server.isBlank() || server.length() > 256 || agent == null || !agent.matches("[0-9a-f-]{36}")
+            || !java.util.Set.of("acquire", "release", "uncertain").contains(action == null ? "" : action)) {
+            Http.error(ex, 400, "Invalid automation request"); return;
+        }
+        synchronized (store) {
+            var gate = store.automation();
+            if (!action.equals("acquire")) {
+                boolean released = gate.finish(server, agent, token, action.equals("release"));
+                Http.json(ex, released ? 200 : 409, released ? Http.ok() : error("Automation requires reconciliation")); return;
+            }
+            if (orders.hasOpenOnServer(server)) { Http.json(ex, 409, error("Reserved stock: sorting paused")); return; }
+            var lease = orders.acquireSorting(server, agent, token);
+            if (lease == null) { Http.json(ex, 409, error("Another physical operation is active or uncertain")); return; }
+            var out = Http.ok(); out.addProperty("token", lease.token()); out.addProperty("ttlMillis", AutomationGate.TTL);
+            Http.json(ex, 200, out);
+        }
+    }
+    private static JsonObject error(String message) { var out = new JsonObject(); out.addProperty("error", message); return out; }
 
     /** Strict UTF-8 JSON body, or null when it doesn't parse. */
     static JsonElement readJson(HttpExchange ex) throws IOException {

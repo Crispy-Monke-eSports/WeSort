@@ -85,6 +85,16 @@ public final class InventorySync {
 
     public static boolean ready() { return gate.ready() && blocks.isEmpty(); }
     public static boolean allowInput() {
+        var sorter = meteordevelopment.meteorclient.systems.modules.Modules.get().get(com.porter.wesort.modules.StashSorter.class);
+        if (sorter != null && !sorter.sortingPermitted()) return false;
+        if (sorter != null && readSource != null && mc.player != null && readLevel == mc.level
+            && mc.player.containerMenu.containerId == readMenu
+            && (mc.player.containerMenu instanceof net.minecraft.world.inventory.ChestMenu
+                || mc.player.containerMenu instanceof net.minecraft.world.inventory.ShulkerBoxMenu)) {
+            var current = sorter.currentStash(); var source = current == null ? null : current.boxAt(readSource);
+            if (source != null && (source.protectedStorage || source.excluded && !source.delivery
+                || source.delivery && sorter.requiresSortingPermit())) return false;
+        }
         if (ready() || gate.acceptingBatch()) return true;
         if (!gate.failed()) { gate.fail("New automated input attempted before server readback"); reportFailure(); }
         return false;

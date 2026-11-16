@@ -30,6 +30,13 @@ class StockAvailabilityTest {
         var ack = new IndexStore.BotStatus(false, null, false, null, first.rescan(), false, null, false, null, false, null);
         assertNull(store.heartbeat("s", "empty", "agent", null, ack).rescan());
     }
+    @Test void protectedPolicyCannotBeIgnoredOrClearedByAReplayedWitness() throws Exception {
+        var original = StockFixtures.physical(index("a", 64), ledger.epoch(), 0, 1, 0); store.putIndex(original);
+        var protectedCopy = original.deepCopy(); protectedCopy.getAsJsonArray("physicalSources").get(0).getAsJsonObject().addProperty("protected", true);
+        store.putIndex(protectedCopy); assertEquals("PROTECTED", ledger.sources().getFirst().status());
+        assertEquals(0, available()); assertThrows(OrderStore.OrderException.class, () -> order(1));
+        assertThrows(StockLedger.Conflict.class, () -> store.putIndex(original));
+    }
     @Test void aggregateWithoutPhysicalWitnessIsReadableButNotOrderable()throws Exception{
         store.putIndex(index("a",64));assertNotNull(store.index("s","a"));assertEquals(0,available());assertThrows(OrderStore.OrderException.class,()->order(1));
     }

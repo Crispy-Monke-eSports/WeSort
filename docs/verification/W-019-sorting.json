@@ -1,0 +1,50 @@
+{
+  "result": "PASS",
+  "scope": "W-019 actual 26.3 production sorting",
+  "checks": [
+    {
+      "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+      "result": "PASS"
+    },
+    {
+      "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+      "result": "PASS"
+    },
+    {
+      "scenario": "mixed named/enchanted/damaged/potion/slang fixture, full diamond destination with one partial stack, excluded and protected kit storage",
+      "result": "PASS"
+    },
+    {
+      "scenario": "Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord",
+      "result": "PASS"
+    },
+    {
+      "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+      "result": "PASS"
+    },
+    {
+      "scenario": "real signed Manager excludes a reservation and active sorter: no clicks or NBT changes while held, and new orders are rejected during physical sorting",
+      "result": "PASS"
+    },
+    {
+      "scenario": "actual production Signs engine routes mixed items by labels/slang, preserves metadata and partial stacks, uses overflow and leaves excluded/protected kit/outbound stock unchanged",
+      "result": "PASS"
+    },
+    {
+      "scenario": "actual production input mixin refuses a protected-container QUICK_MOVE before prediction or network send",
+      "result": "PASS"
+    },
+    {
+      "scenario": "actual Tiers planner fills 27-slot capacity in tier order and routes 16-stackables/singletons to the next container",
+      "result": "PASS"
+    },
+    {
+      "scenario": "full labeled/misc/unsigned storage produces an explicit blocked alert with exact unchanged server inventories",
+      "result": "PASS"
+    }
+  ],
+  "manager_image": "wesort-manager:sorting-tests",
+  "manager_image_id": "2a6f3440f25a6ff00684ebb9b27af8496b7b9397d9a3a057fd9de2d539bc3321",
+  "source_commit": "b4645b7d7c8a1eae1a285e9db6a6c02c6d985e2e",
+  "dirty_worktree": true
+}

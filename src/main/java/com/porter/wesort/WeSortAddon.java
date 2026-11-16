@@ -32,6 +32,7 @@ public class WeSortAddon extends MeteorAddon {
         Commands.add(new StashWindowCommand());
         Commands.add(new com.porter.wesort.commands.InventoryReconcileCommand());
         Commands.add(new com.porter.wesort.commands.NavigationCommand());
+        Commands.add(new com.porter.wesort.commands.SortWhyCommand());
         ClientRuntimeProbe.afterInitialize();
     }
 

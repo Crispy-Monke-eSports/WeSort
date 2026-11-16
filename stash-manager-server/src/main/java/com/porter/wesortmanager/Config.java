@@ -153,7 +153,7 @@ public final class Config {
         // BlueMap-style opt-in: an explicit "true" is required to download Mojang-owned game files.
         // The env override is intentionally separate from props so config-template comments are always written.
         String downloadConsent = System.getenv("WESORT_ACCEPT_MINECRAFT_DOWNLOAD");
-        if (downloadConsent == null) downloadConsent = props.getProperty("acceptMinecraftDownload", "false");
+        if (downloadConsent == null || downloadConsent.isBlank()) downloadConsent = props.getProperty("acceptMinecraftDownload", "false");
         downloadConsent = downloadConsent.trim();
         boolean acceptMinecraftDownload = downloadConsent.equalsIgnoreCase("true");
         if (!acceptMinecraftDownload && !downloadConsent.equalsIgnoreCase("false")) {

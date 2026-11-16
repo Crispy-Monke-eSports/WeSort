@@ -60,7 +60,7 @@ exakta betrodda proxy-IP:n får anges i `WESORT_TRUSTED_PROXIES`.
 | WESORT_TRUSTED_PROXIES | Tom: inga forwardingheaders litas på |
 | WESORT_SECURE_COOKIES | true i produktion, false i lokal dev; sätts av deployment, aldrig av en HTTP-header |
 | WESORT_ICON_SOURCE | auto i produktion; game i offline-dev/test |
-| WESORT_ACCEPT_MINECRAFT_DOWNLOAD | **false** som standard; **true** först efter administratörens uttryckliga EULA-/licensgodkännande för nedladdning av Mojangs 26.3-klientresurser |
+| WESORT_ACCEPT_MINECRAFT_DOWNLOAD | Tom/ej satt: läs config.properties (som standard **false**); **true** först efter uttryckligt EULA-/licensgodkännande |
 
 ### Minecraft-resurser (BlueMap-modell)
 

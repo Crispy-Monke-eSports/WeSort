@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "wesort-toolchain-probe",
+  "version": "0.1.0",
+  "name": "WeSort 26.3 toolchain probe",
+  "authors": ["WeSort contributors"],
+  "environment": "client",
+  "license": "GPL-3.0",
+  "entrypoints": {"meteor": ["com.porter.wesort.probe.ToolchainProbe"]},
+  "depends": {
+    "java": ">=25",
+    "minecraft": "26.3",
+    "fabricloader": ">=0.19.5",
+    "meteor-client": "26.3-22",
+    "baritone-meteor": "1.4.0-26.3"
+  }
+}

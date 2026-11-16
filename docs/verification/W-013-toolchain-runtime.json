@@ -1,0 +1,9 @@
+{
+  "minecraft": "26.3",
+  "fabricloader": "0.19.5",
+  "meteor-client": "26.3-22",
+  "baritone-meteor": "1.4.0-26.3",
+  "java": "25.0.5+8-LTS",
+  "result": "PASS",
+  "limits": "Client/addon initialization and Baritone linkage only; no world, inventory or navigation E2E."
+}

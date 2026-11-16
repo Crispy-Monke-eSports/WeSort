@@ -31,7 +31,7 @@ class SpecialModelsTest {
     static final String[] COLOURS = {"", "white_", "orange_", "magenta_", "light_blue_", "yellow_", "lime_", "pink_",
         "gray_", "light_gray_", "cyan_", "purple_", "blue_", "brown_", "green_", "red_", "black_"};
 
-    /** A minimal 1.21.4-style jar: stone (block model) and a red shulker box (special model) with flat textures. */
+    /** A minimal synthetic model-format fixture: stone and a red shulker box with flat textures. */
     @Test
     void shulkerBoxRendersIsometricFromAMinimalJar(@TempDir Path dir) throws IOException {
         Path jar = dir.resolve("client.jar");
@@ -77,7 +77,7 @@ class SpecialModelsTest {
     @Test
     void realJars() throws IOException {
         int checked = 0;
-        for (String v : new String[]{"1.21.4", "1.21.11"}) {
+        for (String v : new String[]{"26.3"}) {
             Optional<Path> jar = GameAssets.locate(v, null);
             if (jar.isEmpty()) continue;
             checked++;
@@ -100,7 +100,7 @@ class SpecialModelsTest {
                     assertNull(r.explain("minecraft:" + o), v + " " + o);
                     assertTrue(r.render("minecraft:" + o).isPresent(), v + " " + o);
                 }
-                if (v.equals("1.21.11")) {
+                if (v.equals("26.3")) {
                     for (String o : List.of("copper_chest", "oxidized_copper_chest", "waxed_weathered_copper_chest")) {
                         assertTrue(r.render("minecraft:" + o).isPresent(), v + " " + o);
                     }
@@ -110,7 +110,7 @@ class SpecialModelsTest {
                 assertFalse(r.render("minecraft:piglin_head").isPresent());
             }
         }
-        assumeTrue(checked > 0, "no 1.21.4 / 1.21.11 client jar on this machine");
+        assumeTrue(checked > 0, "no Minecraft 26.3 client jar on this machine");
     }
 
     // ------------------------------------------------------------------ helpers

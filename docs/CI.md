@@ -17,5 +17,7 @@ alla tester. Dockerfile/GHCR ingår inte i W-003. Utöka klientmatrisen först e
 W-013/W-014; de ursprungliga targets finns kvar under portningen.
 
 Lokal verifiering: samma tre byggkommandon och rapportverktyg som i BASELINE.md
-har körts. GitHub Actions-run återstår tills branchen har pushats; lokal Gradle
-är inte bevis för en grön hosted workflow-run. Minecraft/Docker är ej körda.
+har körts. Hosted workflow körs för main och kan även startas manuellt. Lokal Gradle
+är inte bevis för en grön hosted workflow-run. W-011 lägger till ett riktigt
+Manager-process-test för ny installation, order/claim, omstart och isolerad
+backup. Webbens DOM-/referensregression körs i ett separat Node 22-jobb. Minecraft/Docker är ej körda.

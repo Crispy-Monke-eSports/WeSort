@@ -102,3 +102,11 @@ Klientregressionen omfattar nu 426 tester per target. Manager har 94 tester
 med ett känt ikon-skip. Webbens DOM-/referenstest och fake-addon --help körs
 separat. Bygg-/speltestgränsen är oförändrad: inga Minecraft-interaktioner har
 körts i denna miljö.
+
+## W-011 / #12: identitet och tom installation
+
+Alla aktiva paket/modulnamn/data/browseridentiteter är egna WeSort-namn.
+Den gamla server-URL-fallbacken och dess två exklusiva tester är borttagna;
+sex gemensamma isoleringstester tillkom i båda projekten. Ursprunglig Qwertze-
+attribution och GPL/OFL ligger kvar. Ingen användardata migreras.
+Se DATA_PATHS.md för fullständig sökvägsmatris och STAGE_0.md för slutresultat.

@@ -1,5 +1,5 @@
-/* Stash Manager themes: design tokens only. Loaded before style.css, which uses nothing but these variables for
-   its UI chrome. The theme is picked per browser (localStorage "sm-theme") and set on <html data-theme> by
+/* WeSort Manager themes: design tokens only. Loaded before style.css, which uses nothing but these variables for
+   its UI chrome. The theme is picked per browser (localStorage "wesort.theme") and set on <html data-theme> by
    theme-init.js before this file loads. Classic is the default. */
 
 :root, [data-theme="classic"] {

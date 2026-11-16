@@ -23,8 +23,10 @@ base {
 sourceSets {
     main {
         java.srcDir("src/$mc/java")
+        java.srcDir("common/src/main/java")
         resources.srcDir("src/$mc/resources")
     }
+    test { java.srcDir("common/src/test/java") }
 }
 
 repositories {

@@ -51,8 +51,8 @@ samma repo via GHCR; Docker/Compose/bootstrap/publicering ingår i steg 1.
 Nuvarande Gradle-körning av Manager är endast för utveckling och test.
 
 WeSort ska alltid börja med egna tomma data. Ingen import, fallback, kopiering,
-läsning eller radering av tidigare Qwerte-data är tillåten. Namn och isolerade
-lagringsvägar införs i W-011, sist i steg 0.
+läsning eller radering av tidigare Qwerte-data är tillåten. Egna namn, tomma datakataloger och schema-/symlinkspärrar finns nu enligt
+[DATA_PATHS.md](docs/DATA_PATHS.md).
 
 ## Dokumentation och ursprung
 
@@ -61,6 +61,7 @@ lagringsvägar införs i W-011, sist i steg 0.
 - [Keep/remove och beroenden](docs/CLEANUP_PLAN.md)
 - [Borttagna och bevarade features](docs/REMOVED_FEATURES.md)
 - [Arkitektur efter rensning](docs/ARCHITECTURE.md)
+- [Datakataloger och installationsisolering](docs/DATA_PATHS.md)
 - [CI](docs/CI.md)
 - [Manager och aktuellt protokoll](stash-manager-server/README.md)
 

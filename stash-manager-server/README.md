@@ -13,7 +13,9 @@ python3 scripts/test-summary.py stash-manager-server/build
 
 För isolerade utvecklingstester, använd en ny tom katalog med `--data`.
 Använd aldrig en Qwerte-katalog eller tidigare `stash-manager-data`.
-W-011 ersätter standardvägen och inför installationsmarkör före första I/O.
+Standard är `wesort-manager-data`; en explicit --data måste vara tom eller
+redan märkt för WeSort Manager. Symlänkar och okända scheman nekas före I/O.
+Se [datakatalogerna](../docs/DATA_PATHS.md).
 
 Webben har stash/index, orders/cart/shulkerpreview, bots/status, activity,
 egen agent-settings, konton och audit. Auth, sessions, CSRF, signing, host-/LAN-

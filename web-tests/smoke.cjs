@@ -36,10 +36,29 @@ async function scenario(loggedIn) {
     if (u.pathname.endsWith('/activity')) body = {now: [], events: [], modules: [], plugins: []};
     return {ok: true, status: 200, headers: new Map(), json: async () => body};
   };
+  const legacy = {'stashManager.user': 'OLD', 'stashManager.page': 'console', 'sm-theme': 'corrupt', 'stashManager.streamer': '1'};
+  for (const [key, value] of Object.entries(legacy)) w.localStorage.setItem(key, value);
+  const read = w.Storage.prototype.getItem;
+  const write = w.Storage.prototype.setItem;
+  const remove = w.Storage.prototype.removeItem;
+  w.Storage.prototype.getItem = function(key) {
+    assert(key.startsWith('wesort.'), `Legacy browser key read: ${key}`);
+    return read.call(this, key);
+  };
+  w.Storage.prototype.setItem = function(key, value) {
+    assert(key.startsWith('wesort.'), `Legacy browser key changed: ${key}`);
+    return write.call(this, key, value);
+  };
+  w.Storage.prototype.removeItem = function(key) {
+    assert(key.startsWith('wesort.'), `Legacy browser key deleted: ${key}`);
+    return remove.call(this, key);
+  };
   w.requestAnimationFrame = () => 0;
   w.matchMedia = () => ({matches: false, addEventListener() {}});
   w.HTMLElement.prototype.scrollIntoView = () => {};
   try {
+    w.eval(fs.readFileSync(path.join(root, 'theme-init.js'), 'utf8'));
+    w.eval(fs.readFileSync(path.join(root, 'streamer-init.js'), 'utf8'));
     w.eval(code);
     await settle();
     assert.equal(w.document.querySelector('#auth-screen').hidden, loggedIn);
@@ -61,6 +80,7 @@ async function scenario(loggedIn) {
       assert(requests.some(x => x.includes('/settings?scope=plugin')));
     }
     assert.deepEqual(errors, []);
+    for (const [key, value] of Object.entries(legacy)) assert.equal(read.call(w.localStorage, key), value);
   } finally {
     w.close();
   }

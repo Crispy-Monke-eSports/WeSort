@@ -1,7 +1,7 @@
 // Runs before any stylesheet (loaded without defer), so the first frame already has the right theme.
-// The theme is a per-browser preference ("sm-theme"), never sent to the server or the bot.
+// The theme is a per-browser preference ("wesort.theme"), never sent to the server or the bot.
 (function () {
-  var KEY = "sm-theme";
+  var KEY = "wesort.theme";
   // Each theme's --bar colour (from themes.css), for <meta name="theme-color">: the CSS isn't loaded yet here.
   var BAR = { classic: "#1f1f1f", modern: "#ffffff", light: "#fafaf9", dark: "#0e1116", midnight: "#000000", mac: "#161618", contrast: "#000000" };
   var root = document.documentElement;

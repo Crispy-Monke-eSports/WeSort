@@ -51,3 +51,7 @@ logs/
 
 # Web regression tools
 node_modules/
+
+# Isolated WeSort runtime data (keys, sessions, users, orders)
+wesort-manager-data/
+stash-manager-server/wesort-manager-data/

@@ -1,4 +1,4 @@
-// Stash Manager page. Item names come from players, so the DOM is only built with
+// WeSort Manager page. Item names come from players, so the DOM is only built with
 // createElement/textContent, never innerHTML.
 (function () {
   "use strict";
@@ -12,7 +12,7 @@
   var ICON_SOURCE_TOKEN = "g2"; // bump when the server changes how icons are made
   var DEFAULT_MC = "1.21.11";
   var ICON_RETRY_DELAYS = [1000, 2000, 3000, 5000];
-  var STORAGE_KEY = "stashManager.selected";
+  var STORAGE_KEY = "wesort.selected";
 
   function $(id) {
     return document.getElementById(id);
@@ -21,7 +21,7 @@
   // ---------- streamer mode (display only) ----------
   // Sensitive values are always marked with data-sensitive where they are created; the CSS blurs them while
   // <html> has the "streamer" class (set before the first paint by streamer-init.js).
-  var STREAMER_KEY = "stashManager.streamer";
+  var STREAMER_KEY = "wesort.streamer";
 
   function streamerOn() {
     return document.documentElement.classList.contains("streamer");
@@ -265,13 +265,13 @@
   }
 
   // ---------- website login ----------
-  // The page's files are public, everything else needs the sm_session cookie (HttpOnly, set by the server).
+  // The page's files are public, everything else needs the wesort_session cookie (HttpOnly, set by the server).
   // Any 401 from the API shows the login screen over the page; after logging in the page carries on where it was.
   // A sub-user whose password the owner set (mustChange) gets the "Choose a new password" screen instead, and so
   // does any API answer 403 {mustChange: true}.
 
   var MIN_PASSWORD = 12;
-  var USER_KEY = "stashManager.user";
+  var USER_KEY = "wesort.user";
   var auth = { blocked: true, mode: "login", busy: false, userId: null };
 
   // ---------- the logged-in user and what it may do ----------
@@ -2338,7 +2338,7 @@
       p.className = "window-info";
       p.textContent = state.hasShulkerData
         ? "All empty. None of these shulkers hold items."
-        : "This index has no shulker contents. Update the Qwerte addon to see what is inside.";
+        : "This index has no shulker contents. Update the WeSort addon to see what is inside.";
       body.appendChild(p);
       openWindow(item.name, body, "chooser-window");
       return;
@@ -2539,7 +2539,7 @@
   }
 
   function cartStorageKey() {
-    return state.selected ? "stashManager.cart." + state.selected : null;
+    return state.selected ? "wesort.cart." + state.selected : null;
   }
 
   function loadCart() {
@@ -4137,8 +4137,8 @@
   // ---------- dashboard: pages, bot picker ----------
   // Stash and Orders are the inventory view with its creative tabs; Bots, Settings and Console are dashboard pages
 
-  var BOT_KEY = "stashManager.bot";
-  var PAGE_KEY = "stashManager.page";
+  var BOT_KEY = "wesort.bot";
+  var PAGE_KEY = "wesort.page";
   var dash = {
     page: "stash",
     bots: [],
@@ -5258,7 +5258,7 @@
   });
 
   // ---------- appearance: theme picker (this browser only) ----------
-  // The choice lives in localStorage ("sm-theme") through theme-init.js, which applies it before the CSS loads.
+  // The choice lives in localStorage ("wesort.theme") through theme-init.js, which applies it before the CSS loads.
   // It is not a bot setting: not part of the Settings form, never sent to the server.
 
   var THEME_CHOICES = [
@@ -5548,7 +5548,7 @@
     ["order", "Place orders", "Place orders; cancel, retry or force-cancel their own orders."],
     ["ordersAll", "Manage all orders", "Cancel, retry or force-cancel anyone's orders; Clear history."],
     ["activity", "Bots and activity", "Bots tab, Activity, job status and the plugin settings (read only)."],
-    ["settings", "Change plugin settings", "Save the Qwerte Stash plugin settings."],
+    ["settings", "Change plugin settings", "Save the WeSort plugin settings."],
     ["rescan", "Rescan stashes", "Ask the bot to re-read every container of a stash."],
     ["link", "Link addon", "The Link addon panel (linked bots in scope) and releasing a stash. The API key itself stays owner-only."],
     ["streamer", "Force streamer mode", "A restriction: the server never sends this user coordinates, player names, server addresses, chat or the bots' free text. Bot settings are refused. The user can't turn it off."]
@@ -6280,7 +6280,7 @@
     } else if (dash.page === "activity") {
       el.actBody.hidden = true;
       el.actEmpty.hidden = false;
-      el.actEmpty.textContent = !b ? "No dashboard bot yet." : "This bot doesn't send its activity (update the Qwerte Stash plugin).";
+      el.actEmpty.textContent = !b ? "No dashboard bot yet." : "This bot doesn't send its activity (update the WeSort plugin).";
     }
     if (dash.page === "activity") act.timer = window.setTimeout(loadActivity, visible ? 2000 : 15000);
   }

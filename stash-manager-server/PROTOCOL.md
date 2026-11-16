@@ -1,6 +1,6 @@
 # Manager API efter steg 0
 
-Alla aktiva routes registreras av StashManagerServer.routes; Route-regressionen
+Alla aktiva routes registreras av WeSortManager.routes; Route-regressionen
 klassificerar varje inloggad route för permission och sekretess.
 Detta protokoll är den bevarade baslinjen, inte framtida guildordermotor.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fake Qwerte addon for testing the Stash Manager server without Minecraft.
+"""Fake WeSort addon for testing the WeSort Manager server without Minecraft.
 
 Standard library only. Run it isolated so nothing is imported from the current folder:
 
@@ -18,7 +18,7 @@ Standard library only. Run it isolated so nothing is imported from the current f
     python -I dev/fake-addon.py --url ... --data ... run          # claim and walk one order to delivered
     python -I dev/fake-addon.py --url ... --data ... run --fail   # ... or to failed
 
-The API key comes from --key, $STASH_MANAGER_KEY, or apiKey= in <dataDir>/config.properties.
+The API key comes from --key, $WESORT_MANAGER_KEY, or apiKey= in <dataDir>/config.properties.
 """
 
 import argparse
@@ -259,14 +259,23 @@ class Client:
 def load_key(args):
     if args.key:
         return args.key
-    if os.environ.get("STASH_MANAGER_KEY"):
-        return os.environ["STASH_MANAGER_KEY"]
+    if os.environ.get("WESORT_MANAGER_KEY"):
+        return os.environ["WESORT_MANAGER_KEY"]
     if args.data:
-        with open(os.path.join(args.data, "config.properties"), encoding="utf-8") as f:
+        from pathlib import Path
+        root = Path(os.path.abspath(args.data))
+        denied = {"qwerte", "qwerte-addon", "stash-manager-data"}
+        marker = root / ".wesort-installation"
+        config = root / "config.properties"
+        if any(p.name.lower() in denied or p.is_symlink() for p in (root, *root.parents)):
+            sys.exit("refusing legacy or symlink data path")
+        if marker.is_symlink() or config.is_symlink() or marker.read_text() != "wesort-manager:1\n":
+            sys.exit("--data must be an isolated WeSort Manager installation")
+        with config.open(encoding="utf-8") as f:
             for line in f:
                 if line.strip().startswith("apiKey="):
                     return line.split("=", 1)[1].strip()
-    sys.exit("no API key: use --key, STASH_MANAGER_KEY or --data")
+    sys.exit("no API key: use --key, WESORT_MANAGER_KEY or --data")
 
 
 def show(label, status, body):
@@ -381,7 +390,7 @@ def delivery(c, args):
 
 def main():
     global SERVER, STASH, PLAYER, DELIVERY, BLOCKER, NAMING, CRAFTING
-    p = argparse.ArgumentParser(description="Fake Qwerte addon for the Stash Manager server")
+    p = argparse.ArgumentParser(description="Fake WeSort addon for the WeSort Manager server")
     p.add_argument("--url", default="http://127.0.0.1:8765")
     p.add_argument("--key")
     p.add_argument("--data", help="server data dir, to read the API key from config.properties")

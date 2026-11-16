@@ -1,5 +1,8 @@
 name: Baseline build
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -60,6 +63,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Build and test Manager
         run: ./gradlew --no-daemon -p stash-manager-server clean build
+      - name: Verify fresh installation, restart and data isolation
+        shell: bash
+        run: |
+          mkdir -p stash-manager-server/build/evidence
+          python3 scripts/smoke-isolation.py | tee stash-manager-server/build/evidence/isolation.txt
       - name: Record tests and build identity
         if: always()
         shell: bash

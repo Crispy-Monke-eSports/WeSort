@@ -296,11 +296,8 @@ final class UserRoutes {
         if (p.ordersAll()) add.accept("all orders");
         if (p.activity()) add.accept("bots");
         if (p.settings()) add.accept("settings");
-        if (p.proxyRead()) add.accept("proxy " + p.proxy());
-        if (p.consoleRead()) add.accept("console " + p.console() + ("list".equals(p.console()) ? " (" + p.consoleAllow().size() + ")" : ""));
         if (p.rescan()) add.accept("rescan");
         if (p.link()) add.accept("link");
-        if (p.viewer()) add.accept("live viewer");
         if (p.streamer()) add.accept("forced streamer mode");
         if (p.stashes() != null) add.accept(p.stashes().size() + " stash(es)");
         if (p.bots() != null) add.accept(p.bots().size() + " bot(s)");

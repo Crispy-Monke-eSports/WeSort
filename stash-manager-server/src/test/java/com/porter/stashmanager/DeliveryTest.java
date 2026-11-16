@@ -297,4 +297,27 @@ class DeliveryTest {
         assertFalse(perms.has("plannerOrder"));
         assertFalse(Users.Perms.parse(JsonParser.parseString("{\"plannerOrder\":true}")).order());
     }
+    @Test
+    void retiredAdminEndpointsCannotQueueCommandsOrProxyChanges() throws Exception {
+        String owner = login(null, OWNER_PW);
+        assertEquals(200, botPost("/api/v1/bot/hello",
+            "{\"botId\":\"b1\",\"caps\":[\"settings\",\"activity\",\"console\",\"viewer\",\"proxy\"]}").status());
+        for (String path : List.of("/api/v1/bots/b1/console", "/api/v1/bots/b1/viewer",
+                "/api/v1/bots/b1/viewer/stream", "/api/v1/bot/viewer")) {
+            assertEquals(404, get(owner, path).status(), path);
+            assertEquals(404, post(owner, path, "{\"command\":\"stop\"}").status(), path);
+        }
+        assertEquals(404, get(owner, "/api/v1/bots/b1/settings?scope=proxy").status());
+        assertEquals(400, post(owner, "/api/v1/bots/b1/settings",
+            "{\"scope\":\"plugin:other\",\"changes\":[{\"path\":\"x\",\"value\":true}]}").status());
+        JsonObject perms = Users.Perms.ALL.toJson();
+        for (String key : List.of("proxy", "console", "consoleAllow", "viewer")) assertFalse(perms.has(key));
+        BotHub hub = new BotHub();
+        hub.hello("b", "P", new JsonObject(), new JsonObject(), List.of("settings", "console", "viewer", "proxy"), List.of("plugin", "proxy"));
+        BotHub.Bot bot = hub.bot("b");
+        assertEquals(java.util.Set.of("settings"), bot.caps);
+        assertEquals(java.util.Set.of("plugin"), bot.declaredScopes);
+        assertThrows(IllegalArgumentException.class, () -> hub.queueSets(bot, "proxy", List.of()));
+        assertTrue(hub.next(bot).body().getAsJsonArray("jobs").isEmpty());
+    }
 }

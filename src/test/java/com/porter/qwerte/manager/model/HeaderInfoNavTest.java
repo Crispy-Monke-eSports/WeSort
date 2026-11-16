@@ -66,17 +66,17 @@ class HeaderInfoNavTest {
     @Test
     void anOwnerSeesTheWebsitesPagesInOrder() {
         AuthState owner = auth("{\"loggedIn\":true,\"user\":{\"id\":\"owner\",\"name\":\"boss\",\"owner\":true,\"perms\":{}}}");
-        assertEquals(List.of(NavPage.STASH, NavPage.ORDERS, NavPage.BOTS, NavPage.ACTIVITY, NavPage.LIVE, NavPage.SETTINGS,
-            NavPage.USERS, NavPage.PROXY, NavPage.CONSOLE), NavPage.visible(owner, true, true));
+        assertEquals(List.of(NavPage.STASH, NavPage.ORDERS, NavPage.BOTS, NavPage.ACTIVITY, NavPage.SETTINGS,
+            NavPage.USERS), NavPage.visible(owner, true, true));
         // no bot: no Proxy; a bot without activity: no Activity page
-        assertEquals(List.of(NavPage.STASH, NavPage.ORDERS, NavPage.BOTS, NavPage.LIVE, NavPage.SETTINGS, NavPage.USERS, NavPage.CONSOLE),
+        assertEquals(List.of(NavPage.STASH, NavPage.ORDERS, NavPage.BOTS, NavPage.SETTINGS, NavPage.USERS),
             NavPage.visible(owner, false, false));
     }
 
     @Test
     void aLimitedUserSeesOnlyWhatTheirPermissionsAllow() {
         AuthState user = auth("{\"loggedIn\":true,\"user\":{\"id\":\"u1\",\"name\":\"bob\",\"owner\":false,\"perms\":{\"view\":true,\"viewer\":true,\"proxy\":\"read\"}}}");
-        assertEquals(List.of(NavPage.STASH, NavPage.ORDERS, NavPage.LIVE, NavPage.SETTINGS, NavPage.PROXY), NavPage.visible(user, true, true));
+        assertEquals(List.of(NavPage.STASH, NavPage.ORDERS, NavPage.SETTINGS), NavPage.visible(user, true, true));
         assertTrue(NavPage.visible(null, true, true).isEmpty());
     }
 
@@ -89,9 +89,7 @@ class HeaderInfoNavTest {
     @Test
     void websitePagesSayWhereTheyAre() {
         assertTrue(NavPage.ACTIVITY.inGame());
-        assertTrue(NavPage.CONSOLE.inGame());
         assertTrue(NavPage.STASH.inGame());
-        assertTrue(NavPage.PROXY.inGame());
         assertTrue(NavPage.BOTS.inGame());
         assertEquals("Settings is only on the website. Open http://10.0.0.2:8765 in a browser.", NavPage.SETTINGS.websiteNote("http://10.0.0.2:8765"));
         assertEquals("Settings is only on the website.", NavPage.SETTINGS.websiteNote(null));

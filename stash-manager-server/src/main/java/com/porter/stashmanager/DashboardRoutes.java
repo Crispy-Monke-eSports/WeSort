@@ -21,7 +21,7 @@ import java.util.regex.Pattern;
  * writes the browser-write guard.
  */
 final class DashboardRoutes {
-    private static final Pattern BOT = Pattern.compile("^/api/v1/bots/([A-Za-z0-9_-]{1,64})/(settings|jobs|console|activity)$");
+    private static final Pattern BOT = Pattern.compile("^/api/v1/bots/([A-Za-z0-9_-]{1,64})/(settings|jobs|activity)$");
     static final int MAX_COMMAND = 500;
     static final int MAX_STRING = 1000;
     static final int MAX_LIST = 500;
@@ -64,7 +64,6 @@ final class DashboardRoutes {
                 o.addProperty("online", BotHub.online(b, now));
                 o.addProperty("lastSeen", b.lastSeen);
                 o.add("plugin", b.plugin.deepCopy());
-                o.add("proxy", b.proxy.deepCopy());
                 JsonArray caps = new JsonArray();
                 b.caps.forEach(caps::add);
                 o.add("caps", caps);
@@ -125,10 +124,7 @@ final class DashboardRoutes {
             Http.error(ex, 404, "not found");
             return;
         }
-        if (m.group(2).equals("console") && !perms(ex).consoleRead()) {
-            Router.forbid(ex, "use the console", "console");
-            return;
-        }
+
         // Forced streamer mode: only the (redacted) activity. Settings values, job results and the console can hold
         // positions and names.
         if (Redact.on(ex) && !m.group(2).equals("activity")) {
@@ -146,15 +142,7 @@ final class DashboardRoutes {
             }
             case "settings" -> {
                 String scope = q.getOrDefault("scope", "plugin");
-                // The proxy's and other plugins' configs: the proxy permission, and sudo mode (like the console).
-                if (!scope.equals("plugin") && !perms(ex).proxyRead()) {
-                    Router.forbid(ex, "see the proxy settings", "proxy");
-                    return;
-                }
-                if (!scope.equals("plugin") && !elevated(ex)) {
-                    Http.error(ex, 403, "confirm password");
-                    return;
-                }
+                if (!scope.equals("plugin")) { Http.error(ex, 404, "scope not found"); return; }
                 getSettings(ex, b, scope);
             }
             case "jobs" -> {
@@ -165,28 +153,7 @@ final class DashboardRoutes {
                 }
                 Http.json(ex, 200, hub.jobs(b, ids));
             }
-            default -> {
-                if (!perms(ex).consoleRead()) {
-                    Router.forbid(ex, "use the console", "console");
-                    return;
-                }
-                if (!elevated(ex)) {
-                    Http.error(ex, 403, "confirm password");
-                    return;
-                }
-                hub.watch(b);
-                long after;
-                try {
-                    after = Long.parseLong(q.getOrDefault("after", "0"));
-                } catch (NumberFormatException e) {
-                    after = 0;
-                }
-                // "list" users see only what they sent; "full" (and the owner) see the whole console.
-                Users.Principal who = Router.user(ex);
-                JsonObject out = hub.console(b, after, "full".equals(who.perms().console()) ? null : who.id());
-                out.addProperty("online", hub.online(b));
-                Http.json(ex, 200, out);
-            }
+            default -> Http.error(ex, 404, "not found");
         }
     }
 
@@ -244,10 +211,7 @@ final class DashboardRoutes {
             streamerForbid(ex);
             return;
         }
-        if (m.group(2).equals("console") && !perms(ex).consoleRead()) {
-            Router.forbid(ex, "use the console", "console");
-            return;
-        }
+
         BotHub.Bot b = bot(ex, m);
         if (b == null) return;
         JsonElement json = AddonRoutes.readJson(ex);
@@ -257,7 +221,7 @@ final class DashboardRoutes {
         }
         JsonObject o = json.getAsJsonObject();
         if (m.group(2).equals("settings")) postSettings(ex, b, o);
-        else postConsole(ex, b, o);
+
     }
 
     private static void pathError(HttpExchange ex, int status, String message, String path) throws IOException {
@@ -282,28 +246,14 @@ final class DashboardRoutes {
         String scope = AddonRoutes.string(o, "scope");
         if (scope == null) scope = "plugin";
         if (!BotRoutes.SCOPE.matcher(scope).matches()) {
-            Http.error(ex, 400, "scope must be plugin, proxy or plugin:<id>");
+            Http.error(ex, 400, "scope must be plugin");
             return;
         }
         if (scope.equals("plugin") && !perms(ex).settings()) {
             Router.forbid(ex, "change settings", "settings");
             return;
         }
-        if (!scope.equals("plugin")) {
-            // The proxy's own config and other plugins' configs: a proxy cap and "sudo mode" (password in the last 15 min).
-            if (!perms(ex).proxyChange()) {
-                Router.forbid(ex, "change the proxy settings", "proxy");
-                return;
-            }
-            if (!caps(b, "proxy")) {
-                Http.error(ex, 400, "this bot doesn't offer the proxy settings");
-                return;
-            }
-            if (!sessions.elevated((String) Http.attr(ex, Router.SESSION_TOKEN))) {
-                Http.error(ex, 403, "confirm password");
-                return;
-            }
-        }
+
         BotHub.Scope s = hub.scope(b, scope);
         if (s == null || s.schema == null) {
             Http.error(ex, 409, "no settings from this bot yet");
@@ -431,45 +381,5 @@ final class DashboardRoutes {
         return e instanceof JsonPrimitive p && p.isBoolean() && p.getAsBoolean();
     }
 
-    private void postConsole(HttpExchange ex, BotHub.Bot b, JsonObject o) throws IOException {
-        if (!caps(b, "console")) {
-            Http.error(ex, 400, "this bot doesn't offer a console");
-            return;
-        }
-        if (!perms(ex).consoleRead()) {
-            Router.forbid(ex, "use the console", "console");
-            return;
-        }
-        // Console commands can do anything the proxy can: the password must have been typed in the last 15 minutes.
-        if (!sessions.elevated((String) Http.attr(ex, Router.SESSION_TOKEN))) {
-            Http.error(ex, 403, "confirm password");
-            return;
-        }
-        String command = AddonRoutes.string(o, "command");
-        if (command == null || command.isBlank()) {
-            Http.error(ex, 400, "command must be text");
-            return;
-        }
-        command = command.trim();
-        if (command.length() > MAX_COMMAND) {
-            Http.error(ex, 400, "at most " + MAX_COMMAND + " characters");
-            return;
-        }
-        if (command.chars().anyMatch(Character::isISOControl)) {
-            Http.error(ex, 400, "the command has control characters");
-            return;
-        }
-        if (!perms(ex).consoleAllows(command)) {
-            Router.forbid(ex, "run that command", "console");
-            return;
-        }
-        if (!hub.online(b)) {
-            Http.error(ex, 409, "bot offline");
-            return;
-        }
-        JsonObject out = Http.ok();
-        out.addProperty("id", hub.queueCommand(b, command, Router.user(ex).id()));
-        audit.add(Router.user(ex), "console", b.botId + ": " + (AuditLog.hideCommand(command) ? "(hidden)" : command), AuthRoutes.address(ex));
-        Http.json(ex, 200, out);
-    }
+
 }

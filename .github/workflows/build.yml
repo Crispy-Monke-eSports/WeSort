@@ -84,6 +84,20 @@ jobs:
             LICENSE
             docs/UPSTREAM.md
 
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web-tests/package-lock.json
+      - run: npm ci --prefix web-tests
+      - run: npm test --prefix web-tests
+
   # W-055: add Linux Docker build + local container smoke job, needs: manager.
   # W-056: a separate trusted release job may request packages: write, needs tests
   # and container smoke. Never grant publishing credentials to pull_request jobs.

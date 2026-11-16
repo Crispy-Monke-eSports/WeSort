@@ -82,10 +82,7 @@
         <button type="button" class="mc-button nav-btn" data-page="orders">Orders</button>
         <button type="button" class="mc-button nav-btn" data-page="bots" id="bots-open">Bots</button>
         <button type="button" class="mc-button nav-btn" data-page="activity" id="nav-activity" hidden>Activity</button>
-        <button type="button" class="mc-button nav-btn" data-page="viewer" id="nav-viewer" hidden>Live</button>
         <button type="button" class="mc-button nav-btn" data-page="settings">Settings</button>
-        <button type="button" class="mc-button nav-btn" data-page="proxy" id="nav-proxy" hidden>Proxy</button>
-        <button type="button" class="mc-button nav-btn" data-page="console" id="nav-console">Console</button>
       </nav>
     </header>
 
@@ -295,91 +292,9 @@
       <div class="settings-body" id="settings-body"></div>
     </main>
 
-    <main class="panel dash-page proxy-page" id="page-proxy" hidden>
-      <div class="dash-head">
-        <div class="panel-label" id="proxy-title">Proxy</div>
-        <div class="dash-actions">
-          <select id="proxy-scope" class="mc-select" aria-label="Which config"></select>
-          <span class="note" id="proxy-status"></span>
-          <button type="button" class="mc-button" id="proxy-revert" disabled>Revert</button>
-          <button type="button" class="mc-button" id="proxy-save" disabled>Save</button>
-        </div>
-      </div>
-      <div class="offline-banner" id="proxy-offline" hidden></div>
-      <div class="proxy-cols">
-        <aside class="inset proxy-side">
-          <input id="proxy-search" class="mc-input" type="search" placeholder="Search all settings" autocomplete="off" spellcheck="false">
-          <div class="section-list" id="proxy-nav"></div>
-        </aside>
-        <div class="settings-body proxy-body" id="proxy-body"></div>
-      </div>
-      <div class="note">Changes here need the website password typed in the last 15 minutes. Secrets are never shown or changed here.</div>
-    </main>
-
-    <main class="panel dash-page viewer-page" id="page-viewer" hidden>
-      <div class="dash-head viewer-head">
-        <div class="panel-label" id="viewer-title">Live</div>
-        <span class="v-status v-connecting" id="v-status" role="status">Connecting</span>
-      </div>
-      <div class="viewer-body">
-        <div class="viewer-wrap" id="viewer-wrap">
-          <canvas class="viewer-canvas" id="viewer-canvas" role="img" aria-label="Live map around the bot: drag to pan, pinch or scroll to zoom"></canvas>
-          <div class="viewer-top">
-            <div class="v-chip v-bar" title="Health"><span class="v-bar-label">HP</span><span class="v-track"><span class="v-fill v-hp" id="v-hp"></span></span><span class="v-num" id="v-hp-text">-</span></div>
-            <div class="v-chip v-bar" title="Food"><span class="v-bar-label">Food</span><span class="v-track"><span class="v-fill v-food" id="v-food"></span></span><span class="v-num" id="v-food-text">-</span></div>
-            <span class="v-chip" id="v-xp">XP -</span>
-            <span class="v-chip" id="v-armor" hidden></span>
-            <span class="v-chip v-coords" id="v-coords" data-sensitive>-</span>
-          </div>
-          <div class="viewer-controls">
-            <button type="button" class="mc-button small" id="v-centre" aria-pressed="true" title="Follow the bot">Centre</button>
-            <button type="button" class="mc-button small" id="v-zoom-in" aria-label="Zoom in">+</button>
-            <button type="button" class="mc-button small" id="v-zoom-out" aria-label="Zoom out">&minus;</button>
-            <button type="button" class="mc-button small v-narrow" id="v-chat-btn" aria-expanded="false" aria-controls="v-chat">Chat <span class="v-unread" id="v-unread" hidden></span></button>
-            <button type="button" class="mc-button small" id="v-debug-btn" aria-pressed="false" title="Show the latency figures">Latency</button>
-          </div>
-          <div class="v-debug" id="v-debug" hidden></div>
-          <div class="note v-note" id="v-note" hidden></div>
-          <div class="viewer-bottom">
-            <div class="v-inv-box" id="v-inv-box" hidden>
-              <div class="v-inv" id="v-inv" aria-label="Inventory"></div>
-              <div class="v-inv-note" id="v-inv-note" hidden>This bot's plugin version doesn't send its inventory.</div>
-            </div>
-            <div class="v-gear" id="v-gear" hidden></div>
-            <div class="v-hotbar-row">
-              <div class="v-hotbar" id="v-hotbar" aria-label="Hotbar"></div>
-              <div class="v-hotbar-btns">
-                <button type="button" class="mc-button small v-gear-btn" id="v-inv-btn" aria-expanded="false" aria-controls="v-inv-box" title="Main inventory">Inventory</button>
-                <button type="button" class="mc-button small v-gear-btn" id="v-gear-btn" aria-expanded="false" aria-controls="v-gear" title="Armour and offhand">Gear</button>
-              </div>
-            </div>
-          </div>
-        </div>
-        <aside class="viewer-chat" id="v-chat" aria-label="Chat">
-          <div class="v-chat-head">
-            <span class="section-title">Chat</span>
-            <button type="button" class="mc-button icon-btn v-narrow" id="v-chat-close" aria-label="Close chat">&#x2715;</button>
-          </div>
-          <div class="v-chat-lines" id="v-chat-lines" data-sensitive aria-live="off"></div>
-        </aside>
-      </div>
-    </main>
 
 
-    <main class="panel dash-page" id="page-console" hidden>
-      <div class="dash-head">
-        <div class="panel-label" id="console-title">Console</div>
-        <span class="note" id="console-state"></span>
-      </div>
-      <div class="offline-banner" id="console-offline" hidden></div>
-      <div class="console-log" id="console-log"></div>
-      <form class="console-input" id="console-form">
-        <span class="console-prompt">&gt;</span>
-        <input id="console-cmd" class="mc-input" data-sensitive type="text" maxlength="500" autocomplete="off" spellcheck="false" placeholder="A proxy command, e.g. help">
-        <button type="submit" class="mc-button" id="console-send">Run</button>
-      </form>
-      <div class="note console-allow" id="console-allow" hidden></div>
-    </main>
+
   </div>
 
   <nav class="bottom-nav only-mobile" id="bottom-nav" aria-label="Pages">
@@ -397,10 +312,7 @@
         <button type="button" class="mc-button icon-btn" id="more-close" aria-label="Close">&#x2715;</button>
       </div>
       <div class="sheet-list">
-        <button type="button" class="sheet-item" data-page="viewer">Live viewer</button>
         <button type="button" class="sheet-item" data-page="settings">Settings</button>
-        <button type="button" class="sheet-item" data-page="proxy">Proxy</button>
-        <button type="button" class="sheet-item" data-page="console">Console</button>
         <button type="button" class="sheet-item" id="more-users" hidden>Users</button>
         <button type="button" class="sheet-item" id="more-rescan">Rescan stash</button>
       </div>

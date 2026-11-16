@@ -47,3 +47,31 @@ bygger med 124 tester, 0 fel, 1 tidigare känt ikon-skip (123 godkända).
 JavaScript-syntax och no-undef-kontroll passerar; inloggningssidan initieras i
 jsdom (canvas stöds inte där; den generella viewern tas bort i W-008).
 Minecraft-interaktioner är fortfarande EJ KÖRDA.
+
+## W-008 / #9: proxy, fjärrkonsol och generell viewer
+
+Borttaget: serverns ViewerHub/ViewerRoutes, klientens MapTab/WMapView och
+manager/map-paket, ViewerStream/StreamRestart, ConsoleTab/ConsoleLog,
+MapTexture-adaptrar, webbens live canvas/HUD/chat, console/proxy-sidor och
+behörighetskontroller. Ingen befintlig lagerkarta berodde på dessa world-viewers.
+Containerpositioner, botstatus och aktivitet behålls för lager/logistik.
+
+BotHub saknar kommandokö och konsolhistorik. Bot-/settings-scope är endast
+`plugin`; `proxy` och `plugin:<id>` avvisas. Registryt filtrerar även bort
+console/proxy/viewer-capabilities, så gamla hello-anrop inte återaktiverar dem.
+Gamla console/viewer-routes ger 404 även för Owner. Behörighetsobjekt, presets
+och båda UI-editorerna saknar proxy/console/consoleAllow/viewer-fält.
+
+Signerad index/heartbeat/link/order-kommunikation, auth/CSRF, aktivitet, audit,
+botstatus och egen agent-settings behålls. Delade JS-hjälpare för capabilities,
+activity-navigation och lösenordsbekräftelse extraherades från proxysektionen.
+Privacy-/streamertester och order-/leveranstester är kvar. 39 exklusiva klient-
+viewer/console-tester och 30 exklusiva Manager-viewer/console-tester togs bort;
+ett negativt HTTP-/registrytest tillkom. Delade tester uppdaterades för 404.
+
+Verifierat: 440 tester/0 fel/skips per klienttarget; Manager 95/0 fel/1 känt
+ikon-skip. `npm ci --prefix web-tests && npm test --prefix web-tests` kör
+no-undef samt DOM-regression för login, stash/orders/bots/activity/settings,
+eget plugin-scope och frånvaro av borttagna sidor/anrop. Samma test har körts
+lokalt med låsta beroenden och kopplats till CI; actionlint passerar.
+DOM-testet verifierar inte rendering i en riktig webbläsare eller Minecraft.

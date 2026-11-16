@@ -54,7 +54,6 @@ class StreamerTest {
     String base;
     byte[] k;
     BotHub hub;
-    ViewerHub viewer;
     Router router;
     final HttpClient http = HttpClient.newHttpClient();
     final List<InputStream> open = new ArrayList<>();
@@ -92,10 +91,9 @@ class StreamerTest {
         users.load();
         AuditLog audit = new AuditLog(data);
         hub = new BotHub();
-        viewer = new ViewerHub(hub, audit, 20_000, 300, System::currentTimeMillis);
         StashManagerServer.Routes r = StashManagerServer.routes(config, store, orders, owners, icons,
             new LinkState(config.keyState().generation()), List.of("http://192.168.1.50:8765"), sessions, users, audit, hub,
-            new LoginLimiter(), viewer);
+            new LoginLimiter());
         server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 32);
         server.setExecutor(Executors.newFixedThreadPool(16));
         router = r.router();
@@ -136,7 +134,6 @@ class StreamerTest {
             }
         }
         readers.shutdownNow();
-        viewer.close();
         server.stop(0);
     }
 
@@ -336,7 +333,6 @@ class StreamerTest {
         assertFalse(bots.contains("Bobby") || bots.contains("aq-1") || bots.contains("1234") || bots.contains("\"b1\""), bots);
         JsonObject b = JsonParser.parseString(bots).getAsJsonArray().get(0).getAsJsonObject();
         assertTrue(b.get("player").isJsonNull() && b.get("summary").isJsonNull());
-        assertEquals(0, b.getAsJsonObject("proxy").size());
         String bid = b.get("botId").getAsString();
         assertTrue(bid.startsWith("b") && bid.length() == 13, bid);
         assertTrue(get(uma, "/api/v1/bots").body.contains("Bobby"));
@@ -357,20 +353,20 @@ class StreamerTest {
         String link = get(fay, "/api/v1/link").body;
         assertFalse(link.contains("192.168.1.50") || link.contains("Bobby") || link.contains("2b2t"), link);
         assertTrue(get(uma, "/api/v1/link").body.contains("192.168.1.50"));
-        assertEquals(200, get(fay, "/api/v1/bots/" + bid + "/viewer").status);
+        assertEquals(404, get(fay, "/api/v1/bots/" + bid + "/viewer").status);
     }
 
     @Test
     void settingsConsoleAndProxyAre403() throws Exception {
         String bid = bid(fay);
-        String[] gets = {"/settings", "/settings?scope=proxy", "/console", "/jobs?ids=x"};
+        String[] gets = {"/settings", "/settings?scope=proxy", "/jobs?ids=x"};
         for (String p : gets) {
             Res r = get(fay, "/api/v1/bots/" + bid + p);
             assertEquals(403, r.status, p);
             assertEquals("streamer", r.obj().get("permission").getAsString());
         }
         assertEquals(403, post(fay, "/api/v1/bots/" + bid + "/settings", "{\"changes\":[{\"path\":\"x\",\"value\":1}]}").status);
-        assertEquals(403, post(fay, "/api/v1/bots/" + bid + "/console", "{\"command\":\"help\"}").status);
+        assertEquals(404, post(fay, "/api/v1/bots/" + bid + "/console", "{\"command\":\"help\"}").status);
         assertNotEquals(403, get(uma, "/api/v1/bots/b1/settings").status, "an unforced user isn't refused");
     }
 
@@ -395,14 +391,7 @@ class StreamerTest {
         assertTrue(get(login("una", PW), "/api/v1/auth/state").body().contains("2b2t.org"));
     }
 
-    @Test
-    void forcedBotsListHasNoPluginDetailsAndTheViewerWorldIsNormalised() throws Exception {
-        Res bots = get(fay, "/api/v1/bots");
-        assertFalse(bots.body().contains("aq-1"), bots.body());
-        JsonObject b = JsonParser.parseString(bots.body()).getAsJsonArray().get(0).getAsJsonObject();
-        assertEquals(0, b.getAsJsonArray("scopes").size());
-        assertEquals(0, b.getAsJsonObject("plugin").size());
-    }
+
 
     @Test
     void theOwnerIsNeverForcedAndTheFlagIsShown() throws Exception {
@@ -449,13 +438,7 @@ class StreamerTest {
         assertEquals("\"cache\"", out.headers().firstValue("Clear-Site-Data").orElse(""));
     }
 
-    @Test
-    void viewerMaskDeniesUnknownEvents() {
-        Redact.ViewerMask m = new Redact.ViewerMask();
-        assertEquals(null, m.apply(new ViewerHub.Ev("something-new", null, JsonParser.parseString("{\"x\":1}"))));
-        assertEquals(null, m.apply(new ViewerHub.Ev("chat", null, JsonParser.parseString("{\"lines\":[]}"))));
-        assertNotNull(m.apply(new ViewerHub.Ev("hud", null, JsonParser.parseString("{\"hud\":{}}"))));
-    }
+
 
     /**
      * Every logged-in route must be classified for forced streamer mode, so a new one can't slip through: redacted (its
@@ -469,15 +452,13 @@ class StreamerTest {
             "[GET, HEAD] /api/v1/index SESSION VIEW",
             "[GET, HEAD] /api/v1/link SESSION LINK",
             "[GET, HEAD] /api/v1/bots SESSION ACTIVITY",
-            "[GET, HEAD] ^/api/v1/bots/([A-Za-z0-9_-]{1,64})/(settings|jobs|console|activity)$ SESSION ACTIVITY",
+            "[GET, HEAD] ^/api/v1/bots/([A-Za-z0-9_-]{1,64})/(settings|jobs|activity)$ SESSION ACTIVITY",
             "[GET, HEAD] /api/v1/delivery SESSION VIEW",
             "[GET, HEAD] /api/v1/orders SESSION VIEW",
             "[POST] /api/v1/orders BROWSER_WRITE ORDER",
             "[POST] ^/api/v1/orders/(o-[0-9a-f]{12})/cancel$ BROWSER_WRITE ORDER_OWN_OR_ALL",
             "[POST] ^/api/v1/orders/(o-[0-9a-f]{12})/force-cancel$ BROWSER_WRITE ORDER_OWN_OR_ALL",
-            "[POST] ^/api/v1/orders/(o-[0-9a-f]{12})/retry$ BROWSER_WRITE ORDER_OWN_OR_ALL",
-            "[GET] ^/api/v1/bots/([A-Za-z0-9_-]{1,64})/viewer/stream$ SESSION VIEWER",
-            "[GET, HEAD] ^/api/v1/bots/([A-Za-z0-9_-]{1,64})/viewer$ SESSION VIEWER");
+            "[POST] ^/api/v1/orders/(o-[0-9a-f]{12})/retry$ BROWSER_WRITE ORDER_OWN_OR_ALL");
         java.util.Set<String> noData = java.util.Set.of(
             "[POST] /api/v1/auth/logout BROWSER_WRITE ANY",
             "[POST] /api/v1/auth/logout-all BROWSER_WRITE ANY",
@@ -489,7 +470,7 @@ class StreamerTest {
             "[POST] /api/v1/orders/clear BROWSER_WRITE ORDERS_ALL",
             "[GET, HEAD] /icon/ SESSION ICONS");
         java.util.Set<String> forbidden = java.util.Set.of(
-            "[POST] ^/api/v1/bots/([A-Za-z0-9_-]{1,64})/(settings|jobs|console|activity)$ BROWSER_WRITE ACTIVITY");
+            "[POST] ^/api/v1/bots/([A-Za-z0-9_-]{1,64})/(settings|jobs|activity)$ BROWSER_WRITE ACTIVITY");
         java.util.Set<String> ownerOnly = java.util.Set.of(
             "[POST] /api/v1/link/regenerate BROWSER_WRITE OWNER",
             "[GET, HEAD] /api/v1/users SESSION OWNER",
@@ -507,74 +488,4 @@ class StreamerTest {
         assertTrue(unclassified.isEmpty(), "classify these routes for forced streamer mode (StreamerTest): " + unclassified);
     }
 
-    // ---------- the live viewer ----------
-
-    String fullFrame(String session, long seq) {
-        return "{\"botId\":\"b1\",\"v\":1,\"session\":\"" + session + "\",\"seq\":" + seq + ",\"t\":" + System.currentTimeMillis()
-            + ",\"full\":true,\"world\":{\"dim\":\"minecraft:the_nether\",\"minY\":0,\"height\":256},"
-            + "\"self\":{\"x\":123.4,\"y\":70,\"z\":-88.6,\"yaw\":91},\"tiles\":[" + tile(7, -6) + "],"
-            + "\"ents\":[{\"id\":311,\"k\":\"player\",\"n\":\"Steve\",\"x\":130.2,\"y\":64,\"z\":-80.5,\"yaw\":180}],"
-            + "\"hud\":" + HUD + ",\"chat\":[{\"t\":1,\"k\":\"public\",\"s\":\"Steve\",\"to\":null,\"m\":\"secret hello\"}]}";
-    }
-
-    @Test
-    void viewerStreamIsRebasedWithoutNamesChatOrDimension() throws Exception {
-        String bid = bid(fay);
-        BlockingQueue<Event> q = stream(fay, bid, "00000000000000f1");
-        JsonObject hello = next(q, "hello", 2000).obj();
-        assertTrue(hello.get("relative").getAsBoolean());
-        assertEquals(bid, hello.get("botId").getAsString(), "the opaque bot id");
-        String session = hub.viewerSession(hub.bot("b1"));
-        ok(botPost("/api/v1/bot/viewer", fullFrame(session, 1)));
-        Event snap = next(q, "snapshot", 2000);
-        assertNotNull(snap);
-        String raw = snap.data();
-        assertFalse(raw.contains("Steve") || raw.contains("secret hello") || raw.contains("the_nether"), raw);
-        JsonObject d = snap.obj();
-        assertEquals("hidden", d.getAsJsonObject("world").get("dim").getAsString());
-        assertEquals(0, d.getAsJsonArray("chat").size());
-        JsonObject self = d.getAsJsonObject("self");
-        JsonObject t = d.getAsJsonArray("tiles").get(0).getAsJsonObject();
-        JsonObject ent = d.getAsJsonArray("ents").get(0).getAsJsonObject();
-        assertFalse(ent.has("n"));
-        assertEquals(70, self.get("y").getAsDouble(), "y is kept");
-        // One whole-chunk shift (uniform over +-2^20 chunks) for everything: tiles, self and entities.
-        long sx = 7 - t.get("x").getAsLong();
-        long sz = -6 - t.get("z").getAsLong();
-        assertTrue(Math.abs(sx - 7) <= Redact.OFFSET_CHUNKS && Math.abs(sz + 6) <= Redact.OFFSET_CHUNKS);
-        assertEquals(123.4 - sx * 16, self.get("x").getAsDouble(), 0.051);
-        assertEquals(-88.6 - sz * 16, self.get("z").getAsDouble(), 0.051);
-        assertEquals(130.2 - sx * 16, ent.get("x").getAsDouble(), 0.051);
-        assertEquals(-80.5 - sz * 16, ent.get("z").getAsDouble(), 0.051);
-
-        ok(botPost("/api/v1/bot/viewer", "{\"botId\":\"b1\",\"v\":1,\"session\":\"" + session + "\",\"seq\":2,\"t\":" + System.currentTimeMillis()
-            + ",\"tiles\":[" + tile(8, -6) + "],\"drop\":[[7,-6]],\"chat\":[{\"t\":2,\"k\":\"whisper\",\"s\":\"Steve\",\"to\":\"Bobby\",\"m\":\"psst\"}]}"));
-        List<Event> later = drainFor(q, 1200);
-        for (Event e : later) {
-            assertNotEquals("chat", e.name(), "no chat events at all");
-            assertFalse(e.data().contains("Steve") || e.data().contains("psst"));
-        }
-        Event tiles = later.stream().filter(e -> e.name().equals("tiles")).findFirst().orElseThrow();
-        assertEquals(8 - sx, tiles.obj().getAsJsonArray("tiles").get(0).getAsJsonObject().get("x").getAsLong());
-        assertEquals(7 - sx, tiles.obj().getAsJsonArray("drop").get(0).getAsJsonArray().get(0).getAsLong());
-
-        // An unforced user gets the true data.
-        BlockingQueue<Event> q2 = stream(uma, "b1", "00000000000000e1");
-        String rawFull = next(q2, "snapshot", 2000).data();
-        assertTrue(rawFull.contains("123.4") && rawFull.contains("Steve") && rawFull.contains("the_nether"));
-    }
-
-    @Test
-    void turningTheFlagOnEndsTheStream() throws Exception {
-        BlockingQueue<Event> q = stream(uma, "b1", "00000000000000e2");
-        assertFalse(next(q, "hello", 2000).obj().get("relative").getAsBoolean());
-        long t0 = System.currentTimeMillis();
-        ok(post(owner, "/api/v1/users/" + umaId, "{\"perms\":{" + FULL_PERMS + ",\"streamer\":true}}"));
-        Event bye = next(q, "bye", 3000);
-        assertNotNull(bye);
-        assertEquals("revoked", bye.obj().get("reason").getAsString());
-        assertTrue(System.currentTimeMillis() - t0 < 1500, "at the next write, not the next check");
-        BlockingQueue<Event> again = stream(uma, bid(uma), "00000000000000e2");
-        assertTrue(next(again, "hello", 2000).obj().get("relative").getAsBoolean(), "the reconnect is redacted");
-    }
 }

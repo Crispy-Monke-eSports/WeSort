@@ -214,7 +214,6 @@ public final class UsersTab {
             formMust = true;
             formPreset = data.presets().isEmpty() ? "custom" : data.presets().keySet().iterator().next();
             formPerms = formPreset.equals("custom") ? defaultPerms() : data.presets().get(formPreset).copy();
-            formAllow = UsersModel.joinAllow(formPerms.consoleAllow);
         };
         if (data.users().size() >= data.maxUsers()) add.tooltip = "At most " + data.maxUsers() + " sub-users";
         WButton auditButton = bar.add(theme.button(showAudit ? "Hide audit log" : "Audit log")).widget();
@@ -269,7 +268,6 @@ public final class UsersTab {
             toggle(Kind.EDIT, u.id());
             formName = u.name();
             formPerms = u.perms().copy();
-            formAllow = UsersModel.joinAllow(formPerms.consoleAllow);
         };
         String disableKey = "disable:" + u.id();
         WButton disable = actions.add(theme.button(u.disabled() ? "Enable" : armedKey.equals(disableKey) ? "Confirm disable?" : "Disable")).widget();
@@ -433,7 +431,6 @@ public final class UsersTab {
             formPreset = ids.get(i);
             // Custom starts from the preset picked before
             formPerms = formPreset.equals("custom") ? (from == null ? defaultPerms() : from.copy()) : data.presets().get(formPreset).copy();
-            formAllow = UsersModel.joinAllow(formPerms.consoleAllow);
             later();
         };
         if (formPreset.equals("custom")) {
@@ -518,7 +515,6 @@ public final class UsersTab {
     /** The edited permissions with the console list read from the text box and the implied ones switched on. */
     private Perms finishPerms() {
         Perms p = formPerms.copy();
-        p.consoleAllow = UsersModel.parseAllow(formAllow);
         return UsersModel.withImplied(p);
     }
 
@@ -541,21 +537,6 @@ public final class UsersTab {
                 p.flag(s.key(), c.checked);
                 later();
             };
-        }
-        e.add(theme.label("Proxy settings"));
-        WDropdown<String> proxy = e.add(theme.dropdown(UsersModel.PROXY_MODES, p.proxy)).widget();
-        proxy.action = () -> {
-            p.proxy = proxy.get();
-            later();
-        };
-        e.add(theme.label("Console"));
-        WDropdown<String> console = e.add(theme.dropdown(UsersModel.CONSOLE_MODES, p.console)).widget();
-        console.action = () -> {
-            p.console = console.get();
-            later();
-        };
-        if (p.console.equals("list")) {
-            field(e, "Allowed commands, separated by ; (a command is allowed when it starts with one of them)", formAllow, v -> formAllow = v);
         }
         scope(e, "Stashes", p.stashes != null, on -> {
             p.stashes = on ? new ArrayList<>() : null;

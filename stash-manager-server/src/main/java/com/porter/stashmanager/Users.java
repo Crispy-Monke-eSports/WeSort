@@ -54,73 +54,30 @@ final class Users {
      * restriction: the server never sends this user positions, player names, server addresses or bot free text (see
      * Redact); the owner is never forced.
      */
-    record Perms(boolean view, boolean order, boolean ordersAll, boolean activity, boolean settings, String proxy,
-                 String console, List<String> consoleAllow, boolean rescan, boolean link, boolean viewer, boolean streamer, List<StashRef> stashes, List<String> bots) {
-        static final Perms NONE = of(false, false, false, false, false, "none", "none", List.of(), false, false, false, null, null);
-        /** The owner's: everything, and never forced into streamer mode. */
-        static final Perms ALL = of(true, true, true, true, true, "change", "full", List.of(), true, true, true, null, null);
+    record Perms(boolean view, boolean order, boolean ordersAll, boolean activity, boolean settings,
+                 boolean rescan, boolean link, boolean streamer, List<StashRef> stashes, List<String> bots) {
+        static final Perms NONE = of(false, false, false, false, false, false, false, null, null);
+        static final Perms ALL = of(true, true, true, true, true, true, true, null, null);
 
-        /** The same without the live viewer. */
-        static Perms of(boolean view, boolean order, boolean ordersAll, boolean activity, boolean settings, String proxy,
-                        String console, List<String> consoleAllow, boolean rescan, boolean link, List<StashRef> stashes, List<String> bots) {
-            return of(view, order, ordersAll, activity, settings, proxy, console, consoleAllow, rescan, link, false, stashes, bots);
+        static Perms of(boolean view, boolean order, boolean ordersAll, boolean activity, boolean settings,
+                        boolean rescan, boolean link, List<StashRef> stashes, List<String> bots) {
+            return of(view, order, ordersAll, activity, settings, rescan, link, false, stashes, bots);
         }
 
-        /**
-         * With implied permissions: ordering needs view; bot permissions need the Bots view.
-         */
-        static Perms of(boolean view, boolean order, boolean ordersAll, boolean activity, boolean settings, String proxy,
-                        String console, List<String> consoleAllow, boolean rescan, boolean link, boolean viewer, List<StashRef> stashes, List<String> bots) {
-            return of(view, order, ordersAll, activity, settings, proxy, console, consoleAllow, rescan, link, viewer, false, stashes, bots);
+        static Perms of(boolean view, boolean order, boolean ordersAll, boolean activity, boolean settings,
+                        boolean rescan, boolean link, boolean streamer, List<StashRef> stashes, List<String> bots) {
+            return new Perms(view || order || ordersAll, order, ordersAll, activity || settings, settings,
+                rescan, link, streamer, stashes == null ? null : List.copyOf(stashes), bots == null ? null : List.copyOf(bots));
         }
 
-        /** The same, with force streamer mode. */
-        static Perms of(boolean view, boolean order, boolean ordersAll, boolean activity, boolean settings, String proxy,
-                        String console, List<String> consoleAllow, boolean rescan, boolean link, boolean viewer, boolean streamer, List<StashRef> stashes, List<String> bots) {
-            boolean v = view || order || ordersAll;
-            boolean a = activity || settings || viewer || !"none".equals(proxy) || !"none".equals(console);
-            return new Perms(v, order, ordersAll, a, settings, proxy, console, List.copyOf(consoleAllow), rescan, link, viewer, streamer, stashes == null ? null : List.copyOf(stashes), bots == null ? null : List.copyOf(bots));
-        }
-
-        /** The same permissions with force streamer mode set as given. */
         Perms withStreamer(boolean on) {
-            return new Perms(view, order, ordersAll, activity, settings, proxy, console, consoleAllow, rescan, link, viewer, on, stashes, bots);
-        }
-
-        boolean proxyRead() {
-            return !"none".equals(proxy);
-        }
-
-        boolean proxyChange() {
-            return "change".equals(proxy);
-        }
-
-        boolean consoleRead() {
-            return !"none".equals(console);
+            return new Perms(view, order, ordersAll, activity, settings, rescan, link, on, stashes, bots);
         }
 
         boolean seesStash(String server, String stash) {
-            if (stashes == null) return true;
-            for (StashRef r : stashes) if (r.server.equals(server) && r.stash.equals(stash)) return true;
-            return false;
+            return stashes == null || stashes.stream().anyMatch(r -> r.server.equals(server) && r.stash.equals(stash));
         }
-
-        boolean seesBot(String botId) {
-            return bots == null || bots.contains(botId);
-        }
-
-        /** Whether this console command may be sent: "full", or "list" with a matching allowed prefix. */
-        boolean consoleAllows(String command) {
-            if ("full".equals(console)) return true;
-            if (!"list".equals(console) || command == null) return false;
-            if (CHAIN.matcher(command).find() || !LIST_SAFE.matcher(command.trim()).matches()) return false;
-            String c = normalizeCommand(command);
-            for (String p : consoleAllow) {
-                String n = normalizeCommand(p);
-                if (!n.isEmpty() && (c.equals(n) || c.startsWith(n + " "))) return true;
-            }
-            return false;
-        }
+        boolean seesBot(String botId) { return bots == null || bots.contains(botId); }
 
         JsonObject toJson() {
             JsonObject o = new JsonObject();
@@ -129,14 +86,8 @@ final class Users {
             o.addProperty("ordersAll", ordersAll);
             o.addProperty("activity", activity);
             o.addProperty("settings", settings);
-            o.addProperty("proxy", proxy);
-            o.addProperty("console", console);
-            JsonArray allow = new JsonArray();
-            consoleAllow.forEach(allow::add);
-            o.add("consoleAllow", allow);
             o.addProperty("rescan", rescan);
             o.addProperty("link", link);
-            o.addProperty("viewer", viewer);
             o.addProperty("streamer", streamer);
             if (stashes == null) {
                 o.add("stashes", JsonNull.INSTANCE);
@@ -160,28 +111,9 @@ final class Users {
             return o;
         }
 
-        /** Perms from JSON (the whole object: a missing key means off / "none" / every stash or bot). */
         static Perms parse(JsonElement e) {
             if (e == null || !e.isJsonObject()) throw new IllegalArgumentException("perms must be an object");
             JsonObject o = e.getAsJsonObject();
-            String proxy = choice(o, "proxy", "none", "read", "change");
-            String console = choice(o, "console", "none", "list", "full");
-            List<String> allow = new ArrayList<>();
-            JsonElement ae = o.get("consoleAllow");
-            if (ae != null && !ae.isJsonNull()) {
-                if (!ae.isJsonArray()) throw new IllegalArgumentException("consoleAllow must be a list of text");
-                for (JsonElement item : ae.getAsJsonArray()) {
-                    if (!(item instanceof JsonPrimitive p) || !p.isString()) throw new IllegalArgumentException("consoleAllow must be a list of text");
-                    String s = normalizeCommand(p.getAsString());
-                    if (s.isEmpty()) continue;
-                    if (s.length() > MAX_ALLOW_LENGTH) throw new IllegalArgumentException("console commands can have at most " + MAX_ALLOW_LENGTH + " characters");
-                    if (s.chars().anyMatch(Character::isISOControl) || CHAIN.matcher(s).find()) {
-                        throw new IllegalArgumentException("console commands can't have control characters or ; & | `");
-                    }
-                    if (!allow.contains(s)) allow.add(s);
-                }
-                if (allow.size() > MAX_ALLOW) throw new IllegalArgumentException("at most " + MAX_ALLOW + " console commands");
-            }
             List<StashRef> stashes = null;
             JsonElement se = o.get("stashes");
             if (se != null && !se.isJsonNull()) {
@@ -213,7 +145,7 @@ final class Users {
                 if (bots.size() > MAX_SCOPE) throw new IllegalArgumentException("at most " + MAX_SCOPE + " bots");
             }
             return of(bool(o, "view"), bool(o, "order"), bool(o, "ordersAll"), bool(o, "activity"), bool(o, "settings"),
-                proxy, console, allow, bool(o, "rescan"), bool(o, "link"), bool(o, "viewer"), bool(o, "streamer"), stashes, bots);
+                bool(o, "rescan"), bool(o, "link"), bool(o, "streamer"), stashes, bots);
         }
 
         private static boolean bool(JsonObject o, String key) {
@@ -223,14 +155,6 @@ final class Users {
             return p.getAsBoolean();
         }
 
-        private static String choice(JsonObject o, String key, String... options) {
-            JsonElement e = o.get(key);
-            if (e == null || e.isJsonNull()) return options[0];
-            if (e instanceof JsonPrimitive p && p.isString()) {
-                for (String opt : options) if (opt.equals(p.getAsString())) return opt;
-            }
-            throw new IllegalArgumentException(key + " must be one of " + String.join(", ", options));
-        }
     }
 
     /** Lowercase, trimmed, inner whitespace collapsed. */
@@ -242,9 +166,9 @@ final class Users {
 
     static {
         Map<String, Perms> p = new LinkedHashMap<>();
-        p.put("viewer", Perms.of(true, false, false, false, false, "none", "none", List.of(), false, false, null, null));
-        p.put("orderer", Perms.of(true, true, false, false, false, "none", "none", List.of(), false, false, null, null));
-        p.put("operator", Perms.of(true, true, true, true, true, "read", "none", List.of(), true, false, true, null, null));
+        p.put("viewer", Perms.of(true, false, false, false, false, false, false, null, null));
+        p.put("orderer", Perms.of(true, true, false, false, false, false, false, null, null));
+        p.put("operator", Perms.of(true, true, true, true, true, true, false, null, null));
         PRESETS = java.util.Collections.unmodifiableMap(p);
     }
 

@@ -111,7 +111,7 @@ class BotsModelTest {
     void cardButtonsNeedTheCapabilityAndThePermission() {
         BotList.Bot all = bot("[\"activity\",\"settings\",\"proxy\",\"console\"]");
         AuthState owner = auth("{}", true);
-        assertEquals(List.of(NavPage.ACTIVITY, NavPage.SETTINGS, NavPage.PROXY, NavPage.CONSOLE), pages(all, owner));
+        assertEquals(List.of(NavPage.ACTIVITY, NavPage.SETTINGS), pages(all, owner));
 
         // no proxy and console permission: only activity and settings
         AuthState limited = auth("{\"activity\":true}", false);

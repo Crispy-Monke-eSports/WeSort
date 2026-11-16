@@ -93,9 +93,7 @@ public final class BotsModel {
     /** The website's card buttons, in its order: shown when the bot has the capability. */
     public static final List<Jump> JUMPS = List.of(
         new Jump(NavPage.ACTIVITY, "activity", "Activity"),
-        new Jump(NavPage.SETTINGS, "settings", "Settings"),
-        new Jump(NavPage.PROXY, "proxy", "Proxy"),
-        new Jump(NavPage.CONSOLE, "console", "Console"));
+        new Jump(NavPage.SETTINGS, "settings", "Settings"));
 
     /** The jumps a card offers for {@code bot}: it has the capability and the account may see the page. */
     public static List<Jump> jumps(BotList.Bot bot, AuthState auth) {

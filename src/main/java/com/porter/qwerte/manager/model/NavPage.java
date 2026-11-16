@@ -12,12 +12,9 @@ public enum NavPage {
     ORDERS("Orders", true),
     BOTS("Bots", true),
     ACTIVITY("Activity", true),
-    LIVE("Live", true),
     SETTINGS("Settings", true),
     /** Not on the website's bar (it lives inside Settings there); the owner's user list has its own page here. */
-    USERS("Users", true),
-    PROXY("Proxy", true),
-    CONSOLE("Console", true);
+    USERS("Users", true);
 
     private final String title;
     private final boolean inGame;
@@ -50,11 +47,8 @@ public enum NavPage {
         out.add(ORDERS);
         if (auth.can("activity")) out.add(BOTS);
         if (auth.can("activity") && botHasActivity) out.add(ACTIVITY);
-        if (auth.can("viewer")) out.add(LIVE);
         out.add(SETTINGS);
         if (auth.owner()) out.add(USERS);
-        if (botPicked && !auth.permMode("proxy").equals("none") && !forced) out.add(PROXY);
-        if (!auth.permMode("console").equals("none") && !forced) out.add(CONSOLE);
         return out;
     }
 

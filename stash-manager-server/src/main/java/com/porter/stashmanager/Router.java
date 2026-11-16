@@ -60,8 +60,6 @@ final class Router implements HttpHandler {
         ACTIVITY("activity", "view bots"),
         RESCAN("rescan", "rescan stashes"),
         LINK("link", "link bots"),
-        /** The live viewer: a bot's map, position, nearby entities, HUD and chat (implies ACTIVITY). */
-        VIEWER("viewer", "use the live viewer"),
         /** The owner only: user management and the audit log. */
         OWNER("owner", "manage users (owner only)");
 
@@ -78,14 +76,13 @@ final class Router implements HttpHandler {
             return switch (this) {
                 case ANY -> true;
                 case VIEW -> x.view();
-                case ICONS -> x.view() || x.viewer();
+                case ICONS -> x.view();
                 case ORDER -> x.order();
                 case ORDER_OWN_OR_ALL -> x.order() || x.ordersAll();
                 case ORDERS_ALL -> x.ordersAll();
                 case ACTIVITY -> x.activity();
                 case RESCAN -> x.rescan();
                 case LINK -> x.link();
-                case VIEWER -> x.viewer();
                 case OWNER -> p.owner();
             };
         }

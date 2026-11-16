@@ -125,7 +125,6 @@ public final class StashManagerServer {
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.out.println("Stopping Stash Manager...");
-            built.viewer().close();
             server.stop(1);
             icons.close();
             pool.shutdown();
@@ -155,18 +154,12 @@ public final class StashManagerServer {
         }
     }
 
-    record Routes(Router router, AuthRoutes auth, ViewerHub viewer, DeliveryContents delivery) {
+    record Routes(Router router, AuthRoutes auth, DeliveryContents delivery) {
     }
 
     /** Every route, in order (the static files last). Shared with the tests, so they check the real registrations. */
     static Routes routes(Config config, IndexStore store, OrderStore orders, Owners owners, IconService icons, LinkState link,
                          List<String> urls, SessionStore sessions, Users users, AuditLog audit, BotHub hub, LoginLimiter limiter) {
-        return routes(config, store, orders, owners, icons, link, urls, sessions, users, audit, hub, limiter, new ViewerHub(hub, audit));
-    }
-
-    static Routes routes(Config config, IndexStore store, OrderStore orders, Owners owners, IconService icons, LinkState link,
-                         List<String> urls, SessionStore sessions, Users users, AuditLog audit, BotHub hub, LoginLimiter limiter,
-                         ViewerHub viewer) {
         Router router = new Router(new AccessControl(config), sessions, config, users);
         router.ids(new ServerIds(ServerIds.secret(config.dataDir()), store::servers,
             () -> hub.all().stream().map(b -> b.botId).toList()));
@@ -181,10 +174,9 @@ public final class StashManagerServer {
         new BotRoutes(hub).register(router);
         new DashboardRoutes(hub, store, owners, sessions, audit).register(router);
         new UserRoutes(users, sessions, audit).register(router);
-        new ViewerRoutes(viewer).register(router);
         new IconRoutes(icons).register(router);
         new StaticRoutes().register(router); // last: the catch-all
-        return new Routes(router, authRoutes, viewer, delivery);
+        return new Routes(router, authRoutes, delivery);
     }
 
     private static void setDefault(String key, String value) {

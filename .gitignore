@@ -48,3 +48,6 @@ stash-manager-server/dev/*/logs/
 
 # Minecraft test logs
 logs/
+
+# Web regression tools
+node_modules/

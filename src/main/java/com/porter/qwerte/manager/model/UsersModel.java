@@ -21,8 +21,6 @@ public final class UsersModel {
     }
 
     public static final Pattern NAME = Pattern.compile("^[A-Za-z0-9_.-]{1,32}$");
-    public static final String[] PROXY_MODES = {"none", "read", "change"};
-    public static final String[] CONSOLE_MODES = {"none", "list", "full"};
 
     /** A yes/no permission with its label and help (the website's PERM_SWITCHES). */
     public record Switch(String key, String label, String help) {
@@ -36,13 +34,12 @@ public final class UsersModel {
         new Switch("settings", "Change plugin settings", "Save the Qwerte Stash plugin settings."),
         new Switch("rescan", "Rescan stashes", "Ask the bot to re-read every container of a stash."),
         new Switch("link", "Link addon", "The Link addon panel (linked bots in scope) and releasing a stash. The API key itself stays owner-only."),
-        new Switch("viewer", "Live viewer", "Watch a bot live: the map around it, its position, nearby players, mobs and items, its HUD and its chat. Also turns on Bots and activity."),
         new Switch("streamer", "Force streamer mode", "A restriction: the server never sends this user coordinates, player names, server addresses, chat or the bots' free text. "
-            + "Settings, proxy settings and the console are refused. The user can't turn it off."));
+            + "Bot settings are refused. The user can't turn it off."));
 
     public static final String IMPLIED_HINT = "Placing or managing orders also turns on View stashes. "
-        + "Changing plugin settings, the live viewer, or any proxy or console access, also turns on Bots and activity. "
-        + "Proxy changes and console commands still need Admin unlocked (the user's own password).";
+        + "Changing agent settings also turns on Bots and activity. "
+        + "";
 
     /** A stash a user is limited to. */
     public record StashScope(String server, String stash) {
@@ -56,9 +53,6 @@ public final class UsersModel {
      */
     public static final class Perms {
         public final Map<String, Boolean> flags = new LinkedHashMap<>();
-        public String proxy = "none";
-        public String console = "none";
-        public List<String> consoleAllow = new ArrayList<>();
         public List<StashScope> stashes;
         public List<String> bots;
 
@@ -73,9 +67,6 @@ public final class UsersModel {
         public Perms copy() {
             Perms p = new Perms();
             p.flags.putAll(flags);
-            p.proxy = proxy;
-            p.console = console;
-            p.consoleAllow = new ArrayList<>(consoleAllow);
             p.stashes = stashes == null ? null : new ArrayList<>(stashes);
             p.bots = bots == null ? null : new ArrayList<>(bots);
             return p;
@@ -84,13 +75,13 @@ public final class UsersModel {
         @Override
         public boolean equals(Object o) {
             if (!(o instanceof Perms p)) return false;
-            return flags.equals(p.flags) && proxy.equals(p.proxy) && console.equals(p.console) && consoleAllow.equals(p.consoleAllow)
+            return flags.equals(p.flags)
                 && java.util.Objects.equals(stashes, p.stashes) && java.util.Objects.equals(bots, p.bots);
         }
 
         @Override
         public int hashCode() {
-            return java.util.Objects.hash(flags, proxy, console, consoleAllow, stashes, bots);
+            return java.util.Objects.hash(flags, stashes, bots);
         }
     }
 
@@ -100,16 +91,6 @@ public final class UsersModel {
         Perms p = new Perms();
         for (Switch s : SWITCHES) p.flags.put(s.key(), o != null && Json.bool(o, s.key()));
         if (o == null) return p;
-        String proxy = Json.str(o, "proxy");
-        p.proxy = proxy.equals("read") || proxy.equals("change") ? proxy : "none";
-        String console = Json.str(o, "console");
-        p.console = console.equals("list") || console.equals("full") ? console : "none";
-        JsonArray allow = Json.arr(o.get("consoleAllow"));
-        if (allow != null) {
-            for (JsonElement a : allow) {
-                if (a.isJsonPrimitive() && a.getAsJsonPrimitive().isString() && p.consoleAllow.size() < 100) p.consoleAllow.add(Text.sanitize(a.getAsString(), 100));
-            }
-        }
         JsonArray stashes = Json.arr(o.get("stashes"));
         if (stashes != null) {
             p.stashes = new ArrayList<>();
@@ -131,7 +112,7 @@ public final class UsersModel {
     /** The server's implied-permission rule (PROTOCOL.md "Additions: website users"), applied the same way. Returns {@code p}. */
     public static Perms withImplied(Perms p) {
         if (p.flag("order") || p.flag("ordersAll")) p.flag("view", true);
-        if (p.flag("settings") || p.flag("viewer") || !p.proxy.equals("none") || !p.console.equals("none")) p.flag("activity", true);
+        if (p.flag("settings")) p.flag("activity", true);
         return p;
     }
 
@@ -139,7 +120,7 @@ public final class UsersModel {
     public static java.util.Set<String> implied(Perms p) {
         java.util.Set<String> out = new java.util.LinkedHashSet<>();
         if (p.flag("order") || p.flag("ordersAll")) out.add("view");
-        if (p.flag("settings") || p.flag("viewer") || !p.proxy.equals("none") || !p.console.equals("none")) out.add("activity");
+        if (p.flag("settings")) out.add("activity");
         return out;
     }
 
@@ -150,11 +131,6 @@ public final class UsersModel {
     public static JsonObject toJson(Perms p) {
         JsonObject o = new JsonObject();
         for (Switch s : SWITCHES) o.addProperty(s.key(), p.flag(s.key()));
-        o.addProperty("proxy", p.proxy);
-        o.addProperty("console", p.console);
-        JsonArray allow = new JsonArray();
-        for (String a : p.consoleAllow) allow.add(a);
-        o.add("consoleAllow", allow);
         if (p.stashes == null) {
             o.add("stashes", com.google.gson.JsonNull.INSTANCE);
         } else {
@@ -256,7 +232,6 @@ public final class UsersModel {
         Perms n = withImplied(p.copy());
         n.stashes = null;
         n.bots = null;
-        n.consoleAllow = new ArrayList<>();
         // A preset never touches streamer mode (the server keeps the stored value), so it is not compared; the label adds it
         n.flag("streamer", false);
         return n;
@@ -275,8 +250,6 @@ public final class UsersModel {
         Perms n = withImplied(p.copy());
         List<String> on = new ArrayList<>();
         for (Switch s : SWITCHES) if (n.flag(s.key())) on.add(s.label());
-        if (!n.proxy.equals("none")) on.add("Proxy settings: " + n.proxy);
-        if (!n.console.equals("none")) on.add("Console: " + n.console);
         return on.isEmpty() ? "Nothing." : String.join(", ", on) + ".";
     }
 

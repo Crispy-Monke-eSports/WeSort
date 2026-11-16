@@ -30,9 +30,6 @@ class UsersModelTest {
         assertTrue(p.flag("view"));
         assertFalse(p.flag("order"));
         assertEquals(UsersModel.SWITCHES.size(), p.flags.size());
-        assertEquals("none", p.proxy);
-        assertEquals("list", p.console);
-        assertEquals(List.of("stash orders"), p.consoleAllow);
         assertEquals(1, p.stashes.size());
         assertNull(p.bots);
         assertNull(UsersModel.norm(null).stashes);
@@ -46,9 +43,9 @@ class UsersModelTest {
         assertFalse(p.flag("activity"));
         Perms v = perms("{\"viewer\":true}");
         UsersModel.withImplied(v);
-        assertTrue(v.flag("activity"));
+        assertFalse(v.flag("activity"));
         Perms c = perms("{\"console\":\"full\"}");
-        assertEquals(Set.of("activity"), UsersModel.implied(c));
+        assertTrue(UsersModel.implied(c).isEmpty());
         Perms o = perms("{\"order\":true,\"settings\":true}");
         assertEquals(Set.of("view", "activity"), UsersModel.implied(o));
         assertTrue(UsersModel.implied(perms("{\"view\":true}")).isEmpty());
@@ -61,10 +58,10 @@ class UsersModelTest {
         assertFalse(off.get("streamer").getAsBoolean());
         JsonObject on = UsersModel.toJson(perms("{\"view\":true,\"streamer\":true,\"viewer\":true}"));
         assertTrue(on.get("streamer").getAsBoolean());
-        assertTrue(on.get("viewer").getAsBoolean());
+        assertFalse(on.has("viewer"));
         assertTrue(on.get("stashes").isJsonNull());
         assertTrue(on.get("bots").isJsonNull());
-        assertEquals("none", on.get("proxy").getAsString());
+        assertFalse(on.has("proxy"));
         Perms scoped = perms("{\"bots\":[\"b1\"],\"stashes\":[]}");
         JsonObject j = UsersModel.toJson(scoped);
         assertEquals(1, j.getAsJsonArray("bots").size());
@@ -85,7 +82,7 @@ class UsersModelTest {
         assertTrue(d.users().get(1).disabled());
         assertEquals(List.of("viewer", "orderer", "operator"), List.copyOf(d.presets().keySet()));
         // alice has view+order+proxy read: not a preset
-        assertEquals("Custom", UsersModel.presetLabel(d.users().get(0).perms(), d));
+        assertEquals("Orderer", UsersModel.presetLabel(d.users().get(0).perms(), d));
         assertEquals("Viewer", UsersModel.presetLabel(perms("{\"view\":true,\"stashes\":[]}"), d));
         assertEquals("Orderer", UsersModel.presetLabel(perms("{\"order\":true}"), d));
         // forced streamer is not part of any preset
@@ -130,7 +127,7 @@ class UsersModelTest {
 
     @Test
     void describeListsWhatIsOn() {
-        assertEquals("View stashes, Place orders, Proxy settings: read.", UsersModel.describe(perms("{\"order\":true,\"proxy\":\"read\"}")).replace(", Bots and activity", ""));
+        assertEquals("View stashes, Place orders.", UsersModel.describe(perms("{\"order\":true,\"proxy\":\"read\"}")).replace(", Bots and activity", ""));
         assertEquals("Nothing.", UsersModel.describe(perms("{}")));
     }
 }

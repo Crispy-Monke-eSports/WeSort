@@ -73,7 +73,7 @@ class DashboardTest {
         now.addAndGet(BotHub.EXPIRE_QUEUED_MS);
         assertEquals("expired", hub.jobs(b, List.of(expired)).get(0).getAsJsonObject().get("status").getAsString());
 
-        String sent = hub.queueCommand(b, "help");
+        String sent = hub.queueSets(b, "plugin", List.of(node("{\"path\":\"x\",\"value\":false}"))).get(0);
         BotHub.Poll p = hub.next(b);
         assertEquals(200, p.status());
         assertEquals(sent, p.body().getAsJsonArray("jobs").get(0).getAsJsonObject().get("id").getAsString());
@@ -82,37 +82,7 @@ class DashboardTest {
         assertEquals("unknown", hub.jobs(b, List.of(sent)).get(0).getAsJsonObject().get("status").getAsString());
     }
 
-    @Test
-    void consoleAppendsLaterPartsAndHidesSensitiveCommands() throws Exception {
-        AtomicLong now = new AtomicLong(5_000_000);
-        BotHub hub = new BotHub(now::get);
-        hub.hello("bot-2", "Al", new JsonObject(), new JsonObject(), List.of("console"));
-        BotHub.Bot b = hub.bot("bot-2");
-        String slow = hub.queueCommand(b, "slow");
-        String secret = hub.queueCommand(b, "setpw hunter2");
-        String auth = hub.queueCommand(b, "auth login x");
-        hub.next(b);
-        JsonObject first = node("{\"title\":\"Working\",\"fields\":[],\"lines\":[\"started\"]}");
-        hub.result(b, slow, true, false, null, null, false, first);
-        hub.result(b, slow, true, true, null, null, false, node("{\"title\":\"Done\",\"fields\":[],\"lines\":[]}"));
-        hub.result(b, secret, true, false, null, null, true, node("{\"title\":\"Saved\",\"color\":\"success\",\"description\":\"pw hunter2\",\"fields\":[],\"lines\":[\"x\"]}"));
 
-        JsonObject c = hub.console(b, 0);
-        JsonArray entries = c.getAsJsonArray("entries");
-        assertEquals(3, entries.size());
-        JsonObject e0 = entries.get(0).getAsJsonObject();
-        assertEquals("done", e0.get("status").getAsString());
-        assertEquals(2, e0.getAsJsonArray("outputs").size(), "the later part is appended");
-        JsonObject e1 = entries.get(1).getAsJsonObject();
-        assertEquals("(hidden)", e1.get("command").getAsString());
-        assertFalse(e1.toString().contains("hunter2"), "only the title and colour of a sensitive reply are kept");
-        assertEquals("(hidden)", entries.get(2).getAsJsonObject().get("command").getAsString(), "auth is hidden before the bot answers");
-
-        long rev = c.get("rev").getAsLong();
-        assertEquals(0, hub.console(b, rev).getAsJsonArray("entries").size(), "nothing new since that revision");
-        hub.result(b, slow, true, true, null, null, false, node("{\"title\":\"Later\",\"fields\":[],\"lines\":[]}"));
-        assertEquals(1, hub.console(b, rev).getAsJsonArray("entries").size(), "an appended part shows up as a change");
-    }
 
     @Test
     void secretsAreDroppedAndMarked() {
@@ -138,7 +108,7 @@ class DashboardTest {
         assertTrue(n2.get("database.url").get("secret").getAsBoolean(), "and its node is marked");
         assertTrue(withUrl.has("web.host"), "an @ after the path is no user info");
         assertFalse(withUrl.has("server.sessionTimeout") || withUrl.has("license"), "the wider name list");
-        assertTrue(BotRoutes.SCOPE.matcher("plugin:Auto-Reply_2").matches());
+        assertFalse(BotRoutes.SCOPE.matcher("plugin:Auto-Reply_2").matches());
         assertFalse(BotRoutes.SCOPE.matcher("other").matches());
     }
 

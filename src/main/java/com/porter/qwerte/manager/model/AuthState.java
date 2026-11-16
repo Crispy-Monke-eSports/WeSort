@@ -11,7 +11,7 @@ import com.google.gson.JsonObject;
 public final class AuthState {
     /** A server without sub-users sends no user: that is the owner, who can do everything. */
     private static final String[] OWNER_FLAGS = {
-        "view", "order", "ordersAll", "activity", "settings", "rescan", "link", "viewer"
+        "view", "order", "ordersAll", "activity", "settings", "rescan", "link"
     };
 
     private final boolean loggedIn;

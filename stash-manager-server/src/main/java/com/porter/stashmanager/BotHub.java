@@ -33,9 +33,6 @@ final class BotHub {
     static final long UNKNOWN_SENT_MS = 60_000;
     static final long WATCH_MS = 10_000;
     /** The live viewer's chunk radius and frame rate, sent to the bot in bot/next (PROTOCOL.md, "Additions: live viewer"). */
-    static final int VIEWER_RADIUS = 8;
-    static final int VIEWER_HZ = 5;
-    static final int CONSOLE_KEEP = 200;
     static final int EVENTS_KEEP = 500;
     static final int JOBS_KEEP = 500;
     static final int MAX_OUTPUT_PARTS = 50;
@@ -61,7 +58,6 @@ final class BotHub {
         long sentAt;
         JsonElement value;
         String error;
-        ConsoleEntry console;
 
         Job(String id, String type, JsonObject payload, long createdAt) {
             this.id = id;
@@ -71,25 +67,7 @@ final class BotHub {
         }
     }
 
-    static final class ConsoleEntry {
-        final long seq;
-        final String id;
-        String command; // null once the bot says the input was sensitive
-        final long at;
-        String by; // the website user who sent it (Users.OWNER_ID or a sub-user's id), or null
-        String status = "queued";
-        String error;
-        final List<JsonObject> outputs = new ArrayList<>();
-        int outputSize;
-        long rev;
 
-        ConsoleEntry(long seq, String id, String command, long at) {
-            this.seq = seq;
-            this.id = id;
-            this.command = command;
-            this.at = at;
-        }
-    }
 
     static final class Bot {
         final String botId;
@@ -111,10 +89,6 @@ final class BotHub {
         long watchActivityUntil;
         Boolean watchingActivitySent;
         /** Until when a browser has the live viewer open, and the viewer session (16 hex) the bot must send. */
-        long watchViewerUntil;
-        String viewerSession;
-        Boolean watchingViewerSent;
-        String viewerSessionSent;
         JsonObject activity;     // the latest cleaned snapshot, or null
         long activityAt;         // when it arrived
         final ArrayDeque<JsonObject> events = new ArrayDeque<>(); // newest last
@@ -123,9 +97,6 @@ final class BotHub {
         final Set<String> need = new LinkedHashSet<>(); // "scope\u0000what"
         final ArrayDeque<Job> queue = new ArrayDeque<>();
         final LinkedHashMap<String, Job> jobs = new LinkedHashMap<>();
-        final ArrayDeque<ConsoleEntry> console = new ArrayDeque<>();
-        long consoleSeq;
-        long consoleRev;
 
         Bot(String botId) {
             this.botId = botId;
@@ -170,16 +141,14 @@ final class BotHub {
             if (player != null && !player.isEmpty()) b.player = player;
             b.plugin = plugin;
             b.proxy = proxy;
-            b.caps = new LinkedHashSet<>(caps);
-            b.declaredScopes = new LinkedHashSet<>(scopes);
+            b.caps = new LinkedHashSet<>(caps.stream().filter(x -> Set.of("settings", "activity").contains(x)).toList());
+            b.declaredScopes = new LinkedHashSet<>(scopes.stream().filter("plugin"::equals).toList());
             b.helloAt = now;
             b.lastSeen = now;
             b.lastPoll = now;
             b.need.clear(); // a new session pushes everything by itself
             b.watchingSent = null;
             b.watchingActivitySent = null;
-            b.watchingViewerSent = null;
-            b.viewerSessionSent = null;
             b.helloGen++;
             b.notifyAll(); // ends a long-poll from the bot's previous run, so it can't take what this run must be told
         }
@@ -272,12 +241,9 @@ final class BotHub {
                         expire(b, now);
                         boolean watching = b.watchUntil > now;
                         boolean watchingActivity = b.watchActivityUntil > now;
-                        boolean watchingViewer = b.watchViewerUntil > now;
-                        String viewerSession = watchingViewer ? b.viewerSession : null;
                         boolean watchChanged = b.watchingSent == null || b.watchingSent != watching
                             || b.watchingActivitySent == null || b.watchingActivitySent != watchingActivity
-                            || b.watchingViewerSent == null || b.watchingViewerSent != watchingViewer
-                            || !java.util.Objects.equals(viewerSession, b.viewerSessionSent);
+;
                         // A need is repeated at most every 10 s, so a bot that can't answer it doesn't spin.
                         boolean needDue = !b.need.isEmpty() && now - b.needSentAt >= 10_000;
                         if (!b.queue.isEmpty() || needDue || watchChanged) {
@@ -287,7 +253,6 @@ final class BotHub {
                                 Job j = b.queue.pollFirst();
                                 j.status = "sent";
                                 j.sentAt = now;
-                                if (j.console != null) touch(b, j.console, "sent");
                                 JsonObject jo = j.payload.deepCopy();
                                 jo.addProperty("id", j.id);
                                 jo.addProperty("type", j.type);
@@ -306,18 +271,9 @@ final class BotHub {
                             if (!need.isEmpty()) b.needSentAt = now;
                             out.addProperty("watching", watching);
                             out.addProperty("watchingActivity", watchingActivity);
-                            out.addProperty("watchingViewer", watchingViewer);
-                            if (watchingViewer) {
-                                JsonObject v = new JsonObject();
-                                v.addProperty("radius", VIEWER_RADIUS);
-                                v.addProperty("hz", VIEWER_HZ);
-                                v.addProperty("session", viewerSession);
-                                out.add("viewer", v);
-                            }
+
                             b.watchingSent = watching;
                             b.watchingActivitySent = watchingActivity;
-                            b.watchingViewerSent = watchingViewer;
-                            b.viewerSessionSent = viewerSession;
                             return new Poll(200, out);
                         }
                         long left = end - now;
@@ -325,7 +281,6 @@ final class BotHub {
                         // Wake up in time to tell the bot when the browser stops watching.
                         long wait = Math.min(left, watching ? Math.max(1, b.watchUntil - now + 1) : left);
                         if (watchingActivity) wait = Math.min(wait, Math.max(1, b.watchActivityUntil - now + 1));
-                        if (watchingViewer) wait = Math.min(wait, Math.max(1, b.watchViewerUntil - now + 1));
                         if (!b.need.isEmpty()) wait = Math.min(wait, Math.max(1, b.needSentAt + 10_000 - now));
                         b.wait(wait);
                     }
@@ -348,44 +303,17 @@ final class BotHub {
             b.lastSeen = now;
             Job j = b.jobs.get(id);
             if (j == null) return;
-            if (more) {
-                if (j.console != null && output != null) addOutput(b, j.console, output);
-                return;
-            }
+            if (more) return;
             j.status = ok ? "done" : "error";
             j.value = value;
             j.error = error;
-            if (j.console != null) {
-                ConsoleEntry e = j.console;
-                if (sensitive) {
-                    e.command = null;
-                    if (output != null) {
-                        JsonObject only = new JsonObject();
-                        if (output.has("title")) only.add("title", output.get("title"));
-                        if (output.has("color")) only.add("color", output.get("color"));
-                        output = only;
-                    }
-                }
-                e.error = error;
-                if (output != null) addOutput(b, e, output);
-                touch(b, e, j.status);
-            }
             b.notifyAll();
         }
     }
 
-    private static void addOutput(Bot b, ConsoleEntry e, JsonObject output) {
-        String text = Json.GSON.toJson(output);
-        if (e.outputs.size() >= MAX_OUTPUT_PARTS || e.outputSize + text.length() > MAX_ENTRY_OUTPUT) return;
-        e.outputs.add(output);
-        e.outputSize += text.length();
-        e.rev = ++b.consoleRev;
-    }
 
-    private static void touch(Bot b, ConsoleEntry e, String status) {
-        e.status = status;
-        e.rev = ++b.consoleRev;
-    }
+
+
 
     /** Queued jobs nobody took within 10 s expire; sent ones without an answer within 60 s become unknown. */
     private static void expire(Bot b, long now) {
@@ -394,13 +322,11 @@ final class BotHub {
             if (now - j.createdAt >= EXPIRE_QUEUED_MS) {
                 it.remove();
                 j.status = "expired";
-                if (j.console != null) touch(b, j.console, "expired");
             }
         }
         for (Job j : b.jobs.values()) {
             if (j.status.equals("sent") && now - j.sentAt >= UNKNOWN_SENT_MS) {
                 j.status = "unknown";
-                if (j.console != null) touch(b, j.console, "unknown");
             }
         }
     }
@@ -431,37 +357,14 @@ final class BotHub {
      * snapshot for this bot), a new viewer session is minted: the bot's next frame must be full. The long-poll is told
      * at once. Returns the current session.
      */
-    String watchViewer(Bot b, boolean fresh) {
-        synchronized (b) {
-            long now = now();
-            boolean was = b.watchViewerUntil > now;
-            b.watchViewerUntil = now + WATCH_MS;
-            if (!was || fresh || b.viewerSession == null) {
-                b.viewerSession = newSession();
-                b.notifyAll();
-            }
-            return b.viewerSession;
-        }
-    }
+
 
     /** The viewer session the bot must use now, or null when nobody is watching. */
-    String viewerSession(Bot b) {
-        synchronized (b) {
-            return b.watchViewerUntil > now() ? b.viewerSession : null;
-        }
-    }
 
-    boolean watchingViewer(Bot b) {
-        synchronized (b) {
-            return b.watchViewerUntil > now();
-        }
-    }
 
-    private static String newSession() {
-        byte[] bytes = new byte[8];
-        RANDOM.nextBytes(bytes);
-        return HexFormat.of().formatHex(bytes);
-    }
+
+
+
 
     /** bot/activity: stores the snapshot and adds its new events (de-duplicated by at, source and text). */
     void activity(Bot b, JsonObject snapshot, JsonArray events) {
@@ -528,6 +431,7 @@ final class BotHub {
 
     /** Queues settings changes; returns the job ids in order. */
     List<String> queueSets(Bot b, String scope, List<JsonObject> changes) {
+        if (!"plugin".equals(scope)) throw new IllegalArgumentException("scope must be plugin");
         long now = now();
         List<String> ids = new ArrayList<>();
         synchronized (b) {
@@ -547,30 +451,10 @@ final class BotHub {
     }
 
     /** Queues a console command; returns its job id. */
-    String queueCommand(Bot b, String command) {
-        return queueCommand(b, command, null);
-    }
+
 
     /** The same, remembering which website user sent it (a "list"-mode user only sees their own). */
-    String queueCommand(Bot b, String command, String by) {
-        long now = now();
-        synchronized (b) {
-            JsonObject p = new JsonObject();
-            p.addProperty("command", command);
-            Job j = new Job(newId(), "command", p, now);
-            // Commands that obviously carry a secret are hidden from the start, before the bot says the input was
-            // sensitive; the bot's sensitive:true hides every other kind once it answers.
-            ConsoleEntry e = new ConsoleEntry(++b.consoleSeq, j.id, looksSensitive(command) ? null : command, now);
-            e.rev = ++b.consoleRev;
-            e.by = by;
-            j.console = e;
-            b.console.addLast(e);
-            while (b.console.size() > CONSOLE_KEEP) b.console.pollFirst();
-            add(b, j);
-            b.notifyAll();
-            return j.id;
-        }
-    }
+
 
     private static void add(Bot b, Job j) {
         b.queue.addLast(j);
@@ -606,41 +490,10 @@ final class BotHub {
     }
 
     /** Console entries changed after revision {@code after}, oldest first, plus the newest revision. */
-    JsonObject console(Bot b, long after) {
-        return console(b, after, null);
-    }
+
 
     /** The same, only the entries sent by onlyBy (null: everyone's). */
-    JsonObject console(Bot b, long after, String onlyBy) {
-        JsonObject out = new JsonObject();
-        JsonArray entries = new JsonArray();
-        synchronized (b) {
-            expire(b, now());
-            for (ConsoleEntry e : b.console) {
-                if (e.rev <= after) continue;
-                if (onlyBy != null && !onlyBy.equals(e.by)) continue;
-                JsonObject o = new JsonObject();
-                o.addProperty("seq", e.seq);
-                o.addProperty("rev", e.rev);
-                o.addProperty("id", e.id);
-                o.addProperty("command", e.command == null ? "(hidden)" : e.command);
-                o.addProperty("hidden", e.command == null);
-                o.addProperty("at", e.at);
-                o.addProperty("status", e.status);
-                if (e.error != null) o.addProperty("error", e.error);
-                JsonArray outputs = new JsonArray();
-                for (JsonObject part : e.outputs) outputs.add(part);
-                o.add("output", e.outputs.isEmpty() ? JsonNull.INSTANCE : e.outputs.get(0));
-                o.add("outputs", outputs);
-                entries.add(o);
-            }
-            out.addProperty("rev", b.consoleRev);
-            out.add("entries", entries);
-            // The oldest entry still kept, so a page that missed some (ring overflow) knows to start over.
-            out.addProperty("first", b.console.isEmpty() ? 0 : b.console.peekFirst().seq);
-        }
-        return out;
-    }
+
 
     private static final java.util.regex.Pattern SENSITIVE = java.util.regex.Pattern.compile(
         "(?i)^\\s*auth\\b|manager\\s+key|manager\\s+url|passw|token|secret|api_?key|webhook|cookie|credential");

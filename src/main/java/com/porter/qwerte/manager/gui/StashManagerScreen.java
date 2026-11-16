@@ -14,9 +14,7 @@ import com.porter.qwerte.manager.gui.panels.ConfirmPanel;
 import com.porter.qwerte.manager.gui.panels.LoginPanel;
 import com.porter.qwerte.manager.gui.tabs.ActivityTab;
 import com.porter.qwerte.manager.gui.tabs.BotsTab;
-import com.porter.qwerte.manager.gui.tabs.ConsoleTab;
 import com.porter.qwerte.manager.gui.tabs.BrowseTab;
-import com.porter.qwerte.manager.gui.tabs.MapTab;
 import com.porter.qwerte.manager.gui.tabs.ServerTabHost;
 import com.porter.qwerte.manager.gui.tabs.SettingsTab;
 import com.porter.qwerte.manager.gui.tabs.UsersTab;
@@ -81,9 +79,9 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
      * instead of content.
      */
     private enum Tab {
-        BROWSE(NavPage.STASH), ORDERS(NavPage.ORDERS), MAP(NavPage.LIVE), SETTINGS(NavPage.SETTINGS), USERS(NavPage.USERS),
+        BROWSE(NavPage.STASH), ORDERS(NavPage.ORDERS), SETTINGS(NavPage.SETTINGS), USERS(NavPage.USERS),
         // Server pages with an in-game version (NavPage.inGame), for a window that has a server
-        PROXY(NavPage.PROXY), BOTS(NavPage.BOTS), ACTIVITY(NavPage.ACTIVITY), CONSOLE(NavPage.CONSOLE);
+        BOTS(NavPage.BOTS), ACTIVITY(NavPage.ACTIVITY);
         // A page without an in-game version would show a note that points to the website. To add one: flip its
         // NavPage.inGame, add its tab object (null in local mode), and handle it in tickServerTabs, onSessionLost and buildMain.
 
@@ -102,7 +100,7 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
     }
 
     /** The pages local mode lists: the ones that work without a server, plus the server-only ones that show a hint. */
-    private static final List<Tab> LOCAL_TABS = List.of(Tab.BROWSE, Tab.ORDERS, Tab.MAP, Tab.SETTINGS, Tab.USERS);
+    private static final List<Tab> LOCAL_TABS = List.of(Tab.BROWSE, Tab.ORDERS, Tab.SETTINGS, Tab.USERS);
 
     private static final long AUTH_POLL_MS = 30_000;
     private static final long STASH_POLL_MS = 10_000;
@@ -120,13 +118,10 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
     private final OrdersTab orders;
     private final LocalOrderBackend localOrders;
     /** Null in local mode. */
-    private final MapTab mapTab;
     private final SettingsTab settingsTab;
     /** The Proxy page: the settings form in proxy mode. Null in local mode. */
-    private final SettingsTab proxyTab;
     private final BotsTab botsTab;
     private final ActivityTab activityTab;
-    private final ConsoleTab consoleTab;
     private final UsersTab usersTab;
     private final BotDirectory bots;
     /** Null in local mode. */
@@ -196,22 +191,16 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
         this.browse = new BrowseTab(this, local ? localSource : source);
         if (local) {
             this.bots = null;
-            this.mapTab = null;
             this.settingsTab = null;
-            this.proxyTab = null;
             this.botsTab = null;
             this.activityTab = null;
-            this.consoleTab = null;
             this.usersTab = null;
         } else {
             TabHost th = new TabHost();
             this.bots = new BotDirectory(client, () -> auth, this::fail, module::rememberBot, module.lastBot());
-            this.mapTab = new MapTab(th);
             this.settingsTab = new SettingsTab(th);
-            this.proxyTab = new SettingsTab(th, true);
             this.botsTab = new BotsTab(th);
             this.activityTab = new ActivityTab(th);
-            this.consoleTab = new ConsoleTab(th);
             this.usersTab = new UsersTab(th);
         }
         this.localOrders = new LocalOrderBackend(module.localOrders());
@@ -396,11 +385,8 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
         if (confirmPanel != null) confirmPanel.clearSecrets();
         if (previewing) return;
         if (client != null) client.bumpGeneration();
-        if (mapTab != null) mapTab.close();
         if (settingsTab != null) settingsTab.clearSecrets();
-        if (proxyTab != null) proxyTab.clearSecrets();
         if (usersTab != null) usersTab.clearSecrets();
-        if (consoleTab != null) consoleTab.clearSecrets();
         if (activityTab != null) activityTab.clearSecrets();
         if (botsTab != null) botsTab.reset();
         dropConfirm();
@@ -434,12 +420,9 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
     private void tickServerTabs(long now) {
         if (closed || auth == null || !auth.loggedIn()) return;
         switch (tab) {
-            case MAP -> mapTab.tick(now);
             case SETTINGS -> settingsTab.tick(now);
-            case PROXY -> proxyTab.tick(now);
             case BOTS -> botsTab.tick(now);
             case ACTIVITY -> activityTab.tick(now);
-            case CONSOLE -> consoleTab.tick(now);
             case USERS -> usersTab.tick(now);
             default -> {
             }
@@ -677,12 +660,9 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
         dropConfirm();
         source.clear();
         if (serverOrders != null) serverOrders.clear();
-        mapTab.close();
         settingsTab.reset();
-        proxyTab.reset();
         botsTab.reset();
         activityTab.reset();
-        consoleTab.reset();
         usersTab.reset();
         bots.clear();
         ItemStacks.clear();
@@ -1119,7 +1099,6 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
                 else buildMain();
             }
         }
-        if (mapTab != null) mapTab.setShown(view == View.MAIN && tab == Tab.MAP && !closed);
         invalidate();
     }
 
@@ -1368,18 +1347,12 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
             }
             return;
         }
-        if (tab == Tab.MAP) {
-            mapTab.build(body, theme);
-            return;
-        }
+
         if (tab == Tab.SETTINGS) {
             settingsTab.build(body, theme);
             return;
         }
-        if (tab == Tab.PROXY) {
-            proxyTab.build(body, theme);
-            return;
-        }
+
         if (tab == Tab.BOTS) {
             botsTab.build(body, theme);
             return;
@@ -1388,10 +1361,7 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
             activityTab.build(body, theme);
             return;
         }
-        if (tab == Tab.CONSOLE) {
-            consoleTab.build(body, theme);
-            return;
-        }
+
         if (tab == Tab.USERS) {
             usersTab.build(body, theme);
             return;
@@ -1404,7 +1374,7 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
     }
 
     /** What the Map, Settings and Users tabs get from the window. */
-    private final class TabHost implements MapTab.Host {
+    private final class TabHost implements ServerTabHost {
         @Override
         public com.porter.qwerte.manager.net.SmClient client() {
             return client;
@@ -1529,10 +1499,7 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
             return StashManagerScreen.describe(r, fallback);
         }
 
-        @Override
-        public String viewerId(String botId) {
-            return module.viewerId(botId);
-        }
+
     }
 
     /** Goes to the window's page for {@code page} with {@code botId} picked (a bot card's buttons). Ignored when the account can't see it. */

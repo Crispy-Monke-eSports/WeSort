@@ -84,7 +84,6 @@ public final class SettingsTab {
 
     private final ServerTabHost host;
     /** The Proxy page: only the proxy and plugin:* scopes, no Account page. */
-    private final boolean proxyMode;
     private GuiTheme theme;
     private Page page = Page.BOT;
 
@@ -133,14 +132,8 @@ public final class SettingsTab {
     private long logoutAllArmedUntil;
 
     public SettingsTab(ServerTabHost host) {
-        this(host, false);
-    }
-
-    /** @param proxyMode true for the Proxy page: the proxy and plugin:* scopes only, no Account page */
-    public SettingsTab(ServerTabHost host, boolean proxyMode) {
         this.host = host;
-        this.proxyMode = proxyMode;
-        this.formScope = proxyMode ? "proxy" : "plugin";
+        this.formScope = "plugin";
         this.loadedScope = formScope;
     }
 
@@ -152,7 +145,7 @@ public final class SettingsTab {
         saving = false;
         formBot = null;
         clearForm();
-        formScope = proxyMode ? "proxy" : "plugin";
+        formScope = "plugin";
         loadedScope = formScope;
         page = Page.BOT;
         passwordBusy = false;
@@ -190,31 +183,12 @@ public final class SettingsTab {
     private String denied() {
         if (auth().forcedStreamer()) return "Bot settings are not available in streamer mode: the owner enforces it for your account (they can hold coordinates).";
         if (!auth().can("activity")) return "Your account can't see the bot's settings; ask the owner.";
-        if (proxyMode && auth().permMode("proxy").equals("none")) return "Your account can't see the proxy settings; ask the owner.";
         return "";
     }
 
-    private List<String> scopes() {
-        List<String> out = new ArrayList<>();
-        if (!proxyMode) out.add("plugin");
-        BotList.Bot bot = host.bots().selectedBot();
-        // the Settings page is the plugin's alone; the proxy and the other plugins have the Proxy page (as on the website)
-        if (proxyMode && bot != null && !auth().permMode("proxy").equals("none")) {
-            List<String> extra = new ArrayList<>();
-            for (String s : bot.scopes()) if (s.equals("proxy") || s.startsWith("plugin:")) extra.add(s);
-            extra.sort((a, b) -> a.equals("proxy") ? -1 : b.equals("proxy") ? 1 : a.compareTo(b));
-            out.addAll(extra);
-        }
-        return out;
-    }
-
-    private static String scopeLabel(String scope) {
-        return scope.equals("plugin") ? "Stash plugin" : scope.equals("proxy") ? "AquariusProxy" : "Plugin: " + scope.substring(7);
-    }
-
-    private boolean readOnly() {
-        return formScope.equals("plugin") ? !auth().can("settings") : !auth().permMode("proxy").equals("change");
-    }
+    private List<String> scopes() { return List.of("plugin"); }
+    private static String scopeLabel(String scope) { return "WeSort agent"; }
+    private boolean readOnly() { return !auth().can("settings"); }
 
     private boolean sensitive(String path) {
         String last = path.substring(path.lastIndexOf('.') + 1);
@@ -265,7 +239,7 @@ public final class SettingsTab {
     private void syncForm() {
         String bot = host.bots().selected();
         List<String> scopes = scopes();
-        if (!scopes.contains(formScope)) formScope = scopes.isEmpty() ? formScope : proxyMode ? scopes.get(0) : "plugin";
+        if (!scopes.contains(formScope)) formScope = scopes.isEmpty() ? formScope : "plugin";
         if (!java.util.Objects.equals(bot, formBot) || !formScope.equals(loadedScope)) {
             requestToken++;
             getBusy = false;
@@ -549,9 +523,8 @@ public final class SettingsTab {
         lockButton = logoutAllButton = null;
         botSignature = botSignature();
 
-        if (proxyMode) page = Page.BOT;
         WHorizontalList pages = parent.add(theme.horizontalList()).widget();
-        for (Page p : proxyMode ? new Page[0] : Page.values()) {
+        for (Page p : Page.values()) {
             String title = p == Page.BOT ? "Bot settings" : "Account";
             WButton b = pages.add(theme.button(p == page ? "[ " + title + " ]" : title)).widget();
             b.action = () -> {

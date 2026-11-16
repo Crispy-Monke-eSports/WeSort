@@ -134,7 +134,6 @@
     tabsWrap: $("tabs-wrap"),
     pageBots: $("page-bots"),
     pageSettings: $("page-settings"),
-    pageConsole: $("page-console"),
     dashNav: $("dash-nav"),
     botSelect: $("bot-select"),
     dashBots: $("dash-bots"),
@@ -145,24 +144,6 @@
     settingsSave: $("settings-save"),
     settingsOffline: $("settings-offline"),
     settingsBody: $("settings-body"),
-    consoleTitle: $("console-title"),
-    consoleState: $("console-state"),
-    consoleOffline: $("console-offline"),
-    consoleLog: $("console-log"),
-    consoleForm: $("console-form"),
-    consoleCmd: $("console-cmd"),
-    consoleSend: $("console-send"),
-    pageProxy: $("page-proxy"),
-    navProxy: $("nav-proxy"),
-    proxyTitle: $("proxy-title"),
-    proxyScope: $("proxy-scope"),
-    proxyStatus: $("proxy-status"),
-    proxyRevert: $("proxy-revert"),
-    proxySave: $("proxy-save"),
-    proxyOffline: $("proxy-offline"),
-    proxySearch: $("proxy-search"),
-    proxyNav: $("proxy-nav"),
-    proxyBody: $("proxy-body"),
     authScreen: $("auth-screen"),
     authForm: $("auth-form"),
     authText: $("auth-text"),
@@ -198,8 +179,6 @@
     accountName: $("account-name"),
     accountSection: $("account-section"),
     accountWho: $("account-who"),
-    navConsole: $("nav-console"),
-    consoleAllow: $("console-allow"),
     orderPicker: $("order-picker"),
     usersSection: $("users-section"),
     usersBody: $("users-body"),
@@ -300,8 +279,8 @@
   // hides what the user can't use. A server without sub-users sends no user: that is the owner, with everything.
 
   var OWNER_PERMS = {
-    view: true, order: true, ordersAll: true, activity: true, settings: true, proxy: "change", console: "full",
-    consoleAllow: [], rescan: true, link: true, viewer: true, streamer: false, stashes: null, bots: null
+    view: true, order: true, ordersAll: true, activity: true, settings: true,
+    rescan: true, link: true, streamer: false, stashes: null, bots: null
   };
   var me = { id: "owner", name: "", owner: true, mustChange: false, perms: OWNER_PERMS };
   var permsTimer = 0;
@@ -335,19 +314,12 @@
   }
 
   /** "proxy" ("none" | "read" | "change") or "console" ("none" | "list" | "full"). */
-  function permMode(key) {
-    if (me.owner) return key === "console" ? "full" : "change";
-    var v = me.perms[key];
-    return typeof v === "string" && v ? v : "none";
-  }
+
 
   /** The dashboard pages this user may open. */
   function pageAllowed(page) {
     if (page === "bots" || page === "activity") return can("activity");
-    if (page === "proxy") return permMode("proxy") !== "none" && !forcedStreamer();
-    if (page === "console") return permMode("console") !== "none" && !forcedStreamer();
-    if (page === "viewer") return can("viewer");
-    return true;
+    return ["stash", "orders", "settings"].indexOf(page) >= 0;
   }
 
   /** An order is the user's own when they placed it; an order without placedBy is from before users: the owner's. */
@@ -4179,7 +4151,6 @@
 
   var BOT_KEY = "stashManager.bot";
   var PAGE_KEY = "stashManager.page";
-  var CONSOLE_CONFIRM = ["shutdown", "update", "disconnect", "auth", "jvmargs", "plugins", "releasechannel", "discordmanage"];
   var dash = {
     page: "stash",
     bots: [],
@@ -4232,10 +4203,7 @@
     el.tabsWrap.hidden = !inventory;
     el.pageBots.hidden = page !== "bots";
     el.pageSettings.hidden = page !== "settings";
-    el.pageConsole.hidden = page !== "console";
-    el.pageProxy.hidden = page !== "proxy";
     el.pageActivity.hidden = page !== "activity";
-    if (vel) vel.page.hidden = page !== "viewer"; // (the viewer's code below may not have run yet)
     var navs = el.dashNav.querySelectorAll(".nav-btn");
     for (var i = 0; i < navs.length; i++) navs[i].classList.toggle("selected", navs[i].dataset.page === page);
     hideTooltip();
@@ -4244,20 +4212,13 @@
     if (page === "bots") renderDashBots();
     window.clearTimeout(dash.cTimer);
     settingsForm.stop();
-    proxyForm.stop();
     if (page === "settings") {
       settingsForm.load(true);
       if (me.owner) loadUsers();
     }
-    if (page === "proxy") {
-      renderProxyScopes();
-      proxyForm.load(true);
-    }
-    if (page === "console") loadConsole();
+
     window.clearTimeout(act.timer);
     if (page === "activity") loadActivity();
-    if (page === "viewer") viewerOpen();
-    else viewerClose();
   }
 
   el.dashNav.addEventListener("click", function (e) {
@@ -4288,13 +4249,8 @@
       renderBotSelect();
       if (dash.page === "bots") renderDashBots();
       updateDashTitles();
-      updateProxyNav();
       updateActivityNav(first);
-      if (dash.page === "proxy") {
-        var before = proxyScope;
-        renderProxyScopes();
-        if (proxyScope !== before) proxyForm.load(true);
-      }
+
     }, function () {});
   }
 
@@ -4330,17 +4286,11 @@
     }
     el.botSelect.value = id;
     updateDashTitles();
-    updateProxyNav();
     updateActivityNav(false);
     if (dash.page === "activity") loadActivity();
     if (dash.page === "settings") settingsForm.load(true);
-    if (dash.page === "proxy") {
-      renderProxyScopes();
-      proxyForm.load(true);
-    }
-    if (dash.page === "console") loadConsole();
+
     if (dash.page === "bots") renderDashBots();
-    if (dash.page === "viewer") viewerBotChanged();
   }
 
   el.botSelect.addEventListener("change", function () { selectBot(el.botSelect.value); });
@@ -4348,10 +4298,7 @@
   function updateDashTitles() {
     var b = currentBot();
     el.settingsTitle.textContent = "Settings" + (b ? " · " + botName(b) : "");
-    el.consoleTitle.textContent = "Console" + (b ? " · " + botName(b) : "");
-    el.proxyTitle.textContent = "Proxy" + (b ? " · " + botName(b) : "");
     el.activityTitle.textContent = "Activity" + (b ? " · " + botName(b) : "");
-    $("viewer-title").textContent = "Live" + (b ? " · " + botName(b) : "");
   }
 
   function offlineText(b) {
@@ -4363,7 +4310,7 @@
   function renderDashBots() {
     var frag = document.createDocumentFragment();
     if (!dash.bots.length) {
-      frag.appendChild(line("note", "No dashboard bots yet. In the proxy, turn the Qwerte Stash plugin's dashboard on (stash manager dashboard on)."));
+      frag.appendChild(line("note", "No warehouse agents connected yet."));
     }
     dash.bots.forEach(function (b) {
       var card = document.createElement("div");
@@ -4390,9 +4337,7 @@
         card.appendChild(doing);
       }
       var plugin = b.plugin && typeof b.plugin === "object" ? b.plugin : {};
-      var proxy = b.proxy && typeof b.proxy === "object" ? b.proxy : {};
-      card.appendChild(line("note dash-bot-meta", "Plugin " + (str(plugin.id) || "?") + " " + str(plugin.version) + " · proxy " + (str(proxy.version) || "?") +
-        (str(proxy.mc) ? " (MC " + str(proxy.mc) + ")" : "") + " · id " + str(b.botId)));
+      card.appendChild(line("note dash-bot-meta", "Agent " + str(plugin.id) + " " + str(plugin.version) + " · id " + str(b.botId)));
       var stashes = Array.isArray(b.stashes) ? b.stashes : [];
       var st = document.createElement("div");
       st.className = "dash-bot-stashes";
@@ -4414,7 +4359,7 @@
       var actions = document.createElement("div");
       actions.className = "dash-bot-actions";
       var caps = Array.isArray(b.caps) ? b.caps : [];
-      [["activity", "Activity"], ["settings", "Settings"], ["proxy", "Proxy"], ["console", "Console"]].forEach(function (p) {
+      [["activity", "Activity"], ["settings", "Settings"]].forEach(function (p) {
         if (caps.indexOf(p[0]) < 0 || !pageAllowed(p[0])) return;
         var btn = document.createElement("button");
         btn.type = "button";
@@ -4565,7 +4510,7 @@
               permsStale();
             } else {
               // Sudo mode needed to see these settings: offer the password prompt instead of polling.
-              E.body.replaceChildren(unlockBox("The proxy settings are only shown after you confirm the website password.", function () { load(true); }));
+              E.body.replaceChildren(unlockBox("Confirm your password to manage agent settings.", function () { load(true); }));
             }
             if (E.nav) E.nav.replaceChildren();
             return { locked: true };
@@ -5218,111 +5163,6 @@
     els: { status: el.settingsStatus, save: el.settingsSave, revert: el.settingsRevert, offline: el.settingsOffline, body: el.settingsBody }
   });
 
-  /** The Proxy page's scopes for the current bot: "proxy" first, then "plugin:<id>". */
-  function proxyScopes() {
-    var b = currentBot();
-    var scopes = b && Array.isArray(b.scopes) ? b.scopes.filter(function (s) { return s === "proxy" || /^plugin:/.test(s); }) : [];
-    scopes.sort(function (a, c) { return a === "proxy" ? -1 : c === "proxy" ? 1 : a < c ? -1 : a > c ? 1 : 0; });
-    return scopes;
-  }
-
-  var proxyScope = "proxy";
-
-  function renderProxyScopes() {
-    var scopes = proxyScopes();
-    if (scopes.indexOf(proxyScope) < 0) proxyScope = scopes.length ? scopes[0] : "proxy";
-    var frag = document.createDocumentFragment();
-    (scopes.length ? scopes : ["proxy"]).forEach(function (s) {
-      var o = document.createElement("option");
-      o.value = s;
-      o.textContent = s === "proxy" ? "AquariusProxy" : "Plugin: " + s.slice(7);
-      frag.appendChild(o);
-    });
-    el.proxyScope.replaceChildren(frag);
-    el.proxyScope.value = proxyScope;
-    el.proxyScope.disabled = scopes.length <= 1;
-  }
-
-  el.proxyScope.addEventListener("change", function () {
-    proxyScope = el.proxyScope.value;
-    proxyForm.load(true);
-  });
-
-  var proxyForm = makeForm({
-    page: "proxy",
-    sectioned: true,
-    cap: "proxy",
-    scope: function () { return proxyScope; },
-    sudo: function (scope) { return scope !== "plugin"; },
-    denied: function () { return permMode("proxy") === "none" ? "Your account can't see the proxy settings; ask the owner." : ""; },
-    readOnly: function () { return permMode("proxy") !== "change"; },
-    els: {
-      status: el.proxyStatus, save: el.proxySave, revert: el.proxyRevert, offline: el.proxyOffline, body: el.proxyBody,
-      nav: el.proxyNav, search: el.proxySearch
-    }
-  });
-
-  function hasCap(b, cap) {
-    return !!b && Array.isArray(b.caps) && b.caps.indexOf(cap) >= 0;
-  }
-
-  /** The Activity nav button for bots that report activity; it is the landing tab when none was chosen. */
-  function updateActivityNav(firstLoad) {
-    var show = hasCap(currentBot(), "activity") && can("activity");
-    el.navActivity.hidden = !show;
-    if (!show && dash.page === "activity") showPage("bots");
-    if (firstLoad) {
-      var saved = null;
-      try {
-        saved = window.localStorage.getItem(PAGE_KEY);
-      } catch (e) {
-        saved = null;
-      }
-      if (dash.page !== "stash") return;
-      if (saved && saved !== "stash" && pageAllowed(saved) && (saved !== "activity" || show)) showPage(saved);
-      else if (!saved && show) showPage("activity");
-    }
-  }
-
-  /** The Proxy nav button only for bots that offer the proxy scope. */
-  function updateProxyNav() {
-    var show = !!currentBot() && pageAllowed("proxy");
-    el.navProxy.hidden = !show;
-    if (!show && dash.page === "proxy") showPage("bots");
-  }
-
-  /** "Disabled on the proxy" hint for a bot without the console / proxy cap. */
-  function capHint(cap) {
-    var box = document.createElement("div");
-    box.className = "cap-hint";
-    box.appendChild(line("section-title", cap === "console" ? "Console disabled on the proxy" : "Proxy settings disabled on the proxy"));
-    var p = document.createElement("div");
-    p.className = "note";
-    p.appendChild(document.createTextNode("Disabled on the proxy. Run "));
-    var code = document.createElement("code");
-    code.textContent = "stash manager dashboard " + (cap === "console" ? "console" : "proxy") + " on";
-    p.appendChild(code);
-    p.appendChild(document.createTextNode(" in the proxy's terminal to allow it."));
-    box.appendChild(p);
-    return box;
-  }
-
-  /** A locked panel with an Unlock button that asks for the password (sudo mode), then calls done. */
-  function unlockBox(text, done) {
-    var box = document.createElement("div");
-    box.className = "cap-hint";
-    box.appendChild(line("note", text));
-    var b = document.createElement("button");
-    b.type = "button";
-    b.className = "mc-button";
-    b.textContent = "Confirm password";
-    b.addEventListener("click", function () {
-      askPassword().then(done, function () {});
-    });
-    box.appendChild(b);
-    return box;
-  }
-
   // ---------- admin (sudo) indicator ----------
   // While the password was typed in the last 15 minutes, the header says so, with a button to end it now.
 
@@ -5366,7 +5206,7 @@
   el.sudoLock.addEventListener("click", function () {
     api("/api/v1/auth/lock", { method: "POST", body: {} }).then(function () {
       sudoState(0);
-      toast("Admin locked. Console and proxy settings ask for the password again.");
+      toast("Admin locked. Account administration requires your password again.");
       if (link.data && link.data.apiKey) {
         delete link.data.apiKey;
         link.data.apiKeySet = true;
@@ -5375,932 +5215,6 @@
       }
     }, function () {});
   });
-
-  // ---------- live viewer ----------
-  // The bot's surroundings, live (PROTOCOL.md, "Additions: live viewer"): Server-Sent Events from
-  // /api/v1/bots/{id}/viewer/stream, drawn on a canvas as 16x16 map tiles with the vanilla map palette. Markers and
-  // labels are drawn on the canvas (fillText), never as HTML; the HUD and chat use textContent only. The stream is
-  // open only while this page is shown: it closes 30 s after the tab is hidden, and when the page is left.
-
-  var V_ZOOM_MIN = 0.5;
-  var V_ZOOM_MAX = 16;
-  var V_ZOOM_DEFAULT = 4;
-  var V_CHAT_KEEP = 200;
-  var V_LAT_KEEP = 200;
-  var V_TILES_KEEP = 1500; // tiles held here; past it the farthest from the bot go
-  var V_HIDDEN_CLOSE_MS = 30000;
-  var V_DEBUG_KEY = "stashManager.viewerDebug";
-  var V_INV_KEY = "stashManager.viewerInventory"; // "1" open, "0" collapsed; unset: open from 768px, collapsed below
-  // Mob types (lowercase, no namespace) drawn red.
-  var V_HOSTILE = Object.create(null);
-  ["zombie", "zombie_villager", "husk", "drowned", "skeleton", "stray", "bogged", "wither_skeleton", "creeper", "spider",
-    "cave_spider", "enderman", "endermite", "silverfish", "witch", "slime", "magma_cube", "blaze", "ghast", "phantom",
-    "pillager", "vindicator", "evoker", "illusioner", "ravager", "vex", "guardian", "elder_guardian", "shulker", "hoglin",
-    "zoglin", "piglin_brute", "warden", "breeze", "creaking", "wither", "ender_dragon"].forEach(function (m) { V_HOSTILE[m] = true; });
-
-  var vw = {
-    open: false, es: null, vs: "", botId: null, mc: DEFAULT_MC, palette: null, paletteLoading: false,
-    tiles: new Map(), self: null, ents: [], hud: null, world: null, state: "", session: "",
-    chat: [], chatKeys: new Set(), unread: 0, chatOpen: false,
-    zoom: V_ZOOM_DEFAULT, cx: 0, cz: 0, follow: true, dirty: false, raf: 0, dpr: 1, w: 0, h: 0,
-    pointers: new Map(), pinch: null, lastTap: 0, lastTouch: 0,
-    offset: 0, offsetRtt: Infinity, pending: [], lat: { e2e: [], bs: [], sb: [], render: [] }, events: 0,
-    debug: false, hiddenTimer: 0, retryTimer: 0, colors: null, slots: [], gear: [], inv: []
-  };
-  try {
-    vw.debug = window.localStorage.getItem(V_DEBUG_KEY) === "1";
-  } catch (e) {
-    vw.debug = false;
-  }
-
-  var vel = {
-    page: $("page-viewer"),
-    nav: $("nav-viewer"),
-    title: $("viewer-title"),
-    wrap: $("viewer-wrap"),
-    canvas: $("viewer-canvas"),
-    note: $("v-note"),
-    status: $("v-status"),
-    hpFill: $("v-hp"),
-    hpText: $("v-hp-text"),
-    foodFill: $("v-food"),
-    foodText: $("v-food-text"),
-    xp: $("v-xp"),
-    armor: $("v-armor"),
-    coords: $("v-coords"),
-    centre: $("v-centre"),
-    zoomIn: $("v-zoom-in"),
-    zoomOut: $("v-zoom-out"),
-    chatBtn: $("v-chat-btn"),
-    unread: $("v-unread"),
-    debugBtn: $("v-debug-btn"),
-    debugBox: $("v-debug"),
-    hotbar: $("v-hotbar"),
-    gearBtn: $("v-gear-btn"),
-    gearBox: $("v-gear"),
-    invBtn: $("v-inv-btn"),
-    invBox: $("v-inv-box"),
-    invGrid: $("v-inv"),
-    invNote: $("v-inv-note"),
-    chat: $("v-chat"),
-    chatLines: $("v-chat-lines"),
-    chatClose: $("v-chat-close")
-  };
-  var vctx = vel.canvas.getContext("2d", { alpha: false });
-
-  function vRandomId() {
-    var a = new Uint8Array(8);
-    window.crypto.getRandomValues(a);
-    return Array.prototype.map.call(a, function (b) { return (b < 16 ? "0" : "") + b.toString(16); }).join("");
-  }
-
-  /** Theme colours for the canvas, read from the tokens (again when the theme changes). */
-  function vReadColors() {
-    var cs = window.getComputedStyle(document.documentElement);
-    var get = function (n, d) { return (cs.getPropertyValue(n) || "").trim() || d; };
-    vw.colors = {
-      bg: get("--surface-2", "#222"), text: get("--text", "#fff"), surface: get("--surface", "#000"), accent: get("--accent", "#36c"),
-      onAccent: get("--on-accent", "#fff"), hostile: get("--hp", "#d32f2f"), passive: get("--ok-bg", "#2e7d32"),
-      item: get("--warn-bg", "#c9a227"), other: get("--muted", "#888"), border: get("--border", "#000"), font: get("--font", "sans-serif")
-    };
-  }
-
-  function vLoadPalette() {
-    if (vw.palette || vw.paletteLoading) return;
-    vw.paletteLoading = true;
-    fetch("/map-palette.json", { credentials: "same-origin" }).then(function (r) { return r.json(); }).then(function (p) {
-      var rgb = p && Array.isArray(p.rgb) && p.rgb.length === 256 ? p.rgb : null;
-      if (!rgb) throw new Error("bad palette");
-      var out = new Uint32Array(256); // little-endian RGBA as one word, for ImageData
-      for (var i = 0; i < 256; i++) {
-        var v = typeof rgb[i] === "number" ? rgb[i] : -1;
-        out[i] = v < 0 || i < 4 ? 0 : (0xff000000 | ((v & 0xff) << 16) | (v & 0xff00) | ((v >> 16) & 0xff)) >>> 0;
-      }
-      vw.palette = out;
-      // Tiles that came before the palette: draw them now.
-      vw.tiles.forEach(function (t) { if (!t.canvas) vPaint(t); });
-      vDirty();
-    }).catch(function () {
-      vw.paletteLoading = false;
-    });
-  }
-
-  function vDecode(b64, n) {
-    try {
-      var s = window.atob(b64);
-      if (s.length !== n) return null;
-      var out = new Uint8Array(n);
-      for (var i = 0; i < n; i++) out[i] = s.charCodeAt(i);
-      return out;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  /** A tile's 16x16 offscreen canvas, from its packed map bytes. */
-  function vPaint(t) {
-    if (!vw.palette || !t.bytes) return;
-    var c = t.canvas || document.createElement("canvas");
-    c.width = 16;
-    c.height = 16;
-    var g = c.getContext("2d");
-    var img = g.createImageData(16, 16);
-    var px = new Uint32Array(img.data.buffer);
-    for (var i = 0; i < 256; i++) px[i] = vw.palette[t.bytes[i]];
-    g.putImageData(img, 0, 0);
-    t.canvas = c;
-  }
-
-  function vPutTile(o) {
-    if (!o || typeof o.x !== "number" || typeof o.z !== "number") return;
-    var bytes = vDecode(str(o.c), 256);
-    if (!bytes) return;
-    var key = o.x + "," + o.z;
-    var t = vw.tiles.get(key) || { x: o.x, z: o.z, canvas: null };
-    t.bytes = bytes;
-    vPaint(t);
-    vw.tiles.set(key, t);
-  }
-
-  /** Keeps at most V_TILES_KEEP tiles, dropping the farthest from the bot (or the view centre). */
-  function vCapTiles() {
-    if (vw.tiles.size <= V_TILES_KEEP) return;
-    var x = vw.self ? vw.self.x : vw.cx;
-    var z = vw.self ? vw.self.z : vw.cz;
-    var all = Array.from(vw.tiles.entries()).map(function (e) {
-      var dx = e[1].x * 16 + 8 - x;
-      var dz = e[1].z * 16 + 8 - z;
-      return [e[0], dx * dx + dz * dz];
-    });
-    all.sort(function (a, b) { return b[1] - a[1]; });
-    for (var i = 0; vw.tiles.size > V_TILES_KEEP; i++) vw.tiles.delete(all[i][0]);
-  }
-
-  function vDirty() {
-    vw.dirty = true;
-    if (!vw.raf && vw.open) vw.raf = window.requestAnimationFrame(vDraw);
-  }
-
-  function vResize() {
-    var r = vel.wrap.getBoundingClientRect();
-    var dpr = window.devicePixelRatio || 1;
-    var w = Math.max(1, Math.round(r.width));
-    var h = Math.max(1, Math.round(r.height));
-    if (w === vw.w && h === vw.h && dpr === vw.dpr) return;
-    vw.w = w;
-    vw.h = h;
-    vw.dpr = dpr;
-    vel.canvas.width = Math.round(w * dpr);
-    vel.canvas.height = Math.round(h * dpr);
-    vDirty();
-  }
-
-  if (typeof ResizeObserver === "function") new ResizeObserver(function () { if (vw.open) vResize(); }).observe(vel.wrap);
-  window.addEventListener("resize", function () { if (vw.open) vResize(); });
-
-  function vLabel(text, x, y, s) {
-    var c = vw.colors;
-    vctx.font = Math.round(11 * s) + "px " + c.font;
-    var w = vctx.measureText(text).width;
-    var pad = 3 * s;
-    vctx.fillStyle = c.surface;
-    vctx.globalAlpha = 0.85;
-    vctx.fillRect(x - w / 2 - pad, y - 13 * s, w + pad * 2, 15 * s);
-    vctx.globalAlpha = 1;
-    vctx.fillStyle = c.text;
-    vctx.textAlign = "center";
-    vctx.textBaseline = "alphabetic";
-    vctx.fillText(text, x, y - 2 * s);
-  }
-
-  function vDraw() {
-    vw.raf = 0;
-    if (!vw.open || !vw.dirty) return;
-    vw.dirty = false;
-    if (!vw.colors) vReadColors();
-    var c = vw.colors;
-    var dpr = vw.dpr;
-    var W = vel.canvas.width;
-    var H = vel.canvas.height;
-    if (vw.follow && vw.self) {
-      vw.cx = vw.self.x;
-      vw.cz = vw.self.z;
-    }
-    var s = vw.zoom * dpr; // device px per block
-    var zl = String(Math.round(vw.zoom * 100) / 100);
-    if (vel.canvas.dataset.zoom !== zl) vel.canvas.dataset.zoom = zl; // for tests and the curious
-    vctx.setTransform(1, 0, 0, 1, 0, 0);
-    vctx.imageSmoothingEnabled = false;
-    vctx.fillStyle = c.bg;
-    vctx.fillRect(0, 0, W, H);
-    var toX = function (bx) { return (bx - vw.cx) * s + W / 2; };
-    var toY = function (bz) { return (bz - vw.cz) * s + H / 2; };
-    vw.tiles.forEach(function (t) {
-      if (!t.canvas) return;
-      var x0 = Math.floor(toX(t.x * 16));
-      var y0 = Math.floor(toY(t.z * 16));
-      var x1 = Math.floor(toX(t.x * 16 + 16));
-      var y1 = Math.floor(toY(t.z * 16 + 16));
-      if (x1 < 0 || y1 < 0 || x0 > W || y0 > H) return;
-      vctx.drawImage(t.canvas, x0, y0, x1 - x0, y1 - y0);
-    });
-    var names = !streamerOn();
-    var r = Math.max(2.5, Math.min(6, vw.zoom * 0.9)) * dpr;
-    for (var i = vw.ents.length - 1; i >= 0; i--) {
-      var e = vw.ents[i];
-      var ex = toX(e.x);
-      var ey = toY(e.z);
-      if (ex < -40 || ey < -40 || ex > W + 40 || ey > H + 40) continue;
-      if (e.k === "player") {
-        vctx.beginPath();
-        vctx.arc(ex, ey, r * 1.3, 0, Math.PI * 2);
-        vctx.fillStyle = c.accent;
-        vctx.fill();
-        vctx.lineWidth = 1.5 * dpr;
-        vctx.strokeStyle = c.onAccent;
-        vctx.stroke();
-        if (names && str(e.n)) vLabel(str(e.n), ex, ey - r * 1.6, dpr);
-      } else if (e.k === "mob") {
-        vctx.beginPath();
-        vctx.arc(ex, ey, r * 0.8, 0, Math.PI * 2);
-        vctx.fillStyle = V_HOSTILE[str(e.t)] ? c.hostile : c.passive;
-        vctx.fill();
-        vctx.lineWidth = 1 * dpr;
-        vctx.strokeStyle = c.border;
-        vctx.stroke();
-      } else if (e.k === "item") {
-        var q = Math.max(2, r * 0.7);
-        vctx.fillStyle = c.item;
-        vctx.fillRect(ex - q / 2, ey - q / 2, q, q);
-        vctx.lineWidth = 1 * dpr;
-        vctx.strokeStyle = c.border;
-        vctx.strokeRect(ex - q / 2, ey - q / 2, q, q);
-      } else {
-        vctx.fillStyle = c.other;
-        vctx.fillRect(ex - 1.5 * dpr, ey - 1.5 * dpr, 3 * dpr, 3 * dpr);
-      }
-    }
-    if (vw.self) {
-      // The bot: an arrow along its heading. Minecraft yaw 0 = +z (south, down), 90 = -x (west, left).
-      var bx = toX(vw.self.x);
-      var by = toY(vw.self.z);
-      var a = num(vw.self.yaw, 0) * Math.PI / 180;
-      var dx = -Math.sin(a);
-      var dy = Math.cos(a);
-      var len = 11 * dpr;
-      vctx.beginPath();
-      vctx.moveTo(bx + dx * len, by + dy * len);
-      vctx.lineTo(bx - dx * len * 0.6 + dy * len * 0.6, by - dy * len * 0.6 - dx * len * 0.6);
-      vctx.lineTo(bx - dx * len * 0.25, by - dy * len * 0.25);
-      vctx.lineTo(bx - dx * len * 0.6 - dy * len * 0.6, by - dy * len * 0.6 + dx * len * 0.6);
-      vctx.closePath();
-      vctx.fillStyle = c.onAccent;
-      vctx.strokeStyle = c.accent;
-      vctx.lineWidth = 3 * dpr;
-      vctx.stroke();
-      vctx.fill();
-    }
-    vLatencyAfterDraw(window.performance.now()); // after drawing (the rAF timestamp is the frame's start, maybe before recv)
-  }
-
-  // ---------- latency (debug overlay) ----------
-  // bot->server = rt - t; server->browser = recv + offset - st; render = draw - recv; end to end = draw + offset - t.
-
-  function vPush(list, v) {
-    list.push(v);
-    if (list.length > V_LAT_KEEP) list.shift();
-  }
-
-  function vNote(d) {
-    vw.events++;
-    if (!d || typeof d.t !== "number") return;
-    var recv = Date.now();
-    if (typeof d.rt === "number") vPush(vw.lat.bs, d.rt - d.t);
-    if (typeof d.st === "number") vPush(vw.lat.sb, recv + vw.offset - d.st);
-    vw.pending.push({ t: d.t, recv: recv, perf: window.performance.now() });
-  }
-
-  function vLatencyAfterDraw(perfNow) {
-    if (!vw.pending.length) return;
-    var wall = Date.now();
-    vw.pending.forEach(function (p) {
-      vPush(vw.lat.render, perfNow - p.perf);
-      vPush(vw.lat.e2e, wall + vw.offset - p.t);
-    });
-    vw.pending = [];
-    if (vw.debug) vRenderDebug();
-  }
-
-  function vPct(list, p) {
-    if (!list.length) return "-";
-    var sorted = list.slice().sort(function (a, b) { return a - b; });
-    return String(Math.round(sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))]));
-  }
-
-  function vRenderDebug() {
-    vel.debugBox.hidden = !vw.debug;
-    vel.debugBtn.setAttribute("aria-pressed", vw.debug ? "true" : "false");
-    if (!vw.debug) return;
-    var rows = [
-      ["end to end", vw.lat.e2e], ["bot → server", vw.lat.bs], ["server → browser", vw.lat.sb], ["render", vw.lat.render]
-    ];
-    var frag = document.createDocumentFragment();
-    var head = document.createElement("div");
-    head.className = "v-debug-head";
-    head.textContent = "Latency ms (p50 / p95, last " + vw.lat.e2e.length + ")";
-    frag.appendChild(head);
-    rows.forEach(function (r) {
-      var row = document.createElement("div");
-      row.className = "v-debug-row";
-      row.dataset.metric = r[0];
-      row.dataset.p50 = vPct(r[1], 0.5);
-      row.dataset.p95 = vPct(r[1], 0.95);
-      row.textContent = r[0] + ": " + row.dataset.p50 + " / " + row.dataset.p95;
-      frag.appendChild(row);
-    });
-    var foot = document.createElement("div");
-    foot.className = "v-debug-row";
-    foot.textContent = "events " + vw.events + " · tiles " + vw.tiles.size + " · clock offset " + Math.round(vw.offset) +
-      " ms (rtt " + (isFinite(vw.offsetRtt) ? Math.round(vw.offsetRtt) : "-") + ")";
-    frag.appendChild(foot);
-    vel.debugBox.replaceChildren(frag);
-  }
-
-  /** The server clock offset from 3 pings, keeping the one with the lowest round trip. */
-  function vSyncClock(botId) {
-    var n = 0;
-    var ping = function () {
-      if (!vw.open || vw.botId !== botId || n >= 3) return;
-      n++;
-      var t0 = Date.now();
-      api("/api/v1/bots/" + encodeURIComponent(botId) + "/viewer").then(function (d) {
-        var t1 = Date.now();
-        if (d && typeof d.now === "number" && t1 - t0 < vw.offsetRtt) {
-          vw.offsetRtt = t1 - t0;
-          vw.offset = d.now - (t0 + t1) / 2;
-        }
-        ping();
-      }, function () {});
-    };
-    ping();
-  }
-
-  // ---------- HUD ----------
-
-  function vItem(o) {
-    return o && typeof o === "object" && typeof o.id === "string" && /^[a-z0-9_.-]+:[a-z0-9_./-]+$/.test(o.id) ? o : null;
-  }
-
-  function vMakeSlot(cls) {
-    var slot = document.createElement("div");
-    slot.className = "v-slot " + cls;
-    var img = document.createElement("img");
-    img.alt = "";
-    img.width = 28;
-    img.height = 28;
-    img.draggable = false;
-    img.hidden = true;
-    img.addEventListener("error", function () {
-      if (img.getAttribute("src") !== PLACEHOLDER) img.src = PLACEHOLDER;
-    });
-    var count = document.createElement("span");
-    count.className = "v-count";
-    slot.appendChild(img);
-    slot.appendChild(count);
-    return { slot: slot, img: img, count: count, id: null };
-  }
-
-  function vSetSlot(s, item) {
-    var it = vItem(item);
-    var id = it ? it.id : null;
-    if (id !== s.id) {
-      s.id = id;
-      s.img.hidden = !id;
-      if (id) s.img.src = iconUrl(id, vw.mc);
-      else s.img.removeAttribute("src");
-      s.slot.title = id || "";
-    }
-    var n = it ? Math.floor(num(it.c, 1)) : 0;
-    var text = n > 1 ? String(n) : "";
-    if (s.count.textContent !== text) s.count.textContent = text;
-    // The same durability bar as the stash grid (d/md come only for damageable items, from newer plugins).
-    setDurability(s.slot, it ? { damage: Math.floor(num(it.d, 0)), maxDamage: Math.floor(num(it.md, 0)) } : null);
-  }
-
-  (function buildSlots() {
-    for (var i = 0; i < 9; i++) {
-      var s = vMakeSlot("hot");
-      vw.slots.push(s);
-      vel.hotbar.appendChild(s.slot);
-    }
-    ["Helmet", "Chestplate", "Leggings", "Boots", "Offhand"].forEach(function (name) {
-      var s = vMakeSlot("gear");
-      s.slot.setAttribute("aria-label", name);
-      vw.gear.push(s);
-      vel.gearBox.appendChild(s.slot);
-    });
-    for (var j = 0; j < 27; j++) { // main inventory, slots 9-35: three rows of nine
-      var t = vMakeSlot("inv");
-      vw.inv.push(t);
-      vel.invGrid.appendChild(t.slot);
-    }
-  })();
-
-  /** Opens or collapses the inventory panel (remember: store the choice). */
-  function vSetInvOpen(open, remember) {
-    vel.invBox.hidden = !open;
-    vel.invBtn.setAttribute("aria-expanded", open ? "true" : "false");
-    if (!remember) return;
-    try {
-      window.localStorage.setItem(V_INV_KEY, open ? "1" : "0");
-    } catch (e) {
-      // not remembered
-    }
-  }
-
-  (function initInv() {
-    var saved = null;
-    try {
-      saved = window.localStorage.getItem(V_INV_KEY);
-    } catch (e) {
-      saved = null;
-    }
-    var open = saved === "1" || (saved !== "0" && !window.matchMedia("(max-width: 767px)").matches);
-    vSetInvOpen(open, false);
-  })();
-
-  function vBar(fill, text, value, max) {
-    var v = Math.max(0, Math.min(max, num(value, 0)));
-    fill.style.width = (v / max * 100) + "%";
-    text.textContent = typeof value === "number" ? String(Math.round(value * 2) / 2) : "-";
-  }
-
-  function vRenderHud() {
-    var h = vw.hud && typeof vw.hud === "object" ? vw.hud : {};
-    vBar(vel.hpFill, vel.hpText, h.hp, 20);
-    vBar(vel.foodFill, vel.foodText, h.food, 20);
-    vel.xp.textContent = typeof h.xp === "number" ? "XP " + h.xp : "XP -";
-    vel.armor.hidden = typeof h.armor !== "number";
-    vel.armor.textContent = typeof h.armor === "number" ? "Armour " + h.armor : "";
-    var hot = Array.isArray(h.hotbar) ? h.hotbar : [];
-    var held = typeof h.held === "number" ? h.held : -1;
-    vw.slots.forEach(function (s, i) {
-      vSetSlot(s, hot[i]);
-      s.slot.classList.toggle("held", i === held);
-    });
-    var armor = Array.isArray(h.armorSlots) ? h.armorSlots : [];
-    for (var i = 0; i < 4; i++) vSetSlot(vw.gear[i], armor[i]);
-    vSetSlot(vw.gear[4], h.offhand);
-    // Older plugins send no inventory: say so instead of showing 27 empty slots (no hud yet: empty slots).
-    var inv = Array.isArray(h.inv) && h.inv.length === 27 ? h.inv : null;
-    var missing = !inv && vw.hud && typeof vw.hud === "object";
-    vel.invGrid.hidden = !!missing;
-    vel.invNote.hidden = !missing;
-    for (var k = 0; k < 27; k++) vSetSlot(vw.inv[k], inv ? inv[k] : null);
-  }
-
-  function vRenderCoords() {
-    var s = vw.self;
-    var dim = vw.world && str(vw.world.dim) ? str(vw.world.dim).replace(/^minecraft:/, "") : "";
-    var rel = vw.relative ? "relative " : "";
-    if (dim === "hidden") dim = "";
-    vel.coords.textContent = s ? rel + Math.round(s.x) + ", " + Math.round(num(s.y, 0)) + ", " + Math.round(s.z) + (dim ? " · " + dim : "") : "-";
-    vel.coords.title = vw.relative ? "Relative coordinates: streamer mode is enforced by the owner" : "";
-  }
-
-  var V_STATES = { waiting: "Waiting for the bot", live: "Live", stale: "Stale", offline: "Bot offline", connecting: "Connecting", closed: "Closed" };
-
-  function vSetState(st) {
-    vw.state = st;
-    vel.status.textContent = V_STATES[st] || st;
-    vel.status.className = "v-status v-" + st;
-  }
-
-  function vShowNote(text) {
-    vel.note.hidden = !text;
-    vel.note.textContent = text || "";
-  }
-
-  // ---------- chat ----------
-
-  function vChatKey(l) {
-    return num(l.t, 0) + "\u0000" + str(l.k) + "\u0000" + str(l.s) + "\u0000" + str(l.m);
-  }
-
-  function vAddChat(lines, fromSnapshot) {
-    var added = 0;
-    (Array.isArray(lines) ? lines : []).forEach(function (l) {
-      if (!l || typeof l !== "object" || typeof l.m !== "string") return;
-      var key = vChatKey(l);
-      if (vw.chatKeys.has(key)) return;
-      vw.chatKeys.add(key);
-      vw.chat.push(l);
-      added++;
-    });
-    while (vw.chat.length > V_CHAT_KEEP) vw.chatKeys.delete(vChatKey(vw.chat.shift()));
-    if (!added) return;
-    if (!vw.chatOpen && !fromSnapshot && vChatIsDrawer()) {
-      vw.unread += added;
-      vRenderUnread();
-    }
-    vRenderChat();
-  }
-
-  function vChatIsDrawer() {
-    return window.matchMedia("(max-width: 899px)").matches;
-  }
-
-  function vRenderUnread() {
-    vel.unread.hidden = !vw.unread;
-    vel.unread.textContent = vw.unread > 99 ? "99+" : String(vw.unread);
-  }
-
-  function vRenderChat() {
-    var stick = vel.chatLines.scrollHeight - vel.chatLines.scrollTop - vel.chatLines.clientHeight < 40;
-    var hideNames = streamerOn();
-    var frag = document.createDocumentFragment();
-    if (!vw.chat.length) {
-      var empty = document.createElement("div");
-      empty.className = "note";
-      empty.textContent = "No chat yet.";
-      frag.appendChild(empty);
-    }
-    vw.chat.forEach(function (l) {
-      var row = document.createElement("div");
-      var k = str(l.k);
-      row.className = "v-line v-" + (k === "whisper" || k === "system" || k === "death" ? k : "public");
-      var time = document.createElement("span");
-      time.className = "v-time";
-      var d = new Date(num(l.t, 0));
-      time.textContent = (d.getHours() < 10 ? "0" : "") + d.getHours() + ":" + (d.getMinutes() < 10 ? "0" : "") + d.getMinutes();
-      row.appendChild(time);
-      var who = str(l.s);
-      if (who || k === "whisper") {
-        var sender = document.createElement("span");
-        sender.className = "v-sender";
-        var name = function (n) { return hideNames ? "Player" : n || "?"; };
-        sender.textContent = k === "whisper" ? name(who) + " → " + name(str(l.to)) : name(who);
-        sender.setAttribute("data-sensitive", ""); // blurred in streamer mode (and shown as "Player")
-        row.appendChild(sender);
-      }
-      var msg = document.createElement("span");
-      msg.className = "v-msg";
-      msg.textContent = str(l.m);
-      msg.setAttribute("data-sensitive", ""); // every kind of line: public, whisper, system and death
-      row.appendChild(msg);
-      frag.appendChild(row);
-    });
-    vel.chatLines.replaceChildren(frag);
-    if (stick) vel.chatLines.scrollTop = vel.chatLines.scrollHeight;
-  }
-
-  function vSetChatOpen(open) {
-    vw.chatOpen = open;
-    vel.chat.classList.toggle("open", open);
-    vel.chatBtn.setAttribute("aria-expanded", open ? "true" : "false");
-    if (open) {
-      vw.unread = 0;
-      vRenderUnread();
-      vel.chatLines.scrollTop = vel.chatLines.scrollHeight;
-    }
-  }
-
-  vel.chatBtn.addEventListener("click", function () { vSetChatOpen(!vw.chatOpen); });
-  vel.chatClose.addEventListener("click", function () { vSetChatOpen(false); });
-
-  // ---------- the stream ----------
-
-  function vParse(ev) {
-    try {
-      var d = JSON.parse(ev.data);
-      return d && typeof d === "object" ? d : null;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  function vEnts(list) {
-    return (Array.isArray(list) ? list : []).filter(function (e) {
-      return e && typeof e === "object" && typeof e.x === "number" && typeof e.z === "number";
-    });
-  }
-
-  function vSelf(s) {
-    return s && typeof s === "object" && typeof s.x === "number" && typeof s.z === "number" ? s : null;
-  }
-
-  function vClose() {
-    vw.pending = [];
-    window.clearTimeout(vw.retryTimer);
-    vw.retryTimer = 0;
-    if (vw.es) {
-      vw.es.close();
-      vw.es = null;
-    }
-  }
-
-  function vConnect(soon) {
-    vClose();
-    if (!vw.open || auth.blocked) return;
-    if (soon) {
-      vw.retryTimer = window.setTimeout(function () { vConnect(false); }, soon);
-      return;
-    }
-    var b = currentBot();
-    if (!b) {
-      vSetState("closed");
-      vShowNote("No dashboard bot yet.");
-      return;
-    }
-    if (vw.botId !== b.botId) vReset(b.botId);
-    var botId = b.botId;
-    vSetState("connecting");
-    var es = new EventSource("/api/v1/bots/" + encodeURIComponent(botId) + "/viewer/stream?vs=" + vw.vs);
-    vw.es = es;
-    var mine = function (fn) {
-      return function (ev) {
-        if (vw.es !== es) return;
-        fn(vParse(ev) || {});
-      };
-    };
-    es.addEventListener("hello", mine(function (d) {
-      vw.relative = d.relative === true; // forced streamer mode: the server rebased every coordinate
-      vw.mc = /^[0-9][0-9.]{0,31}$/.test(str(d.mc)) ? str(d.mc) : DEFAULT_MC;
-      vShowNote("");
-    }));
-    es.addEventListener("snapshot", mine(function (d) {
-      vw.tiles.clear();
-      (Array.isArray(d.tiles) ? d.tiles : []).forEach(vPutTile);
-      vCapTiles();
-      vw.session = str(d.session);
-      vw.world = d.world && typeof d.world === "object" ? d.world : null;
-      vw.self = vSelf(d.self);
-      vw.ents = vEnts(d.ents);
-      vw.hud = d.hud && typeof d.hud === "object" ? d.hud : null;
-      vAddChat(d.chat, true);
-      vRenderHud();
-      vRenderCoords();
-      vNote(d);
-      vDirty();
-    }));
-    es.addEventListener("tiles", mine(function (d) {
-      (Array.isArray(d.tiles) ? d.tiles : []).forEach(vPutTile);
-      (Array.isArray(d.drop) ? d.drop : []).forEach(function (p) {
-        if (Array.isArray(p) && p.length === 2) vw.tiles.delete(p[0] + "," + p[1]);
-      });
-      vCapTiles();
-      vNote(d);
-      vDirty();
-    }));
-    es.addEventListener("ents", mine(function (d) {
-      var s = vSelf(d.self);
-      if (s) vw.self = s;
-      vw.ents = vEnts(d.ents);
-      vRenderCoords();
-      vNote(d);
-      vDirty();
-    }));
-    es.addEventListener("hud", mine(function (d) {
-      vw.hud = d.hud && typeof d.hud === "object" ? d.hud : null;
-      vRenderHud();
-      vNote(d);
-      vDirty();
-    }));
-    es.addEventListener("chat", mine(function (d) { vAddChat(d.lines, false); }));
-    es.addEventListener("status", mine(function (d) {
-      var st = str(d.state);
-      vSetState(st);
-      vShowNote(st === "waiting" ? "Waiting for the bot's first frame. It needs the Qwerte Stash plugin with the live viewer." :
-        st === "offline" ? botName(b) + " is offline." : "");
-    }));
-    es.addEventListener("bye", mine(function (d) {
-      var reason = str(d.reason);
-      vClose();
-      if (reason === "revoked") {
-        vSetState("closed");
-        vShowNote("The viewer was closed: your login or permissions changed.");
-        permsStale();
-        return;
-      }
-      vConnect(reason === "capacity" ? 2000 : 0); // rotate: straight back
-    }));
-    es.onerror = function () {
-      if (vw.es !== es) return;
-      if (es.readyState === 2) {
-        // Refused (403, 404, 429) or the server went away: ask why, then try again later.
-        vw.es = null;
-        vSetState("closed");
-        api("/api/v1/bots/" + encodeURIComponent(botId) + "/viewer").then(function (s) {
-          if (!vw.open) return;
-          var full = s && s.yours >= s.maxPerUser ? "You already have " + s.yours + " viewers open (at most " + s.maxPerUser + "); close one."
-            : s && s.streams >= s.maxStreams ? "This bot already has " + s.streams + " viewers open (at most " + s.maxStreams + ")."
-            : s && s.total >= s.maxTotal ? "The server already has " + s.total + " viewer streams open (at most " + s.maxTotal + ")."
-            : "The connection to the server dropped.";
-          vShowNote(full + " Trying again in a few seconds.");
-          vConnect(5000);
-        }, function (err) {
-          if (!vw.open) return;
-          var st = err && err.status;
-          if (st === 403) vShowNote("Your account can't use the live viewer; ask the owner.");
-          else if (st === 404) vShowNote("This bot isn't known to the server (any more).");
-          else vShowNote("Can't reach the server. Trying again in a few seconds.");
-          if (st !== 403) vConnect(5000);
-        });
-      } else {
-        vSetState("connecting");
-      }
-    };
-  }
-
-  function vReset(botId) {
-    vw.botId = botId;
-    vw.tiles.clear();
-    vw.self = null;
-    vw.ents = [];
-    vw.hud = null;
-    vw.world = null;
-    vw.chat = [];
-    vw.chatKeys.clear();
-    vw.unread = 0;
-    vw.follow = true;
-    vw.pending = [];
-    vRenderUnread();
-    vRenderChat();
-    vRenderHud();
-    vRenderCoords();
-    vDirty();
-  }
-
-  function viewerOpen() {
-    if (!vel) return;
-    var b = currentBot();
-    vel.title.textContent = "Live" + (b ? " · " + botName(b) : "");
-    if (vw.open && vw.botId === (b && b.botId)) return;
-    vw.open = true;
-    if (!vw.vs) vw.vs = vRandomId(); // one id per page visit, kept across reconnects
-    vReadColors();
-    vLoadPalette();
-    vResize();
-    vRenderDebug();
-    vRenderChat();
-    vw.offsetRtt = Infinity;
-    vConnect(0);
-    if (b) vSyncClock(b.botId); // once per visit, not on every rotate
-  }
-
-  function viewerClose() {
-    if (!vw || !vw.open) return;
-    vw.open = false;
-    vw.vs = "";
-    window.clearTimeout(vw.hiddenTimer);
-    vClose();
-    if (vw.raf) window.cancelAnimationFrame(vw.raf);
-    vw.raf = 0;
-  }
-
-  /** The bot changed while the viewer is open: start over with the new one. */
-  function viewerBotChanged() {
-    if (!vw || !vw.open) return;
-    vw.open = false;
-    vClose();
-    viewerOpen();
-  }
-
-  document.addEventListener("visibilitychange", function () {
-    if (dash.page !== "viewer") return;
-    window.clearTimeout(vw.hiddenTimer);
-    if (document.hidden) {
-      vw.hiddenTimer = window.setTimeout(function () {
-        if (document.hidden) viewerClose();
-      }, V_HIDDEN_CLOSE_MS);
-    } else if (!vw.open) {
-      viewerOpen();
-    }
-  });
-  window.addEventListener("pagehide", function () { viewerClose(); });
-
-  // ---------- pan, pinch and zoom ----------
-
-  function vZoomAt(factor, px, py) {
-    var z = Math.max(V_ZOOM_MIN, Math.min(V_ZOOM_MAX, vw.zoom * factor));
-    if (z === vw.zoom) return;
-    if (typeof px === "number" && !vw.follow) {
-      // Keep the block under (px, py) where it is.
-      var bx = vw.cx + (px - vw.w / 2) / vw.zoom;
-      var bz = vw.cz + (py - vw.h / 2) / vw.zoom;
-      vw.cx = bx - (px - vw.w / 2) / z;
-      vw.cz = bz - (py - vw.h / 2) / z;
-    }
-    vw.zoom = z;
-    vDirty();
-  }
-
-  function vLocal(e) {
-    var r = vel.canvas.getBoundingClientRect();
-    return { x: e.clientX - r.left, y: e.clientY - r.top };
-  }
-
-  function vSetFollow(on) {
-    vw.follow = on;
-    vel.centre.setAttribute("aria-pressed", on ? "true" : "false");
-    vDirty();
-  }
-
-  vel.canvas.addEventListener("pointerdown", function (e) {
-    vel.canvas.setPointerCapture(e.pointerId);
-    vw.pointers.set(e.pointerId, vLocal(e));
-    if (vw.pointers.size === 2) {
-      var p = Array.from(vw.pointers.values());
-      vw.pinch = { d: Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) || 1, zoom: vw.zoom };
-    }
-    if (e.pointerType !== "mouse") vw.lastTouch = Date.now();
-    if (e.pointerType !== "mouse" && vw.pointers.size === 1) {
-      var now = Date.now();
-      if (now - vw.lastTap < 300) vZoomAt(2, vLocal(e).x, vLocal(e).y);
-      vw.lastTap = now;
-    }
-  });
-  vel.canvas.addEventListener("pointermove", function (e) {
-    var prev = vw.pointers.get(e.pointerId);
-    if (!prev) return;
-    var cur = vLocal(e);
-    vw.pointers.set(e.pointerId, cur);
-    if (vw.pointers.size === 1) {
-      var dx = cur.x - prev.x;
-      var dy = cur.y - prev.y;
-      if (!dx && !dy) return;
-      if (vw.follow) vSetFollow(false);
-      vw.cx -= dx / vw.zoom;
-      vw.cz -= dy / vw.zoom;
-      vDirty();
-    } else if (vw.pointers.size === 2 && vw.pinch) {
-      var p = Array.from(vw.pointers.values());
-      var d = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) || 1;
-      var mid = { x: (p[0].x + p[1].x) / 2, y: (p[0].y + p[1].y) / 2 };
-      vZoomAt(vw.pinch.zoom * d / vw.pinch.d / vw.zoom, mid.x, mid.y);
-    }
-  });
-  var vUp = function (e) {
-    vw.pointers.delete(e.pointerId);
-    if (vw.pointers.size < 2) vw.pinch = null;
-  };
-  vel.canvas.addEventListener("pointerup", vUp);
-  vel.canvas.addEventListener("pointercancel", vUp);
-  vel.canvas.addEventListener("wheel", function (e) {
-    e.preventDefault();
-    var p = vLocal(e);
-    vZoomAt(Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0015)), p.x, p.y);
-  }, { passive: false });
-  vel.canvas.addEventListener("dblclick", function (e) {
-    if (Date.now() - vw.lastTouch < 800) return; // a touch double-tap already zoomed
-    var p = vLocal(e);
-    vZoomAt(e.shiftKey ? 0.5 : 2, p.x, p.y);
-  });
-  vel.centre.addEventListener("click", function () { vSetFollow(true); });
-  vel.zoomIn.addEventListener("click", function () { vZoomAt(1.5); });
-  vel.zoomOut.addEventListener("click", function () { vZoomAt(1 / 1.5); });
-  vel.gearBtn.addEventListener("click", function () {
-    var open = vel.gearBox.hidden;
-    vel.gearBox.hidden = !open;
-    vel.gearBtn.setAttribute("aria-expanded", open ? "true" : "false");
-  });
-  vel.invBtn.addEventListener("click", function () { vSetInvOpen(vel.invBox.hidden, true); });
-  vel.debugBtn.addEventListener("click", function () {
-    vw.debug = !vw.debug;
-    try {
-      window.localStorage.setItem(V_DEBUG_KEY, vw.debug ? "1" : "0");
-    } catch (e) {
-      // not remembered
-    }
-    vRenderDebug();
-  });
-  // A theme change: read the canvas colours again.
-  new MutationObserver(function () {
-    vw.colors = null;
-    vDirty();
-  }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-
-  /** Streamer mode was toggled: names and labels on the canvas and in chat. */
-  function viewerStreamer() {
-    if (!vw || !vw.open) return;
-    vRenderChat();
-    vDirty();
-  }
-
-  /** The Live nav button: for users with the viewer permission. */
-  function updateViewerNav() {
-    if (!vel) return;
-    var show = pageAllowed("viewer");
-    vel.nav.hidden = !show;
-    if (!show && dash.page === "viewer") showPage("bots");
-  }
-
-  // The page may have been chosen before this code ran (the saved page on startup).
-  updateViewerNav();
-  if (dash.page === "viewer") {
-    vel.page.hidden = false;
-    viewerOpen();
-  }
 
   // ---------- streamer mode toggle ----------
 
@@ -6339,7 +5253,6 @@
     if (!relabel) return;
     updateSelect();
     renderBotSelect();
-    viewerStreamer();
   }
 
   el.streamerBtn.addEventListener("click", function () {
@@ -6464,7 +5377,7 @@
     account: $("account-btn"),
     accountMenu: $("account-menu")
   };
-  var MORE_PAGES = ["viewer", "settings", "proxy", "console"];
+  var MORE_PAGES = ["settings"];
 
   /** Opens a page exactly as its desktop nav button does (that button stays the single source of truth). */
   function openNavPage(page) {
@@ -6615,10 +5528,7 @@
     var botPicker = document.querySelector(".picker-bot");
     if (botPicker) botPicker.hidden = !activity;
     el.botsOpen.hidden = !activity;
-    el.navConsole.hidden = !pageAllowed("console");
     renderStreamer(false); // forced streamer mode: on and locked
-    updateViewerNav();
-    updateProxyNav();
     updateActivityNav(false);
     el.linkOpen.hidden = !can("link");
     $("account-link").hidden = !can("link");
@@ -6627,7 +5537,6 @@
     el.orderPicker.hidden = !order;
     el.cartDrop.hidden = !order;
     document.documentElement.classList.toggle("no-order", !order);
-    renderConsoleAllow();
     el.accountSection.hidden = me.owner;
     el.accountWho.textContent = name;
     el.usersSection.hidden = !me.owner;
@@ -6640,28 +5549,7 @@
   }
 
   /** Console "list" mode: the allowed command prefixes, under the input. */
-  function renderConsoleAllow() {
-    var listMode = permMode("console") === "list";
-    el.consoleAllow.hidden = !listMode;
-    if (!listMode) {
-      el.consoleAllow.replaceChildren();
-      return;
-    }
-    var allow = Array.isArray(me.perms.consoleAllow) ? me.perms.consoleAllow.filter(function (c) { return typeof c === "string" && c; }) : [];
-    var frag = document.createDocumentFragment();
-    if (!allow.length) {
-      frag.appendChild(document.createTextNode("Your account can't run any console command yet; ask the owner."));
-    } else {
-      frag.appendChild(document.createTextNode("Your account can run only these commands (and their arguments): "));
-      allow.forEach(function (c, i) {
-        if (i) frag.appendChild(document.createTextNode(", "));
-        var code = document.createElement("code");
-        code.textContent = c;
-        frag.appendChild(code);
-      });
-    }
-    el.consoleAllow.replaceChildren(frag);
-  }
+
 
   // ---------- settings > users (owner only) ----------
   // Sub-user management. Every write needs Admin unlocked: withSudo asks for the password on 403 "confirm password"
@@ -6677,15 +5565,11 @@
     ["settings", "Change plugin settings", "Save the Qwerte Stash plugin settings."],
     ["rescan", "Rescan stashes", "Ask the bot to re-read every container of a stash."],
     ["link", "Link addon", "The Link addon panel (linked bots in scope) and releasing a stash. The API key itself stays owner-only."],
-    ["viewer", "Live viewer", "Watch a bot live: the map around it, its position, nearby players, mobs and items, its HUD and its chat. Also turns on Bots and activity."],
-    ["streamer", "Force streamer mode", "A restriction: the server never sends this user coordinates, player names, server addresses, chat or the bots' free text, and the live viewer shows relative coordinates. Settings, proxy settings and the console are refused. The user can't turn it off."]
+    ["streamer", "Force streamer mode", "A restriction: the server never sends this user coordinates, player names, server addresses, chat or the bots' free text. Bot settings are refused. The user can't turn it off."]
   ];
-  var PROXY_MODES = [["none", "No access"], ["read", "Read only"], ["change", "Change (needs Admin unlocked)"]];
-  var CONSOLE_MODES = [["none", "No access"], ["list", "Only listed commands"], ["full", "Every command"]];
   var PRESET_ORDER = ["viewer", "orderer", "operator"];
   var PRESET_NAMES = { viewer: "Viewer", orderer: "Orderer", operator: "Operator" };
-  var IMPLIED_HINT = "Placing or managing orders also turns on View stashes. Changing plugin settings, the live viewer, or any proxy or console " +
-    "access, also turns on Bots and activity. Proxy changes and console commands still need Admin unlocked (the user's own password).";
+  var IMPLIED_HINT = "Placing or managing orders also turns on View stashes. Changing agent settings also turns on Bots and activity.";
   var SUDO_USERS_TEXT = "Managing users needs Admin unlocked. Type your password again; it is not asked for again for 15 minutes.";
   var users = { data: null, error: "", loading: false, form: null, busy: false, seq: 0 };
 
@@ -6694,9 +5578,6 @@
     p = p && typeof p === "object" ? p : {};
     var out = {};
     PERM_SWITCHES.forEach(function (s) { out[s[0]] = p[s[0]] === true; });
-    out.proxy = p.proxy === "read" || p.proxy === "change" ? p.proxy : "none";
-    out.console = p.console === "list" || p.console === "full" ? p.console : "none";
-    out.consoleAllow = Array.isArray(p.consoleAllow) ? p.consoleAllow.filter(function (c) { return typeof c === "string"; }) : [];
     out.stashes = Array.isArray(p.stashes)
       ? p.stashes.filter(function (s) { return s && typeof s === "object"; }).map(function (s) { return { server: str(s.server), stash: str(s.stash) }; })
       : null;
@@ -6707,7 +5588,7 @@
   /** The server's implied-permission rule, applied the same way here for the labels and the switches. */
   function withImplied(p) {
     if (p.order || p.ordersAll) p.view = true;
-    if (p.settings || p.viewer || p.proxy !== "none" || p.console !== "none") p.activity = true;
+    if (p.settings) p.activity = true;
     return p;
   }
 
@@ -6716,7 +5597,6 @@
     var n = withImplied(normPerms(p));
     delete n.stashes;
     delete n.bots;
-    delete n.consoleAllow;
     return n;
   }
 
@@ -6952,14 +5832,13 @@
     var sw = {};
     var refresh = function () {
       var forceView = sw.order.get() || sw.ordersAll.get();
-      var forceActivity = sw.settings.get() || sw.viewer.get() || proxySel.value !== "none" || consoleSel.value !== "none";
+      var forceActivity = sw.settings.get();
       [["view", forceView], ["activity", forceActivity]].forEach(function (f) {
         var s = sw[f[0]];
         if (f[1]) s.set(true);
         s.node.disabled = f[1];
         s.status.textContent = f[1] ? "on (implied)" : "";
       });
-      allowRow.row.hidden = consoleSel.value !== "list";
     };
     PERM_SWITCHES.forEach(function (s) {
       var r = permRow(s[1], s[2]);
@@ -6969,26 +5848,6 @@
       sw[s[0]] = c;
       box.appendChild(r.row);
     });
-    var proxyRow = permRow("Proxy settings", "AquariusProxy and other plugins' settings.");
-    var proxySel = selectField(PROXY_MODES, p.proxy, "Proxy settings");
-    proxySel.addEventListener("change", function () { refresh(); });
-    proxyRow.control.appendChild(proxySel);
-    box.appendChild(proxyRow.row);
-    var consoleRow = permRow("Console", "The console output includes other users' commands.");
-    var consoleSel = selectField(CONSOLE_MODES, p.console, "Console");
-    consoleSel.addEventListener("change", function () { refresh(); });
-    consoleRow.control.appendChild(consoleSel);
-    box.appendChild(consoleRow.row);
-    var allowRow = permRow("Allowed commands", "One command prefix per line, e.g. stash orders. Arguments after it are allowed; ; & | and ` are refused.");
-    var allow = document.createElement("textarea");
-    allow.className = "mc-input allow-input";
-    allow.rows = 4;
-    allow.spellcheck = false;
-    allow.setAttribute("aria-label", "Allowed commands, one per line");
-    allow.value = p.consoleAllow.join("\n");
-    allowRow.control.appendChild(allow);
-    box.appendChild(allowRow.row);
-
     var stashItems = state.stashes.map(function (s) {
       return { key: stashKey(s), value: { server: str(s.server), stash: str(s.stash) }, label: stashScopeLabel(s) };
     });
@@ -7021,15 +5880,6 @@
       get: function () {
         var out = {};
         PERM_SWITCHES.forEach(function (s) { out[s[0]] = sw[s[0]].get(); });
-        out.proxy = proxySel.value;
-        out.console = consoleSel.value;
-        var seen = {};
-        out.consoleAllow = allow.value.split("\n").map(function (l) { return l.trim().replace(/\s+/g, " "); }).filter(function (l) {
-          var k = l.toLowerCase();
-          if (!l || seen[k]) return false;
-          seen[k] = true;
-          return true;
-        });
         out.stashes = stashPick.get();
         out.bots = botPick.get();
         return withImplied(out);
@@ -7127,8 +5977,6 @@
     var describe = function (perms) {
       var p = withImplied(normPerms(perms));
       var on = PERM_SWITCHES.filter(function (s) { return p[s[0]]; }).map(function (s) { return s[1]; });
-      if (p.proxy !== "none") on.push("Proxy settings: " + p.proxy);
-      if (p.console !== "none") on.push("Console: " + p.console);
       return on.length ? on.join(", ") + "." : "Nothing.";
     };
     var sync = function () {
@@ -7627,7 +6475,7 @@
       groups.get(p).push(m);
     });
     el.actModCount.textContent = on + " of " + mods.length + " on";
-    var proxyOk = hasCap(currentBot(), "proxy");
+    var proxyOk = false;
     var frag = document.createDocumentFragment();
     groups.forEach(function (list, plugin) {
       frag.appendChild(line("settings-group-title", plugin === "aquarius" ? "AquariusProxy" : plugin));
@@ -7663,7 +6511,7 @@
         }
         b.appendChild(sw);
         b.title = (m.enabled ? "On" : "Off") + (proxyOk ? " · click for its settings" : "");
-        if (proxyOk) b.addEventListener("click", function () { jumpToModule(str(m.name)); });
+
         grid.appendChild(b);
       });
       frag.appendChild(grid);
@@ -7672,11 +6520,7 @@
     el.actModules.replaceChildren(frag);
   }
 
-  function jumpToModule(name) {
-    proxyScope = "proxy";
-    proxyForm.jump(name);
-    showPage("proxy");
-  }
+
 
   function renderEvents() {
     var d = act.data;
@@ -7809,214 +6653,56 @@
     });
   }
 
-  // ---------- dashboard: Console page ----------
-
-  var OUTPUT_COLORS = { error: "#aa0000", success: "#3a8a2a", primary: "#3f6bd8", queue: "#d6a400" };
-
-  /** Text with the safe subset of Discord markdown: **bold** and `code`. Everything else stays text. */
-  function rich(text) {
-    var frag = document.createDocumentFragment();
-    String(text).split(/(\*\*[^*\n]+?\*\*|`[^`\n]+`)/).forEach(function (part) {
-      if (!part) return;
-      if (part.length > 4 && part.slice(0, 2) === "**" && part.slice(-2) === "**") {
-        var b = document.createElement("b");
-        b.textContent = part.slice(2, -2);
-        frag.appendChild(b);
-      } else if (part.length > 2 && part.charAt(0) === "`" && part.charAt(part.length - 1) === "`") {
-        var c = document.createElement("code");
-        c.textContent = part.slice(1, -1);
-        frag.appendChild(c);
-      } else {
-        frag.appendChild(document.createTextNode(part));
-      }
-    });
-    return frag;
+  function hasCap(b, cap) {
+    return !!b && Array.isArray(b.caps) && b.caps.indexOf(cap) >= 0;
   }
 
-  function renderOutput(o) {
-    var box = hide(document.createElement("div"));
-    box.className = "out";
-    var color = str(o.color);
-    var css = OUTPUT_COLORS[color] || (/^#[0-9a-fA-F]{6}$/.test(color) ? color : "");
-    if (css) box.style.borderLeftColor = css; // CSSOM, allowed by the CSP
-    if (color === "error") box.classList.add("out-error");
-    if (str(o.title)) {
-      var t = document.createElement("div");
-      t.className = "out-title";
-      t.appendChild(rich(str(o.title)));
-      box.appendChild(t);
-    }
-    if (str(o.description)) {
-      var d = document.createElement("div");
-      d.className = "out-desc";
-      d.appendChild(rich(str(o.description)));
-      box.appendChild(d);
-    }
-    (Array.isArray(o.fields) ? o.fields : []).forEach(function (fd) {
-      if (!fd || typeof fd !== "object") return;
-      var row = document.createElement("div");
-      row.className = "out-field";
-      var n = document.createElement("div");
-      n.className = "out-field-name";
-      n.appendChild(rich(str(fd.name)));
-      var v = document.createElement("div");
-      v.className = "out-field-value";
-      v.appendChild(rich(str(fd.value)));
-      row.appendChild(n);
-      row.appendChild(v);
-      box.appendChild(row);
-    });
-    var lines = Array.isArray(o.lines) ? o.lines : [];
-    if (lines.length) {
-      var pre = document.createElement("div");
-      pre.className = "out-lines";
-      pre.textContent = lines.map(function (l) { return str(l); }).join("\n");
-      box.appendChild(pre);
-    }
+  function capHint(cap) {
+    var box = document.createElement("div");
+    box.className = "cap-hint";
+    box.appendChild(line("section-title", cap === "console" ? "Console disabled on the proxy" : "Proxy settings disabled on the proxy"));
+    var p = document.createElement("div");
+    p.className = "note";
+    p.appendChild(document.createTextNode("Disabled on the proxy. Run "));
+    var code = document.createElement("code");
+    code.textContent = "stash manager dashboard " + (cap === "console" ? "console" : "proxy") + " on";
+    p.appendChild(code);
+    p.appendChild(document.createTextNode(" in the proxy's terminal to allow it."));
+    box.appendChild(p);
     return box;
   }
 
-  var CONSOLE_STATUS = { queued: "waiting", sent: "running", done: "done", error: "failed", expired: "not picked up", unknown: "no answer" };
-
-  function renderEntry(e) {
-    var item = document.createElement("div");
-    item.className = "entry st-" + str(e.status);
-    var head = document.createElement("div");
-    head.className = "entry-head";
-    var cmd = document.createElement("span");
-    cmd.className = "entry-cmd" + (e.hidden ? " hidden-cmd" : "");
-    cmd.textContent = (e.hidden ? "" : "> ") + str(e.command);
-    hide(cmd);
-    head.appendChild(cmd);
-    var meta = document.createElement("span");
-    meta.className = "note";
-    meta.textContent = new Date(num(e.at, 0)).toLocaleTimeString();
-    head.appendChild(meta);
-    var badge = document.createElement("span");
-    badge.className = "badge st-" + (e.status === "done" ? "delivered" : e.status === "error" || e.status === "expired" || e.status === "unknown" ? "failed" : "in_progress");
-    badge.textContent = CONSOLE_STATUS[e.status] || str(e.status);
-    head.appendChild(badge);
-    item.appendChild(head);
-    var outs = Array.isArray(e.outputs) ? e.outputs : [];
-    outs.forEach(function (o) { if (o && typeof o === "object") item.appendChild(renderOutput(o)); });
-    if (str(e.error) && !outs.length) item.appendChild(hide(line("out out-error out-lines", str(e.error))));
-    return item;
+  function unlockBox(text, done) {
+    var box = document.createElement("div");
+    box.className = "cap-hint";
+    box.appendChild(line("note", text));
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "mc-button";
+    b.textContent = "Confirm password";
+    b.addEventListener("click", function () {
+      askPassword().then(done, function () {});
+    });
+    box.appendChild(b);
+    return box;
   }
 
-  function loadConsole() {
-    window.clearTimeout(dash.cTimer);
-    if (dash.page !== "console") return;
-    var b = currentBot();
-    if (dash.cBot !== dash.botId) {
-      dash.cBot = dash.botId;
-      dash.cRev = 0;
-      dash.entries.clear();
-      el.consoleLog.replaceChildren();
-      dash.history = [];
-      dash.histPos = -1;
-    }
-    var consoleOk = b && Array.isArray(b.caps) && b.caps.indexOf("console") >= 0;
-    el.consoleOffline.hidden = !!(b && b.online && consoleOk) || !!(b && !consoleOk);
-    el.consoleOffline.textContent = !b ? "No dashboard bot yet." : offlineText(b) + "Commands can't be sent until it is back.";
-    if (b && !consoleOk) {
-      el.consoleLog.replaceChildren(capHint("console"));
-      dash.cBot = null;
-      el.consoleCmd.disabled = true;
-      el.consoleSend.disabled = true;
-      dash.cTimer = window.setTimeout(loadConsole, 5000);
-      return;
-    }
-    el.consoleCmd.disabled = !(b && b.online && consoleOk);
-    el.consoleSend.disabled = el.consoleCmd.disabled;
-    if (!b) {
-      dash.cTimer = window.setTimeout(loadConsole, 5000);
-      return;
-    }
-    var botId = b.botId;
-    api("/api/v1/bots/" + encodeURIComponent(botId) + "/console?after=" + dash.cRev).catch(function (err) {
-      if (err && err.status === 403 && err.body && err.body.error === "confirm password") {
-        dash.cLocked = true;
-        dash.entries.clear();
-        dash.cRev = 0;
-        el.consoleLog.replaceChildren(unlockBox("The console is only shown after you confirm the website password.", function () {
-          el.consoleLog.replaceChildren();
-          dash.cLocked = false;
-          loadConsole();
-        }));
+  function updateActivityNav(firstLoad) {
+    var show = hasCap(currentBot(), "activity") && can("activity");
+    el.navActivity.hidden = !show;
+    if (!show && dash.page === "activity") showPage("bots");
+    if (firstLoad) {
+      var saved = null;
+      try {
+        saved = window.localStorage.getItem(PAGE_KEY);
+      } catch (e) {
+        saved = null;
       }
-      throw err;
-    }).then(function (r) {
-      dash.cLocked = false;
-      if (botId !== dash.botId) return;
-      var atBottom = el.consoleLog.scrollHeight - el.consoleLog.scrollTop - el.consoleLog.clientHeight < 40;
-      (r && Array.isArray(r.entries) ? r.entries : []).forEach(function (e) {
-        if (!e || typeof e !== "object") return;
-        var old = dash.entries.get(e.seq);
-        var node = renderEntry(e);
-        if (old) old.el.replaceWith(node);
-        else el.consoleLog.appendChild(node);
-        dash.entries.set(e.seq, { data: e, el: node });
-      });
-      // Entries that fell out of the server's 200-entry ring go here too.
-      var first = r ? num(r.first, 0) : 0;
-      dash.entries.forEach(function (v, seq) {
-        if (seq < first) {
-          v.el.remove();
-          dash.entries.delete(seq);
-        }
-      });
-      if (r && typeof r.rev === "number") dash.cRev = r.rev;
-      if (atBottom) el.consoleLog.scrollTop = el.consoleLog.scrollHeight;
-      el.consoleState.textContent = r && r.online ? "" : "offline";
-    }, function () {}).then(function () {
-      var pending = false;
-      dash.entries.forEach(function (v) { if (v.data.status === "queued" || v.data.status === "sent") pending = true; });
-      if (dash.page === "console" && !dash.cLocked) dash.cTimer = window.setTimeout(loadConsole, pending ? 1000 : 5000);
-    });
+      if (dash.page !== "stash") return;
+      if (saved && saved !== "stash" && pageAllowed(saved) && (saved !== "activity" || show)) showPage(saved);
+      else if (!saved && show) showPage("activity");
+    }
   }
-
-  el.consoleForm.addEventListener("submit", function (e) {
-    e.preventDefault();
-    var b = currentBot();
-    var command = el.consoleCmd.value.trim();
-    if (!b || !command) return;
-    var word = command.split(/\s+/)[0].toLowerCase();
-    if (CONSOLE_CONFIRM.indexOf(word) >= 0 &&
-      !window.confirm("Run '" + command.slice(0, 80) + "' on " + botName(b) + "?\n\nThis command can disconnect the bot, restart the proxy or change how it logs in.")) {
-      return;
-    }
-    el.consoleSend.disabled = true;
-    withSudo(function () {
-      return api("/api/v1/bots/" + encodeURIComponent(b.botId) + "/console", { method: "POST", body: { command: command } });
-    }).then(function () {
-      if (dash.history[dash.history.length - 1] !== command) dash.history.push(command);
-      if (dash.history.length > 100) dash.history.shift();
-      dash.histPos = -1;
-      el.consoleCmd.value = "";
-      el.consoleLog.scrollTop = el.consoleLog.scrollHeight;
-      loadConsole();
-    }, function (err) {
-      var body = err && err.body;
-      if (body && body.error === "cancelled") return;
-      toast(body && body.error === "bot offline" ? "The bot is offline." : "Not sent: " + ((body && body.error) || "HTTP " + (err && err.status)));
-    }).then(function () {
-      el.consoleSend.disabled = false;
-      el.consoleCmd.focus();
-    });
-  });
-
-  el.consoleCmd.addEventListener("keydown", function (e) {
-    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
-    if (!dash.history.length) return;
-    e.preventDefault();
-    if (e.key === "ArrowUp") {
-      dash.histPos = dash.histPos < 0 ? dash.history.length - 1 : Math.max(0, dash.histPos - 1);
-    } else {
-      dash.histPos = dash.histPos < 0 ? -1 : dash.histPos + 1;
-      if (dash.histPos >= dash.history.length) dash.histPos = -1;
-    }
-    el.consoleCmd.value = dash.histPos < 0 ? "" : dash.history[dash.histPos];
-  });
 
   // ---------- controls ----------
 

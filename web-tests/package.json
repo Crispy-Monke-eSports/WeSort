@@ -1,0 +1,6 @@
+{
+  "name": "wesort-web-regression",
+  "private": true,
+  "scripts": { "test": "node smoke.cjs" },
+  "devDependencies": { "eslint": "9.39.5", "jsdom": "26.1.0" }
+}

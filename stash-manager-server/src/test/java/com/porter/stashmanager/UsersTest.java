@@ -283,8 +283,8 @@ class UsersTest {
         assertEquals(403, post(v, "/api/v1/link/regenerate", null).status);
         assertEquals(403, get(v, "/api/v1/bots").status);
         assertEquals(403, get(v, "/api/v1/bots/bot1/activity").status);
-        assertEquals(403, get(v, "/api/v1/bots/bot1/console").status);
-        assertEquals(403, post(v, "/api/v1/bots/bot1/console", "{\"command\":\"help\"}").status);
+        assertEquals(404, get(v, "/api/v1/bots/bot1/console").status);
+        assertEquals(404, post(v, "/api/v1/bots/bot1/console", "{\"command\":\"help\"}").status);
         assertEquals(403, post(v, "/api/v1/bots/bot1/settings", "{\"scope\":\"plugin\",\"changes\":[]}").status);
         assertEquals(403, get(v, "/api/v1/users").status);
         assertEquals(403, post(v, "/api/v1/users", "{\"name\":\"x\",\"password\":\"" + TEMP_PW + "\"}").status);
@@ -341,8 +341,7 @@ class UsersTest {
         assertEquals(403, get(d, "/api/v1/users").status);
         // Console is "none" for an operator: refused before the password check.
         Res console = get(d, "/api/v1/bots/bot1/console");
-        assertEquals(403, console.status);
-        assertEquals("console", console.obj().get("permission").getAsString());
+        assertEquals(404, console.status);
     }
 
     @Test
@@ -367,51 +366,9 @@ class UsersTest {
         assertEquals(200, post(e, "/api/v1/rescan", "{\"server\":\"s\",\"stash\":\"a\"}").status);
     }
 
-    @Test
-    void consoleListModeAndBotScope() {
-        Users.Perms p = Users.Perms.parse(json("{\"console\":\"list\",\"consoleAllow\":[\"stash  Orders\",\"status\"],\"bots\":[\"zenith2\"]}"));
-        assertTrue(p.activity(), "console implies the Bots view");
-        assertEquals(List.of("stash orders", "status"), p.consoleAllow());
-        assertTrue(p.consoleAllows("stash orders"));
-        assertTrue(p.consoleAllows("  STASH   orders on "));
-        assertTrue(p.consoleAllows("status"));
-        assertFalse(p.consoleAllows("stash ordersx"));
-        assertFalse(p.consoleAllows("stash"));
-        assertFalse(p.consoleAllows("statuses"));
-        assertFalse(p.consoleAllows("stash orders; whitelist add x"));
-        assertFalse(p.consoleAllows("status | x"));
-        assertFalse(p.consoleAllows("status && x"));
-        assertFalse(p.consoleAllows("status `x`"));
-        assertTrue(Users.Perms.parse(json("{\"console\":\"full\"}")).consoleAllows("anything; at all"));
-        assertFalse(Users.Perms.parse(json("{\"console\":\"none\"}")).consoleAllows("status"));
-        assertTrue(p.seesBot("zenith2"));
-        assertFalse(p.seesBot("other"));
-        assertTrue(Users.Perms.ALL.seesBot("other"));
 
-        assertThrows(IllegalArgumentException.class, () -> Users.Perms.parse(json("{\"console\":\"some\"}")));
-        assertThrows(IllegalArgumentException.class, () -> Users.Perms.parse(json("{\"view\":\"yes\"}")));
-        assertThrows(IllegalArgumentException.class, () -> Users.Perms.parse(json("{\"consoleAllow\":[\"a;b\"]}")));
-        assertThrows(IllegalArgumentException.class, () -> Users.Perms.parse(json("{\"bots\":[\"../x\"]}")));
-        assertThrows(IllegalArgumentException.class, () -> Users.Perms.parse(json("{\"stashes\":[{\"server\":\"s\"}]}")));
-        Users.Perms implied = Users.Perms.parse(json("{\"order\":true,\"settings\":true}"));
-        assertTrue(implied.view());
-        assertTrue(implied.activity());
-    }
 
-    @Test
-    void consoleNeedsTheRightModeThenAdminUnlockedThenAnAllowedCommand() throws Exception {
-        String owner = owner();
-        create(owner, "frank", "{\"console\":\"list\",\"consoleAllow\":[\"stash orders\"]}", false);
-        String f = login("frank", TEMP_PW); // just logged in: Admin unlocked
-        // No such bot: 404 (a scoped or unscoped user learns nothing more).
-        assertEquals(404, post(f, "/api/v1/bots/nobot/console", "{\"command\":\"stash orders\"}").status);
-        assertEquals(404, get(f, "/api/v1/bots/nobot/console").status);
-        // Settings: plugin changes need "settings"; reading proxy settings needs proxy read.
-        create(owner, "gina", "{\"activity\":true,\"bots\":[\"zenith2\"]}", false);
-        String g = login("gina", TEMP_PW);
-        assertEquals(404, get(g, "/api/v1/bots/other/activity").status, "a bot outside the scope is 'no such bot'");
-        assertEquals(0, get(g, "/api/v1/bots").body.getAsJsonArray().size());
-    }
+
 
     @Test
     void disablingResettingAndDeletingEndSessionsAtOnce() throws Exception {
@@ -500,7 +457,7 @@ class UsersTest {
         reloaded.load();
         Users.Principal p = reloaded.principal(id);
         assertEquals("jill", p.name());
-        assertTrue(p.perms().consoleAllows("status"));
+        assertFalse(p.perms().toJson().has("console"));
 
         JsonArray entries = get(owner, "/api/v1/audit?limit=50").obj().getAsJsonArray("entries");
         String all = entries.toString();
@@ -560,16 +517,7 @@ class UsersTest {
         assertEquals(404, post(o, "/api/v1/stashes/release", "{\"server\":\"s\",\"stash\":\"b\"}").status);
     }
 
-    @Test
-    void consoleListModeRefusesLineBreaksAndSubstitution() {
-        Users.Perms p = Users.Perms.parse(json("{\"console\":\"list\",\"consoleAllow\":[\"say\"]}"));
-        assertTrue(p.consoleAllows("say hi"));
-        assertFalse(p.consoleAllows("say a\n;x"));
-        assertFalse(p.consoleAllows("say a\nstop"));
-        assertFalse(p.consoleAllows("say $(stop)"));
-        assertFalse(p.consoleAllows("sayx"));
-        assertEquals("User[u-000000000000 x]", new Users.User("u-000000000000", "x", "pbkdf2-sha256$1$a$b", p, false, false, 0, 0, 0).toString());
-    }
+
 
     @Test
     void aSessionMadeWithAnOldPasswordEndsEvenIfItWasCreatedAfterTheChange() throws Exception {
@@ -602,22 +550,7 @@ class UsersTest {
         assertNotNull(login("KAI", TEMP_PW));
     }
 
-    @Test
-    void aListModeUserSeesOnlyTheirOwnConsoleEntries() {
-        BotHub hub = new BotHub();
-        hub.hello("b1", "P", new JsonObject(), new JsonObject(), List.of("console"));
-        BotHub.Bot b = hub.bot("b1");
-        hub.queueCommand(b, "status", "owner");
-        hub.queueCommand(b, "stash orders", "u-000000000001");
-        assertEquals(2, hub.console(b, 0, null).getAsJsonArray("entries").size());
-        JsonArray mine = hub.console(b, 0, "u-000000000001").getAsJsonArray("entries");
-        assertEquals(1, mine.size());
-        assertEquals("stash orders", mine.get(0).getAsJsonObject().get("command").getAsString());
-        Users.Perms p = Users.Perms.parse(json("{\"console\":\"list\",\"consoleAllow\":[\"stash orders\"]}"));
-        assertFalse(p.consoleAllows("stash orders \u2028stop"), "non-ASCII is refused in list mode");
-        assertFalse(p.consoleAllows("stash orders > file"));
-        assertTrue(p.consoleAllows("stash orders on"));
-    }
+
 
     @Test
     void auditHidesLoginStyleCommands() {

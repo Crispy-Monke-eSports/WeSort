@@ -37,7 +37,7 @@ class AuthStateTest {
         assertTrue(s.owner());
         assertTrue(s.can("rescan"));
         assertTrue(s.can("order"));
-        assertTrue(s.can("viewer"));
+        assertFalse(s.can("viewer"));
         assertFalse(s.can("streamer"));
         assertFalse(s.forcedStreamer());
         assertEquals("change", s.permMode("proxy"));

@@ -20,7 +20,7 @@ import java.util.regex.Pattern;
 final class BotRoutes {
     static final Pattern BOT_ID = Pattern.compile("^[A-Za-z0-9_-]{1,64}$");
     /** plugin (our own settings), proxy (the AquariusProxy config) and plugin:<id> (another plugin's config). */
-    static final Pattern SCOPE = Pattern.compile("^(plugin|proxy|plugin:[A-Za-z0-9_.-]{1,56})$");
+    static final Pattern SCOPE = Pattern.compile("^plugin$");
     /** Setting paths that are treated as secrets whatever the bot says (DASHBOARD-DESIGN.md, "Secrets are never sent"). */
     static final Pattern SECRET_PATH = Pattern.compile(
         "(?i)token|passw|pass|pwd|secret|api_?key|key|auth|bearer|jwt|session|cookie|credential|cred|private|licen[sc]e|dsn|salt|signature|webhook|topic");
@@ -102,7 +102,7 @@ final class BotRoutes {
                     Http.error(ex, 400, "caps must be an array of strings");
                     return;
                 }
-                caps.add(c.getAsString());
+                if (List.of("settings", "activity").contains(c.getAsString())) caps.add(c.getAsString());
             }
         }
         List<String> scopes = new ArrayList<>();
@@ -113,7 +113,7 @@ final class BotRoutes {
             }
             for (JsonElement sc : o.getAsJsonArray("scopes")) {
                 if (!sc.isJsonPrimitive() || !sc.getAsJsonPrimitive().isString() || !SCOPE.matcher(sc.getAsString()).matches()) {
-                    Http.error(ex, 400, "scopes must be plugin, proxy or plugin:<id>");
+                    Http.error(ex, 400, "scopes must be plugin");
                     return;
                 }
                 if (!scopes.contains(sc.getAsString())) scopes.add(sc.getAsString());
@@ -152,7 +152,7 @@ final class BotRoutes {
         String schemaHash = AddonRoutes.string(o, "schemaHash");
         String valuesHash = AddonRoutes.string(o, "valuesHash");
         if (scope == null || !SCOPE.matcher(scope).matches()) {
-            Http.error(ex, 400, "scope must be plugin, proxy or plugin:<id>");
+            Http.error(ex, 400, "scope must be plugin");
             return;
         }
         if (schemaHash == null || schemaHash.isEmpty() || schemaHash.length() > 128 || valuesHash == null || valuesHash.isEmpty() || valuesHash.length() > 128) {

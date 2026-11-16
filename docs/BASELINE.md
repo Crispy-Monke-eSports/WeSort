@@ -1,3 +1,5 @@
+> **HISTORISKT UPSTREAMUNDERLAG:** Det här dokumentet beskriver den ursprungliga Qwerte-/WeSort-baslinjen före portning. **Det är inte installations-, bygg- eller supportanvisningar.** WeSort stöder nu **endast Minecraft 26.3 (Java 25 för klienten)**. Gamla 1.21.4/1.21.11-byggkommandon här är enbart reproducerbar proveniens.
+
 # W-002: baslinje
 
 Källdatum: 2026-11-16. Orörd revision:

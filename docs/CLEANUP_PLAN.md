@@ -1,3 +1,5 @@
+> **Historisk kartläggning:** Den ursprungliga fler-versionsbaslinjen är avvecklad. WeSort stöder endast Minecraft 26.3; 1.21.x-omnämnanden nedan dokumenterar tidigare migreringsbeslut och inte aktiva bygg-/supporttargets.
+
 # W-004: beslutad keep/remove-matris
 
 Analys av den orörda basen `be4635bc8b4e71add4fc411e2cdd7258c45eac90`,

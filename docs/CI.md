@@ -1,35 +1,38 @@
-# W-003: baslinje-CI
+# CI – enbart Minecraft 26.3 (W-003)
 
-`.github/workflows/build.yml` bygger/testar båda klienttargets och det separata
-Manager-projektet på Linux med `.java-version` och den checksummalåsta wrappern.
-Wrappern är nu Gradle 9.6.0. 26.3-klienten har ett separat workflow med
-Temurin 25.0.5+8 och verklig klient-/Stash Window-start under Xvfb/Mesa;
-Java 21-baslinjen används fortsatt för båda 1.21-targets och Manager.
-JUnit XML/HTML, explicit test-/skiplista, jar, licens och versionsmetadata laddas
-upp även när ett test misslyckas. Artefaktnamnet innehåller target och commit-SHA.
-Saknade JUnit-rapporter ger fel, inte ett missvisande resultat med noll tester.
+**Aktuell supportpolicy:** Endast Minecraft **26.3** stöds och testas som
+klienttarget. 1.21.4/1.21.11 är historiska upstream-baslinjer, inte CI-mål.
 
-PR-jobb har endast `contents: read`; checkout sparar inga credentials. Ingen
-package-token, produktionskonfiguration eller datafil ingår. Lägg aldrig
-API-nycklar, sessions, användare eller annan privat runtime-data i källkod,
-byggevidence eller artefakter.
+`.github/workflows/build.yml` bygger exakt en Fabric/Meteor-klient med
+**Temurin 25.0.5+8**, Gradle 9.6.0 och versionslåsta 26.3-dependencies.
+Samma workflow bygger separat Manager med **Java 21**, kör webb-/Node 22-
+tester, installation/isolation och lokal Docker smoke. Enhetsresultat,
+JAR, versionsidentitet, licens och testartefakter publiceras även vid fel.
 
-W-055 lägger till Docker build/smoke efter Manager-tester. W-056 får ett separat
-releasejobb med `packages: write` endast för betrodda releasehändelser, efter
-alla tester. Dockerfile/GHCR ingår inte i W-003. Utöka klientmatrisen först efter
-W-013/W-014; de ursprungliga targets finns kvar under portningen.
+`.github/workflows/mc26-client.yml` och separata 26.3-världs-, inventory-,
+navigerings-, assets-, stock- och sorting-workflows testar verklig 26.3-
+klient under Xvfb/Mesa och där det är relevant en vanilla-server och
+Manager i Docker. En framgångsrik JUnit-build är **inte** fysisk E2E.
 
-Lokal verifiering: samma tre byggkommandon och rapportverktyg som i BASELINE.md
-har körts. Hosted workflow körs för main och kan även startas manuellt. Lokal Gradle
-är inte bevis för en grön hosted workflow-run. W-011 lägger till ett riktigt
-Manager-process-test för ny installation, order/claim, omstart och isolerad
-backup. Webbens DOM-/referensregression körs i ett separat Node 22-jobb. Minecraft/Docker är ej körda.
+`.github/workflows/manager-image.yml` anropar baslinjeworkflowet som
+releasegrind och får endast publicera GHCR-image från betrodda main-/tagg-
+händelser. PR-jobb har `contents:read`, inga skrivtokens för paket.
 
-## Steg 3: fysiska observationer
+## Lokal verifiering
 
-`mc26-stock.yml` bygger den aktuella Manager-imagen och kör stock-harness.py
-med riktig vanilla-server och Fabric-agent under Xvfb/Mesa. Provet väntar på
-hela den initiala produktionsskanningen och kontrollerar sedan TTL, verklig
-serverdelta, obstruerad/borttagen källa och Manager-omstart. JUnit-/webbtester
-körs fortsatt i baseline. Hosted CI och lokal Minecraft-evidence redovisas
-separat i W-018:s verifieringsrapport.
+```sh
+# JAVA_HOME: Temurin 25.0.5+8
+./gradlew --no-daemon clean build
+python3 scripts/test-summary.py build
+python3 scripts/mc26/client-runtime.py
+
+# JAVA_HOME: Temurin 21 för separat Manager
+./gradlew --no-daemon -p stash-manager-server clean build
+python3 scripts/test-summary.py stash-manager-server/build
+npm ci --prefix web-tests && npm test --prefix web-tests
+```
+
+Root-`.java-version` motsvarar Minecraft-klientens Java 25; Manager-workflowet
+väljer uttryckligen Java 21. Dokumentera faktisk GitHub Actions-status separat
+från lokala byggen. De tidigare 1.21.x-resultaten finns enbart i
+[historisk baslinje](BASELINE.md).

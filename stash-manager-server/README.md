@@ -1,5 +1,8 @@
 # WeSort Manager
 
+**Manager accepterar endast Minecraft 26.3-index och 26.3-assets.** Den separata Manager-runtime använder Java 21; klienten använder Java 25. Tidigare explicita `mcVersion`-värden avvisas, medan ett index utan fältet behåller API-v1-formatet och tolkas som 26.3.
+
+
 Ett separat Java 21-projekt med inbyggd webb och HttpServer. Produktion stöds
 endast som Linux amd64 Docker-container. Se [installation, Owner-bootstrap och
 smoketester](../docs/DOCKER.md). Java-only nedan är för bygg/test.

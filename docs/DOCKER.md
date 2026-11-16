@@ -114,14 +114,14 @@ processlås, SIGTERM/omstart, persistent keys/Owner/sessions/index/order/audit,
 samt en riktig TLS-proxy med betrodd exakt IP, Secure-cookie och Host/Origin.
 TLS-testcontainern/certifikaten är testhjälpare och ingår inte i produktimagen.
 
-Build JDK: Temurin 21.0.9+10 och wrapper 9.2.0, med pinndigest. Runtime:
+Manager-build JDK: Temurin 21.0.9+10 och wrapper 9.6.0, med pinndigest. Runtime:
 Temurin 21.0.13+9, pinndigest och lokalt verifierad. Rapport:
 [W-055 Docker smoke](verification/W-055-docker-smoke.json). Samma tester körs
 i CI utan package-push. De är HTTP-/DOM-/protokolltester, inte en verklig
 Fabric-session eller fysisk Minecraft-leverans. Ingen sådan E2E påstås körd.
 
 Lokalt slutresultat W-055: Manager 104 tester, 0 fel, 1 känt ikon-skip;
-klient 1.21.4 och 1.21.11: 431 tester vardera, 0 fel/skips. Webbens DOM-/
+historiska klienttester för 1.21.4 och 1.21.11: 431 vardera, 0 fel/skips (ej längre stödda). Webbens DOM-/
 referensregression, Java-process-isolering, actionlint och Compose config
 passerar. Kända rendering-/Minecraft-begränsningar är samma som i steg 0.
 

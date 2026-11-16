@@ -1,3 +1,5 @@
+> **Nuvarande support:** Minecraft 26.3 är enda stödda klientversion (Java 25). Tidigare 1.21.4/1.21.11-omnämnanden nedan beskriver historisk utveckling, inte stöd som kvarstår.
+
 > Historisk Qwerte-changelog från upstream. Aktuell WeSort-status finns i README och docs/REMOVED_FEATURES.md.
 
 # Changelog

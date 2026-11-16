@@ -11,15 +11,14 @@ verifierad och publiceras inte.
 `.github/workflows/manager-image.yml` bygger/testar PR utan package-push.
 Publicering startas manuellt på main med `publish=true`, eller av en `v*`-tagg
 vars commit finns på main. Taggen måste motsvara versionen i Managers Gradlefil.
-Den aktuella 26.3-utvecklingsversionen är `v0.1.0-dev.1` (första imagen var
-`v0.1.0-dev.0`). Detta är en migrationsversion,
-inte den färdiga guildplattformen.
+Versionsnumret måste hämtas från `stash-manager-server/build.gradle.kts`.
+Tidigare dev-taggar är historiska och ingen av dem utgör en stabil guildrelease.
 
 ```sh
-gh workflow run manager-image.yml --ref main -f publish=true -f version=v0.1.0-dev.1
+gh workflow run manager-image.yml --ref main -f publish=true
 ```
 
-Workflow kör hela baslinjen: båda klienttargets, Manager, webb, isolering och
+Workflow kör exakt **Minecraft 26.3-klienten**, Manager, webb, isolering och
 Docker/TLS/Owner-bootstrap/volymrestart. Därefter byggs en kandidat och testas
 igen som faktisk container. Först ett separat publiceringsjobb får
 `contents:read` och `packages:write`. Det importerar exakt det testade arkivet,

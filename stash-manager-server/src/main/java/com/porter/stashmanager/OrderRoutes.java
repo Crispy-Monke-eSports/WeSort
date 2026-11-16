@@ -73,7 +73,7 @@ final class OrderRoutes {
         }
         if (p.perms().ordersAll()) return true;
         // order or plannerOrder: the user's own orders (build planner parts included).
-        if ((p.perms().order() || p.perms().plannerOrder()) && p.id().equals(orders.placedBy(id))) return true;
+        if ((p.perms().order()) && p.id().equals(orders.placedBy(id))) return true;
         Router.forbid(ex, "change other users' orders", "ordersAll");
         return false;
     }
@@ -226,8 +226,7 @@ final class OrderRoutes {
         if (!mayChange(ex, m.group(1))) return;
         try {
             Users.Principal who = Router.user(ex);
-            boolean own = who.id().equals(orders.placedBy(m.group(1)));
-            if (!who.perms().order() && !(who.perms().plannerOrder() && own)) {
+            if (!who.perms().order()) {
                 Router.forbid(ex, "place orders", "order");
                 return;
             }

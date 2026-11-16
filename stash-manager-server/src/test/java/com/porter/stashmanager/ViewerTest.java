@@ -96,7 +96,7 @@ class ViewerTest {
         viewer = new ViewerHub(hub, audit, ROTATE_MS, HEARTBEAT_MS, System::currentTimeMillis);
         StashManagerServer.Routes r = StashManagerServer.routes(config, store, orders, owners, icons,
             new LinkState(config.keyState().generation()), List.of(), sessions, users, audit, hub, new LoginLimiter(),
-            new PlanStore(), viewer);
+            viewer);
         server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 64);
         server.setExecutor(Executors.newFixedThreadPool(24));
         server.createContext("/", r.router());

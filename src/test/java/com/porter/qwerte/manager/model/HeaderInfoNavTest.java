@@ -66,10 +66,10 @@ class HeaderInfoNavTest {
     @Test
     void anOwnerSeesTheWebsitesPagesInOrder() {
         AuthState owner = auth("{\"loggedIn\":true,\"user\":{\"id\":\"owner\",\"name\":\"boss\",\"owner\":true,\"perms\":{}}}");
-        assertEquals(List.of(NavPage.STASH, NavPage.ORDERS, NavPage.PLANNER, NavPage.BOTS, NavPage.ACTIVITY, NavPage.LIVE, NavPage.SETTINGS,
+        assertEquals(List.of(NavPage.STASH, NavPage.ORDERS, NavPage.BOTS, NavPage.ACTIVITY, NavPage.LIVE, NavPage.SETTINGS,
             NavPage.USERS, NavPage.PROXY, NavPage.CONSOLE), NavPage.visible(owner, true, true));
         // no bot: no Proxy; a bot without activity: no Activity page
-        assertEquals(List.of(NavPage.STASH, NavPage.ORDERS, NavPage.PLANNER, NavPage.BOTS, NavPage.LIVE, NavPage.SETTINGS, NavPage.USERS, NavPage.CONSOLE),
+        assertEquals(List.of(NavPage.STASH, NavPage.ORDERS, NavPage.BOTS, NavPage.LIVE, NavPage.SETTINGS, NavPage.USERS, NavPage.CONSOLE),
             NavPage.visible(owner, false, false));
     }
 
@@ -88,13 +88,12 @@ class HeaderInfoNavTest {
 
     @Test
     void websitePagesSayWhereTheyAre() {
-        assertTrue(NavPage.PLANNER.inGame());
         assertTrue(NavPage.ACTIVITY.inGame());
         assertTrue(NavPage.CONSOLE.inGame());
         assertTrue(NavPage.STASH.inGame());
         assertTrue(NavPage.PROXY.inGame());
         assertTrue(NavPage.BOTS.inGame());
-        assertEquals("Build Planner is only on the website. Open http://10.0.0.2:8765 in a browser.", NavPage.PLANNER.websiteNote("http://10.0.0.2:8765"));
-        assertEquals("Build Planner is only on the website.", NavPage.PLANNER.websiteNote(null));
+        assertEquals("Settings is only on the website. Open http://10.0.0.2:8765 in a browser.", NavPage.SETTINGS.websiteNote("http://10.0.0.2:8765"));
+        assertEquals("Settings is only on the website.", NavPage.SETTINGS.websiteNote(null));
     }
 }

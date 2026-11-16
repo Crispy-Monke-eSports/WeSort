@@ -155,35 +155,23 @@ public final class StashManagerServer {
         }
     }
 
-    record Routes(Router router, AuthRoutes auth, PlanStore plans, ViewerHub viewer, DeliveryContents delivery) {
+    record Routes(Router router, AuthRoutes auth, ViewerHub viewer, DeliveryContents delivery) {
     }
 
     /** Every route, in order (the static files last). Shared with the tests, so they check the real registrations. */
     static Routes routes(Config config, IndexStore store, OrderStore orders, Owners owners, IconService icons, LinkState link,
                          List<String> urls, SessionStore sessions, Users users, AuditLog audit, BotHub hub, LoginLimiter limiter) {
-        return routes(config, store, orders, owners, icons, link, urls, sessions, users, audit, hub, limiter, new PlanStore());
+        return routes(config, store, orders, owners, icons, link, urls, sessions, users, audit, hub, limiter, new ViewerHub(hub, audit));
     }
 
-    /** The same, with the build planner's plan store (tests give it their own clock). */
     static Routes routes(Config config, IndexStore store, OrderStore orders, Owners owners, IconService icons, LinkState link,
                          List<String> urls, SessionStore sessions, Users users, AuditLog audit, BotHub hub, LoginLimiter limiter,
-                         PlanStore plans) {
-        return routes(config, store, orders, owners, icons, link, urls, sessions, users, audit, hub, limiter, plans,
-            new ViewerHub(hub, audit));
-    }
-
-    /** The same, with the live viewer's hub (tests give it short rotate and heartbeat times). */
-    static Routes routes(Config config, IndexStore store, OrderStore orders, Owners owners, IconService icons, LinkState link,
-                         List<String> urls, SessionStore sessions, Users users, AuditLog audit, BotHub hub, LoginLimiter limiter,
-                         PlanStore plans, ViewerHub viewer) {
-        // A user's plans end with their last session, whatever ended it (logout, expiry, a reset).
-        plans.sessionCheck(id -> sessions.countByUser().getOrDefault(id, 0) > 0);
+                         ViewerHub viewer) {
         Router router = new Router(new AccessControl(config), sessions, config, users);
         router.ids(new ServerIds(ServerIds.secret(config.dataDir()), store::servers,
             () -> hub.all().stream().map(b -> b.botId).toList()));
         AuthRoutes authRoutes = new AuthRoutes(config, sessions, limiter, users, audit);
         authRoutes.ids(router.ids());
-        authRoutes.onSessionsEnded(plans::pruneNow);
         authRoutes.register(router);
         DeliveryContents delivery = new DeliveryContents(); // in memory only
         new AddonRoutes(store, link, icons, orders, owners, delivery).register(router);
@@ -192,12 +180,11 @@ public final class StashManagerServer {
         new OrderRoutes(orders, owners, audit).register(router);
         new BotRoutes(hub).register(router);
         new DashboardRoutes(hub, store, owners, sessions, audit).register(router);
-        new UserRoutes(users, sessions, audit, plans).register(router);
-        new PlannerRoutes(store, orders, plans, audit).register(router);
+        new UserRoutes(users, sessions, audit).register(router);
         new ViewerRoutes(viewer).register(router);
         new IconRoutes(icons).register(router);
         new StaticRoutes().register(router); // last: the catch-all
-        return new Routes(router, authRoutes, plans, viewer, delivery);
+        return new Routes(router, authRoutes, viewer, delivery);
     }
 
     private static void setDefault(String key, String value) {

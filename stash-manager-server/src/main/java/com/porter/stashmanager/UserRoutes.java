@@ -25,13 +25,11 @@ final class UserRoutes {
     private final Users users;
     private final SessionStore sessions;
     private final AuditLog audit;
-    private final PlanStore plans;
 
-    UserRoutes(Users users, SessionStore sessions, AuditLog audit, PlanStore plans) {
+    UserRoutes(Users users, SessionStore sessions, AuditLog audit) {
         this.users = users;
         this.sessions = sessions;
         this.audit = audit;
-        this.plans = plans;
     }
 
     void register(Router router) {
@@ -182,7 +180,6 @@ final class UserRoutes {
         int ended = 0;
         if (u.disabled()) {
             ended = sessions.removeUser(u.id(), null);
-            plans.dropUser(u.id());
         }
         StringBuilder what = new StringBuilder(u.name());
         if (before != null && !before.name().equals(u.name())) what.append(", renamed from ").append(before.name());
@@ -233,18 +230,15 @@ final class UserRoutes {
                     }
                     users.setPassword(id, Auth.hash(password), mustChange == null || mustChange);
                     out.addProperty("ended", sessions.removeUser(id, null));
-                    plans.dropUser(id);
                     audit.add(Router.user(ex), "user.password", u.name(), address);
                 }
                 case "logout" -> {
                     out.addProperty("ended", sessions.removeUser(id, null));
-                    plans.dropUser(id);
                     audit.add(Router.user(ex), "user.logout", u.name(), address);
                 }
                 default -> {
                     users.delete(id);
                     out.addProperty("ended", sessions.removeUser(id, null));
-                    plans.dropUser(id);
                     audit.add(Router.user(ex), "user.delete", u.name(), address);
                 }
             }
@@ -306,8 +300,6 @@ final class UserRoutes {
         if (p.consoleRead()) add.accept("console " + p.console() + ("list".equals(p.console()) ? " (" + p.consoleAllow().size() + ")" : ""));
         if (p.rescan()) add.accept("rescan");
         if (p.link()) add.accept("link");
-        if (p.planner()) add.accept("planner");
-        if (p.plannerOrder()) add.accept("planner order");
         if (p.viewer()) add.accept("live viewer");
         if (p.streamer()) add.accept("forced streamer mode");
         if (p.stashes() != null) add.accept(p.stashes().size() + " stash(es)");

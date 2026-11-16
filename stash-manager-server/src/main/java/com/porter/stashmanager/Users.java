@@ -49,53 +49,42 @@ final class Users {
 
     /**
      * What a sub-user may do. The owner's are {@link #ALL}. stashes and bots null mean every stash or bot. Built only
-     * through {@link #of} or {@link #parse}, which apply the implied permissions. planner: upload schematics and see
-     * their material list; plannerOrder: order those materials (it does not need order). viewer: the live viewer (the
+     * through {@link #of} or {@link #parse}, which apply the implied permissions. viewer: the live viewer (the
      * bot's map, position, nearby entities, HUD and chat); it implies activity. streamer: "force streamer mode", a
      * restriction: the server never sends this user positions, player names, server addresses or bot free text (see
      * Redact); the owner is never forced.
      */
     record Perms(boolean view, boolean order, boolean ordersAll, boolean activity, boolean settings, String proxy,
-                 String console, List<String> consoleAllow, boolean rescan, boolean link, boolean planner,
-                 boolean plannerOrder, boolean viewer, boolean streamer, List<StashRef> stashes, List<String> bots) {
-        static final Perms NONE = of(false, false, false, false, false, "none", "none", List.of(), false, false, false, false, false, null, null);
+                 String console, List<String> consoleAllow, boolean rescan, boolean link, boolean viewer, boolean streamer, List<StashRef> stashes, List<String> bots) {
+        static final Perms NONE = of(false, false, false, false, false, "none", "none", List.of(), false, false, false, null, null);
         /** The owner's: everything, and never forced into streamer mode. */
-        static final Perms ALL = of(true, true, true, true, true, "change", "full", List.of(), true, true, true, true, true, null, null);
+        static final Perms ALL = of(true, true, true, true, true, "change", "full", List.of(), true, true, true, null, null);
 
         /** The same without the live viewer. */
         static Perms of(boolean view, boolean order, boolean ordersAll, boolean activity, boolean settings, String proxy,
-                        String console, List<String> consoleAllow, boolean rescan, boolean link, boolean planner,
-                        boolean plannerOrder, List<StashRef> stashes, List<String> bots) {
-            return of(view, order, ordersAll, activity, settings, proxy, console, consoleAllow, rescan, link, planner,
-                plannerOrder, false, stashes, bots);
+                        String console, List<String> consoleAllow, boolean rescan, boolean link, List<StashRef> stashes, List<String> bots) {
+            return of(view, order, ordersAll, activity, settings, proxy, console, consoleAllow, rescan, link, false, stashes, bots);
         }
 
         /**
-         * With the implied permissions turned on: ordering and the build planner need view, ordering from the planner
-         * needs the planner, bot permissions (the live viewer included) need the Bots view.
+         * With implied permissions: ordering needs view; bot permissions need the Bots view.
          */
         static Perms of(boolean view, boolean order, boolean ordersAll, boolean activity, boolean settings, String proxy,
-                        String console, List<String> consoleAllow, boolean rescan, boolean link, boolean planner,
-                        boolean plannerOrder, boolean viewer, List<StashRef> stashes, List<String> bots) {
-            return of(view, order, ordersAll, activity, settings, proxy, console, consoleAllow, rescan, link, planner,
-                plannerOrder, viewer, false, stashes, bots);
+                        String console, List<String> consoleAllow, boolean rescan, boolean link, boolean viewer, List<StashRef> stashes, List<String> bots) {
+            return of(view, order, ordersAll, activity, settings, proxy, console, consoleAllow, rescan, link, viewer, false, stashes, bots);
         }
 
         /** The same, with force streamer mode. */
         static Perms of(boolean view, boolean order, boolean ordersAll, boolean activity, boolean settings, String proxy,
-                        String console, List<String> consoleAllow, boolean rescan, boolean link, boolean planner,
-                        boolean plannerOrder, boolean viewer, boolean streamer, List<StashRef> stashes, List<String> bots) {
-            boolean pl = planner || plannerOrder;
-            boolean v = view || order || ordersAll || pl;
+                        String console, List<String> consoleAllow, boolean rescan, boolean link, boolean viewer, boolean streamer, List<StashRef> stashes, List<String> bots) {
+            boolean v = view || order || ordersAll;
             boolean a = activity || settings || viewer || !"none".equals(proxy) || !"none".equals(console);
-            return new Perms(v, order, ordersAll, a, settings, proxy, console, List.copyOf(consoleAllow), rescan, link,
-                pl, plannerOrder, viewer, streamer, stashes == null ? null : List.copyOf(stashes), bots == null ? null : List.copyOf(bots));
+            return new Perms(v, order, ordersAll, a, settings, proxy, console, List.copyOf(consoleAllow), rescan, link, viewer, streamer, stashes == null ? null : List.copyOf(stashes), bots == null ? null : List.copyOf(bots));
         }
 
         /** The same permissions with force streamer mode set as given. */
         Perms withStreamer(boolean on) {
-            return new Perms(view, order, ordersAll, activity, settings, proxy, console, consoleAllow, rescan, link, planner,
-                plannerOrder, viewer, on, stashes, bots);
+            return new Perms(view, order, ordersAll, activity, settings, proxy, console, consoleAllow, rescan, link, viewer, on, stashes, bots);
         }
 
         boolean proxyRead() {
@@ -147,8 +136,6 @@ final class Users {
             o.add("consoleAllow", allow);
             o.addProperty("rescan", rescan);
             o.addProperty("link", link);
-            o.addProperty("planner", planner);
-            o.addProperty("plannerOrder", plannerOrder);
             o.addProperty("viewer", viewer);
             o.addProperty("streamer", streamer);
             if (stashes == null) {
@@ -226,8 +213,7 @@ final class Users {
                 if (bots.size() > MAX_SCOPE) throw new IllegalArgumentException("at most " + MAX_SCOPE + " bots");
             }
             return of(bool(o, "view"), bool(o, "order"), bool(o, "ordersAll"), bool(o, "activity"), bool(o, "settings"),
-                proxy, console, allow, bool(o, "rescan"), bool(o, "link"), bool(o, "planner"),
-                bool(o, "plannerOrder"), bool(o, "viewer"), bool(o, "streamer"), stashes, bots);
+                proxy, console, allow, bool(o, "rescan"), bool(o, "link"), bool(o, "viewer"), bool(o, "streamer"), stashes, bots);
         }
 
         private static boolean bool(JsonObject o, String key) {
@@ -256,9 +242,9 @@ final class Users {
 
     static {
         Map<String, Perms> p = new LinkedHashMap<>();
-        p.put("viewer", Perms.of(true, false, false, false, false, "none", "none", List.of(), false, false, false, false, null, null));
-        p.put("orderer", Perms.of(true, true, false, false, false, "none", "none", List.of(), false, false, true, true, null, null));
-        p.put("operator", Perms.of(true, true, true, true, true, "read", "none", List.of(), true, false, true, true, true, null, null));
+        p.put("viewer", Perms.of(true, false, false, false, false, "none", "none", List.of(), false, false, null, null));
+        p.put("orderer", Perms.of(true, true, false, false, false, "none", "none", List.of(), false, false, null, null));
+        p.put("operator", Perms.of(true, true, true, true, true, "read", "none", List.of(), true, false, true, null, null));
         PRESETS = java.util.Collections.unmodifiableMap(p);
     }
 

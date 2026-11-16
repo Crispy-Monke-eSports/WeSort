@@ -96,9 +96,9 @@ class OrderModelTest {
     }
 
     @Test
-    void plannerOrderCoversOwnOrdersButDoesNotPlace() {
+    void retiredPlannerPermissionCannotManageOrders() {
         AuthState alice = user("u1", "{\"plannerOrder\":true,\"view\":true}");
-        assertTrue(OrderModel.canManage(entry("o-1"), alice));
+        assertFalse(OrderModel.canManage(entry("o-1"), alice));
         assertFalse(OrderModel.canPlace(alice));
     }
 

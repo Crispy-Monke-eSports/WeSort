@@ -284,4 +284,17 @@ class DeliveryTest {
         assertEquals(1, items.size());
         assertNotNull(get(owner, "/api/v1/delivery?server=s&stash=a").obj().get("chests"));
     }
+    @Test
+    void retiredPlannerRoutesAndPermissionsAreUnavailable() throws Exception {
+        String owner = login(null, OWNER_PW);
+        for (String path : List.of("/api/v1/planner", "/api/v1/planner/upload",
+                "/api/v1/planner/p-aaaaaaaaaaaa", "/api/v1/planner/p-aaaaaaaaaaaa/order")) {
+            assertEquals(404, get(owner, path).status(), path);
+            assertEquals(404, post(owner, path, "{}").status(), path);
+        }
+        JsonObject perms = Users.Perms.ALL.toJson();
+        assertFalse(perms.has("planner"));
+        assertFalse(perms.has("plannerOrder"));
+        assertFalse(Users.Perms.parse(JsonParser.parseString("{\"plannerOrder\":true}")).order());
+    }
 }

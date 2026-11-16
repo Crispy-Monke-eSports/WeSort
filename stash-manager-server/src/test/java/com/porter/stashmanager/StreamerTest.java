@@ -95,7 +95,7 @@ class StreamerTest {
         viewer = new ViewerHub(hub, audit, 20_000, 300, System::currentTimeMillis);
         StashManagerServer.Routes r = StashManagerServer.routes(config, store, orders, owners, icons,
             new LinkState(config.keyState().generation()), List.of("http://192.168.1.50:8765"), sessions, users, audit, hub,
-            new LoginLimiter(), new PlanStore(), viewer);
+            new LoginLimiter(), viewer);
         server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 32);
         server.setExecutor(Executors.newFixedThreadPool(16));
         router = r.router();
@@ -477,12 +477,7 @@ class StreamerTest {
             "[POST] ^/api/v1/orders/(o-[0-9a-f]{12})/force-cancel$ BROWSER_WRITE ORDER_OWN_OR_ALL",
             "[POST] ^/api/v1/orders/(o-[0-9a-f]{12})/retry$ BROWSER_WRITE ORDER_OWN_OR_ALL",
             "[GET] ^/api/v1/bots/([A-Za-z0-9_-]{1,64})/viewer/stream$ SESSION VIEWER",
-            "[GET, HEAD] ^/api/v1/bots/([A-Za-z0-9_-]{1,64})/viewer$ SESSION VIEWER",
-            "[POST] /api/v1/planner/upload BROWSER_UPLOAD PLANNER",
-            "[GET, HEAD] /api/v1/planner SESSION PLANNER",
-            "[GET, HEAD] ^/api/v1/planner/(p-[0-9a-f]{12})$ SESSION PLANNER",
-            "[POST] ^/api/v1/planner/(p-[0-9a-f]{12})/view$ BROWSER_WRITE PLANNER",
-            "[POST] ^/api/v1/planner/(p-[0-9a-f]{12})/order$ BROWSER_WRITE PLANNER_ORDER");
+            "[GET, HEAD] ^/api/v1/bots/([A-Za-z0-9_-]{1,64})/viewer$ SESSION VIEWER");
         java.util.Set<String> noData = java.util.Set.of(
             "[POST] /api/v1/auth/logout BROWSER_WRITE ANY",
             "[POST] /api/v1/auth/logout-all BROWSER_WRITE ANY",
@@ -492,7 +487,6 @@ class StreamerTest {
             "[POST] /api/v1/stashes/release BROWSER_WRITE LINK",
             "[POST] /api/v1/rescan BROWSER_WRITE RESCAN",
             "[POST] /api/v1/orders/clear BROWSER_WRITE ORDERS_ALL",
-            "[POST] ^/api/v1/planner/(p-[0-9a-f]{12})/delete$ BROWSER_WRITE PLANNER",
             "[GET, HEAD] /icon/ SESSION ICONS");
         java.util.Set<String> forbidden = java.util.Set.of(
             "[POST] ^/api/v1/bots/([A-Za-z0-9_-]{1,64})/(settings|jobs|console|activity)$ BROWSER_WRITE ACTIVITY");

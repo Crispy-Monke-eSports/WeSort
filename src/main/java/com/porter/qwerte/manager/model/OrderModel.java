@@ -158,7 +158,7 @@ public final class OrderModel {
     }
 
     public static boolean canManage(Entry o, AuthState auth) {
-        return auth.can("ordersAll") || ((auth.can("order") || auth.can("plannerOrder")) && ownOrder(o, auth));
+        return auth.can("ordersAll") || ((auth.can("order")) && ownOrder(o, auth));
     }
 
     public static boolean canCancel(Entry o, AuthState auth) {

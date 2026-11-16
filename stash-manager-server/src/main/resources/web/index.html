@@ -80,7 +80,6 @@
       <nav class="dash-nav" id="dash-nav" aria-label="Pages">
         <button type="button" class="mc-button nav-btn" data-page="stash">Stash</button>
         <button type="button" class="mc-button nav-btn" data-page="orders">Orders</button>
-        <button type="button" class="mc-button nav-btn" data-page="planner" id="nav-planner" hidden>Build Planner</button>
         <button type="button" class="mc-button nav-btn" data-page="bots" id="bots-open">Bots</button>
         <button type="button" class="mc-button nav-btn" data-page="activity" id="nav-activity" hidden>Activity</button>
         <button type="button" class="mc-button nav-btn" data-page="viewer" id="nav-viewer" hidden>Live</button>
@@ -366,103 +365,6 @@
       </div>
     </main>
 
-    <main class="panel dash-page planner-page" id="page-planner" hidden>
-      <div class="dash-head">
-        <h2 class="panel-label" id="planner-title">Material list</h2>
-        <div class="dash-actions">
-          <button type="button" class="mc-button danger" id="pl-dismiss" hidden>Dismiss</button>
-        </div>
-      </div>
-      <section class="inset pl-upload" aria-labelledby="pl-upload-title">
-        <div class="section-title" id="pl-upload-title">Schematic</div>
-        <div class="pl-drop" id="pl-drop" aria-describedby="pl-drop-note">
-          <span class="pl-drop-text">Drop a schematic here, or</span>
-          <button type="button" class="mc-button" id="pl-choose">Choose a file</button>
-          <input type="file" id="pl-file" accept=".litematic,.schem,.schematic,.nbt" hidden>
-        </div>
-        <div class="note" id="pl-drop-note">.litematic, .schem (Sponge) or structure .nbt, up to 8 MiB. The file itself is not kept: only its material list, in memory, until 30 minutes after you last use it (2 hours at most).</div>
-        <div class="note" id="pl-status" role="status"></div>
-      </section>
-      <div class="pl-body" id="pl-body" hidden>
-        <section class="inset pl-info" aria-labelledby="pl-info-title">
-          <div class="cart-head">
-            <div class="section-title" id="pl-info-title">File</div>
-            <span class="note" id="pl-expires"></span>
-          </div>
-          <dl class="pl-facts" id="pl-facts"></dl>
-          <div class="note warn" id="pl-newer" hidden></div>
-        </section>
-        <section class="inset pl-options" aria-labelledby="pl-options-title">
-          <div class="section-title" id="pl-options-title">Options</div>
-          <div class="pl-option-row">
-            <label class="pl-field"><span class="field-label">Stash</span>
-              <select id="pl-stash" class="mc-select"></select></label>
-            <label class="pl-field"><span class="field-label">Copies</span>
-              <input id="pl-mult" class="mc-input pl-num" type="number" min="1" max="64" step="1" value="1" inputmode="numeric"></label>
-            <label class="pl-field"><span class="field-label">Round each line up to</span>
-              <select id="pl-round" class="mc-select">
-                <option value="none">Exact count</option>
-                <option value="stack">Full stacks</option>
-                <option value="shulker">Full shulkers (27 stacks)</option>
-              </select></label>
-          </div>
-          <div class="pl-option-row">
-            <label class="unset"><input type="checkbox" id="pl-fluids"> Water and lava (buckets)</label>
-            <label class="unset"><input type="checkbox" id="pl-containers"> Chest contents</label>
-          </div>
-          <div class="note" id="pl-locked" hidden>Options are locked while parts of this build are ordered, so nothing is ordered twice. Dismiss and upload the file again to start over.</div>
-        </section>
-        <section class="inset pl-summary" aria-label="Summary">
-          <div class="pl-tiles" id="pl-tiles"></div>
-          <div class="pl-actions">
-            <button type="button" class="mc-button primary" id="pl-order" hidden>Order build materials now</button>
-            <button type="button" class="mc-button" id="pl-next" hidden></button>
-            <button type="button" class="mc-button" id="pl-again" hidden></button>
-            <button type="button" class="mc-button" id="pl-csv">Export missing (CSV)</button>
-            <button type="button" class="mc-button" id="pl-txt">Export missing (text)</button>
-            <button type="button" class="mc-button" id="pl-copy">Copy missing</button>
-          </div>
-          <div class="note" id="pl-order-status" role="status"></div>
-        </section>
-        <section class="inset pl-list" aria-labelledby="pl-list-title">
-          <div class="cart-head">
-            <div class="section-title" id="pl-list-title">Materials</div>
-            <div class="act-filters">
-              <label class="filter-label" for="pl-filter">Filter materials</label>
-              <input id="pl-filter" class="mc-input" type="search" placeholder="Filter" autocomplete="off" spellcheck="false">
-              <label class="unset"><input type="checkbox" id="pl-only-missing" role="switch"> only missing</label>
-            </div>
-          </div>
-          <div class="pl-table-wrap">
-            <table class="pl-table" id="pl-table">
-              <thead>
-                <tr>
-                  <th scope="col" class="pl-c-ex"><span class="sr-only">Include</span></th>
-                  <th scope="col" class="pl-c-icon"><span class="sr-only">Icon</span></th>
-                  <th scope="col" class="pl-c-name" aria-sort="none"><button type="button" class="pl-sort" data-sort="name">Name</button></th>
-                  <th scope="col" class="pl-c-num" aria-sort="none"><button type="button" class="pl-sort" data-sort="need">Need</button></th>
-                  <th scope="col" class="pl-c-num" aria-sort="none"><button type="button" class="pl-sort" data-sort="inStash">In stash</button></th>
-                  <th scope="col" class="pl-c-num" aria-sort="none"><button type="button" class="pl-sort" data-sort="available">Available</button></th>
-                  <th scope="col" class="pl-c-num" aria-sort="none"><button type="button" class="pl-sort" data-sort="missing">Missing</button></th>
-                </tr>
-              </thead>
-              <tbody id="pl-rows"></tbody>
-            </table>
-          </div>
-          <div class="note">sh = a shulker (27 stacks), st = a stack. Untick a row to leave it out. Items with extra data (enchantments, names) are shown but never counted or ordered.</div>
-        </section>
-        <section class="inset" id="pl-unknown-box" aria-labelledby="pl-unknown-title" hidden>
-          <div class="section-title" id="pl-unknown-title">Unknown blocks</div>
-          <div class="note">Blocks this version's table doesn't know: they are not in the list above.</div>
-          <div class="pl-simple" id="pl-unknown"></div>
-        </section>
-        <section class="inset" id="pl-chest-box" aria-labelledby="pl-chest-title" hidden>
-          <div class="section-title" id="pl-chest-title">Chest contents</div>
-          <div class="note">Items inside chests and other containers in the schematic. Tick "Chest contents" above to add them to the list.</div>
-          <div class="pl-simple" id="pl-chest"></div>
-        </section>
-      </div>
-    </main>
 
     <main class="panel dash-page" id="page-console" hidden>
       <div class="dash-head">
@@ -495,7 +397,6 @@
         <button type="button" class="mc-button icon-btn" id="more-close" aria-label="Close">&#x2715;</button>
       </div>
       <div class="sheet-list">
-        <button type="button" class="sheet-item" data-page="planner">Build Planner</button>
         <button type="button" class="sheet-item" data-page="viewer">Live viewer</button>
         <button type="button" class="sheet-item" data-page="settings">Settings</button>
         <button type="button" class="sheet-item" data-page="proxy">Proxy</button>

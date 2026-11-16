@@ -10,7 +10,6 @@ import java.util.List;
 public enum NavPage {
     STASH("Stash", true),
     ORDERS("Orders", true),
-    PLANNER("Build Planner", true),
     BOTS("Bots", true),
     ACTIVITY("Activity", true),
     LIVE("Live", true),
@@ -49,7 +48,6 @@ public enum NavPage {
         boolean forced = auth.forcedStreamer();
         out.add(STASH);
         out.add(ORDERS);
-        if (auth.can("planner")) out.add(PLANNER);
         if (auth.can("activity")) out.add(BOTS);
         if (auth.can("activity") && botHasActivity) out.add(ACTIVITY);
         if (auth.can("viewer")) out.add(LIVE);

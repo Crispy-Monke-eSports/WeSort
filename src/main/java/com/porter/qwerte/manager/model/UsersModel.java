@@ -36,13 +36,11 @@ public final class UsersModel {
         new Switch("settings", "Change plugin settings", "Save the Qwerte Stash plugin settings."),
         new Switch("rescan", "Rescan stashes", "Ask the bot to re-read every container of a stash."),
         new Switch("link", "Link addon", "The Link addon panel (linked bots in scope) and releasing a stash. The API key itself stays owner-only."),
-        new Switch("planner", "Build planner", "Upload a schematic and see its material list against a stash."),
-        new Switch("plannerOrder", "Order from the build planner", "Order a build's materials from the planner, and cancel or retry their own orders. Doesn't need Place orders."),
         new Switch("viewer", "Live viewer", "Watch a bot live: the map around it, its position, nearby players, mobs and items, its HUD and its chat. Also turns on Bots and activity."),
         new Switch("streamer", "Force streamer mode", "A restriction: the server never sends this user coordinates, player names, server addresses, chat or the bots' free text. "
             + "Settings, proxy settings and the console are refused. The user can't turn it off."));
 
-    public static final String IMPLIED_HINT = "Placing or managing orders, or the build planner, also turns on View stashes; ordering from the build planner also turns on Build planner. "
+    public static final String IMPLIED_HINT = "Placing or managing orders also turns on View stashes. "
         + "Changing plugin settings, the live viewer, or any proxy or console access, also turns on Bots and activity. "
         + "Proxy changes and console commands still need Admin unlocked (the user's own password).";
 
@@ -132,8 +130,7 @@ public final class UsersModel {
 
     /** The server's implied-permission rule (PROTOCOL.md "Additions: website users"), applied the same way. Returns {@code p}. */
     public static Perms withImplied(Perms p) {
-        if (p.flag("plannerOrder")) p.flag("planner", true);
-        if (p.flag("order") || p.flag("ordersAll") || p.flag("planner")) p.flag("view", true);
+        if (p.flag("order") || p.flag("ordersAll")) p.flag("view", true);
         if (p.flag("settings") || p.flag("viewer") || !p.proxy.equals("none") || !p.console.equals("none")) p.flag("activity", true);
         return p;
     }
@@ -141,8 +138,7 @@ public final class UsersModel {
     /** Which switches the rule forces on for this selection (their toggles are shown "on (implied)" and locked). */
     public static java.util.Set<String> implied(Perms p) {
         java.util.Set<String> out = new java.util.LinkedHashSet<>();
-        if (p.flag("plannerOrder")) out.add("planner");
-        if (p.flag("order") || p.flag("ordersAll") || p.flag("planner") || p.flag("plannerOrder")) out.add("view");
+        if (p.flag("order") || p.flag("ordersAll")) out.add("view");
         if (p.flag("settings") || p.flag("viewer") || !p.proxy.equals("none") || !p.console.equals("none")) out.add("activity");
         return out;
     }

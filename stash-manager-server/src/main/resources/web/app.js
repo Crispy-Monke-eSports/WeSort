@@ -199,8 +199,6 @@
     accountSection: $("account-section"),
     accountWho: $("account-who"),
     navConsole: $("nav-console"),
-    navPlanner: $("nav-planner"),
-    pagePlanner: $("page-planner"),
     consoleAllow: $("console-allow"),
     orderPicker: $("order-picker"),
     usersSection: $("users-section"),
@@ -303,7 +301,7 @@
 
   var OWNER_PERMS = {
     view: true, order: true, ordersAll: true, activity: true, settings: true, proxy: "change", console: "full",
-    consoleAllow: [], rescan: true, link: true, planner: true, plannerOrder: true, viewer: true, streamer: false, stashes: null, bots: null
+    consoleAllow: [], rescan: true, link: true, viewer: true, streamer: false, stashes: null, bots: null
   };
   var me = { id: "owner", name: "", owner: true, mustChange: false, perms: OWNER_PERMS };
   var permsTimer = 0;
@@ -348,7 +346,6 @@
     if (page === "bots" || page === "activity") return can("activity");
     if (page === "proxy") return permMode("proxy") !== "none" && !forcedStreamer();
     if (page === "console") return permMode("console") !== "none" && !forcedStreamer();
-    if (page === "planner") return can("planner");
     if (page === "viewer") return can("viewer");
     return true;
   }
@@ -361,7 +358,7 @@
 
   function canManageOrder(o) {
     // plannerOrder counts for the user's own orders too (build planner parts).
-    return can("ordersAll") || ((can("order") || can("plannerOrder")) && ownOrder(o));
+    return can("ordersAll") || ((can("order")) && ownOrder(o));
   }
 
   /** A 403 naming a permission: the owner may have changed this user's permissions, so ask again (once). */
@@ -756,7 +753,6 @@
       state.polling = false;
       // Rendering runs outside the fetch's error handler, so a render bug can't look like "unreachable".
       updateSelect();
-      if (planner.open) plannerFillStashes();
       updateHeader();
       renderBotStatus();
       if (!state.unreachable) {
@@ -961,957 +957,6 @@
     if (idx && str(idx.mcVersion)) shortMeta.push("MC " + str(idx.mcVersion));
     el.indexMeta.textContent = shortMeta.join(" \u00b7 ");
   }
-
-  // ---------- build planner ----------
-  // Upload a schematic (the raw file, with the CSRF header), see its materials against a stash, and order what the
-  // stash has, in parts of at most 54 shulkers (one delivery chest each). File names and ids come from users and
-  // files: textContent only. The server keeps only the computed list, in memory, for 30 minutes after the last use.
-
-  var PL_MAX_BYTES = 8 * 1024 * 1024;
-  var PL_UPLOAD_TIMEOUT_MS = 30000;
-  var PL_FINISHED = { delivered: true, failed: true, cancelled: true };
-  var PL_FORMATS = { litematic: "Litematica (.litematic)", sponge: "Sponge schematic (.schem)", structure: "Structure (.nbt)" };
-  var pl = {
-    drop: $("pl-drop"), choose: $("pl-choose"), file: $("pl-file"), status: $("pl-status"), body: $("pl-body"),
-    facts: $("pl-facts"), expires: $("pl-expires"), newer: $("pl-newer"), stash: $("pl-stash"), mult: $("pl-mult"),
-    round: $("pl-round"), fluids: $("pl-fluids"), containers: $("pl-containers"), tiles: $("pl-tiles"),
-    order: $("pl-order"), next: $("pl-next"), again: $("pl-again"), locked: $("pl-locked"), csv: $("pl-csv"), txt: $("pl-txt"), copy: $("pl-copy"),
-    orderStatus: $("pl-order-status"), filter: $("pl-filter"), onlyMissing: $("pl-only-missing"), rows: $("pl-rows"),
-    table: $("pl-table"), unknownBox: $("pl-unknown-box"), unknown: $("pl-unknown"), chestBox: $("pl-chest-box"),
-    chest: $("pl-chest"), dismiss: $("pl-dismiss")
-  };
-  var planner = {
-    plan: null,           // the last plan JSON from the server (null: nothing uploaded)
-    stash: null,          // stash key the plan is shown against
-    exclude: new Set(),   // item ids left out
-    filter: "",
-    onlyMissing: false,
-    sort: { key: "", dir: 1 }, // "" = creative order, as the server sends it
-    seq: 0,               // bumps on every view request; stale replies are dropped
-    busy: false,
-    open: false,
-    resumed: false,
-    names: true,          // the confirmation's "name the shulkers" choice, kept for the next parts
-    ordered: null,        // { partsTotal, placed: { "1": "o-..." }, remaining: [2, 3] } for the current options
-    orderStatus: {},      // order id -> status, from GET /api/v1/orders
-    ordersTimer: 0,
-    loadTimer: 0
-  };
-
-  /** "2 sh + 5 st + 12": shulkers of 27 stacks, stacks, and the rest. */
-  function plStacks(n, maxStack) {
-    n = Math.max(0, Math.floor(num(n, 0)));
-    var ms = Math.max(1, Math.floor(num(maxStack, 64)));
-    if (n === 0) return "0";
-    var sh = 27 * ms;
-    var a = Math.floor(n / sh);
-    var r = n - a * sh;
-    var parts = [];
-    if (a) parts.push(grouped(a) + " sh");
-    if (ms > 1) {
-      var b = Math.floor(r / ms);
-      r -= b * ms;
-      if (b) parts.push(b + " st");
-    }
-    if (r) parts.push(String(r));
-    return parts.join(" + ");
-  }
-
-  /** "minecraft:oak_planks" -> "Oak Planks" (for items no index has a name for). */
-  function plPretty(id) {
-    var path = splitId(id)[1];
-    return path.split(/[_/]/).filter(function (w) { return w; }).map(function (w) {
-      return w.charAt(0).toUpperCase() + w.slice(1);
-    }).join(" ") || id;
-  }
-
-  function plName(row) {
-    return str(row.name) || plPretty(str(row.id));
-  }
-
-  function plStatus(text, warn) {
-    pl.status.textContent = text || "";
-    pl.status.classList.toggle("warn", !!warn);
-  }
-
-  function plOrderStatus(text, warn) {
-    pl.orderStatus.textContent = text || "";
-    pl.orderStatus.classList.toggle("warn", !!warn);
-  }
-
-  function plannerStash() {
-    for (var i = 0; i < state.stashes.length; i++) {
-      if (stashKey(state.stashes[i]) === planner.stash) return state.stashes[i];
-    }
-    return null;
-  }
-
-  /** The stash picker: the stash list the header uses (already limited to the user's scope by the server). */
-  function plannerFillStashes() {
-    var keys = state.stashes.map(stashKey);
-    if (planner.stash === null || keys.indexOf(planner.stash) < 0) {
-      planner.stash = keys.indexOf(state.selected) >= 0 ? state.selected : (keys.length ? keys[0] : null);
-    }
-    var labels = state.stashes.map(function (s) { return stashLabel(s) + (s.indexedAt == null ? " (no index)" : ""); });
-    var opts = pl.stash.options;
-    var same = opts.length === Math.max(1, keys.length) && keys.every(function (k, i) {
-      return opts[i].value === k && opts[i].textContent === labels[i];
-    });
-    if (!same) {
-      var frag = document.createDocumentFragment();
-      if (!keys.length) {
-        var none = document.createElement("option");
-        none.value = "";
-        none.textContent = "(no stashes)";
-        frag.appendChild(none);
-      }
-      keys.forEach(function (k, i) {
-        var o = document.createElement("option");
-        o.value = k;
-        o.textContent = labels[i];
-        frag.appendChild(o);
-      });
-      pl.stash.replaceChildren(frag);
-    }
-    pl.stash.value = planner.stash === null ? "" : planner.stash;
-    pl.stash.disabled = keys.length <= 1;
-  }
-
-  function plannerOptions() {
-    return {
-      multiplier: clampInt(pl.mult.value, 1, 64),
-      round: pl.round.value === "stack" || pl.round.value === "shulker" ? pl.round.value : "none",
-      fluids: pl.fluids.checked,
-      containerItems: pl.containers.checked,
-      exclude: Array.from(planner.exclude).sort()
-    };
-  }
-
-  function plannerLocked() {
-    return !!(planner.ordered && planner.ordered.locked === true);
-  }
-
-  /**
-   * Parts are ordered with other options than the page shows (after a reload, or from another tab): put the locked
-   * options and stash back and ask again. True when it did (once per locked split, so a stash that is gone can't loop).
-   */
-  function plannerTakeLockedOptions() {
-    var o = planner.ordered;
-    if (!plannerLocked() || o.sameOptions !== false || !o.options || typeof o.options !== "object") return false;
-    var mark = JSON.stringify([planner.plan && planner.plan.id, o.placed]);
-    if (planner.lockTaken === mark) return false;
-    planner.lockTaken = mark;
-    var opt = o.options;
-    pl.mult.value = String(clampInt(opt.multiplier, 1, 64));
-    pl.round.value = opt.round === "stack" || opt.round === "shulker" ? opt.round : "none";
-    pl.fluids.checked = opt.fluids === true;
-    pl.containers.checked = opt.containerItems === true;
-    planner.exclude = new Set(Array.isArray(opt.exclude) ? opt.exclude.filter(function (x) { return typeof x === "string"; }) : []);
-    if (typeof o.server === "string" && typeof o.stash === "string") planner.stash = stashKey({ server: o.server, stash: o.stash });
-    plannerLoad();
-    return true;
-  }
-
-  /** While parts are ordered (and not failed or cancelled) the options and the stash can't change. */
-  function plannerApplyLock() {
-    var locked = plannerLocked();
-    [pl.mult, pl.round, pl.fluids, pl.containers].forEach(function (c) { c.disabled = locked; });
-    if (locked) pl.stash.disabled = true;
-    pl.locked.hidden = !locked;
-  }
-
-  // The options of the current plan, per browser tab, so a reload (while waiting for a part to be delivered) keeps
-  // them, and with them the order split the server remembers for them ("Order next part").
-  var PL_SAVE_KEY = "stashManager.planner";
-
-  function plannerSave() {
-    try {
-      var p = planner.plan;
-      if (!p || !p.id) {
-        window.sessionStorage.removeItem(PL_SAVE_KEY);
-        return;
-      }
-      var o = plannerOptions();
-      o.id = p.id;
-      o.stash = planner.stash;
-      o.names = planner.names;
-      window.sessionStorage.setItem(PL_SAVE_KEY, JSON.stringify(o));
-    } catch (e) {
-      // storage blocked: a reload starts from the defaults
-    }
-  }
-
-  function plannerRestore(id) {
-    var o = null;
-    try {
-      o = JSON.parse(window.sessionStorage.getItem(PL_SAVE_KEY) || "null");
-    } catch (e) {
-      o = null;
-    }
-    if (!o || typeof o !== "object" || o.id !== id) return;
-    pl.mult.value = String(clampInt(o.multiplier, 1, 64));
-    pl.round.value = o.round === "stack" || o.round === "shulker" ? o.round : "none";
-    pl.fluids.checked = o.fluids === true;
-    pl.containers.checked = o.containerItems === true;
-    planner.exclude = new Set(Array.isArray(o.exclude) ? o.exclude.filter(function (x) { return typeof x === "string"; }) : []);
-    if (typeof o.stash === "string") planner.stash = o.stash;
-    planner.names = o.names !== false;
-  }
-
-  function plannerResetOptions() {
-    planner.exclude = new Set();
-    planner.ordered = null;
-    planner.lockTaken = null;
-    planner.orderStatus = {};
-    pl.mult.value = "1";
-    pl.round.value = "none";
-    pl.fluids.checked = false;
-    pl.containers.checked = false;
-  }
-
-  /** The page was opened: pick up a plan made earlier in this session (after a reload), or show the current one. */
-  function plannerOpen() {
-    planner.open = true;
-    plannerFillStashes();
-    if (planner.plan) {
-      plannerLoad();
-    } else if (!planner.resumed) {
-      planner.resumed = true;
-      api("/api/v1/planner").then(function (r) {
-        var list = r && Array.isArray(r.plans) ? r.plans : [];
-        if (!list.length || planner.plan) return;
-        planner.plan = { id: str(list[list.length - 1].id) };
-        plannerRestore(planner.plan.id);
-        plannerLoad();
-      }, function () {});
-    }
-    plannerRender();
-    plannerPollOrders();
-  }
-
-  function plannerClose() {
-    if (!planner || !planner.open) return;
-    planner.open = false;
-    window.clearTimeout(planner.ordersTimer);
-    window.clearTimeout(planner.loadTimer);
-  }
-
-  /** The permissions changed: show or hide the order buttons. */
-  function plannerPerms() {
-    if (!planner || !pl.order) return;
-    plannerRenderActions();
-  }
-
-  function plannerFail(e, what) {
-    var b = e && e.body;
-    if (e && e.status === 413) return "That file is larger than 8 MiB.";
-    if (e && e.status === 429) return b && b.error ? sentence(str(b.error)) : "Too many uploads; try again later.";
-    if (b && b.error) return sentence(str(b.error));
-    if (e && e.network) return what + ": server unreachable or too slow.";
-    return what + (e && e.status ? " (HTTP " + e.status + ")." : ".");
-  }
-
-  function plannerUpload(file) {
-    if (!file || planner.busy) return;
-    if (file.size > PL_MAX_BYTES) {
-      plStatus("That file is larger than 8 MiB.", true);
-      return;
-    }
-    if (!file.size) {
-      plStatus("That file is empty.", true);
-      return;
-    }
-    var s = plannerStash();
-    var q = "?name=" + encodeURIComponent(String(file.name || "schematic").slice(0, 200));
-    if (s) q += "&server=" + encodeURIComponent(s.server) + "&stash=" + encodeURIComponent(s.stash);
-    planner.busy = true;
-    pl.choose.disabled = true;
-    pl.drop.classList.add("busy");
-    plStatus("Reading the schematic...", false);
-    api("/api/v1/planner/upload" + q, { method: "POST", raw: file, timeout: PL_UPLOAD_TIMEOUT_MS }).then(function (r) {
-      plannerResetOptions();
-      // A new plan wins over any view request still in flight (for the old plan): those replies are dropped.
-      planner.seq++;
-      if (r && r.plan) planner.plan = r.plan;
-      plannerSave();
-      plStatus("", false);
-      plOrderStatus("", false);
-      plannerRender();
-      toast("Material list ready");
-    }, function (e) {
-      plStatus(plannerFail(e, "Could not read the file"), true);
-    }).then(function () {
-      planner.busy = false;
-      pl.choose.disabled = false;
-      pl.drop.classList.remove("busy");
-      pl.file.value = "";
-    });
-  }
-
-  /** Asks for the plan against the chosen stash and options. */
-  function plannerLoad() {
-    window.clearTimeout(planner.loadTimer);
-    var p = planner.plan;
-    var s = plannerStash();
-    if (!p || !p.id || !s) {
-      plannerRender();
-      return;
-    }
-    var seq = ++planner.seq;
-    // POST with the options as JSON: a long exclude list doesn't fit a URL.
-    var body = plannerOptions();
-    body.server = s.server;
-    body.stash = s.stash;
-    api("/api/v1/planner/" + encodeURIComponent(p.id) + "/view", { method: "POST", body: body }).then(function (r) {
-      if (seq !== planner.seq || !r || !r.plan || !planner.plan || planner.plan.id !== p.id) return;
-      planner.plan = r.plan;
-      planner.ordered = r.plan.ordered && typeof r.plan.ordered === "object" ? r.plan.ordered : null;
-      if (plannerTakeLockedOptions()) return;
-      plannerSave();
-      plannerRender();
-      plannerPollOrders();
-    }, function (e) {
-      if (seq !== planner.seq) return;
-      if (e && e.status === 404 && e.body && e.body.error === "no such stash") {
-        plOrderStatus("That stash isn't available to your account (or no longer exists). Pick another stash.", true);
-      } else if (e && e.status === 404 && planner.plan === p) {
-        planner.plan = null;
-        planner.ordered = null;
-        plannerRender();
-        plannerSave();
-        plStatus("This material list has ended (30 minutes unused, 2 hours at most, or you logged out). Upload the file again.", true);
-      } else {
-        plOrderStatus(plannerFail(e, "Could not update the list"), true);
-      }
-    });
-  }
-
-  function plannerScheduleLoad() {
-    window.clearTimeout(planner.loadTimer);
-    planner.loadTimer = window.setTimeout(plannerLoad, 250);
-  }
-
-  // ---------- build planner: rendering ----------
-
-  function plannerRender() {
-    var p = planner.plan;
-    var full = !!(p && p.items);
-    pl.body.hidden = !full;
-    pl.dismiss.hidden = !p;
-    if (!full) return;
-    plannerFillStashes();
-    plannerRenderFacts(p);
-    plannerRenderTiles(p);
-    plannerRenderRows(p);
-    plannerRenderSimple(pl.unknownBox, pl.unknown, Array.isArray(p.unknown) ? p.unknown : [], num(p.unknownOmitted, 0), false);
-    plannerRenderSimple(pl.chestBox, pl.chest, Array.isArray(p.containerItems) ? p.containerItems : [], 0, true);
-    plannerRenderActions();
-    plannerApplyLock();
-  }
-
-  function plFact(dl, label, value) {
-    var dt = document.createElement("dt");
-    dt.textContent = label;
-    var dd = document.createElement("dd");
-    if (typeof value === "string") dd.textContent = value;
-    else dd.appendChild(value);
-    dl.appendChild(dt);
-    dl.appendChild(dd);
-  }
-
-  function plannerRenderFacts(p) {
-    var frag = document.createDocumentFragment();
-    var dl = document.createElement("div");
-    dl.className = "pl-facts-inner";
-    plFact(dl, "File", hiddenSpan(str(p.fileName)));
-    plFact(dl, "Format", (PL_FORMATS[p.format] || str(p.format)) + (num(p.formatVersion, 0) > 0 ? ", version " + p.formatVersion : ""));
-    var size = num(p.size, 0);
-    plFact(dl, "Size", size >= 1048576 ? (size / 1048576).toFixed(1) + " MiB" : Math.max(1, Math.round(size / 1024)) + " KiB");
-    var d = p.dimensions && typeof p.dimensions === "object" ? p.dimensions : {};
-    plFact(dl, "Dimensions", num(d.x, 0) + " × " + num(d.y, 0) + " × " + num(d.z, 0) + (num(p.regions, 1) > 1 ? " (" + p.regions + " regions)" : ""));
-    plFact(dl, "Blocks", grouped(num(p.blocks, 0)));
-    plFact(dl, "Block table", "Minecraft " + str(p.tableVersion) + (num(p.dataVersion, 0) > 0 ? " (file: data version " + p.dataVersion + ")" : " (the file has no data version)"));
-    while (dl.firstChild) frag.appendChild(dl.firstChild);
-    pl.facts.replaceChildren(frag);
-    var newer = p.newerThanTable === true;
-    pl.newer.hidden = !newer;
-    pl.newer.textContent = newer ? "This schematic was saved with a newer Minecraft (data version " + p.dataVersion + ") than the newest block table (" +
-      str(p.tableVersion) + ", data version " + p.tableDataVersion + "). Blocks added since then show as unknown." : "";
-    var exp = num(p.expiresAt, 0);
-    pl.expires.textContent = exp ? "Kept until " + new Date(exp - state.clockSkew).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) +
-      " unless used" : "";
-  }
-
-  function plTile(label, value, sub, cls) {
-    var t = document.createElement("div");
-    t.className = "pl-tile" + (cls ? " " + cls : "");
-    t.appendChild(line("pl-tile-label", label));
-    t.appendChild(line("pl-tile-value", value));
-    if (sub) t.appendChild(line("pl-tile-sub", sub));
-    return t;
-  }
-
-  function plannerRenderTiles(p) {
-    var t = p.totals && typeof p.totals === "object" ? p.totals : {};
-    var st = p.stash && typeof p.stash === "object" ? p.stash : null;
-    var frag = document.createDocumentFragment();
-    frag.appendChild(plTile("Needed", grouped(num(t.need, 0)), plural(String(p.items.filter(function (r) { return !r.excluded; }).length), "kind")));
-    frag.appendChild(plTile("Available", grouped(num(t.available, 0)), "in the stash, after open orders", "ok"));
-    frag.appendChild(plTile("Missing", grouped(num(t.missing, 0)), num(t.missing, 0) > 0 ? "not in the stash" : "nothing missing",
-      num(t.missing, 0) > 0 ? "bad" : "ok"));
-    if (st && st.indexed && typeof t.shulkers === "number") {
-      frag.appendChild(plTile("To order", grouped(num(t.want, 0)), plural(String(num(t.lines, 0)), "line")));
-      frag.appendChild(plTile("Shulkers", grouped(t.shulkers), plural(String(num(t.parts, 0)), "order") + " of up to 54"));
-    } else {
-      frag.appendChild(plTile("To order", "–", "this stash has no index yet"));
-    }
-    pl.tiles.replaceChildren(frag);
-  }
-
-  function plSortValue(r, key) {
-    if (key === "name") return plName(r).toLowerCase();
-    return num(r[key], 0);
-  }
-
-  function plannerVisibleRows(p) {
-    var f = planner.filter.trim().toLowerCase();
-    var rows = p.items.filter(function (r) {
-      if (planner.onlyMissing && !(num(r.missing, 0) > 0 && !r.excluded)) return false;
-      if (!f) return true;
-      return plName(r).toLowerCase().indexOf(f) >= 0 || str(r.id).toLowerCase().indexOf(f) >= 0;
-    });
-    var key = planner.sort.key;
-    if (key) {
-      var dir = planner.sort.dir;
-      rows = rows.map(function (r, i) { return { r: r, i: i }; });
-      rows.sort(function (a, b) {
-        var x = plSortValue(a.r, key);
-        var y = plSortValue(b.r, key);
-        return (x < y ? -dir : x > y ? dir : 0) || a.i - b.i;
-      });
-      rows = rows.map(function (w) { return w.r; });
-    }
-    return rows;
-  }
-
-  function plIcon(r) {
-    var img = document.createElement("img");
-    img.className = "pl-icon";
-    img.width = 24;
-    img.height = 24;
-    img.alt = "";
-    img.loading = "lazy";
-    img.decoding = "async";
-    var tries = 0;
-    var url = r.icon === true ? iconUrl(str(r.id), str(r.mc) || DEFAULT_MC) : PLACEHOLDER;
-    img.addEventListener("error", function () {
-      if (img.getAttribute("src") !== PLACEHOLDER) img.src = PLACEHOLDER;
-      tries++;
-      if (url === PLACEHOLDER || tries > 5) return;
-      window.setTimeout(function () {
-        if (img.isConnected) img.src = url + "&retry=" + tries;
-      }, retryDelay(tries));
-    });
-    img.src = url;
-    return img;
-  }
-
-  function plNumCell(n, maxStack, cls, dash) {
-    var td = document.createElement("td");
-    td.className = "pl-c-num" + (cls ? " " + cls : "");
-    if (dash) {
-      td.textContent = "–";
-      td.title = "Not in this stash's index";
-    } else {
-      td.textContent = plStacks(n, maxStack);
-      td.title = grouped(num(n, 0));
-    }
-    return td;
-  }
-
-  function plannerRenderRows(p) {
-    var rows = plannerVisibleRows(p);
-    var frag = document.createDocumentFragment();
-    rows.forEach(function (r) {
-      var tr = document.createElement("tr");
-      if (r.excluded) tr.className = "pl-excluded";
-      var name = plName(r);
-      var tdEx = document.createElement("td");
-      tdEx.className = "pl-c-ex";
-      var box = document.createElement("input");
-      box.type = "checkbox";
-      box.checked = !r.excluded;
-      box.disabled = plannerLocked();
-      box.setAttribute("aria-label", "Include " + name);
-      box.addEventListener("change", function () {
-        if (box.checked) planner.exclude.delete(str(r.id));
-        else planner.exclude.add(str(r.id));
-        r.excluded = !box.checked;
-        tr.classList.toggle("pl-excluded", r.excluded);
-        plannerScheduleLoad();
-      });
-      tdEx.appendChild(box);
-      tr.appendChild(tdEx);
-      var tdIcon = document.createElement("td");
-      tdIcon.className = "pl-c-icon";
-      tdIcon.appendChild(plIcon(r));
-      tr.appendChild(tdIcon);
-      var tdName = document.createElement("td");
-      tdName.className = "pl-c-name";
-      tdName.appendChild(line("pl-name", name));
-      var from = r.from && typeof r.from === "object" ? r.from : {};
-      var extra = [];
-      if (num(from.containers, 0) > 0) extra.push(grouped(from.containers) + " from chests");
-      if (num(from.fluids, 0) > 0) extra.push("source blocks");
-      if (num(r.variants, 0) > 0) extra.push("+" + grouped(r.variants) + " with extra data, not counted");
-      var idLine = line("pl-id", str(r.id) + (extra.length ? " · " + extra.join(" · ") : ""));
-      tdName.appendChild(idLine);
-      tr.appendChild(tdName);
-      var ms = num(r.maxStack, 64);
-      tr.appendChild(plNumCell(r.need, ms));
-      tr.appendChild(plNumCell(r.inStash, ms, "", r.inIndex !== true));
-      tr.appendChild(plNumCell(r.available, ms, "", r.inIndex !== true));
-      tr.appendChild(plNumCell(r.missing, ms, num(r.missing, 0) > 0 && !r.excluded ? "pl-missing" : ""));
-      frag.appendChild(tr);
-    });
-    if (!rows.length) {
-      var tr = document.createElement("tr");
-      var td = document.createElement("td");
-      td.colSpan = 7;
-      td.className = "pl-empty";
-      td.textContent = p.items.length ? "Nothing matches." : "The schematic has no blocks that are items.";
-      tr.appendChild(td);
-      frag.appendChild(tr);
-    }
-    pl.rows.replaceChildren(frag);
-    Array.prototype.forEach.call(pl.table.querySelectorAll("th[aria-sort]"), function (th) {
-      var b = th.querySelector(".pl-sort");
-      var on = b && b.dataset.sort === planner.sort.key;
-      th.setAttribute("aria-sort", on ? (planner.sort.dir > 0 ? "ascending" : "descending") : "none");
-    });
-  }
-
-  function plannerRenderSimple(box, host, list, omitted, icons) {
-    box.hidden = !list.length && !omitted;
-    var frag = document.createDocumentFragment();
-    list.forEach(function (e) {
-      var row = document.createElement("div");
-      row.className = "pl-simple-row";
-      if (icons) {
-        var info = null;
-        if (planner.plan) {
-          for (var i = 0; i < planner.plan.items.length; i++) if (planner.plan.items[i].id === e.id) info = planner.plan.items[i];
-        }
-        row.appendChild(plIcon(info || { id: e.id, icon: false }));
-        row.appendChild(themeSpan("pl-name", info ? plName(info) : plPretty(str(e.id))));
-      } else {
-        row.appendChild(themeSpan("pl-name", str(e.id)));
-      }
-      row.appendChild(themeSpan("pl-count", "× " + grouped(num(e.count, 0))));
-      frag.appendChild(row);
-    });
-    if (omitted > 0) frag.appendChild(line("note", "and " + grouped(omitted) + " more blocks of other unknown kinds"));
-    host.replaceChildren(frag);
-  }
-
-  /** The order buttons: "Order build materials now", then "Order next part (i/n)" once parts are placed. */
-  function plannerRenderActions() {
-    var p = planner.plan;
-    var st = p && p.stash && typeof p.stash === "object" ? p.stash : null;
-    var mayOrder = can("plannerOrder");
-    var t = p && p.totals ? p.totals : {};
-    var o = planner.ordered;
-    // Placed parts of the split for the options shown (other options can only be previewed while it is locked).
-    var started = !!(o && o.placed && Object.keys(o.placed).length && (o.sameOptions !== false || o.locked === true));
-    pl.order.hidden = !mayOrder || started;
-    pl.order.disabled = !st || !st.indexed || !(num(t.want, 0) > 0);
-    pl.next.hidden = true;
-    pl.again.hidden = true;
-    if (!mayOrder || !started) return;
-    var remaining = Array.isArray(o.remaining) ? o.remaining : [];
-    var again = Array.isArray(o.again) ? o.again : [];
-    var total = num(o.partsTotal, 0);
-    if (again.length) {
-      // A part whose order failed or was cancelled: never delivered, so it may be ordered again.
-      pl.again.hidden = false;
-      pl.again.disabled = false;
-      pl.again.textContent = "Order part " + again[0] + " again (" + again[0] + "/" + total + ")";
-    }
-    if (!remaining.length) {
-      plOrderStatus(again.length
-        ? "Part " + again.join(", ") + " failed or was cancelled; order it again when the bot is ready."
-        : "All " + plural(String(total), "part") + " ordered. Dismiss and upload the file again for a new order.", again.length > 0);
-      return;
-    }
-    var next = remaining[0];
-    var placedNums = Object.keys(o.placed).map(Number).sort(function (a, b) { return a - b; });
-    var lastId = o.placed[String(placedNums[placedNums.length - 1])];
-    var last = planner.orderStatus[lastId];
-    pl.next.hidden = false;
-    pl.next.textContent = "Order next part (" + next + "/" + total + ")";
-    pl.next.disabled = !PL_FINISHED[last];
-    if (!last) {
-      plOrderStatus("Part " + placedNums[placedNums.length - 1] + " ordered (" + lastId + "). Checking its status...", false);
-    } else if (!PL_FINISHED[last]) {
-      plOrderStatus("Part " + placedNums[placedNums.length - 1] + " is " + (STATUS_LABEL[last] || last).toLowerCase() +
-        ". One order fills the delivery chest, so order the next part once this one is delivered.", false);
-    } else if (last !== "delivered") {
-      plOrderStatus("Part " + placedNums[placedNums.length - 1] + " " + last + ". You can still order the next part.", true);
-    } else {
-      plOrderStatus("Part " + placedNums[placedNums.length - 1] + " delivered. Empty the delivery chest, then order the next part.", false);
-    }
-  }
-
-  /** While parts are placed and not all delivered, follow their status (the stash's order list). */
-  function plannerPollOrders() {
-    window.clearTimeout(planner.ordersTimer);
-    var o = planner.ordered;
-    var s = plannerStash();
-    if (!planner.open || !o || !o.placed || !Object.keys(o.placed).length || !s) return;
-    api("/api/v1/orders?server=" + encodeURIComponent(s.server) + "&stash=" + encodeURIComponent(s.stash)).then(function (r) {
-      var list = r && Array.isArray(r.orders) ? r.orders : [];
-      list.forEach(function (ord) { if (ord && typeof ord.id === "string") planner.orderStatus[ord.id] = str(ord.status); });
-      // A placed part that failed or was cancelled since: ask the server again (it may be ordered again, and the
-      // options may unlock).
-      var again = Array.isArray(o.again) ? o.again.map(String) : [];
-      var changed = Object.keys(o.placed).some(function (part) {
-        var st = planner.orderStatus[o.placed[part]];
-        return (st === "failed" || st === "cancelled") && again.indexOf(part) < 0;
-      });
-      if (changed) plannerScheduleLoad();
-      plannerRenderActions();
-    }, function () {}).then(function () {
-      var cur = planner.ordered;
-      var open = cur && cur.placed && Object.keys(cur.placed).some(function (part) { return !PL_FINISHED[planner.orderStatus[cur.placed[part]]]; });
-      if (planner.open && cur && ((Array.isArray(cur.remaining) && cur.remaining.length) || open)) {
-        planner.ordersTimer = window.setTimeout(plannerPollOrders, POLL_MS);
-      }
-    });
-  }
-
-  // ---------- build planner: export ----------
-
-  function plannerMissingRows() {
-    var p = planner.plan;
-    return p && p.items ? p.items.filter(function (r) { return !r.excluded && num(r.missing, 0) > 0; }) : [];
-  }
-
-  function plCsvField(v) {
-    var s = String(v);
-    // A leading = + - @ would be read as a formula by spreadsheets.
-    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
-    return /[",\n\r]/.test(s) ? "\"" + s.replace(/"/g, "\"\"") + "\"" : s;
-  }
-
-  function plannerMissingText(kind) {
-    var rows = plannerMissingRows();
-    if (kind === "csv") {
-      var out = ["item,name,missing,stacks"];
-      rows.forEach(function (r) {
-        out.push([plCsvField(str(r.id)), plCsvField(plName(r)), num(r.missing, 0), plCsvField(plStacks(r.missing, r.maxStack))].join(","));
-      });
-      return out.join("\r\n") + "\r\n";
-    }
-    var lines = ["Missing materials (" + plural(String(rows.length), "kind") + ")"];
-    rows.forEach(function (r) {
-      lines.push("- " + plName(r) + ": " + grouped(num(r.missing, 0)) + " (" + plStacks(r.missing, r.maxStack) + ")");
-    });
-    return lines.join("\n") + "\n";
-  }
-
-  function plannerDownload(kind) {
-    if (!plannerMissingRows().length) {
-      toast("Nothing is missing");
-      return;
-    }
-    var blob = new Blob([plannerMissingText(kind)], { type: kind === "csv" ? "text/csv;charset=utf-8" : "text/plain;charset=utf-8" });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement("a");
-    a.href = url;
-    a.download = "missing-materials." + (kind === "csv" ? "csv" : "txt");
-    a.hidden = true;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
-  }
-
-  pl.csv.addEventListener("click", function () { plannerDownload("csv"); });
-  pl.txt.addEventListener("click", function () { plannerDownload("txt"); });
-  pl.copy.addEventListener("click", function () {
-    if (!plannerMissingRows().length) {
-      toast("Nothing is missing");
-      return;
-    }
-    var text = plannerMissingText("txt");
-    var done = function () { toast("Copied the missing materials"); };
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(done, function () { toast("Could not copy: use Export instead"); });
-    } else {
-      toast("Copying isn't available here: use Export instead");
-    }
-  });
-
-  // ---------- build planner: ordering ----------
-
-  function plannerOrderBody(extra) {
-    var s = plannerStash();
-    var o = plannerOptions();
-    o.server = s.server;
-    o.stash = s.stash;
-    o.names = planner.names;
-    Object.keys(extra || {}).forEach(function (k) { o[k] = extra[k]; });
-    return o;
-  }
-
-  /** The bot's state for the stash: the warnings the cart shows too (offline, can't take orders, no delivery box). */
-  function plannerBotWarnings(s) {
-    var out = [];
-    if (!s) return out;
-    if (!s.online) out.push("The bot is offline. The order starts when it reconnects.");
-    if (str(s.orderBlocker)) out.push("The bot can't take orders right now: " + str(s.orderBlocker) + ".");
-    var d = s.delivery;
-    if (!(d && typeof d === "object" && typeof d.x === "number")) out.push("No delivery container is set on the bot.");
-    return out;
-  }
-
-  function plannerPlace(part, onDone) {
-    var s = plannerStash();
-    var p = planner.plan;
-    if (!s || !p) return;
-    plOrderStatus("Placing part " + part + "...", false);
-    return api("/api/v1/planner/" + encodeURIComponent(p.id) + "/order", { method: "POST", body: plannerOrderBody({ part: part }) }).then(function (r) {
-      planner.ordered = { partsTotal: num(r.partsTotal, 1), placed: r.placed || {}, remaining: Array.isArray(r.remaining) ? r.remaining : [],
-        again: Array.isArray(r.again) ? r.again : [], locked: true, sameOptions: true };
-      plannerApplyLock();
-      if (r.order && typeof r.order.id === "string") planner.orderStatus[r.order.id] = str(r.order.status);
-      toast("Part " + part + " of " + num(r.partsTotal, 1) + " ordered");
-      plannerRenderActions();
-      plannerPollOrders();
-      plannerScheduleLoad();
-      if (onDone) onDone(true);
-    }, function (e) {
-      plOrderStatus(plannerFail(e, "Could not place the order"), true);
-      if (onDone) onDone(false, e);
-    });
-  }
-
-  function plannerConfirm(dry) {
-    var s = plannerStash();
-    var p = planner.plan;
-    var parts = Array.isArray(dry.parts) ? dry.parts : [];
-    var body = document.createElement("div");
-    body.className = "pl-confirm";
-    var total = num(dry.partsTotal, parts.length);
-    body.appendChild(line("window-info", total > 1
-      ? "This needs " + total + " orders. One order fills at most 54 shulkers (one double chest), so the bot delivers it part by part: order the next part once the previous one is delivered."
-      : "This fits in one order."));
-    var table = document.createElement("table");
-    table.className = "pl-parts";
-    var head = document.createElement("tr");
-    ["Part", "Lines", "Shulkers", "Items"].forEach(function (h) {
-      var th = document.createElement("th");
-      th.scope = "col";
-      th.textContent = h;
-      head.appendChild(th);
-    });
-    var thead = document.createElement("thead");
-    thead.appendChild(head);
-    table.appendChild(thead);
-    var tbody = document.createElement("tbody");
-    parts.forEach(function (pt) {
-      var tr = document.createElement("tr");
-      [String(pt.part) + (pt.order ? " (ordered)" : ""), grouped(num(pt.lineCount, 0)), grouped(num(pt.shulkers, 0)), grouped(num(pt.items, 0))]
-        .forEach(function (v) {
-          var td = document.createElement("td");
-          td.textContent = v;
-          tr.appendChild(td);
-        });
-      tbody.appendChild(tr);
-    });
-    table.appendChild(tbody);
-    body.appendChild(table);
-    var nameOf = function (id) {
-      for (var i = 0; i < p.items.length; i++) if (p.items[i].id === id) return plName(p.items[i]);
-      return plPretty(id);
-    };
-    var na = Array.isArray(dry.notAvailable) ? dry.notAvailable : [];
-    if (na.length) {
-      var names = na.slice(0, 12).map(function (e) { return nameOf(str(e.id)) + " × " + grouped(num(e.need, 0)); });
-      body.appendChild(line("note warn", "Not available in this stash, left out: " + names.join(", ") + (na.length > 12 ? " and " + (na.length - 12) + " more." : ".")));
-    }
-    var miss = Array.isArray(dry.missing) ? dry.missing : [];
-    if (miss.length) body.appendChild(line("note", plural(String(miss.length), "kind") + " of material will still be missing (see the list; Export missing)."));
-    var check = checkField("", planner.names);
-    check.node.replaceChildren(check.input, document.createTextNode(" Name the shulkers “"), hiddenSpan(PLANNER_NAME_PREFIX + str(p.fileName)),
-      document.createTextNode((total > 1 ? " 1/" + total : "") + "”"));
-    body.appendChild(check.node);
-    var warn = line("note warn", "");
-    warn.setAttribute("role", "status");
-    body.appendChild(warn);
-    var first = Array.isArray(dry.remaining) && dry.remaining.length ? dry.remaining[0] : 1;
-    var firstPart = parts[first - 1];
-    var syncWarn = function () {
-      var list = plannerBotWarnings(s);
-      if (check.input.checked) {
-        var w = namesWarnText(s, firstPart ? num(firstPart.shulkers, 0) : 0);
-        if (w) list.push(w);
-      }
-      warn.textContent = list.join(" ");
-      warn.hidden = !list.length;
-    };
-    check.input.addEventListener("change", function () {
-      planner.names = check.input.checked;
-      plannerSave();
-      syncWarn();
-    });
-    syncWarn();
-    var actions = document.createElement("div");
-    actions.className = "window-actions";
-    var go = document.createElement("button");
-    go.type = "button";
-    go.className = "mc-button primary";
-    go.textContent = total > 1 ? "Order part " + first + " of " + total : "Place order";
-    var cancel = document.createElement("button");
-    cancel.type = "button";
-    cancel.className = "mc-button";
-    cancel.textContent = "Cancel";
-    cancel.addEventListener("click", closeWindow);
-    var msg = line("note warn", "");
-    go.addEventListener("click", function () {
-      go.disabled = true;
-      msg.textContent = "";
-      plannerPlace(first, function (ok, e) {
-        if (ok) closeWindow();
-        else {
-          go.disabled = false;
-          msg.textContent = plannerFail(e, "Could not place the order");
-        }
-      });
-    });
-    actions.appendChild(go);
-    actions.appendChild(cancel);
-    body.appendChild(actions);
-    body.appendChild(msg);
-    if (!parts.length) {
-      go.disabled = true;
-      msg.textContent = "Nothing to order: the stash has none of these materials available.";
-    }
-    openWindow("Order build materials", body, "pl-order-window");
-  }
-
-  var PLANNER_NAME_PREFIX = "Build: ";
-
-  pl.order.addEventListener("click", function () {
-    var s = plannerStash();
-    if (!s || !planner.plan || !can("plannerOrder")) return;
-    pl.order.disabled = true;
-    plOrderStatus("Planning the order...", false);
-    api("/api/v1/planner/" + encodeURIComponent(planner.plan.id) + "/order", { method: "POST", body: plannerOrderBody({ dryRun: true }) }).then(function (dry) {
-      plOrderStatus("", false);
-      plannerConfirm(dry);
-    }, function (e) {
-      plOrderStatus(plannerFail(e, "Could not plan the order"), true);
-    }).then(function () {
-      plannerRenderActions();
-    });
-  });
-
-  pl.again.addEventListener("click", function () {
-    var o = planner.ordered;
-    if (!o || !Array.isArray(o.again) || !o.again.length) return;
-    pl.again.disabled = true;
-    plannerPlace(o.again[0], function () { plannerRenderActions(); });
-  });
-
-  pl.next.addEventListener("click", function () {
-    var o = planner.ordered;
-    if (!o || !Array.isArray(o.remaining) || !o.remaining.length) return;
-    pl.next.disabled = true;
-    plannerPlace(o.remaining[0], function () { plannerRenderActions(); });
-  });
-
-  pl.dismiss.addEventListener("click", function () {
-    var p = planner.plan;
-    if (!p) return;
-    pl.dismiss.disabled = true;
-    api("/api/v1/planner/" + encodeURIComponent(p.id) + "/delete", { method: "POST", body: {} }).then(null, function () {}).then(function () {
-      pl.dismiss.disabled = false;
-      planner.plan = null;
-      planner.seq++;
-      plannerResetOptions();
-      plannerSave();
-      plOrderStatus("", false);
-      plStatus("Dismissed. The material list was deleted from the server.", false);
-      plannerRender();
-    });
-  });
-
-  // ---------- build planner: inputs ----------
-
-  pl.choose.addEventListener("click", function (e) {
-    e.stopPropagation();
-    pl.file.click();
-  });
-  pl.drop.addEventListener("click", function (e) {
-    if (e.target === pl.drop || e.target.classList.contains("pl-drop-text")) pl.file.click();
-  });
-  pl.drop.addEventListener("keydown", function (e) {
-    if (e.target === pl.drop && (e.key === "Enter" || e.key === " ")) {
-      e.preventDefault();
-      pl.file.click();
-    }
-  });
-  pl.file.addEventListener("change", function () {
-    if (pl.file.files && pl.file.files[0]) plannerUpload(pl.file.files[0]);
-  });
-  ["dragenter", "dragover"].forEach(function (type) {
-    pl.drop.addEventListener(type, function (e) {
-      e.preventDefault();
-      pl.drop.classList.add("over");
-    });
-  });
-  ["dragleave", "drop"].forEach(function (type) {
-    pl.drop.addEventListener(type, function () { pl.drop.classList.remove("over"); });
-  });
-  pl.drop.addEventListener("drop", function (e) {
-    e.preventDefault();
-    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-    if (f) plannerUpload(f);
-  });
-  pl.stash.addEventListener("change", function () {
-    planner.stash = pl.stash.value || null;
-    planner.ordered = null;
-    plOrderStatus("", false);
-    plannerLoad();
-  });
-  pl.mult.addEventListener("input", function () {
-    if (pl.mult.value !== "") plannerScheduleLoad();
-  });
-  pl.mult.addEventListener("change", function () {
-    pl.mult.value = String(clampInt(pl.mult.value, 1, 64));
-    plannerScheduleLoad();
-  });
-  [pl.round, pl.fluids, pl.containers].forEach(function (c) {
-    c.addEventListener("change", plannerLoad);
-  });
-  pl.filter.addEventListener("input", function () {
-    planner.filter = pl.filter.value;
-    if (planner.plan && planner.plan.items) plannerRenderRows(planner.plan);
-  });
-  pl.onlyMissing.addEventListener("change", function () {
-    planner.onlyMissing = pl.onlyMissing.checked;
-    if (planner.plan && planner.plan.items) plannerRenderRows(planner.plan);
-  });
-  pl.table.querySelector("thead").addEventListener("click", function (e) {
-    var b = e.target.closest ? e.target.closest(".pl-sort") : null;
-    if (!b) return;
-    var key = b.dataset.sort;
-    if (planner.sort.key !== key) planner.sort = { key: key, dir: key === "name" ? 1 : -1 };
-    else if ((planner.sort.dir > 0) === (key === "name")) planner.sort.dir = -planner.sort.dir;
-    else planner.sort = { key: "", dir: 1 }; // the third click: creative order again
-    if (planner.plan && planner.plan.items) plannerRenderRows(planner.plan);
-  });
 
   // ---------- bots overview ----------
 
@@ -5190,7 +4235,6 @@
     el.pageConsole.hidden = page !== "console";
     el.pageProxy.hidden = page !== "proxy";
     el.pageActivity.hidden = page !== "activity";
-    el.pagePlanner.hidden = page !== "planner";
     if (vel) vel.page.hidden = page !== "viewer"; // (the viewer's code below may not have run yet)
     var navs = el.dashNav.querySelectorAll(".nav-btn");
     for (var i = 0; i < navs.length; i++) navs[i].classList.toggle("selected", navs[i].dataset.page === page);
@@ -5212,8 +4256,6 @@
     if (page === "console") loadConsole();
     window.clearTimeout(act.timer);
     if (page === "activity") loadActivity();
-    if (page === "planner") plannerOpen();
-    else plannerClose();
     if (page === "viewer") viewerOpen();
     else viewerClose();
   }
@@ -7297,7 +6339,6 @@
     if (!relabel) return;
     updateSelect();
     renderBotSelect();
-    if (planner.open) plannerFillStashes();
     viewerStreamer();
   }
 
@@ -7423,7 +6464,7 @@
     account: $("account-btn"),
     accountMenu: $("account-menu")
   };
-  var MORE_PAGES = ["planner", "viewer", "settings", "proxy", "console"];
+  var MORE_PAGES = ["viewer", "settings", "proxy", "console"];
 
   /** Opens a page exactly as its desktop nav button does (that button stays the single source of truth). */
   function openNavPage(page) {
@@ -7575,10 +6616,8 @@
     if (botPicker) botPicker.hidden = !activity;
     el.botsOpen.hidden = !activity;
     el.navConsole.hidden = !pageAllowed("console");
-    el.navPlanner.hidden = !pageAllowed("planner");
     renderStreamer(false); // forced streamer mode: on and locked
     updateViewerNav();
-    plannerPerms();
     updateProxyNav();
     updateActivityNav(false);
     el.linkOpen.hidden = !can("link");
@@ -7638,8 +6677,6 @@
     ["settings", "Change plugin settings", "Save the Qwerte Stash plugin settings."],
     ["rescan", "Rescan stashes", "Ask the bot to re-read every container of a stash."],
     ["link", "Link addon", "The Link addon panel (linked bots in scope) and releasing a stash. The API key itself stays owner-only."],
-    ["planner", "Build planner", "Upload a schematic and see its material list against a stash (the file itself is not kept)."],
-    ["plannerOrder", "Order from the build planner", "Order a build's materials from the planner, in parts of up to 54 shulkers, and cancel or retry their own orders. Doesn't need Place orders."],
     ["viewer", "Live viewer", "Watch a bot live: the map around it, its position, nearby players, mobs and items, its HUD and its chat. Also turns on Bots and activity."],
     ["streamer", "Force streamer mode", "A restriction: the server never sends this user coordinates, player names, server addresses, chat or the bots' free text, and the live viewer shows relative coordinates. Settings, proxy settings and the console are refused. The user can't turn it off."]
   ];
@@ -7647,7 +6684,7 @@
   var CONSOLE_MODES = [["none", "No access"], ["list", "Only listed commands"], ["full", "Every command"]];
   var PRESET_ORDER = ["viewer", "orderer", "operator"];
   var PRESET_NAMES = { viewer: "Viewer", orderer: "Orderer", operator: "Operator" };
-  var IMPLIED_HINT = "Placing or managing orders, or the build planner, also turns on View stashes; ordering from the build planner also turns on Build planner. Changing plugin settings, the live viewer, or any proxy or console " +
+  var IMPLIED_HINT = "Placing or managing orders also turns on View stashes. Changing plugin settings, the live viewer, or any proxy or console " +
     "access, also turns on Bots and activity. Proxy changes and console commands still need Admin unlocked (the user's own password).";
   var SUDO_USERS_TEXT = "Managing users needs Admin unlocked. Type your password again; it is not asked for again for 15 minutes.";
   var users = { data: null, error: "", loading: false, form: null, busy: false, seq: 0 };
@@ -7669,8 +6706,7 @@
 
   /** The server's implied-permission rule, applied the same way here for the labels and the switches. */
   function withImplied(p) {
-    if (p.plannerOrder) p.planner = true;
-    if (p.order || p.ordersAll || p.planner) p.view = true;
+    if (p.order || p.ordersAll) p.view = true;
     if (p.settings || p.viewer || p.proxy !== "none" || p.console !== "none") p.activity = true;
     return p;
   }
@@ -7915,10 +6951,9 @@
     box.className = "perm-editor";
     var sw = {};
     var refresh = function () {
-      var forcePlanner = sw.plannerOrder.get();
-      var forceView = sw.order.get() || sw.ordersAll.get() || sw.planner.get() || forcePlanner;
+      var forceView = sw.order.get() || sw.ordersAll.get();
       var forceActivity = sw.settings.get() || sw.viewer.get() || proxySel.value !== "none" || consoleSel.value !== "none";
-      [["planner", forcePlanner], ["view", forceView], ["activity", forceActivity]].forEach(function (f) {
+      [["view", forceView], ["activity", forceActivity]].forEach(function (f) {
         var s = sw[f[0]];
         if (f[1]) s.set(true);
         s.node.disabled = f[1];

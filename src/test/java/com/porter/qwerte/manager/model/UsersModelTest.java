@@ -18,7 +18,7 @@ class UsersModelTest {
     static final String LIST = "{\"owner\":{\"name\":\"Boss\"},\"maxUsers\":50,\"minLength\":14,\"users\":["
         + "{\"id\":\"u-1\",\"name\":\"alice\",\"disabled\":false,\"mustChange\":true,\"perms\":{\"view\":true,\"order\":true,\"proxy\":\"read\",\"stashes\":[{\"server\":\"s\",\"stash\":\"x\"}],\"bots\":null},\"createdAt\":1,\"lastLoginAt\":null,\"sessions\":2},"
         + "{\"id\":\"u-2\",\"name\":\"Bob\",\"disabled\":true,\"perms\":{\"view\":true,\"streamer\":true},\"lastLoginAt\":99,\"sessions\":0}],"
-        + "\"presets\":{\"viewer\":{\"view\":true},\"orderer\":{\"view\":true,\"order\":true,\"planner\":true,\"plannerOrder\":true},\"operator\":{\"view\":true,\"order\":true,\"ordersAll\":true,\"activity\":true,\"settings\":true,\"rescan\":true,\"proxy\":\"read\",\"planner\":true,\"plannerOrder\":true,\"viewer\":true}}}";
+        + "\"presets\":{\"viewer\":{\"view\":true},\"orderer\":{\"view\":true,\"order\":true},\"operator\":{\"view\":true,\"order\":true,\"ordersAll\":true,\"activity\":true,\"settings\":true,\"rescan\":true,\"proxy\":\"read\",\"viewer\":true}}}";
 
     static Perms perms(String json) {
         return UsersModel.norm(JsonParser.parseString(json));
@@ -40,9 +40,8 @@ class UsersModelTest {
 
     @Test
     void impliedPermissionsFollowTheServersRule() {
-        Perms p = perms("{\"plannerOrder\":true}");
+        Perms p = perms("{\"order\":true}");
         UsersModel.withImplied(p);
-        assertTrue(p.flag("planner"));
         assertTrue(p.flag("view"));
         assertFalse(p.flag("activity"));
         Perms v = perms("{\"viewer\":true}");
@@ -88,7 +87,7 @@ class UsersModelTest {
         // alice has view+order+proxy read: not a preset
         assertEquals("Custom", UsersModel.presetLabel(d.users().get(0).perms(), d));
         assertEquals("Viewer", UsersModel.presetLabel(perms("{\"view\":true,\"stashes\":[]}"), d));
-        assertEquals("Orderer", UsersModel.presetLabel(perms("{\"order\":true,\"plannerOrder\":true}"), d));
+        assertEquals("Orderer", UsersModel.presetLabel(perms("{\"order\":true}"), d));
         // forced streamer is not part of any preset
         assertEquals("Viewer + forced streamer", UsersModel.presetLabel(d.users().get(1).perms(), d));
         assertEquals("only 1 stash", UsersModel.scopeText(d.users().get(0).perms()));

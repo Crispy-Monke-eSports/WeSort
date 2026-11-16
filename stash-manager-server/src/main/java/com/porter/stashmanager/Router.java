@@ -60,10 +60,6 @@ final class Router implements HttpHandler {
         ACTIVITY("activity", "view bots"),
         RESCAN("rescan", "rescan stashes"),
         LINK("link", "link bots"),
-        /** The build planner: upload schematics and see their material list. */
-        PLANNER("planner", "use the build planner"),
-        /** Order the materials of a build plan (does not need ORDER). */
-        PLANNER_ORDER("plannerOrder", "order from the build planner"),
         /** The live viewer: a bot's map, position, nearby entities, HUD and chat (implies ACTIVITY). */
         VIEWER("viewer", "use the live viewer"),
         /** The owner only: user management and the audit log. */
@@ -84,13 +80,11 @@ final class Router implements HttpHandler {
                 case VIEW -> x.view();
                 case ICONS -> x.view() || x.viewer();
                 case ORDER -> x.order();
-                case ORDER_OWN_OR_ALL -> x.order() || x.ordersAll() || x.plannerOrder();
+                case ORDER_OWN_OR_ALL -> x.order() || x.ordersAll();
                 case ORDERS_ALL -> x.ordersAll();
                 case ACTIVITY -> x.activity();
                 case RESCAN -> x.rescan();
                 case LINK -> x.link();
-                case PLANNER -> x.planner();
-                case PLANNER_ORDER -> x.plannerOrder();
                 case VIEWER -> x.viewer();
                 case OWNER -> p.owner();
             };

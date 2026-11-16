@@ -75,7 +75,7 @@ class TableFinderTest {
 
     @Test
     void materialFollowsTheRecipesOfBothVersions() {
-        for (String v : List.of("1.21.4", "1.21.11")) {
+        for (String v : List.of("1.21.4", "1.21.11", "26.3")) {
             Recipes r = Recipes.load(v);
             assertNotNull(r, v);
             // Any wood type: four planks of one kind, or one log of another kind

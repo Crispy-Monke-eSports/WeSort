@@ -225,7 +225,7 @@ class Harness:
         status, link = self.http('/api/v1/link')
         require(status == 200, 'Owner link failed')
         self.key = link['apiKey']
-        self.ok('published Docker Manager with fresh volume and safe Owner setup, no Discord')
+        self.ok('Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord')
 
     def start_client(self):
         log = (self.evidence / 'client.log').open('w'); self.logs.append(log)

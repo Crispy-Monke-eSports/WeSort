@@ -267,6 +267,22 @@ class NamingAndTabsTest {
     }
 
     @Test
+    void bundled26TableFillsApiV1VariantsWithoutMergingKeys() throws Exception {
+        IndexStore store = new IndexStore(data, CreativeTabs.bundled());
+        store.putIndex(json("{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"mcVersion\":\"26.3\",\"items\":["
+            + "{\"key\":\"minecraft:bundle#a\",\"id\":\"minecraft:bundle\",\"count\":1},"
+            + "{\"key\":\"minecraft:bundle#b\",\"id\":\"minecraft:bundle\",\"count\":2},"
+            + "{\"key\":\"minecraft:copper_sword\",\"id\":\"minecraft:copper_sword\",\"count\":1}]}"));
+        var served = json(new String(store.index("s", "a").bytes(), StandardCharsets.UTF_8));
+        var items = served.getAsJsonArray("items");
+        assertEquals(3, items.size());
+        assertEquals("tools_and_utilities", item(items, "minecraft:bundle#a").get("tab").getAsString());
+        assertEquals(2, item(items, "minecraft:bundle#b").get("count").getAsInt());
+        assertEquals("combat", item(items, "minecraft:copper_sword").get("tab").getAsString());
+        assertEquals("26.3", served.get("mcVersion").getAsString());
+    }
+
+    @Test
     void servedIndexIsFilledButDiskKeepsWhatTheBotSent() throws Exception {
         IndexStore store = new IndexStore(data, fixture());
         store.load();

@@ -46,7 +46,7 @@ final class GameIcons implements AutoCloseable {
     }
 
     private Path cacheFile(String mcVersion, String ns, String path) {
-        return iconsDir.resolve("game-" + mcVersion).resolve(ns).resolve(path + ".png");
+        return iconsDir.resolve("game-" + mcVersion + (mcVersion.equals("26.3") ? "-v2" : "")).resolve(ns).resolve(path + ".png");
     }
 
     /** True when a game render for this id is already on disk. */
@@ -111,6 +111,7 @@ final class GameIcons implements AutoCloseable {
         for (Path candidate : tried) {
             if (!Files.isRegularFile(candidate) || !Files.isReadable(candidate)) continue;
             try {
+                if (!GameAssets.matchesVersion(candidate, mcVersion)) continue;
                 IconRenderer r = IconRenderer.open(candidate, SIZE);
                 if (override != null && !candidate.startsWith(override)) {
                     System.out.println("Game icons " + mcVersion + ": minecraftJar=" + override + " has no usable client jar for "
@@ -122,7 +123,17 @@ final class GameIcons implements AutoCloseable {
                 System.out.println("Game icons " + mcVersion + ": can't use " + candidate + " (" + e.getMessage() + ")");
             }
         }
-        System.out.println("Game icons " + mcVersion + ": no usable client jar, using the Minecraft Wiki. Looked in:");
+        if (mcVersion.equals("26.3")) {
+            try {
+                return Optional.of(IconRenderer.open(VanillaAssets.client26(iconsDir), SIZE));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (IOException | RuntimeException e) {
+                System.out.println("Game icons 26.3: official assets unavailable (safe fallback): " + e.getMessage());
+            }
+        }
+        System.out.println("Game icons " + mcVersion + ": no usable client jar, "
+            + (mcVersion.equals("26.3") ? "using safe missing-texture fallback" : "using the Minecraft Wiki") + ". Looked in:");
         for (Path p : tried) System.out.println("    " + p);
         return Optional.empty();
     }

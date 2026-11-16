@@ -11,11 +11,12 @@ verifierad och publiceras inte.
 `.github/workflows/manager-image.yml` bygger/testar PR utan package-push.
 Publicering startas manuellt på main med `publish=true`, eller av en `v*`-tagg
 vars commit finns på main. Taggen måste motsvara versionen i Managers Gradlefil.
-Första utvecklingsversionen är `v0.1.0-dev.0`. Detta är en migrationsversion,
+Den aktuella 26.3-utvecklingsversionen är `v0.1.0-dev.1` (första imagen var
+`v0.1.0-dev.0`). Detta är en migrationsversion,
 inte den färdiga guildplattformen.
 
 ```sh
-gh workflow run manager-image.yml --ref main -f publish=true -f version=v0.1.0-dev.0
+gh workflow run manager-image.yml --ref main -f publish=true -f version=v0.1.0-dev.1
 ```
 
 Workflow kör hela baslinjen: båda klienttargets, Manager, webb, isolering och

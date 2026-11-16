@@ -1,0 +1,40 @@
+{
+  "result": "PASS",
+  "scope": "Actual Docker-served web JavaScript and API in JSDOM; no browser pixel rendering claim",
+  "visibleSlots": 15,
+  "filledShulkerGroups": 3,
+  "names": [
+    "Add a stack of Diamond to the cart",
+    "Add a stack of Dirt to the cart",
+    "Add a stack of Stone to the cart",
+    "Add a stack of Iron Ingot to the cart",
+    "Add a stack of Gold Ingot to the cart",
+    "Add a stack of Bundle to the cart",
+    "Add a stack of Bundle to the cart",
+    "Add a stack of Bundle to the cart",
+    "Add a stack of Copper Sword to the cart",
+    "Add a stack of E2E box to the cart",
+    "Add a stack of E2E second box to the cart",
+    "Add a stack of E2E second sword to the cart",
+    "Add a stack of E2E sword to the cart",
+    "Add a stack of E2E sword to the cart",
+    "Add a stack of Red Shulker Box to the cart"
+  ],
+  "tooltips": [
+    "DiamondCount: 1,312 (≈ 21 stacks, 0.8 shulkers)minecraft:diamond",
+    "DirtCount: 144 (≈ 2.3 stacks, 0.1 shulkers)minecraft:dirt",
+    "StoneCount: 32 (≈ 0.5 stacks, <0.1 shulkers)minecraft:stone",
+    "Iron IngotCount: 16 (≈ 0.3 stacks, <0.1 shulkers)minecraft:iron_ingot",
+    "Gold IngotCount: 2 (≈ <0.1 stacks, <0.1 shulkers)minecraft:gold_ingot",
+    "BundleCount: 1 (≈ 1 stack, <0.1 shulkers)minecraft:bundle",
+    "BundleCount: 1 (≈ 1 stack, <0.1 shulkers)minecraft:bundle",
+    "BundleCount: 1 (≈ 1 stack, <0.1 shulkers)minecraft:bundle",
+    "Copper SwordCount: 1 (≈ 1 stack, <0.1 shulkers)minecraft:copper_sword",
+    "E2E boxDirt ×641 stack×1 shulkerRight-click to look insideminecraft:shulker_box",
+    "E2E second boxStone ×321 stack×1 shulkerRight-click to look insideminecraft:shulker_box",
+    "E2E second swordDurability: 1,557 / 1,561Count: 1 (≈ 1 stack, <0.1 shulkers)minecraft:diamond_sword",
+    "E2E swordUnbreaking IDurability: 1,558 / 1,561Count: 1 (≈ 1 stack, <0.1 shulkers)minecraft:diamond_sword",
+    "E2E swordUnbreaking IDurability: 1,558 / 1,561Count: 1 (≈ 1 stack, <0.1 shulkers)minecraft:diamond_sword",
+    "Red Shulker BoxDirt ×641 stack×1 shulkerRight-click to look insideminecraft:red_shulker_box"
+  ]
+}

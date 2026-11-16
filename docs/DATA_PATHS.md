@@ -2,7 +2,7 @@
 
 WeSort har mod-id `wesort`, Java-paket `com.porter.wesort` och
 `com.porter.wesortmanager`, kategori WeSort, artifact `wesort-addon` och
-`wesort-manager.jar`, version `0.1.0-dev.0`. Ursprunglig attribution till
+`wesort-manager.jar`, Manager-version `0.1.0-dev.1`. Ursprunglig attribution till
 Qwertze och GPL/OFL-text är kvar; se UPSTREAM.md. Logotypens SVG-källa finns
 i branding/wesort.svg, med PNG-export för Fabric och SVG-favicon för webben.
 

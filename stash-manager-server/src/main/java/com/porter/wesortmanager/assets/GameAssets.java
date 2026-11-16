@@ -19,6 +19,20 @@ public final class GameAssets {
     private GameAssets() {
     }
 
+    /** A path override must not silently render another release's item under this release's cache key. */
+    public static boolean matchesVersion(Path jar, String expected) {
+        try (var zip = new java.util.zip.ZipFile(jar.toFile())) {
+            var entry = zip.getEntry("version.json");
+            if (entry == null || entry.getSize() > 65536) return false;
+            try (var input = zip.getInputStream(entry)) {
+                byte[] bytes = input.readNBytes(65537);
+                if (bytes.length > 65536) return false;
+                var json = com.google.gson.JsonParser.parseString(new String(bytes, java.nio.charset.StandardCharsets.UTF_8)).getAsJsonObject();
+                return expected.equals(json.get("id").getAsString());
+            }
+        } catch (java.io.IOException | RuntimeException invalid) { return false; }
+    }
+
     /**
      * Locates the client jar for {@code mcVersion}.
      *

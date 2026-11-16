@@ -11,8 +11,8 @@ Manager med egen volym. Inga befintliga Prism-/Qwerte-data används.
 26.3 använder ContainerInput och menyns containerId/stateId. Lokal prediction
 är ingen kvittens. `InventorySync` fångar WeSorts riktiga inventory- och
 blockanrop, även Meteor InvUtils, och journalför förväntat fullständigt
-slottillstånd och cursor innan paketet lämnar klienten. Kanonisk ItemStack
-CODEC-JSON omfattar antal och komponenter inklusive nästlat shulkerinnehåll.
+slottillstånd och cursor innan paketet lämnar klienten. Kanonisk typbevarande ItemStack
+CODEC-NBT omfattar antal och komponenter inklusive nästlat shulkerinnehåll.
 
 Efter en sammanhängande klickbatch begär klienten full serverläsning.
 Vanilla 26.3:s AbstractContainerMenu accepterar slot -1; QUICK_MOVE på negativ

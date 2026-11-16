@@ -1,0 +1,24 @@
+{
+  "result": "PASS",
+  "source_client_sha1": "e877b6a07acd633fb3bb475002175cec036e7b87",
+  "creative_items": 1623,
+  "crafting_recipes": 1182,
+  "checks": [
+    {
+      "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+      "result": "PASS"
+    },
+    {
+      "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+      "result": "PASS"
+    },
+    {
+      "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+      "result": "PASS"
+    },
+    {
+      "scenario": "actual vanilla 26.3 creative categories and crafting recipes exported from bound registries, checked against repository resources",
+      "result": "PASS"
+    }
+  ]
+}

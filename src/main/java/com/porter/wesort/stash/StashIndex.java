@@ -12,7 +12,6 @@ import com.porter.wesort.stash.IndexJson.Shulker;
 import com.porter.wesort.stash.Stash.Box;
 import meteordevelopment.meteorclient.utils.Utils;
 import net.minecraft.core.component.DataComponentPatch;
-import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.NbtOps;
@@ -31,7 +30,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.function.Predicate;
 
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
@@ -48,11 +46,8 @@ public final class StashIndex {
     private static final Gson GSON = new Gson();
     private static final int MAX_DEPTH = 4;
     private static final int MAX_CACHE = 20000;
-    // Shulker and bundle prototypes carry an empty container component, so the patch may hold a set or a removal of it
-    // Left out of keys: what a container holds, and custom_data, which ViaVersion adds to most items on some servers
-    private static final Predicate<DataComponentType<?>> CONTENTS = t -> t == DataComponents.CONTAINER || t == DataComponents.BUNDLE_CONTENTS || t == DataComponents.CUSTOM_DATA;
-    // Shulkers coming through ViaVersion hold their items in block_entity_data
-    private static final Predicate<DataComponentType<?>> SHULKER_CONTENTS = t -> CONTENTS.test(t) || t == DataComponents.BLOCK_ENTITY_DATA;
+    // Version adapters preserve baseline identities and canonicalize complete 26.3 variants.
+    // Filled shulkers retain a separate content group key.
 
     private static final Map<CacheKey, Info> CACHE = new HashMap<>();
     private static final List<String> TABS = List.of("building_blocks", "colored_blocks", "natural_blocks", "functional_blocks", "redstone_blocks",
@@ -387,7 +382,7 @@ public final class StashIndex {
     }
 
     private static Info infoOf(RegistryOps<Tag> ops, ItemStack stack) {
-        CacheKey ck = new CacheKey(stack.getItem(), stack.getComponentsPatch().forget(Utils.isShulker(stack.getItem()) ? SHULKER_CONTENTS : CONTENTS));
+        CacheKey ck = new CacheKey(stack.getItem(), com.porter.wesort.compat.IndexComponents.patch(stack));
         Info info = CACHE.get(ck);
         if (info == null) {
             info = describe(ops, stack, ck.patch());
@@ -507,7 +502,7 @@ public final class StashIndex {
 
     private static String key(RegistryOps<Tag> ops, String id, DataComponentPatch stripped) {
         if (stripped.isEmpty()) return id;
-        var encoded = DataComponentPatch.CODEC.encodeStart(ops, stripped).result();
+        var encoded = com.porter.wesort.compat.IndexComponents.encode(ops, stripped);
         if (encoded.isEmpty()) {
             if (!encodeWarned) {
                 encodeWarned = true;
@@ -515,7 +510,7 @@ public final class StashIndex {
             }
             return id;
         }
-        return id + "#" + sha1(encoded.get().toString()).substring(0, 8);
+        return id + "#" + sha1(encoded.get()).substring(0, 8);
     }
 
     private static List<String> details(StackInfo info) {

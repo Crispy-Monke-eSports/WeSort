@@ -1,7 +1,7 @@
 package com.porter.wesort.compat;
 
 import com.google.gson.*;
-import com.mojang.serialization.JsonOps;
+import net.minecraft.nbt.NbtOps;
 import com.porter.wesort.data.DataDirectory;
 import com.porter.wesort.inventory.InventoryReadback;
 import com.porter.wesort.stash.Stash;
@@ -338,17 +338,7 @@ public final class InventorySync {
     private static List<String> fingerprints(List<ItemStack> stacks) { return stacks.stream().map(InventorySync::fingerprint).toList(); }
     private static String fingerprint(ItemStack stack) {
         if (stack.isEmpty()) return "empty";
-        var ops = mc.level.registryAccess().createSerializationContext(JsonOps.INSTANCE);
-        return canonical(ItemStack.CODEC.encodeStart(ops, stack).getOrThrow()).toString();
-    }
-    private static JsonElement canonical(JsonElement element) {
-        if (element.isJsonObject()) {
-            JsonObject result = new JsonObject();
-            new TreeMap<>(element.getAsJsonObject().asMap()).forEach((key, value) -> result.add(key, canonical(value))); return result;
-        }
-        if (element.isJsonArray()) {
-            JsonArray result = new JsonArray(); element.getAsJsonArray().forEach(value -> result.add(canonical(value))); return result;
-        }
-        return element;
+        var ops = mc.level.registryAccess().createSerializationContext(NbtOps.INSTANCE);
+        return NbtFingerprint.encode(ItemStack.CODEC.encodeStart(ops, stack).getOrThrow());
     }
 }

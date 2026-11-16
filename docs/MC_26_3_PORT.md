@@ -130,7 +130,8 @@ klient-/addonstart, inte GUI-provet eller en värld; se
 [separat Prism-underlag](verification/W-014-prism-startup.json).
 1.21.4 och 1.21.11 passerar vardera 431 tester med nya wrappern. Manager
 passerar 104 tester med ett känt real-jar-ikonskip på Java 21.
-Detta godkänner inte slotkvittens, crafting, signskrivning, shulkeroperationer
-eller pathfinding i en värld. Dessa behöver W-045/W-015/W-016. 26.3-receptdata
-och full index-/ikonverifiering följer i W-017; saknad recepttabell ska ge
-säker avbruten crafting, aldrig antagna recept från äldre Minecraft.
+W-014:s klientstart ensam godkänner inte fysiska operationer. Senare verkliga
+världsprov, komponenter, slotkvittens, sign-/shulkeroperationer, Baritone och
+26.3-resurser dokumenteras separat i [steg 2](STAGE_2.md). Den genererade
+recepttabellen är ingen fysisk crafting-/kitverifiering; dessa flöden behöver
+fortfarande sina senare roadmapstester.

@@ -1,10 +1,10 @@
 # WeSort – migrationsarbete
 
 WeSort är en lagerfokuserad vidareutveckling av Qwerte för ett gemensamt
-guildlager. Detta repository befinner sig vid migrationsplanens steg 1;
+guildlager. Minecraft-porten och testplattformen i steg 2 finns nu i koden;
 den färdiga guildplattformen i [roadmap #1](https://github.com/Crispy-Monke-eSports/WeSort/issues/1)
-är ännu inte implementerad. 26.3-addonen byggs och klientstartas; fysisk
-inventory- och navigationsverifiering redovisas separat i steg 2.
+är ännu inte implementerad. Verkliga 26.3-prov för inventory, avbrott,
+Baritone, Docker-index och ikoner redovisas i [steg 2](docs/STAGE_2.md).
 
 Återanvänd funktionalitet:
 
@@ -50,15 +50,16 @@ Det kräver desktop eller Xvfb/Mesa och installerar Baritone API 1.4.0-26.3
 i provprofilen. Bygg/klientstart bevisar inte fysisk lagerautomation.
 Se [26.3-toolchain och portstatus](docs/MC_26_3_PORT.md).
 
-Klientjar kräver Fabric Loader 0.18.2+, Meteor för samma Minecraft-version
-och Java 21. Baritone API baseras på dekroms fork och är valfri vid runtime.
+Äldre klientjar kräver Fabric Loader 0.18.2+, Meteor för samma Minecraft-version
+och Java 21. 26.3 använder den låsta Java 25-/Loader-/Meteor-matrisen ovan.
+Baritone API baseras på dekroms fork och är valfri vid runtime.
 Vanlig kompilering/enhetstest startar inte Minecraft och bevisar inte fysiska
 inventory clicks, Baritone eller leverans. Se [testbaslinjen](docs/BASELINE.md).
 
 ## Avgränsning och fortsatt arbete
 
 Guildidentitet, SELF/GUILD-order, reservationer, kvoter (av som standard),
-1–5 koordinerade agenter, verifierad transport/mottagning och Minecraft 26.3
+1–5 koordinerade agenter och verifierad transport/mottagning
 införs i senare roadmapsteg. En HYBRID-agent ska till slut klara hela flödet.
 Manager körs i produktion endast med Linux Docker, med inbyggd webb/API,
 non-root, egen persistent volym och säker Owner-bootstrap via lokal CLI.

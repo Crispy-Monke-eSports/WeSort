@@ -275,6 +275,7 @@ public final class IconService implements AutoCloseable {
         String id = ns + ":" + path;
         IndexStore.IconInfo info = known.apply(id);
         if (info == null) {
+            if ("26.3".equals(requestedMc)) return placeholderUnknown;
             // Not in any index: no render, no fetch, nothing written. Old wiki files are still served.
             Icon cached = wikiEnabled ? readCache(nsDir, path) : null;
             return cached != null && cached.status() == 200 && cached != placeholderMiss ? cached : placeholderUnknown;
@@ -285,7 +286,7 @@ public final class IconService implements AutoCloseable {
             ? requestedMc : info.mcVersion();
         byte[] rendered = game.get(mc, ns, path);
         if (rendered != null) return new Icon(200, rendered, "image/png", CACHE_ICON);
-        if (!wikiEnabled) return placeholderMiss;
+        if (!wikiEnabled || mc.equals("26.3")) return placeholderMiss; // 26.3 never substitutes an unversioned wiki image.
 
         // 2. The wiki cache, then the wiki pipeline.
         Icon cached = readCache(nsDir, path);
@@ -355,7 +356,7 @@ public final class IconService implements AutoCloseable {
                 rendered++;
                 continue;
             }
-            if (!wikiEnabled) continue;
+            if (!wikiEnabled || mc.equals("26.3")) continue;
             if (pending.containsKey(ns + ":" + path)) continue;
             if (settled(nsDir, path)) {
                 wikiCached++;

@@ -33,8 +33,8 @@ class CraftPlannerTest {
     }
 
     @Test
-    void loadsBothTables() {
-        for (String v : List.of("1.21.4", "1.21.11")) {
+    void loadsVersionedTables() {
+        for (String v : List.of("1.21.4", "1.21.11", "26.3")) {
             Recipes r = recipes(v);
             assertEquals(v, r.version());
             assertTrue(r.size() > 800);
@@ -70,7 +70,7 @@ class CraftPlannerTest {
 
     @Test
     void threeLevelsShellsPlusChestFromPlanksFromLog() {
-        for (String v : List.of("1.21.4", "1.21.11")) {
+        for (String v : List.of("1.21.4", "1.21.11", "26.3")) {
             Recipes r = recipes(v);
             CraftPlanner.Result res = plan(r, 1, pool("shulker_shell", 2, "oak_log", 2));
             assertTrue(res.ok(), res.refusal());

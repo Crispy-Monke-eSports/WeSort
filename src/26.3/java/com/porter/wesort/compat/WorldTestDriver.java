@@ -183,6 +183,30 @@ public final class WorldTestDriver {
                     if (stash != null) stash.boxes.removeIf(box -> box.has(pos));
                     respond(true, "removed observed absent source", state());
                 }
+                case "window-capture" -> {
+                    var window = com.porter.wesort.modules.StashWindow.get();
+                    if (!window.isActive()) window.toggle();
+                    respond(true, "enabled actual passive Stash Window capture", state());
+                }
+                case "window-open" -> com.porter.wesort.modules.StashWindow.get().openNow();
+                case "component-identity" -> {
+                    var item = new ItemStack(net.minecraft.world.item.Items.DIAMOND);
+                    var first = new net.minecraft.nbt.CompoundTag(); first.putByte("value", (byte) 1);
+                    var second = new net.minecraft.nbt.CompoundTag(); second.putInt("value", 1);
+                    item.set(net.minecraft.core.component.DataComponents.CUSTOM_DATA, net.minecraft.world.item.component.CustomData.of(first));
+                    String a = StashIndex.keyOf(item);
+                    item.set(net.minecraft.core.component.DataComponents.CUSTOM_DATA, net.minecraft.world.item.component.CustomData.of(second));
+                    String b = StashIndex.keyOf(item);
+                    var nestedA = new net.minecraft.nbt.CompoundTag(); nestedA.putInt("a", 1); nestedA.putInt("b", 2);
+                    var nestedB = new net.minecraft.nbt.CompoundTag(); nestedB.putInt("b", 2); nestedB.putInt("a", 1);
+                    boolean valid = !a.equals(b) && NbtFingerprint.encode(nestedA).equals(NbtFingerprint.encode(nestedB))
+                        && !NbtFingerprint.encode(first).equals(NbtFingerprint.encode(second));
+                    respond(valid, "actual item CODEC keeps NBT numeric types distinct and compound order stable", state());
+                }
+                case "export-resources" -> {
+                    MetadataExport.export(Path.of(command.get("jar").getAsString()), control.resolve("resources"));
+                    respond(true, "exported live vanilla 26.3 metadata and recipes", state());
+                }
                 case "publish" -> publish(command);
                 case "screenshot" -> net.minecraft.client.Screenshot.grab(mc.gameDirectory, "fixture.png",
                     mc.gameRenderer.mainRenderTarget(), 1, message -> mc.execute(() -> {
@@ -205,6 +229,21 @@ public final class WorldTestDriver {
     private void finishPending() throws Exception {
         if (mc.level == null || mc.player == null) return;
         String action = pending.get("action").getAsString();
+        if (action.equals("window-open")) {
+            if (!(mc.gui.screen() instanceof com.porter.wesort.manager.gui.StashManagerScreen)) return;
+            var hub = com.porter.wesort.modules.StashWindow.get().hub();
+            var store = hub.store();
+            if (store == null || !store.loaded()) return;
+            var entries = store.snapshot(); hub.prepare(entries, 200_000_000L);
+            var built = hub.build(entries);
+            if (built == null || built.index().containersKnown() != entries.size()) return;
+            if (++stable < 20) return; // Let the real GUI build and render from the captured index.
+            var output = state();
+            output.add("windowItems", new Gson().toJsonTree(built.index().items()));
+            output.add("windowShulkers", new Gson().toJsonTree(built.index().shulkers()));
+            respond(true, "actual Stash Window rendered passive 26.3 scan", output);
+            return;
+        }
         if (action.equals("sign")) {
             BlockPos pos = position(pending);
             if (signSlot == null) return;

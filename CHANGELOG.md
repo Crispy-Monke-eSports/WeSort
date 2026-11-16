@@ -1,3 +1,5 @@
+> Historisk Qwerte-changelog från upstream. Aktuell WeSort-status finns i README och docs/REMOVED_FEATURES.md.
+
 # Changelog
 
 All notable changes to Qwerte are documented here. The format follows

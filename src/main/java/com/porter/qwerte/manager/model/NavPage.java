@@ -33,12 +33,6 @@ public enum NavPage {
         return inGame;
     }
 
-    /**
-     * The pages {@code auth} may see, as the website decides it (app.js pageAllowed and the nav updates).
-     *
-     * @param botHasActivity the picked dashboard bot reports activity (or the bot list isn't known yet)
-     * @param botPicked      a dashboard bot is picked (the Proxy page needs one)
-     */
     public static List<NavPage> visible(AuthState auth, boolean botHasActivity, boolean botPicked) {
         List<NavPage> out = new ArrayList<>();
         if (auth == null || !auth.loggedIn()) return out;

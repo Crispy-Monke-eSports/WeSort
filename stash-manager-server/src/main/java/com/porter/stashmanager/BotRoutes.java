@@ -305,11 +305,9 @@ final class BotRoutes {
             if (id == null || id.length() > 64) continue;
             boolean ok = bool(r, "ok");
             boolean more = bool(r, "more");
-            boolean sensitive = bool(r, "sensitive");
             String error = AddonRoutes.string(r, "error");
             JsonElement value = r.get("value");
-            JsonObject output = r.has("output") && r.get("output").isJsonObject() ? cleanOutput(r.getAsJsonObject("output")) : null;
-            hub.result(b, id, ok, more, value, error == null ? null : Http.truncate(error, 1000), sensitive, output);
+            hub.result(b, id, ok, more, value, error == null ? null : Http.truncate(error, 1000));
         }
         Http.json(ex, 200, Http.ok());
     }
@@ -345,39 +343,4 @@ final class BotRoutes {
         return e != null && e.isJsonPrimitive() && e.getAsJsonPrimitive().isBoolean() && e.getAsBoolean();
     }
 
-    private static final Pattern COLOR = Pattern.compile("^(error|success|primary|queue|#[0-9a-fA-F]{6})$");
-
-    /** Keeps only {title, description, color, fields:[{name, value}], lines:[]} with strings, capped. */
-    static JsonObject cleanOutput(JsonObject in) {
-        JsonObject out = new JsonObject();
-        String title = AddonRoutes.string(in, "title");
-        String description = AddonRoutes.string(in, "description");
-        String color = AddonRoutes.string(in, "color");
-        if (title != null) out.addProperty("title", Http.truncate(title, 1000));
-        if (description != null) out.addProperty("description", Http.truncate(description, 16_384));
-        if (color != null && COLOR.matcher(color).matches()) out.addProperty("color", color);
-        JsonArray fields = new JsonArray();
-        if (in.has("fields") && in.get("fields").isJsonArray()) {
-            for (JsonElement f : in.getAsJsonArray("fields")) {
-                if (fields.size() >= 50 || !f.isJsonObject()) break;
-                String name = AddonRoutes.string(f.getAsJsonObject(), "name");
-                String value = AddonRoutes.string(f.getAsJsonObject(), "value");
-                if (name == null || value == null) continue;
-                JsonObject fo = new JsonObject();
-                fo.addProperty("name", Http.truncate(name, 1000));
-                fo.addProperty("value", Http.truncate(value, 8192));
-                fields.add(fo);
-            }
-        }
-        out.add("fields", fields);
-        JsonArray lines = new JsonArray();
-        if (in.has("lines") && in.get("lines").isJsonArray()) {
-            for (JsonElement l : in.getAsJsonArray("lines")) {
-                if (lines.size() >= 2000) break;
-                if (l.isJsonPrimitive() && l.getAsJsonPrimitive().isString()) lines.add(Http.truncate(l.getAsString(), 4096));
-            }
-        }
-        out.add("lines", lines);
-        return out;
-    }
 }

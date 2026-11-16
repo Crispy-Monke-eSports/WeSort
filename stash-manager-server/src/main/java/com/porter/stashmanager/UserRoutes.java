@@ -287,7 +287,6 @@ final class UserRoutes {
         Http.error(ex, 500, "could not save");
     }
 
-    /** A short summary of permissions for the audit log, e.g. "view, order, console list, 2 stashes". */
     static String describe(Users.Perms p) {
         StringBuilder sb = new StringBuilder();
         java.util.function.Consumer<String> add = s -> sb.append(sb.isEmpty() ? "" : ", ").append(s);

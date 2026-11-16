@@ -94,7 +94,7 @@ public record BotInfo(boolean hasNaming, boolean anvil, String anvilSource, int 
             return "No anvil yet: the bot will look for one in the stash area, or place one from the stash. If it can't, the shulkers arrive unnamed.";
         }
         if (!anvil) {
-            return "No anvil set; the shulkers will arrive unnamed. Set one on the bot: in Meteor, stash-manager -> select-anvil; on the proxy, stash anvil here.";
+            return "No anvil set; the shulkers will arrive unnamed. Set one on the bot: in Meteor, stash-manager -> select-anvil.";
         }
         if (xpLevels >= 0 && xpLevels < n) {
             return "May run out of XP: about 1 level per shulker. The bot has " + plural(xpLevels, "level") + " for " + plural(n, "named shulker")

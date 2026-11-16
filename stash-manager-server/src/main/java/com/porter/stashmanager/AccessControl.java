@@ -24,7 +24,6 @@ public final class AccessControl {
     private static final Pattern IPV6_CHARS = Pattern.compile("^[0-9a-f:.]+(%[0-9a-z]+)?$");
 
     static final String JSON = "application/json";
-    static final String OCTET_STREAM = "application/octet-stream";
 
     private final boolean allowRemote;
     private final Set<String> allowedHosts = new HashSet<>();
@@ -128,30 +127,19 @@ public final class AccessControl {
         return browserWriteAllowed(ex.getRequestMethod(), ex.getRequestHeaders());
     }
 
-    /** The same checks, but the body must have this media type (the build planner's raw uploads). */
-    public boolean browserWriteAllowed(HttpExchange ex, String mediaType) {
-        return browserWriteAllowed(ex.getRequestMethod(), ex.getRequestHeaders(), mediaType);
-    }
+
 
     boolean browserWriteAllowed(String method, Headers h) {
-        return browserWriteAllowed(method, h, JSON);
-    }
 
-    boolean browserWriteAllowed(String method, Headers h, String mediaType) {
         if (!"POST".equals(method)) return false;
         if (!single(h, "X-Stash-Manager", "1")) return false;
         List<String> types = h.get("Content-Type");
         if (types == null || types.size() != 1) return false;
         String media = types.get(0).split(";", 2)[0].trim().toLowerCase(Locale.ROOT);
-        if (!media.equals(mediaType)) return false;
+        if (!media.equals(JSON)) return false;
         return sameOriginRead(h);
     }
 
-    /**
-     * The Origin and Sec-Fetch-Site rules of {@link #browserWriteAllowed} for a GET that streams private data for a
-     * long time (the live viewer): an Origin, when sent, must be this server's; a Sec-Fetch-Site, when sent, must be
-     * same-origin or none. Stops another site from opening the stream with the user's cookie.
-     */
     public boolean sameOriginRead(HttpExchange ex) {
         return sameOriginRead(ex.getRequestHeaders());
     }

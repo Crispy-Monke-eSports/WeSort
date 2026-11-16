@@ -8,7 +8,6 @@ import com.google.gson.JsonParser;
 import com.sun.net.httpserver.HttpExchange;
 
 import java.nio.charset.StandardCharsets;
-import java.security.SecureRandom;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -26,9 +25,7 @@ final class Redact {
     /** Activity sources shown as they are (the plugin's own subsystems); any other source reads "(hidden)". */
     static final java.util.Set<String> SOURCES = java.util.Set.of("Stash sorter", "Stash order", "Pathfinder", "Pearl loader",
         "Queue", "Stash manager", "Dashboard", "Auto eat", "Auto totem", "Delivery");
-    private static final SecureRandom RANDOM = new SecureRandom();
     /** The viewer offset's range per axis, in chunks (uniform in -2^20..2^20). */
-    static final int OFFSET_CHUNKS = 1 << 20;
 
     private Redact() {
     }

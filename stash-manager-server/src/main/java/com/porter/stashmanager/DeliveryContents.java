@@ -18,11 +18,6 @@ import java.util.Set;
 import java.util.function.LongSupplier;
 import java.util.regex.Pattern;
 
-/**
- * What is already in each stash's delivery storage (PROTOCOL.md, "Additions: delivery storage contents"): the bot's
- * latest report, one per (server, stash), in memory only. Never written to disk or logged, and never part of the
- * index, search, stock counts or the build planner: it only feeds the Orders tab's delivery chest preview.
- */
 final class DeliveryContents {
     static final int MAX_BODY = 256 * 1024;
     static final int MAX_CHESTS = 16;

@@ -108,12 +108,7 @@ class UsersModelTest {
         assertEquals("", UsersModel.checkPassword("long enough password", "long enough password", 12));
     }
 
-    @Test
-    void allowListParsing() {
-        assertEquals(List.of("stash orders", "stash status"), UsersModel.parseAllow("  stash   orders ; Stash Orders;stash status;;\n"));
-        assertEquals("a; b", UsersModel.joinAllow(List.of("a", "b")));
-        assertTrue(UsersModel.parseAllow(null).isEmpty());
-    }
+
 
     @Test
     void auditEntriesAreCleaned() {

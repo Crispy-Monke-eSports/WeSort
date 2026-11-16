@@ -34,12 +34,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * The Users tab (owner only): sub-users as the website's Settings page manages them. List, add, edit permissions (all of
- * them, including the live viewer and forced streamer mode), disable or enable, reset the password, log out, delete, rename
- * the owner, and read the audit log. Every write goes through the window's confirm-password retry. The server checks
- * everything; the forms only save a round trip. Names and audit text come from other people and are drawn as plain text.
- */
 public final class UsersTab {
     private enum Kind { NONE, ADD, EDIT, RESET, OWNER }
 
@@ -66,7 +60,6 @@ public final class UsersTab {
     private String formAgain = "";
     private boolean formMust = true;
     private String formPreset = "custom";
-    private String formAllow = "";
     private Perms formPerms = new Perms();
     private String formMessage = "";
     private boolean formBusy;
@@ -512,7 +505,6 @@ public final class UsersTab {
         message(f);
     }
 
-    /** The edited permissions with the console list read from the text box and the implied ones switched on. */
     private Perms finishPerms() {
         Perms p = formPerms.copy();
         return UsersModel.withImplied(p);

@@ -32,28 +32,17 @@ final class Users {
     static final String DEFAULT_OWNER_NAME = "owner";
     static final int MAX_USERS = 50;
     static final int MAX_NAME = 32;
-    static final int MAX_ALLOW = 50;
-    static final int MAX_ALLOW_LENGTH = 100;
     static final int MAX_SCOPE = 200;
     static final Pattern NAME = Pattern.compile("[A-Za-z0-9_.-]{1," + MAX_NAME + "}");
     static final Pattern ID = Pattern.compile("u-[0-9a-f]{12}");
     private static final SecureRandom RANDOM = new SecureRandom();
     /** Characters a console might read as chaining or substitution; refused in "list" mode. */
-    static final Pattern CHAIN = Pattern.compile("[;&|`$\\n\\r]");
     /** In "list" mode a whole command may only use these (plain ASCII words, names, numbers, coordinates). */
-    static final Pattern LIST_SAFE = Pattern.compile("[A-Za-z0-9 _:.,@/=+#~-]{1,500}");
 
     /** A stash a scoped user may see and use. */
     record StashRef(String server, String stash) {
     }
 
-    /**
-     * What a sub-user may do. The owner's are {@link #ALL}. stashes and bots null mean every stash or bot. Built only
-     * through {@link #of} or {@link #parse}, which apply the implied permissions. viewer: the live viewer (the
-     * bot's map, position, nearby entities, HUD and chat); it implies activity. streamer: "force streamer mode", a
-     * restriction: the server never sends this user positions, player names, server addresses or bot free text (see
-     * Redact); the owner is never forced.
-     */
     record Perms(boolean view, boolean order, boolean ordersAll, boolean activity, boolean settings,
                  boolean rescan, boolean link, boolean streamer, List<StashRef> stashes, List<String> bots) {
         static final Perms NONE = of(false, false, false, false, false, false, false, null, null);
@@ -158,9 +147,7 @@ final class Users {
     }
 
     /** Lowercase, trimmed, inner whitespace collapsed. */
-    static String normalizeCommand(String s) {
-        return s == null ? "" : s.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
-    }
+
 
     static final Map<String, Perms> PRESETS;
 

@@ -75,3 +75,30 @@ no-undef samt DOM-regression för login, stash/orders/bots/activity/settings,
 eget plugin-scope och frånvaro av borttagna sidor/anrop. Samma test har körts
 lokalt med låsta beroenden och kopplats till CI; actionlint passerar.
 DOM-testet verifierar inte rendering i en riktig webbläsare eller Minecraft.
+
+## W-010 / #11: död kod, resurser och dokumentation
+
+Borttaget efter referensanalys: SseParser och dess nio exklusiva tester,
+SmClient raw file-upload och viewer-streamhantering (fyra exklusiva tester),
+console-allow-parser och ett test, oanvänd viewer-ID-cache, planner-session-
+callback och upload-guard, console-outputformattering och konsolens exklusiva
+audit-helper (ett test). JSON-transportens origin/cookie/CSRF/redirect-
+regressioner och riktig konto-/orderaudit är kvar. Job-ID-generering behålls.
+
+Dev/map-colors och Windows-serverstart togs bort. Fake-addon behåller signerad
+index/heartbeat/order/delivery-testtrafik, men saknar nu proxy/console/viewer-
+kommandon. Oanvända Java-importer och döda UI-kontroller/selectors togs bort.
+README, Manager README/PROTOCOL och arkitekturdokumentet beskriver aktuell
+lagerprodukt; föråldrad DASHBOARD-DESIGN togs bort. CHANGELOG/Git är historik,
+inte dokumentation av aktiva WeSort-funktioner. Ursprung och GPL/OFL behålls.
+
+Recipes, creative tabs, item-/shulkerikoner, font-/temaresurser, anvil, craft,
+signs, Baritone och säkerhetsstöd behålls med motivering i ARCHITECTURE.md.
+Inget Gradle-bibliotek var exklusivt för de borttagna funktionerna: Fabric,
+Meteor och optional Baritone behövs av lagerklienten, Gson av Manager och
+JUnit av regressionerna. Inga nya runtime-beroenden infördes.
+
+Klientregressionen omfattar nu 426 tester per target. Manager har 94 tester
+med ett känt ikon-skip. Webbens DOM-/referenstest och fake-addon --help körs
+separat. Bygg-/speltestgränsen är oförändrad: inga Minecraft-interaktioner har
+körts i denna miljö.

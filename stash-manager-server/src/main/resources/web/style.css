@@ -391,7 +391,7 @@ html[data-theme="classic"] .auth-screen {
 .mc-button.danger:disabled { background: var(--surface-2); color: var(--text); border-color: var(--border); }
 
 .mc-button.primary,
-#rescan-btn, #cart-place, #settings-save, #proxy-save, #console-send, #auth-submit {
+#rescan-btn, #cart-place, #settings-save, #auth-submit {
   background: var(--accent);
   color: var(--on-accent);
   border-color: var(--accent);
@@ -1124,8 +1124,6 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 .inset[hidden], .stash-picker[hidden] { display: none; }
 /* Users without the "order" permission: no cart buttons or cart hints on the item grid. */
 .no-order .slot-add, .no-order .order-hint { display: none !important; }
-.console-allow { margin-top: 2px; }
-.console-allow code { font-family: var(--font); background: var(--chip-bg); color: var(--text); border-radius: var(--radius); padding: 0 4px; }
 .read-only-note { padding: 2px 0; }
 
 /* ---------- dashboard: settings > account and users ---------- */
@@ -1385,7 +1383,6 @@ html.streamer [data-sensitive] * {
 html.streamer [data-sensitive] * { filter: none; } /* blur once, on the marked element */
 html.streamer [data-sensitive]::selection,
 html.streamer [data-sensitive] *::selection { background: transparent; color: inherit; }
-/* Inputs (the console line) stay usable: typed text is blurred, but you can still click into it. */
 html.streamer input[data-sensitive] { pointer-events: auto; caret-color: transparent; }
 
 /* Streamer mode button: a neutral chip; while on, the danger pair (its label also says ": on"). */
@@ -1733,7 +1730,6 @@ html.streamer .sv-hidden { display: inline; color: var(--muted); font-style: ita
   .inventory, .dash-page, .grid-wrap, .view-orders, .proxy-page, .proxy-side, .proxy-body { overflow: visible; }
   .inventory, .dash-page, .grid-wrap { flex: none; min-height: 0; }
   .proxy-cols { flex: none; }
-  .console-log { flex: none; height: 55vh; min-height: 240px; }
   .tabs-wrap { padding: 0 2px; }
 
   /* ----- 8. stash tab ----- */
@@ -2055,7 +2051,7 @@ html[data-theme="mac"] .mc-button {
 }
 html[data-theme="mac"] .mc-button:not(.danger):hover { background: color-mix(in srgb, var(--chip-bg) 80%, var(--text)); border-color: rgba(255, 255, 255, 0.16); }
 html[data-theme="mac"] .mc-button:disabled { background: var(--chip-bg); border-color: rgba(255, 255, 255, 0.08); }
-html[data-theme="mac"] :is(.mc-button.primary, #rescan-btn, #cart-place, #settings-save, #proxy-save, #console-send, #auth-submit),
+html[data-theme="mac"] :is(.mc-button.primary, #rescan-btn, #cart-place, #settings-save, #auth-submit),
 html[data-theme="mac"] .mc-button[aria-pressed="true"]:not(.streamer-btn),
 html[data-theme="mac"] .seg-btn[aria-pressed="true"],
 html[data-theme="mac"] .dash-nav .nav-btn.selected,
@@ -2064,13 +2060,13 @@ html[data-theme="mac"] .section-item.selected {
   color: var(--on-accent);
   border-color: var(--accent);
 }
-html[data-theme="mac"] :is(.mc-button.primary, #rescan-btn, #cart-place, #settings-save, #proxy-save, #console-send, #auth-submit):hover,
+html[data-theme="mac"] :is(.mc-button.primary, #rescan-btn, #cart-place, #settings-save, #auth-submit):hover,
 html[data-theme="mac"] .mc-button[aria-pressed="true"]:not(.streamer-btn):hover,
 html[data-theme="mac"] .dash-nav .nav-btn.selected:hover {
   background: color-mix(in srgb, var(--accent) 85%, #ffffff);
   border-color: color-mix(in srgb, var(--accent) 85%, #ffffff);
 }
-html[data-theme="mac"] :is(.mc-button.primary, #rescan-btn, #cart-place, #settings-save, #proxy-save, #console-send, #auth-submit):disabled {
+html[data-theme="mac"] :is(.mc-button.primary, #rescan-btn, #cart-place, #settings-save, #auth-submit):disabled {
   background: var(--accent);
   border-color: var(--accent);
 }

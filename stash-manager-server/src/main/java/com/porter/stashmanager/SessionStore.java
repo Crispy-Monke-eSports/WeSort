@@ -27,7 +27,6 @@ import java.util.function.LongSupplier;
 final class SessionStore {
     static final long LIFETIME_MS = 30L * 24 * 60 * 60 * 1000;
     static final String COOKIE = "sm_session";
-    /** How long "sudo mode" lasts after the password was typed (console commands need it). */
     static final long ELEVATED_MS = 15L * 60 * 1000;
     /** lastSeen is written to disk at most this often per session (it only matters for display and pruning). */
     private static final long SEEN_WRITE_MS = 10L * 60 * 1000;

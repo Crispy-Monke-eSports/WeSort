@@ -18,12 +18,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.LongSupplier;
 
-/**
- * The dashboard bots (DASHBOARD-DESIGN.md, phases 2 and 3), in memory: who said hello, their settings per scope with the
- * schema and value hashes, the job queue (settings changes and console commands) the bot long-polls with bot/next,
- * the console history, and whether a browser has the bot open ("watching"). One monitor per bot guards its state; the
- * long-poll waits on it.
- */
 final class BotHub {
     static final int MAX_BOTS = 64;
     static final int MAX_WAITERS = 8;
@@ -32,11 +26,8 @@ final class BotHub {
     static final long EXPIRE_QUEUED_MS = 10_000;
     static final long UNKNOWN_SENT_MS = 60_000;
     static final long WATCH_MS = 10_000;
-    /** The live viewer's chunk radius and frame rate, sent to the bot in bot/next (PROTOCOL.md, "Additions: live viewer"). */
     static final int EVENTS_KEEP = 500;
     static final int JOBS_KEEP = 500;
-    static final int MAX_OUTPUT_PARTS = 50;
-    static final int MAX_ENTRY_OUTPUT = 256 * 1024;
     private static final SecureRandom RANDOM = new SecureRandom();
 
     /** A settings scope as the bot last pushed it. */
@@ -88,7 +79,6 @@ final class BotHub {
         long needSentAt;
         long watchActivityUntil;
         Boolean watchingActivitySent;
-        /** Until when a browser has the live viewer open, and the viewer session (16 hex) the bot must send. */
         JsonObject activity;     // the latest cleaned snapshot, or null
         long activityAt;         // when it arrived
         final ArrayDeque<JsonObject> events = new ArrayDeque<>(); // newest last
@@ -297,7 +287,7 @@ final class BotHub {
     }
 
     /** bot/results: one result (a set reply, a command's first reply, or a later output part with more). */
-    void result(Bot b, String id, boolean ok, boolean more, JsonElement value, String error, boolean sensitive, JsonObject output) {
+    void result(Bot b, String id, boolean ok, boolean more, JsonElement value, String error) {
         long now = now();
         synchronized (b) {
             b.lastSeen = now;
@@ -350,14 +340,6 @@ final class BotHub {
             if (!was) b.notifyAll();
         }
     }
-
-    /**
-     * A browser has this bot's live viewer open (every open stream calls this every few seconds, and once more when it
-     * closes, so watching lingers 10 s over a reconnect). When watching starts, or with fresh=true (the server has no
-     * snapshot for this bot), a new viewer session is minted: the bot's next frame must be full. The long-poll is told
-     * at once. Returns the current session.
-     */
-
 
     /** The viewer session the bot must use now, or null when nobody is watching. */
 
@@ -450,9 +432,6 @@ final class BotHub {
         return ids;
     }
 
-    /** Queues a console command; returns its job id. */
-
-
     /** The same, remembering which website user sent it (a "list"-mode user only sees their own). */
 
 
@@ -494,13 +473,6 @@ final class BotHub {
 
     /** The same, only the entries sent by onlyBy (null: everyone's). */
 
-
-    private static final java.util.regex.Pattern SENSITIVE = java.util.regex.Pattern.compile(
-        "(?i)^\\s*auth\\b|manager\\s+key|manager\\s+url|passw|token|secret|api_?key|webhook|cookie|credential");
-
-    static boolean looksSensitive(String command) {
-        return SENSITIVE.matcher(command).find();
-    }
 
     private static String newId() {
         byte[] bytes = new byte[6];

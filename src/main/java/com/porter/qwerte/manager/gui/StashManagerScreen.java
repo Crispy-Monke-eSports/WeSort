@@ -52,7 +52,6 @@ import meteordevelopment.meteorclient.gui.widgets.pressable.WButton;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.world.item.ItemStack;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.concurrent.ConcurrentLinkedDeque;
@@ -119,7 +118,6 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
     private final LocalOrderBackend localOrders;
     /** Null in local mode. */
     private final SettingsTab settingsTab;
-    /** The Proxy page: the settings form in proxy mode. Null in local mode. */
     private final BotsTab botsTab;
     private final ActivityTab activityTab;
     private final UsersTab usersTab;
@@ -804,7 +802,6 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
         });
     }
 
-    /** The prompt text for a write that wants the password; a console command is named, so the user sees what the password lets through. */
     private String confirmWhy(String path, JsonObject body) {
         String base = "This needs your password again. It is not asked for again for 15 minutes.";
         if (path.endsWith("/console") && body != null && body.has("command") && body.get("command").isJsonPrimitive()) {

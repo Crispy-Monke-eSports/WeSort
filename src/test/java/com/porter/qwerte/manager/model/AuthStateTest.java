@@ -40,8 +40,6 @@ class AuthStateTest {
         assertFalse(s.can("viewer"));
         assertFalse(s.can("streamer"));
         assertFalse(s.forcedStreamer());
-        assertEquals("change", s.permMode("proxy"));
-        assertEquals("full", s.permMode("console"));
         assertEquals(1767225600000L, s.elevatedUntil());
         assertEquals("boss", s.userName());
     }
@@ -63,9 +61,6 @@ class AuthStateTest {
         assertTrue(s.can("order"));
         assertFalse(s.can("rescan"));
         assertFalse(s.can("ordersAll"));
-        assertEquals("read", s.permMode("proxy"));
-        assertEquals("none", s.permMode("console"));
-        assertEquals("none", s.permMode("missing"));
         assertFalse(s.forcedStreamer());
     }
 

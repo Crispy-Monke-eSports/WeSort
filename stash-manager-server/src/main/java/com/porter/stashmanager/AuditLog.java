@@ -13,10 +13,6 @@ import java.util.ArrayDeque;
 import java.util.Iterator;
 import java.util.function.LongSupplier;
 
-/**
- * Who did what on the website: logins, account and permission changes, console commands, settings changes and
- * order actions. The newest {@link #MAX} entries are kept in audit.json (owner-only file permissions). Shown to the owner.
- */
 final class AuditLog {
     static final int MAX = 2000;
     static final int MAX_DETAIL = 300;
@@ -62,14 +58,6 @@ final class AuditLog {
         entries.addLast(o);
         while (entries.size() > MAX) entries.pollFirst();
         save();
-    }
-
-    private static final java.util.regex.Pattern SECRET_WORDS = java.util.regex.Pattern.compile(
-        "^/?(login|register|reg|l|pass|password|passwd|changepassword|auth|key)(\\s|$)", java.util.regex.Pattern.CASE_INSENSITIVE);
-
-    /** A console command kept out of the log: what the console hides, and login-style commands that carry a password. */
-    static boolean hideCommand(String command) {
-        return command == null || BotHub.looksSensitive(command) || SECRET_WORDS.matcher(command.trim()).find();
     }
 
     /** Control characters become spaces, so an entry is always one line. */

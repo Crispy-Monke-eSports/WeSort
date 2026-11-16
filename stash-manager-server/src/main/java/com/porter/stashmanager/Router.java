@@ -35,12 +35,8 @@ final class Router implements HttpHandler {
         /** The CSRF checks in PROTOCOL.md without a session (login and setup), otherwise 403. */
         CSRF,
         /** A state-changing request from a logged-in browser: SESSION plus CSRF. */
-        BROWSER_WRITE,
-        /**
-         * A raw file upload from a logged-in browser: the BROWSER_WRITE checks, except that Content-Type must be
-         * application/octet-stream instead of JSON.
-         */
-        BROWSER_UPLOAD
+        BROWSER_WRITE
+
     }
 
     /**
@@ -51,7 +47,6 @@ final class Router implements HttpHandler {
         /** Any logged-in user, even one that must change the password first (only the auth routes). */
         ANY("any", "do that"),
         VIEW("view", "view stashes"),
-        /** Item icons: the stash views, and the live viewer's hotbar. */
         ICONS("view", "see item icons"),
         ORDER("order", "place orders"),
         /** order, ordersAll or plannerOrder (cancel and retry: own orders, or any with ordersAll). */
@@ -208,7 +203,7 @@ final class Router implements HttpHandler {
     }
 
     private static void checkPerm(Guard guard, Perm perm) {
-        boolean loggedIn = guard == Guard.SESSION || guard == Guard.BROWSER_WRITE || guard == Guard.BROWSER_UPLOAD;
+        boolean loggedIn = guard == Guard.SESSION || guard == Guard.BROWSER_WRITE;
         if (loggedIn != (perm != null)) {
             throw new IllegalArgumentException("logged-in routes need a permission, other routes none: " + guard + " " + perm);
         }
@@ -315,13 +310,7 @@ final class Router implements HttpHandler {
                     }
                     if (!loggedIn(ex, match.perm)) return;
                 }
-                case BROWSER_UPLOAD -> {
-                    if (!access.browserWriteAllowed(ex, AccessControl.OCTET_STREAM)) {
-                        Http.error(ex, 403, "upload refused (needs POST, X-Stash-Manager: 1, application/octet-stream, same origin)");
-                        return;
-                    }
-                    if (!loggedIn(ex, match.perm)) return;
-                }
+
                 case OPEN -> {
                 }
             }

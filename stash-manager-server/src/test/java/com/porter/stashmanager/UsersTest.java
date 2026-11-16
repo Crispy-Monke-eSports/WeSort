@@ -552,15 +552,7 @@ class UsersTest {
 
 
 
-    @Test
-    void auditHidesLoginStyleCommands() {
-        assertTrue(AuditLog.hideCommand("login hunter2hunter2"));
-        assertTrue(AuditLog.hideCommand("/register pw pw"));
-        assertTrue(AuditLog.hideCommand("auth something"));
-        assertTrue(AuditLog.hideCommand("stash manager key abc"));
-        assertFalse(AuditLog.hideCommand("stash orders on"));
-        assertFalse(AuditLog.hideCommand("list"));
-    }
+
 
     @Test
     void addressFailuresAcrossAccountsLockTheAddressAndASuccessDoesntResetThem() {

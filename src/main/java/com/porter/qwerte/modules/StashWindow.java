@@ -236,7 +236,6 @@ public class StashWindow extends Module {
     private String lastUser = "";
     private String lastStash;
     private String lastBot;
-    private final Map<String, String> viewerIds = new HashMap<>();
 
     private final LocalHub hub = new LocalHub(() -> localMax.get());
     private final LocalCapture capture = new LocalCapture(hub, () -> localCapture.get() && !connect.get());
@@ -439,7 +438,6 @@ public class StashWindow extends Module {
             c.setToken(null, null);
             c.bumpGeneration();
         }
-        viewerIds.clear();
         // Whatever the account saw must not linger in the icon cache
         ItemStacks.clear();
         if (had) {
@@ -473,17 +471,6 @@ public class StashWindow extends Module {
 
     public void rememberBot(String id) {
         this.lastBot = id;
-    }
-
-    /** The live viewer's page id for a bot: 16 random hex digits, the same for the whole login (the server allows only about 20 new ones an hour). */
-    public String viewerId(String botId) {
-        return viewerIds.computeIfAbsent(botId, k -> {
-            byte[] b = new byte[8];
-            new java.security.SecureRandom().nextBytes(b);
-            StringBuilder sb = new StringBuilder();
-            for (byte x : b) sb.append(String.format("%02x", x));
-            return sb.toString();
-        });
     }
 
     // ---------- saved data ----------

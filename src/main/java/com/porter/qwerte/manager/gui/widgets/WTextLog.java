@@ -7,10 +7,6 @@ import meteordevelopment.meteorclient.utils.render.color.Color;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * A fixed-size box of wrapped plain-text lines, newest at the bottom, scrolled with the wheel (the live viewer's chat).
- * Text is drawn by the GUI's text renderer as plain text: nothing in it is interpreted. The owner passes cleaned text.
- */
 public final class WTextLog extends WWidget {
     /** One logical line and its colour. */
     public record Line(String text, Color color) {

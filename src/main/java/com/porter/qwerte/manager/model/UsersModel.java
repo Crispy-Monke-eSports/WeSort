@@ -124,10 +124,6 @@ public final class UsersModel {
         return out;
     }
 
-    /**
-     * The JSON the server takes: every switch written out (so {@code streamer} is always explicit and nobody is un-forced by
-     * accident), the proxy and console modes, the allowed commands, and the scopes (null = all).
-     */
     public static JsonObject toJson(Perms p) {
         JsonObject o = new JsonObject();
         for (Switch s : SWITCHES) o.addProperty(s.key(), p.flag(s.key()));
@@ -154,22 +150,9 @@ public final class UsersModel {
     }
 
     /** One allowed-command prefix per entry from text typed as {@code a; b; c}: trimmed, spaces collapsed, no duplicates (ignoring case). */
-    public static List<String> parseAllow(String text) {
-        List<String> out = new ArrayList<>();
-        java.util.Set<String> seen = new java.util.HashSet<>();
-        if (text == null) return out;
-        for (String part : text.split("[;\\n]")) {
-            String t = part.trim().replaceAll("\\s+", " ");
-            if (t.isEmpty() || !seen.add(t.toLowerCase(Locale.ROOT))) continue;
-            out.add(t);
-            if (out.size() >= 100) break;
-        }
-        return out;
-    }
 
-    public static String joinAllow(List<String> allow) {
-        return String.join("; ", allow);
-    }
+
+
 
     // ---------- the list ----------
 

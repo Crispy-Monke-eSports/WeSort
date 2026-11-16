@@ -28,8 +28,6 @@ final class AuthRoutes {
     private final LoginLimiter limiter;
     private final Users users;
     private final AuditLog audit;
-    /** Run after logout and logout-all (the build planner drops the plans of users with no session left). */
-    private volatile Runnable sessionsEnded = () -> { };
     private volatile String setupCode;
 
     AuthRoutes(Config config, SessionStore sessions, LoginLimiter limiter, Users users, AuditLog audit) {
@@ -46,9 +44,7 @@ final class AuthRoutes {
         return setupCode;
     }
 
-    void onSessionsEnded(Runnable r) {
-        sessionsEnded = r;
-    }
+
 
     void register(Router router) {
         router.exact(Router.GET, "/api/v1/auth/state", Router.Guard.OPEN, this::state)
@@ -385,7 +381,6 @@ final class AuthRoutes {
 
     private void logout(HttpExchange ex) throws IOException {
         sessions.remove((String) Http.attr(ex, Router.SESSION_TOKEN));
-        sessionsEnded.run();
         ex.getResponseHeaders().add("Set-Cookie", SessionStore.clearCookie());
         ex.getResponseHeaders().set("Clear-Site-Data", "\"cache\""); // nothing this login saw stays in the browser cache
         Http.json(ex, 200, Http.ok());
@@ -395,7 +390,6 @@ final class AuthRoutes {
     private void logoutAll(HttpExchange ex) throws IOException {
         Users.Principal who = Router.user(ex);
         int n = who.owner() ? sessions.removeAllExcept(null) : sessions.removeUser(who.id(), null);
-        sessionsEnded.run();
         System.out.println("Logged out " + (who.owner() ? "every website session" : "every session of " + who.name())
             + " (" + n + ") from " + address(ex) + ".");
         audit.add(who, "logout-all", who.owner() ? "every user" : null, address(ex));

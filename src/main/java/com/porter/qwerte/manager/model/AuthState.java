@@ -3,11 +3,6 @@ package com.porter.qwerte.manager.model;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
-/**
- * What {@code GET /api/v1/auth/state} says: whether the session is logged in, who, and what that user may do. The
- * server enforces every permission; the window only hides what the user can't use. Same rules as the website's
- * {@code can}, {@code permMode} and {@code forcedStreamer}.
- */
 public final class AuthState {
     /** A server without sub-users sends no user: that is the owner, who can do everything. */
     private static final String[] OWNER_FLAGS = {
@@ -116,12 +111,7 @@ public final class AuthState {
     }
 
     /** "proxy" (none, read, change) or "console" (none, list, full). */
-    public String permMode(String key) {
-        if (owner) return key.equals("console") ? "full" : "change";
-        JsonElement e = perms.get(key);
-        if (e != null && e.isJsonPrimitive() && e.getAsJsonPrimitive().isString() && !e.getAsString().isEmpty()) return e.getAsString();
-        return "none";
-    }
+
 
     /** The owner forced streamer mode on for this user. The owner can never be forced. */
     public boolean forcedStreamer() {

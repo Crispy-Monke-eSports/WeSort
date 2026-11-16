@@ -22,7 +22,6 @@ import java.util.regex.Pattern;
  */
 final class DashboardRoutes {
     private static final Pattern BOT = Pattern.compile("^/api/v1/bots/([A-Za-z0-9_-]{1,64})/(settings|jobs|activity)$");
-    static final int MAX_COMMAND = 500;
     static final int MAX_STRING = 1000;
     static final int MAX_LIST = 500;
     static final int MAX_CHANGES = 100;

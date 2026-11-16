@@ -313,7 +313,6 @@
     return me.owner || me.perms[key] === true;
   }
 
-  /** "proxy" ("none" | "read" | "change") or "console" ("none" | "list" | "full"). */
 
 
   /** The dashboard pages this user may open. */
@@ -329,7 +328,6 @@
   }
 
   function canManageOrder(o) {
-    // plannerOrder counts for the user's own orders too (build planner parts).
     return can("ordersAll") || ((can("order")) && ownOrder(o));
   }
 
@@ -669,14 +667,8 @@
     };
     if (method !== "GET") {
       init.headers["X-Stash-Manager"] = "1";
-      if (opts.raw) {
-        // A file upload (the build planner): the bytes as they are.
-        init.headers["Content-Type"] = "application/octet-stream";
-        init.body = opts.raw;
-      } else {
-        init.headers["Content-Type"] = "application/json";
-        init.body = JSON.stringify(opts.body || {});
-      }
+      init.headers["Content-Type"] = "application/json";
+      init.body = JSON.stringify(opts.body || {});
     }
     return fetch(path, init).then(function (res) {
       window.clearTimeout(timer);
@@ -1709,7 +1701,6 @@
   };
 
   function maybeAutoOpenLink() {
-    // Only once the dashboard bot list is known: a server with proxy bots but no stash yet doesn't need the panel.
     if (link.autoOpened || link.open || !dash.botsLoaded || !state.polledOnce || dash.bots.length || auth.blocked || !can("link")) return;
     var anyIndex = state.stashes.some(function (s) { return s.indexedAt != null; });
     if (anyIndex) return;
@@ -2922,7 +2913,6 @@
     renderCraftInfo();
   }
 
-  /** The naming warning for n named shulkers from stash s's bot, or "" (also used by the build planner). */
   function namesWarnText(s, n) {
     var text = "";
     if (s && n > 0) {
@@ -2935,7 +2925,7 @@
           "If it can't, the shulkers arrive unnamed.";
       } else if (nm.anvil === false) {
         text = "No anvil set; the shulkers will arrive unnamed. Set one on the bot: in Meteor, stash-manager → select-anvil; " +
-          "on the proxy, stash anvil here.";
+          "configure the anvil in the agent settings.";
       } else if (typeof nm.xpLevels === "number" && nm.xpLevels >= 0 && nm.xpLevels < n) {
         text = "May run out of XP: about 1 level per shulker. The bot has " + plural(String(nm.xpLevels), "level") + " for " +
           plural(String(n), "named shulker") + "; any it can't name arrive unnamed.";
@@ -4008,7 +3998,6 @@
       head.appendChild(when);
       var by = o.placedBy && typeof o.placedBy === "object" ? str(o.placedBy.name) : "";
       if (by) head.appendChild(line("note order-by", "by " + by));
-      // Cancel / Retry / Force cancel: the user's own orders with "order" or "plannerOrder", any order with "ordersAll".
       var manage = canManageOrder(o);
       if (manage && OPEN_STATUS[o.status] && !o.cancelRequested) {
         var cancel = document.createElement("button");
@@ -4147,7 +4136,6 @@
 
   // ---------- dashboard: pages, bot picker ----------
   // Stash and Orders are the inventory view with its creative tabs; Bots, Settings and Console are dashboard pages
-  // for one proxy bot, chosen in the header's bot picker (remembered per browser).
 
   var BOT_KEY = "stashManager.bot";
   var PAGE_KEY = "stashManager.page";
@@ -4166,7 +4154,6 @@
     jobs: new Map(),   // job id -> path
     sTimer: 0,
     jobTimer: 0,
-    // console
     cBot: null,
     cRev: 0,
     entries: new Map(), // seq -> { data, el }
@@ -4380,7 +4367,6 @@
   }
 
   // ---------- dashboard: settings forms ----------
-  // One engine for the Settings page (scope "plugin") and the Proxy page (scope "proxy" or "plugin:<id>"). The proxy
   // tree can have thousands of settings, so the Proxy page only renders the selected section (or the search hits).
   // Edits are kept by path, so they survive switching sections; Save sends them all in one batch.
 
@@ -5237,7 +5223,7 @@
     el.streamerBtn.setAttribute("aria-pressed", on ? "true" : "false");
     el.streamerBtn.setAttribute("aria-disabled", locked ? "true" : "false");
     el.streamerBtn.classList.toggle("locked", locked);
-    el.streamerBtn.title = locked ? "Streamer mode is enforced by the owner" : "Blur coordinates, keys, addresses, console and events (this browser only)";
+    el.streamerBtn.title = locked ? "Streamer mode is enforced by the owner" : "Blur coordinates, keys, addresses and events (this browser only)";
     el.streamerState.textContent = locked ? ": on (enforced)" : on ? ": on" : ": off";
     el.linkKeyToggle.disabled = on;
     el.linkKeyCopy.disabled = on;
@@ -5592,7 +5578,6 @@
     return p;
   }
 
-  /** Only the parts a preset sets (not the scopes or the console list). */
   function presetShape(p) {
     var n = withImplied(normPerms(p));
     delete n.stashes;
@@ -5824,7 +5809,6 @@
     return span;
   }
 
-  /** Switches for the yes/no permissions, selects for proxy and console, the console list, and the scopes. */
   function permsEditor(initial) {
     var p = normPerms(initial);
     var box = document.createElement("div");
@@ -6263,7 +6247,6 @@
   el.auditRefresh.addEventListener("click", loadAudit);
 
   // ---------- dashboard: Activity page ----------
-  // A live view of what the proxy is doing: connection, "now doing" items, modules, plugins and an event feed.
   // Polled every 2 s while visible (the bot then pushes every 2 s), every 15 s otherwise. textContent only.
 
   var act = { timer: 0, data: null, bot: null, levelFilter: "", sourceFilter: "", moduleQuery: "", enabledOnly: false };
@@ -6475,15 +6458,13 @@
       groups.get(p).push(m);
     });
     el.actModCount.textContent = on + " of " + mods.length + " on";
-    var proxyOk = false;
     var frag = document.createDocumentFragment();
     groups.forEach(function (list, plugin) {
-      frag.appendChild(line("settings-group-title", plugin === "aquarius" ? "AquariusProxy" : plugin));
+      frag.appendChild(line("settings-group-title", plugin));
       var grid = document.createElement("div");
       grid.className = "module-grid";
       list.forEach(function (m) {
-        var b = document.createElement(proxyOk ? "button" : "div");
-        if (proxyOk) b.type = "button";
+        var b = document.createElement("div");
         b.className = "module-chip" + (m.enabled ? " on" : "");
         var dot = document.createElement("span");
         dot.className = "dot only-desktop " + (m.enabled ? "dot-on" : "dot-off");
@@ -6497,20 +6478,12 @@
         var sw = document.createElement("span");
         sw.className = "switch only-mobile";
         sw.setAttribute("aria-checked", m.enabled ? "true" : "false");
-        if (proxyOk) {
-          sw.setAttribute("aria-hidden", "true"); // inside a button: the state is read from the text below
-          var srState = document.createElement("span");
-          srState.className = "sr-only";
-          srState.textContent = m.enabled ? ", on" : ", off";
-          b.appendChild(srState);
-        } else {
           sw.setAttribute("role", "switch");
           sw.setAttribute("aria-readonly", "true");
           sw.setAttribute("aria-disabled", "true");
           sw.setAttribute("aria-label", str(m.name));
-        }
         b.appendChild(sw);
-        b.title = (m.enabled ? "On" : "Off") + (proxyOk ? " · click for its settings" : "");
+        b.title = (m.enabled ? "On" : "Off");
 
         grid.appendChild(b);
       });
@@ -6583,7 +6556,6 @@
   });
 
   // ---------- sudo mode ----------
-  // Dangerous actions (console commands) need the password typed in the last 15 minutes. The server answers
   // 403 {"error":"confirm password"}; the page asks for the password, confirms it, and runs the action again.
 
   /** text: optional explanation for the password prompt (askPassword). */
@@ -6600,8 +6572,8 @@
       form.className = "password-form";
       form.noValidate = true;
       form.appendChild(line("window-info", text || (me.owner
-        ? "Console commands can control the whole proxy. Type the website password again; it is not asked for again for 15 minutes."
-        : "Console commands and proxy changes need your password again; it is not asked for again for 15 minutes.")));
+        ? "Type your password again to administer this installation."
+        : "Account administration needs your password again.")));
       var label = document.createElement("label");
       label.className = "auth-field";
       var span = document.createElement("span");
@@ -6658,18 +6630,7 @@
   }
 
   function capHint(cap) {
-    var box = document.createElement("div");
-    box.className = "cap-hint";
-    box.appendChild(line("section-title", cap === "console" ? "Console disabled on the proxy" : "Proxy settings disabled on the proxy"));
-    var p = document.createElement("div");
-    p.className = "note";
-    p.appendChild(document.createTextNode("Disabled on the proxy. Run "));
-    var code = document.createElement("code");
-    code.textContent = "stash manager dashboard " + (cap === "console" ? "console" : "proxy") + " on";
-    p.appendChild(code);
-    p.appendChild(document.createTextNode(" in the proxy's terminal to allow it."));
-    box.appendChild(p);
-    return box;
+    return line("note", "This warehouse agent does not offer " + cap + ".");
   }
 
   function unlockBox(text, done) {

@@ -15,7 +15,6 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** The client against a throwaway local server: where the cookie goes, what is not followed, how a 401 is handled. */
@@ -99,7 +98,6 @@ class SmClientTest {
         ApiResult r = get("/api/v1/echo");
         assertEquals(ApiError.Kind.NETWORK, r.kind());
         assertTrue(cookiesSeen.isEmpty(), "nothing may be sent to a refused address");
-        assertThrows(IOException.class, () -> client.openStream("/api/v1/echo", null));
         // allowed again (the setting changed): it works
         client.setAllowed(u -> true);
         assertTrue(get("/api/v1/echo").ok());
@@ -116,13 +114,7 @@ class SmClientTest {
         assertTrue(r.serverTimeMillis() > 0 && Math.abs(r.serverTimeMillis() - now) < 60_000, "Date header: " + r.serverTimeMillis());
     }
 
-    @Test
-    void turningTheClientOffClosesOpenStreams() throws Exception {
-        SmClient.Open open = client.openStream("/api/v1/echo", null);
-        assertEquals(200, open.status());
-        client.setEnabled(false);
-        assertThrows(IOException.class, () -> client.openStream("/api/v1/echo", null));
-    }
+
 
     @Test
     void theCookieIsSentOnlyWhenOneIsSetAndOnlyToItsOrigin() throws Exception {
@@ -234,49 +226,11 @@ class SmClientTest {
         assertEquals(ApiError.Kind.NETWORK, r.kind());
     }
 
-    private ApiResult postBytes(String path, java.util.Map<String, String> query, byte[] body) throws Exception {
-        AtomicReference<ApiResult> out = new AtomicReference<>();
-        CountDownLatch done = new CountDownLatch(1);
-        client.postBytes(path, query, body, SmClient.UPLOAD_TIMEOUT, r -> {
-            out.set(r);
-            done.countDown();
-        });
-        assertTrue(done.await(10, TimeUnit.SECONDS), "no answer");
-        return out.get();
-    }
 
-    @Test
-    void postBytesSendsTheRawBodyWithTheGuardHeadersAndTheCookieButNoOrigin() throws Exception {
-        String origin = ServerUrl.parse("http://127.0.0.1:" + server.getAddress().getPort()).origin();
-        client.setToken("TOKEN123", origin);
-        java.util.Map<String, String> q = new java.util.LinkedHashMap<>();
-        q.put("server", "a b&c");
-        q.put("name", "my house.litematic");
-        assertTrue(postBytes("/api/v1/upload", q, new byte[]{1, 2, 3, 4, 5}).ok());
-        assertEquals("POST|server=a%20b%26c&name=my%20house.litematic|application/octet-stream|1|null|null|sm_session=TOKEN123|5|3", uploads.get(0));
-    }
 
-    @Test
-    void postBytesRefusesABodyOverEightMiBWithoutSendingIt() throws Exception {
-        String origin = ServerUrl.parse("http://127.0.0.1:" + server.getAddress().getPort()).origin();
-        client.setToken("TOKEN123", origin);
-        ApiResult r = postBytes("/api/v1/upload", null, new byte[SmClient.MAX_UPLOAD + 1]);
-        assertEquals(ApiError.Kind.BAD_REQUEST, r.kind());
-        assertEquals(413, r.status());
-        assertTrue(uploads.isEmpty(), "nothing is sent");
-        assertTrue(postBytes("/api/v1/upload", null, new byte[SmClient.MAX_UPLOAD]).ok());
-    }
 
-    @Test
-    void postBytesFollowsNoRedirectAndNeverContactsARefusedAddress() throws Exception {
-        String origin = ServerUrl.parse("http://127.0.0.1:" + server.getAddress().getPort()).origin();
-        client.setToken("TOKEN123", origin);
-        ApiResult r = postBytes("/api/v1/redirect", null, new byte[]{1});
-        assertEquals(ApiError.Kind.REDIRECT, r.kind());
-        assertTrue(otherCookiesSeen.isEmpty(), "the other server must not be contacted");
 
-        client.setAllowed(u -> false);
-        assertEquals(ApiError.Kind.NETWORK, postBytes("/api/v1/upload", null, new byte[]{1}).kind());
-        assertTrue(uploads.isEmpty(), "a refused address is never contacted");
-    }
+
+
+
 }

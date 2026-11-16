@@ -17,7 +17,6 @@ import com.porter.qwerte.manager.model.SettingsSchema.Parsed;
 import com.porter.qwerte.manager.model.Text;
 import com.porter.qwerte.manager.model.UsersModel;
 import com.porter.qwerte.manager.net.ApiError;
-import com.porter.qwerte.manager.net.ApiResult;
 import com.porter.qwerte.manager.net.ServerUrl;
 import com.porter.qwerte.manager.net.SmClient;
 import meteordevelopment.meteorclient.gui.GuiTheme;
@@ -41,21 +40,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
-/**
- * The Settings tab. Two pages:
- * <ul>
- *   <li><b>Bot settings</b>: the settings form of a dashboard bot, as the website's Settings page (scope {@code plugin}) and
- *   Proxy page (scopes {@code proxy} and {@code plugin:<id>}) show it: sections, search, an editor per kind of setting, Save
- *   and Revert, then the bot's own answer for each saved setting. The server checks every change; this form only saves a
- *   round trip.</li>
- *   <li><b>Account</b>: change your password, lock admin, log out, log out everywhere.</li>
- * </ul>
- * State lives in this object; the widgets are rebuilt from it. Nothing here can show a bot's settings to an account forced
- * into streamer mode (the server refuses them too).
- *
- * <p>In <b>proxy mode</b> ({@link #SettingsTab(ServerTabHost, boolean)}) the same form serves the window's Proxy page: only the
- * {@code proxy} and {@code plugin:<id>} scopes, no Account page and no stash-plugin ({@code plugin}) scope, starting on the proxy.
- */
 public final class SettingsTab {
     private enum Page { BOT, ACCOUNT }
 
@@ -83,7 +67,6 @@ public final class SettingsTab {
     private static final Pattern SENSITIVE_SUFFIX = Pattern.compile("[a-z0-9](Address|Addresses|Host|Hostname|Ip|IP|Ips|IPs|Port|Url|URL|Urls|Uri|URI|Domain|Endpoint)$");
 
     private final ServerTabHost host;
-    /** The Proxy page: only the proxy and plugin:* scopes, no Account page. */
     private GuiTheme theme;
     private Page page = Page.BOT;
 
@@ -550,7 +533,7 @@ public final class SettingsTab {
         boolean hide = host.policy().hideNames();
         List<BotList.Bot> bots = host.bots().list().bots();
         if (bots.isEmpty()) {
-            parent.add(theme.label(host.bots().loaded() ? "No dashboard bots yet. Turn the Qwerte Stash plugin's dashboard on in the proxy." : "Loading the bots...", theme.scale(520))).expandX();
+            parent.add(theme.label(host.bots().loaded() ? "No warehouse agents connected yet." : "Loading the bots...", theme.scale(520))).expandX();
             return;
         }
         WHorizontalList top = parent.add(theme.horizontalList()).expandX().widget();
@@ -576,29 +559,8 @@ public final class SettingsTab {
             }
         };
         List<String> scopes = scopes();
-        if (scopes.isEmpty()) {
-            // Proxy mode: this bot has no proxy settings (not reported yet, or the proxy has none)
-            parent.add(theme.label(online(bots, selected) ? "This bot has not sent any proxy settings yet." : "The bot is offline; its proxy settings show here once it is back.",
-                theme.scale(520))).expandX().widget().color(WARN);
-            return;
-        }
-        if (scopes.size() > 1) {
-            String[] sl = new String[scopes.size()];
-            for (int i = 0; i < sl.length; i++) sl[i] = scopeLabel(scopes.get(i));
-            WDropdown<String> sp = top.add(theme.dropdown(sl, scopeLabel(formScope))).widget();
-            sp.action = () -> {
-                String picked = sp.get();
-                for (int i = 0; i < sl.length; i++) {
-                    if (sl[i].equals(picked) && !scopes.get(i).equals(formScope)) {
-                        String scope = scopes.get(i);
-                        host.later(() -> {
-                            formScope = scope;
-                            host.rebuild();
-                        });
-                    }
-                }
-            };
-        }
+
+
         barLabel = top.add(theme.label("")).expandX().widget();
         barLabel.color(WARN);
         if (!readOnly()) {
@@ -890,8 +852,6 @@ public final class SettingsTab {
         } else {
             List<String> can = new ArrayList<>();
             for (UsersModel.Switch s : UsersModel.SWITCHES) if (a.can(s.key()) && !s.key().equals("streamer")) can.add(s.label());
-            if (!a.permMode("proxy").equals("none")) can.add("Proxy settings: " + a.permMode("proxy"));
-            if (!a.permMode("console").equals("none")) can.add("Console: " + a.permMode("console"));
             parent.add(theme.label("Your account can: " + (can.isEmpty() ? "nothing yet" : String.join(", ", can)) + ".", theme.scale(520))).expandX().widget().color(DIM);
             if (a.forcedStreamer()) parent.add(theme.label("Streamer mode is enforced for your account by the owner.", theme.scale(520))).expandX().widget().color(WARN);
         }
@@ -901,7 +861,7 @@ public final class SettingsTab {
         parent.add(theme.label("Sessions", true));
         WHorizontalList row = parent.add(theme.horizontalList()).widget();
         lockButton = row.add(theme.button("Lock admin now")).widget();
-        lockButton.tooltip = "Ends admin mode: proxy settings, the console and user management ask for your password again.";
+        lockButton.tooltip = "Ends admin mode: account administration asks for your password again.";
         lockButton.action = () -> host.write("/api/v1/auth/lock", new JsonObject(), r -> {
             if (host.closed()) return;
             host.notice(r.ok() ? "Admin locked." : host.describe(r, "Could not lock admin."));

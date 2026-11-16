@@ -17,6 +17,7 @@ class MinecraftDownloadConsentTest {
     }
 
     @Test void existingInstallGetsOptInDocumentationWithoutChangingConsent(@TempDir Path data) throws Exception {
+        Config.load(data); // create the WeSort installation marker before simulating an older config
         Files.writeString(data.resolve("config.properties"), "port=8765\niconSource=auto\n");
         Config config = Config.load(data);
         assertFalse(config.acceptMinecraftDownload);
@@ -25,6 +26,7 @@ class MinecraftDownloadConsentTest {
     }
 
     @Test void explicitTrueIsRecognizedAndInvalidValuesFailClosed(@TempDir Path data) throws Exception {
+        Config.load(data); // existing installations carry a marker
         Path path = data.resolve("config.properties");
         Files.writeString(path, "port=8765\nacceptMinecraftDownload=true\n");
         assertTrue(Config.load(data).acceptMinecraftDownload);

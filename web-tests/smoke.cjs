@@ -6,6 +6,38 @@ const {Linter} = require('eslint');
 const root = path.join(__dirname, '../stash-manager-server/src/main/resources/web');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const code = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+
+const crypto = require('node:crypto');
+const brandingRoot = path.join(__dirname, '../branding');
+const officialSvg = fs.readFileSync(path.join(brandingRoot, 'wesort.svg'), 'utf8');
+const webSvg = fs.readFileSync(path.join(root, 'wesort.svg'), 'utf8');
+const lockupSvg = fs.readFileSync(path.join(root, 'wesort-lockup.svg'), 'utf8');
+const brandingLockup = fs.readFileSync(path.join(brandingRoot, 'wesort-lockup.svg'), 'utf8');
+const gitBlobSha = content => crypto.createHash('sha1')
+  .update(Buffer.from('blob ' + Buffer.byteLength(content) + '\\0'.replace('\\0', '\0')))
+  .update(content)
+  .digest('hex');
+assert.equal(gitBlobSha(officialSvg), '0288c2962a8eb9572f70d45f15da78bd2cc798ec',
+  'WeSort SVG must remain byte-identical to the official WeAB.nu logo');
+assert.equal(webSvg, officialSvg, 'Web favicon must use the official WeAB.nu SVG');
+assert.equal(brandingLockup, lockupSvg, 'Website and branding lockup must stay identical');
+assert.equal(gitBlobSha(lockupSvg), 'a02e1a50008cd0af1e420ad90b2046c546219511',
+  'The audited vector lockup has changed');
+assert.match(officialSvg, /id="brand-color"[^>]*fill="#E66A00"/);
+assert.match(lockupSvg, /id="brand-suffix"/);
+for (const letter of 'sort') assert.ok(lockupSvg.includes('id="suffix-' + letter + '"'));
+const sourceArtwork = officialSvg.split('  <g id="brand-sign">')[1].split('</svg>')[0];
+assert.ok(lockupSvg.includes(sourceArtwork),
+  'The source WE sign paths, corners, shading and letters must remain unchanged');
+assert.equal(new JSDOM(html).window.document.querySelector('.brand-logo')?.getAttribute('src'),
+  '/wesort-lockup.svg');
+assert.equal(new JSDOM(html).window.document.querySelector('.auth-logo')?.getAttribute('src'),
+  '/wesort-lockup.svg');
+const modIcon = fs.readFileSync(path.join(__dirname, '../src/main/resources/assets/wesort/icon.png'));
+assert.equal(crypto.createHash('sha256').update(modIcon).digest('hex'),
+  '577369272ce568c18015e0164e7dae1f12cc09415ea84d1aa9ead75ab45d951b',
+  'Fabric icon must be rendered from the approved lockup');
+
 const settle = () => new Promise(resolve => setTimeout(resolve, 30));
 
 async function scenario(loggedIn) {
@@ -88,5 +120,5 @@ async function scenario(loggedIn) {
 (async () => {
   await scenario(false);
   await scenario(true);
-  console.log('Web regression passed: references, login, navigation, agent settings; retired UI/routes absent.');
+  console.log('Web regression passed: official WeAB.nu WeSort branding, references, login, navigation and retired UI/routes.');
 })().catch(e => {console.error(e); process.exitCode = 1;});

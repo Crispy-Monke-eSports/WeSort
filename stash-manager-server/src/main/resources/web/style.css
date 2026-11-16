@@ -2104,3 +2104,24 @@ html[data-theme="mac"] .conn-online::before {
   background: var(--mac-green);
   vertical-align: 1px;
 }
+
+/* Official WeAB.nu WeSort identity: the unmodified orange WE sign with outlined
+   Press Start 2P SORT suffix. Keep the logo proportions (1200:1066.4). */
+.title { display: flex; align-items: center; gap: 10px; }
+.header .title .brand-logo {
+  display: block;
+  width: 68px;
+  height: auto;
+  flex: 0 0 auto;
+  image-rendering: auto;
+}
+.auth-logo {
+  display: block;
+  width: min(180px, 52vw);
+  height: auto;
+  margin: 0 auto 14px;
+  image-rendering: auto;
+}
+@media (max-width: 767px) {
+  .title-row .title .brand-logo { width: 45px; }
+}

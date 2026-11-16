@@ -1,11 +1,13 @@
 import java.util.Properties
 
 plugins {
-    alias(libs.plugins.fabric.loom)
+    id("net.fabricmc.fabric-loom") version "1.17.21"
 }
 
-// Which Minecraft version to build for: ./gradlew build -Pmc=1.21.4. Each one has a versions/<mc>.properties file.
-val mc = (findProperty("mc") as String?) ?: "1.21.11"
+// Only Minecraft 26.3 is supported. Old -Pmc targets must fail instead of silently building a different jar.
+val requestedMc = providers.gradleProperty("mc").orNull
+require(requestedMc == null || requestedMc == "26.3") { "WeSort supports only Minecraft 26.3 (requested: $requestedMc)" }
+val mc = "26.3"
 val target = Properties().apply {
     val file = rootProject.file("versions/$mc.properties")
     require(file.exists()) { "No versions/$mc.properties, supported versions are in the versions folder." }
@@ -19,15 +21,33 @@ base {
     group = properties["maven_group"] as String
 }
 
-// Code that differs between Minecraft versions lives in src/<mc>/java
+// Translate named API changes once; keep algorithms shared with the mapped baselines.
+// The generated sources are inspectable under build/generated/sources/mc26.
+val portedSources = layout.buildDirectory.dir("generated/sources/mc26")
+val port26Sources by tasks.registering {
+    inputs.dir("src/main/java")
+    inputs.file("src/26.3/renames.tsv")
+    outputs.dir(portedSources)
+    doLast {
+        val renames = file("src/26.3/renames.tsv").readLines().filter { it.isNotBlank() && !it.startsWith("#") }
+            .map { it.split('\t', limit = 2).let { parts -> require(parts.size == 2); parts[0] to parts[1] } }
+        val destination = portedSources.get().asFile
+        delete(destination)
+        fileTree("src/main/java").matching { include("**/*.java") }.forEach { input ->
+            var text = input.readText()
+            renames.forEach { (before, after) -> text = text.replace(before, after) }
+            destination.resolve(input.relativeTo(file("src/main/java")).path).apply { parentFile.mkdirs(); writeText(text) }
+        }
+    }
+}
 sourceSets {
     main {
-        java.srcDir("src/$mc/java")
-        java.srcDir("common/src/main/java")
-        resources.srcDir("src/$mc/resources")
+        java.setSrcDirs(listOf(portedSources, "src/26.3/java", "common/src/main/java"))
+        resources.srcDir("src/26.3/resources")
     }
     test { java.srcDir("common/src/test/java") }
 }
+tasks.compileJava { dependsOn(port26Sources) }
 
 repositories {
     maven {
@@ -56,14 +76,18 @@ repositories {
 dependencies {
     // Fabric
     minecraft("com.mojang:minecraft:${target("minecraft")}")
-    mappings(loom.officialMojangMappings())
-    modImplementation(libs.fabric.loader)
+    implementation("net.fabricmc:fabric-loader:0.19.5")
+    // Minecraft is patched with this interface; Meteor supplies the same module at runtime.
+    compileOnly("net.fabricmc.fabric-api:fabric-resource-loader-v1:3.0.4+ba0d6c0d5d")
 
     // Meteor
-    modImplementation("meteordevelopment:meteor-client:${target("meteor")}")
+    implementation("meteordevelopment:meteor-client:${target("meteor")}")
 
     // Baritone (dekrom's fork, https://github.com/dekrom/baritone), optional at runtime
-    modCompileOnly("dekrom:baritone-api-fabric:${target("baritone")}")
+    compileOnly("dekrom:baritone-api-fabric:${target("baritone")}")
+    if (providers.gradleProperty("withBaritone").orNull == "true") {
+        runtimeOnly("dekrom:baritone-api-fabric:${target("baritone")}")
+    }
 
     // Tests of the pure classes (recipes, crafting plans, spot search); nothing of Minecraft is started
     testImplementation(platform("org.junit:junit-bom:5.11.4"))
@@ -80,7 +104,7 @@ tasks {
         val propertyMap = mapOf(
             "version" to project.version,
             "mc_version" to target("minecraft"),
-            "java_version" to "21"
+            "java_version" to "25"
         )
 
         inputs.properties(propertyMap)
@@ -103,14 +127,27 @@ tasks {
     }
 
     java {
-        sourceCompatibility = JavaVersion.VERSION_21
-        targetCompatibility = JavaVersion.VERSION_21
+        sourceCompatibility = JavaVersion.VERSION_25
+        targetCompatibility = JavaVersion.VERSION_25
     }
 
     withType<JavaCompile> {
         options.encoding = "UTF-8"
-        options.release = 21
+        options.release = 25
         options.compilerArgs.add("-Xlint:deprecation")
         options.compilerArgs.add("-Xlint:unchecked")
+        options.compilerArgs.addAll(listOf("-Xmaxerrs", "1000"))
+    }
+}
+
+loom {
+    runs {
+        named("client") {
+            runDir(providers.gradleProperty("gameDir").orElse("build/run-26.3").get())
+            vmArg("-Dwesort.runtime.probe=" + providers.gradleProperty("runtimeProbe").orElse("false").get())
+            vmArg("-Dwesort.e2e=" + providers.gradleProperty("worldTest").orElse("false").get())
+            providers.gradleProperty("testServer").orNull?.let { programArgs("--quickPlayMultiplayer", it) }
+            if (providers.gradleProperty("worldTest").orNull == "true") programArgs("--username", "WeSortE2E")
+        }
     }
 }

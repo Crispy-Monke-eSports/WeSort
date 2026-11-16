@@ -1,16 +1,2 @@
 [versions]
 mod-version = "0.1.0-dev.0"
-
-# Fabric (https://fabricmc.net/develop)
-fabric-loader = "0.18.2"
-
-# Loom (https://github.com/FabricMC/fabric-loom)
-loom = "1.14.10"
-
-# Minecraft, Meteor and Baritone differ per Minecraft version, see versions/<minecraft>.properties
-
-[libraries]
-fabric-loader = { module = "net.fabricmc:fabric-loader", version.ref = "fabric-loader" }
-
-[plugins]
-fabric-loom = { id = "fabric-loom", version.ref = "loom" }

@@ -17,7 +17,8 @@ final class VanillaAssets {
     static final long CLIENT_BYTES = 41_483_720;
     private VanillaAssets() {}
 
-    static Path client26(Path iconsDir) throws IOException, InterruptedException {
+    static Path client26(Path iconsDir, boolean acceptMinecraftDownload) throws IOException, InterruptedException {
+        if (!acceptMinecraftDownload) throw new IOException("Minecraft download requires acceptMinecraftDownload=true");
         Path directory = iconsDir.resolve("sources/26.3");
         if (Files.isSymbolicLink(iconsDir) || Files.isSymbolicLink(iconsDir.resolve("sources")) || Files.isSymbolicLink(directory)) throw new IOException("Symlink asset cache");
         Files.createDirectories(directory);

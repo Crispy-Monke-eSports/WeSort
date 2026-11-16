@@ -1607,6 +1607,7 @@ public class StashSorter extends Module {
 
     @Override
     public String getInfoString() {
+        if (com.porter.wesort.compat.NavigationRuntime.paused()) return com.porter.wesort.compat.NavigationRuntime.status();
         return InventorySync.ready() ? null : (InventorySync.failed() ? "NEEDS_RECONCILIATION" : "awaiting server inventory");
     }
 
@@ -1969,7 +1970,7 @@ public class StashSorter extends Module {
 
     @EventHandler
     private void onTick(TickEvent.Pre event) {
-        if (!InventorySync.ready()) { ledgeGuard(false); return; }
+        if (!InventorySync.ready() || com.porter.wesort.compat.NavigationRuntime.paused()) { ledgeGuard(false); return; }
         if (stash == null) {
             turnOff();
             return;

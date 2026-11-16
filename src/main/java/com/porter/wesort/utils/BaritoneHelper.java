@@ -40,6 +40,7 @@ public final class BaritoneHelper {
      */
     public static Goal moveNear(BlockPos pos, int range) {
         Goal goal = new GoalNear(pos, range);
+        com.porter.wesort.compat.NavigationRuntime.watch(goal);
         baritone().getCustomGoalProcess().setGoalAndPath(goal);
         return goal;
     }
@@ -50,6 +51,7 @@ public final class BaritoneHelper {
      */
     public static boolean releaseOurs(Goal ours) {
         if (ours == null) return false;
+        com.porter.wesort.compat.NavigationRuntime.released(ours);
         ICustomGoalProcess process = baritone().getCustomGoalProcess();
         if (process.getGoal() != ours) return false;
         process.onLostControl();
@@ -189,6 +191,7 @@ public final class BaritoneHelper {
      */
     public static Goal moveInReach(Collection<BlockPos> parts, double reach) {
         Goal goal = new GoalReach(List.copyOf(parts), reach);
+        com.porter.wesort.compat.NavigationRuntime.watch(goal);
         baritone().getCustomGoalProcess().setGoalAndPath(goal);
         return goal;
     }
@@ -227,6 +230,7 @@ public final class BaritoneHelper {
      */
     public static Goal moveXZ(int x, int z) {
         Goal goal = new GoalXZ(x, z);
+        com.porter.wesort.compat.NavigationRuntime.watch(goal);
         baritone().getCustomGoalProcess().setGoalAndPath(goal);
         return goal;
     }

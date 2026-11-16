@@ -1,0 +1,61 @@
+{
+  "result": "PASS",
+  "scope": "W-016 real Baritone navigation on Minecraft 26.3",
+  "checks": [
+    {
+      "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+      "result": "PASS"
+    },
+    {
+      "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+      "result": "PASS"
+    },
+    {
+      "scenario": "published Docker Manager with fresh volume and safe Owner setup, no Discord",
+      "result": "PASS"
+    },
+    {
+      "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+      "result": "PASS"
+    },
+    {
+      "scenario": "ten real double chests opened with 54 slots and stable server-supplied contents",
+      "result": "PASS"
+    },
+    {
+      "scenario": "barrel and placed shulker opened with real slot/state ids and item component fingerprints",
+      "result": "PASS"
+    },
+    {
+      "scenario": "production signed Fabric agent index reaches Docker Manager with matching fresh 26.3 totals and fingerprints",
+      "result": "PASS"
+    },
+    {
+      "scenario": "actual Baritone round trip between double chests across loaded x=16 chunk boundary, barrel, shulker, raised container and workspace",
+      "result": "PASS"
+    },
+    {
+      "scenario": "explicit cancel stops movement, restores Baritone settings and requires explicit resume; unloaded target refused",
+      "result": "PASS"
+    },
+    {
+      "scenario": "real unreachable enclosure produces bounded pause: PAUSED_NAVIGATION_RELEASED",
+      "result": "PASS"
+    },
+    {
+      "scenario": "real 60-second absolute timeout despite continued displacement stops path and restores settings",
+      "result": "PASS"
+    },
+    {
+      "scenario": "real server dimension change stops the old route without automatic continuation",
+      "result": "PASS"
+    },
+    {
+      "scenario": "server compares every warehouse block and block entity with an independent pre-navigation clone; inventory totals/components unchanged",
+      "result": "PASS"
+    }
+  ],
+  "source_commit": "3516dad3fc8a0c2fdaeb80722133729befc09cf3",
+  "dirty_worktree": true,
+  "limits": "Local warehouse only; global transport, portals and multiagent routing remain W-036."
+}

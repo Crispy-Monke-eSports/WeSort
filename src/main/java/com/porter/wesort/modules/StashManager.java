@@ -503,6 +503,10 @@ public class StashManager extends Module {
 
     @EventHandler
     private void onTick(TickEvent.Post event) {
+        if (com.porter.wesort.compat.NavigationRuntime.paused()) {
+            setStatus(com.porter.wesort.compat.NavigationRuntime.status());
+            return;
+        }
         if (!InventorySync.ready()) {
             setStatus(InventorySync.failed() ? "inventory needs reconciliation" : "awaiting server inventory");
             return;

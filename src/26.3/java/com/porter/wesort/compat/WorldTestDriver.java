@@ -98,6 +98,20 @@ public final class WorldTestDriver {
                         meteordevelopment.meteorclient.utils.world.BlockUtils.interact(
                             new BlockHitResult(Vec3.atCenterOf(pos), Direction.UP, pos, false), InteractionHand.MAIN_HAND, true);
                 }
+                case "navigate" -> {
+                    if (NavigationRuntime.paused() || !InventorySync.ready()) { respond(false, "Navigation paused", state()); return; }
+                    BlockPos target = position(command);
+                    if (!mc.level.isLoaded(target)) { respond(false, "Unloaded navigation target", state()); return; }
+                    com.porter.wesort.utils.BaritoneHelper.protect(List.of(net.minecraft.world.level.block.Blocks.CHEST,
+                        net.minecraft.world.level.block.Blocks.BARREL, net.minecraft.world.level.block.Blocks.SHULKER_BOX));
+                    com.porter.wesort.utils.BaritoneHelper.confine(true);
+                    if (command.has("reach") && command.get("reach").getAsBoolean())
+                        com.porter.wesort.utils.BaritoneHelper.moveInReach(List.of(target), 4.0);
+                    else com.porter.wesort.utils.BaritoneHelper.moveNear(target, 0);
+                    respond(true, "started actual Baritone goal", state());
+                }
+                case "nav-cancel" -> { NavigationRuntime.cancel(); respond(true, NavigationRuntime.status(), state()); }
+                case "nav-resume" -> respond(NavigationRuntime.resume(), NavigationRuntime.status(), state());
                 case "close" -> mc.player.closeContainer();
                 case "click" -> {
                     if (!InventorySync.ready()) { respond(false, "Inventory not ready: " + InventorySync.reason(), state()); return; }
@@ -285,6 +299,15 @@ public final class WorldTestDriver {
         out.addProperty("stateId", mc.player.containerMenu.getStateId());
         out.addProperty("interaction", interaction);
         out.addProperty("screen", mc.gui.screen() == null ? "none" : mc.gui.screen().getClass().getSimpleName());
+        out.addProperty("navigation", NavigationRuntime.status());
+        out.addProperty("navigationPaused", NavigationRuntime.paused());
+        var settings = baritone.api.BaritoneAPI.getSettings();
+        out.addProperty("allowBreak", settings.allowBreak.value);
+        out.addProperty("allowPlace", settings.allowPlace.value);
+        out.addProperty("allowParkour", settings.allowParkour.value);
+        out.addProperty("allowWaterBucketFall", settings.allowWaterBucketFall.value);
+        out.addProperty("maxFallHeightNoWater", settings.maxFallHeightNoWater.value);
+        out.addProperty("pathing", com.porter.wesort.utils.BaritoneHelper.isActive());
         out.addProperty("inventoryReady", InventorySync.ready());
         out.addProperty("inventoryFailure", InventorySync.reason());
         out.addProperty("cursorCount", mc.player.containerMenu.getCarried().getCount());

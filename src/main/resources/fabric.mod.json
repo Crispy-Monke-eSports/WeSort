@@ -3,7 +3,7 @@
   "id": "qwerte",
   "version": "${version}",
   "name": "Qwerte Addon",
-  "description": "A Meteor Client addon for 2b2t dedicated to regrowing and creating farmland: tills, waters, plants and grows crops, with optional Baritone automation.",
+  "description": "A Meteor Client addon for shared stash sorting, shulkers, kits and orders.",
   "authors": [
     "Qwertze"
   ],

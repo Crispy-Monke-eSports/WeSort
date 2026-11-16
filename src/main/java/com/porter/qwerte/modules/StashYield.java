@@ -138,12 +138,6 @@ final class StashYield {
         Modules modules = Modules.get();
         AutoEat eat = modules.get(AutoEat.class);
         if (eat != null && eat.isActive() && eat.eating) return Reason.Eating;
-        // Only while they are actually working, not just switched on
-        AutoTill till = modules.get(AutoTill.class);
-        if (till != null && till.working()) return Reason.Module;
-        AutoDirt dirt = modules.get(AutoDirt.class);
-        if (dirt != null && dirt.working()) return Reason.Module;
-
         // Something was taken, moved or swapped outside the carry slots and the sorter didn't do it. Items turning up (picked
         // up off the ground) don't count
         if (taken && !owner.ownInventoryActivity() && !owner.walkingOurs()) return Reason.Inventory;

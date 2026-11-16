@@ -18,6 +18,7 @@ public final class ClientRuntimeProbe {
     private ClientRuntimeProbe() {}
 
     public static void afterInitialize() {
+        InventorySync.initialize();
         WorldTestDriver.initialize();
         if (!Boolean.getBoolean("wesort.runtime.probe")) return;
         Thread.ofPlatform().name("wesort-runtime-probe").daemon().start(() -> {

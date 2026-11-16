@@ -145,6 +145,7 @@ loom {
             vmArg("-Dwesort.runtime.probe=" + providers.gradleProperty("runtimeProbe").orElse("false").get())
             vmArg("-Dwesort.e2e=" + providers.gradleProperty("worldTest").orElse("false").get())
             providers.gradleProperty("testServer").orNull?.let { programArgs("--quickPlayMultiplayer", it) }
+            if (providers.gradleProperty("worldTest").orNull == "true") programArgs("--username", "WeSortE2E")
         }
     }
 }

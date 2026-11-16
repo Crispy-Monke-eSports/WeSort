@@ -1,6 +1,7 @@
 package com.porter.wesort.modules;
 
 import com.porter.wesort.WeSortAddon;
+import com.porter.wesort.compat.InventorySync;
 import com.porter.wesort.stash.Stash;
 import com.porter.wesort.stash.StashIndex;
 import meteordevelopment.meteorclient.events.game.GameLeftEvent;
@@ -502,6 +503,10 @@ public class StashManager extends Module {
 
     @EventHandler
     private void onTick(TickEvent.Post event) {
+        if (!InventorySync.ready()) {
+            setStatus(InventorySync.failed() ? "inventory needs reconciliation" : "awaiting server inventory");
+            return;
+        }
         if (mc.level == null || mc.player == null) return;
 
         driveSorter();

@@ -1,6 +1,7 @@
 package com.porter.wesort.modules;
 
 import com.porter.wesort.WeSortAddon;
+import com.porter.wesort.compat.InventorySync;
 import com.porter.wesort.compat.RightClick;
 import com.porter.wesort.stash.Categories;
 import com.porter.wesort.stash.ItemPreviewScreen;
@@ -1605,6 +1606,11 @@ public class StashSorter extends Module {
     // Turning on and off
 
     @Override
+    public String getInfoString() {
+        return InventorySync.ready() ? null : (InventorySync.failed() ? "NEEDS_RECONCILIATION" : "awaiting server inventory");
+    }
+
+    @Override
     public void onActivate() {
         // Taking over from wesort-stash-manager's driving: that is torn down first, then this starts as usual
         if (driven) {
@@ -1764,6 +1770,14 @@ public class StashSorter extends Module {
     }
 
     private void teardown() {
+        if (!InventorySync.ready()) {
+            // Do not drain grids, return the cursor, or close the menu on an unverified inventory.
+            setUp = false;
+            ledgeGuard(false);
+            if (usedBaritone) { releaseGoal(); BaritoneHelper.unprotect(); usedBaritone = false; }
+            warning("Inventory readback is pending or uncertain; no cleanup clicks were sent. Inspect the source and use .wesort-reconcile.");
+            return;
+        }
         setUp = false;
         // An order stops where it is: its saved plan carries on at the next claim
         orderRunner.reset();
@@ -1955,6 +1969,7 @@ public class StashSorter extends Module {
 
     @EventHandler
     private void onTick(TickEvent.Pre event) {
+        if (!InventorySync.ready()) { ledgeGuard(false); return; }
         if (stash == null) {
             turnOff();
             return;

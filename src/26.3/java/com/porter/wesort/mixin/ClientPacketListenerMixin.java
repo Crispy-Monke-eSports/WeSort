@@ -26,6 +26,29 @@ import java.util.UUID;
  */
 @Mixin(ClientPacketListener.class)
 public abstract class ClientPacketListenerMixin {
+    @Inject(method = "handleBlockEntityData", at = @At("TAIL"))
+    private void wesort$blockEntityObservation(net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket packet,
+        org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
+        com.porter.wesort.compat.WorldTestDriver.blockEntityUpdated(packet.getPos());
+    }
+    @Inject(method = "handleContainerContent", at = @At("TAIL"))
+    private void wesort$inventoryContent(net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket packet,
+        org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
+        com.porter.wesort.compat.InventorySync.contents(packet);
+    }
+
+    @Inject(method = "handleAwardStats", at = @At("TAIL"))
+    private void wesort$inventoryBarrier(net.minecraft.network.protocol.game.ClientboundAwardStatsPacket packet,
+        org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
+        com.porter.wesort.compat.InventorySync.stats();
+    }
+
+    @Inject(method = "handleBlockChangedAck", at = @At("TAIL"))
+    private void wesort$blockAck(net.minecraft.network.protocol.game.ClientboundBlockChangedAckPacket packet,
+        org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
+        com.porter.wesort.compat.InventorySync.blockAck(packet.sequence());
+    }
+
     @Shadow
     @Final
     private Map<UUID, PlayerInfo> playerInfoMap;

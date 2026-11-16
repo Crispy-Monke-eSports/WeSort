@@ -250,7 +250,7 @@ class Harness:
             raise RuntimeError('Client never completed vanilla terrain loading')
         self.ok('external real 26.3 Fabric/Meteor/WeSort client connected to private server')
 
-    def command(self, action, timeout=25, **values):
+    def command(self, action, timeout=25, allow_failure=False, **values):
         ident = uuid.uuid4().hex
         tmp = self.control / 'request.tmp'
         tmp.write_text(json.dumps(dict(id=ident, action=action, **values)))
@@ -264,7 +264,7 @@ class Harness:
                 if value['id'] == ident:
                     with (self.evidence / 'actions.jsonl').open('a') as journal:
                         journal.write(json.dumps({'action': action, 'response': value}) + '\n')
-                    require(value['success'], 'Client refused: ' + value['message'])
+                    require(value['success'] or allow_failure, 'Client refused: ' + value['message'])
                     return value
             time.sleep(0.1)
         raise RuntimeError('Client control timed out; no physical action is assumed complete')

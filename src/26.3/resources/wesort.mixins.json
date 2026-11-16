@@ -4,7 +4,9 @@
   "package": "com.porter.wesort.mixin",
   "compatibilityLevel": "JAVA_25",
   "mixins": [
-    "ClientPacketListenerMixin"
+    "ClientPacketListenerMixin",
+    "InventoryInputMixin",
+    "BlockInputMixin"
   ],
   "injectors": {
     "defaultRequire": 1

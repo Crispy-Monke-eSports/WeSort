@@ -28,8 +28,14 @@ Detta ersätter inte den kommande fulla fysiska fingerprint-/custodymodellen.
 
 Manager `0.1.0-dev.1` har 26.3-tabellen och använder korrekt version av
 Minecraft-assets. En angiven lokal speljar måste ha rätt id i version.json;
-en annan releases jar får inte fylla en 26.3-cache. Om ingen lämplig jar finns
-hämtar Manager den officiella immutable 26.3-klientjaren från
+en annan releases jar får inte fylla en 26.3-cache. När ingen lämplig lokal
+jar finns gör Manager **ingen automatisk nedladdning som standard**.
+Administratören kan, enligt samma uttryckliga opt-in-princip som BlueMaps
+`accept-download`, sätta `acceptMinecraftDownload=true` i Manager-
+`config.properties` eller `WESORT_ACCEPT_MINECRAFT_DOWNLOAD=true` i Compose.
+Detta bekräftar EULA-acceptans, egen Minecraft Java Edition-licens samt
+skyldigheten att inte vidarepublicera original-JAR eller dess resurser.
+Först då hämtar Manager den officiella immutable 26.3-klientjaren från
 [Mojangs objektserver](https://piston-data.mojang.com/v1/objects/e877b6a07acd633fb3bb475002175cec036e7b87/client.jar).
 Den kontrollerar exakt 41 483 720 bytes och SHA1
 `e877b6a07acd633fb3bb475002175cec036e7b87` före atomisk installation.
@@ -45,7 +51,7 @@ tidigare försök att rendera 26.3 med en godtycklig override.
 Standardläget auto och läget game kan rendera från spelet. För 26.3 ersätts
 en saknad modell inte av en overifierad versionslös wiki-bild. Okänd/saknad
 resurs ger den särskilda 16px magenta/svarta placeholdern; riktiga ikoner är
-64px. Om officiella assets inte kan hämtas blir resultatet säker fallback;
+64px. Om ingen lokal källa finns och nedladdning inte godkänts, eller om godkänd nedladdning misslyckas, blir resultatet säker fallback;
 en Manager-omstart försöker igen. Andra Minecraft-versioners befintliga
 ikonkälla behålls. Alla caches ligger i samma skyddade WeSort-installation.
 
@@ -84,7 +90,18 @@ Lokalt underlag: [resurser](verification/W-017-metadata.json),
 [scan/ikoner/fönster](verification/W-017-assets.json),
 [webb-DOM](verification/W-017-web.json) och
 [inventory/omstartsregression efter typbevarande kodning](verification/W-017-inventory-regression.json). Lokala rapporter föregår issue-
-committen; source_commit/dirty_worktree beskriver det. `mc26-assets.yml`
+committen; source_commit/dirty_worktree beskriver det. Den fristående Java-21-Managern kan inte återskapa den kreativa katalogen eller
+recepttabellen enbart från klient-JAR-arkivet. De genereras med en verklig
+Minecraft 26.3-klient (Java 25), inlästa registries och receptcodec i
+`src/26.3/java/com/porter/wesort/compat/MetadataExport.java` och
+`MetadataRecipes.java`. `scripts/mc26/metadata-harness.py` kan jämföra och
+exportera dem i ett kontrollerat separat prov. En säker flytt från incheckade
+JSON-filer till opt-in-skapade runtime-data kräver ny klient-till-Manager-
+metadataöverföring, versions-/integritetsverifiering och testtäckning; det
+ingår därför inte i detta opt-in-PR. De befintliga 26.3-recept-/creative-tabs-
+JSON-filerna lämnas orörda och deras redistribution behöver en separat bedömning.
+
+`mc26-assets.yml`
 bygger kandidaten och kör både jämförelse och visningsprov på exakt pushad
 commit. Artifacts omfattar endast evidence, inte spelprofil, API-nyckel,
 cookies, speljar eller Manager-volym.

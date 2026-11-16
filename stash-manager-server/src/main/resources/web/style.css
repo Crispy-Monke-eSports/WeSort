@@ -2129,3 +2129,21 @@ html[data-theme="mac"] .conn-online::before {
 .guild-stock { margin: 12px 0; padding: 10px; border: 1px solid var(--border, #777); max-height: 320px; overflow: auto; }
 .guild-stock table { width: 100%; text-align: left; border-collapse: collapse; }
 .guild-stock th, .guild-stock td { padding: 4px 8px; }
+
+/* Mojang and Microsoft non-affiliation notice on dashboard and login, including mobile. */
+.minecraft-disclaimer {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  opacity: 0.85;
+  letter-spacing: 0.01em;
+}
+.header .minecraft-disclaimer {
+  order: 23;
+  flex: 1 1 100%;
+  text-align: left;
+}
+.auth-box .minecraft-disclaimer {
+  margin: -4px 0 12px;
+  text-align: center;
+}

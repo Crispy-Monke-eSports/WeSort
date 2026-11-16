@@ -92,4 +92,12 @@ class DataDirectoryTest {
     void clientSubfolderCannotEscapeItsNamespace() {
         assertThrows(IllegalArgumentException.class, () -> DataDirectory.clientFolder(temp, "../qwerte"));
     }
+    @Test
+    void healthRootCheckNeverInitializesAMissingInstallation() throws Exception {
+        Path missing = temp.resolve("not-started");
+        assertThrows(IOException.class, () -> DataDirectory.existingRoot(missing, "manager"));
+        assertFalse(Files.exists(missing));
+        Path root = DataDirectory.open(missing, "manager");
+        assertEquals(root, DataDirectory.existingRoot(root, "manager"));
+    }
 }

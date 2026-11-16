@@ -416,7 +416,7 @@
     var elsewhere = mode === "elsewhere";
     var change = mode === "change";
     el.authText.textContent = setup
-      ? "First run: type the setup code shown in the server window, then choose a password for this website (at least " + MIN_PASSWORD +
+      ? "First run: type the one-time code from the local bootstrap command, then choose a password for this website (at least " + MIN_PASSWORD +
         " characters). Anyone on your network will need it to see the stash, place orders or control the bots. It is remembered for 30 days on each browser."
       : elsewhere
         ? (message || "Set the dashboard password on the server PC (open http://localhost:8765).")
@@ -527,7 +527,7 @@
     var setup = auth.mode === "setup";
     var username = setup ? "" : el.authUsername.value.trim();
     if (setup) {
-      if (!el.authCode.value.trim()) return authError("Type the setup code from the server window.");
+      if (!el.authCode.value.trim()) return authError("Type the one-time code from the local bootstrap command.");
       if (password.length < MIN_PASSWORD) return authError("The password needs at least " + MIN_PASSWORD + " characters.");
       if (password !== el.authConfirm.value) return authError("The two passwords are different.");
     } else if (!password) {

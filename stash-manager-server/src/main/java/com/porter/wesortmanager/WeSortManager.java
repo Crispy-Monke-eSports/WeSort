@@ -31,8 +31,10 @@ public final class WeSortManager {
         setDefault("sun.net.httpserver.maxReqTime", "30");
         setDefault("sun.net.httpserver.maxRspTime", "60");
 
+        String command = args.length > 0 && !args[0].startsWith("-") ? args[0] : "serve";
+        if (!List.of("serve", "bootstrap", "healthcheck").contains(command)) usage("unknown command");
         Path dataDir = Path.of("wesort-manager-data");
-        for (int i = 0; i < args.length; i++) {
+        for (int i = args.length > 0 && args[0].equals(command) ? 1 : 0; i < args.length; i++) {
             switch (args[i]) {
                 case "--data" -> {
                     if (i + 1 >= args.length) usage("--data needs a directory");
@@ -42,8 +44,19 @@ public final class WeSortManager {
                 default -> usage("unknown argument: " + args[i]);
             }
         }
-        dataDir = com.porter.wesort.data.DataDirectory.open(dataDir, "manager");
+        if (!command.equals("serve")) {
+            String reply = LocalControl.request(dataDir, command.equals("bootstrap") ? "BOOTSTRAP" : "HEALTH");
+            System.out.println(reply); // Only this explicitly requested administrator channel returns the token.
+            return;
+        }
+        serve(com.porter.wesort.data.DataDirectory.open(dataDir, "manager"));
+    }
 
+    private static void serve(Path dataDir) throws IOException {
+        ManagerLock lock = ManagerLock.acquire(dataDir);
+        boolean started = false;
+        try {
+        AtomicFiles.ownerOnlyDir(dataDir);
         int swept = AtomicFiles.sweepTemp(dataDir);
         if (swept > 0) System.out.println("Removed " + swept + " leftover temp file(s).");
 
@@ -97,7 +110,8 @@ public final class WeSortManager {
         if (!config.trustedProxies.isEmpty()) System.out.println("  Trusted proxies (client address from X-Forwarded-For): " + String.join(", ", config.trustedProxies));
         Auth.dummyHash(); // so the first login for an unknown name isn't slower than the rest
         BotHub hub = new BotHub();
-        Routes built = routes(config, store, orders, owners, icons, link, urls, sessions, users, audit, hub, new LoginLimiter());
+        RuntimeHealth health = new RuntimeHealth(false);
+        Routes built = routes(config, store, orders, owners, icons, link, urls, sessions, users, audit, hub, new LoginLimiter(), health);
         Router router = built.router();
         AuthRoutes authRoutes = built.auth();
         if (!users.list().isEmpty()) System.out.println("  Website users: the owner and " + users.list().size() + " sub-user(s).");
@@ -112,10 +126,13 @@ public final class WeSortManager {
             System.exit(1);
             return;
         }
-        // Up to 8 bot long-polls and up to 8 live viewer streams (ViewerHub.MAX_STREAMS) hold a thread each.
+        // Bot long-polls are bounded independently of short browser requests.
         ExecutorService pool = Executors.newFixedThreadPool(32, daemonThreads());
         server.setExecutor(pool);
         server.createContext("/", router);
+        LocalControl control;
+        try { control = new LocalControl(dataDir, authRoutes, health, config.port); }
+        catch (IOException e) { server.stop(0); icons.close(); pool.shutdownNow(); throw e; }
         server.start();
 
         // Only once the port is ours: clean up the old icon cache, then queue every missing icon.
@@ -125,32 +142,36 @@ public final class WeSortManager {
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.out.println("Stopping WeSort Manager...");
+            health.ready(false);
+            try { control.close(); } catch (IOException e) { System.err.println("Could not close local control socket"); }
             server.stop(1);
             icons.close();
             pool.shutdown();
             try {
-                pool.awaitTermination(3, TimeUnit.SECONDS);
+                if (!pool.awaitTermination(5, TimeUnit.SECONDS)) pool.shutdownNow();
             } catch (InterruptedException ignored) {
             }
-        }, "stash-manager-shutdown"));
+            try { lock.close(); } catch (IOException e) { System.err.println("Could not release installation lock"); }
+        }, "wesort-manager-shutdown"));
+        health.ready(true);
+        started = true;
 
         System.out.println("WeSort Manager server running.");
         System.out.println("  Data directory: " + dataDir);
         System.out.println("  Loaded " + store.size() + " stash index(es).");
         for (String url : urls) System.out.println("  Open: " + url);
-        System.out.println("  Link the addon from the website's \"Link addon\" button, or paste this API key");
-        System.out.println("  into the stash-manager module's api-key setting:");
-        System.out.println("    " + config.apiKey());
-        if (config.generatedKey) System.out.println("  (new key generated and saved in config.properties)");
+        System.out.println("  Link agents through the authenticated Owner portal; persistent API credentials are never logged.");
         if (config.allowRemote) System.out.println("  WARNING: allowRemote=true, non-LAN addresses are not blocked.");
         if (config.allowBearer) {
             System.out.println("  WARNING: allowBearer=true: the API key is sent in clear text by old bots (Bearer). Update every bot, then set allowBearer=false.");
         } else {
             System.out.println("  Bots must sign their requests (allowBearer=false). Older addons/plugins get 401 until updated; allowBearer=true in config.properties lets them in meanwhile.");
         }
-        if (authRoutes.setupCode() != null) {
-            System.out.println("  No website password yet: open http://localhost:" + config.port + " on this PC to set one.");
-            System.out.println("  Dashboard setup code: " + authRoutes.setupCode());
+        if (config.dashboardPassword() == null) {
+            System.out.println("  Owner setup required: run the local bootstrap command through docker compose exec.");
+        }
+        } finally {
+            if (!started) lock.close();
         }
     }
 
@@ -160,7 +181,14 @@ public final class WeSortManager {
     /** Every route, in order (the static files last). Shared with the tests, so they check the real registrations. */
     static Routes routes(Config config, IndexStore store, OrderStore orders, Owners owners, IconService icons, LinkState link,
                          List<String> urls, SessionStore sessions, Users users, AuditLog audit, BotHub hub, LoginLimiter limiter) {
+        return routes(config, store, orders, owners, icons, link, urls, sessions, users, audit, hub, limiter, new RuntimeHealth(true));
+    }
+
+    static Routes routes(Config config, IndexStore store, OrderStore orders, Owners owners, IconService icons, LinkState link,
+                         List<String> urls, SessionStore sessions, Users users, AuditLog audit, BotHub hub, LoginLimiter limiter,
+                         RuntimeHealth health) {
         Router router = new Router(new AccessControl(config), sessions, config, users);
+        health.register(router);
         router.ids(new ServerIds(ServerIds.secret(config.dataDir()), store::servers,
             () -> hub.all().stream().map(b -> b.botId).toList()));
         AuthRoutes authRoutes = new AuthRoutes(config, sessions, limiter, users, audit);
@@ -185,7 +213,7 @@ public final class WeSortManager {
 
     private static void usage(String error) {
         if (error != null) System.err.println(error);
-        System.err.println("Usage: java -jar wesort-manager.jar [--data <dir>]");
+        System.err.println("Usage (development): java -jar wesort-manager.jar [serve|bootstrap|healthcheck] [--data <dir>]");
         System.exit(error == null ? 0 : 2);
     }
 

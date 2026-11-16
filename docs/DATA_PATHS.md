@@ -47,7 +47,7 @@ sessions; inga autentiseringsuppgifter hämtas från upstream-data.
 
 ## Körda kontroller
 
-Sex gemensamma JUnit-testfall körs i både klient och Manager: rena installationer,
+Gemensamma JUnit-testfall körs i både klient och Manager: rena installationer,
 korrupta/read-only Qwerte-filer, explicit gamla sökvägar, okända/schemamärkta
 kataloger, olika roller, symlinkrot/förälder/markör/cache och path-escape.
 Webbtestet förladdar gamla keys med korrupta värden och förbjuder all läsning,
@@ -67,3 +67,7 @@ Minecraft-orderpackning eller en färdig produktionsbackupfunktion (W-044).
 
 Klientens initiering i en verklig Meteor-session och fysiska Minecraft-flöden
 är EJ KÖRDA. Docker och 26.3 ingår i senare roadmapsteg.
+
+W-055: Manager håller även `.manager.lock` och en owner-only `.control.sock`.
+Bootstrapkapabiliteten är en kortlivad minnesdigest och hämtas endast via lokal
+CLI; den loggas och persisteras aldrig. Se DOCKER.md.

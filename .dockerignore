@@ -1,0 +1,19 @@
+# Allow only build inputs. No Git metadata, local config, data, credentials or build outputs.
+**
+!Dockerfile
+!docker/
+!docker/entrypoint.sh
+!gradlew
+!gradle/
+!gradle/wrapper/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+!LICENSE
+!common/
+!common/src/
+!common/src/**
+!stash-manager-server/
+!stash-manager-server/build.gradle.kts
+!stash-manager-server/settings.gradle.kts
+!stash-manager-server/src/
+!stash-manager-server/src/**

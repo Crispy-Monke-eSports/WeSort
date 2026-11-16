@@ -1,0 +1,32 @@
+name: wesort
+services:
+  manager:
+    image: ${WESORT_IMAGE:-ghcr.io/crispy-monke-esports/wesort-manager:v0.1.0-dev.0}
+    platform: linux/amd64
+    restart: unless-stopped
+    init: true
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    mem_limit: 768m
+    stop_grace_period: 30s
+    ports:
+      - "${WESORT_BIND:-127.0.0.1}:${WESORT_PORT:-8765}:8765"
+    environment:
+      WESORT_ALLOWED_HOSTS: ${WESORT_ALLOWED_HOSTS:-}
+      WESORT_TRUSTED_PROXIES: ${WESORT_TRUSTED_PROXIES:-}
+      WESORT_SECURE_COOKIES: ${WESORT_SECURE_COOKIES:-true}
+      WESORT_ICON_SOURCE: ${WESORT_ICON_SOURCE:-auto}
+    volumes:
+      - wesort-data:/var/lib/wesort
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+volumes:
+  wesort-data:

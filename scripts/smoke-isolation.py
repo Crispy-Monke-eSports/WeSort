@@ -78,14 +78,10 @@ with tempfile.TemporaryDirectory(prefix='wesort-isolation-') as directory:
     process, log, state = start()
     try:
         assert state['setupNeeded']
-        for _ in range(100):
-            match = re.search(r'Dashboard setup code: ([A-Z0-9-]+)', log.read_text())
-            if match:
-                break
-            time.sleep(0.05)
-        assert match, 'No setup code'
+        token = subprocess.check_output([args.java, '-jar', str(args.jar.resolve()), 'bootstrap', '--data', str(data)], text=True).strip()
+        assert token not in log.read_text()
         password = 'wesort-isolation-test-only-8392'
-        request('/api/v1/auth/setup', {'code': match.group(1), 'password': password})
+        request('/api/v1/auth/setup', {'code': token, 'password': password})
         request('/api/v1/auth/login', {'password': password})
         assert request('/api/v1/stashes') == []
         assert any(c.name == 'wesort_session' for c in cookies)

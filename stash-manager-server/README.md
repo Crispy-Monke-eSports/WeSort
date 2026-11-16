@@ -1,8 +1,8 @@
-# Manager – utveckling efter steg 0
+# WeSort Manager
 
-Ett separat Java 21-projekt med inbyggd webb och HttpServer. Produktion ska
-endast stödjas via Linux Docker/GHCR, vilket införs i W-055/W-056. Ingen
-Windows-serverstart eller containerrelease levereras i denna etapp.
+Ett separat Java 21-projekt med inbyggd webb och HttpServer. Produktion stöds
+endast som Linux amd64 Docker-container. Se [installation, Owner-bootstrap och
+smoketester](../docs/DOCKER.md). Java-only nedan är för bygg/test.
 
 Bygg/testa från repositoryroten:
 

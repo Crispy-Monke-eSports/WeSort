@@ -39,6 +39,7 @@ public final class Config {
     public final String iconSource;
     /** allowBearer=: accept the old Authorization: Bearer header on index/heartbeat/order requests (never on bot/*). */
     public final boolean allowBearer;
+    public final boolean secureCookies;
     /**
      * trustedProxies=: addresses of reverse proxies / tunnels (e.g. cloudflared) in front of this server. Only for a
      * request whose socket address is one of these is the client address taken from the last
@@ -55,7 +56,8 @@ public final class Config {
     private volatile String dashboardPassword;
 
     private Config(Path file, int port, String bind, String apiKey, boolean allowRemote, List<String> allowedHosts,
-                   boolean generatedKey, Path minecraftJar, String iconSource, boolean allowBearer, List<String> trustedProxies) {
+                   boolean generatedKey, Path minecraftJar, String iconSource, boolean allowBearer, List<String> trustedProxies, boolean secureCookies) {
+        this.secureCookies = secureCookies;
         this.allowBearer = allowBearer;
         this.trustedProxies = List.copyOf(trustedProxies);
         this.file = file;
@@ -110,6 +112,14 @@ public final class Config {
             AtomicFiles.ownerOnly(file);
         }
 
+        // Deployment knobs contain no credentials. File values remain the fallback for developer runs.
+        for (String[] setting : new String[][] {
+            {"WESORT_ALLOWED_HOSTS", "allowedHosts"}, {"WESORT_TRUSTED_PROXIES", "trustedProxies"},
+            {"WESORT_SECURE_COOKIES", "secureCookies"}, {"WESORT_ICON_SOURCE", "iconSource"}
+        }) {
+            String value = System.getenv(setting[0]);
+            if (value != null) props.setProperty(setting[1], value);
+        }
         int port = parsePort(props.getProperty("port", "8765").trim());
         String bind = props.getProperty("bind", "0.0.0.0").trim();
         if (bind.isEmpty()) bind = "0.0.0.0";
@@ -161,7 +171,7 @@ public final class Config {
             trustedProxies.add(t);
         }
         Config config = new Config(file, port, bind, apiKey, allowRemote, allowedHosts, generated, minecraftJar, iconSource, allowBearer,
-            trustedProxies);
+            trustedProxies, Boolean.parseBoolean(props.getProperty("secureCookies", "false")));
         String password = props.getProperty(PASSWORD_KEY, "").trim();
         if (!password.isEmpty()) {
             if (!Auth.wellFormed(password)) {

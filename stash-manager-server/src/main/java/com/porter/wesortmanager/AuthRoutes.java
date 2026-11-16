@@ -13,12 +13,10 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 
 /**
- * The website login (PROTOCOL.md, "Website login"): state, first-run setup (from the server PC only, with the one-time
- * code printed in the server window), login (the owner, or a sub-user by name), logout, log out everywhere, changing
+ * The website login: state, first-run setup with an expiring capability from the owner-only local control socket, login (the owner, or a sub-user by name), logout, log out everywhere, changing
  * your own password, and confirming it for dangerous actions ("Admin unlocked", 15 minutes).
  */
 final class AuthRoutes {
-    static final String SETUP_ELSEWHERE = "Set the dashboard password on the server PC (open http://localhost:%d)";
     static final String WRONG = "wrong username or password";
     /** Auth bodies are tiny: a name and a password or two. */
     static final int MAX_BODY = 4096;
@@ -28,7 +26,7 @@ final class AuthRoutes {
     private final LoginLimiter limiter;
     private final Users users;
     private final AuditLog audit;
-    private volatile String setupCode;
+    private final BootstrapToken bootstrap = new BootstrapToken();
 
     AuthRoutes(Config config, SessionStore sessions, LoginLimiter limiter, Users users, AuditLog audit) {
         this.config = config;
@@ -36,15 +34,12 @@ final class AuthRoutes {
         this.limiter = limiter;
         this.users = users;
         this.audit = audit;
-        if (config.dashboardPassword() == null) setupCode = Auth.newSetupCode();
     }
 
-    /** The one-time setup code while no password is set (printed at startup), else null. */
-    String setupCode() {
-        return setupCode;
+    /** Called only by the administrator's owner-only local control socket. */
+    String issueBootstrap() {
+        synchronized (config) { return config.dashboardPassword() == null ? bootstrap.issue() : null; }
     }
-
-
 
     void register(Router router) {
         router.exact(Router.GET, "/api/v1/auth/state", Router.Guard.OPEN, this::state)
@@ -176,10 +171,9 @@ final class AuthRoutes {
 
     private void state(HttpExchange ex) throws IOException {
         boolean setupNeeded = config.dashboardPassword() == null;
-        boolean local = fromLoopback(ex) && !proxied(ex.getRequestHeaders());
         JsonObject o = new JsonObject();
         o.addProperty("setupNeeded", setupNeeded);
-        o.addProperty("setupAllowed", setupNeeded && local);
+        o.addProperty("setupAllowed", setupNeeded);
         o.addProperty("codeRequired", setupNeeded);
         String token = SessionStore.tokenFrom(ex.getRequestHeaders().get("Cookie"));
         Users.Principal who = setupNeeded ? null : Router.resolve(sessions, users, config, token);
@@ -189,7 +183,6 @@ final class AuthRoutes {
         o.addProperty("elevatedUntil", loggedIn ? sessions.elevatedUntil(token) : 0);
         o.addProperty("minLength", Auth.MIN_LENGTH);
         if (loggedIn) o.add("user", userJson(who));
-        if (setupNeeded && !local) o.addProperty("message", SETUP_ELSEWHERE.formatted(config.port));
         Http.json(ex, 200, o);
     }
 
@@ -231,10 +224,6 @@ final class AuthRoutes {
     }
 
     private void setup(HttpExchange ex) throws IOException {
-        if (!fromLoopback(ex) || proxied(ex.getRequestHeaders())) {
-            Http.error(ex, 403, SETUP_ELSEWHERE.formatted(config.port));
-            return;
-        }
         JsonObject o = body(ex);
         if (o == null) return;
         String password = AddonRoutes.string(o, "password");
@@ -249,13 +238,13 @@ final class AuthRoutes {
                 Http.error(ex, 409, "the password is already set");
                 return;
             }
-            if (!Auth.codeMatches(AddonRoutes.string(o, "code"), setupCode)) {
-                Http.error(ex, 403, "wrong setup code (it is shown in the server window)");
+            if (!bootstrap.matches(AddonRoutes.string(o, "code"))) {
+                Http.error(ex, 403, "invalid or expired setup code; request one with the local bootstrap command");
                 return;
             }
             String h = saveOwner(ex, password);
             if (h == null) return;
-            setupCode = null;
+            bootstrap.clear();
             stored = h;
         }
         System.out.println("Dashboard password set from " + address(ex) + ".");
@@ -363,7 +352,7 @@ final class AuthRoutes {
     private void startSession(HttpExchange ex, String userId, boolean mustChange, String stored) throws IOException {
         String token = sessions.create(userId, Auth.tag(stored));
         sessions.elevate(token); // the password was just typed
-        ex.getResponseHeaders().add("Set-Cookie", SessionStore.cookie(token));
+        ex.getResponseHeaders().add("Set-Cookie", SessionStore.cookie(token) + (config.secureCookies ? "; Secure" : ""));
         JsonObject out = Http.ok();
         out.addProperty("mustChange", mustChange);
         Http.json(ex, 200, out);
@@ -381,7 +370,7 @@ final class AuthRoutes {
 
     private void logout(HttpExchange ex) throws IOException {
         sessions.remove((String) Http.attr(ex, Router.SESSION_TOKEN));
-        ex.getResponseHeaders().add("Set-Cookie", SessionStore.clearCookie());
+        ex.getResponseHeaders().add("Set-Cookie", SessionStore.clearCookie() + (config.secureCookies ? "; Secure" : ""));
         ex.getResponseHeaders().set("Clear-Site-Data", "\"cache\""); // nothing this login saw stays in the browser cache
         Http.json(ex, 200, Http.ok());
     }
@@ -393,7 +382,7 @@ final class AuthRoutes {
         System.out.println("Logged out " + (who.owner() ? "every website session" : "every session of " + who.name())
             + " (" + n + ") from " + address(ex) + ".");
         audit.add(who, "logout-all", who.owner() ? "every user" : null, address(ex));
-        ex.getResponseHeaders().add("Set-Cookie", SessionStore.clearCookie());
+        ex.getResponseHeaders().add("Set-Cookie", SessionStore.clearCookie() + (config.secureCookies ? "; Secure" : ""));
         ex.getResponseHeaders().set("Clear-Site-Data", "\"cache\""); // nothing this login saw stays in the browser cache
         JsonObject out = Http.ok();
         out.addProperty("ended", n);

@@ -1,7 +1,7 @@
-# WeSort – steg 0
+# WeSort – migrationsarbete
 
 WeSort är en lagerfokuserad vidareutveckling av Qwerte för ett gemensamt
-guildlager. Detta repository befinner sig vid migrationsplanens **steg 0**;
+guildlager. Detta repository befinner sig vid migrationsplanens steg 1;
 den färdiga guildplattformen i [roadmap #1](https://github.com/Crispy-Monke-eSports/WeSort/issues/1)
 är ännu inte implementerad. Ingen Minecraft 26.3-kompatibilitet påstås.
 
@@ -46,9 +46,10 @@ inventory clicks, Baritone eller leverans. Se [testbaslinjen](docs/BASELINE.md).
 Guildidentitet, SELF/GUILD-order, reservationer, kvoter (av som standard),
 1–5 koordinerade agenter, verifierad transport/mottagning och Minecraft 26.3
 införs i senare roadmapsteg. En HYBRID-agent ska till slut klara hela flödet.
-Manager ska i produktion endast köras med Linux Docker och distribueras från
-samma repo via GHCR; Docker/Compose/bootstrap/publicering ingår i steg 1.
-Nuvarande Gradle-körning av Manager är endast för utveckling och test.
+Manager körs i produktion endast med Linux Docker, med inbyggd webb/API,
+non-root, egen persistent volym och säker Owner-bootstrap via lokal CLI.
+Se [Docker-installation och verifiering](docs/DOCKER.md). GHCR-publicering
+hanteras i W-056. Java-only körning används endast för bygg/test.
 
 WeSort ska alltid börja med egna tomma data. Ingen import, fallback, kopiering,
 läsning eller radering av tidigare Qwerte-data är tillåten. Egna namn, tomma datakataloger och schema-/symlinkspärrar finns nu enligt
@@ -62,6 +63,7 @@ läsning eller radering av tidigare Qwerte-data är tillåten. Egna namn, tomma 
 - [Borttagna och bevarade features](docs/REMOVED_FEATURES.md)
 - [Arkitektur efter rensning](docs/ARCHITECTURE.md)
 - [Datakataloger och installationsisolering](docs/DATA_PATHS.md)
+- [Docker-drift](docs/DOCKER.md)
 - [CI](docs/CI.md)
 - [Manager och aktuellt protokoll](stash-manager-server/README.md)
 

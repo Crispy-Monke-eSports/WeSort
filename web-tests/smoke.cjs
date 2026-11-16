@@ -38,6 +38,16 @@ assert.equal(crypto.createHash('sha256').update(modIcon).digest('hex'),
   '577369272ce568c18015e0164e7dae1f12cc09415ea84d1aa9ead75ab45d951b',
   'Fabric icon must be rendered from the approved lockup');
 
+// The Mojang/Microsoft notice must appear in both the dashboard and login markup.
+const minecraftNotice = 'NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.';
+const noticeDoc = new JSDOM(html).window.document;
+for (const id of ['minecraft-disclaimer-dashboard', 'minecraft-disclaimer-login']) {
+  const node = noticeDoc.getElementById(id);
+  assert(node, 'Missing Minecraft disclaimer: ' + id);
+  assert.equal(node.textContent.trim(), minecraftNotice);
+  assert.equal(node.hidden, false, id + ' must not be hidden');
+}
+
 const settle = () => new Promise(resolve => setTimeout(resolve, 30));
 
 async function scenario(loggedIn) {

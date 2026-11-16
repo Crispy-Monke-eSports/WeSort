@@ -17,7 +17,7 @@ class MinecraftDownloadConsentTest {
     }
 
     @Test void existingInstallGetsOptInDocumentationWithoutChangingConsent(@TempDir Path data) throws Exception {
-        Files.writeString(data.resolve("config.properties"), "port=8765\\niconSource=auto\\n".replace("\\\\n", "\\n"));
+        Files.writeString(data.resolve("config.properties"), "port=8765\niconSource=auto\n");
         Config config = Config.load(data);
         assertFalse(config.acceptMinecraftDownload);
         assertTrue(Files.readString(data.resolve("config.properties")).contains("acceptMinecraftDownload=false"));

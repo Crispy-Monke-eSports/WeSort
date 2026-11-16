@@ -38,6 +38,16 @@ assert.equal(crypto.createHash('sha256').update(modIcon).digest('hex'),
   '577369272ce568c18015e0164e7dae1f12cc09415ea84d1aa9ead75ab45d951b',
   'Fabric icon must be rendered from the approved lockup');
 
+// Keep the Minecraft non-affiliation notice in the unauthenticated and authenticated views.
+const notice = 'NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.';
+const noticeDoc = new JSDOM(html).window.document;
+for (const id of ['minecraft-disclaimer-dashboard', 'minecraft-disclaimer-login']) {
+  const element = noticeDoc.getElementById(id);
+  assert(element, 'Missing Minecraft disclaimer: ' + id);
+  assert.equal(element.textContent.trim(), notice);
+  assert.equal(element.hidden, false);
+}
+
 const settle = () => new Promise(resolve => setTimeout(resolve, 30));
 
 async function scenario(loggedIn) {

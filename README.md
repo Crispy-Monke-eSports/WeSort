@@ -1,5 +1,9 @@
 # WeSort – migrationsarbete
 
+> **NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.**
+>
+> WeSort är ett oberoende communityprojekt och är inte godkänt av eller associerat med Mojang eller Microsoft. [Minecraft Usage Guidelines](https://www.minecraft.net/en-us/usage-guidelines).
+
 WeSort är en lagerfokuserad vidareutveckling av Qwerte för ett gemensamt
 guildlager. Minecraft-porten och testplattformen i steg 2 finns nu i koden;
 den färdiga guildplattformen i [roadmap #1](https://github.com/Crispy-Monke-eSports/WeSort/issues/1)

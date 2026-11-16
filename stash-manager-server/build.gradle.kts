@@ -39,6 +39,9 @@ tasks.withType<JavaCompile>().configureEach {
 // Runnable fat jar: build/libs/stash-manager-server.jar, start it with `java -jar`.
 tasks.jar {
     archiveFileName = "stash-manager-server.jar"
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
+    from("../LICENSE")
     manifest {
         attributes("Main-Class" to application.mainClass.get())
     }

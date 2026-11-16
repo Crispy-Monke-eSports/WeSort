@@ -90,6 +90,8 @@ tasks {
     }
 
     jar {
+        isPreserveFileTimestamps = false
+        isReproducibleFileOrder = true
         inputs.property("archivesName", project.base.archivesName.get())
 
         from("LICENSE") {

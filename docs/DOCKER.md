@@ -32,12 +32,13 @@ ut en sådan HTTP-installation som produktion. Stoppa med `down`; använd inte
 
 ## Produktionsfil
 
-`compose.yaml` är förberedd för den GHCR-image som publiceras/verifieras i
-W-056. W-055 kräver inget redan publicerat paket. Den använder ingen lokal
-build. W-056:s publiceringsrapport anger testad tag och digest.
+`compose.yaml` använder versionspinnad GHCR-image utan lokal build.
+[GHCR-processen](GHCR.md) beskriver publicering, anonym pull/start,
+installationsunderlag, uppgradering och rollback. Den gröna
+publiceringskörningens rapport anger testad tag och verklig digest.
 
 ```sh
-# Efter W-056: sätt WESORT_IMAGE till verifierad ghcr.io/...@sha256:... om en annan revision ska köras.
+# Sätt WESORT_IMAGE till verifierad ghcr.io/...@sha256:... för digestpinning.
 docker compose pull
 docker compose up -d
 docker compose exec -T manager /opt/wesort/entrypoint bootstrap
@@ -52,7 +53,7 @@ exakta betrodda proxy-IP:n får anges i `WESORT_TRUSTED_PROXIES`.
 
 | Miljövariabel | Standard och betydelse |
 |---|---|
-| WESORT_IMAGE | GHCR-tag i compose.yaml; pinnas till digest vid publicering |
+| WESORT_IMAGE | Versionspinnad GHCR-tag i compose.yaml; kan överstyras med verifierad digest |
 | WESORT_BIND | 127.0.0.1: värdens portbindning, inte access-bypass |
 | WESORT_PORT | 8765: värdport; containerns HTTP-port är 8765 |
 | WESORT_ALLOWED_HOSTS | Tom: extra DNS-hostnames nekas; ange en uttrycklig lista |

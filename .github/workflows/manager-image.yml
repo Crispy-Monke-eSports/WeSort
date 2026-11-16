@@ -1,0 +1,165 @@
+name: Manager image
+on:
+  pull_request:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - compose*.yaml
+      - docker/**
+      - common/**
+      - stash-manager-server/**
+      - scripts/**
+      - .github/workflows/**
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish only after all verification (main only)
+        type: boolean
+        default: false
+      version:
+        description: Optional tag, must match v + Manager application version
+        type: string
+        default: ''
+permissions:
+  contents: read
+
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      app_version: ${{ steps.metadata.outputs.app_version }}
+      publish: ${{ steps.metadata.outputs.publish }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify publication guards without registry credentials
+        run: python3 scripts/release/test_guards.py
+      - id: metadata
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          PUBLISH_REQUESTED: ${{ inputs.publish }}
+        run: python3 scripts/release/metadata.py
+
+  verify:
+    uses: ./.github/workflows/build.yml
+    permissions:
+      contents: read
+
+  candidate:
+    if: github.event_name != 'pull_request'
+    needs: [metadata, verify]
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_VERSION: ${{ needs.metadata.outputs.version }}
+      APP_VERSION: ${{ needs.metadata.outputs.app_version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          provenance: false
+          tags: wesort-manager:candidate
+          build-args: |
+            REVISION=${{ github.sha }}
+            VERSION=${{ env.APP_VERSION }}
+          cache-from: type=gha,scope=manager
+          cache-to: type=gha,mode=max,scope=manager
+      - name: Test exact candidate before granting package-write permission
+        run: python3 scripts/docker-smoke.py --image wesort-manager:candidate --report build/release/docker-smoke.json
+      - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          image: wesort-manager:candidate
+          syft-version: v1.57.1
+          format: spdx-json
+          output-file: build/release/manager.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Export tested candidate and bind evidence
+        run: |
+          docker save -o build/release/manager.tar wesort-manager:candidate
+          python3 scripts/release/candidate.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: manager-candidate-${{ github.sha }}
+          path: build/release/
+          compression-level: 0
+          retention-days: 7
+          overwrite: true
+
+  publish:
+    if: needs.metadata.outputs.publish == 'true' && github.repository == 'Crispy-Monke-eSports/WeSort' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    needs: [metadata, verify, candidate]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: wesort-manager-publication
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      reference: ${{ steps.publish.outputs.reference }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: manager-candidate-${{ github.sha }}
+          path: build/release/
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/release/publish.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: manager-publication-${{ github.sha }}
+          path: |
+            build/release/publication.json
+            build/release/candidate.json
+            build/release/manager.spdx.json
+            build/release/docker-smoke.json
+          overwrite: true
+
+  anonymous-pull:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      IMAGE_REFERENCE: ${{ needs.publish.outputs.reference }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Pull digest on a fresh Linux runner without registry credentials
+        shell: bash
+        run: |
+          DOCKER_CONFIG="$(mktemp -d)"
+          export DOCKER_CONFIG
+          echo "DOCKER_CONFIG=$DOCKER_CONFIG" >> "$GITHUB_ENV"
+          docker pull "$IMAGE_REFERENCE"
+      - name: Verify published production image with empty data volume
+        run: python3 scripts/docker-smoke.py --image "$IMAGE_REFERENCE" --compose-file compose.yaml --report build/evidence/published-smoke.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: manager-published-smoke-${{ github.sha }}
+          path: build/evidence/published-smoke.json
+          overwrite: true

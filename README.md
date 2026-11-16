@@ -48,8 +48,9 @@ Guildidentitet, SELF/GUILD-order, reservationer, kvoter (av som standard),
 införs i senare roadmapsteg. En HYBRID-agent ska till slut klara hela flödet.
 Manager körs i produktion endast med Linux Docker, med inbyggd webb/API,
 non-root, egen persistent volym och säker Owner-bootstrap via lokal CLI.
-Se [Docker-installation och verifiering](docs/DOCKER.md). GHCR-publicering
-hanteras i W-056. Java-only körning används endast för bygg/test.
+Se [Docker-installation och verifiering](docs/DOCKER.md) och
+[GHCR-publicering och uppgradering](docs/GHCR.md). Java-only körning används
+endast för bygg/test.
 
 WeSort ska alltid börja med egna tomma data. Ingen import, fallback, kopiering,
 läsning eller radering av tidigare Qwerte-data är tillåten. Egna namn, tomma datakataloger och schema-/symlinkspärrar finns nu enligt
@@ -64,6 +65,8 @@ läsning eller radering av tidigare Qwerte-data är tillåten. Egna namn, tomma 
 - [Arkitektur efter rensning](docs/ARCHITECTURE.md)
 - [Datakataloger och installationsisolering](docs/DATA_PATHS.md)
 - [Docker-drift](docs/DOCKER.md)
+- [GHCR-release och installation](docs/GHCR.md)
+- [Steg 1 och kvarvarande avgränsningar](docs/STAGE_1.md)
 - [CI](docs/CI.md)
 - [Manager och aktuellt protokoll](stash-manager-server/README.md)
 

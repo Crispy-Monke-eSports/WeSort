@@ -52,7 +52,7 @@ public class StashManager extends Module {
 
     private final Setting<String> apiKey = sgGeneral.add(new StringSetting.Builder()
         .name("api-key")
-        .description("The server's API key. The server prints it on its console and keeps it in wesort-manager-data/config.properties.")
+        .description("The agent API key from the authenticated Owner Link view. Keep it private.")
         .defaultValue("")
         .build()
     );
@@ -518,7 +518,7 @@ public class StashManager extends Module {
             setStatus("no key");
             if (!warnedKey) {
                 warnedKey = true;
-                warning("No API key set. Copy it from the WeSort Manager server's console into this module's api-key setting.");
+                warning("No API key set. Copy it from the authenticated Owner Link view into this module's api-key setting.");
             }
             return;
         }

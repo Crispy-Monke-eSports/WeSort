@@ -141,8 +141,10 @@ tasks {
 loom {
     runs {
         named("client") {
-            runDir("build/run-26.3")
+            runDir(providers.gradleProperty("gameDir").orElse("build/run-26.3").get())
             vmArg("-Dwesort.runtime.probe=" + providers.gradleProperty("runtimeProbe").orElse("false").get())
+            vmArg("-Dwesort.e2e=" + providers.gradleProperty("worldTest").orElse("false").get())
+            providers.gradleProperty("testServer").orNull?.let { programArgs("--quickPlayMultiplayer", it) }
         }
     }
 }

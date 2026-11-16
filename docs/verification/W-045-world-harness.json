@@ -1,0 +1,42 @@
+{
+  "result": "PASS",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "manager_image": "ghcr.io/crispy-monke-esports/wesort-manager@sha256:e08a41b306d135ba8da8931c1fbd2d99483d83bda4e094efac0841b6177b9b69",
+  "source_commit": "2e95e5220d3e330efb62f34bf48f9e6ac36d55ba",
+  "dirty_worktree": true,
+  "checks": [
+    {
+      "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+      "result": "PASS"
+    },
+    {
+      "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+      "result": "PASS"
+    },
+    {
+      "scenario": "published Docker Manager with fresh volume and safe Owner setup, no Discord",
+      "result": "PASS"
+    },
+    {
+      "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+      "result": "PASS"
+    },
+    {
+      "scenario": "ten real double chests opened with 54 slots and stable server-supplied contents",
+      "result": "PASS"
+    },
+    {
+      "scenario": "barrel and placed shulker opened with real slot/state ids and item component fingerprints",
+      "result": "PASS"
+    },
+    {
+      "scenario": "production signed Fabric agent index reaches Docker Manager with matching fresh 26.3 totals and fingerprints",
+      "result": "PASS"
+    },
+    {
+      "scenario": "authoritative server container SNBT unchanged after all observations",
+      "result": "PASS"
+    }
+  ],
+  "limits": "Read-only world/agent/Manager harness. Inventory movement, sorting, kit/repack, navigation and fault injection require their own scenarios."
+}

@@ -46,7 +46,7 @@ final class GameIcons implements AutoCloseable {
     }
 
     private Path cacheFile(String mcVersion, String ns, String path) {
-        return iconsDir.resolve("game-" + mcVersion + (mcVersion.equals("26.3") ? "-v2" : "")).resolve(ns).resolve(path + ".png");
+        return iconsDir.resolve("game-26.3-v2").resolve(ns).resolve(path + ".png");
     }
 
     /** True when a game render for this id is already on disk. */

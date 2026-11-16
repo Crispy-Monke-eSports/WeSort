@@ -24,7 +24,7 @@ import java.util.jar.JarFile;
 /**
  * Creative-menu tabs for items whose bot didn't send one (PROTOCOL.md, "Additions: creative tabs for bots that
  * don't send them"). One table per Minecraft version, shipped as resources at creative-tabs/&lt;mc&gt;.json:
- * {@code {"version": "1.21.4", "tabs": [...], "items": {"minecraft:stone": ["building_blocks", 12], ...}}}.
+ * {@code {"version": "26.3", "tabs": [...], "items": {"minecraft:stone": ["building_blocks", 12], ...}}}.
  * With no tables at all, {@link #fill} changes nothing and items stay "other".
  */
 final class CreativeTabs {
@@ -116,7 +116,7 @@ final class CreativeTabs {
         JsonElement v = root.get("version");
         String version = v != null && v.isJsonPrimitive() && v.getAsJsonPrimitive().isString() ? v.getAsString() : null;
         int[] parts = parts(version);
-        if (parts == null) return null;
+        if (parts == null || !IconService.DEFAULT_MC.equals(version)) return null;
         Map<String, Entry> items = new HashMap<>();
         JsonElement ie = root.get("items");
         if (ie != null && ie.isJsonObject()) {
@@ -161,25 +161,11 @@ final class CreativeTabs {
         return 0;
     }
 
-    /**
-     * The table for an index's mcVersion: an exact match, else the nearest lower version with the same major.minor,
-     * else the newest table. Null only when there are no tables.
-     */
+    /** Return only the exact Minecraft 26.3 creative-tab table. */
     Table pick(String mcVersion) {
-        if (tables.isEmpty()) return null;
-        int[] want = parts(mcVersion);
-        if (want == null) return tables.get(0);
-        Table lower = null;
-        for (Table t : tables) { // newest first, so the first lower match is the nearest
-            int c = compare(t.parts, want);
-            if (c == 0) return t;
-            if (lower == null && c < 0 && sameMinor(t.parts, want)) lower = t;
-        }
-        return lower != null ? lower : tables.get(0);
-    }
-
-    private static boolean sameMinor(int[] a, int[] b) {
-        return (a.length > 0 ? a[0] : 0) == (b.length > 0 ? b[0] : 0) && (a.length > 1 ? a[1] : 0) == (b.length > 1 ? b[1] : 0);
+        if (!IconService.DEFAULT_MC.equals(mcVersion)) return null;
+        for (Table t : tables) if (IconService.DEFAULT_MC.equals(t.version)) return t;
+        return null;
     }
 
     // ---------- filling ----------
@@ -193,6 +179,7 @@ final class CreativeTabs {
         if (tables.isEmpty() || !index.has("items") || !index.get("items").isJsonArray()) return 0;
         JsonElement mc = index.get("mcVersion");
         Table t = pick(mc != null && mc.isJsonPrimitive() && mc.getAsJsonPrimitive().isString() ? mc.getAsString() : null);
+        if (t == null) return 0;
         int filled = 0;
         for (JsonElement e : index.getAsJsonArray("items")) {
             if (!e.isJsonObject()) continue;

@@ -56,8 +56,8 @@ import java.util.stream.Stream;
  */
 public final class IconService implements AutoCloseable {
     public static final Pattern ID_PART = Pattern.compile("^[a-z0-9_][a-z0-9_.-]{0,127}$");
-    public static final Pattern MC_VERSION = Pattern.compile("^[0-9][0-9.]{0,31}$");
-    public static final String DEFAULT_MC = "1.21.11";
+    public static final Pattern MC_VERSION = Pattern.compile("^26\\.3$");
+    public static final String DEFAULT_MC = "26.3";
 
     private static final String USER_AGENT = "WeSortStashManager/1.0 (local stash viewer)";
     private static final String WIKI_API = "https://minecraft.wiki/api.php?action=query&format=json&formatversion=2"
@@ -273,28 +273,12 @@ public final class IconService implements AutoCloseable {
         Path nsDir = nsDir(ns);
         if (nsDir == null) return placeholderUnknown;
         String id = ns + ":" + path;
+        // Use only 26.3 game assets. Do not silently serve older cached wiki icons.
+        if (requestedMc != null && !DEFAULT_MC.equals(requestedMc)) return placeholderUnknown;
         IndexStore.IconInfo info = known.apply(id);
-        if (info == null) {
-            if ("26.3".equals(requestedMc)) return placeholderUnknown;
-            // Not in any index: no render, no fetch, nothing written. Old wiki files are still served.
-            Icon cached = wikiEnabled ? readCache(nsDir, path) : null;
-            return cached != null && cached.status() == 200 && cached != placeholderMiss ? cached : placeholderUnknown;
-        }
-
-        // 1. The game jar for the page's Minecraft version (when some index has that version), else the index's.
-        String mc = requestedMc != null && MC_VERSION.matcher(requestedMc).matches() && knownVersion.test(requestedMc)
-            ? requestedMc : info.mcVersion();
-        byte[] rendered = game.get(mc, ns, path);
-        if (rendered != null) return new Icon(200, rendered, "image/png", CACHE_ICON);
-        if (!wikiEnabled || mc.equals("26.3")) return placeholderMiss; // 26.3 never substitutes an unversioned wiki image.
-
-        // 2. The wiki cache, then the wiki pipeline.
-        Icon cached = readCache(nsDir, path);
-        if (cached != null) return cached;
-        Job job = new Job(id, ns, path, nsDir, info);
-        job.wanted = true;
-        if (!enqueue(job, true)) bump(pending.get(id));
-        return placeholderPending;
+        if (info == null || !DEFAULT_MC.equals(info.mcVersion())) return placeholderUnknown;
+        byte[] rendered = game.get(DEFAULT_MC, ns, path);
+        return rendered == null ? placeholderMiss : new Icon(200, rendered, "image/png", CACHE_ICON);
     }
 
     /** A browser is waiting for this queued job: move it to the front of whichever queue it is in. */
@@ -348,6 +332,7 @@ public final class IconService implements AutoCloseable {
             Path nsDir = nsDir(ns);
             if (nsDir == null) continue;
             String mc = e.getValue().mcVersion();
+            if (!DEFAULT_MC.equals(mc)) continue;
             if (game.cached(mc, ns, path)) {
                 alreadyRendered++;
                 continue;

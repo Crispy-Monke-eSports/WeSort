@@ -79,9 +79,10 @@ public final class StashIndex {
         h = mix(h, stash.server.hashCode());
         h = mix(h, stash.name.hashCode());
         if (mc.level != null) h = mix(h, mc.level.dimension().hashCode());
-        for (Box box : stash.boxes) {
+        for (Box box : com.porter.wesort.compat.ObservationRuntime.boxes(stash)) {
             if (box.delivery || box.foreign || box.excluded && !includeExcluded) continue;
-            h = mix(h, (box.known() ? 1 : 0) | (box.stale ? 2 : 0));
+            h = mix(h, (box.known() ? 1 : 0) | (box.stale ? 2 : 0) | (box.unreachable || box.observationUnreachable ? 4 : 0));
+            h = mix(h, box.observationSequence); h = mix(h, box.parts.hashCode());
             if (!box.known()) continue;
             for (ItemStack stack : box.contents) h = mix(h, stackHash(stack));
         }
@@ -113,7 +114,7 @@ public final class StashIndex {
         Map<String, Agg> groups = new LinkedHashMap<>();
         Map<String, Shulker> shulkers = new LinkedHashMap<>();
         int known = 0, total = 0, stale = 0;
-        for (Box box : stash.boxes) {
+        for (Box box : com.porter.wesort.compat.ObservationRuntime.boxes(stash)) {
             // The delivery containers are never indexed, whatever include-excluded says
             if (box.delivery || box.foreign || box.excluded && !includeExcluded) continue;
             total++;
@@ -153,6 +154,9 @@ public final class StashIndex {
         root.add("containers", containers);
         root.add("items", items);
         root.add("shulkers", shulkerArray);
+        com.porter.wesort.compat.ObservationRuntime.append(stash, root, includeExcluded);
+        if (root.has("physicalSources")) hash = sha1(hash + root.get("physicalSources").toString());
+        root.addProperty("indexHash", hash);
 
         return new Built(stash.server, stash.name, player, hash, GSON.toJson(root).getBytes(StandardCharsets.UTF_8));
     }

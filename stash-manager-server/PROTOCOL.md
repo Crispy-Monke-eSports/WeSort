@@ -35,3 +35,19 @@ IndexStore är observerat lager med heartbeat, OrderStore är befintliga orders.
 DeliveryContents är observation av leveranskistans innehåll; dess data läggs
 inte i lagersaldot. Fysisk leverans och framtida globala reservationer kräver
 senare roadmapsteg. Det finns ingen Qwerte-datamigrering.
+
+## W-018 physical stock observations
+
+The signed index endpoint accepts optional `physicalVersion:1` and
+`physicalSources`. See [physical observation semantics](../docs/MC_26_3_STOCK.md).
+Each source supplies canonical id/dimension/parts, block kind, state, size,
+items/shulkers, session/sequence, packet observedAt, full fingerprint and
+epoch/baseRevision. A successful physical index returns stockEpoch/stockRevision.
+A causal conflict returns signed HTTP 409 with the current epoch/revision; reread
+physical containers before retrying. Cached witness retries cannot renew age.
+
+Authenticated VIEW `GET /api/v1/stock` returns permission-filtered guild item
+balances (observed, reserved, available, unknown), sources and freshness policy.
+`reservationPrecision:aggregate` describes existing stash order holds. Physical
+slot/box allocations and cross-stash ordering are later issues. Legacy aggregate
+indexes remain readable but cannot prove orderable stock.

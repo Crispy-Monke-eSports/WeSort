@@ -2125,3 +2125,7 @@ html[data-theme="mac"] .conn-online::before {
 @media (max-width: 767px) {
   .title-row .title .brand-logo { width: 45px; }
 }
+
+.guild-stock { margin: 12px 0; padding: 10px; border: 1px solid var(--border, #777); max-height: 320px; overflow: auto; }
+.guild-stock table { width: 100%; text-align: left; border-collapse: collapse; }
+.guild-stock th, .guild-stock td { padding: 4px 8px; }

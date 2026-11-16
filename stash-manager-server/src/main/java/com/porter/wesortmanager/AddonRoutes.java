@@ -79,6 +79,12 @@ final class AddonRoutes {
         }
         try {
             store.putIndex(index);
+        } catch (StockLedger.Conflict e) {
+            JsonObject out = new JsonObject(); out.addProperty("error", e.getMessage());
+            out.addProperty("stockEpoch", e.epoch); out.addProperty("stockRevision", e.revision);
+            Http.json(ex, 409, out); return;
+        } catch (RuntimeException e) {
+            Http.error(ex, 400, "Invalid physical observation"); return;
         } catch (IndexStore.FullException e) {
             Http.error(ex, 400, e.getMessage());
             return;
@@ -86,7 +92,9 @@ final class AddonRoutes {
         link.seen(generation(ex), server, stash, player);
         // Start fetching icons for new item ids now, so they are usually cached before the page asks.
         icons.prefetch(store.iconIds(server, stash));
-        Http.json(ex, 200, Http.ok());
+        JsonObject reply = Http.ok();
+        if (index.has("physicalSources")) { reply.addProperty("stockEpoch", store.stock().epoch()); reply.addProperty("stockRevision", store.stock().revision()); }
+        Http.json(ex, 200, reply);
     }
 
     private void heartbeat(HttpExchange ex) throws IOException {

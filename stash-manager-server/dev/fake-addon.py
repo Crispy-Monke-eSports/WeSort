@@ -522,5 +522,22 @@ def main():
                 "result": {"shulkers": 1, "lines": delivered}}))
 
 
+
+def protocol_observation(index):
+    """Synthetic physical-format witness ONLY for isolated protocol smoke tests, never Minecraft evidence."""
+    import copy
+    import uuid
+    value = copy.deepcopy(index)
+    dimension = "minecraft:overworld"
+    identity = [value['server'], dimension, [0, 64, 0]]
+    source = {'id': 'c:' + hashlib.sha256(json.dumps(identity, separators=(',', ':')).encode()).hexdigest(),
+        'dimension': dimension, 'parts': [[0, 64, 0]], 'kind': 'minecraft:barrel', 'size': 27,
+        'state': 'FRESH', 'session': str(uuid.uuid4()), 'sequence': 1, 'baseRevision': 0, 'epoch': '',
+        'observedAt': int(time.time() * 1000), 'fingerprint': hashlib.sha256(json.dumps(value['items'], sort_keys=True).encode()).hexdigest(),
+        'items': value['items'], 'shulkers': value.get('shulkers', [])}
+    value['physicalVersion'] = 1
+    value['physicalSources'] = [source]
+    return value
+
 if __name__ == "__main__":
     main()

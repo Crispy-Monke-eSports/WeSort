@@ -1,7 +1,7 @@
 name: wesort
 services:
   manager:
-    image: ${WESORT_IMAGE:-ghcr.io/crispy-monke-esports/wesort-manager:v0.1.0-dev.1}
+    image: ${WESORT_IMAGE:-ghcr.io/crispy-monke-esports/wesort-manager:v0.1.0-dev.2}
     platform: linux/amd64
     restart: unless-stopped
     init: true
@@ -19,6 +19,7 @@ services:
       WESORT_TRUSTED_PROXIES: ${WESORT_TRUSTED_PROXIES:-}
       WESORT_SECURE_COOKIES: ${WESORT_SECURE_COOKIES:-true}
       WESORT_ICON_SOURCE: ${WESORT_ICON_SOURCE:-auto}
+      WESORT_STOCK_MAX_AGE_SECONDS: ${WESORT_STOCK_MAX_AGE_SECONDS:-300}
     volumes:
       - wesort-data:/var/lib/wesort
     tmpfs:

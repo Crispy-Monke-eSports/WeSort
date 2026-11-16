@@ -702,9 +702,50 @@
     });
   }
 
+  function renderGuildStock(data) {
+    var status = document.getElementById("stock-status");
+    var balances = document.getElementById("stock-balances");
+    var sources = document.getElementById("stock-sources");
+    if (!status || !balances || !sources) return;
+    var rows = data && Array.isArray(data.items) ? data.items : [];
+    var physical = data && Array.isArray(data.sources) ? data.sources : [];
+    status.textContent = physical.length ? physical.length + " physical sources · revision " + data.stockRevision +
+      " · freshness limit " + Math.round(data.maxAgeMillis / 1000) + " s" + (rows.length > 200 ? " · showing 200 of " + rows.length + " item variants" : "") : "No verified physical observations yet. A new scan is required.";
+    balances.replaceChildren(); sources.replaceChildren();
+    rows.slice(0, 200).forEach(function (item) {
+      var row = document.createElement("tr");
+      [item.serverLabel || item.server, item.name || item.id, item.observed, item.reserved, item.available, item.unknown].forEach(function (value) {
+        var cell = document.createElement("td"); cell.textContent = String(value); row.appendChild(cell);
+      }); balances.appendChild(row);
+    });
+    var stashRows = document.getElementById("stock-stashes");
+    stashRows.replaceChildren();
+    (data && Array.isArray(data.stashes) ? data.stashes : []).forEach(function (stash) {
+      (stash.items || []).forEach(function (item) {
+        var row = document.createElement("tr");
+        [stash.stash, item.name || item.id, item.observed, item.reserved, item.available, item.unknown].forEach(function (value) {
+          var cell = document.createElement("td"); cell.textContent = String(value); row.appendChild(cell);
+        }); stashRows.appendChild(row);
+      });
+    });
+    physical.forEach(function (source) {
+      var row = document.createElement("li");
+      var position = Array.isArray(source.parts) ? " · " + source.parts.map(function (p) { return p.join(", "); }).join(" / ") : "";
+      var observedDate = new Date(Number(source.verifiedAt));
+      var observedLabel = Number(source.verifiedAt) > 0 && Number.isFinite(observedDate.getTime()) ? observedDate.toISOString() : "not verified";
+      var sourceState = ({FRESH: "Fresh", STALE_STARTUP: "Rescan required after restart", STALE_AGE: "Observation expired", STALE: "Rescan required", UNREACHABLE: "Cannot reach container", UNKNOWN: "Not read yet", MISSING: "Container missing", WITHDRAWN: "Absent from latest scan; contents unknown", SHARED_SOURCE: "Shared source; ordering paused"})[source.state] || source.state;
+      row.textContent = (source.serverLabel || source.server) + " · " + (Array.isArray(source.stashes) ? source.stashes.join(", ") : source.stash) + " · " + (source.dimension || "") + position + " · " + sourceState +
+        " · revision " + source.sourceRevision + " · last verified " + observedLabel;
+      sources.appendChild(row);
+    });
+  }
+
   function poll() {
     if (state.polling || auth.blocked) return;
     state.polling = true;
+    if (can("view")) api("/api/v1/stock").then(renderGuildStock, function () {
+      var status = document.getElementById("stock-status"); if (status) status.textContent = "Source status unavailable. Stock freshness cannot be confirmed.";
+    });
     // Without "view" the server refuses the stash list: don't ask, and don't call that "unreachable".
     var request = can("view") ? api("/api/v1/stashes") : Promise.resolve([]);
     request.then(function (list) {

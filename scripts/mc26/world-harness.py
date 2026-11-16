@@ -270,7 +270,7 @@ class Harness:
         raise RuntimeError('Client control timed out; no physical action is assumed complete')
 
     def teleport(self, x, z=0.5):
-        self.rcon.command(f'tp {self.player} {x} 64 {z}')
+        self.rcon.command(f'tp {self.player} {float(x)} 64 {float(z)}')
         for _ in range(50):
             state = self.command('state')['state']
             if abs(state['x'] - x) < 0.1 and abs(state['z'] - z) < 0.1:

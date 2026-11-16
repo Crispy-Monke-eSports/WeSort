@@ -61,6 +61,11 @@ async function scenario(loggedIn) {
     let body = {};
     if (u.pathname === '/api/v1/auth/state') body = {loggedIn, minLength: 14,
       elevatedUntil: Date.now() + 600000, user: {id: 'owner', name: 'Owner', owner: true}};
+    if (u.pathname === '/api/v1/stock') body = {stockRevision: 12, maxAgeMillis: 300000,
+      items: [{server: 'test', id: 'minecraft:diamond', name: '<img src=x onerror=alert(1)>', observed: 64, reserved: 10, available: 54, unknown: 0}],
+      stashes: [{server: 'test', stash: 'fixture', items: [{id: 'minecraft:diamond', observed: 64, reserved: 10, available: 54, unknown: 0}]}],
+      sources: [{server: 'test', stash: 'fixture', dimension: 'minecraft:overworld', parts: [[1, 64, 2]],
+        state: 'STALE_AGE', sourceRevision: 11, verifiedAt: 1000}]};
     if (u.pathname === '/api/v1/stashes') body = [];
     if (u.pathname === '/api/v1/bots') body = [bot];
     if (u.pathname === '/api/v1/users') body = {owner: {name: 'Owner'}, users: [], presets: {}};
@@ -109,6 +114,12 @@ async function scenario(loggedIn) {
         }
       }
       assert(requests.includes('/api/v1/bots'));
+      assert(requests.includes('/api/v1/stock'));
+      assert.equal(w.document.querySelector('#stock-balances tr').textContent,
+        'test<img src=x onerror=alert(1)>6410540');
+      assert.equal(w.document.querySelector('#stock-stashes tr').textContent, 'fixtureminecraft:diamond6410540');
+      assert.equal(w.document.querySelector('#stock-balances img'), null, 'Stock labels must remain plain text');
+      assert.match(w.document.querySelector('#stock-sources').textContent, /minecraft:overworld.*1, 64, 2.*Observation expired.*revision 11/);
       assert(requests.some(x => x.includes('/settings?scope=plugin')));
     }
     assert.deepEqual(errors, []);

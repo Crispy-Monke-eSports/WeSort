@@ -124,3 +124,11 @@ Lokalt slutresultat W-055: Manager 104 tester, 0 fel, 1 känt ikon-skip;
 klient 1.21.4 och 1.21.11: 431 tester vardera, 0 fel/skips. Webbens DOM-/
 referensregression, Java-process-isolering, actionlint och Compose config
 passerar. Kända rendering-/Minecraft-begränsningar är samma som i steg 0.
+
+## Färskhetsgräns och SQLite (W-018)
+
+`WESORT_STOCK_MAX_AGE_SECONDS=300` styr hur länge en fysisk observation kan ge
+nya order (1–86400 sekunder). Ändrad gräns kräver omstart; gamla källor blir då
+osäkra tills nya serveravläsningar har gjorts. `guild.sqlite` och dess WAL/SHM
+finns på samma lokala volym som övrig WeSort-data. Säkerhetskopiera hela volymen
+med stoppad Manager. Se [fysiska observationer](MC_26_3_STOCK.md).

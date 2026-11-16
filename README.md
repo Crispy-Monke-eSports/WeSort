@@ -6,6 +6,9 @@ den färdiga guildplattformen i [roadmap #1](https://github.com/Crispy-Monke-eSp
 är ännu inte implementerad. Verkliga 26.3-prov för inventory, avbrott,
 Baritone, Docker-index och ikoner redovisas i [steg 2](docs/STAGE_2.md).
 
+[Steg 3](docs/STAGE_3.md) påbörjas med [fysiska observationer och färskhet](docs/MC_26_3_STOCK.md)
+(W-018). Övriga lager- och reservationssteg återstår.
+
 Återanvänd funktionalitet:
 
 - Stash Sorter: chest/barrel-index, signkategorier, tiers, drop-off,

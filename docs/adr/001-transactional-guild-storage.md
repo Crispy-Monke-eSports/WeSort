@@ -1,7 +1,9 @@
 # ADR-001: en lokal SQLite-transaktion för guildens domänmotor
 
-Status: beslutad arkitektur i W-025 (#26). Runtime införs i respektive
-order-/kvot-/journal-issue, inte genom att kalla nuvarande JSON-stores säkra.
+Status: beslutad arkitektur i W-025 (#26). W-018 inför den första SQLite-
+tabellfamiljen för observationer och revisioner, se [implementation](../MC_26_3_STOCK.md).
+Order-/kvot-/journaltransaktioner återstår; nuvarande JSON-order är inte den
+framtida atomiska guildmotorn.
 
 ## Problem och alternativ
 

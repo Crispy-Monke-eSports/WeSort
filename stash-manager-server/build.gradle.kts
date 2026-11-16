@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "com.porter.wesort"
-version = "0.1.0-dev.1"
+version = "0.1.0-dev.2"
 
 repositories {
     mavenCentral()
@@ -12,6 +12,7 @@ repositories {
 
 dependencies {
     implementation("com.google.code.gson:gson:2.13.2")
+    implementation("org.xerial:sqlite-jdbc:3.54.1.0")
     testImplementation(platform("org.junit:junit-bom:5.11.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
@@ -55,3 +56,13 @@ sourceSets {
     main { java.srcDir("../common/src/main/java") }
     test { java.srcDir("../common/src/test/java") }
 }
+
+// The production /tmp is noexec. Extract only the supported Linux amd64 native library at image build time.
+val sqliteNative by tasks.registering(Copy::class) {
+    from(configurations.runtimeClasspath.map { cp -> cp.filter { it.name.startsWith("sqlite-jdbc-") }.map { zipTree(it) } })
+    include("org/sqlite/native/Linux/x86_64/libsqlitejdbc.so")
+    eachFile { path = name }
+    includeEmptyDirs = false
+    into(layout.buildDirectory.dir("sqlite-native"))
+}
+tasks.build { dependsOn(sqliteNative) }

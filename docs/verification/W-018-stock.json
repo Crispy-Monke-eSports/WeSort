@@ -1,0 +1,67 @@
+{
+  "result": "PASS",
+  "scope": "W-018 real vanilla 26.3 observations, source freshness and production scan-only engine",
+  "checks": [
+    {
+      "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+      "result": "PASS"
+    },
+    {
+      "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+      "result": "PASS"
+    },
+    {
+      "scenario": "Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord",
+      "result": "PASS"
+    },
+    {
+      "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+      "result": "PASS"
+    },
+    {
+      "scenario": "overlapping actual vanilla menu opens are drained without issuing a falsely attributed observation",
+      "result": "PASS"
+    },
+    {
+      "scenario": "real normal/trapped/double chests and barrel have deterministic location identities; opposite double-chest halves produce one snapshot and no double count",
+      "result": "PASS"
+    },
+    {
+      "scenario": "real signed Fabric observations reach SQLite/Docker Manager with fresh observed/available stock and per-container revisions",
+      "result": "PASS"
+    },
+    {
+      "scenario": "actual QUICK_MOVE/return invalidates the old witness; only a new full server snapshot may make the source fresh again",
+      "result": "PASS"
+    },
+    {
+      "scenario": "real expiry policy marks last counts unknown and rejects a new reservation; pause/heartbeats do not renew observations",
+      "result": "PASS"
+    },
+    {
+      "scenario": "production StashSorter performs real rescan after expiry and observes the server delta with a newer Manager-issued revision",
+      "result": "PASS"
+    },
+    {
+      "scenario": "captured real older Fabric snapshot is rejected with 409 and cannot overwrite or renew newer physical observations",
+      "result": "PASS"
+    },
+    {
+      "scenario": "real obstructed double chest times out safely and becomes unreachable with unknown historical counts",
+      "result": "PASS"
+    },
+    {
+      "scenario": "real removed container retains source provenance as unknown and contributes zero orderable stock",
+      "result": "PASS"
+    },
+    {
+      "scenario": "real Manager restart preserves source history but blocks old stock until the Fabric production scanner performs new reads",
+      "result": "PASS"
+    }
+  ],
+  "manager_image": "wesort-manager:stock-tests",
+  "manager_image_id": "7a1489da9f77bb6929ae502fb888d32e16f1dcdd09c1e5afe65cc48fa3c60c9d",
+  "source_commit": "b92819bb01e892045d9050b5d8c6ee0d5bbc3f5c",
+  "dirty_worktree": true,
+  "limits": "No global physical reservation hierarchy, kit/repack or completed guild order claim; those are later stage-3 issues."
+}

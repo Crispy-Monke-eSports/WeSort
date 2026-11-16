@@ -1,0 +1,82 @@
+{
+  "result": "PASS",
+  "scope": "W-015 real vanilla 26.3 inventory and block operations",
+  "checks": [
+    {
+      "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+      "result": "PASS"
+    },
+    {
+      "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+      "result": "PASS"
+    },
+    {
+      "scenario": "Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord",
+      "result": "PASS"
+    },
+    {
+      "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+      "result": "PASS"
+    },
+    {
+      "scenario": "ten real double chests opened with 54 slots and stable server-supplied contents",
+      "result": "PASS"
+    },
+    {
+      "scenario": "barrel and placed shulker opened with real slot/state ids and item component fingerprints",
+      "result": "PASS"
+    },
+    {
+      "scenario": "PICKUP, real cursor, player-slot mapping and QUICK_MOVE return verified by full server snapshots and independent server NBT",
+      "result": "PASS"
+    },
+    {
+      "scenario": "delayed actual server traffic blocks progression without retry or a second withdrawal",
+      "result": "PASS"
+    },
+    {
+      "scenario": "missing acknowledgement pauses durably; late replies do not resume; explicit server readback recovers without replay",
+      "result": "PASS"
+    },
+    {
+      "scenario": "named filled shulker place/open/break/pickup/return preserves server-confirmed contents and component fingerprint",
+      "result": "PASS"
+    },
+    {
+      "scenario": "real chest/barrel/sign place/open/write/break/pickup round trips; no loose drops or component changes",
+      "result": "PASS"
+    },
+    {
+      "scenario": "loaded but unreachable container refused before interaction",
+      "result": "PASS"
+    },
+    {
+      "scenario": "ten real double chests opened with 54 slots and stable server-supplied contents",
+      "result": "PASS"
+    },
+    {
+      "scenario": "barrel and placed shulker opened with real slot/state ids and item component fingerprints",
+      "result": "PASS"
+    },
+    {
+      "scenario": "production signed Fabric agent index reaches Docker Manager with matching fresh 26.3 totals and fingerprints",
+      "result": "PASS"
+    },
+    {
+      "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+      "result": "PASS"
+    },
+    {
+      "scenario": "disconnect before delivery and real client restart keep pending intent, reject unsafe replay and refuse a false reconciliation",
+      "result": "PASS"
+    },
+    {
+      "scenario": "all original server inventory totals/components restored after movement, block operations, lag, timeout and restart",
+      "result": "PASS"
+    }
+  ],
+  "manager_image": "ghcr.io/crispy-monke-esports/wesort-manager@sha256:e08a41b306d135ba8da8931c1fbd2d99483d83bda4e094efac0841b6177b9b69",
+  "source_commit": "825f821f690c753179432bbdbc1f3d203856a494",
+  "dirty_worktree": true,
+  "limits": "No full guild-order, kit/repack pipeline or multiagent correctness claim. Full physical operation/custody journal remains W-023."
+}

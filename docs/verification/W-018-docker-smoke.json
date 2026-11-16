@@ -1,0 +1,13 @@
+{
+  "image": "wesort-manager:stock-tests",
+  "platform": "linux/amd64",
+  "checks": [
+    "non-root, read-only rootfs, owner-only volume, real healthcheck and same-container web/API",
+    "Docker bridge Owner bootstrap: local CLI capability, origin checks, replay denied, no secrets in logs",
+    "external agent container: signed index, heartbeat and order/claim; invalid signatures and Bearer rejected",
+    "single-process volume lock and SIGTERM/restart preserve keys, Owner, sessions, index, order and audit",
+    "real TLS reverse proxy: configured Host/Origin, Secure cookie, spoofed forwarding headers scrubbed, volume upgrade preserved"
+  ],
+  "result": "PASS",
+  "limits": "Protocol agent and HTTP/DOM bootstrap tested; no real Minecraft account or physical delivery tested."
+}

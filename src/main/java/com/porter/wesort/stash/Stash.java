@@ -46,6 +46,11 @@ public class Stash {
         public boolean wasExcluded, wasDropOff;
         // When its contents were last read (milliseconds); 0 for stashes saved before this was kept, which counts as old
         public long lastRead;
+        // Session-scoped server observations are deliberately never restored as fresh from disk.
+        public String observationSession = "", observationDimension = "", observationFingerprint = "", observationEpoch = "";
+        public long observationSequence, observationBaseRevision, observationAt;
+        public String observationBlock = "";
+        public boolean observationUnreachable;
         public boolean unreachable;
         public int order;
         // The text of the sign the sorter put up on this container itself, and where, saved with the stash
@@ -475,6 +480,14 @@ public class Stash {
             tag.putBoolean("excluded", box.excluded);
             tag.putBoolean("dropOff", box.dropOff);
             if (box.lastRead > 0) tag.putLong("readAt", box.lastRead);
+            tag.putString("observationSession", box.observationSession);
+            tag.putString("observationDimension", box.observationDimension);
+            tag.putString("observationFingerprint", box.observationFingerprint);
+            tag.putString("observationEpoch", box.observationEpoch);
+            tag.putString("observationBlock", box.observationBlock);
+            tag.putLong("observationSequence", box.observationSequence);
+            tag.putLong("observationBaseRevision", box.observationBaseRevision);
+            tag.putLong("observationAt", box.observationAt);
             if (box.delivery) tag.putBoolean("delivery", true);
             if (box.deliveryExtra) tag.putBoolean("deliveryExtra", true);
             if (box.wasExcluded) tag.putBoolean("wasExcluded", true);
@@ -854,6 +867,15 @@ public class Stash {
                 box.dropOff = flag(tag, "dropOff");
                 // Saved before read times existed: no tag, which counts as read long ago
                 box.lastRead = longNumber(tag.get("readAt"));
+                box.stale = true;
+                box.observationSession = text(tag, "observationSession");
+                box.observationDimension = text(tag, "observationDimension");
+                box.observationFingerprint = text(tag, "observationFingerprint");
+                box.observationEpoch = text(tag, "observationEpoch");
+                box.observationBlock = text(tag, "observationBlock");
+                box.observationSequence = longNumber(tag.get("observationSequence"));
+                box.observationBaseRevision = longNumber(tag.get("observationBaseRevision"));
+                box.observationAt = longNumber(tag.get("observationAt"));
                 box.delivery = flag(tag, "delivery");
                 box.deliveryExtra = flag(tag, "deliveryExtra");
                 box.wasExcluded = flag(tag, "wasExcluded");

@@ -40,7 +40,14 @@ public final class InventorySync {
     private static String reported = "";
     private static long reconcileDeadline;
     private static int lastBlockAck = -1, lastBlockSequence = -1;
-    private static long clicks;
+    private static long clicks, contentsReceivedAt;
+    private static InventoryReadback.Expected serverContents;
+    private record ReadOpen(BlockPos pos, int sequence, int previousMenu, long after, long deadline, Object level, boolean ambiguous) {}
+    private static ReadOpen readOpen;
+    private static BlockPos readSource;
+    private static int readMenu;
+    private static Object readLevel;
+    private static net.minecraft.world.level.block.state.BlockState readBlock;
     private static final Map<Integer, BlockExpected> blocks = new LinkedHashMap<>();
     private static BlockUse blockUse;
     private static boolean recoveringWorld;
@@ -88,6 +95,7 @@ public final class InventorySync {
     public static int lastBlockSequence() { return lastBlockSequence; }
     public static boolean recoveryPending() { return reconciling; }
     public static long attemptedClicks() { return clicks; }
+    public static long contentsReceivedAt() { return contentsReceivedAt; }
     public static long contentsEpoch() { return gate.observedEpoch(); }
     public static boolean hasServerContents(int menu, long after) { return gate.observedMenuSince(menu, after); }
 
@@ -141,6 +149,18 @@ public final class InventorySync {
                 mutation = true;
             }
         }
+        if (!mutation && event.packet instanceof ServerboundUseItemOnPacket use) {
+            BlockPos pos = use.hitResult().getBlockPos().immutable();
+            var block = mc.level.getBlockState(pos).getBlock();
+            if (block instanceof net.minecraft.world.level.block.ChestBlock
+                || block instanceof net.minecraft.world.level.block.BarrelBlock
+                || block instanceof net.minecraft.world.level.block.ShulkerBoxBlock) {
+                boolean ambiguous = readOpen != null;
+                readSource = null;
+                readOpen = new ReadOpen(pos, use.sequence(), mc.player.containerMenu.containerId,
+                    contentsEpoch(), System.nanoTime() + 8_000_000_000L, mc.level, ambiguous);
+            }
+        }
         if (!mutation) return;
         var menu = mc.player.containerMenu;
         try {
@@ -156,6 +176,7 @@ public final class InventorySync {
                 origin.add("source", pos);
             }
             persist(); // Durable before the actual packet leaves the client. Never persist an API key.
+            ObservationRuntime.invalidate(lastInteracted);
             if (event.packet instanceof ServerboundContainerClickPacket) clicks++;
         } catch (Exception e) {
             event.cancel(); gate.fail("Cannot durably record the inventory action before send"); reportFailure();
@@ -189,6 +210,8 @@ public final class InventorySync {
     @EventHandler
     private void left(GameLeftEvent event) {
         lastBlockAck = lastBlockSequence = -1;
+        serverContents = null;
+        readOpen = null; readSource = null; readLevel = null;
         if (!ready()) { gate.fail("Connection ended before inventory verification; do not replay the action"); reportFailure(); }
     }
 
@@ -204,9 +227,23 @@ public final class InventorySync {
         } finally { internal = false; }
     }
 
+    public static boolean confirmedMenu() {
+        if (!ready() || mc.player == null || serverContents == null) return false;
+        var menu = mc.player.containerMenu;
+        return serverContents.equals(new InventoryReadback.Expected(menu.containerId,
+            fingerprints(menu.slots.stream().map(slot -> slot.getItem()).toList()), fingerprint(menu.getCarried())));
+    }
+    /** An ordered native ACK binds the full menu to one unambiguous storage interaction. */
+    public static boolean confirmedSource(java.util.List<BlockPos> parts) {
+        return confirmedMenu() && readSource != null && readLevel == mc.level
+            && mc.player.containerMenu.containerId == readMenu && parts.contains(readSource)
+            && mc.level.getBlockState(readSource).equals(readBlock);
+    }
     public static void contents(ClientboundContainerSetContentPacket packet) {
         if (mc.level == null) return;
-        gate.observe(new InventoryReadback.Expected(packet.containerId(), fingerprints(packet.items()), fingerprint(packet.carriedItem())));
+        contentsReceivedAt = System.currentTimeMillis();
+        serverContents = new InventoryReadback.Expected(packet.containerId(), fingerprints(packet.items()), fingerprint(packet.carriedItem()));
+        gate.observe(serverContents);
     }
 
     public static void stats() {
@@ -228,6 +265,17 @@ public final class InventorySync {
 
     public static void blockAck(int sequence) {
         lastBlockAck = Math.max(lastBlockAck, sequence);
+        if (readOpen != null && sequence >= readOpen.sequence) {
+            var pending = readOpen;
+            readOpen = null;
+            if (sequence == pending.sequence && !pending.ambiguous && mc.level == pending.level
+                && System.nanoTime() <= pending.deadline && mc.player != null
+                && mc.player.containerMenu.containerId != 0 && mc.player.containerMenu.containerId != pending.previousMenu
+                && hasServerContents(mc.player.containerMenu.containerId, pending.after) && confirmedMenu()) {
+                readSource = pending.pos; readMenu = mc.player.containerMenu.containerId;
+                readLevel = mc.level; readBlock = mc.level.getBlockState(readSource);
+            }
+        }
         if (gate.failed()) return;
         for (var block : List.copyOf(blocks.values())) if (block.sequence <= sequence) {
             if (!mc.level.isLoaded(block.pos) || !blockId(block.pos).equals(block.block)) {

@@ -119,7 +119,7 @@ try:
     logs = log_result.stdout + log_result.stderr
     assert token not in logs and key not in logs and password not in logs
     ok('Docker bridge Owner bootstrap: local CLI capability, origin checks, replay denied, no secrets in logs')
-    index = fake.build_index()
+    index = fake.protocol_observation(fake.build_index())
     assert agent(network, key, '/api/v1/index', index)['status'] == 200
     assert agent(network, key, '/api/v1/heartbeat', {'server': fake.SERVER, 'stash': fake.STASH, 'player': fake.PLAYER,
         'indexHash': index['indexHash'], 'delivery': fake.DELIVERY})['status'] == 200

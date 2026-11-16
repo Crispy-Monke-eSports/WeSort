@@ -88,7 +88,7 @@ with tempfile.TemporaryDirectory(prefix='wesort-isolation-') as directory:
         key = re.search(r'^apiKey[=:](.+)$', (data / 'config.properties').read_text(), re.M).group(1).strip()
         assert key != 'LEGACY-SENTINEL'
         agent = fake.Client(base, key)
-        index = fake.build_index()
+        index = fake.protocol_observation(fake.build_index())
         assert agent.post('/api/v1/index', index)[0] == 200
         assert fake.heartbeat(agent, index['indexHash'])[0] == 200
         order = request('/api/v1/orders', {'server': fake.SERVER, 'stash': fake.STASH,

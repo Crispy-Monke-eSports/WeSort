@@ -1,0 +1,30 @@
+{
+  "base_commit": "b92819bb01e892045d9050b5d8c6ee0d5bbc3f5c",
+  "worktree": true,
+  "manager_tests": {
+    "tests": 160,
+    "passed": 159,
+    "skipped": 1,
+    "skip_reason": "Existing SpecialModelsTest.realJars requires old 1.21.x jars."
+  },
+  "client_26_3_tests": {
+    "tests": 455,
+    "passed": 455
+  },
+  "web_dom": "PASS",
+  "manager_isolation": "PASS",
+  "docker_tls_smoke": "PASS",
+  "minecraft": "separate W-018-stock.json report",
+  "ci": "Separate hosted workflow run for the resulting commit; local tests are not CI evidence.",
+  "mc26_assets_regression": "PASS (actual Docker/API/web DOM and native Stash Window; separate W-018-assets-regression.json)",
+  "client_1_21_4_tests": {
+    "tests": 455,
+    "passed": 455
+  },
+  "client_1_21_11_tests": {
+    "tests": 455,
+    "passed": 455
+  },
+  "evidence_note": "Game scenarios cover storage observation and read-only resource/UI regression. Crafting/anvil and a full guild order remain outside these scenarios. Hosted CI validates the resulting commit separately.",
+  "inventory_regression": "PASS (real delayed traffic, dropped click, pending journal, native client restart, no replay; separate W-018-inventory-regression.json)"
+}

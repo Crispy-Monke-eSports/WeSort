@@ -81,9 +81,9 @@ class UsersTest {
     private void startServer(Config config) throws Exception {
         IndexStore store = new IndexStore(data, CreativeTabs.NONE);
         store.load();
-        store.putIndex(json("{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"items\":["
+        StockFixtures.put(store, json("{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"items\":["
             + "{\"key\":\"minecraft:diamond\",\"id\":\"minecraft:diamond\",\"count\":1000,\"maxStack\":64}]}"));
-        store.putIndex(json("{\"version\":1,\"server\":\"s\",\"stash\":\"b\",\"items\":["
+        StockFixtures.put(store, json("{\"version\":1,\"server\":\"s\",\"stash\":\"b\",\"items\":["
             + "{\"key\":\"minecraft:dirt\",\"id\":\"minecraft:dirt\",\"count\":1000,\"maxStack\":64}]}"));
         orders = new OrderStore(data, store);
         orders.load();

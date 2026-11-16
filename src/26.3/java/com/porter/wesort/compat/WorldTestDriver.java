@@ -98,6 +98,16 @@ public final class WorldTestDriver {
                         meteordevelopment.meteorclient.utils.world.BlockUtils.interact(
                             new BlockHitResult(Vec3.atCenterOf(pos), Direction.UP, pos, false), InteractionHand.MAIN_HAND, true);
                 }
+                case "overlap-open" -> {
+                    BlockPos pos = position(command);
+                    BlockPos other = pos.east();
+                    if (!mc.level.isLoaded(pos) || !mc.level.isLoaded(other) || mc.player.distanceToSqr(Vec3.atCenterOf(other)) > 25) {
+                        respond(false, "Ambiguity probe requires reachable fixture halves", null); return;
+                    }
+                    for (BlockPos part : List.of(pos, other))
+                        meteordevelopment.meteorclient.utils.world.BlockUtils.interact(
+                            new BlockHitResult(Vec3.atCenterOf(part), Direction.UP, part, false), InteractionHand.MAIN_HAND, true);
+                }
                 case "navigate" -> {
                     if (NavigationRuntime.paused() || !InventorySync.ready()) { respond(false, "Navigation paused", state()); return; }
                     BlockPos target = position(command);
@@ -182,6 +192,30 @@ public final class WorldTestDriver {
                     }
                     if (stash != null) stash.boxes.removeIf(box -> box.has(pos));
                     respond(true, "removed observed absent source", state());
+                }
+                case "manager-pause" -> {
+                    var manager = Modules.get().get(StashManager.class); if (manager.isActive()) manager.toggle();
+                    respond(true, "production Manager agent paused", state());
+                }
+                case "manager-resume" -> {
+                    var manager = Modules.get().get(StashManager.class); if (!manager.isActive()) manager.toggle();
+                    respond(true, "production Manager agent resumed", state());
+                }
+                case "engine-index" -> {
+                    var current = Modules.get().get(StashSorter.class).currentStash();
+                    var result = state();
+                    if (current != null) result.add("engineIndex", JsonParser.parseString(new String(StashIndex.build(current, false).json(), java.nio.charset.StandardCharsets.UTF_8)));
+                    respond(true, "actual production Sorter observation cache", result);
+                }
+                case "stock-scan-settings" -> {
+                    var sorter = Modules.get().get(StashSorter.class);
+                    ((Setting<Boolean>) sorter.settings.get("sort-items")).set(false);
+                    ((Setting<Boolean>) sorter.settings.get("barrels")).set(true);
+                    ((Setting<Boolean>) sorter.settings.get("walk")).set(true);
+                    ((Setting<Integer>) sorter.settings.get("radius")).set(48);
+                    ((Setting<Integer>) sorter.settings.get("delay")).set(1);
+                    ((Setting<Integer>) sorter.settings.get("container-delay")).set(0);
+                    respond(true, "configured production scan-only settings", state());
                 }
                 case "window-capture" -> {
                     var window = com.porter.wesort.modules.StashWindow.get();
@@ -281,6 +315,13 @@ public final class WorldTestDriver {
             else if (InventorySync.ready()) respond(true, "server inventory snapshot and FIFO barrier verified", state());
             return;
         }
+        if (action.equals("overlap-open")) {
+            if (InventorySync.lastBlockAck() < InventorySync.lastBlockSequence() || ++stable < 5) return;
+            BlockPos pos = position(pending);
+            respond(!InventorySync.confirmedSource(List.of(pos, pos.east())),
+                "overlapping native opens cannot produce an attributable physical observation", state());
+            return;
+        }
         if (action.equals("state")) { respond(true, "connected", state()); return; }
         if (action.equals("close") && mc.player.containerMenu == mc.player.inventoryMenu) {
             respond(true, "closed", state()); return;
@@ -306,6 +347,8 @@ public final class WorldTestDriver {
             box.contents = new ItemStack[slots];
             for (int i = 0; i < slots; i++) box.contents[i] = menu.getSlot(i).getItem().copy();
             box.lastRead = System.currentTimeMillis();
+            if (!ObservationRuntime.canRead(box)) return;
+            ObservationRuntime.record(box);
             stash.boxes.removeIf(b -> b.pos.equals(pos)); stash.boxes.add(box);
             respond(true, "server container observed", state());
         }

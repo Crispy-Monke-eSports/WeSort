@@ -106,6 +106,7 @@ final class Redact {
         JsonObject o = JsonParser.parseString(new String(json, StandardCharsets.UTF_8)).getAsJsonObject();
         o.remove("player");
         o.remove("dimension");
+        o.remove("physicalSources");
         JsonElement items = o.get("items");
         if (items != null && items.isJsonArray()) {
             for (JsonElement e : items.getAsJsonArray()) {

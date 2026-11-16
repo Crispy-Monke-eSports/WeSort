@@ -569,6 +569,12 @@ public class StashManager extends Module {
         if (needIndex || !id.equals(lastPushed)) {
             lastHeartbeat = now;
             send(base, "/api/v1/index", built.json(), key, (code, body) -> {
+                if (com.porter.wesort.compat.ObservationRuntime.reply(code, body)) {
+                    StashSorter sorter = Modules.get().get(StashSorter.class);
+                    int count = sorter == null ? -1 : sorter.rescan();
+                    rescanning = count >= 0; current = null; scanTicks = 0; needIndex = true;
+                    return false;
+                }
                 if (code != 200) return false;
                 lastPushed = id;
                 needIndex = false;

@@ -149,6 +149,7 @@ class StreamerTest {
     }
 
     Res botPost(String path, String body) throws Exception {
+        if (path.equals("/api/v1/index")) body = StockFixtures.physical(JsonParser.parseString(body).getAsJsonObject(), "", 0, 1, 1234).toString();
         byte[] b = body.getBytes(StandardCharsets.UTF_8);
         long ts = System.currentTimeMillis();
         byte[] n = new byte[16];
@@ -445,10 +446,25 @@ class StreamerTest {
      * or owner only.
      */
     @Test
+    void physicalStockNeverLeaksLocationsOrCustomNamesInForcedMode() throws Exception {
+        var normal = get(owner, "/api/v1/stock").obj();
+        assertEquals(1234, normal.getAsJsonArray("sources").get(0).getAsJsonObject().getAsJsonArray("parts").get(0).getAsJsonArray().get(0).getAsInt());
+        var hidden = get(fay, "/api/v1/stock").obj();
+        var source = hidden.getAsJsonArray("sources").get(0).getAsJsonObject();
+        assertFalse(source.has("parts")); assertFalse(source.has("items")); assertFalse(source.has("dimension"));
+        assertEquals(router.ids().sid("2b2t.org"), source.get("server").getAsString());
+        assertEquals(Redact.HIDDEN, source.get("serverLabel").getAsString());
+        assertFalse(hidden.toString().contains("Steve")); assertFalse(hidden.toString().contains("2b2t.org"));
+        var index = get(fay, "/api/v1/index?server=2b2t.org&stash=a").obj();
+        assertFalse(index.has("physicalSources"));
+    }
+
+    @Test
     void everyLoggedInRouteIsClassified() throws Exception {
         java.util.Set<String> redacted = java.util.Set.of(
             "[GET, HEAD] /api/v1/stashes SESSION VIEW",
             "[GET, HEAD] /api/v1/index SESSION VIEW",
+            "[GET, HEAD] /api/v1/stock SESSION VIEW",
             "[GET, HEAD] /api/v1/link SESSION LINK",
             "[GET, HEAD] /api/v1/bots SESSION ACTIVITY",
             "[GET, HEAD] ^/api/v1/bots/([A-Za-z0-9_-]{1,64})/(settings|jobs|activity)$ SESSION ACTIVITY",

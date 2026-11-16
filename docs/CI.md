@@ -24,3 +24,12 @@ har körts. Hosted workflow körs för main och kan även startas manuellt. Loka
 är inte bevis för en grön hosted workflow-run. W-011 lägger till ett riktigt
 Manager-process-test för ny installation, order/claim, omstart och isolerad
 backup. Webbens DOM-/referensregression körs i ett separat Node 22-jobb. Minecraft/Docker är ej körda.
+
+## Steg 3: fysiska observationer
+
+`mc26-stock.yml` bygger den aktuella Manager-imagen och kör stock-harness.py
+med riktig vanilla-server och Fabric-agent under Xvfb/Mesa. Provet väntar på
+hela den initiala produktionsskanningen och kontrollerar sedan TTL, verklig
+serverdelta, obstruerad/borttagen källa och Manager-omstart. JUnit-/webbtester
+körs fortsatt i baseline. Hosted CI och lokal Minecraft-evidence redovisas
+separat i W-018:s verifieringsrapport.

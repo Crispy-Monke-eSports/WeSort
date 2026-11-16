@@ -42,7 +42,7 @@ class OrderNamesTest {
     void setUp() throws Exception {
         index = new IndexStore(data, CreativeTabs.NONE);
         index.load();
-        index.putIndex(json("{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"items\":["
+        StockFixtures.put(index, json("{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"items\":["
             + "{\"key\":\"minecraft:diamond\",\"id\":\"minecraft:diamond\",\"count\":1000,\"maxStack\":64}]}"));
         orders = new OrderStore(data, index);
         orders.load();
@@ -194,7 +194,7 @@ class OrderNamesTest {
 
         // The stash's index shrinks: the item is gone.
         for (OrderStore.Order o : open) orders.cancel(o.id);
-        index.putIndex(json("{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"items\":[]}"));
+        StockFixtures.put(index, json("{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"items\":[]}"));
         e = assertThrows(OrderStore.OrderException.class, () -> orders.retry(small.id));
         assertEquals(400, e.status);
         assertTrue(e.getMessage().contains("not in the stash"), e.getMessage());

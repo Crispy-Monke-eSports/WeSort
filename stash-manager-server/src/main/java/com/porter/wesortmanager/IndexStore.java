@@ -21,10 +21,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Stash indexes and heartbeat state, kept in memory and persisted to data/indexes.
+ * Stash indexes and heartbeat state, served from memory with legacy JSON mirrors.
+ * Physical observations and their index snapshots are authoritative in StockLedger.
  * Each index is kept as its serialized bytes (served as-is) plus a few derived fields; the JSON tree is not retained.
  */
 public final class IndexStore {
@@ -33,6 +35,13 @@ public final class IndexStore {
     private static final int MAX_NAME_PART = 64;
 
     private final Path dir;
+    private StockLedger stock;
+    private final Set<StashKey> physicalIndexes = ConcurrentHashMap.newKeySet();
+    private final Map<StashKey, Long> freshnessRequests = new ConcurrentHashMap<>();
+    synchronized StockLedger stock() throws IOException {
+        if (stock == null) stock = new StockLedger(dir.getParent());
+        return stock;
+    }
     private final CreativeTabs tabs;
     private final Map<StashKey, Stash> stashes = new ConcurrentHashMap<>();
     private final Object createLock = new Object();
@@ -219,7 +228,9 @@ public final class IndexStore {
         this(dataDir, CreativeTabs.bundled());
     }
 
-    IndexStore(Path dataDir, CreativeTabs tabs) {
+    IndexStore(Path dataDir, CreativeTabs tabs) { this(dataDir, tabs, null); }
+    IndexStore(Path dataDir, CreativeTabs tabs, StockLedger stock) {
+        this.stock = stock;
         this.dir = dataDir.resolve("indexes");
         this.tabs = tabs;
     }
@@ -284,6 +295,15 @@ public final class IndexStore {
                 Files.deleteIfExists(p);
             } catch (IOException e) {
                 System.err.println("Could not delete old index file " + p.getFileName() + ": " + e.getMessage());
+            }
+        }
+        {
+            for (var index : stock().indexes()) {
+                long receivedAt = index.get("receivedAt").getAsLong();
+                Prepared p = prepare(index, receivedAt, tabs).p;
+                Stash loaded = new Stash(p.server, p.stash); loaded.index = p; loaded.player = p.player; loaded.lastSeen = receivedAt;
+                stashes.put(new StashKey(p.server, p.stash), loaded);
+                physicalIndexes.add(new StashKey(p.server, p.stash));
             }
         }
     }
@@ -528,9 +548,16 @@ public final class IndexStore {
 
     // ---------- updates ----------
 
-    /** Stores a validated index and writes it to disk. Serialization and the disk write happen outside the state lock. */
-    public void putIndex(JsonObject index) throws IOException, FullException {
+    /** Serializes physical acceptance with availability decisions; then updates the legacy JSON mirror. */
+    public synchronized void putIndex(JsonObject index) throws IOException, FullException {
         long now = System.currentTimeMillis();
+        // Bound index count before committing the authoritative physical observation.
+        getOrCreate(index.get("server").getAsString(), index.get("stash").getAsString());
+        index.addProperty("receivedAt", now);
+        if (index.has("physicalSources")) {
+            stock().accept(index);
+            physicalIndexes.add(new StashKey(index.get("server").getAsString(), index.get("stash").getAsString()));
+        }
         Built b = prepare(index, now, tabs);
         Prepared p = b.p;
         Stash s = getOrCreate(p.server, p.stash);
@@ -562,6 +589,16 @@ public final class IndexStore {
             if (status.hasStorage()) s.storage = status.storage();
             if (status.hasRescanBlocked()) s.rescanBlocked = status.rescanBlocked();
             if (status.rescanDone() > s.rescanDone) s.rescanDone = status.rescanDone();
+            if (stock != null) try {
+                var stale = stock.sources().stream().filter(source -> source.server().equals(server) && source.stash().equals(stash)
+                    && (source.status().equals("STALE_AGE") || source.status().equals("STALE_STARTUP") || source.status().equals("STALE") || source.status().equals("UNKNOWN"))).toList();
+                long staleRevision = stale.stream().mapToLong(StockLedger.Source::revision).max().orElse(0);
+                var key = new StashKey(server, stash);
+                if (physicalIndexes.contains(key) && !freshnessRequests.containsKey(key)
+                    || !stale.isEmpty() && staleRevision > freshnessRequests.getOrDefault(key, -1L)) {
+                    freshnessRequests.put(key, staleRevision); requestRescan(server, stash);
+                }
+            } catch (IOException ignored) { /* Availability queries fail closed if SQLite is unavailable. */ }
             boolean needIndex = s.index == null || indexHash == null || !indexHash.equals(s.index.indexHash);
             return new HeartbeatResult(needIndex, rescanPending(s));
         }
@@ -694,7 +731,26 @@ public final class IndexStore {
         synchronized (s) {
             p = s.index;
         }
-        return p == null ? null : p.orderCounts;
+        if (p == null) return null;
+        try {
+            Map<String, Long> items = new HashMap<>(), shulkers = new HashMap<>(), filledKeys = new HashMap<>(), filledIds = new HashMap<>();
+            for (var source : stock().sources()) {
+                if (!source.server().equals(server) || !source.stash().equals(stash) || !source.status().equals("FRESH") || source.shared()) continue;
+                for (var e : source.value().getAsJsonArray("items")) {
+                    var item = e.getAsJsonObject(); items.merge(item.get("key").getAsString(), item.get("count").getAsLong(), Math::addExact);
+                }
+                for (var e : source.value().getAsJsonArray("shulkers")) {
+                    var box = e.getAsJsonObject(); long count = box.get("count").getAsLong();
+                    shulkers.merge(box.get("key").getAsString(), count, Math::addExact);
+                    if (box.has("itemKey")) filledKeys.merge(box.get("itemKey").getAsString(), count, Math::addExact);
+                    else filledIds.merge(box.get("id").getAsString(), count, Math::addExact);
+                }
+            }
+            // Known-but-unsafe keys remain visible with zero availability, not an invented fresh total.
+            p.orderCounts.items.keySet().forEach(key -> items.putIfAbsent(key, 0L));
+            p.orderCounts.shulkers.keySet().forEach(key -> shulkers.putIfAbsent(key, 0L));
+            return new OrderCounts(Map.copyOf(items), p.orderCounts.itemIds, p.orderCounts.maxStacks, Map.copyOf(shulkers), Map.copyOf(filledKeys), Map.copyOf(filledIds));
+        } catch (IOException | ArithmeticException e) { return null; }
     }
 
     /**

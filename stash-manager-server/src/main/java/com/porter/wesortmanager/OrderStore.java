@@ -258,6 +258,11 @@ final class OrderStore {
     /** The same, recording who placed it (byId null: unknown, counted as the owner's). */
     Order place(String server, String stash, List<Line> requested, JsonObject names, String byId, String byName)
         throws OrderException, IOException {
+        synchronized (index) { return placeWithObservationLock(server, stash, requested, names, byId, byName); }
+    }
+
+    private Order placeWithObservationLock(String server, String stash, List<Line> requested, JsonObject names, String byId, String byName)
+        throws OrderException, IOException {
         if (requested.isEmpty()) throw new OrderException(400, "an order needs at least one line", -1);
         if (requested.size() > MAX_LINES) throw new OrderException(400, "at most " + MAX_LINES + " lines", -1);
         IndexStore.OrderCounts counts = index.orderCounts(server, stash);
@@ -664,14 +669,21 @@ final class OrderStore {
 
     /** The held (accepted/in_progress) order if there is one, else the oldest pending one, now accepted. Null = none. */
     Order claim(String server, String stash) throws IOException {
+        synchronized (index) { return claimWithObservationLock(server, stash); }
+    }
+    private Order claimWithObservationLock(String server, String stash) throws IOException {
+        var counts = index.orderCounts(server, stash);
+        if (counts == null) return null;
         Book b = books.get(new IndexStore.StashKey(server, stash));
         if (b == null) return null;
         synchronized (b) {
             for (Order o : b.orders) {
-                if (o.status.equals("accepted") || o.status.equals("in_progress")) return o;
+                if (o.status.equals("accepted") || o.status.equals("in_progress"))
+                    return o.lines.stream().allMatch(line -> counts.total(line.type, line.key) >= line.count) ? o : null;
             }
             for (Order o : b.orders) {
                 if (o.status.equals("pending")) {
+                    if (o.lines.stream().anyMatch(line -> counts.total(line.type, line.key) < line.count)) continue;
                     o.status = "accepted";
                     o.updatedAt = System.currentTimeMillis();
                     save(b);

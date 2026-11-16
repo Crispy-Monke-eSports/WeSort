@@ -2605,6 +2605,7 @@ public class StashSorter extends Module {
      * carries on with the others.
      */
     private void surveyFailed(Box box, String why) {
+        box.stale = true; box.observationUnreachable = true;
         failedSurvey.add(box);
         // One failure per job: the skip paths and finishJob can both get here for the same read
         int delay = surveyRetry.failOnce(box, ticks);
@@ -3408,6 +3409,7 @@ public class StashSorter extends Module {
     /** Containers waiting to be read: not read yet, or stale. */
     boolean needsReading() {
         if (stash == null) return false;
+        if (areaDirty) return true;
         if (explorePending && stash.hasArea() && BARITONE) return true;
         return stash.boxes.stream().anyMatch(b -> !b.excluded && !b.foreign && !b.unreachable && !failedSurvey.contains(b) && (!b.known() || b.stale));
     }
@@ -5737,6 +5739,9 @@ public class StashSorter extends Module {
             count++;
         }
         forgetExploration();
+        // Refresh membership at the next safe job boundary, including radius-only stashes.
+        // A running scan used to reread only its old list and miss restored/new containers.
+        areaDirty = true;
         explorePending = true;
         stash.save();
         version++;
@@ -7559,6 +7564,14 @@ public class StashSorter extends Module {
             // Only the menu our own click opened, of the size this box has. Anything else (an ender chest, a plugin
             // GUI, one left over from an earlier click) is closed and the click retried
             if (openPos != null && open != openMenuBefore && open instanceof ChestMenu && sizedForTarget(open)) {
+                if (!com.porter.wesort.compat.ObservationRuntime.canRead(target)) {
+                    if (stepTicks > OPEN_TIMEOUT) {
+                        surveyFailed(target, "no attributable full server observation");
+                        mc.player.closeContainer();
+                        finishJob();
+                    }
+                    return;
+                }
                 ownedMenu = open;
                 debug(() -> String.format("Opened %s at %s after %d ticks.", home(target), xyz(target.pos), stepTicks));
                 step = Step.Working;
@@ -7637,7 +7650,10 @@ public class StashSorter extends Module {
             return;
         }
 
-        read(target);
+        if (!read(target)) {
+            if (stepTicks > OPEN_TIMEOUT) finishJob();
+            return;
+        }
 
         // Both ends of the comparison are read through the open window, before anything is clicked and once the last
         // click is through, so they come from the same source
@@ -8003,6 +8019,14 @@ public class StashSorter extends Module {
      * What a box that is being dropped as a duplicate was marked as carries over to the box that stays.
      */
     private static void carryMarks(Box from, Box to) {
+        if (com.porter.wesort.compat.ObservationRuntime.current(from) && new java.util.HashSet<>(from.parts).equals(new java.util.HashSet<>(to.parts))
+            && (from.observationSequence > to.observationSequence || !com.porter.wesort.compat.ObservationRuntime.current(to))) {
+            to.contents = from.contents; to.lastRead = from.lastRead;
+            to.observationSession = from.observationSession; to.observationDimension = from.observationDimension;
+            to.observationFingerprint = from.observationFingerprint; to.observationEpoch = from.observationEpoch;
+            to.observationSequence = from.observationSequence; to.observationBaseRevision = from.observationBaseRevision;
+            to.observationAt = from.observationAt; to.observationBlock = from.observationBlock;
+        }
         to.excluded |= from.excluded;
         to.dropOff |= from.dropOff;
         to.delivery |= from.delivery;
@@ -9537,10 +9561,11 @@ public class StashSorter extends Module {
     private boolean fresh(Box box) {
         StashManager manager = meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
         long window = (manager == null ? 5 : manager.freshMinutes()) * 60_000L;
-        return window > 0 && box.known() && box.lastRead > 0 && System.currentTimeMillis() - box.lastRead < window;
+        return com.porter.wesort.compat.ObservationRuntime.current(box) && window > 0 && box.known() && box.lastRead > 0 && System.currentTimeMillis() - box.lastRead < window;
     }
 
-    private void read(Box box) {
+    private boolean read(Box box) {
+        if (!com.porter.wesort.compat.ObservationRuntime.canRead(box)) { box.stale = true; return false; }
         box.lastRead = System.currentTimeMillis();
         if (stash.dimension.isEmpty() && mc.level != null) {
             stash.dimension = Stash.currentDimension();
@@ -9556,7 +9581,10 @@ public class StashSorter extends Module {
         ItemStack[] contents = new ItemStack[size];
         for (int i = 0; i < size; i++) contents[i] = menu.getSlot(i).getItem().copy();
         box.contents = contents;
-        box.stale = false;
+        box.stale = false; box.unreachable = false;
+        com.porter.wesort.compat.ObservationRuntime.record(box);
+        stash.markDirty();
+        return true;
     }
 
     // Watching the stash

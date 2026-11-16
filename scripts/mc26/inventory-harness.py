@@ -304,8 +304,20 @@ class InventoryHarness(world.Harness):
             'Source or player count changed across dropped click, restart or rejected reconciliation')
         query = world.urllib.parse.urlencode({'server': baseline_index['server'], 'stash': 'e2e-fixture'})
         status, stored = self.http('/api/v1/index?' + query)
-        require(status == 200 and stored['indexHash'] == baseline_index['indexHash'],
-            'An unverified inventory action changed the published Manager index')
+        require(status == 200, 'Published index disappeared after the interrupted action')
+        # W-018 hashes observation session/revision/freshness too. A valid new read or stale
+        # transition may change that hash without changing inventory. Compare the physical
+        # postconditions instead: variants, group quantities and full per-container contents.
+        def quantities(index, field):
+            return {entry['key']: entry['count'] for entry in index.get(field, [])}
+        for field in ['items', 'shulkers']:
+            require(quantities(stored, field) == quantities(baseline_index, field),
+                'An unverified action changed published ' + field + ' quantities/fingerprints')
+        def sources(index):
+            return {source['id']: (source['fingerprint'], source['dimension'], source['parts'],
+                quantities(source, 'items'), quantities(source, 'shulkers')) for source in index.get('physicalSources', [])}
+        require(sources(stored) == sources(baseline_index),
+            'An unverified action changed a published full physical snapshot')
         self.ok('disconnect before delivery and real client restart keep pending intent, reject unsafe replay and refuse a false reconciliation')
 
     def execute(self):

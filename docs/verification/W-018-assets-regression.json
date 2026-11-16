@@ -1,0 +1,58 @@
+{
+  "result": "PASS",
+  "scope": "W-017 fresh 26.3 scan, real Docker icons/web API and actual in-game Stash Window",
+  "checks": [
+    {
+      "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+      "result": "PASS"
+    },
+    {
+      "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+      "result": "PASS"
+    },
+    {
+      "scenario": "Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord",
+      "result": "PASS"
+    },
+    {
+      "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+      "result": "PASS"
+    },
+    {
+      "scenario": "actual item CODEC distinguishes NBT byte/int custom data while canonicalizing compound order",
+      "result": "PASS"
+    },
+    {
+      "scenario": "ten real double chests opened with 54 slots and stable server-supplied contents",
+      "result": "PASS"
+    },
+    {
+      "scenario": "barrel and placed shulker opened with real slot/state ids and item component fingerprints",
+      "result": "PASS"
+    },
+    {
+      "scenario": "fresh scan preserves custom data, bundle contents, damage, enchantments, names and distinct colored/filled shulker groups",
+      "result": "PASS"
+    },
+    {
+      "scenario": "fresh scan preserves custom data, bundle contents, damage, enchantments, names and distinct colored/filled shulker groups",
+      "result": "PASS"
+    },
+    {
+      "scenario": "fresh Docker downloads checksum-verified official 26.3 assets, renders every fixture PNG including shulkers, and unknown ID returns safe missing-texture PNG",
+      "result": "PASS"
+    },
+    {
+      "scenario": "actual Docker-served web app executes against real API and renders variant, damage, enchantment and filled shulker DOM",
+      "result": "PASS"
+    },
+    {
+      "scenario": "real Stash Window renders passive fresh 26.3 captures with matching totals, variants and shulker contents",
+      "result": "PASS"
+    }
+  ],
+  "manager_image": "wesort-manager:stock-tests",
+  "source_commit": "b92819bb01e892045d9050b5d8c6ee0d5bbc3f5c",
+  "dirty_worktree": true,
+  "limits": "Web DOM execution uses JSDOM; Minecraft rendering is a real native client screenshot. Full guild engine remains later stages."
+}

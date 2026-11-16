@@ -1,0 +1,9 @@
+{
+  "launcher": "Prism Launcher 11.1.1",
+  "minecraft": "26.3",
+  "fabricloader": "0.20.1",
+  "meteor-client": "26.3-22",
+  "baritone-meteor": "1.4.0-26.3",
+  "result": "PASS_CLIENT_LOAD_ONLY",
+  "limits": "Prism startup and addon initialization only. No world, GUI probe, inventory or navigation claim. Expected offline service authentication errors occurred."
+}

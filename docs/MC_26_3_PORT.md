@@ -54,7 +54,7 @@ Installera exakt Temurin 25.0.5+8, exportera JAVA_HOME och kör från reporoten:
 ```sh
 python3 tools/mc26-toolchain/verify.py
 # Linux utan desktop, med Xvfb och Mesa/OpenGL:
-LIBGL_ALWAYS_SOFTWARE=1 SDL_VIDEODRIVER=x11 ALSOFT_DRIVERS=null \
+LIBGL_ALWAYS_SOFTWARE=1 SDL_VIDEO_DRIVER=x11 SDL_VIDEO_FORCE_EGL=1 ALSOFT_DRIVERS=null \
   xvfb-run -a -s '-screen 0 1280x720x24' python3 tools/mc26-toolchain/verify.py
 ```
 
@@ -85,3 +85,52 @@ Lokalt: bygg och riktig klientstart PASS, inklusive Meteor mixin-audit,
 Baritone-instans, render-/assetinit och ordnat stopp. Ursprungligt prototypfel
 med saknad addon-author rättades innan slutkörningen. Se separat
 [runtimeunderlag](verification/W-013-toolchain-runtime.json).
+
+## W-014: WeSort-addonen
+
+`./gradlew build -Pmc=26.3` väljer `build-26.3.gradle.kts` via settings.
+Java 25 används endast för detta klienttarget. Java 21, Loom 1.14.10 och
+mappings för baslinjetargets samt Java 21 Manager behålls. Root-wrappern är
+uppdaterad till samma checksummalåsta Gradle 9.6.0 som provprojektet.
+
+Algoritmer och domänlogik ligger kvar i `src/main/java`. De explicita
+översättningarna i `src/26.3/renames.tsv` producerar inspekterbara Java-källor
+under `build/generated/sources/mc26` före javac. Denna byggväg används bara
+för 26.3. Namnöversättningar omfattar GuiGraphicsExtractor, ClientSuggestionProvider,
+ContainerInput/handleContainerInput, GUI-screen-access och ChunkPos.pack.
+Komponentkopior läses via itemCopies/nonEmptyItemCopyStream så immutable
+ItemStackTemplate inte behandlas som en muterbar ItemStack. Signer använder
+SignTextSlot, den nya update-packetformen och listbaserad text.
+
+Handskrivna versionsadaptrar i `src/26.3/java` hanterar mouse input via
+InputConstants/SDL, cursor via Meteor, item/text-rendering och packet drop-
+detektering. GLFW-cursor ligger kvar enbart i baslinjens versionsmappar.
+Diagonal SDL-cursor använder crosshair eftersom den testade vanilla-API:n
+inte erbjuder diagonal standardcursor. Itemikoner skapas inte innan 26.3
+har en ansluten värld och dess bundna defaultkomponenter; GUI:t är säkert
+även före anslutning. Gamla target behåller sin tidigare komponentlivscykel.
+
+`python3 scripts/mc26/client-runtime.py` kräver en färsk klientrapport,
+förväntade runtimeversioner, registrerade StashSorter/StashOverlay/StashManager/
+StashWindow, giltiga mixins, Baritone-provider och Stash Window öppet under
+renderloopen. Klienten stoppas sedan ordnat. WeSort-/mixin-/GUI-fel i
+renderloggen ger underkänt även om Minecraft själv fångar felet och visar
+en felpanel. Offlinelägets service-authfel och saknad frivillig narrator
+är separata från detta prov. Ubuntu-profilen installerar GL/EGL-loaders och
+Mesa/Vulkan och väljer SDL3:s `SDL_VIDEO_FORCE_EGL` för Xvfb.
+Opt-in-provet är avstängt i normal användning; inga moduler aktiveras och
+ingen värld ansluts. CI kör samma riktiga klientprov under Xvfb/Mesa och
+rapporterar JUnit och runtime separat.
+
+Lokalt 26.3: 431 JUnit-tester passerar samt riktig WeSort-klient-/GUI-start
+utan renderfel. [Runtimeunderlag](verification/W-014-client-runtime.json).
+Prism Launcher 11.1.1 och den anvisade instansen `26.3` har också startat
+med WeSort, Meteor och Baritone samt Loader 0.20.1. Där verifierades enbart
+klient-/addonstart, inte GUI-provet eller en värld; se
+[separat Prism-underlag](verification/W-014-prism-startup.json).
+1.21.4 och 1.21.11 passerar vardera 431 tester med nya wrappern. Manager
+passerar 104 tester med ett känt real-jar-ikonskip på Java 21.
+Detta godkänner inte slotkvittens, crafting, signskrivning, shulkeroperationer
+eller pathfinding i en värld. Dessa behöver W-045/W-015/W-016. 26.3-receptdata
+och full index-/ikonverifiering följer i W-017; saknad recepttabell ska ge
+säker avbruten crafting, aldrig antagna recept från äldre Minecraft.

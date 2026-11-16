@@ -1,0 +1,20 @@
+# Literal unobfuscated API translations, applied only to shared Java for 26.3.
+GuiGraphics	GuiGraphicsExtractor
+ClickType	ContainerInput
+mc.screen	mc.gui.screen()
+mc.setScreen(	mc.gui.setScreen(
+mc.isSingleplayer()	mc.hasSingleplayerServer()
+event.drawContext	event.graphics
+ChunkPos.asLong(	ChunkPos.pack(
+net.minecraft.commands.SharedSuggestionProvider	net.minecraft.client.multiplayer.ClientSuggestionProvider
+LiteralArgumentBuilder<SharedSuggestionProvider>	LiteralArgumentBuilder<ClientSuggestionProvider>
+sign.getFrontText()	sign.getText(net.minecraft.world.level.block.entity.SignTextSlot.FRONT)
+sign.getBackText()	sign.getText(net.minecraft.world.level.block.entity.SignTextSlot.BACK)
+sign.isFacingFrontText(mc.player)	sign.getSlotPlayerIsFacing(mc.player) == net.minecraft.world.level.block.entity.SignTextSlot.FRONT
+inside.nonEmptyItems()	inside.nonEmptyItemCopyStream().toList()
+onRenderBefore(GuiGraphicsExtractor context, float delta)	onRenderBefore(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta)
+.handleInventoryMouseClick(	.handleContainerInput(
+bundle.items()	bundle.itemCopies().toList()
+mc.player.swing(InteractionHand.MAIN_HAND)	mc.player.swing(InteractionHand.MAIN_HAND, mc.player.getMainHandItem().getInteractAnimation(), false)
+new ServerboundSignUpdatePacket(spot, editorFront, lines[0], lines[1], lines[2], lines[3])	new ServerboundSignUpdatePacket(spot, java.util.List.of(lines), editorFront ? net.minecraft.world.level.block.entity.SignTextSlot.FRONT : net.minecraft.world.level.block.entity.SignTextSlot.BACK)
+text.getMessage(i, false)	text.getMessages(false).get(i)

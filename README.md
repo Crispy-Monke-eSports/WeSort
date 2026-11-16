@@ -3,7 +3,8 @@
 WeSort är en lagerfokuserad vidareutveckling av Qwerte för ett gemensamt
 guildlager. Detta repository befinner sig vid migrationsplanens steg 1;
 den färdiga guildplattformen i [roadmap #1](https://github.com/Crispy-Monke-eSports/WeSort/issues/1)
-är ännu inte implementerad. Ingen Minecraft 26.3-kompatibilitet påstås.
+är ännu inte implementerad. 26.3-addonen byggs och klientstartas; fysisk
+inventory- och navigationsverifiering redovisas separat i steg 2.
 
 Återanvänd funktionalitet:
 
@@ -22,7 +23,7 @@ inklusive dirt, seeds och pearls, är fortfarande vanliga lagervaror.
 ## Bygga och testa
 
 Baslinjen är Minecraft **1.21.4 och 1.21.11**, Java **21.0.9+10** och
-Gradle **9.2.0** via checksummalåst wrapper. Meteor/Loom-versionerna är låsta.
+Gradle **9.6.0** via checksummalåst wrapper. Meteor/Loom-versionerna är låsta.
 Varje Minecraft-version får en egen jar. Kör klienttargets sekventiellt:
 
 ```sh
@@ -35,6 +36,19 @@ python3 scripts/test-summary.py stash-manager-server/build
 npm ci --prefix web-tests
 npm test --prefix web-tests
 ```
+
+26.3-target använder **Java 25.0.5+8**, Loom **1.17.21**, Loader **0.19.5**
+och Meteor **26.3 build 22**. Med JAVA_HOME satt till denna JDK:
+
+```sh
+./gradlew --no-daemon build -Pmc=26.3
+python3 scripts/mc26/client-runtime.py
+```
+
+Runtimeprovet startar riktig Minecraft och Stash Window i en egen gameDir.
+Det kräver desktop eller Xvfb/Mesa och installerar Baritone API 1.4.0-26.3
+i provprofilen. Bygg/klientstart bevisar inte fysisk lagerautomation.
+Se [26.3-toolchain och portstatus](docs/MC_26_3_PORT.md).
 
 Klientjar kräver Fabric Loader 0.18.2+, Meteor för samma Minecraft-version
 och Java 21. Baritone API baseras på dekroms fork och är valfri vid runtime.

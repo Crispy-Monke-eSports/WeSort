@@ -2,7 +2,7 @@ package com.porter.wesort.manager.gui.frame;
 
 import meteordevelopment.meteorclient.utils.misc.input.Input;
 
-import static org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT;
+import static com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_LEFT;
 
 /**
  * Whether the left mouse button is down now.
@@ -17,6 +17,6 @@ public final class Buttons {
     }
 
     public static boolean leftDown() {
-        return Input.isButtonPressed(GLFW_MOUSE_BUTTON_LEFT);
+        return Input.isButtonPressed(MOUSE_BUTTON_LEFT);
     }
 }

@@ -1,6 +1,7 @@
 package com.porter.wesort.manager.gui;
 
 import com.porter.wesort.manager.model.IndexModel;
+import com.porter.wesort.compat.ItemComponents;
 import com.porter.wesort.manager.model.Text;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -43,6 +44,7 @@ public final class ItemStacks {
 
     /** A stack of one for an index item: damaged, glinting and named like the server says. Never null, never empty. */
     public static ItemStack display(IndexModel.Item item) {
+        if (!ItemComponents.ready()) return ItemStack.EMPTY;
         String cacheKey = item.key() + "|" + item.id();
         ItemStack cached = CACHE.get(cacheKey);
         if (cached != null) return cached;
@@ -68,6 +70,7 @@ public final class ItemStacks {
 
     /** A stack for an item key or id from a shulker's contents that the index doesn't list: the item, else a barrier. */
     public static ItemStack displayId(String keyOrId) {
+        if (!ItemComponents.ready()) return ItemStack.EMPTY;
         String id = keyOrId == null ? "" : keyOrId;
         int hash = id.indexOf('#');
         if (hash >= 0) id = id.substring(0, hash);
@@ -83,6 +86,7 @@ public final class ItemStacks {
 
     /** A stack for a shulker group: the box item, named like the group. */
     public static ItemStack display(IndexModel.Shulker group) {
+        if (!ItemComponents.ready()) return ItemStack.EMPTY;
         String cacheKey = "shulker|" + group.key() + "|" + group.id();
         ItemStack cached = CACHE.get(cacheKey);
         if (cached != null) return cached;

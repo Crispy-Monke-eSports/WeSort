@@ -2,6 +2,9 @@
 
 `.github/workflows/build.yml` bygger/testar båda klienttargets och det separata
 Manager-projektet på Linux med `.java-version` och den checksummalåsta wrappern.
+Wrappern är nu Gradle 9.6.0. 26.3-klienten har ett separat workflow med
+Temurin 25.0.5+8 och verklig klient-/Stash Window-start under Xvfb/Mesa;
+Java 21-baslinjen används fortsatt för båda 1.21-targets och Manager.
 JUnit XML/HTML, explicit test-/skiplista, jar, licens och versionsmetadata laddas
 upp även när ett test misslyckas. Artefaktnamnet innehåller target och commit-SHA.
 Saknade JUnit-rapporter ger fel, inte ett missvisande resultat med noll tester.

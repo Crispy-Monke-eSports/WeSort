@@ -79,7 +79,8 @@ tasks {
     processResources {
         val propertyMap = mapOf(
             "version" to project.version,
-            "mc_version" to target("minecraft")
+            "mc_version" to target("minecraft"),
+            "java_version" to "21"
         )
 
         inputs.properties(propertyMap)

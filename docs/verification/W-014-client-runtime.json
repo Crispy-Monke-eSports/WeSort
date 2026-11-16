@@ -1,0 +1,11 @@
+{
+  "minecraft": "26.3",
+  "fabricloader": "0.19.5",
+  "meteor-client": "26.3-22",
+  "baritone-meteor": "1.4.0-26.3",
+  "wesort": "0.1.0-dev.0+26.3",
+  "java": "25.0.5+8-LTS",
+  "result": "PASS",
+  "checks": "WeSort modules, packet mixin audit, Baritone linkage, Stash Window render/start/close",
+  "limits": "No connected world, physical inventory or pathfinding tested."
+}

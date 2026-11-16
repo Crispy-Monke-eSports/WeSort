@@ -1,6 +1,7 @@
 package com.porter.wesort;
 
 import com.mojang.logging.LogUtils;
+import com.porter.wesort.compat.ClientRuntimeProbe;
 import com.porter.wesort.commands.StashWindowCommand;
 import com.porter.wesort.modules.StashManager;
 import com.porter.wesort.modules.StashOverlay;
@@ -29,6 +30,7 @@ public class WeSortAddon extends MeteorAddon {
 
         // Commands
         Commands.add(new StashWindowCommand());
+        ClientRuntimeProbe.afterInitialize();
     }
 
     @Override

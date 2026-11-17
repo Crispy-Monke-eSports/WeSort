@@ -3,7 +3,7 @@
   "id": "wesort",
   "version": "${version}",
   "name": "WeSort",
-  "description": "A Meteor Client addon for shared stash sorting, shulkers, kits and orders.",
+  "description": "A Meteor Client addon for shared stash sorting, shulkers, kits and orders. NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.",
   "authors": [
     "Qwertze"
   ],

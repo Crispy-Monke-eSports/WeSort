@@ -60,6 +60,31 @@ exakta betrodda proxy-IP:n får anges i `WESORT_TRUSTED_PROXIES`.
 | WESORT_TRUSTED_PROXIES | Tom: inga forwardingheaders litas på |
 | WESORT_SECURE_COOKIES | true i produktion, false i lokal dev; sätts av deployment, aldrig av en HTTP-header |
 | WESORT_ICON_SOURCE | auto i produktion; game i offline-dev/test |
+| WESORT_ACCEPT_MINECRAFT_DOWNLOAD | Tom/ej satt: läs config.properties (som standard **false**); **true** först efter uttryckligt EULA-/licensgodkännande |
+
+### Minecraft-resurser (BlueMap-modell)
+
+Manager distribuerar **inte** Mojangs spelklient eller texturer i image/GHCR.
+Utan särskilt medgivande försöker Manager använda en befintlig lokal
+Minecraft-klient-JAR (26.3) angiven via `minecraftJar` i Manager-volymens
+`config.properties`, eller en lokalt installerad spelklient. Docker-imagen
+har normalt ingen Minecraft-installation; saknas lokala resurser visas en
+säker platshållarikon, **ingen automatisk nedladdning görs**.
+
+För att uttryckligen godkänna nedladdning, läs först
+[Mojangs EULA](https://www.minecraft.net/en-us/eula). Genom att sätta
+`WESORT_ACCEPT_MINECRAFT_DOWNLOAD=true` i din Compose-miljö (eller
+`acceptMinecraftDownload=true` i Managers skyddade `config.properties`)
+bekräftar du att du accepterar Mojangs EULA, har en giltig licens för
+Minecraft Java Edition och inte kommer redistribuera den hämtade klienten
+eller dess innehåll. Manager hämtar då endast den exakta officiella
+Minecraft 26.3-klient-JAR:en för lokal ikonrendering, verifierar SHA-1 och
+storlek och sparar den i den privata WeSort-volymen. Starta om Manager efter
+inställningsändringen. Utan uttryckligt `true` är nedladdningen spärrad.
+
+Detta följer principen bakom BlueMaps [`accept-download`](https://bluemap.bluecolored.de/wiki/configs/Core.html),
+inte en kopiering av Minecraft-tillgångar. Filerna får inte tas med vid
+backupdistribution, image-bygge eller vidare spridning.
 
 Inga API-nycklar eller lösenord stöds som Docker build-args eller Compose-env.
 Ändra privata runtimeinställningar i den skyddade volymen om det behövs. Owner

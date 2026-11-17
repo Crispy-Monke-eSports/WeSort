@@ -26,14 +26,20 @@ final class GameIcons implements AutoCloseable {
     private final Path iconsDir;
     private final Path override;
     private final boolean enabled;
+    private final boolean acceptMinecraftDownload;
     private final Map<String, Optional<IconRenderer>> renderers = new ConcurrentHashMap<>();
     /** Per version: ids the renderer can't draw (block-entity items etc.), so they aren't retried. */
     private final Map<String, Set<String>> empty = new ConcurrentHashMap<>();
 
     GameIcons(Path iconsDir, Path override, boolean enabled) {
+        this(iconsDir, override, enabled, false);
+    }
+
+    GameIcons(Path iconsDir, Path override, boolean enabled, boolean acceptMinecraftDownload) {
         this.iconsDir = iconsDir.toAbsolutePath().normalize();
         this.override = override;
         this.enabled = enabled;
+        this.acceptMinecraftDownload = acceptMinecraftDownload;
     }
 
     boolean enabled() {
@@ -123,14 +129,17 @@ final class GameIcons implements AutoCloseable {
                 System.out.println("Game icons " + mcVersion + ": can't use " + candidate + " (" + e.getMessage() + ")");
             }
         }
-        if (mcVersion.equals("26.3")) {
+        if (mcVersion.equals("26.3") && acceptMinecraftDownload) {
             try {
-                return Optional.of(IconRenderer.open(VanillaAssets.client26(iconsDir), SIZE));
+                return Optional.of(IconRenderer.open(VanillaAssets.client26(iconsDir, acceptMinecraftDownload), SIZE));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (IOException | RuntimeException e) {
                 System.out.println("Game icons 26.3: official assets unavailable (safe fallback): " + e.getMessage());
             }
+        }
+        if (mcVersion.equals("26.3") && !acceptMinecraftDownload) {
+            System.out.println("Game icons 26.3: automatic Mojang client download disabled (acceptMinecraftDownload=false).");
         }
         System.out.println("Game icons " + mcVersion + ": no usable client jar, "
             + (mcVersion.equals("26.3") ? "using safe missing-texture fallback" : "using the Minecraft Wiki") + ". Looked in:");

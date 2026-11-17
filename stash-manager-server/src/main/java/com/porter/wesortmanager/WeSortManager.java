@@ -78,7 +78,7 @@ public final class WeSortManager {
         owners.adoptAll(store.players());
         boolean gameOn = !config.iconSource.equals("wiki");
         boolean wikiOn = !config.iconSource.equals("game");
-        GameIcons game = new GameIcons(dataDir.resolve("icons"), config.minecraftJar, gameOn);
+        GameIcons game = new GameIcons(dataDir.resolve("icons"), config.minecraftJar, gameOn, config.acceptMinecraftDownload);
         // Tab icons the page shows are allowed even when no index has them.
         java.util.function.Function<String, IndexStore.IconInfo> known = id -> {
             IndexStore.IconInfo info = store.iconInfo(id);

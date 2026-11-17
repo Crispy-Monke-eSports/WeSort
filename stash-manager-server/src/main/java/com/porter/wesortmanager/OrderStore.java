@@ -63,6 +63,7 @@ final class OrderStore {
         String server;
         String stash;
         List<Line> lines;
+        JsonObject sourceGuards; // Conservative W-020 content preconditions; W-024 supplies exact allocation.
         JsonObject names; // normalized (see normalizeNames), or null for no naming
         long createdAt;
         long updatedAt;
@@ -91,6 +92,7 @@ final class OrderStore {
                 ls.add(lo);
             }
             o.add("lines", ls);
+            if (sourceGuards != null) o.add("sourceGuards", sourceGuards.deepCopy());
             o.add("names", names == null ? null : names.deepCopy());
             o.addProperty("createdAt", createdAt);
             o.addProperty("updatedAt", updatedAt);
@@ -116,6 +118,7 @@ final class OrderStore {
         static Order fromJson(JsonObject o) {
             Order r = new Order();
             r.id = o.get("id").getAsString();
+            r.sourceGuards = o.has("sourceGuards") ? o.getAsJsonObject("sourceGuards").deepCopy() : null;
             r.server = o.get("server").getAsString();
             r.stash = o.get("stash").getAsString();
             r.lines = new ArrayList<>();
@@ -326,6 +329,7 @@ final class OrderStore {
             o.stash = stash;
             o.lines = new ArrayList<>(merged.values());
             o.names = names == null ? null : names.deepCopy();
+            o.sourceGuards = sourceGuards(server, stash);
             o.createdAt = now;
             o.updatedAt = now;
             o.status = "pending";
@@ -688,6 +692,21 @@ final class OrderStore {
         return out;
     }
 
+    private JsonObject sourceGuards(String server, String stash) throws IOException {
+        var out = new JsonObject();
+        for (var source : index.stock().sources()) if (source.server().equals(server) && source.stash().equals(stash)
+            && source.status().equals("FRESH") && source.value().has("slotFingerprint"))
+            out.add(source.value().get("id").getAsString(), source.value().get("slotFingerprint"));
+        return out.isEmpty() ? null : out;
+    }
+    private boolean matchesSources(Order order) throws IOException {
+        if (order.sourceGuards == null) return true; // Earlier protocol orders retain their existing aggregate checks.
+        var now = sourceGuards(order.server, order.stash);
+        if (now == null) return false;
+        for (var expected : order.sourceGuards.entrySet()) if (!expected.getValue().equals(now.get(expected.getKey()))) return false;
+        return true;
+    }
+
     /** The held (accepted/in_progress) order if there is one, else the oldest pending one, now accepted. Null = none. */
     Order claim(String server, String stash) throws IOException {
         synchronized (index) { return claimWithObservationLock(server, stash); }
@@ -700,11 +719,11 @@ final class OrderStore {
         synchronized (b) {
             for (Order o : b.orders) {
                 if (o.status.equals("accepted") || o.status.equals("in_progress"))
-                    return o.lines.stream().allMatch(line -> counts.total(line.type, line.key) >= line.count) ? o : null;
+                    return matchesSources(o) && o.lines.stream().allMatch(line -> counts.total(line.type, line.key) >= line.count) ? o : null;
             }
             for (Order o : b.orders) {
                 if (o.status.equals("pending")) {
-                    if (o.lines.stream().anyMatch(line -> counts.total(line.type, line.key) < line.count)) continue;
+                    if (!matchesSources(o) || o.lines.stream().anyMatch(line -> counts.total(line.type, line.key) < line.count)) continue;
                     o.status = "accepted";
                     o.updatedAt = System.currentTimeMillis();
                     save(b);

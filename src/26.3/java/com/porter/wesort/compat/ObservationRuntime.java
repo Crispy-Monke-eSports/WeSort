@@ -31,25 +31,37 @@ public final class ObservationRuntime {
         if (level != mc.level) { level = mc.level; session = UUID.randomUUID().toString(); consumed.clear(); }
         return session;
     }
+    public static java.util.List<net.minecraft.world.item.ItemStack> contents(net.minecraft.world.item.ItemStack stack) {
+        var out = new java.util.ArrayList<net.minecraft.world.item.ItemStack>();
+        if (meteordevelopment.meteorclient.utils.Utils.isShulker(stack.getItem())) out.addAll(java.util.Arrays.asList(com.porter.wesort.stash.Kits.inside(stack)));
+        else {
+            var container = stack.get(net.minecraft.core.component.DataComponents.CONTAINER);
+            if (container != null) out.addAll(container.itemCopies().toList());
+        }
+        var bundle = stack.get(net.minecraft.core.component.DataComponents.BUNDLE_CONTENTS);
+        if (bundle != null) out.addAll(bundle.itemCopies().toList());
+        return out;
+    }
     public static boolean canRead(Stash.Box box) { return InventorySync.confirmedSource(box.parts); }
     public static boolean current(Stash.Box box) {
         return mc.level != null && box.observationSession.equals(session())
             && box.observationDimension.equals(StashIndex.dimension()) && box.known() && topologyMatches(box)
-            && box.observationFingerprint.equals(fingerprint(box));
+            && matchingFingerprint(box);
     }
-    private static String fingerprint(Stash.Box box) {
-        JsonArray slots = new JsonArray();
-        var ops = mc.level.registryAccess().createSerializationContext(NbtOps.INSTANCE);
-        for (var stack : box.contents) slots.add(stack.isEmpty() ? "empty" : NbtFingerprint.encode(net.minecraft.world.item.ItemStack.CODEC.encodeStart(ops, stack).getOrThrow()));
-        return ContainerIdentity.hash(slots.toString());
+    private static boolean matchingFingerprint(Stash.Box box) {
+        try { return box.observationFingerprint.equals(fingerprint(box)); }
+        catch (RuntimeException e) { return false; }
     }
+    private static String fingerprint(Stash.Box box) { return SlotRuntime.snapshot(box.contents).fingerprint(); }
     public static void record(Stash.Box box) {
         if (!canRead(box) || box.parts.stream().anyMatch(p -> !mc.level.isLoaded(p))) { box.stale = true; return; }
         String currentSession = session();
         var identity = new ContainerIdentity(Stash.currentServer(), StashIndex.dimension(), box.parts.stream()
             .map(p -> new ContainerIdentity.Position(p.getX(), p.getY(), p.getZ())).toList());
         long contentEpoch = InventorySync.contentsEpoch();
-        String fingerprint = fingerprint(box);
+        String fingerprint;
+        try { fingerprint = fingerprint(box); }
+        catch (RuntimeException e) { box.stale = true; box.observationSession = ""; return; }
         Witness witness = consumed.get(identity.id());
         if (witness != null && contentEpoch <= witness.contentEpoch) {
             if (contentEpoch == witness.contentEpoch && fingerprint.equals(witness.fingerprint)) witness.copyTo(box);
@@ -94,6 +106,7 @@ public final class ObservationRuntime {
     }
     public static void append(Stash stash, JsonObject root, boolean includeExcluded) {
         JsonArray sources = new JsonArray();
+        var slots = new com.porter.wesort.data.PhysicalSlots.Writer();
         for (var box : boxes(stash)) {
             if (box.delivery || box.foreign || box.excluded && !includeExcluded) continue;
             String dim = dimension(stash, box);
@@ -109,13 +122,15 @@ public final class ObservationRuntime {
             source.addProperty("epoch", box.observationEpoch); source.addProperty("baseRevision", box.observationBaseRevision);
             source.addProperty("observedAt", box.observationAt); source.addProperty("fingerprint", box.observationFingerprint);
             source.addProperty("size", box.known() ? box.contents.length : box.parts.size() * 27);
+            if (source.get("state").getAsString().equals("FRESH")) source.add("slots", slots.slots(SlotRuntime.snapshot(box.contents).slots()));
+            else source.add("slots", JsonNull.INSTANCE);
             if (box.known()) {
                 JsonObject aggregate = StashIndex.aggregate(Arrays.asList(box.contents));
                 source.add("items", aggregate.get("items")); source.add("shulkers", aggregate.get("shulkers"));
             } else { source.add("items", new JsonArray()); source.add("shulkers", new JsonArray()); }
             sources.add(source);
         }
-        root.addProperty("physicalVersion", 1); root.add("physicalSources", sources);
+        root.addProperty("physicalVersion", 2); root.add("slotVariants", slots.variants()); root.add("physicalSources", sources);
     }
     public static void invalidate(net.minecraft.core.BlockPos position) {
         if (position == null) return;

@@ -1,0 +1,26 @@
+{
+  "result": "PASS",
+  "base_commit": "fd278fc",
+  "dirty_worktree": true,
+  "client_version": "26.3",
+  "client_java": "25.0.5+8",
+  "manager_java": "21.0.13+9",
+  "junit": {
+    "client": {
+      "tests": 461,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "manager": {
+      "tests": 182,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "web_dom": "PASS",
+  "workflow_lint": "PASS",
+  "fresh_install_isolation": "PASS",
+  "hosted_ci": "pending after commit/push; no hosted success is implied by local results"
+}

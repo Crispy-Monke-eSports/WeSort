@@ -1,0 +1,38 @@
+{
+  "result": "PASS",
+  "source_commit": "fd278fcdff21398157190afb97af530d775c58ee",
+  "dirty_worktree": true,
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "manager_image": "wesort-manager:hierarchy-tests",
+  "checks": [
+    {
+      "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+      "result": "PASS"
+    },
+    {
+      "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+      "result": "PASS"
+    },
+    {
+      "scenario": "three identical named shulkers in distinct slots/containers with nested bundle and exact named enchanted damaged sword",
+      "result": "PASS"
+    },
+    {
+      "scenario": "Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord",
+      "result": "PASS"
+    },
+    {
+      "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+      "result": "PASS"
+    },
+    {
+      "scenario": "native sparse 27-slot hierarchy, metadata and nested contents survive signed sync and SQLite; identical boxes stay separate and totals count each item once",
+      "result": "PASS"
+    },
+    {
+      "scenario": "real server-side inner-content delta invalidates old box fingerprint and advances affected slot revisions; captured old signed observation rejected 409",
+      "result": "PASS"
+    }
+  ],
+  "limits": "W-020 verifies observation hierarchy and fingerprint invalidation. Physical reservation/lock races belong to W-024."
+}

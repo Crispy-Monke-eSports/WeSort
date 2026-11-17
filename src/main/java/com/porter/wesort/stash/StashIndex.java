@@ -44,7 +44,7 @@ public final class StashIndex {
     private record CacheKey(Item item, DataComponentPatch patch) {}
 
     private static final Gson GSON = new Gson();
-    private static final int MAX_DEPTH = 4;
+    private static final int MAX_DEPTH = com.porter.wesort.data.PhysicalSlots.MAX_DEPTH;
     private static final int MAX_CACHE = 20000;
     // Version adapters preserve baseline identities and canonicalize complete 26.3 variants.
     // Filled shulkers retain a separate content group key.
@@ -370,19 +370,15 @@ public final class StashIndex {
     }
 
     private static void add(Map<String, Agg> groups, RegistryOps<Tag> ops, ItemStack stack, int depth) {
+        add(groups, ops, stack, depth, 1L);
+    }
+    private static void add(Map<String, Agg> groups, RegistryOps<Tag> ops, ItemStack stack, int depth, long copies) {
         if (stack == null || stack.isEmpty()) return;
-
-        final Info found = infoOf(ops, stack);
-        groups.computeIfAbsent(found.key(), k -> new Agg(found)).count += stack.getCount();
-
+        Info found = infoOf(ops, stack);
+        long amount = Math.multiplyExact(copies, stack.getCount());
+        Agg group = groups.computeIfAbsent(found.key(), key -> new Agg(found)); group.count = Math.toIntExact(Math.addExact(group.count, amount));
         if (depth >= MAX_DEPTH) return;
-        if (Utils.isShulker(stack.getItem())) {
-            for (ItemStack inner : Kits.inside(stack)) add(groups, ops, inner, depth + 1);
-        }
-        var bundle = stack.get(DataComponents.BUNDLE_CONTENTS);
-        if (bundle != null) {
-            for (ItemStack inner : bundle.items()) add(groups, ops, inner, depth + 1);
-        }
+        for (ItemStack inner : com.porter.wesort.compat.ObservationRuntime.contents(stack)) add(groups, ops, inner, depth + 1, amount);
     }
 
     private static Info infoOf(RegistryOps<Tag> ops, ItemStack stack) {

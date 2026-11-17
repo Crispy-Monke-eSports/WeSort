@@ -737,6 +737,24 @@
       var sourceState = ({FRESH: "Fresh", PROTECTED: "Protected stock; automation blocked", STALE_STARTUP: "Rescan required after restart", STALE_AGE: "Observation expired", STALE: "Rescan required", UNREACHABLE: "Cannot reach container", UNKNOWN: "Not read yet", MISSING: "Container missing", WITHDRAWN: "Absent from latest scan; contents unknown", SHARED_SOURCE: "Shared source; ordering paused"})[source.state] || source.state;
       row.textContent = (source.serverLabel || source.server) + " · " + (Array.isArray(source.stashes) ? source.stashes.join(", ") : source.stash) + " · " + (source.dimension || "") + position + " · " + sourceState +
         " · revision " + source.sourceRevision + " · last verified " + observedLabel;
+      if (source.id && source.slotSchema) {
+        var details = document.createElement("details");
+        var summary = document.createElement("summary"); summary.textContent = "Inspect last verified slots (" + source.slotCount + ")"; details.appendChild(summary);
+        details.addEventListener("toggle", function () {
+          if (!details.open || details.dataset.loaded) return;
+          details.dataset.loaded = "true";
+          api("/api/v1/stock/source?id=" + encodeURIComponent(source.id)).then(function (data) {
+            var note = document.createElement("p"); note.textContent = "State: " + data.state + ". Slot paths identify locations; fingerprints describe contents. Uncertain contents require a new physical read."; details.appendChild(note);
+            var table = document.createElement("table");
+            ((data.snapshot && data.snapshot.positions) || []).forEach(function (slot) {
+              var line = document.createElement("tr");
+              [slot.path, slot.id, slot.count, slot.copies, slot.kind, slot.components].forEach(function (value) {
+                var cell = document.createElement("td"); cell.textContent = String(value); line.appendChild(cell);
+              }); table.appendChild(line);
+            }); details.appendChild(table);
+          }, function () { details.dataset.loaded = ""; var error = document.createElement("p"); error.textContent = "Snapshot unavailable. Reopen to retry."; details.appendChild(error); });
+        }); row.appendChild(details);
+      }
       sources.appendChild(row);
     });
   }

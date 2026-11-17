@@ -465,6 +465,7 @@ class StreamerTest {
             "[GET, HEAD] /api/v1/stashes SESSION VIEW",
             "[GET, HEAD] /api/v1/index SESSION VIEW",
             "[GET, HEAD] /api/v1/stock SESSION VIEW",
+            "[GET, HEAD] /api/v1/stock/source SESSION VIEW",
             "[GET, HEAD] /api/v1/link SESSION LINK",
             "[GET, HEAD] /api/v1/bots SESSION ACTIVITY",
             "[GET, HEAD] ^/api/v1/bots/([A-Za-z0-9_-]{1,64})/(settings|jobs|activity)$ SESSION ACTIVITY",

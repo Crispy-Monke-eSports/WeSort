@@ -14,9 +14,38 @@ final class StockRoutes {
 
     void register(Router router) {
         router.exact(Router.GET, "/api/v1/stock", Router.Guard.SESSION, Router.Perm.VIEW, this::get);
+        router.exact(Router.GET, "/api/v1/stock/source", Router.Guard.SESSION, Router.Perm.VIEW, this::getSource);
     }
 
     private void get(HttpExchange ex) throws IOException { Http.json(ex, 200, view(Router.user(ex))); }
+
+    private void getSource(HttpExchange ex) throws IOException {
+        JsonObject value = source(Router.user(ex), Http.query(ex).getOrDefault("id", ""));
+        if (value == null) Http.json(ex, 404, new JsonObject()); else Http.json(ex, 200, value);
+    }
+
+    JsonObject source(Users.Principal who, String id) throws IOException {
+        if (Redact.forced(who)) return null;
+        synchronized (index) {
+            var ledger = index.stock();
+            // Authorize the membership before loading potentially sensitive component data.
+            var visible = ledger.sources().stream().filter(s -> who.perms().seesStash(s.server(), s.stash())
+                && !s.status().equals("SUPERSEDED") && s.value().get("id").getAsString().equals(id)).findFirst();
+            if (visible.isEmpty()) return null;
+            var source = visible.get(); var out = new JsonObject();
+            out.addProperty("id", id); out.addProperty("server", source.server()); out.addProperty("stash", source.stash());
+            out.add("parts", source.value().get("parts")); out.add("dimension", source.value().get("dimension"));
+            out.addProperty("state", source.status()); out.addProperty("sourceRevision", source.revision()); out.addProperty("verifiedAt", source.verifiedAt());
+            out.addProperty("locationModel", "source/slot-path");
+            JsonObject snapshot = source.value().has("slotFingerprint") ? ledger.snapshot(id, source.value().get("slotFingerprint").getAsString()) : null;
+            out.add("snapshot", snapshot == null ? JsonNull.INSTANCE : snapshot);
+            // The history frame carries its original content; current slot revisions must never label an older frame.
+            if (snapshot != null && source.status().equals("FRESH")) {
+                JsonArray slots = new JsonArray(); ledger.physicalSlots(id).forEach(slots::add); out.add("slots", slots);
+            }
+            return out;
+        }
+    }
 
     JsonObject view(Users.Principal who) throws IOException {
         synchronized (index) { return viewWithObservationLock(who); }
@@ -62,7 +91,7 @@ final class StockRoutes {
             // Existing holds have no physical allocation yet. Never invent an exact count per container.
             detail.add("reserved", JsonNull.INSTANCE); detail.add("available", JsonNull.INSTANCE);
             if (Redact.forced(who)) {
-                for (String field : List.of("parts", "dimension", "id", "fingerprint", "items", "shulkers", "stashes")) detail.remove(field);
+                for (String field : List.of("parts", "dimension", "id", "fingerprint", "items", "shulkers", "stashes", "slotSchema", "slotFingerprint", "slotCount")) detail.remove(field);
                 detail.addProperty("stash", Redact.HIDDEN);
             }
             details.put(id, detail);

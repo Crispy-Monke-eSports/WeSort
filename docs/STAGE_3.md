@@ -1,6 +1,8 @@
 # Steg 3 – lagergrunden
 
-W-018 (#19) och W-019 (#20) är implementerade. W-020–W-024 återstår. Arbetet
+W-018 (#19), W-019 (#20) och W-020 (#21) är implementerade. W-021–W-024 återstår.
+Aktuell klientpolicy är endast Minecraft 26.3 med Java 25; Manager kör Java 21.
+Äldre klienttargets som nämns i tidigare verifieringar är historik från före versionsavvecklingen. Arbetet
 ligger direkt på main och varje issue får en egen commit som pushas innan
 nästa påbörjas. GitHubs checklistor och issuestatusar ändras inte.
 
@@ -60,11 +62,22 @@ Manager version är nu `0.1.0-dev.3` med SQLite-schema 2. Klienttargets har
 Verklig Sign/Tier-sortering, exakt metadata, overflow, full kapacitet,
 reserverad stock och låg nivå-skydd ligger i `verification/W-019-*`.
 
+## W-020 – fysisk hierarki
+
+Shulkers, sparse slots, fullständiga komponenter och nested container-items har
+nu en egen verifierad modell. SQLite-schema 3 lagrar plats- och innehållshistorik
+atomiskt, separerar identiska boxars slotadresser och binder nya order till
+källfingerprints. Detalj-API/webb följer stashbehörigheter och streamer-skydd.
+Se [kontrakt och verifiering](MC_26_3_HIERARCHY.md).
+Manager-versionen är `0.1.0-dev.4`. Klienten har 461 godkända JUnit-tester
+och Manager 182, utan skip eller fel. Webbens DOM-prov och installations-
+isolering passerar. Lokala spelresultat finns i
+`verification/W-020-*`; hosted CI verifieras separat efter push.
+
 ## Återstående i steget
 
 W-019:s [sortering och reservationsskydd](MC_26_3_SORTING.md) finns i koden.
-Återstående: W-020 fysisk shulker-
-hierarki; W-021 repack/bulk; W-022 exakta kits; W-023 hållbar fysisk journal;
+Återstående: W-021 repack/bulk; W-022 exakta kits; W-023 hållbar fysisk journal;
 W-024 global atomisk reservationshierarki. Dessa är inte färdiga genom W-018.
 Orderhållningar är fortfarande aggregerade per stash (`reservationPrecision`
 är `aggregate`); exakt fysisk reservation/allokering visas därför inte som

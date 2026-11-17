@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "com.porter.wesort"
-version = "0.1.0-dev.3"
+version = "0.1.0-dev.4"
 
 repositories {
     mavenCentral()

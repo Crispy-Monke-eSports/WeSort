@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+"""W-020: native 26.3 component/slot hierarchy, independent server snapshots and signed Docker persistence."""
+import argparse
+import importlib.util
+import json
+from pathlib import Path
+import shutil
+import subprocess
+import time
+import urllib.parse
+
+spec = importlib.util.spec_from_file_location('stock_harness', Path(__file__).with_name('stock-harness.py'))
+stock = importlib.util.module_from_spec(spec); spec.loader.exec_module(stock)
+world = stock.world
+require = world.require
+
+
+class HierarchyHarness(stock.StockHarness):
+    def fixture(self):
+        world.Harness.fixture(self)
+        box = 'minecraft:shulker_box[minecraft:custom_name={text:"Hierarchy box"},minecraft:container=[{slot:0,item:{id:"minecraft:diamond",count:32}},{slot:13,item:{id:"minecraft:bundle",count:1,components:{"minecraft:bundle_contents":[{id:"minecraft:iron_ingot",count:8}]}}},{slot:26,item:{id:"minecraft:diamond_sword",count:1,components:{"minecraft:damage":7,"minecraft:custom_name":{text:"Exact sword"},"minecraft:enchantments":{"minecraft:unbreaking":2}}}}]]'
+        for command in [
+            f'item replace block 0 64 -3 container.0 with {box} 1',
+            f'item replace block 0 64 -3 container.20 with {box} 1',
+            f'item replace block 6 64 -3 container.0 with {box} 1',
+        ]:
+            reply = self.rcon.command(command)
+            require('replaced' in reply.lower(), 'Native hierarchy fixture rejected: ' + reply)
+        # Keep this hierarchy scenario bounded; the general world/scanning suite owns the ten-chest matrix.
+        self.rcon.command('fill 0 64 3 29 64 3 minecraft:air')
+        self.ok('three identical named shulkers in distinct slots/containers with nested bundle and exact named enchanted damaged sword')
+
+    def read(self, x, item='minecraft:shulker_box', count=1):
+        self.teleport(x + 0.5, -1.5)
+        self.command('open', x=x, y=64, z=-3, slots=27, item=item, count=count)
+        self.command('close')
+
+    def detail(self, source):
+        status, detail = self.http('/api/v1/stock/source?id=' + urllib.parse.quote(source['id']))
+        require(status == 200, 'Physical detail unavailable')
+        return detail
+
+    def execute(self):
+        try:
+            self.start_server(); self.fixture(); self.start_manager(); self.start_client()
+            self.command('stock-scan-settings')
+            self.read(0); self.read(6); self.read(3, 'minecraft:dirt', 16)
+            before = {str(x): self.rcon.command(f'data get block {x} 64 -3 Items') for x in [0, 3, 6]}
+            initial = self.command('state')['state']['index']
+            require(initial['physicalVersion'] == 2 and initial['slotVariants'], 'Actual client omitted physical tree')
+            self.server_name = initial['server']
+            self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key)
+            observed = self.wait(lambda s: all((row := self.source(s, x, -3)) is not None and row['state'] == 'FRESH' for x in [0, 6]), 'Native hierarchy did not reach Manager')
+            self.pause()
+            a = self.detail(self.source(observed, 0, -3)); b = self.detail(self.source(observed, 6, -3))
+            positions = {row['path']: row for row in a['snapshot']['positions']}
+            other = {row['path']: row for row in b['snapshot']['positions']}
+            require(positions['0']['fingerprint'] == positions['20']['fingerprint'] == other['0']['fingerprint'], 'Identical box contents differ by physical location')
+            require(a['id'] != b['id'] and positions['0']['path'] != positions['20']['path'], 'Identical box locations collided')
+            require(positions['0/26']['slot'] == 26 and positions['0']['size'] == 27 and 'Exact sword' in positions['0/26']['components']
+                and 'minecraft:damage' in positions['0/26']['components'] and 'minecraft:enchantments' in positions['0/26']['components'], 'Sparse exact metadata was lost')
+            require(positions['0/13/0']['id'] == 'minecraft:iron_ingot' and positions['0/13/0']['count'] == 8, 'Nested bundle inventory not modeled')
+            require(self.amount(observed, 'minecraft:diamond', 'observed') == 96 and self.amount(observed, 'minecraft:iron_ingot', 'observed') == 32,
+                'Native guild totals double counted inner items or missed existing outer bundle')
+            after = {str(x): self.rcon.command(f'data get block {x} 64 -3 Items') for x in [0, 3, 6]}
+            require(before == after, 'Read-only physical hierarchy changed server inventory')
+            self.ok('native sparse 27-slot hierarchy, metadata and nested contents survive signed sync and SQLite; identical boxes stay separate and totals count each item once')
+            (self.evidence / 'initial-details.json').write_text(json.dumps([a,b], indent=2)+'\n')
+            (self.evidence / 'server-before.json').write_text(json.dumps(before, indent=2)+'\n')
+            self.command('manager-unlink-test')
+            reply = self.rcon.command('data modify block 0 64 -3 Items[{Slot:0b}].components."minecraft:container"[{slot:0}].item.count set value 31')
+            require('modified' in reply.lower(), 'Server content mutation rejected: ' + reply)
+            self.read(0)
+            changed_index = self.command('state')['state']['index']
+            old_source = next(s for s in initial['physicalSources'] if s['id']==a['id'])
+            new_source = next(s for s in changed_index['physicalSources'] if s['id']==a['id'])
+            require(new_source['fingerprint'] != old_source['fingerprint'], 'Native content change retained old snapshot fingerprint')
+            self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key)
+            changed = self.wait(lambda s: (row := self.source(s, 0, -3)) is not None and row['sourceRevision'] > a['sourceRevision']
+                and row.get('slotFingerprint') != a['snapshot']['fingerprint'], 'New verified hierarchy did not replace old physical fingerprint')
+            self.pause(); detail = self.detail(self.source(changed,0,-3))
+            old_slots = {s['path']:s for s in a['slots']}; new_slots = {s['path']:s for s in detail['slots']}
+            require(new_slots['0/0']['count']==31 and new_slots['0/0']['revision'] > old_slots['0/0']['revision'], 'Changed inner stack did not advance its physical revision')
+            require(new_slots['20']['revision'] == old_slots['20']['revision'], 'Unchanged identical sibling acquired another slot identity/revision')
+            replay = stock.signed.Client(f'http://127.0.0.1:{self.manager_port}', self.key)
+            code, _ = replay.post('/api/v1/index', initial)
+            require(code == 409, 'Older actual snapshot accepted after changed content')
+            self.ok('real server-side inner-content delta invalidates old box fingerprint and advances affected slot revisions; captured old signed observation rejected 409')
+            self.command('screenshot'); shutil.copyfile(self.game_dir/'screenshots/fixture.png',self.evidence/'fixture.png')
+            (self.evidence/'changed-detail.json').write_text(json.dumps(detail,indent=2)+'\n')
+            result = {'result':'PASS','source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=world.ROOT,text=True).strip(),
+                'dirty_worktree':True,'server_sha1':world.SERVER_SHA1,'manager_image':self.env['WESORT_IMAGE'],'checks':self.checks,
+                'limits':'W-020 verifies observation hierarchy and fingerprint invalidation. Physical reservation/lock races belong to W-024.'}
+            (self.evidence/'result.json').write_text(json.dumps(result,indent=2)+'\n')
+            print('Evidence: '+str(self.evidence),flush=True)
+        finally: self.close()
+
+
+if __name__ == '__main__':
+    parser=argparse.ArgumentParser(description=__doc__); parser.add_argument('--manager-image',default=world.DEFAULT_IMAGE)
+    HierarchyHarness(parser.parse_args().manager_image).execute()

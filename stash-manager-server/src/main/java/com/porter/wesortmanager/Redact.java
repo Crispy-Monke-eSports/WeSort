@@ -107,6 +107,7 @@ final class Redact {
         o.remove("player");
         o.remove("dimension");
         o.remove("physicalSources");
+        o.remove("slotVariants");
         JsonElement items = o.get("items");
         if (items != null && items.isJsonArray()) {
             for (JsonElement e : items.getAsJsonArray()) {
@@ -133,6 +134,7 @@ final class Redact {
 
     /** An order: other users' names and shulker names hidden; the bot's phase and message text hidden. */
     static void order(JsonObject o, String selfId) {
+        o.remove("sourceGuards");
         JsonObject by = obj(o, "placedBy");
         boolean mine = by != null && by.has("id") && !by.get("id").isJsonNull() && by.get("id").getAsString().equals(selfId);
         if (by != null && !mine) by.addProperty("name", ANOTHER_USER);

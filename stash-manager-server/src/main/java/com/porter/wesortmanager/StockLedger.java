@@ -2,6 +2,7 @@ package com.porter.wesortmanager;
 
 import com.google.gson.*;
 import com.porter.wesort.data.ContainerIdentity;
+import com.porter.wesort.data.PhysicalSlots;
 import java.io.IOException;
 import java.nio.file.*;
 import java.sql.*;
@@ -36,9 +37,11 @@ final class StockLedger {
                     if (existed && (!r.next() || r.getInt(1) != APPLICATION_ID)) throw new IOException("Foreign guild database format");
                 }
                 s.execute("PRAGMA journal_mode=WAL");
-                try (var r = s.executeQuery("PRAGMA user_version")) { if (r.next() && r.getInt(1) > 2) throw new IOException("Unsupported guild database schema"); }
+                try (var r = s.executeQuery("PRAGMA user_version")) { if (r.next() && r.getInt(1) > 3) throw new IOException("Unsupported guild database schema"); }
                 s.execute("BEGIN IMMEDIATE");
                 try {
+                    s.execute("CREATE TABLE IF NOT EXISTS physical_snapshots(source TEXT NOT NULL,fingerprint TEXT NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL,PRIMARY KEY(source,fingerprint))");
+                    s.execute("CREATE TABLE IF NOT EXISTS physical_slots(source TEXT NOT NULL,path TEXT NOT NULL,parent TEXT NOT NULL,payload TEXT NOT NULL,fingerprint TEXT NOT NULL,item_fingerprint TEXT NOT NULL,count INTEGER NOT NULL,copies INTEGER NOT NULL,revision INTEGER NOT NULL,seen_revision INTEGER NOT NULL,present INTEGER NOT NULL,PRIMARY KEY(source,path))");
                     s.execute("CREATE TABLE IF NOT EXISTS automation_leases(server TEXT PRIMARY KEY,agent TEXT NOT NULL,token TEXT NOT NULL,deadline INTEGER NOT NULL,state TEXT NOT NULL)");
                     s.execute("CREATE TABLE IF NOT EXISTS stock_meta(id INTEGER PRIMARY KEY CHECK(id=1),epoch TEXT NOT NULL,revision INTEGER NOT NULL)");
                     s.execute("CREATE TABLE IF NOT EXISTS stock_sources(id TEXT PRIMARY KEY,server TEXT NOT NULL,dimension TEXT NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL,proof TEXT NOT NULL,verified_at INTEGER NOT NULL,run TEXT NOT NULL)");
@@ -46,7 +49,7 @@ final class StockLedger {
                     s.execute("CREATE TABLE IF NOT EXISTS stock_members(server TEXT NOT NULL,stash TEXT NOT NULL,source TEXT NOT NULL,present INTEGER NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL,verified_at INTEGER NOT NULL,PRIMARY KEY(server,stash,source))");
                     s.execute("CREATE TABLE IF NOT EXISTS stock_indexes(server TEXT NOT NULL,stash TEXT NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL,PRIMARY KEY(server,stash))");
                     try (var p = c.prepareStatement("INSERT OR IGNORE INTO stock_meta VALUES(1,?,0)")) { p.setString(1, UUID.randomUUID().toString()); p.executeUpdate(); }
-                    s.execute("PRAGMA application_id=" + APPLICATION_ID); s.execute("PRAGMA user_version=2"); s.execute("COMMIT");
+                    s.execute("PRAGMA application_id=" + APPLICATION_ID); s.execute("PRAGMA user_version=3"); s.execute("COMMIT");
                 } catch (Exception e) { s.execute("ROLLBACK"); throw e; }
                 try (var r = s.executeQuery("SELECT epoch FROM stock_meta WHERE id=1")) { if (!r.next()) throw new SQLException("Missing stock epoch"); epoch = r.getString(1); }
             }
@@ -88,13 +91,16 @@ final class StockLedger {
     private static long number(JsonObject o, String key) { return o.get(key).getAsBigDecimal().longValueExact(); }
     static List<JsonObject> validate(JsonObject index) {
         if (!index.has("physicalSources")) return List.of();
-        if (number(index, "physicalVersion") != 1) throw new IllegalArgumentException("Unsupported physical observation version");
+        long version = number(index, "physicalVersion");
+        if (version != 1 && version != 2) throw new IllegalArgumentException("Unsupported physical observation version");
+        var slots = version == 2 ? new PhysicalSlots.Reader(index.getAsJsonArray("slotVariants")) : null;
         String server = index.get("server").getAsString();
         var values = index.getAsJsonArray("physicalSources");
         if (values.size() > 2048) throw new IllegalArgumentException("Too many physical sources");
         List<JsonObject> result = new ArrayList<>(); Set<String> occupied = new HashSet<>();
         for (var value : values) {
             JsonObject source = value.getAsJsonObject().deepCopy();
+            for (String internal : List.of("slotSnapshot", "slotFingerprint", "slotSchema", "slotCount")) source.remove(internal);
             String dimension = source.get("dimension").getAsString();
             List<ContainerIdentity.Position> parts = new ArrayList<>();
             for (var item : source.getAsJsonArray("parts")) {
@@ -126,9 +132,25 @@ final class StockLedger {
                         throw new IllegalArgumentException("Invalid or duplicate physical quantity");
                 }
             }
+            if (version == 2 && state.equals("FRESH")) {
+                var snapshot = slots.snapshot(Math.toIntExact(number(source, "size")), source.getAsJsonArray("slots"));
+                if (!snapshot.fingerprint().equals(source.get("fingerprint").getAsString())) throw new IllegalArgumentException("Physical snapshot fingerprint mismatch");
+                if (!amounts(source.getAsJsonArray("items")).equals(snapshot.totals()) || !amounts(source.getAsJsonArray("shulkers")).equals(snapshot.shulkers()))
+                    throw new IllegalArgumentException("Aggregated quantities do not match physical slots");
+                source.add("slotSnapshot", snapshot.json());
+            }
+            source.remove("slots");
             result.add(source);
         }
         return result;
+    }
+    private static Map<String, Long> amounts(JsonArray rows) {
+        Map<String, Long> result = new TreeMap<>();
+        for (var value : rows) {
+            var row = value.getAsJsonObject(); long amount = number(row, "count");
+            if (amount != 0) result.merge(row.get("key").getAsString(), amount, Math::addExact);
+        }
+        return Map.copyOf(result);
     }
     /** One transaction assigns revisions, invalidates old topology, records provenance and persists the index. */
     synchronized void accept(JsonObject index) throws IOException {
@@ -143,6 +165,11 @@ final class StockLedger {
                 for (JsonObject source : sources) {
                     String id = source.get("id").getAsString(), dimension = source.get("dimension").getAsString();
                     String proof = source.get("session").getAsString() + ":" + number(source, "sequence");
+                    JsonObject snapshot = source.has("slotSnapshot") ? source.remove("slotSnapshot").getAsJsonObject() : null;
+                    if (snapshot != null) {
+                        source.addProperty("slotSchema", 1); source.addProperty("slotFingerprint", snapshot.get("fingerprint").getAsString());
+                        source.addProperty("slotCount", snapshot.getAsJsonArray("positions").size());
+                    }
                     String json = source.toString(); long base = number(source, "baseRevision");
                     boolean fresh = source.get("state").getAsString().equals("FRESH"), sameProof = false;
                     long oldRevision = 0, verified = 0; String verifiedRun = "", previousProof = "";
@@ -183,6 +210,7 @@ final class StockLedger {
                     else if (previous != null) {
                         // Loss of access is not an empty inventory. Preserve last quantities as explicitly unknown.
                         source.add("items", previous.get("items")); source.add("shulkers", previous.get("shulkers"));
+                        for (String field : List.of("slotSchema", "slotFingerprint", "slotCount")) if (previous.has(field)) source.add(field, previous.get(field));
                         proof = previousProof; json = source.toString();
                     }
                     memberTimes.put(id, verified);
@@ -193,6 +221,7 @@ final class StockLedger {
                         p.setString(1,id); p.setString(2,server); p.setString(3,dimension); p.setString(4,json); p.setLong(5,sourceRevision);
                         p.setString(6,proof); p.setLong(7,verified); p.setString(8,verifiedRun); p.executeUpdate();
                     }
+                    if (fresh) saveSlots(c, id, snapshot, sourceRevision);
                     for (var item : source.getAsJsonArray("parts")) {
                         var pos = item.getAsJsonArray();
                         if (physicalFailure) {
@@ -230,6 +259,41 @@ final class StockLedger {
                 tx.execute("COMMIT");
             } catch (Exception e) { tx.execute("ROLLBACK"); if(e instanceof IOException io)throw io; if(e instanceof RuntimeException re)throw re;throw e; }
         } catch(SQLException e){throw new IOException("Observation transaction failed",e);}
+    }
+    private void saveSlots(Connection c, String source, JsonObject snapshot, long revision) throws SQLException {
+        if (snapshot != null) {
+            try (var p = c.prepareStatement("INSERT OR IGNORE INTO physical_snapshots VALUES(?,?,?,?)")) {
+                p.setString(1, source); p.setString(2, snapshot.get("fingerprint").getAsString()); p.setString(3, snapshot.toString()); p.setLong(4, revision); p.executeUpdate();
+            }
+            try (var p = c.prepareStatement("INSERT INTO physical_slots VALUES(?,?,?,?,?,?,?,?,?,?,1) ON CONFLICT(source,path) DO UPDATE SET parent=excluded.parent,payload=excluded.payload,item_fingerprint=excluded.item_fingerprint,count=excluded.count,copies=excluded.copies,revision=CASE WHEN physical_slots.present=1 AND physical_slots.fingerprint=excluded.fingerprint AND physical_slots.copies=excluded.copies THEN physical_slots.revision ELSE excluded.revision END,fingerprint=excluded.fingerprint,seen_revision=excluded.seen_revision,present=1")) {
+                for (var value : snapshot.getAsJsonArray("positions")) {
+                    var row = value.getAsJsonObject();
+                    p.setString(1, source); p.setString(2, row.get("path").getAsString()); p.setString(3, row.get("parent").getAsString());
+                    p.setString(4, row.toString()); p.setString(5, row.get("fingerprint").getAsString()); p.setString(6, row.get("itemFingerprint").getAsString());
+                    p.setLong(7, number(row, "count")); p.setLong(8, number(row, "copies")); p.setLong(9, revision); p.setLong(10, revision); p.addBatch();
+                }
+                p.executeBatch();
+            }
+        }
+        try (var p = c.prepareStatement("UPDATE physical_slots SET present=0,revision=? WHERE source=? AND present=1 AND seen_revision<>?")) {
+            p.setLong(1, revision); p.setString(2, source); p.setLong(3, revision); p.executeUpdate();
+        }
+    }
+    synchronized JsonObject snapshot(String source, String fingerprint) throws IOException {
+        try (var c = open(); var p = c.prepareStatement("SELECT payload FROM physical_snapshots WHERE source=? AND fingerprint=?")) {
+            p.setString(1, source); p.setString(2, fingerprint);
+            try (var r = p.executeQuery()) { return r.next() ? JsonParser.parseString(r.getString(1)).getAsJsonObject() : null; }
+        } catch (SQLException e) { throw new IOException("Cannot read physical snapshot", e); }
+    }
+    synchronized List<JsonObject> physicalSlots(String source) throws IOException {
+        List<JsonObject> result = new ArrayList<>();
+        try (var c = open(); var p = c.prepareStatement("SELECT payload,revision,present FROM physical_slots WHERE source=? ORDER BY path")) {
+            p.setString(1, source);
+            try (var r = p.executeQuery()) { while (r.next()) {
+                var row = JsonParser.parseString(r.getString(1)).getAsJsonObject(); row.addProperty("revision", r.getLong(2)); row.addProperty("present", r.getBoolean(3)); result.add(row);
+            } }
+        } catch (SQLException e) { throw new IOException("Cannot read physical slots", e); }
+        return result;
     }
     synchronized List<JsonObject> indexes() throws IOException {
         List<JsonObject> out=new ArrayList<>();

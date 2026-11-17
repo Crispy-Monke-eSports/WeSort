@@ -74,8 +74,9 @@ async function scenario(loggedIn) {
     if (u.pathname === '/api/v1/stock') body = {stockRevision: 12, maxAgeMillis: 300000,
       items: [{server: 'test', id: 'minecraft:diamond', name: '<img src=x onerror=alert(1)>', observed: 64, reserved: 10, available: 54, unknown: 0}],
       stashes: [{server: 'test', stash: 'fixture', items: [{id: 'minecraft:diamond', observed: 64, reserved: 10, available: 54, unknown: 0}]}],
-      sources: [{server: 'test', stash: 'fixture', dimension: 'minecraft:overworld', parts: [[1, 64, 2]],
+      sources: [{id: 'c:test', slotSchema: 1, slotCount: 1, server: 'test', stash: 'fixture', dimension: 'minecraft:overworld', parts: [[1, 64, 2]],
         state: 'STALE_AGE', sourceRevision: 11, verifiedAt: 1000}]};
+    if (u.pathname === '/api/v1/stock/source') body = {state: 'STALE_AGE', snapshot: {positions: [{path:'0/26',id:'minecraft:diamond_sword',count:1,copies:1,kind:'ITEM',components:'<img src=x onerror=alert(1)>'}]}};
     if (u.pathname === '/api/v1/stashes') body = [];
     if (u.pathname === '/api/v1/bots') body = [bot];
     if (u.pathname === '/api/v1/users') body = {owner: {name: 'Owner'}, users: [], presets: {}};
@@ -130,6 +131,11 @@ async function scenario(loggedIn) {
       assert.equal(w.document.querySelector('#stock-stashes tr').textContent, 'fixtureminecraft:diamond6410540');
       assert.equal(w.document.querySelector('#stock-balances img'), null, 'Stock labels must remain plain text');
       assert.match(w.document.querySelector('#stock-sources').textContent, /minecraft:overworld.*1, 64, 2.*Observation expired.*revision 11/);
+      const details = w.document.querySelector('#stock-sources details');
+      details.open = true; details.dispatchEvent(new w.Event('toggle')); await settle();
+      assert(requests.some(x => x.startsWith('/api/v1/stock/source?id=')));
+      assert.match(details.textContent, /0\/26minecraft:diamond_sword/);
+      assert.equal(details.querySelector('img'), null, 'Component patches must remain plain text');
       assert(requests.some(x => x.includes('/settings?scope=plugin')));
     }
     assert.deepEqual(errors, []);

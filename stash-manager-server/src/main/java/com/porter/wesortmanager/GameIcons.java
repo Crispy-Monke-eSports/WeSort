@@ -1,6 +1,5 @@
 package com.porter.wesortmanager;
 
-import com.porter.wesortmanager.assets.GameAssets;
 import com.porter.wesortmanager.assets.IconRenderer;
 
 import javax.imageio.ImageIO;
@@ -9,37 +8,30 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Icons rendered from the Minecraft client jar on this machine (the primary source; the wiki pipeline in
- * {@link IconService} is the fallback). One {@link IconRenderer} per Minecraft version, opened on first use
- * and kept open. Renders are cached in data/icons/game-<mcVersion>/<ns>/<path>.png, apart from wiki icons.
+ * Renders Minecraft 26.3 icons exclusively from the official client JAR that
+ * this Manager downloads, verifies and caches itself after explicit EULA acceptance.
+ * Never probes the host's Minecraft installations or user-provided JAR paths.
  */
 final class GameIcons implements AutoCloseable {
     static final int SIZE = 64;
 
     private final Path iconsDir;
-    private final Path override;
     private final boolean enabled;
-    private final boolean acceptMinecraftDownload;
+    private final boolean eulaAccepted;
     private final Map<String, Optional<IconRenderer>> renderers = new ConcurrentHashMap<>();
     /** Per version: ids the renderer can't draw (block-entity items etc.), so they aren't retried. */
     private final Map<String, Set<String>> empty = new ConcurrentHashMap<>();
 
-    GameIcons(Path iconsDir, Path override, boolean enabled) {
-        this(iconsDir, override, enabled, false);
-    }
-
-    GameIcons(Path iconsDir, Path override, boolean enabled, boolean acceptMinecraftDownload) {
+    GameIcons(Path iconsDir, boolean enabled, boolean eulaAccepted) {
         this.iconsDir = iconsDir.toAbsolutePath().normalize();
-        this.override = override;
         this.enabled = enabled;
-        this.acceptMinecraftDownload = acceptMinecraftDownload;
+        this.eulaAccepted = eulaAccepted;
     }
 
     boolean enabled() {
@@ -109,41 +101,17 @@ final class GameIcons implements AutoCloseable {
         return renderers.computeIfAbsent(mcVersion, this::open);
     }
 
-    /** Runs once per version (inside computeIfAbsent), so the log line is printed once. */
+    /** Read only the checksum-verified official client from the private Manager cache. */
     private Optional<IconRenderer> open(String mcVersion) {
-        // Same search order as GameAssets.locate, but a file that exists and can't be opened (not a jar, a
-        // pre-1.21.4 jar) doesn't end the search: the next candidate is tried.
-        List<Path> tried = GameAssets.candidates(mcVersion, override);
-        for (Path candidate : tried) {
-            if (!Files.isRegularFile(candidate) || !Files.isReadable(candidate)) continue;
-            try {
-                if (!GameAssets.matchesVersion(candidate, mcVersion)) continue;
-                IconRenderer r = IconRenderer.open(candidate, SIZE);
-                if (override != null && !candidate.startsWith(override)) {
-                    System.out.println("Game icons " + mcVersion + ": minecraftJar=" + override + " has no usable client jar for "
-                        + mcVersion + ", found one automatically instead.");
-                }
-                System.out.println("Game icons " + mcVersion + ": rendering from " + candidate);
-                return Optional.of(r);
-            } catch (IOException | RuntimeException e) {
-                System.out.println("Game icons " + mcVersion + ": can't use " + candidate + " (" + e.getMessage() + ")");
-            }
+        if (!"26.3".equals(mcVersion) || !eulaAccepted) return Optional.empty();
+        try {
+            return Optional.of(IconRenderer.open(VanillaAssets.client26(iconsDir, eulaAccepted), SIZE));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            System.err.println("Game icons 26.3: interrupted while loading official client assets");
+        } catch (IOException | RuntimeException e) {
+            System.err.println("Game icons 26.3: official client assets unavailable: " + e.getMessage());
         }
-        if (mcVersion.equals("26.3") && acceptMinecraftDownload) {
-            try {
-                return Optional.of(IconRenderer.open(VanillaAssets.client26(iconsDir, acceptMinecraftDownload), SIZE));
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            } catch (IOException | RuntimeException e) {
-                System.out.println("Game icons 26.3: official assets unavailable (safe fallback): " + e.getMessage());
-            }
-        }
-        if (mcVersion.equals("26.3") && !acceptMinecraftDownload) {
-            System.out.println("Game icons 26.3: automatic Mojang client download disabled (acceptMinecraftDownload=false).");
-        }
-        System.out.println("Game icons " + mcVersion + ": no usable client jar, "
-            + (mcVersion.equals("26.3") ? "using safe missing-texture fallback" : "using the Minecraft Wiki") + ". Looked in:");
-        for (Path p : tried) System.out.println("    " + p);
         return Optional.empty();
     }
 

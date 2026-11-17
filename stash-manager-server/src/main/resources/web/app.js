@@ -279,7 +279,7 @@
   // hides what the user can't use. A server without sub-users sends no user: that is the owner, with everything.
 
   var OWNER_PERMS = {
-    view: true, order: true, ordersAll: true, activity: true, settings: true,
+    view: true, order: true, ordersAll: true, guildOrders: true, activity: true, settings: true,
     rescan: true, link: true, streamer: false, stashes: null, bots: null
   };
   var me = { id: "owner", name: "", owner: true, mustChange: false, perms: OWNER_PERMS };
@@ -458,6 +458,7 @@
     el.authConfirm.value = "";
     refreshSudo();
     applyPerms(false);
+    loadGuildProfile();
     if (first) {
       renderTabs();
       showPage(dash.page);
@@ -709,7 +710,7 @@
     if (!status || !balances || !sources) return;
     var rows = data && Array.isArray(data.items) ? data.items : [];
     var physical = data && Array.isArray(data.sources) ? data.sources : [];
-    status.textContent = physical.length ? physical.length + " physical sources · revision " + data.stockRevision +
+    status.textContent = rows.length || physical.length ? rows.length + " item variants · " + physical.length + " visible physical sources · revision " + data.stockRevision +
       " · freshness limit " + Math.round(data.maxAgeMillis / 1000) + " s" + (rows.length > 200 ? " · showing 200 of " + rows.length + " item variants" : "") : "No verified physical observations yet. A new scan is required.";
     if (data && Array.isArray(data.automation) && data.automation.length) status.textContent += " · physical sorting active or awaiting reconciliation; new orders paused";
     balances.replaceChildren(); sources.replaceChildren();
@@ -734,7 +735,7 @@
       var position = Array.isArray(source.parts) ? " · " + source.parts.map(function (p) { return p.join(", "); }).join(" / ") : "";
       var observedDate = new Date(Number(source.verifiedAt));
       var observedLabel = Number(source.verifiedAt) > 0 && Number.isFinite(observedDate.getTime()) ? observedDate.toISOString() : "not verified";
-      var sourceState = ({FRESH: "Fresh", PROTECTED: "Protected stock; automation blocked", STALE_STARTUP: "Rescan required after restart", STALE_AGE: "Observation expired", STALE: "Rescan required", UNREACHABLE: "Cannot reach container", UNKNOWN: "Not read yet", MISSING: "Container missing", WITHDRAWN: "Absent from latest scan; contents unknown", SHARED_SOURCE: "Shared source; ordering paused"})[source.state] || source.state;
+      var sourceState = ({FRESH: "Fresh", PROTECTED: "Protected stock; automation blocked", STALE_STARTUP: "Rescan required after restart", STALE_AGE: "Observation expired", STALE: "Rescan required", UNREACHABLE: "Cannot reach container", UNKNOWN: "Not read yet", MISSING: "Container missing", WITHDRAWN: "Absent from latest scan; contents unknown", SHARED_SOURCE: source.slotSchema ? "Shared physical source" : "Shared source; ordering paused"})[source.state] || source.state;
       row.textContent = (source.serverLabel || source.server) + " · " + (Array.isArray(source.stashes) ? source.stashes.join(", ") : source.stash) + " · " + (source.dimension || "") + position + " · " + sourceState +
         " · revision " + source.sourceRevision + " · last verified " + observedLabel;
       if (source.id && source.slotSchema) {
@@ -3514,6 +3515,7 @@
       ? parts.join(" + ") + " · " + plural(String(need), "shulker") + " to deliver" + (units ? "" : ". Too many: one order can fill at most " + MAX_SHULKERS + " (one double chest).")
       : "";
     el.cartTotals.classList.toggle("warn", !units);
+    $("order-purpose-row").hidden = !can("guildOrders");
     el.cartPlace.disabled = !cart.lines.length || !state.items.length || !units;
     el.cartClear.disabled = !cart.lines.length;
     var s = currentStash();
@@ -3540,13 +3542,16 @@
     var sent = cart.lines.slice();
     api("/api/v1/orders", {
       method: "POST",
-      body: { server: s.server, stash: s.stash, names: namesBody(), lines: sent }
+      body: { server: s.server, stash: s.stash, names: namesBody(), lines: sent,
+        purpose: can("guildOrders") ? $("order-purpose").value : "SELF", comment: $("order-comment").value }
     }).then(function () {
       cart.lines = [];
       cart.badLine = -1;
       plan.selected = null;
       saveCart();
       resetNames();
+      $("order-purpose").value = "SELF";
+      $("order-comment").value = "";
       el.cartStatus.textContent = s.online ? "Order placed." : "Order placed. It will start when the bot reconnects.";
       toast("Order placed");
       renderCart();
@@ -4058,6 +4063,7 @@
       head.appendChild(when);
       var by = o.placedBy && typeof o.placedBy === "object" ? str(o.placedBy.name) : "";
       if (by) head.appendChild(line("note order-by", "by " + by));
+      if (o.purpose === "GUILD") head.appendChild(line("note", "Guild order"));
       var manage = canManageOrder(o);
       if (manage && OPEN_STATUS[o.status] && !o.cancelRequested) {
         var cancel = document.createElement("button");
@@ -4119,6 +4125,9 @@
         head.appendChild(force);
       }
       card.appendChild(head);
+      if (o.recipient) card.appendChild(line("note", "Requested recipient · " + o.recipient));
+      if (o.comment) card.appendChild(line("note", o.comment));
+
 
       if (o.phase || o.progress) {
         var phase = document.createElement("div");
@@ -4263,6 +4272,7 @@
       settingsForm.load(true);
       if (me.owner) loadUsers();
       $("kit-admin").hidden = !me.owner || forcedStreamer();
+      $("guild-admin").hidden = !me.owner;
       $("physical-admin").hidden = !me.owner || forcedStreamer();
       if (!$("physical-admin").hidden) loadPhysicalOperations();
     }
@@ -4529,6 +4539,43 @@
       name: $("kit-name").value, revision: kitEditor.revision, fingerprint: kitEditor.fingerprint,
       workspace: { dimension: $("kit-dimension").value, x: Number($("kit-work-x").value), y: Number($("kit-work-y").value), z: Number($("kit-work-z").value) }
     } }).then(function () { kitMessage("Packing job assigned. Completion requires fresh destination verification."); loadKitJobs(); }).catch(kitFailure);
+  });
+
+  var guildRevision = 0;
+  function showGuildProfile(profile) {
+    if (typeof profile.name !== "string" || !Number.isSafeInteger(profile.revision)) return;
+    guildRevision = profile.revision;
+    $("guild-heading").textContent = profile.name;
+    $("guild-stock-title").textContent = profile.name + " · Shared stock";
+    var description = $("guild-description-view");
+    description.textContent = profile.description || "";
+    description.hidden = !profile.description;
+    $("guild-name").value = profile.name;
+    $("guild-description").value = profile.description || "";
+    $("guild-save").disabled = !me.owner;
+  }
+
+  function loadGuildProfile() {
+    return api("/api/v1/guild").then(showGuildProfile).catch(function (error) {
+      $("guild-status").textContent = error.message;
+    });
+  }
+
+  $("guild-form").addEventListener("submit", function (event) {
+    event.preventDefault();
+    if (!me.owner || !guildRevision) return;
+    var save = $("guild-save");
+    save.disabled = true;
+    api("/api/v1/guild", {method: "POST", body: {
+      name: $("guild-name").value, description: $("guild-description").value, expectedRevision: guildRevision
+    }}).then(function (profile) {
+      showGuildProfile(profile);
+      $("guild-status").textContent = "Guild profile saved.";
+    }).catch(function (error) {
+      $("guild-status").textContent = error.message;
+      if (error.status === 409) loadGuildProfile();
+      else save.disabled = false;
+    });
   });
 
   function loadPhysicalOperations() {
@@ -5764,14 +5811,15 @@
     ["view", "View stashes", "Stash list, stash index, item icons and the order list."],
     ["order", "Place orders", "Place orders; cancel, retry or force-cancel their own orders."],
     ["ordersAll", "Manage all orders", "Cancel, retry or force-cancel anyone's orders; Clear history."],
+    ["guildOrders", "Place guild orders", "Choose a guild purpose or declare a separate recipient when placing an order."],
     ["activity", "Bots and activity", "Bots tab, Activity, job status and the plugin settings (read only)."],
     ["settings", "Change plugin settings", "Save the WeSort plugin settings."],
     ["rescan", "Rescan stashes", "Ask the bot to re-read every container of a stash."],
     ["link", "Link addon", "The Link addon panel (linked bots in scope) and releasing a stash. The API key itself stays owner-only."],
     ["streamer", "Force streamer mode", "A restriction: the server never sends this user coordinates, player names, server addresses, chat or the bots' free text. Bot settings are refused. The user can't turn it off."]
   ];
-  var PRESET_ORDER = ["viewer", "orderer", "operator"];
-  var PRESET_NAMES = { viewer: "Viewer", orderer: "Orderer", operator: "Operator" };
+  var PRESET_ORDER = ["viewer", "member", "operator", "officer"];
+  var PRESET_NAMES = { viewer: "Viewer", member: "Member", orderer: "Orderer", operator: "Operator", officer: "Officer" };
   var IMPLIED_HINT = "Placing or managing orders also turns on View stashes. Changing agent settings also turns on Bots and activity.";
   var SUDO_USERS_TEXT = "Managing users needs Admin unlocked. Type your password again; it is not asked for again for 15 minutes.";
   var users = { data: null, error: "", loading: false, form: null, busy: false, seq: 0 };
@@ -5806,7 +5854,7 @@
     var presets = users.data && users.data.presets && typeof users.data.presets === "object" ? users.data.presets : {};
     var names = PRESET_ORDER.filter(function (n) { return presets[n] && typeof presets[n] === "object"; });
     Object.keys(presets).forEach(function (n) {
-      if (names.indexOf(n) < 0 && presets[n] && typeof presets[n] === "object") names.push(n);
+      if (!(n === "orderer" && presets.member) && names.indexOf(n) < 0 && presets[n] && typeof presets[n] === "object") names.push(n);
     });
     return names.map(function (n) { return { id: n, name: PRESET_NAMES[n] || n, perms: presets[n] }; });
   }

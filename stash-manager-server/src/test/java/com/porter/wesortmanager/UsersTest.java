@@ -198,6 +198,56 @@ class UsersTest {
     }
 
     @Test
+    void membersUseOneGuildStockAndOfficersRetainOrdersAfterMemberRevocation() throws Exception {
+        String owner = owner();
+        String memberId = create(owner, "Maker", "member", false);
+        String officerId = create(owner, "Officer", "officer", false);
+        create(owner, "Reader", "viewer", false);
+        String member = login("Maker", TEMP_PW);
+        String officer = login("Officer", TEMP_PW);
+        String viewer = login("Reader", TEMP_PW);
+
+        var profile = get(member, "/api/v1/guild").obj();
+        assertEquals(profile, get(viewer, "/api/v1/guild").obj());
+        assertEquals(get(member, "/api/v1/stock").obj().get("items"), get(viewer, "/api/v1/stock").obj().get("items"));
+        var request = json("""
+            {"server":"s","stash":"a","lines":[{"type":"item","key":"minecraft:diamond","count":2}]}
+            """);
+        assertEquals(403, post(viewer, "/api/v1/orders", request.toString()).status);
+        var self = post(member, "/api/v1/orders", request.toString());
+        assertEquals(200, self.status);
+        var selfOrder = self.obj().getAsJsonObject("order");
+        assertEquals("SELF", selfOrder.get("purpose").getAsString());
+        assertEquals(memberId, selfOrder.get("requestedBy").getAsString());
+        assertEquals(profile.get("id"), selfOrder.get("organizationId"));
+
+        request.addProperty("purpose", "GUILD");
+        request.addProperty("recipient", "MinecraftUser");
+        request.addProperty("comment", "Projekt Å <test>");
+        assertEquals(403, post(member, "/api/v1/orders", request.toString()).status);
+        var response = post(officer, "/api/v1/orders", request.toString());
+        assertEquals(200, response.status);
+        var guildOrder = response.obj().getAsJsonObject("order");
+        assertEquals(officerId, guildOrder.get("requestedBy").getAsString());
+        assertEquals("MinecraftUser", guildOrder.get("recipient").getAsString());
+        assertEquals("Projekt Å <test>", guildOrder.get("comment").getAsString());
+        assertEquals(profile.get("id"), guildOrder.get("organizationId"));
+        assertFalse(get(viewer, "/api/v1/orders?server=s&stash=a").obj().toString().contains("Projekt Å"));
+        String own = selfOrder.get("id").getAsString();
+        assertTrue(audit.newest(30).toString().contains(own + " SELF"));
+        assertFalse(audit.newest(30).toString().contains("Projekt Å"));
+        String other = guildOrder.get("id").getAsString();
+        assertEquals(200, post(officer, "/api/v1/orders/" + other + "/cancel", "{}").status);
+        assertEquals(200, post(owner, "/api/v1/users/" + officerId, "{\"preset\":\"member\"}").status);
+        assertEquals(403, post(officer, "/api/v1/orders/" + other + "/retry", "{}").status);
+        var balances = get(viewer, "/api/v1/stock").obj().get("items");
+        assertEquals(200, post(owner, "/api/v1/users/" + memberId, "{\"disabled\":true}").status);
+        assertEquals(401, get(member, "/api/v1/orders?server=s&stash=a").status);
+        assertEquals(balances, get(viewer, "/api/v1/stock").obj().get("items"));
+        assertTrue(get(owner, "/api/v1/orders?server=s&stash=a").obj().toString().contains(own));
+    }
+
+    @Test
     void everyLoggedInRouteDeclaresAPermission() {
         List<String> routes = router.describe();
         for (String r : routes) {
@@ -205,9 +255,9 @@ class UsersTest {
                 assertTrue(r.matches(".* (SESSION|BROWSER_WRITE) [A-Z_]+$"), r);
             }
         }
-        // The only routes any user may use whatever their permissions are the auth ones.
+        // Every member can use account controls and read the common guild identity.
         for (String r : routes) {
-            if (r.endsWith(" ANY")) assertTrue(r.contains("/api/v1/auth/"), r);
+            if (r.endsWith(" ANY")) assertTrue(r.contains("/api/v1/auth/") || r.equals("[GET, HEAD] /api/v1/guild SESSION ANY"), r);
         }
         assertThrows(IllegalArgumentException.class, () -> router.exact(Router.GET, "/x", Router.Guard.SESSION, ex -> { }));
         assertTrue(routes.stream().anyMatch(r -> r.contains("/api/v1/users") && r.endsWith(" OWNER")));

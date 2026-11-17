@@ -167,6 +167,10 @@ final class UserRoutes {
         // Force streamer mode is only changed by an explicit "streamer" key: a preset, or perms from an older page
         // without the key, keep the stored flag (nobody gets un-forced by accident).
         if (perms != null && before != null && !explicitStreamer(o)) perms = perms.withStreamer(before.perms().streamer());
+        if (perms != null && before != null && o.has("perms") && o.get("perms").isJsonObject()
+            && !o.getAsJsonObject("perms").has("guildOrders")) {
+            perms = perms.withGuildOrders(before.perms().guildOrders());
+        }
         Users.User u;
         try {
             u = users.update(m.group(1), name, perms, disabled);
@@ -182,6 +186,9 @@ final class UserRoutes {
             ended = sessions.removeUser(u.id(), null);
         }
         StringBuilder what = new StringBuilder(u.name());
+        if (before != null && before.perms().guildOrders() != u.perms().guildOrders()) {
+            what.append(u.perms().guildOrders() ? ", guild orders granted" : ", guild orders revoked");
+        }
         if (before != null && !before.name().equals(u.name())) what.append(", renamed from ").append(before.name());
         if (before != null && before.disabled() != u.disabled()) what.append(u.disabled() ? ", disabled" : ", enabled");
         if (before != null && before.perms().streamer() != u.perms().streamer()) {

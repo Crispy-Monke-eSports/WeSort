@@ -138,19 +138,14 @@ final class Redact {
         o.remove("allocations");
         o.remove("agent");
         o.remove("protectedRoots");
+        o.remove("recipient");
+        o.remove("comment");
         JsonObject by = obj(o, "placedBy");
         boolean mine = by != null && by.has("id") && !by.get("id").isJsonNull() && by.get("id").getAsString().equals(selfId);
         if (by != null && !mine) by.addProperty("name", ANOTHER_USER);
         if (!mine && o.has("names")) o.add("names", JsonNull.INSTANCE);
         scrubField(o, "phase");
         scrubField(o, "message");
-    }
-
-    /** GET /api/v1/orders: every order. */
-    static void orders(JsonObject list, String selfId) {
-        JsonElement e = list.get("orders");
-        if (e == null || !e.isJsonArray()) return;
-        for (JsonElement o : e.getAsJsonArray()) if (o.isJsonObject()) order(o.getAsJsonObject(), selfId);
     }
 
     // ---------- bots ----------

@@ -18,7 +18,7 @@
   <div class="layout">
     <header class="panel header">
       <div class="title-row">
-        <h1 class="title"><img class="brand-logo" src="/wesort-lockup.svg" alt="" aria-hidden="true" width="68" height="61"><span>WeSort Manager</span></h1>
+        <h1 class="title"><img class="brand-logo" src="/wesort-lockup.svg" alt="" aria-hidden="true" width="68" height="61"><span id="guild-heading">WeSort Manager</span></h1>
         <label class="stash-picker picker-stash">
           <span class="label">Stash</span>
           <select id="stash-select" class="mc-select" disabled>
@@ -113,12 +113,12 @@
         </div>
         <div class="summary" id="summary"></div>
         <details class="guild-stock" id="guild-stock">
-          <summary>Guild stock — verified sources</summary>
+          <summary><span id="guild-stock-title">Guild stock</span> — verified sources</summary>
+          <p id="guild-description-view" hidden></p>
           <p id="stock-status">No verified observations yet.</p>
           <p>Observed counts are the last scan, not live inventory. Only fresh, unreserved sources are available for ordering.</p>
           <table><thead><tr><th>Server</th><th>Item</th><th>Observed</th><th>Reserved</th><th>Available</th><th>Unknown</th></tr></thead><tbody id="stock-balances"></tbody></table>
           <details><summary>Stock per stash</summary><table><thead><tr><th>Stash</th><th>Item</th><th>Observed</th><th>Reserved</th><th>Available</th><th>Unknown</th></tr></thead><tbody id="stock-stashes"></tbody></table></details>
-          <p>Reservations are shown per stash. Shared containers stay unavailable until physical allocation is supported.</p>
           <details><summary>Physical sources</summary><ul id="stock-sources"></ul></details>
         </details>
         <div class="hint only-desktop order-hint">Right-click a shulker box to look inside. Shift-click an item to add a stack to the order cart.</div>
@@ -173,6 +173,10 @@
                 <div class="names-warn" id="names-warn" role="status" hidden></div>
                 <div class="note" id="craft-info" role="status" hidden></div>
               </fieldset>
+              <label id="order-purpose-row" hidden>Order for
+                <select id="order-purpose"><option value="SELF">Myself</option><option value="GUILD">The guild</option></select>
+              </label>
+              <label>Comment (optional) <textarea id="order-comment" maxlength="500" rows="2"></textarea></label>
               <div class="cart-actions">
                 <button type="button" class="mc-button" id="cart-place">Place order</button>
                 <button type="button" class="mc-button danger" id="cart-clear">Clear cart</button>
@@ -263,6 +267,15 @@
         </div>
         <div class="note">The theme is saved in this browser, not on the bot. It applies at once and is not part of Save / Revert below.</div>
         <div class="theme-grid" id="theme-grid" role="group" aria-labelledby="appearance-title"></div>
+      </section>
+      <section class="inset" id="guild-admin" hidden aria-labelledby="guild-title">
+        <h2 class="section-title" id="guild-title">Guild profile</h2>
+        <form id="guild-form">
+          <label>Name <input id="guild-name" maxlength="64" required></label>
+          <label>Description <textarea id="guild-description" maxlength="512" rows="2"></textarea></label>
+          <button class="mc-button" id="guild-save" type="submit" disabled>Save guild profile</button>
+        </form>
+        <p class="note" id="guild-status" role="status"></p>
       </section>
       <section class="inset" id="kit-admin" hidden aria-labelledby="kit-admin-title">
         <h2 class="section-title" id="kit-admin-title">Guild kits</h2>

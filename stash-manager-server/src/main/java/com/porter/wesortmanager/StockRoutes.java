@@ -5,7 +5,7 @@ import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.util.*;
 
-/** Source permissions are applied before either guild or stash aggregation. */
+/** All stock viewers share the guild balances. Scope controls access to physical locations. */
 final class StockRoutes {
     private final IndexStore index;
     private final OrderStore orders;
@@ -66,15 +66,19 @@ final class StockRoutes {
     private JsonObject viewWithObservationLock(Users.Principal who) throws IOException {
         var query = index.stock();
         Set<String> blockedServers = new HashSet<>(); JsonArray automation = new JsonArray();
-        for (String server : query.sources().stream().filter(source -> who.perms().seesStash(source.server(), source.stash())).map(StockLedger.Source::server).distinct().toList()) {
+        var sources = query.sources().stream().filter(s -> !s.status().equals("SUPERSEDED")).toList();
+        var visibleServers = new HashSet<String>();
+        for (var source : sources) if (who.perms().seesStash(source.server(), source.stash())) visibleServers.add(source.server());
+        for (String server : sources.stream().map(StockLedger.Source::server).distinct().toList()) {
             var lease = index.automation().current(server);
             if (lease != null) {
-                blockedServers.add(server); var entry = new JsonObject(); entry.addProperty("server", server);
-                entry.addProperty("state", lease.state()); automation.add(entry);
+                blockedServers.add(server);
+                if (visibleServers.contains(server)) {
+                    var entry = new JsonObject(); entry.addProperty("server", server);
+                    entry.addProperty("state", lease.state()); automation.add(entry);
+                }
             }
         }
-        var sources = query.sources().stream().filter(s -> who.perms().seesStash(s.server(), s.stash())
-            && !s.status().equals("SUPERSEDED")).toList();
         Map<String, JsonObject> items = new TreeMap<>(), details = new LinkedHashMap<>();
         Map<IndexStore.StashKey, Map<String, JsonObject>> stashItems = new LinkedHashMap<>();
         Map<String, Long> reserved = new HashMap<>();
@@ -83,6 +87,7 @@ final class StockRoutes {
         Map<String, Map<String, Long>> exactAvailable = new HashMap<>();
         Map<IndexStore.StashKey, Map<String, Long>> stashAvailable = new HashMap<>();
         Map<String, Set<PhysicalReservations.Root>> rootsByServer = new HashMap<>();
+        Set<String> countedSources = new HashSet<>();
         for (var source : sources) {
             var book = new IndexStore.StashKey(source.server(), source.stash());
             if (!stashReserved.containsKey(book)) {
@@ -90,7 +95,6 @@ final class StockRoutes {
                 stashReserved.put(book, holds);
                 holds.forEach((key, amount) -> reserved.merge(source.server() + "\u0000" + key, amount, Math::addExact));
             }
-            addItems(stashItems.computeIfAbsent(book, key -> new TreeMap<>()), source, who);
             String id = source.value().get("id").getAsString();
             var roots = rootsByServer.computeIfAbsent(book.server(), orders::heldRoots);
             if (!physicalStashes.containsKey(book)) {
@@ -99,14 +103,18 @@ final class StockRoutes {
                 if (observations.hasSnapshots()) stashAvailable.put(book, observations.available(roots));
             }
             var typed = physicalStashes.get(book);
+            if (countedSources.add(id)) {
+                addItems(items, source, who);
+                if (typed.hasSnapshots()) {
+                    var totals = exactAvailable.computeIfAbsent(book.server(), ignored -> new HashMap<>());
+                    typed.available(roots, id).forEach((ref,count) -> totals.merge(ref,count,Math::addExact));
+                }
+            }
+            if (!who.perms().seesStash(source.server(), source.stash())) continue;
+            addItems(stashItems.computeIfAbsent(book, key -> new TreeMap<>()), source, who);
             if (details.containsKey(id)) {
                 if (!Redact.forced(who)) details.get(id).getAsJsonArray("stashes").add(source.stash());
                 continue;
-            }
-            addItems(items, source, who);
-            if (typed.hasSnapshots()) {
-                var totals = exactAvailable.computeIfAbsent(book.server(), ignored -> new HashMap<>());
-                typed.available(roots, id).forEach((ref,count) -> totals.merge(ref,count,Math::addExact));
             }
             var detail = source.value().deepCopy();
             detail.addProperty("server", source.server()); detail.addProperty("serverLabel", serverLabel(source.server(), who));
@@ -143,7 +151,16 @@ final class StockRoutes {
         JsonObject out = new JsonObject(); out.addProperty("stockEpoch", query.epoch()); out.addProperty("stockRevision", query.revision());
         out.addProperty("maxAgeMillis", query.maxAge()); out.addProperty("asOf", System.currentTimeMillis());
         out.addProperty("reservationPrecision", exactAvailable.isEmpty() ? "aggregate" : "physical-root");
-        out.add("items", balances(items, reserved, true, who, blockedServers, exactAvailable)); out.add("stashes", stashes);
+        var guildBalances = balances(items, reserved, true, who, blockedServers, exactAvailable);
+        for (var value : guildBalances) {
+            var row = value.getAsJsonObject();
+            if (!visibleServers.contains(row.get("server").getAsString())) {
+                row.remove("server");
+                row.addProperty("serverLabel", "Guild server");
+            }
+        }
+        out.add("items", guildBalances);
+        out.add("stashes", stashes);
         JsonArray physical = new JsonArray(); details.values().forEach(physical::add); out.add("sources", physical); out.add("automation", automation);
         return out;
     }
@@ -155,7 +172,7 @@ final class StockRoutes {
             var item = value.getAsJsonObject(); String key = item.get("key").getAsString();
             var row = rows.computeIfAbsent(source.server() + "\u0000" + key, ignored -> {
                 var result = new JsonObject(); result.addProperty("key", key); result.addProperty("server", source.server()); result.add("id", item.get("id"));
-                result.addProperty("name", Redact.forced(who) ? Redact.prettyId(item.get("id").getAsString())
+                result.addProperty("name", Redact.forced(who) || !who.perms().seesStash(source.server(), source.stash()) ? Redact.prettyId(item.get("id").getAsString())
                     : item.has("name") ? item.get("name").getAsString() : item.get("id").getAsString());
                 for (String field : List.of("observed", "fresh", "unknown")) result.addProperty(field, 0L);
                 return result;

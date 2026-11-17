@@ -5,6 +5,9 @@ from concurrent.futures import ThreadPoolExecutor
 import uuid
 import importlib.util
 import json
+import secrets
+from http.cookiejar import CookieJar
+import urllib.request
 from pathlib import Path
 import shutil
 import subprocess
@@ -19,6 +22,7 @@ require = world.require
 
 class HierarchyHarness(stock.StockHarness):
     reservations = False
+    guild = False
 
     def fixture(self):
         world.Harness.fixture(self)
@@ -78,6 +82,61 @@ class HierarchyHarness(stock.StockHarness):
                 'The reservation or cancellation changed real world inventory')
         self.ok('same live 26.3 shulker roots cannot be reserved as both whole boxes and child stock; sorting lease refused and cancellation restored availability')
 
+    def verify_guild(self):
+        owner = self.browser
+        password = secrets.token_urlsafe(32)
+        users = {}
+        identities = {}
+        status, guild = self.http('/api/v1/guild')
+        require(status == 200, 'Owner could not read the guild profile')
+        status, guild = self.http('/api/v1/guild', {
+            'name': 'Fixture guild', 'description': 'One shared warehouse',
+            'expectedRevision': guild['revision'],
+        })
+        require(status == 200, 'Owner could not edit the guild profile')
+        try:
+            for name, role in [('Builder', 'member'), ('Quartermaster', 'officer'), ('Observer', 'viewer')]:
+                self.browser = owner
+                status, created = self.http('/api/v1/users', {
+                    'name': name, 'password': password, 'preset': role, 'mustChange': False,
+                })
+                require(status == 200, 'Owner could not provision the test member')
+                identities[name] = created['user']['id']
+                self.browser = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(CookieJar()))
+                status, _ = self.http('/api/v1/auth/login', {'username': name, 'password': password})
+                require(status == 200, 'Test member could not log in')
+                users[name] = self.browser
+                require(self.http('/api/v1/guild') == (200, guild), 'Member read a different guild profile')
+            self.browser = users['Observer']
+            status, rows = self.http('/api/v1/stock')
+            require(status == 200 and self.amount(rows, 'minecraft:diamond', 'observed') == 96,
+                    'Viewer did not observe the actual shared Minecraft stock')
+            draft = {'server': self.server_name, 'stash': 'e2e-fixture',
+                     'lines': [{'type': 'item', 'key': 'minecraft:diamond', 'count': 1}]}
+            require(self.http('/api/v1/orders', draft)[0] == 403, 'Viewer could order stock')
+            self.browser = users['Builder']
+            status, self_order = self.http('/api/v1/orders', draft)
+            require(status == 200 and self_order['order']['purpose'] == 'SELF'
+                    and self_order['order']['requestedBy'] == identities['Builder'],
+                    'Member order did not record its independent requester')
+            guild_draft = dict(draft, purpose='GUILD', comment='Projekt Å')
+            require(self.http('/api/v1/orders', guild_draft)[0] == 403, 'Member bypassed the guild order permission')
+            self.browser = users['Quartermaster']
+            status, guild_order = self.http('/api/v1/orders', guild_draft)
+            require(status == 200 and guild_order['order']['organizationId'] == guild['id']
+                    and guild_order['order']['requestedBy'] == identities['Quartermaster'],
+                    'Guild order did not reserve stock under the common organisation')
+            self.browser = owner
+            require(self.http('/api/v1/users/' + identities['Builder'], {'disabled': True})[0] == 200,
+                    'Owner could not revoke membership')
+            self.browser = users['Quartermaster']
+            for order in [self_order, guild_order]:
+                require(self.http('/api/v1/orders/' + order['order']['id'] + '/cancel', {})[0] == 200,
+                        'Officer lost control of a member order')
+        finally:
+            self.browser = owner
+        self.ok('one real Fabric agent feeds a shared Docker guild stock; member, officer and viewer roles and recipient-independent order identity verified')
+
     def execute(self):
         try:
             self.start_server(); self.fixture(); self.start_manager(); self.start_client()
@@ -93,6 +152,8 @@ class HierarchyHarness(stock.StockHarness):
             a = self.detail(self.source(observed, 0, -3)); b = self.detail(self.source(observed, 6, -3))
             if self.reservations:
                 self.verify_reservations(a, before)
+            if self.guild:
+                self.verify_guild()
             positions = {row['path']: row for row in a['snapshot']['positions']}
             other = {row['path']: row for row in b['snapshot']['positions']}
             require(positions['0']['fingerprint'] == positions['20']['fingerprint'] == other['0']['fingerprint'], 'Identical box contents differ by physical location')
@@ -139,7 +200,9 @@ class HierarchyHarness(stock.StockHarness):
 if __name__ == '__main__':
     parser=argparse.ArgumentParser(description=__doc__); parser.add_argument('--manager-image',default=world.DEFAULT_IMAGE)
     parser.add_argument('--reservations', action='store_true')
+    parser.add_argument('--guild', action='store_true')
     args = parser.parse_args()
     harness = HierarchyHarness(args.manager_image)
     harness.reservations = args.reservations
+    harness.guild = args.guild
     harness.execute()

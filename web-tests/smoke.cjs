@@ -57,6 +57,8 @@ async function scenario(loggedIn) {
   const requests = [];
   const kitWrites = [];
   const physicalReviews = [];
+  const guildUpdates = [];
+  let guild = {name: "<img src=x> Guild", description: "Shared stock", revision: 1};
   w.addEventListener('error', e => errors.push(e.error || e.message));
   const globals = Object.fromEntries(Object.getOwnPropertyNames(w).map(x => [x, 'readonly']));
   Object.assign(globals, {fetch: 'readonly', EventSource: 'readonly', ResizeObserver: 'readonly',
@@ -73,6 +75,14 @@ async function scenario(loggedIn) {
     let body = {};
     if (u.pathname === '/api/v1/auth/state') body = {loggedIn, minLength: 14,
       elevatedUntil: Date.now() + 600000, user: {id: 'owner', name: 'Owner', owner: true}};
+    if (u.pathname === '/api/v1/guild') {
+      if (opts.method === 'POST') {
+        const update = JSON.parse(opts.body);
+        guildUpdates.push(update);
+        guild = {name: update.name, description: update.description, revision: guild.revision + 1};
+      }
+      body = guild;
+    }
     if (u.pathname === '/api/v1/stock') body = {stockRevision: 12, maxAgeMillis: 300000,
       items: [{server: 'test', id: 'minecraft:diamond', name: '<img src=x onerror=alert(1)>', observed: 64, reserved: 10, available: 54, unknown: 0}],
       stashes: [{server: 'test', stash: 'fixture', items: [{id: 'minecraft:diamond', observed: 64, reserved: 10, available: 54, unknown: 0}]}],
@@ -156,6 +166,14 @@ async function scenario(loggedIn) {
       assert(requests.some(x => x.includes('/settings?scope=plugin')));
       w.document.querySelector('#dash-nav [data-page="settings"]').click(); await settle();
       assert.equal(w.document.querySelector('#kit-admin').hidden, false);
+      assert.equal(w.document.querySelector('#guild-admin').hidden, false);
+      assert.match(w.document.querySelector('#guild-stock-title').textContent, /<img src=x> Guild.*Shared stock/);
+      assert.equal(w.document.querySelector('#guild-stock-title img'), null);
+      w.document.querySelector('#guild-name').value = 'New guild';
+      w.document.querySelector('#guild-form').dispatchEvent(new w.Event('submit', {cancelable: true}));
+      await settle();
+      assert.deepEqual(guildUpdates, [{name:'New guild', description:'Shared stock', expectedRevision:1}]);
+      assert.match(w.document.querySelector('#guild-stock-title').textContent, /New guild/);
       assert.equal(w.document.querySelector('#physical-admin').hidden, false);
       assert.match(w.document.querySelector('#physical-list').textContent, /NEEDS_RECONCILIATION.*BREAK.*Order o-one/);
       assert.equal(w.document.querySelector('#physical-list img'), null);

@@ -479,6 +479,22 @@ class StreamerTest {
     }
 
     @Test
+    void guildProfileIsSharedAcrossMembersAndOnlyOwnerCanWriteIt() throws Exception {
+        var first = get(uma, "/api/v1/guild");
+        assertEquals(200, first.status());
+        assertEquals(first.obj(), get(fay, "/api/v1/guild").obj());
+        String update = "{\"expectedRevision\":1,\"name\":\" Guild example \",\"description\":\"Team's common stock\"}";
+        assertEquals(403, post(uma, "/api/v1/guild", update).status());
+        var changed = post(owner, "/api/v1/guild", update);
+        assertEquals(200, changed.status());
+        assertEquals("Guild example", changed.obj().get("name").getAsString());
+        assertEquals(first.obj().get("id"), changed.obj().get("id"));
+        assertEquals(changed.obj(), GuildProfile.open(data.resolve("guild.json")).json());
+        assertEquals(409, post(owner, "/api/v1/guild", update).status());
+        assertEquals(changed.obj(), get(fay, "/api/v1/guild").obj());
+    }
+
+    @Test
     void onlyOwnerCanReadPhysicalOperations() throws Exception {
         assertEquals(200, get(owner, "/api/v1/physical").status());
         assertEquals(403, get(uma, "/api/v1/physical").status());
@@ -510,7 +526,8 @@ class StreamerTest {
             "[POST] /api/v1/stashes/release BROWSER_WRITE LINK",
             "[POST] /api/v1/rescan BROWSER_WRITE RESCAN",
             "[POST] /api/v1/orders/clear BROWSER_WRITE ORDERS_ALL",
-            "[GET, HEAD] /icon/ SESSION ICONS");
+            "[GET, HEAD] /icon/ SESSION ICONS",
+            "[GET, HEAD] /api/v1/guild SESSION ANY");
         java.util.Set<String> forbidden = java.util.Set.of(
             "[GET, HEAD] /api/v1/kits SESSION VIEW",
             "[POST] ^/api/v1/bots/([A-Za-z0-9_-]{1,64})/(settings|jobs|activity)$ BROWSER_WRITE ACTIVITY");
@@ -527,7 +544,8 @@ class StreamerTest {
             "[POST] /api/v1/users/owner BROWSER_WRITE OWNER",
             "[POST] ^/api/v1/users/(u-[0-9a-f]{12})$ BROWSER_WRITE OWNER",
             "[POST] ^/api/v1/users/(u-[0-9a-f]{12})/(password|logout|delete)$ BROWSER_WRITE OWNER",
-            "[GET, HEAD] /api/v1/audit SESSION OWNER");
+            "[GET, HEAD] /api/v1/audit SESSION OWNER",
+            "[POST] /api/v1/guild BROWSER_WRITE OWNER");
         List<String> unclassified = new ArrayList<>();
         for (String r : router.describe()) {
             boolean loggedIn = r.contains(" SESSION ") || r.contains(" BROWSER_WRITE ") || r.contains(" BROWSER_UPLOAD ");

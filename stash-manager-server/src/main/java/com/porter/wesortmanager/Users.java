@@ -44,9 +44,9 @@ final class Users {
     }
 
     record Perms(boolean view, boolean order, boolean ordersAll, boolean activity, boolean settings,
-                 boolean rescan, boolean link, boolean streamer, List<StashRef> stashes, List<String> bots) {
+                 boolean rescan, boolean link, boolean streamer, List<StashRef> stashes, List<String> bots, boolean guildOrders) {
         static final Perms NONE = of(false, false, false, false, false, false, false, null, null);
-        static final Perms ALL = of(true, true, true, true, true, true, true, null, null);
+        static final Perms ALL = of(true, true, true, true, true, true, true, null, null).withGuildOrders(true);
 
         static Perms of(boolean view, boolean order, boolean ordersAll, boolean activity, boolean settings,
                         boolean rescan, boolean link, List<StashRef> stashes, List<String> bots) {
@@ -56,11 +56,15 @@ final class Users {
         static Perms of(boolean view, boolean order, boolean ordersAll, boolean activity, boolean settings,
                         boolean rescan, boolean link, boolean streamer, List<StashRef> stashes, List<String> bots) {
             return new Perms(view || order || ordersAll, order, ordersAll, activity || settings, settings,
-                rescan, link, streamer, stashes == null ? null : List.copyOf(stashes), bots == null ? null : List.copyOf(bots));
+                rescan, link, streamer, stashes == null ? null : List.copyOf(stashes), bots == null ? null : List.copyOf(bots), false);
         }
 
         Perms withStreamer(boolean on) {
-            return new Perms(view, order, ordersAll, activity, settings, rescan, link, on, stashes, bots);
+            return new Perms(view, order, ordersAll, activity, settings, rescan, link, on, stashes, bots, guildOrders);
+        }
+
+        Perms withGuildOrders(boolean allowed) {
+            return new Perms(view, order, ordersAll, activity, settings, rescan, link, streamer, stashes, bots, allowed);
         }
 
         boolean seesStash(String server, String stash) {
@@ -73,6 +77,7 @@ final class Users {
             o.addProperty("view", view);
             o.addProperty("order", order);
             o.addProperty("ordersAll", ordersAll);
+            o.addProperty("guildOrders", guildOrders);
             o.addProperty("activity", activity);
             o.addProperty("settings", settings);
             o.addProperty("rescan", rescan);
@@ -134,7 +139,7 @@ final class Users {
                 if (bots.size() > MAX_SCOPE) throw new IllegalArgumentException("at most " + MAX_SCOPE + " bots");
             }
             return of(bool(o, "view"), bool(o, "order"), bool(o, "ordersAll"), bool(o, "activity"), bool(o, "settings"),
-                bool(o, "rescan"), bool(o, "link"), bool(o, "streamer"), stashes, bots);
+                bool(o, "rescan"), bool(o, "link"), bool(o, "streamer"), stashes, bots).withGuildOrders(bool(o, "guildOrders"));
         }
 
         private static boolean bool(JsonObject o, String key) {
@@ -155,6 +160,8 @@ final class Users {
         Map<String, Perms> p = new LinkedHashMap<>();
         p.put("viewer", Perms.of(true, false, false, false, false, false, false, null, null));
         p.put("orderer", Perms.of(true, true, false, false, false, false, false, null, null));
+        p.put("member", p.get("orderer"));
+        p.put("officer", Perms.of(true, true, true, true, false, false, false, null, null).withGuildOrders(true));
         p.put("operator", Perms.of(true, true, true, true, true, true, false, null, null));
         PRESETS = java.util.Collections.unmodifiableMap(p);
     }

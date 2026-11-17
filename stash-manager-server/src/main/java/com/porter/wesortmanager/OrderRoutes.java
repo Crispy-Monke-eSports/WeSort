@@ -30,7 +30,10 @@ final class OrderRoutes {
     private final Owners owners;
     private final AuditLog audit;
 
-    OrderRoutes(OrderStore orders, Owners owners, AuditLog audit) {
+    private final GuildRoutes guild;
+
+    OrderRoutes(OrderStore orders, Owners owners, AuditLog audit, GuildRoutes guild) {
+        this.guild = guild;
         this.orders = orders;
         this.owners = owners;
         this.audit = audit;
@@ -107,7 +110,18 @@ final class OrderRoutes {
         }
         server = scoped(ex, server, stash);
         if (server == null) return;
-        // "note" (removed) is ignored if an old page still sends it.
+        Users.Principal who = Router.user(ex);
+        OrderIntent intent;
+        try {
+            intent = OrderIntent.read(o);
+        } catch (IllegalArgumentException invalid) {
+            lineError(ex, 400, "Invalid purpose, recipient or comment", -1);
+            return;
+        }
+        if (intent.requiresGuildPermission() && !who.perms().guildOrders()) {
+            lineError(ex, 403, "Your role cannot request an order for the guild or another recipient", -1);
+            return;
+        }
         JsonObject names;
         try {
             names = OrderStore.normalizeNames(o.get("names"));
@@ -148,8 +162,9 @@ final class OrderRoutes {
             lines.add(line);
         }
         try {
-            Users.Principal who = Router.user(ex);
-            OrderStore.Order order = orders.place(server, stash, lines, names, who.id(), who.name());
+            OrderStore.Order order = orders.place(server, stash, lines, names, who.id(), who.name(),
+                guild.profile().id().toString(), intent);
+            audit.add(who, "order.place", order.id + " " + intent.purpose().name(), AuthRoutes.address(ex));
             JsonObject out = Http.ok();
             out.add("order", shown(ex, order.toJson()));
             Http.json(ex, 200, out);
@@ -188,13 +203,18 @@ final class OrderRoutes {
         server = scoped(ex, server, stash);
         if (server == null) return;
         JsonObject list = orders.listJson(server, stash);
-        if (Redact.on(ex)) Redact.orders(list, Router.user(ex).id());
+        for (var value : list.getAsJsonArray("orders")) shown(ex, value.getAsJsonObject());
         Http.json(ex, 200, list);
     }
 
     /** An order as this user may see it (forced streamer mode: other users' names and position-like text hidden). */
     private static JsonObject shown(HttpExchange ex, JsonObject order) {
-        if (Redact.on(ex)) Redact.order(order, Router.user(ex).id());
+        Users.Principal viewer = Router.user(ex);
+        if (viewer == null || !viewer.perms().ordersAll() && !viewer.id().equals(order.get("requestedBy").getAsString())) {
+            order.remove("recipient");
+            order.remove("comment");
+        }
+        if (Redact.on(ex)) Redact.order(order, viewer.id());
         return order;
     }
 
@@ -230,7 +250,7 @@ final class OrderRoutes {
                 Router.forbid(ex, "place orders", "order");
                 return;
             }
-            OrderStore.Order order = orders.retry(m.group(1), who.id(), who.name());
+            OrderStore.Order order = orders.retry(m.group(1), who.id(), who.name(), who.perms().guildOrders(), guild.profile().id().toString());
             audit.add(who, "order.retry", m.group(1) + " as " + order.id, AuthRoutes.address(ex));
             JsonObject out = Http.ok();
             out.add("order", shown(ex, order.toJson()));

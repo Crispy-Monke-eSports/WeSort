@@ -63,6 +63,8 @@ final class OrderStore {
         String id;
         String server;
         String stash;
+        String organizationId;
+        OrderIntent intent = OrderIntent.DEFAULT;
         List<Line> lines;
         JsonObject sourceGuards; // Compatibility for orders created before slot allocation.
         List<PhysicalReservations.Allocation> allocations;
@@ -88,6 +90,10 @@ final class OrderStore {
             o.addProperty("id", id);
             o.addProperty("server", server);
             o.addProperty("stash", stash);
+            if (organizationId != null) o.addProperty("organizationId", organizationId);
+            o.addProperty("purpose", intent.purpose().name());
+            o.addProperty("recipient", intent.recipient());
+            o.addProperty("comment", intent.comment());
             JsonArray ls = new JsonArray();
             for (Line l : lines) {
                 JsonObject lo = new JsonObject();
@@ -115,11 +121,13 @@ final class OrderStore {
             if (retriedAs != null && !PENDING.equals(retriedAs)) o.addProperty("retriedAs", retriedAs);
             if (placedById == null) {
                 o.add("placedBy", null);
+                o.addProperty("requestedBy", Users.OWNER_ID);
             } else {
                 JsonObject by = new JsonObject();
                 by.addProperty("id", placedById);
                 by.addProperty("name", placedByName);
                 o.add("placedBy", by);
+                o.addProperty("requestedBy", placedById);
             }
             return o;
         }
@@ -135,6 +143,8 @@ final class OrderStore {
             r.releasedAt = o.has("releasedAt") ? o.get("releasedAt").getAsLong() : 0;
             r.server = o.get("server").getAsString();
             r.stash = o.get("stash").getAsString();
+            r.organizationId = str(o, "organizationId");
+            r.intent = OrderIntent.read(o);
             r.lines = new ArrayList<>();
             for (JsonElement e : o.getAsJsonArray("lines")) {
                 JsonObject l = e.getAsJsonObject();
@@ -364,10 +374,18 @@ final class OrderStore {
     /** The same, recording who placed it (byId null: unknown, counted as the owner's). */
     Order place(String server, String stash, List<Line> requested, JsonObject names, String byId, String byName)
         throws OrderException, IOException {
-        synchronized (index) { return placeWithObservationLock(server, stash, requested, names, byId, byName); }
+        return place(server, stash, requested, names, byId, byName, null, OrderIntent.DEFAULT);
     }
 
-    private Order placeWithObservationLock(String server, String stash, List<Line> requested, JsonObject names, String byId, String byName)
+    Order place(String server, String stash, List<Line> requested, JsonObject names, String byId,
+                String byName, String organizationId, OrderIntent intent) throws OrderException, IOException {
+        synchronized (index) {
+            return placeWithObservationLock(server, stash, requested, names, byId, byName, organizationId, intent);
+        }
+    }
+
+    private Order placeWithObservationLock(String server, String stash, List<Line> requested, JsonObject names,
+                                           String byId, String byName, String organizationId, OrderIntent intent)
         throws OrderException, IOException {
         if (index.automation().current(server) != null) throw new OrderException(409, "Physical sorting active or awaiting reconciliation", -1);
         if (requested.isEmpty()) throw new OrderException(400, "an order needs at least one line", -1);
@@ -436,6 +454,8 @@ final class OrderStore {
             o.id = newId();
             o.server = server;
             o.stash = stash;
+            o.organizationId = organizationId;
+            o.intent = intent;
             o.lines = new ArrayList<>(merged.values());
             o.names = names == null ? null : names.deepCopy();
             o.allocations = allocations;
@@ -467,6 +487,10 @@ final class OrderStore {
 
     /** The same; the new order is recorded as placed by byId (who pressed Retry). */
     Order retry(String id, String byId, String byName) throws OrderException, IOException {
+        return retry(id, byId, byName, true, null);
+    }
+
+    Order retry(String id, String byId, String byName, boolean mayOrderForGuild, String organizationId) throws OrderException, IOException {
         Book b = byOrderId.get(id);
         if (b == null) throw new OrderException(404, "no such order", -1);
         List<Line> lines;
@@ -477,6 +501,9 @@ final class OrderStore {
             if (old == null) throw new OrderException(404, "no such order", -1);
             if (!old.status.equals("failed") && !old.status.equals("cancelled")) {
                 throw new OrderException(409, "only failed or cancelled orders can be retried (this one is " + old.status + ")", -1);
+            }
+            if (!mayOrderForGuild && old.intent.requiresGuildPermission()) {
+                throw new OrderException(403, "Your role cannot retry an order for the guild or another recipient", -1);
             }
             // Once only: a second Retry (or a planner part ordered again) would order the same lines twice.
             if (old.retriedAs != null) {
@@ -489,7 +516,8 @@ final class OrderStore {
         }
         Order again;
         try {
-            again = place(b.server, b.stash, lines, names, byId, byName);
+            again = place(b.server, b.stash, lines, names, byId, byName,
+                old.organizationId == null ? organizationId : old.organizationId, old.intent);
         } catch (OrderException | IOException | RuntimeException e) {
             synchronized (b) {
                 if (PENDING.equals(old.retriedAs)) old.retriedAs = null;

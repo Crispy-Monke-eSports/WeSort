@@ -54,14 +54,14 @@ class StockAvailabilityTest {
         assertTrue(view.getAsJsonArray("sources").get(0).getAsJsonObject().get("reserved").isJsonNull());
         assertEquals(64,row.get("observed").getAsLong());assertEquals(10,row.get("reserved").getAsLong());assertEquals(54,row.get("available").getAsLong());assertEquals(0,row.get("unknown").getAsLong());
     }
-    @Test void scopeIsAppliedBeforeAggregationAndSharedContainerCountedOnce()throws Exception{
+    @Test void sharedBalancesCountEachSourceOnceAndScopeLimitsLocationDetails()throws Exception{
         observe("a",64,0);observe("b",64,0);
         var second=StockFixtures.physical(index("b",32),ledger.epoch(),ledger.revision(),ledger.revision()+1,2);
         second.getAsJsonArray("physicalSources").add(StockFixtures.physical(index("b",64),ledger.epoch(),ledger.revision(),ledger.revision()+2,0).getAsJsonArray("physicalSources").get(0));
         store.putIndex(second);
         assertEquals(96,balance(owner).get("observed").getAsLong());
         var restricted=new Users.Principal("u","Reader",false,Users.Perms.of(true,false,false,false,false,false,false,List.of(new Users.StashRef("s","a")),List.of()),false);
-        assertEquals(64,balance(restricted).get("observed").getAsLong());assertEquals(0,available());
+        assertEquals(96,balance(restricted).get("observed").getAsLong());assertEquals(0,available());
         assertEquals(1,new StockRoutes(store,orders).view(restricted).getAsJsonArray("sources").size());
     }
     @Test void sqlSnapshotSurvivesMissingJsonMirrorButRequiresRescanAfterRestart()throws Exception{

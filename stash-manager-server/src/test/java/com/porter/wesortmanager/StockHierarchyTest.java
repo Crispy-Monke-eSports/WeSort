@@ -59,6 +59,13 @@ class StockHierarchyTest {
         assertEquals(frame(32).json(), routes.source(owner, id).getAsJsonObject("snapshot"));
         var hidden = new Users.Principal("hidden", "Hidden", false, Users.Perms.of(true,false,false,false,false,false,false,List.of(new Users.StashRef("s", "other")), List.of()), false);
         assertNull(routes.source(hidden, id));
+        var hiddenStock = routes.view(hidden);
+        assertTrue(hiddenStock.getAsJsonArray("sources").isEmpty());
+        assertTrue(hiddenStock.getAsJsonArray("stashes").isEmpty());
+        var visibleBalance = routes.view(owner).getAsJsonArray("items").get(0).getAsJsonObject();
+        var sharedBalance = hiddenStock.getAsJsonArray("items").get(0).getAsJsonObject();
+        assertEquals(visibleBalance.get("observed"), sharedBalance.get("observed"));
+        assertFalse(sharedBalance.has("server"));
         var forced = new Users.Principal("forced", "Forced", false, Users.Perms.ALL.withStreamer(true), false);
         assertNull(routes.source(forced, id));
         assertFalse(routes.view(forced).toString().contains("slotFingerprint"));

@@ -212,13 +212,15 @@ public final class WeSortManager {
         new AddonRoutes(store, link, icons, orders, owners, delivery).register(router);
         new BrowserRoutes(store, config, link, urls, orders, owners, sessions, audit, delivery).register(router);
         new DeliveryRoutes(delivery, owners).register(router);
-        new OrderRoutes(orders, owners, audit).register(router);
+        var guild = new GuildRoutes(config.dataDir(), audit);
+        new OrderRoutes(orders, owners, audit, guild).register(router);
         new StockRoutes(store, orders).register(router);
         new KitRoutes(store, audit).register(router);
         new PhysicalRoutes(store, audit).register(router);
         new BotRoutes(hub).register(router);
         new DashboardRoutes(hub, store, owners, sessions, audit).register(router);
         new UserRoutes(users, sessions, audit).register(router);
+        guild.register(router);
         new IconRoutes(icons).register(router);
         new StaticRoutes().register(router); // last: the catch-all
         return new Routes(router, authRoutes, delivery);

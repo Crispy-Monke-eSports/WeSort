@@ -83,7 +83,7 @@ class StreamerTest {
         orders.load();
         Owners owners = new Owners(data);
         owners.load();
-        IconService icons = new IconService(data, id -> null, v -> false, new GameIcons(data.resolve("icons"), null, false), false);
+        IconService icons = new IconService(data, id -> null, v -> false, new GameIcons(data.resolve("icons"), false, false), false);
         SessionStore sessions = new SessionStore(data);
         sessions.load();
         Users users = new Users(data);
@@ -108,7 +108,7 @@ class StreamerTest {
             + "\"name\":\"Steve's Kit\",\"count\":1,\"contents\":[{\"slot\":0,\"key\":\"minecraft:dirt\",\"count\":1}]}]}"));
         ok(botPost("/api/v1/heartbeat", "{\"server\":\"2b2t.org\",\"stash\":\"a\",\"player\":\"Bobby\","
             + "\"delivery\":{\"x\":1234,\"y\":64,\"z\":-5678,\"dimension\":\"minecraft:the_nether\"},\"orderBlocker\":\"chest full at 1234, 64, -5678\"}"));
-        ok(botPost("/api/v1/bot/hello", "{\"botId\":\"b1\",\"player\":\"Bobby\",\"runtime\":{\"version\":\"aq-1\",\"mc\":\"1.21.4\"},\"caps\":[\"settings\",\"console\",\"activity\"]}"));
+        ok(botPost("/api/v1/bot/hello", "{\"botId\":\"b1\",\"player\":\"Bobby\",\"runtime\":{\"version\":\"aq-1\",\"mc\":\"26.3\"},\"caps\":[\"settings\",\"console\",\"activity\"]}"));
         long now = System.currentTimeMillis();
         JsonObject raw = JsonParser.parseString("{\"at\":" + now + ",\"connection\":{\"state\":\"online\",\"server\":\"2b2t.org\","
             + "\"dimension\":\"minecraft:the_nether\",\"x\":1234,\"y\":64,\"z\":-5678,\"controllingPlayer\":\"Steve\",\"health\":20},"

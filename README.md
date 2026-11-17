@@ -4,6 +4,8 @@
 >
 > WeSort är ett oberoende communityprojekt och är inte godkänt av eller associerat med Mojang eller Microsoft. [Minecraft Usage Guidelines](https://www.minecraft.net/en-us/usage-guidelines).
 
+**Manager kräver `eula=true` innan start.** Läs [Mojangs EULA](https://www.minecraft.net/en-us/eula) och aktivera sedan `WESORT_EULA=true` i Docker Compose-miljön eller `eula=true` i Managers `config.properties`. Manager laddar själv ned Minecraft 26.3-klienten från Mojang till sin privata cache och kontrollerar filens checksumma. Det finns inget stöd för att ange en lokal Minecraft-installation eller klient-JAR. Utan godkännande, eller om verifierad nedladdning misslyckas, startar inte servern.
+
 WeSort är en lagerfokuserad vidareutveckling av Qwerte för ett gemensamt
 guildlager. Minecraft-porten och testplattformen i steg 2 finns nu i koden;
 den färdiga guildplattformen i [roadmap #1](https://github.com/Crispy-Monke-eSports/WeSort/issues/1)
@@ -27,41 +29,44 @@ Farming, ResetPearl, Build Planner/schematics, generell live world-viewer,
 proxyadministration och fjärrkonsol har avlägsnats. Alla Minecraft-items,
 inklusive dirt, seeds och pearls, är fortfarande vanliga lagervaror.
 
+## Stödd Minecraft-version
+
+**WeSort stöder endast Minecraft 26.3.** Klient-JAR, Fabric/Meteor/Baritone,
+Gradle-bygget, CI, E2E och Manager-index/ikoner är riktade till exakt 26.3.
+Minecraft 1.21.4 och 1.21.11 är historiska Qwerte-baslinjer, **inte**
+stödda installationer eller byggen. De äldre käll-/versionsmålen är borttagna.
+
 ## Bygga och testa
 
-Baslinjen är Minecraft **1.21.4 och 1.21.11**, Java **21.0.9+10** och
-Gradle **9.6.0** via checksummalåst wrapper. Meteor/Loom-versionerna är låsta.
-Varje Minecraft-version får en egen jar. Kör klienttargets sekventiellt:
+Klienten kräver **Temurin Java 25.0.5+8**, Gradle **9.6.0** via
+checksummalåst wrapper, Fabric Loom **1.17.21**, Fabric Loader **0.19.5**,
+Meteor för **26.3 build 22**, samt vid behov Baritone API **1.4.0-26.3**.
+Sätt JAVA_HOME till JDK 25. En enda klient-JAR byggs:
 
 ```sh
-./gradlew --no-daemon clean build -Pmc=1.21.4
+./gradlew --no-daemon clean build
 python3 scripts/test-summary.py build
-./gradlew --no-daemon clean build -Pmc=1.21.11
-python3 scripts/test-summary.py build
+# Verklig 26.3-klient och Stash Window (kräver desktop eller Xvfb/Mesa):
+python3 scripts/mc26/client-runtime.py
+```
+
+`-Pmc=26.3` accepteras för äldre automatiseringsscript, men ett annat
+`-Pmc`-värde ger byggfel. `.java-version` avser nu klientens Java 25.
+
+Manager är ett **separat Java 21-projekt** och körs i produktion bara i
+Linux Docker. För utvecklings- och enhetstester, byt JAVA_HOME till JDK 21:
+
+```sh
 ./gradlew --no-daemon -p stash-manager-server clean build
 python3 scripts/test-summary.py stash-manager-server/build
 npm ci --prefix web-tests
 npm test --prefix web-tests
 ```
 
-26.3-target använder **Java 25.0.5+8**, Loom **1.17.21**, Loader **0.19.5**
-och Meteor **26.3 build 22**. Med JAVA_HOME satt till denna JDK:
-
-```sh
-./gradlew --no-daemon build -Pmc=26.3
-python3 scripts/mc26/client-runtime.py
-```
-
-Runtimeprovet startar riktig Minecraft och Stash Window i en egen gameDir.
-Det kräver desktop eller Xvfb/Mesa och installerar Baritone API 1.4.0-26.3
-i provprofilen. Bygg/klientstart bevisar inte fysisk lagerautomation.
-Se [26.3-toolchain och portstatus](docs/MC_26_3_PORT.md).
-
-Äldre klientjar kräver Fabric Loader 0.18.2+, Meteor för samma Minecraft-version
-och Java 21. 26.3 använder den låsta Java 25-/Loader-/Meteor-matrisen ovan.
-Baritone API baseras på dekroms fork och är valfri vid runtime.
-Vanlig kompilering/enhetstest startar inte Minecraft och bevisar inte fysiska
-inventory clicks, Baritone eller leverans. Se [testbaslinjen](docs/BASELINE.md).
+Minecraft-klientstart och Gradle/JUnit-bevis är olika testnivåer;
+bygg/test ensamt verifierar inte fysisk inventory-hantering, Baritone eller
+leverans. Se [26.3-portstatus](docs/MC_26_3_PORT.md),
+[CI](docs/CI.md) och [historisk upstream-baslinje](docs/BASELINE.md).
 
 ## Avgränsning och fortsatt arbete
 

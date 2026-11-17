@@ -15,5 +15,3 @@ plugins {
 
 rootProject.name = "wesort-addon"
 
-// Keep the mapped 1.21 builds separate from the unobfuscated Java 25 target.
-if (providers.gradleProperty("mc").orNull == "26.3") rootProject.buildFileName = "build-26.3.gradle.kts"

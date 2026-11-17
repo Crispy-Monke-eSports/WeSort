@@ -358,6 +358,10 @@ public final class IndexStore {
         for (String field : new String[]{"player", "mcVersion", "dimension", "indexHash"}) {
             if (o.has(field) && !o.get(field).isJsonNull() && !isString(o, field)) return field + " must be a string";
         }
+        // Missing mcVersion remains valid for API v1; it is interpreted as 26.3.
+        // An explicitly older version is always unsupported.
+        String mcVersion = stringOrNull(o, "mcVersion");
+        if (mcVersion != null && !IconService.DEFAULT_MC.equals(mcVersion)) return "mcVersion must be 26.3";
         if (o.has("generatedAt") && !o.get("generatedAt").isJsonNull() && !isNumber(o, "generatedAt")) return "generatedAt must be a number";
         if (o.has("containers") && !o.get("containers").isJsonNull()) {
             if (!o.get("containers").isJsonObject()) return "containers must be an object";
@@ -522,7 +526,7 @@ public final class IndexStore {
             tabOrder.putIfAbsent(item.get("key").getAsString(), new CreativeTabs.Entry(tab.getAsString(), order));
         }
         String mc = stringOrNull(index, "mcVersion");
-        if (mc == null || !IconService.MC_VERSION.matcher(mc).matches()) mc = IconService.DEFAULT_MC;
+        if (mc == null) mc = IconService.DEFAULT_MC;
         return new Built(new Prepared(
             index.get("server").getAsString(),
             index.get("stash").getAsString(),
@@ -555,6 +559,8 @@ public final class IndexStore {
 
     /** Serializes physical acceptance with availability decisions; then updates the legacy JSON mirror. */
     public synchronized void putIndex(JsonObject index) throws IOException, FullException {
+        String versionError = validate(index);
+        if (versionError != null) throw new IllegalArgumentException(versionError);
         long now = System.currentTimeMillis();
         // Bound index count before committing the authoritative physical observation.
         getOrCreate(index.get("server").getAsString(), index.get("stash").getAsString());

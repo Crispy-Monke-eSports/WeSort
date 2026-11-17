@@ -1,3 +1,5 @@
+> **Supporterad spelversion:** Minecraft **26.3** och inga andra; Fabric/Meteor/Baritone-klienten använder Java 25 och Manager kör separat med Java 21. Den tidigare 1.21.x-matrisen och dess adapters/recipes stöds inte längre.
+
 # W-025: en Manager, en guild och ett globalt lager
 
 En installation äger exakt en guild och ett gemensamt stashnätverk i en

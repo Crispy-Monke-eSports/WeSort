@@ -37,6 +37,10 @@ final class IconRoutes {
             int dash = v.indexOf('-');
             mc = dash < 0 ? v : v.substring(0, dash);
         }
+        if (mc != null && !IconService.DEFAULT_MC.equals(mc)) {
+            Http.error(ex, 400, "Only Minecraft 26.3 is supported");
+            return;
+        }
         IconService.Icon icon = icons.get(ns, path, mc);
         // 503 (still fetching): the page's <img> gets an error event and retries after Retry-After.
         if (icon.status() == 503) ex.getResponseHeaders().set("Retry-After", "2");

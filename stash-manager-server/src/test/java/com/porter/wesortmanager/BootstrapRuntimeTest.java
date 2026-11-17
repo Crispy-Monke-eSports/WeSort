@@ -57,7 +57,7 @@ class BootstrapRuntimeTest {
         Owners owners = new Owners(data);
         SessionStore sessions = new SessionStore(data);
         Users users = new Users(data);
-        IconService icons = new IconService(data, id -> null, v -> false, new GameIcons(data.resolve("icons"), null, false), false);
+        IconService icons = new IconService(data, id -> null, v -> false, new GameIcons(data.resolve("icons"), false, false), false);
         var routes = WeSortManager.routes(config, index, orders, owners, icons, new LinkState(0), List.of(),
             sessions, users, new AuditLog(data), new BotHub(), new LoginLimiter(), health);
         var pool = Executors.newCachedThreadPool();

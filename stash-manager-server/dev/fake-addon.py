@@ -4,7 +4,7 @@
 Standard library only. Run it isolated so nothing is imported from the current folder:
 
     python -I dev/fake-addon.py --url http://127.0.0.1:8768 --data <dataDir> push
-    python -I dev/fake-addon.py --url ... --data ... push --shulker-colours --mc 1.21.4   # icon test index
+    python -I dev/fake-addon.py --url ... --data ... push --shulker-colours --mc 26.3   # icon test index
     python -I dev/fake-addon.py --url ... --data ... heartbeat
     python -I dev/fake-addon.py --url ... --data ... --no-delivery --blocker "no delivery box" heartbeat
     python -I dev/fake-addon.py --url ... --data ... --naming true:30 heartbeat   # anvil set, 30 XP levels
@@ -60,7 +60,7 @@ def shulker_key(item_key, contents):
     return "s:" + hashlib.sha1(canon.encode()).hexdigest()[:10]
 
 
-def build_index(tabs=True, mc="1.21.11", player=None, extra_diamonds=0, containers=None):
+def build_index(tabs=True, mc="26.3", player=None, extra_diamonds=0, containers=None):
     diamonds_box = [{"slot": s, "key": "minecraft:diamond", "count": 64} for s in range(27)]
     kit = [
         {"slot": 0, "key": "minecraft:diamond_sword#3f2a9c1d", "count": 1},
@@ -407,7 +407,7 @@ def main():
     push = sub.add_parser("push", help="push the sample index")
     push.add_argument("--no-tabs", action="store_true", help="an old-style index without tab/tabOrder/shulkers")
     push.add_argument("--other-tabs", action="store_true", help="like a proxy bot: every item has tab \"other\" (the server fills them in)")
-    push.add_argument("--mc", default="1.21.11")
+    push.add_argument("--mc", default="26.3")
     push.add_argument("--extra-diamonds", type=int, default=0)
     push.add_argument("--shulker-colours", action="store_true",
                       help="add every shulker colour (empty, filled, mixed) and the other block-entity items")

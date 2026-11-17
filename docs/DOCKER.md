@@ -59,32 +59,36 @@ exakta betrodda proxy-IP:n får anges i `WESORT_TRUSTED_PROXIES`.
 | WESORT_ALLOWED_HOSTS | Tom: extra DNS-hostnames nekas; ange en uttrycklig lista |
 | WESORT_TRUSTED_PROXIES | Tom: inga forwardingheaders litas på |
 | WESORT_SECURE_COOKIES | true i produktion, false i lokal dev; sätts av deployment, aldrig av en HTTP-header |
-| WESORT_ICON_SOURCE | auto i produktion; game i offline-dev/test |
-| WESORT_ACCEPT_MINECRAFT_DOWNLOAD | Tom/ej satt: läs config.properties (som standard **false**); **true** först efter uttryckligt EULA-/licensgodkännande |
+| WESORT_EULA | Tom/ej satt (nekar start), eller **true** efter att administratören accepterat Minecraft EULA. Kan även sättas som `eula=true` i Managers privata `config.properties` |
 
-### Minecraft-resurser (BlueMap-modell)
+### Obligatorisk Minecraft-EULA och resurshämtning
 
-Manager distribuerar **inte** Mojangs spelklient eller texturer i image/GHCR.
-Utan särskilt medgivande försöker Manager använda en befintlig lokal
-Minecraft-klient-JAR (26.3) angiven via `minecraftJar` i Manager-volymens
-`config.properties`, eller en lokalt installerad spelklient. Docker-imagen
-har normalt ingen Minecraft-installation; saknas lokala resurser visas en
-säker platshållarikon, **ingen automatisk nedladdning görs**.
+**Manager startar inte utan att `eula=true` har aktiverats.** Läs
+[Mojangs EULA](https://www.minecraft.net/en-us/eula) innan installationen.
+Genom att sätta `WESORT_EULA=true` i miljön där `docker compose` körs
+(till exempel i en lokalt hanterad `.env`-fil) eller `eula=true` i
+Managers `/var/lib/wesort/config.properties` bekräftar administratören
+godkännande av EULA, innehav av licens för Minecraft Java Edition och
+att klienten och dess resurser inte kommer att distribueras vidare.
 
-För att uttryckligen godkänna nedladdning, läs först
-[Mojangs EULA](https://www.minecraft.net/en-us/eula). Genom att sätta
-`WESORT_ACCEPT_MINECRAFT_DOWNLOAD=true` i din Compose-miljö (eller
-`acceptMinecraftDownload=true` i Managers skyddade `config.properties`)
-bekräftar du att du accepterar Mojangs EULA, har en giltig licens för
-Minecraft Java Edition och inte kommer redistribuera den hämtade klienten
-eller dess innehåll. Manager hämtar då endast den exakta officiella
-Minecraft 26.3-klient-JAR:en för lokal ikonrendering, verifierar SHA-1 och
-storlek och sparar den i den privata WeSort-volymen. Starta om Manager efter
-inställningsändringen. Utan uttryckligt `true` är nedladdningen spärrad.
+På första godkända start hämtar Manager **själv** den officiella,
+versionslåsta Minecraft 26.3-klient-JAR:en från Mojangs objektserver,
+kontrollerar exakt storlek och SHA-1 samt sparar den i den skyddade
+WeSort-volymen. Nedladdningen görs **innan HTTP-servern kan öppnas**.
+Om hämtning eller verifiering misslyckas avbryts starten. På kommande
+starter återanvänds endast samma privata och på nytt verifierade cache.
 
-Detta följer principen bakom BlueMaps [`accept-download`](https://bluemap.bluecolored.de/wiki/configs/Core.html),
-inte en kopiering av Minecraft-tillgångar. Filerna får inte tas med vid
-backupdistribution, image-bygge eller vidare spridning.
+Manager **stöder inte** `minecraftJar`, sökning i launcher-kataloger,
+lokala spelinstallationer eller `acceptMinecraftDownload`; äldre sådana
+konfigurationsnycklar är utan verkan och ger **inte** EULA-godkännande.
+Enbart `eula=true` / `WESORT_EULA=true` räcker för att aktivera
+nedladdningen; någon separat resursinställning behövs inte.
+
+JAR-filen ingår inte i Git, Docker-imagen eller GHCR-releaser. Redistribuera
+inte nedladdade Minecraft-resurser eller kopiera dem till distribuerade
+säkerhetskopior; uteslut `icons/sources/26.3` och renderade ikoncachar
+från sådana arkiv. Detta bygger på BlueMaps explicita samtyckesprincip
+men använder det enklare startvillkoret `eula=true`.
 
 Inga API-nycklar eller lösenord stöds som Docker build-args eller Compose-env.
 Ändra privata runtimeinställningar i den skyddade volymen om det behövs. Owner
@@ -139,14 +143,14 @@ processlås, SIGTERM/omstart, persistent keys/Owner/sessions/index/order/audit,
 samt en riktig TLS-proxy med betrodd exakt IP, Secure-cookie och Host/Origin.
 TLS-testcontainern/certifikaten är testhjälpare och ingår inte i produktimagen.
 
-Build JDK: Temurin 21.0.9+10 och wrapper 9.2.0, med pinndigest. Runtime:
+Manager-build JDK: Temurin 21.0.9+10 och wrapper 9.6.0, med pinndigest. Runtime:
 Temurin 21.0.13+9, pinndigest och lokalt verifierad. Rapport:
 [W-055 Docker smoke](verification/W-055-docker-smoke.json). Samma tester körs
 i CI utan package-push. De är HTTP-/DOM-/protokolltester, inte en verklig
 Fabric-session eller fysisk Minecraft-leverans. Ingen sådan E2E påstås körd.
 
 Lokalt slutresultat W-055: Manager 104 tester, 0 fel, 1 känt ikon-skip;
-klient 1.21.4 och 1.21.11: 431 tester vardera, 0 fel/skips. Webbens DOM-/
+historiska klienttester för 1.21.4 och 1.21.11: 431 vardera, 0 fel/skips (ej längre stödda). Webbens DOM-/
 referensregression, Java-process-isolering, actionlint och Compose config
 passerar. Kända rendering-/Minecraft-begränsningar är samma som i steg 0.
 

@@ -24,36 +24,40 @@ som omfattar slottilldelning, innehåll, antal och boxvariant. Misslyckad
 naket item-id. Äldre klientversioner behåller sina befintliga nycklar.
 Detta ersätter inte den kommande fulla fysiska fingerprint-/custodymodellen.
 
-## Ikoner i en tom Linux Docker-installation
+## Ikoner och Mojang-resurser i Docker
 
-Manager `0.1.0-dev.1` har 26.3-tabellen och använder korrekt version av
-Minecraft-assets. En angiven lokal speljar måste ha rätt id i version.json;
-en annan releases jar får inte fylla en 26.3-cache. När ingen lämplig lokal
-jar finns gör Manager **ingen automatisk nedladdning som standard**.
-Administratören kan, enligt samma uttryckliga opt-in-princip som BlueMaps
-`accept-download`, sätta `acceptMinecraftDownload=true` i Manager-
-`config.properties` eller `WESORT_ACCEPT_MINECRAFT_DOWNLOAD=true` i Compose.
-Detta bekräftar EULA-acceptans, egen Minecraft Java Edition-licens samt
-skyldigheten att inte vidarepublicera original-JAR eller dess resurser.
-Först då hämtar Manager den officiella immutable 26.3-klientjaren från
+Innan Manager kan starta krävs administratörens explicita EULA-acceptans
+via `eula=true` i `config.properties` eller `WESORT_EULA=true` i
+Docker Compose. I annat fall avslutas startsekvensen utan HTTP-tjänst
+och utan några Minecraft-nedladdningar. EULA finns på
+[www.minecraft.net/en-us/eula](https://www.minecraft.net/en-us/eula).
+Äldre `acceptMinecraftDownload` och `minecraftJar` ignoreras;
+Manager söker **aldrig** i lokala spelinstallationer eller launcher-filer.
+
+När `eula=true` är aktiverat laddar Manager alltid ned (eller validerar
+sin befintliga privata cache av) den officiella immutable Minecraft
+26.3-klient-JAR:en från
 [Mojangs objektserver](https://piston-data.mojang.com/v1/objects/e877b6a07acd633fb3bb475002175cec036e7b87/client.jar).
-Den kontrollerar exakt 41 483 720 bytes och SHA1
-`e877b6a07acd633fb3bb475002175cec036e7b87` före atomisk installation.
-HTTP använder fast HTTPS-adress, inga redirects och begränsad timeout.
+Endast exakt 41 483 720 byte och SHA-1
+`e877b6a07acd633fb3bb475002175cec036e7b87` accepteras. HTTP
+använder fast HTTPS-adress utan redirects, med begränsad timeout.
+Misslyckas hämtning eller verifiering öppnas **inte** HTTP-porten;
+administratören får korrigera nätverksproblemet och starta om.
 
-Binären distribueras inte i Manager-imagen. Den läses som ett asset-arkiv,
-inte som körbar Minecraft-kod i containern. Cachen finns endast under den
-egna WeSort-volymens `icons/sources/26.3/client-<sha1>.jar`; genererade ikoner
-ligger i `icons/game-26.3-v2/<namespace>/<item>.png`. Ingen gammal Qwerte-cache
-eller dess index används. V2-katalogen skiljer dessa verifierade renders från
-tidigare försök att rendera 26.3 med en godtycklig override.
+Klienten används som ett passivt asset-arkiv för ikonrendering, inte
+som ett körbart Minecraft-program. Den inkluderas inte i Managers Docker-image,
+Git-repo eller releaser. Den verifierade källfilen finns under den privata
+volymens `icons/sources/26.3/client-<sha1>.jar`, medan renderade
+ikoner sparas under `icons/game-26.3-v2/<namespace>/<item>.png`.
+Dessa filer ska inte distribueras vidare. Okända item-ID:n får
+fortsatt en säker 16px-platshållare i stället för felaktiga texturer;
+riktiga spelrenderade ikoner har storleken 64px.
 
-Standardläget auto och läget game kan rendera från spelet. För 26.3 ersätts
-en saknad modell inte av en overifierad versionslös wiki-bild. Okänd/saknad
-resurs ger den särskilda 16px magenta/svarta placeholdern; riktiga ikoner är
-64px. Om ingen lokal källa finns och nedladdning inte godkänts, eller om godkänd nedladdning misslyckas, blir resultatet säker fallback;
-en Manager-omstart försöker igen. Andra Minecraft-versioners befintliga
-ikonkälla behålls. Alla caches ligger i samma skyddade WeSort-installation.
+Recept och Creative Tabs kan inte genereras av enbart arkivläsning
+i Manager (Java 21): det befintliga 26.3-exportflödet använder
+en aktiv Minecraft-klient på Java 25, bundna registries och receptcodec.
+Genererade 26.3-JSON förblir därför separata resurser tills ett
+verifierat klient-till-Manager-metadataflöde utvecklats.
 
 ## Kör det verkliga visningsprovet
 

@@ -5,7 +5,6 @@ import java.io.Reader;
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.ArrayList;
@@ -33,12 +32,8 @@ public final class Config {
     public final boolean allowRemote;
     public final List<String> allowedHosts;
     public final boolean generatedKey;
-    /** minecraftJar=: a client jar or a launcher/.minecraft folder; null = find it automatically. */
-    public final Path minecraftJar;
-    /** iconSource=: auto (game jar, then the wiki), game, or wiki. */
-    public final String iconSource;
-    /** Explicit opt-in for downloading Mojang-owned Minecraft 26.3 client assets; false unless accepted. */
-    public final boolean acceptMinecraftDownload;
+    /** Explicit Minecraft EULA approval; mandatory before starting Manager. */
+    public final boolean eulaAccepted;
     /** allowBearer=: accept the old Authorization: Bearer header on index/heartbeat/order requests (never on bot/*). */
     public final boolean allowBearer;
     public final boolean secureCookies;
@@ -58,14 +53,12 @@ public final class Config {
     private volatile String dashboardPassword;
 
     private Config(Path file, int port, String bind, String apiKey, boolean allowRemote, List<String> allowedHosts,
-                   boolean generatedKey, Path minecraftJar, String iconSource, boolean acceptMinecraftDownload, boolean allowBearer, List<String> trustedProxies, boolean secureCookies) {
+                   boolean generatedKey, boolean eulaAccepted, boolean allowBearer, List<String> trustedProxies, boolean secureCookies) {
         this.secureCookies = secureCookies;
         this.allowBearer = allowBearer;
         this.trustedProxies = List.copyOf(trustedProxies);
         this.file = file;
-        this.minecraftJar = minecraftJar;
-        this.iconSource = iconSource;
-        this.acceptMinecraftDownload = acceptMinecraftDownload;
+        this.eulaAccepted = eulaAccepted;
         this.port = port;
         this.bind = bind;
         this.key = new KeyState(apiKey, 0);
@@ -118,7 +111,7 @@ public final class Config {
         // Deployment knobs contain no credentials. File values remain the fallback for developer runs.
         for (String[] setting : new String[][] {
             {"WESORT_ALLOWED_HOSTS", "allowedHosts"}, {"WESORT_TRUSTED_PROXIES", "trustedProxies"},
-            {"WESORT_SECURE_COOKIES", "secureCookies"}, {"WESORT_ICON_SOURCE", "iconSource"}
+            {"WESORT_SECURE_COOKIES", "secureCookies"}
         }) {
             String value = System.getenv(setting[0]);
             if (value != null) props.setProperty(setting[1], value);
@@ -134,31 +127,10 @@ public final class Config {
             if (!h.isEmpty()) allowedHosts.add(h);
         }
 
-        Path minecraftJar = null;
-        String jarText = props.getProperty("minecraftJar", "").trim();
-        if (!jarText.isEmpty()) {
-            try {
-                minecraftJar = Path.of(jarText);
-            } catch (InvalidPathException e) {
-                System.err.println("config.properties: ignoring minecraftJar, not a valid path: " + jarText);
-            }
-        }
-        String iconSource = props.getProperty("iconSource", "auto").trim().toLowerCase(Locale.ROOT);
-        if (iconSource.isEmpty()) iconSource = "auto";
-        if (!iconSource.equals("auto") && !iconSource.equals("game") && !iconSource.equals("wiki")) {
-            System.err.println("config.properties: iconSource must be auto, game or wiki, got '" + iconSource + "'. Using auto.");
-            iconSource = "auto";
-        }
-
-        // BlueMap-style opt-in: an explicit "true" is required to download Mojang-owned game files.
-        // The env override is intentionally separate from props so config-template comments are always written.
-        String downloadConsent = System.getenv("WESORT_ACCEPT_MINECRAFT_DOWNLOAD");
-        if (downloadConsent == null || downloadConsent.isBlank()) downloadConsent = props.getProperty("acceptMinecraftDownload", "false");
-        downloadConsent = downloadConsent.trim();
-        boolean acceptMinecraftDownload = downloadConsent.equalsIgnoreCase("true");
-        if (!acceptMinecraftDownload && !downloadConsent.equalsIgnoreCase("false")) {
-            System.err.println("acceptMinecraftDownload: expected true or false; denying Minecraft downloads.");
-        }
+        // Fail closed: no other consent key or local-client override can authorize startup.
+        String eulaValue = System.getenv("WESORT_EULA");
+        if (eulaValue == null || eulaValue.isBlank()) eulaValue = props.getProperty("eula", "false");
+        boolean eulaAccepted = "true".equalsIgnoreCase(eulaValue.trim());
 
         boolean generated = false;
         if (apiKey.isEmpty()) {
@@ -183,7 +155,7 @@ public final class Config {
             }
             trustedProxies.add(t);
         }
-        Config config = new Config(file, port, bind, apiKey, allowRemote, allowedHosts, generated, minecraftJar, iconSource, acceptMinecraftDownload, allowBearer,
+        Config config = new Config(file, port, bind, apiKey, allowRemote, allowedHosts, generated, eulaAccepted, allowBearer,
             trustedProxies, Boolean.parseBoolean(props.getProperty("secureCookies", "false")));
         String password = props.getProperty(PASSWORD_KEY, "").trim();
         if (!password.isEmpty()) {
@@ -249,20 +221,14 @@ public final class Config {
         AtomicFiles.write(file, out.toString().getBytes(StandardCharsets.UTF_8), true);
     }
 
-    private static final String JAR_BLOCK = """
-        # Minecraft client jar for rendering item icons from the game's own files. Leave empty to find it
-        # automatically (Prism Launcher libraries and .minecraft/versions). Can also be a launcher or
-        # .minecraft folder. Use forward slashes (C:/Users/...) or double backslashes on Windows.
-        minecraftJar=
-        """;
-    private static final String DOWNLOAD_BLOCK = """
-        # Explicit permission to download Mojang-owned Minecraft 26.3 client assets into this
-        # installation's private icon cache. Default false; no download occurs without opt-in.
-        # Setting true confirms you accept Mojang's EULA, have a Minecraft Java Edition license,
-        # and agree not to redistribute the downloaded client or its extracted resources.
-        # https://www.minecraft.net/en-us/eula
-        # You may instead supply a local Minecraft installation/JAR via minecraftJar.
-        acceptMinecraftDownload=false
+    private static final String EULA_BLOCK = """
+        # REQUIRED: Manager refuses to start until eula=true is explicitly set.
+        # Read Mojang's EULA first: https://www.minecraft.net/en-us/eula
+        # Setting true confirms you accept the Minecraft EULA, have a valid
+        # Minecraft Java Edition license and will not redistribute game assets.
+        # Manager automatically downloads and verifies the official 26.3 client.
+        # Local game installations and user-supplied client JARs are NOT supported.
+        eula=false
         """;
     private static final String BEARER_BLOCK = """
         # Bots sign every request with the API key (the key itself is never sent). true also accepts the old
@@ -276,18 +242,10 @@ public final class Config {
         # the last X-Forwarded-For entry for the login rate limit and the audit log. Leave empty otherwise.
         trustedProxies=
         """;
-    private static final String SOURCE_BLOCK = """
-        # Where item icons come from: auto (the game jar, then the Minecraft Wiki for what it can't draw),
-        # game (the game jar only), or wiki (the Minecraft Wiki only).
-        iconSource=auto
-        """;
-
     /** Adds settings introduced after the file was created, with their comments, leaving every existing line alone. */
     private static void appendMissing(Path file, Properties props) throws IOException {
         StringBuilder add = new StringBuilder();
-        if (!props.containsKey("minecraftJar")) add.append('\n').append(JAR_BLOCK);
-        if (!props.containsKey("iconSource")) add.append('\n').append(SOURCE_BLOCK);
-        if (!props.containsKey("acceptMinecraftDownload")) add.append('\n').append(DOWNLOAD_BLOCK);
+        if (!props.containsKey("eula")) add.append('\n').append(EULA_BLOCK);
         if (!props.containsKey("allowBearer")) add.append('\n').append(BEARER_BLOCK);
         if (!props.containsKey("trustedProxies")) add.append('\n').append(PROXY_BLOCK);
         if (add.isEmpty()) return;
@@ -318,7 +276,7 @@ public final class Config {
             # Extra host names (comma separated) the browser may use to reach this server,
             # e.g. a DNS name on your LAN. IP addresses, localhost and this machine's name always work.
             allowedHosts=%s
-            """ + "\n" + JAR_BLOCK + "\n" + SOURCE_BLOCK + "\n" + DOWNLOAD_BLOCK + "\n" + BEARER_BLOCK + "\n" + PROXY_BLOCK).formatted(port, clean(bind), clean(apiKey), allowRemote, clean(allowedHosts));
+            """ + "\n" + EULA_BLOCK + "\n" + BEARER_BLOCK + "\n" + PROXY_BLOCK).formatted(port, clean(bind), clean(apiKey), allowRemote, clean(allowedHosts));
         AtomicFiles.write(file, text.getBytes(StandardCharsets.UTF_8), true);
     }
 

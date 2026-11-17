@@ -70,9 +70,10 @@ public final class Recipes {
         return stations.get(item);
     }
 
-    /** The table for a game version ("1.21.4"), from the resources, or null when there is none. */
+    /** Only Minecraft 26.3 recipe data is a supported resource. */
     public static Recipes load(String version) {
-        String path = "/assets/wesort/recipes/" + version + ".json";
+        if (!"26.3".equals(version)) return null;
+        String path = "/assets/wesort/recipes/26.3.json";
         try (InputStream in = Recipes.class.getResourceAsStream(path)) {
             if (in == null) return null;
             return parse(new String(in.readAllBytes(), StandardCharsets.UTF_8));

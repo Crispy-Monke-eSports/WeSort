@@ -1,8 +1,10 @@
+> **Aktuellt:** Endast Minecraft 26.3 stöds. Referenser till 1.21.x nedan beskriver enbart historiska portningssteg.
+
 # W-013: verifierad Minecraft 26.3-toolchain
 
 Kontrollerad 2026-11-16 mot faktiska upstreamartefakter. Det separata projektet
-`tools/mc26-toolchain` bygger en minimal Meteor-addon utan att ändra WeSorts
-1.21.4/1.21.11-baslinje. Lokal riktig klientstart passerar; detta är inte ett
+`tools/mc26-toolchain` bygger en minimal Meteor-addon vid sidan av den dåvarande historiska
+1.21.4/1.21.11-baslinjen. De äldre klienttargetsen har nu tagits bort. Lokal riktig klientstart passerar; detta är inte ett
 resultat för den ännu oportade WeSort-klienten eller fysisk lagerautomation.
 
 | Komponent | Låst provversion | Verifiering |
@@ -70,7 +72,7 @@ publiceras av workflow `Minecraft 26.3 toolchain`.
 
 - Java 25 krävs av Mojangs manifest; Manager ligger kvar på Java 21.
 - Gamla remap-pluginet, `modImplementation` och officialMojangMappings ska
-  inte användas för 26.3. Baslinjetargets behöver fortsatt sin gamla byggväg.
+  inte användas för 26.3. Den gamla byggvägen för 1.21.4/1.21.11 är nu avvecklad.
 - `ResourceLocation` har ersatts av `Identifier`; klientens GUI/rendering,
   font-/itemrendering, screens och input har ändrade API:er. SDL ersätter GLFW.
 - Mixins och packet targets måste verifieras mot 26.3 och auditas i runtime.
@@ -88,9 +90,9 @@ med saknad addon-author rättades innan slutkörningen. Se separat
 
 ## W-014: WeSort-addonen
 
-`./gradlew build -Pmc=26.3` väljer `build-26.3.gradle.kts` via settings.
-Java 25 används endast för detta klienttarget. Java 21, Loom 1.14.10 och
-mappings för baslinjetargets samt Java 21 Manager behålls. Root-wrappern är
+`./gradlew build` bygger nu **endast Minecraft 26.3** via `build.gradle.kts`.
+`-Pmc=26.3` är frivilligt och andra `-Pmc`-värden nekas. Klienten använder
+Java 25; endast den fristående Manager-applikationen behåller Java 21. Root-wrappern är
 uppdaterad till samma checksummalåsta Gradle 9.6.0 som provprojektet.
 
 Algoritmer och domänlogik ligger kvar i `src/main/java`. De explicita
@@ -104,11 +106,11 @@ SignTextSlot, den nya update-packetformen och listbaserad text.
 
 Handskrivna versionsadaptrar i `src/26.3/java` hanterar mouse input via
 InputConstants/SDL, cursor via Meteor, item/text-rendering och packet drop-
-detektering. GLFW-cursor ligger kvar enbart i baslinjens versionsmappar.
+detektering. Äldre GLFW-baserade versionsadaptrar för 1.21.x har avlägsnats.
 Diagonal SDL-cursor använder crosshair eftersom den testade vanilla-API:n
 inte erbjuder diagonal standardcursor. Itemikoner skapas inte innan 26.3
 har en ansluten värld och dess bundna defaultkomponenter; GUI:t är säkert
-även före anslutning. Gamla target behåller sin tidigare komponentlivscykel.
+även före anslutning. Inga äldre Minecraft-targets stöds längre.
 
 `python3 scripts/mc26/client-runtime.py` kräver en färsk klientrapport,
 förväntade runtimeversioner, registrerade StashSorter/StashOverlay/StashManager/
@@ -128,8 +130,9 @@ Prism Launcher 11.1.1 och den anvisade instansen `26.3` har också startat
 med WeSort, Meteor och Baritone samt Loader 0.20.1. Där verifierades enbart
 klient-/addonstart, inte GUI-provet eller en värld; se
 [separat Prism-underlag](verification/W-014-prism-startup.json).
-1.21.4 och 1.21.11 passerar vardera 431 tester med nya wrappern. Manager
-passerar 104 tester med ett känt real-jar-ikonskip på Java 21.
+**Historiskt portningsbevis:** 1.21.4 och 1.21.11 passerade då vardera
+431 tester. Dessa historiska resultat utgör inte stöd för äldre versioner.
+Manager passerade 104 tester med ett känt real-jar-ikonskip på Java 21.
 W-014:s klientstart ensam godkänner inte fysiska operationer. Senare verkliga
 världsprov, komponenter, slotkvittens, sign-/shulkeroperationer, Baritone och
 26.3-resurser dokumenteras separat i [steg 2](STAGE_2.md). Den genererade

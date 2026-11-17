@@ -89,7 +89,7 @@ class UsersTest {
         orders.load();
         Owners owners = new Owners(data);
         owners.load();
-        IconService icons = new IconService(data, id -> null, v -> false, new GameIcons(data.resolve("icons"), null, false), false);
+        IconService icons = new IconService(data, id -> null, v -> false, new GameIcons(data.resolve("icons"), false, false), false);
         sessions = new SessionStore(data);
         sessions.load();
         users = new Users(data);

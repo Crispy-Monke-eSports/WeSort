@@ -45,7 +45,15 @@ with tempfile.TemporaryDirectory(prefix='wesort-isolation-') as directory:
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0))
         port = sock.getsockname()[1]
-    (data / 'config.properties').write_text(f'port={port}\nbind=127.0.0.1\niconSource=game\n')
+    # Refuse to bind or download any Minecraft assets before the administrator opts in.
+    (data / 'config.properties').write_text(f'port={port}\nbind=127.0.0.1\neula=false\n')
+    refused_eula = subprocess.run([args.java, '-jar', str(args.jar.resolve()), '--data', str(data)],
+        cwd=root, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15)
+    assert refused_eula.returncode != 0
+    assert b'eula=true' in refused_eula.stderr
+    assert not (data / 'icons').exists(), 'No Mojang asset IO is allowed before EULA acceptance'
+    # The isolated test installation now explicitly accepts the EULA for its own runtime.
+    (data / 'config.properties').write_text(f'port={port}\nbind=127.0.0.1\neula=true\n')
     base = f'http://127.0.0.1:{port}'
     cookies = http.cookiejar.CookieJar()
     browser = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookies))
@@ -60,7 +68,7 @@ with tempfile.TemporaryDirectory(prefix='wesort-isolation-') as directory:
         log = root / 'manager.log'
         with log.open('w') as out:
             process = subprocess.Popen([args.java, '-jar', str(args.jar.resolve()), '--data', str(data)], cwd=root, stdout=out, stderr=subprocess.STDOUT)
-        for _ in range(100):
+        for _ in range(900):
             if process.poll() is not None:
                 raise AssertionError('Manager exited before startup; temporary log contains details')
             try:

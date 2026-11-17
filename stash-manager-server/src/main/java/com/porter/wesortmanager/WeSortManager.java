@@ -69,6 +69,15 @@ public final class WeSortManager {
             System.exit(1);
             return;
         }
+        // The service must not serve HTTP or use Minecraft assets without express approval.
+        requireEula(config);
+        try {
+            VanillaAssets.client26(dataDir.resolve("icons"), config.eulaAccepted);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Official Minecraft 26.3 client download interrupted", e);
+        }
+
         IndexStore store = new IndexStore(dataDir);
         store.load();
         OrderStore orders = new OrderStore(dataDir, store);
@@ -76,17 +85,15 @@ public final class WeSortManager {
         Owners owners = new Owners(dataDir);
         owners.load();
         owners.adoptAll(store.players());
-        boolean gameOn = !config.iconSource.equals("wiki");
-        boolean wikiOn = !config.iconSource.equals("game");
-        GameIcons game = new GameIcons(dataDir.resolve("icons"), config.minecraftJar, gameOn, config.acceptMinecraftDownload);
+        GameIcons game = new GameIcons(dataDir.resolve("icons"), true, config.eulaAccepted);
         // Tab icons the page shows are allowed even when no index has them.
         java.util.function.Function<String, IndexStore.IconInfo> known = id -> {
             IndexStore.IconInfo info = store.iconInfo(id);
             if (info == null && UiIcons.NAMES.containsKey(id)) info = new IndexStore.IconInfo(UiIcons.NAMES.get(id), store.anyMcVersion());
             return info;
         };
-        IconService icons = new IconService(dataDir, known, store::hasMcVersion, game, wikiOn);
-        System.out.println("  Icon source: " + config.iconSource + (config.minecraftJar != null ? " (minecraftJar=" + config.minecraftJar + ")" : ""));
+        IconService icons = new IconService(dataDir, known, store::hasMcVersion, game, false);
+        System.out.println("  Minecraft 26.3 icons: verified official client in the private Manager cache (eula=true).");
         LinkState link = new LinkState(config.keyState().generation());
         List<String> urls = urls(config);
 
@@ -172,6 +179,13 @@ public final class WeSortManager {
         }
         } finally {
             if (!started) lock.close();
+        }
+    }
+
+    static void requireEula(Config config) throws IOException {
+        if (!config.eulaAccepted) {
+            throw new IOException("WeSort Manager refuses to start: read https://www.minecraft.net/en-us/eula "
+                + "and set eula=true in config.properties or WESORT_EULA=true.");
         }
     }
 

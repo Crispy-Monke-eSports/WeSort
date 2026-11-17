@@ -2,6 +2,7 @@ package com.porter.wesort.modules;
 
 import com.porter.wesort.WeSortAddon;
 import com.porter.wesort.compat.InventorySync;
+import com.porter.wesort.compat.PhysicalJournalRuntime;
 import com.porter.wesort.stash.Stash;
 import com.porter.wesort.stash.StashIndex;
 import meteordevelopment.meteorclient.events.game.GameLeftEvent;
@@ -499,6 +500,39 @@ public class StashManager extends Module {
         StashIndex.clearCache();
     }
 
+    private boolean servicePhysicalJournal() {
+        if (inFlight || mc.player == null || mc.level == null) return false;
+        String scope = kitScope();
+        if (scope.isEmpty()) return false;
+        URI base = parse(serverUrl.get());
+        if (base == null) return false;
+        String agent = mc.player.getUUID().toString();
+        var record = PhysicalJournalRuntime.upload(scope, Stash.currentServer(), agent, System.currentTimeMillis());
+        if (record == null) return false;
+        var request = new JsonObject();
+        request.addProperty("agent", agent);
+        request.add("record", record);
+        var result = PhysicalJournalRuntime.inspectionResult();
+        if (result != null) request.add("result", result);
+        send(base, "/api/v1/physical/agent", bytes(request), apiKey.get().trim(), (code, body) -> {
+            if (code != 200 || !scope.equals(kitScope()) || mc.player == null || !agent.equals(mc.player.getUUID().toString())) return true;
+            var reply = JsonParser.parseString(body).getAsJsonObject();
+            var receipt = reply.getAsJsonObject("receipt");
+            for (String key : java.util.List.of("id", "revision", "checksum")) {
+                if (!record.get(key).equals(receipt.get(key))) return true;
+            }
+            PhysicalJournalRuntime.mirrored(receipt, reply.has("decision"));
+            if (receipt.has("releasedLease") && receipt.get("releasedLease").getAsString().equals(physicalLeaseFingerprint())) {
+                sortingToken = null;
+                sortingUntil = 0;
+            }
+            if (reply.has("decision")) PhysicalJournalRuntime.inspect(reply.getAsJsonObject("decision"));
+            if (result != null) PhysicalJournalRuntime.acknowledgedInspection(result.get("id").getAsString());
+            return true;
+        }, true);
+        return true;
+    }
+
     private String sortingToken, sortingScope = "";
     private long sortingUntil, sortingPoll;
 
@@ -506,6 +540,10 @@ public class StashManager extends Module {
         if (serverUrl.get().isBlank()) return true;
         return isActive() && mc.player != null && sortingToken != null && sortingScope.equals(sortingScope())
             && System.nanoTime() < sortingUntil;
+    }
+    public String physicalLeaseFingerprint() {
+        return sortingToken == null || !sortingScope.equals(sortingScope()) ? null
+            : com.porter.wesort.data.ContainerIdentity.hash(sortingToken);
     }
     private String sortingScope() {
         return serverUrl.get() + "|" + Stash.currentServer() + "|" + (mc.player == null ? "" : mc.player.getUUID());
@@ -517,17 +555,22 @@ public class StashManager extends Module {
         var sorter = meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashSorter.class);
         boolean wants = isActive() && sorter != null && sorter.requiresSortingPermit();
         if (!wants && sortingToken == null) return false;
-        if (!wants && !InventorySync.ready()) return false; // Never release an unverified physical action.
+        if (!wants && (PhysicalJournalRuntime.awaitingMirror() || !InventorySync.ready() && !InventorySync.failed())) return false;
+        if (!wants && PhysicalJournalRuntime.unfinished()) {
+            PhysicalJournalRuntime.block("Sorting stopped before physical verification");
+        }
         URI base = parse(serverUrl.get()); if (base == null) return false;
         String scope = sortingScope();
         if (!scope.equals(sortingScope)) { sortingToken = null; sortingUntil = 0; sortingScope = scope; }
         JsonObject request = new JsonObject(); request.addProperty("server", Stash.currentServer());
         request.addProperty("agent", mc.player.getUUID().toString()); request.addProperty("token", sortingToken);
-        request.addProperty("action", InventorySync.failed() || kitJob!=null&&kitUncertain ? "uncertain" : wants ? "acquire" : "release");
+        boolean uncertain = InventorySync.failed() || PhysicalJournalRuntime.blocked() || kitJob != null && kitUncertain;
+        if (uncertain && sortingToken == null) return false;
+        request.addProperty("action", uncertain ? "uncertain" : wants ? "acquire" : "release");
         sortingPoll = now + 2_000_000_000L;
         send(base, "/api/v1/automation", bytes(request), apiKey.get().trim(), (code, body) -> {
             if (code != 200) { sortingUntil = 0; return false; }
-            if (InventorySync.failed() || kitJob!=null&&kitUncertain) { sortingUntil = 0; return true; }
+            if (uncertain) { sortingUntil = 0; return true; }
             if (!wants) { sortingToken = null; sortingUntil = 0; return true; }
             var reply = JsonParser.parseString(body).getAsJsonObject();
             sortingToken = reply.get("token").getAsString();
@@ -546,16 +589,20 @@ public class StashManager extends Module {
     @EventHandler
     private void onTick(TickEvent.Post event) {
         if(kitJob!=null&&System.nanoTime()>=kitUntil&&!kitUncertain)kitUncertain("Manager execution lease expired");
-        if (serviceSorting()) return;
+        if (servicePhysicalJournal() || serviceSorting()) return;
         // Read-only job coordination continues while physical input awaits verification or is safely paused.
         if(kitJob!=null&&mc.player!=null&&mc.level!=null&&!inFlight&&!apiKey.get().isBlank()){
-            if(InventorySync.failed())kitUncertain("Inventory needs reconciliation: "+InventorySync.reason());
+            if(InventorySync.failed() || PhysicalJournalRuntime.blocked())kitUncertain("Inventory needs reconciliation: "+InventorySync.reason());
             if(com.porter.wesort.compat.NavigationRuntime.paused())kitUncertain("Navigation needs reconciliation: "+com.porter.wesort.compat.NavigationRuntime.status());
             URI jobBase=parse(serverUrl.get());
             if(jobBase!=null&&serviceKitCatalog(jobBase,apiKey.get().trim(),System.currentTimeMillis()))return;
         }
         if (com.porter.wesort.compat.NavigationRuntime.paused()) {
             setStatus(com.porter.wesort.compat.NavigationRuntime.status());
+            return;
+        }
+        if (PhysicalJournalRuntime.blocked()) {
+            setStatus("physical operation needs reconciliation");
             return;
         }
         if (!InventorySync.ready()) {
@@ -1155,6 +1202,7 @@ public class StashManager extends Module {
     public String kitCatalogStatus() { return kitCatalogNote; }
     public String kitProblem() { return kitProblem; }
     public boolean kitIsPacked() { return kitPacked; }
+    public String physicalKitId() { return kitJob == null ? null : kitJob.get("id").getAsString(); }
     public boolean hasKitJob() { return kitJob!=null; }
     public boolean kitAllowed() { return kitJob!=null&&!kitUncertain&&System.nanoTime()<kitUntil&&com.porter.wesort.stash.Kits.buildable(com.porter.wesort.stash.Kits.assigned()); }
     public net.minecraft.core.BlockPos kitWorkspace() {
@@ -1162,11 +1210,11 @@ public class StashManager extends Module {
         if(!com.porter.wesort.stash.StashIndex.dimension().equals(work.get("dimension").getAsString()))return null;
         return new net.minecraft.core.BlockPos(work.get("x").getAsInt(),work.get("y").getAsInt(),work.get("z").getAsInt());
     }
-    public void kitPacked() { kitPacked=true;nextKitCatalogAt=0;info("Kit packed exactly; verifying storage at the Manager destination."); }
-    public void kitUncertain(String why) { if(kitJob==null||kitUncertain)return;kitUncertain=true;kitProblem=why;var sorter=Modules.get().get(StashSorter.class);if(sorter!=null)sorter.pauseManagedKit();com.porter.wesort.stash.Kits.revoke();nextKitCatalogAt=0;warning("Kit job paused for reconciliation: %s",why); }
+    public void kitPacked() { PhysicalJournalRuntime.phase("STORE", new JsonObject()); kitPacked=true;nextKitCatalogAt=0;info("Kit packed exactly; verifying storage at the Manager destination."); }
+    public void kitUncertain(String why) { if(kitJob==null||kitUncertain)return;kitUncertain=true;kitProblem=why;PhysicalJournalRuntime.block("Manager kit needs physical reconciliation");var sorter=Modules.get().get(StashSorter.class);if(sorter!=null)sorter.pauseManagedKit();com.porter.wesort.stash.Kits.revoke();nextKitCatalogAt=0;warning("Kit job paused for reconciliation: %s",why); }
     private boolean serviceKitCatalog(URI base,String key,long now) {
         if(kitJob!=null&&System.nanoTime()>=kitUntil&&!kitUncertain)kitUncertain("Manager execution lease expired");
-        if(now<nextKitCatalogAt)return false;
+        if(now<nextKitCatalogAt || kitJob == null && PhysicalJournalRuntime.unfinished())return false;
         var sorter=Modules.get().get(StashSorter.class);var stash=sorter==null?null:sorter.currentStash();
         if(stash==null||mc.player==null)return false;
         String scope=kitScope();var body=new JsonObject();String action="claim";
@@ -1196,6 +1244,7 @@ public class StashManager extends Module {
                 }
                 if("COMPLETED".equals(state)){
                     info("Kit stored and verified by Manager. Job %s completed.",kitJob.get("id").getAsString());
+                    PhysicalJournalRuntime.complete();
                     kitJob=null;com.porter.wesort.stash.Kits.release();kitCatalogNote="kit storage verified";
                 }else if(!List.of("IN_PROGRESS","VERIFYING").contains(state)){
                     kitUncertain("Manager state "+state);kitCatalogNote=state;

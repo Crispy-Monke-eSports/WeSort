@@ -104,11 +104,20 @@ inventory/kraschregression finns i `verification/W-022-*`. Hosted CI måste
 verifieras separat på den pushade committen. Central anarkisäkerhetsguard
 W-061 samt samlad Agent-/Manager-operatörsyta W-010/steg 4 återstår.
 
+## W-023 – fysisk journal och återhämtning
+
+Klienten skriver intention och verifierat utfall till en privat,
+atomisk journal. Manager speglar faser, revisioner och tillstånd via det
+signerade API:t. Owner kan se möjliga orphaned shulkers och begära en
+ny läsning från samma agent. Exakt återhämtning kvitterar den tidigare
+flytten utan omtag. Delvis avbruten packning förblir spärrad när
+hela operationens slutläge inte kan bevisas.
+Se [journal, operatörsflöde och 26.3-proven](MC_26_3_JOURNAL.md).
+
 ## Återstående i steget
 
 W-019:s [sortering och reservationsskydd](MC_26_3_SORTING.md) finns i koden.
-Återstående: W-023 hållbar fysisk journal;
-W-024 global atomisk reservationshierarki. Dessa är inte färdiga genom W-018.
+Återstående är W-024 och den globala atomiska reservationshierarkin.
 Orderhållningar är fortfarande aggregerade per stash (`reservationPrecision`
 är `aggregate`); exakt fysisk reservation/allokering visas därför inte som
 om den redan fanns. Delade fysiska källor räknas en gång men spärras för nya

@@ -24,9 +24,9 @@ class AutomationGateTest {
         var upgraded = new StockLedger(data);
         assertEquals(64, upgraded.sources().getFirst().value().getAsJsonArray("items").get(0).getAsJsonObject().get("count").getAsInt());
         try (var c = upgraded.open(); var sql = c.createStatement()) {
-            try (var rows = sql.executeQuery("PRAGMA user_version")) { assertTrue(rows.next()); assertEquals(4, rows.getInt(1)); }
+            try (var rows = sql.executeQuery("PRAGMA user_version")) { assertTrue(rows.next()); assertEquals(5, rows.getInt(1)); }
             try (var rows = sql.executeQuery("SELECT count(*) FROM automation_leases")) { assertTrue(rows.next()); assertEquals(0, rows.getInt(1)); }
-            sql.execute("PRAGMA user_version=5");
+            sql.execute("PRAGMA user_version=6");
         }
         assertThrows(java.io.IOException.class, () -> new StockLedger(data));
     }
@@ -56,6 +56,13 @@ class AutomationGateTest {
         var restarted = new AutomationGate(store.stock(), clock::get);
         assertNull(restarted.acquire("s", "other", null));
         assertFalse(restarted.finish("s", "agent", lease.token(), true));
+    }
+    @Test void fastManagerRestartFencesEvenAnUnexpiredSortingToken()throws Exception {
+        var store=store();var lease=store.automation().acquire("s","agent",null);assertNotNull(lease);
+        var restarted=new StockLedger(data);var gate=new AutomationGate(restarted);
+        assertEquals("NEEDS_RECONCILIATION",gate.current("s").state());
+        assertNull(gate.acquire("s","agent",lease.token()));assertFalse(gate.finish("s","agent",lease.token(),true));
+        assertNotEquals("FRESH",restarted.sources().getFirst().status());
     }
     @Test void verifiedReleaseInvalidatesCachedProofBeforeAllowingNewReservations() throws Exception {
         var store = store(); var orders = new OrderStore(data, store); orders.load();

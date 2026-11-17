@@ -34,15 +34,16 @@ public final class InventorySync {
     private static final InventoryReadback gate = new InventoryReadback();
     private static final StackWalker WALKER = StackWalker.getInstance();
     private static Path journal;
-    private static JsonObject origin;
+    private static JsonObject origin, actionBefore;
+    private static boolean recoveryOpening;
     private static BlockPos lastInteracted;
-    private static boolean internal, reconciling;
+    private static boolean internal, reconciling, rotatedInput;
     private static String reported = "";
     private static long reconcileDeadline;
     private static int lastBlockAck = -1, lastBlockSequence = -1;
     private static long clicks, contentsReceivedAt;
     private static InventoryReadback.Expected serverContents;
-    private record ReadOpen(BlockPos pos, int sequence, int previousMenu, long after, long deadline, Object level, boolean ambiguous) {}
+    private record ReadOpen(BlockPos pos, int sequence, int previousMenu, long after, long deadline, Object level, boolean ambiguous, boolean recovery) {}
     private static ReadOpen readOpen;
     private static BlockPos readSource;
     private static int readMenu;
@@ -50,7 +51,7 @@ public final class InventorySync {
     private static net.minecraft.world.level.block.state.BlockState readBlock;
     private static final Map<Integer, BlockExpected> blocks = new LinkedHashMap<>();
     private static BlockUse blockUse;
-    private static boolean recoveringWorld;
+    private static boolean recoveringWorld, recoveringReceipt;
     private static boolean reopenRequested;
     private record BlockExpected(int sequence, BlockPos pos, String block, long deadline) {}
     private record BlockUse(BlockPos clicked, String beforeClicked, BlockPos adjacent, String beforeAdjacent, List<String> inventory) {}
@@ -76,7 +77,7 @@ public final class InventorySync {
                         new BlockPos(b.get("x").getAsInt(), b.get("y").getAsInt(), b.get("z").getAsInt()), b.get("block").getAsString(), 0);
                     blocks.put(block.sequence, block);
                 }
-                gate.restorePending(expected);
+                gate.restorePending(expected);PhysicalJournalRuntime.adoptPending(saved);
             }
         } catch (Exception e) { origin = null; blocks.clear(); gate.fail("Cannot validate the isolated pending inventory journal"); }
         MeteorClient.EVENT_BUS.subscribe(INSTANCE);
@@ -85,6 +86,7 @@ public final class InventorySync {
 
     public static boolean ready() { return gate.ready() && blocks.isEmpty(); }
     public static boolean allowInput() {
+        if(PhysicalJournalRuntime.blocked()||PhysicalJournalRuntime.awaitingMirror())return false;
         var sorter = meteordevelopment.meteorclient.systems.modules.Modules.get().get(com.porter.wesort.modules.StashSorter.class);
         if (sorter != null && !sorter.sortingPermitted()) return false;
         if (sorter != null && readSource != null && mc.player != null && readLevel == mc.level
@@ -95,10 +97,11 @@ public final class InventorySync {
             if (source != null && (source.protectedStorage || source.excluded && !source.delivery
                 || source.delivery && sorter.requiresSortingPermit())) return false;
         }
-        if (ready() || gate.acceptingBatch()) return true;
+        if (ready() || gate.acceptingBatch()) { if(mc.player!=null)actionBefore=frame(new InventoryReadback.Expected(mc.player.containerMenu.containerId,fingerprints(mc.player.containerMenu.slots.stream().map(s->s.getItem()).toList()),fingerprint(mc.player.containerMenu.getCarried()))); return true; }
         if (!gate.failed()) { gate.fail("New automated input attempted before server readback"); reportFailure(); }
         return false;
     }
+    static BlockPos inspectionSource() { return readSource; }
     public static boolean failed() { return gate.failed(); }
     public static String reason() { return gate.reason(); }
     public static int lastBlockAck() { return lastBlockAck; }
@@ -109,10 +112,20 @@ public final class InventorySync {
     public static long contentsEpoch() { return gate.observedEpoch(); }
     public static boolean hasServerContents(int menu, long after) { return gate.observedMenuSince(menu, after); }
 
+    /** Meteor may run rotation callbacks after the originating sorter tick has returned. */
+    public static Runnable scopedAutomation(Runnable callback) {
+        return () -> {
+            boolean previous = rotatedInput;
+            rotatedInput = true;
+            try { callback.run(); }
+            finally { rotatedInput = previous; }
+        };
+    }
+
     /** This observes actual WeSort call paths, including InvUtils batches; manual vanilla clicks are unaffected. */
     public static boolean calledFromWeSort() {
         if (internal) return false;
-        return WALKER.walk(frames -> frames.anyMatch(frame -> frame.getClassName().startsWith("com.porter.wesort.")
+        return rotatedInput || WALKER.walk(frames -> frames.anyMatch(frame -> frame.getClassName().startsWith("com.porter.wesort.")
             && !frame.getClassName().startsWith(InventorySync.class.getName())
             && !frame.getClassName().startsWith("com.porter.wesort.mixin.")));
     }
@@ -128,7 +141,14 @@ public final class InventorySync {
 
     @EventHandler
     private void sent(PacketEvent.Send event) {
-        if (internal || mc.player == null || mc.level == null) return;
+        if (mc.player == null || mc.level == null) return;
+        if(internal){
+            if(recoveryOpening&&event.packet instanceof ServerboundUseItemOnPacket use){
+                lastBlockSequence=use.sequence();readSource=null;
+                readOpen=new ReadOpen(use.hitResult().getBlockPos().immutable(),use.sequence(),mc.player.containerMenu.containerId,contentsEpoch(),System.nanoTime()+8_000_000_000L,mc.level,readOpen!=null,true);
+            }
+            return;
+        }
         boolean ours = calledFromWeSort();
         boolean allowed = ready() || gate.acceptingBatch();
         if (ours && !allowed && (event.packet instanceof ServerboundContainerClickPacket
@@ -177,10 +197,16 @@ public final class InventorySync {
                 boolean ambiguous = readOpen != null;
                 readSource = null;
                 readOpen = new ReadOpen(pos, use.sequence(), mc.player.containerMenu.containerId,
-                    contentsEpoch(), System.nanoTime() + 8_000_000_000L, mc.level, ambiguous);
+                    contentsEpoch(), System.nanoTime() + 8_000_000_000L, mc.level, ambiguous, false);
             }
         }
         if (!mutation) return;
+        if (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror()) {
+            event.cancel();
+            gate.fail("Physical journal withheld an automated mutation");
+            reportFailure();
+            return;
+        }
         var menu = mc.player.containerMenu;
         try {
             if (event.packet instanceof ServerboundContainerClickPacket click && click.containerId() != menu.containerId) throw new IllegalStateException("Inventory menu changed before send");
@@ -204,8 +230,9 @@ public final class InventorySync {
 
     @EventHandler(priority = EventPriority.LOWEST)
     private void tick(TickEvent.Post event) {
+        PhysicalJournalRuntime.tickInspection();
         if (reconciling) {
-            if (System.nanoTime() > reconcileDeadline) { reconciling = false; reportFailure(); }
+            if (System.nanoTime() > reconcileDeadline) { reconciling = false;PhysicalJournalRuntime.inspectionFailed("Inspection timed out; load the original source and workspace"); reportFailure(); }
             else if (sourceMatches()) {
                 var expected = gate.reconcile(mc.player.containerMenu.containerId, System.nanoTime());
                 reconciling = false;
@@ -253,6 +280,7 @@ public final class InventorySync {
             var menu = mc.player.inventoryMenu;
             gate.predict(new InventoryReadback.Expected(menu.containerId,
                 fingerprints(menu.slots.stream().map(slot -> slot.getItem()).toList()), fingerprint(menu.getCarried())));
+            actionBefore = frame(gate.expected());
             origin = new JsonObject(); origin.addProperty("server", Stash.currentServer()); origin.addProperty("dimension", dimension());
             origin.addProperty("player", mc.player.getUUID().toString()); persist();
         } catch (Exception failure) { gate.fail("Cannot persist passive pickup verification"); reportFailure(); }
@@ -279,18 +307,25 @@ public final class InventorySync {
 
     public static void stats() {
         gate.barrier();
-        if (gate.failed()) { reportFailure(); return; }
+        if (gate.failed()) { if(recoveringWorld)PhysicalJournalRuntime.inspectionFailed("The fresh server frame does not match the recorded postcondition");reportFailure(); return; }
         if (gate.ready() && recoveringWorld) {
             if (!worldMatches()) { gate.fail("World block does not match the pending physical action"); reportFailure(); return; }
-            blocks.clear(); recoveringWorld = false;
+            blocks.clear(); recoveringWorld = false;recoveringReceipt=true;
         }
         complete();
     }
 
     private static void complete() {
         if (ready() && journal != null) {
-            try { Files.deleteIfExists(journal); forceDirectory(journal.getParent()); origin = null; }
-            catch (Exception e) { gate.fail("Cannot commit the verified inventory readback"); reportFailure(); }
+            try {
+                if(origin!=null&&serverContents!=null)PhysicalJournalRuntime.verified(frame(serverContents),recoveringReceipt);
+                Files.deleteIfExists(journal); forceDirectory(journal.getParent()); origin = null;recoveringReceipt=false;
+            }
+            catch (Exception e) {
+                gate.fail("Cannot commit the verified inventory readback");
+                PhysicalJournalRuntime.inspectionFailed("The fresh readback could not be signed off");
+                reportFailure();
+            }
         }
     }
 
@@ -302,7 +337,7 @@ public final class InventorySync {
             if (sequence == pending.sequence && !pending.ambiguous && mc.level == pending.level
                 && System.nanoTime() <= pending.deadline && mc.player != null
                 && mc.player.containerMenu.containerId != 0 && mc.player.containerMenu.containerId != pending.previousMenu
-                && hasServerContents(mc.player.containerMenu.containerId, pending.after) && confirmedMenu()) {
+                && hasServerContents(mc.player.containerMenu.containerId, pending.after) && (pending.recovery ? rawConfirmedMenu() : confirmedMenu())) {
                 readSource = pending.pos; readMenu = mc.player.containerMenu.containerId;
                 readLevel = mc.level; readBlock = mc.level.getBlockState(readSource);
             }
@@ -328,7 +363,12 @@ public final class InventorySync {
     private static boolean openRecoverySource() {
         if (mc.player == null || mc.level == null || origin == null || !origin.has("source")
             || mc.player.containerMenu != mc.player.inventoryMenu || !mc.player.containerMenu.getCarried().isEmpty()
-            || !mc.player.getMainHandItem().isEmpty() || !mc.player.getOffhandItem().isEmpty()) return false;
+            || mc.options.keyShift.isDown()) return false;
+        if(!mc.player.getMainHandItem().isEmpty()){
+            int empty=-1;for(int slot=0;slot<9;slot++)if(mc.player.getInventory().getItem(slot).isEmpty()){empty=slot;break;}
+            if(empty<0)return false;meteordevelopment.meteorclient.utils.player.InvUtils.swap(empty,false);
+        }
+        if (!mc.player.getOffhandItem().isEmpty()) return false;
         if (!origin.get("server").getAsString().equals(Stash.currentServer())
             || !origin.get("dimension").getAsString().equals(dimension())
             || !origin.get("player").getAsString().equals(mc.player.getUUID().toString())) return false;
@@ -341,14 +381,14 @@ public final class InventorySync {
             || block instanceof net.minecraft.world.level.block.ShulkerBoxBlock
             || block instanceof net.minecraft.world.level.block.CraftingTableBlock
             || block instanceof net.minecraft.world.level.block.AnvilBlock)) return false;
-        internal = true;
+        internal = true;recoveryOpening=true;
         try {
             lastInteracted = pos;
             meteordevelopment.meteorclient.utils.world.BlockUtils.interact(
                 new net.minecraft.world.phys.BlockHitResult(net.minecraft.world.phys.Vec3.atCenterOf(pos), net.minecraft.core.Direction.UP, pos, false),
                 net.minecraft.world.InteractionHand.MAIN_HAND, false);
             return true;
-        } finally { internal = false; }
+        } finally { internal = false;recoveryOpening=false; }
     }
 
     private static boolean sourceMatches() {
@@ -361,7 +401,8 @@ public final class InventorySync {
         if (mc.player.containerMenu == mc.player.inventoryMenu) return false;
         if (origin.has("source")) {
             JsonArray pos = origin.getAsJsonArray("source");
-            return new BlockPos(pos.get(0).getAsInt(), pos.get(1).getAsInt(), pos.get(2).getAsInt()).equals(lastInteracted);
+            var source=new BlockPos(pos.get(0).getAsInt(), pos.get(1).getAsInt(), pos.get(2).getAsInt());
+            return source.equals(lastInteracted)&&source.equals(readSource)&&readLevel==mc.level&&mc.player.containerMenu.containerId==readMenu&&mc.level.getBlockState(source).equals(readBlock);
         }
         return mc.player.containerMenu.containerId == gate.expected().menu();
     }
@@ -395,7 +436,47 @@ public final class InventorySync {
             try (FileChannel file = FileChannel.open(tmp, StandardOpenOption.WRITE)) { ByteBuffer buffer = ByteBuffer.wrap(data); while (buffer.hasRemaining()) file.write(buffer); file.force(true); }
             Files.move(tmp, journal, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
             forceDirectory(journal.getParent());
+            PhysicalJournalRuntime.intent(out,actionBefore==null?value:actionBefore);
         } finally { Files.deleteIfExists(tmp); }
+    }
+
+    public static JsonObject frame(InventoryReadback.Expected expected){
+        var value=new JsonObject();value.addProperty("menu",expected.menu());var slots=new JsonArray();expected.slots().forEach(slots::add);value.add("slots",slots);value.addProperty("cursor",expected.cursor());
+        var choices=new JsonObject();expected.alternatives().forEach((slot,outcomes)->{var values=new JsonArray();outcomes.forEach(values::add);choices.add(String.valueOf(slot),values);});value.add("alternatives",choices);return value;
+    }
+    private static boolean rawConfirmedMenu(){
+        if(mc.player==null||serverContents==null)return false;var menu=mc.player.containerMenu;
+        return serverContents.equals(new InventoryReadback.Expected(menu.containerId,fingerprints(menu.slots.stream().map(s->s.getItem()).toList()),fingerprint(menu.getCarried())));
+    }
+    public static JsonObject physicalPlayerInventory(){
+        if(mc.player==null||mc.player.containerMenu!=mc.player.inventoryMenu||!confirmedMenu())throw new IllegalStateException("Fresh full player inventory required");
+        var snapshot=SlotRuntime.snapshot(mc.player.inventoryMenu.slots.stream().map(s->s.getItem()).toArray(ItemStack[]::new));
+        var writer=new com.porter.wesort.data.PhysicalSlots.Writer();var out=new JsonObject();out.addProperty("size",snapshot.size());out.addProperty("fingerprint",snapshot.fingerprint());out.add("slots",writer.slots(snapshot.slots()));out.add("slotVariants",writer.variants());return out;
+    }
+    public static boolean inspectCurrentInventory(){
+        if(mc.player==null||mc.level==null||mc.player.containerMenu!=mc.player.inventoryMenu||!mc.player.containerMenu.getCarried().isEmpty())return false;
+        try{
+            var expected=new InventoryReadback.Expected(0,fingerprints(mc.player.inventoryMenu.slots.stream().map(s->s.getItem()).toList()),fingerprint(mc.player.inventoryMenu.getCarried()));
+            origin=new JsonObject();origin.addProperty("server",Stash.currentServer());origin.addProperty("dimension",dimension());origin.addProperty("player",mc.player.getUUID().toString());
+            gate.restorePending(expected);blocks.clear();return requestReconciliation();
+        }catch(RuntimeException invalid){return false;}
+    }
+    public static boolean inspectRecorded(JsonObject evidence){
+        if(mc.player==null||mc.level==null)return false;
+        var scope=evidence.getAsJsonObject("origin");
+        if(!scope.get("server").getAsString().equals(Stash.currentServer())||!scope.get("dimension").getAsString().equals(dimension())||!scope.get("player").getAsString().equals(mc.player.getUUID().toString()))return false;
+        if(scope.has("source")){
+            var p=scope.getAsJsonArray("source");var at=new BlockPos(p.get(0).getAsInt(),p.get(1).getAsInt(),p.get(2).getAsInt());
+            if(!mc.level.isLoaded(at))return false;var block=mc.level.getBlockState(at).getBlock();
+            if(!(block instanceof net.minecraft.world.level.block.ChestBlock||block instanceof net.minecraft.world.level.block.BarrelBlock||block instanceof net.minecraft.world.level.block.ShulkerBoxBlock))return false;
+        }
+        var world=new LinkedHashMap<Integer,BlockExpected>();
+        for(var value:evidence.getAsJsonArray("blocks")){
+            var b=value.getAsJsonObject();var at=new BlockPos(b.get("x").getAsInt(),b.get("y").getAsInt(),b.get("z").getAsInt());
+            if(!mc.level.isLoaded(at)||!blockId(at).equals(b.get("block").getAsString()))return false;
+            int sequence=world.size()+1;world.put(sequence,new BlockExpected(sequence,at,b.get("block").getAsString(),0));
+        }
+        origin=scope.deepCopy();blocks.clear();blocks.putAll(world);gate.restorePending(readExpected(evidence.getAsJsonObject("expected")));return requestReconciliation();
     }
 
     private static InventoryReadback.Expected readExpected(JsonObject value) {
@@ -418,6 +499,7 @@ public final class InventorySync {
         catch (UnsupportedOperationException ignored) { /* The installation root still owns access on non-POSIX platforms. */ }
     }
     private static void reportFailure() {
+        if(gate.failed())PhysicalJournalRuntime.block(gate.reason());
         if (!gate.reason().isEmpty() && !gate.reason().equals(reported)) {
             reported = gate.reason(); MeteorClient.LOG.error("WeSort inventory automation paused: {}", reported);
         }

@@ -1,0 +1,287 @@
+{
+  "scope": "W-023 local Minecraft 26.3, before commit",
+  "manager_version": "0.1.0-dev.6",
+  "sqlite_schema": 5,
+  "local_scenarios": [
+    {
+      "phase": "SELECT",
+      "result": "PASS",
+      "checks": [
+        {
+          "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+          "result": "PASS"
+        },
+        {
+          "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Owner-approved fresh inventory verified that the SELECT operation sent no mutation",
+          "result": "PASS"
+        },
+        {
+          "scenario": "SELECT survived client and Manager restart without a duplicate physical mutation",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "phase": "PLACE",
+      "result": "PASS",
+      "checks": [
+        {
+          "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+          "result": "PASS"
+        },
+        {
+          "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "PLACE survived client and Manager restart without a duplicate physical mutation",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "phase": "OPEN",
+      "result": "PASS",
+      "checks": [
+        {
+          "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+          "result": "PASS"
+        },
+        {
+          "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "OPEN survived client and Manager restart without a duplicate physical mutation",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "phase": "TRANSFER",
+      "result": "PASS",
+      "checks": [
+        {
+          "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+          "result": "PASS"
+        },
+        {
+          "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "TRANSFER survived client and Manager restart without a duplicate physical mutation",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "phase": "VERIFY",
+      "result": "PASS",
+      "checks": [
+        {
+          "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+          "result": "PASS"
+        },
+        {
+          "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "VERIFY survived client and Manager restart without a duplicate physical mutation",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "phase": "BREAK",
+      "result": "PASS",
+      "checks": [
+        {
+          "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+          "result": "PASS"
+        },
+        {
+          "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "BREAK survived client and Manager restart without a duplicate physical mutation",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "phase": "PICKUP",
+      "result": "PASS",
+      "checks": [
+        {
+          "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+          "result": "PASS"
+        },
+        {
+          "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "PICKUP survived client and Manager restart without a duplicate physical mutation",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "phase": "STORE",
+      "result": "PASS",
+      "checks": [
+        {
+          "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+          "result": "PASS"
+        },
+        {
+          "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "STORE survived client and Manager restart without a duplicate physical mutation",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "phase": "DIRECT",
+      "result": "PASS",
+      "checks": [
+        {
+          "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+          "result": "PASS"
+        },
+        {
+          "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "same HYBRID agent verified the accepted click and resumed without double pickup",
+          "result": "PASS"
+        }
+      ]
+    }
+  ],
+  "regression": {
+    "exact_27_slot_manager_kit_pack": "PASS",
+    "inventory_batch_block_cursor_latency_and_restart": "PASS",
+    "container_image_empty_volume_restart_tls_and_protocol": "PASS",
+    "web_owner_inspection_and_sensitive_field_rendering": "PASS"
+  }
+}

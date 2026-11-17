@@ -56,6 +56,7 @@ async function scenario(loggedIn) {
   const errors = [];
   const requests = [];
   const kitWrites = [];
+  const physicalReviews = [];
   w.addEventListener('error', e => errors.push(e.error || e.message));
   const globals = Object.fromEntries(Object.getOwnPropertyNames(w).map(x => [x, 'readonly']));
   Object.assign(globals, {fetch: 'readonly', EventSource: 'readonly', ResizeObserver: 'readonly',
@@ -88,6 +89,13 @@ async function scenario(loggedIn) {
     if (u.pathname === '/api/v1/kits' && opts.method === 'POST') { kitWrites.push(JSON.parse(opts.body)); body = {}; }
     if (u.pathname === '/api/v1/kits/jobs' && opts.method === 'POST') { kitWrites.push(JSON.parse(opts.body)); body = {}; }
     if (u.pathname === '/api/v1/kits/jobs' && opts.method !== 'POST') body = {jobs: [{name:'Raid',revision:7,state:'VERIFYING',id:'job-one',agentEstimate:{built:1,possible:2,exact:false,shortage:'<img src=x>',at:1234}}]};
+    if (u.pathname === '/api/v1/physical') body = {operations: [{
+      id: 'op-one', orderId: 'o-one', revision: 9, checksum: 'op-checksum',
+      kind: 'REPACK', managerState: 'NEEDS_RECONCILIATION', interruptedPhase: 'BREAK',
+      server: '<img src=x>', dimension: 'minecraft:overworld',
+      possibleOrphans: [{x:1, y:64, z:2, block:'minecraft:shulker_box'}]
+    }]};
+    if (u.pathname === '/api/v1/physical/inspect') physicalReviews.push(JSON.parse(opts.body));
     if (u.pathname === '/api/v1/users') body = {owner: {name: 'Owner'}, users: [], presets: {}};
     if (u.pathname.endsWith('/settings')) body = {schema: [], values: {}, schemaHash: 'a', valuesHash: 'b'};
     if (u.pathname.endsWith('/activity')) body = {now: [], events: [], modules: [], plugins: []};
@@ -148,6 +156,12 @@ async function scenario(loggedIn) {
       assert(requests.some(x => x.includes('/settings?scope=plugin')));
       w.document.querySelector('#dash-nav [data-page="settings"]').click(); await settle();
       assert.equal(w.document.querySelector('#kit-admin').hidden, false);
+      assert.equal(w.document.querySelector('#physical-admin').hidden, false);
+      assert.match(w.document.querySelector('#physical-list').textContent, /NEEDS_RECONCILIATION.*BREAK.*Order o-one/);
+      assert.equal(w.document.querySelector('#physical-list img'), null);
+      assert.match(w.document.querySelector('#physical-list [data-sensitive]').textContent, /1, 64, 2/);
+      w.document.querySelector('#physical-list button').click(); await settle();
+      assert.deepEqual(physicalReviews, [{operation:'op-one', revision:9, checksum:'op-checksum'}]);
       w.document.querySelector('#kit-server').value = 'test'; w.document.querySelector('#kit-load').click(); await settle();
       w.document.querySelector('#kit-list button').click();
       const kitRows = w.document.querySelectorAll('#kit-slots .kit-slot'); assert.equal(kitRows.length, 27);

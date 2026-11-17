@@ -51,3 +51,20 @@ balances (observed, reserved, available, unknown), sources and freshness policy.
 `reservationPrecision:aggregate` describes existing stash order holds. Physical
 slot/box allocations and cross-stash ordering are later issues. Legacy aggregate
 indexes remain readable but cannot prove orderable stock.
+
+## W-023 physical operation receipts
+
+The signed agent endpoint `POST /api/v1/physical/agent` accepts an agent UUID
+and a journal record. A successful response returns a receipt with the
+operation ID, committed revision, checksum and Manager state. Repeated
+requests for that revision are idempotent. Changes to an existing operation
+append evidence and preserve the original agent and server scope. A receipt
+mirrors execution evidence. The stock API continues to use its own native
+observations.
+
+Owner sessions use `GET /api/v1/physical` for summaries and
+`POST /api/v1/physical/inspect` with the operation ID, revision and checksum
+to request a fresh inspection. The signed agent response delivers the
+inspection only to the original agent. The agent supplies the exact native
+source and player inventory evidence in its next journal revision and can
+return the decision outcome in `result`. The Owner audit uses operation IDs.

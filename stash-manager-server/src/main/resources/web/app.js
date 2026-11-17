@@ -4263,6 +4263,8 @@
       settingsForm.load(true);
       if (me.owner) loadUsers();
       $("kit-admin").hidden = !me.owner || forcedStreamer();
+      $("physical-admin").hidden = !me.owner || forcedStreamer();
+      if (!$("physical-admin").hidden) loadPhysicalOperations();
     }
 
     window.clearTimeout(act.timer);
@@ -4528,6 +4530,58 @@
       workspace: { dimension: $("kit-dimension").value, x: Number($("kit-work-x").value), y: Number($("kit-work-y").value), z: Number($("kit-work-z").value) }
     } }).then(function () { kitMessage("Packing job assigned. Completion requires fresh destination verification."); loadKitJobs(); }).catch(kitFailure);
   });
+
+  function loadPhysicalOperations() {
+    var status = $("physical-status");
+    var holder = $("physical-list");
+    holder.replaceChildren();
+    api("/api/v1/physical").then(function (reply) {
+      if ($("physical-admin").hidden || forcedStreamer()) return;
+      status.textContent = reply.operations.length ? "" : "No physical operations recorded.";
+      reply.operations.forEach(function (op) {
+        var row = document.createElement("div");
+        row.className = "inset";
+        var title = document.createElement("p");
+        title.textContent = op.kind + " · " + op.managerState + " · " + (op.interruptedPhase || op.phase);
+        var detail = document.createElement("p");
+        detail.textContent = "Operation " + op.id + (op.orderId ? " · Order " + op.orderId : "") + (op.jobId ? " · Kit job " + op.jobId : "");
+        row.append(title, detail);
+        op.possibleOrphans.forEach(function (orphan) {
+          var location = document.createElement("p");
+          location.textContent = "Possible orphaned shulker · ";
+          location.appendChild(hiddenSpan(op.server + " · " + op.dimension + " · " + [orphan.x, orphan.y, orphan.z].join(", ")));
+          row.appendChild(location);
+        });
+        if (op.inspectionState) {
+          var inspection = document.createElement("p");
+          inspection.textContent = "Inspection " + op.inspectionState + " " + (op.inspectionDetail || "");
+          row.appendChild(inspection);
+        }
+        if (op.managerState === "NEEDS_RECONCILIATION") {
+          var note = document.createElement("p");
+          note.textContent = "Automation is paused. Bring the original agent within reach of the recorded source to request a read-only inspection.";
+          row.appendChild(note);
+          var button = document.createElement("button");
+          button.type = "button";
+          button.className = "mc-button";
+          button.textContent = "Request inspection";
+          button.disabled = op.inspectionState === "REQUESTED";
+          button.addEventListener("click", function () {
+            button.disabled = true;
+            api("/api/v1/physical/inspect", { method: "POST", body: {
+              operation: op.id, revision: op.revision, checksum: op.checksum
+            } }).then(loadPhysicalOperations).catch(function (error) {
+              status.textContent = error.message;
+              button.disabled = false;
+            });
+          });
+          row.appendChild(button);
+        }
+        holder.appendChild(row);
+      });
+    }).catch(function (error) { status.textContent = error.message; });
+  }
+  $("physical-refresh").addEventListener("click", loadPhysicalOperations);
 
   // ---------- dashboard: settings forms ----------
   // tree can have thousands of settings, so the Proxy page only renders the selected section (or the search hits).

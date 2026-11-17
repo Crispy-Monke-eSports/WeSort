@@ -6,7 +6,8 @@
   "mixins": [
     "ClientPacketListenerMixin",
     "InventoryInputMixin",
-    "BlockInputMixin"
+    "BlockInputMixin",
+    "RotationInputMixin"
   ],
   "injectors": {
     "defaultRequire": 1

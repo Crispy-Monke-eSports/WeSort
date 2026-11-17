@@ -18,6 +18,7 @@ public final class ClientRuntimeProbe {
     private ClientRuntimeProbe() {}
 
     public static void afterInitialize() {
+        PhysicalJournalRuntime.initialize();
         InventorySync.initialize();
         NavigationRuntime.initialize();
         WorldTestDriver.initialize();

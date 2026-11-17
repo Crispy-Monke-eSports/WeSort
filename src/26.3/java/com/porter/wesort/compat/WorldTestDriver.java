@@ -37,6 +37,7 @@ public final class WorldTestDriver {
     private long openEpoch, signEpoch;
     private net.minecraft.world.level.block.entity.SignTextSlot signSlot;
     private boolean signSent;
+    private String crashPhysicalPhase;
     private static WorldTestDriver instance;
     private final Map<BlockPos, Long> blockEntities = new HashMap<>();
 
@@ -60,6 +61,21 @@ public final class WorldTestDriver {
             instance = new WorldTestDriver(root);
             MeteorClient.EVENT_BUS.subscribe(instance);
         } catch (Exception e) { throw new IllegalStateException("E2E profile not initialized", e); }
+    }
+
+    static void physicalPhasePersisted(String phase) {
+        var driver = instance;
+        if (driver == null || !phase.equals(driver.crashPhysicalPhase)) return;
+        try {
+            Files.writeString(driver.control.resolve("physical-crash-ready"), phase);
+            // The isolated harness kills this process after observing the marker.
+            Thread.sleep(30_000);
+        } catch (java.io.IOException failure) {
+            throw new IllegalStateException("Cannot announce the journal crash point", failure);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
+        throw new IllegalStateException("Harness did not terminate the armed client");
     }
 
     @EventHandler
@@ -87,6 +103,10 @@ public final class WorldTestDriver {
             if (mc.level == null || mc.player == null) return;
             switch (command.get("action").getAsString()) {
                 case "state" -> respond(true, "connected", state());
+                case "arm-physical-crash" -> {
+                    crashPhysicalPhase = com.porter.wesort.inventory.PhysicalWork.Phase.valueOf(command.get("phase").getAsString()).name();
+                    respond(true, "armed after durable journal phase", null);
+                }
                 case "open" -> {
                     openEpoch = InventorySync.contentsEpoch();
                     BlockPos pos = position(command);
@@ -445,6 +465,7 @@ public final class WorldTestDriver {
 
     @SuppressWarnings("unchecked")
     private void publish(JsonObject command) throws Exception {
+        if (stash == null) stash = Stash.load("e2e-fixture");
         if (stash == null || stash.boxes.isEmpty()) { respond(false, "No observed containers", null); return; }
         stash.save();
         StashSorter sorter = Modules.get().get(StashSorter.class);
@@ -495,6 +516,7 @@ public final class WorldTestDriver {
         out.addProperty("allowWaterBucketFall", settings.allowWaterBucketFall.value);
         out.addProperty("maxFallHeightNoWater", settings.maxFallHeightNoWater.value);
         out.addProperty("pathing", com.porter.wesort.utils.BaritoneHelper.isActive());
+        out.addProperty("physicalJournal", PhysicalJournalRuntime.status());
         out.addProperty("inventoryReady", InventorySync.ready());
         out.addProperty("inventoryFailure", InventorySync.reason());
         out.addProperty("cursorCount", mc.player.containerMenu.getCarried().getCount());

@@ -93,7 +93,7 @@ class Harness:
         (self.root / 'installation.txt').write_text('wesort-mc26-e2e-v1\n')
         self.server_dir = self.root / 'server'; self.server_dir.mkdir()
         self.game_dir = self.root / 'client'; self.game_dir.mkdir()
-        (self.game_dir / 'options.txt').write_text('onboardAccessibility:false\nskipMultiplayerWarning:true\ntutorialStep:none\nstartedCleanly:true\n')
+        (self.game_dir / 'options.txt').write_text('onboardAccessibility:false\nskipMultiplayerWarning:true\ntutorialStep:none\nstartedCleanly:true\npauseOnLostFocus:false\n')
         self.control = self.game_dir / 'wesort-e2e'; self.control.mkdir()
         (self.control / 'installation.txt').write_text('wesort-mc26-e2e-v1\n')
         self.evidence = self.root / 'evidence'; self.evidence.mkdir()

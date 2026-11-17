@@ -4,6 +4,7 @@ import com.google.gson.*;
 
 import com.porter.wesort.WeSortAddon;
 import com.porter.wesort.compat.InventorySync;
+import com.porter.wesort.compat.PhysicalJournalRuntime;
 import com.porter.wesort.compat.RightClick;
 import com.porter.wesort.stash.Categories;
 import com.porter.wesort.stash.ItemPreviewScreen;
@@ -1786,11 +1787,12 @@ public class StashSorter extends Module {
 
     @Override
     public void onDeactivate() {
+        PhysicalJournalRuntime.block("Automation stopped during physical work");
         teardown();
     }
 
     private void teardown() {
-        if (!InventorySync.ready()) {
+        if (!InventorySync.ready() || PhysicalJournalRuntime.blocked()) {
             // Do not drain grids, return the cursor, or close the menu on an unverified inventory.
             setUp = false;
             ledgeGuard(false);
@@ -1994,7 +1996,8 @@ public class StashSorter extends Module {
             blockRepack("Physical readback failed or phase deadline expired");
         }
         if (repackWork != null && repackWork.phase() == com.porter.wesort.inventory.PhysicalWork.Phase.NEEDS_RECONCILIATION) { ledgeGuard(false); return; }
-        if (!InventorySync.ready() || com.porter.wesort.compat.NavigationRuntime.paused()) { ledgeGuard(false); return; }
+        if (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror()
+            || !InventorySync.ready() || com.porter.wesort.compat.NavigationRuntime.paused()) { ledgeGuard(false); return; }
         verifyRepackStored();
         if (stash == null) {
             turnOff();
@@ -6079,6 +6082,7 @@ public class StashSorter extends Module {
             } else repackConservation = null; // Next verified round includes newly gathered stock.
         }
         restoreHotbar();
+        if (next == Job.Clean || next == Job.Fill) journalShulkerPhase(com.porter.wesort.inventory.PhysicalWork.Phase.SELECT);
         resetWander();
         job = next;
         target = null;
@@ -6128,7 +6132,8 @@ public class StashSorter extends Module {
      * One step of repacking a shulker beside us: place, open, move items, break, pick back up.
      */
     private void tickHandling() {
-        if (repackWork != null && !repackWork.terminal() && (job == Job.Clean || job == Job.Fill)) {
+        boolean repacking = repackWork != null && !repackWork.terminal() && (job == Job.Clean || job == Job.Fill);
+        if (repacking || managedKit() && (job == Job.KitFill || job == Job.KitUnpack)) {
             var phase = switch (handle) {
                 case Place, Wander -> com.porter.wesort.inventory.PhysicalWork.Phase.PLACE;
                 case Open, Return, Resume -> com.porter.wesort.inventory.PhysicalWork.Phase.OPEN;
@@ -6138,7 +6143,9 @@ public class StashSorter extends Module {
                 case Collect -> com.porter.wesort.inventory.PhysicalWork.Phase.PICKUP;
                 case Leave -> com.porter.wesort.inventory.PhysicalWork.Phase.SELECT;
             };
-            repackWork.enter(phase, System.nanoTime());
+            if (repacking) repackWork.enter(phase, System.nanoTime());
+            journalShulkerPhase(phase);
+            if (PhysicalJournalRuntime.blocked()) return;
         }
         handleTicks++;
 
@@ -6659,6 +6666,7 @@ public class StashSorter extends Module {
                 repackStoreAt = System.currentTimeMillis(); repackStoreBefore.clear();
                 for (var box : stash.boxes) if (box.known()) repackStoreBefore.put(box.parts.toString(), repackCount(box.contents));
                 repackWork.enter(com.porter.wesort.inventory.PhysicalWork.Phase.STORE, System.nanoTime());
+                journalShulkerPhase(com.porter.wesort.inventory.PhysicalWork.Phase.STORE);
             }
             clearOrphan(placed);
             endHandling();
@@ -6787,7 +6795,9 @@ public class StashSorter extends Module {
         if (carriedCopies < repackExistingCopies) { blockRepack("Other identical carried stock changed during storage verification"); return; }
         for (var box : stash.boxes) if (box.known() && box.lastRead >= repackStoreAt && com.porter.wesort.compat.ObservationRuntime.current(box)
             && repackCount(box.contents) > repackStoreBefore.getOrDefault(box.parts.toString(), Integer.MAX_VALUE)) {
-            repackWork.enter(com.porter.wesort.inventory.PhysicalWork.Phase.COMPLETED, System.nanoTime()); return;
+            PhysicalJournalRuntime.complete();
+            if (!PhysicalJournalRuntime.blocked()) repackWork.enter(com.porter.wesort.inventory.PhysicalWork.Phase.COMPLETED, System.nanoTime());
+            return;
         }
     }
     private boolean repackPrecondition(String why) {
@@ -6797,6 +6807,7 @@ public class StashSorter extends Module {
         if (repackWork == null || repackWork.terminal() && repackWork.phase() != com.porter.wesort.inventory.PhysicalWork.Phase.NEEDS_RECONCILIATION)
             repackWork = new com.porter.wesort.inventory.PhysicalWork("Shulker", System.nanoTime());
         repackWork.reconcile(why);
+        PhysicalJournalRuntime.block(why);
         dropLost = true;
         alertError("Shulker operation NEEDS_RECONCILIATION: %s. No physical retry is sent.", why);
     }
@@ -6804,8 +6815,10 @@ public class StashSorter extends Module {
     private void endHandling() {
         if (repackWork != null && !repackWork.terminal() && (job == Job.Clean || job == Job.Fill)) {
             if (handle == Handle.Leave) repackWork.enter(com.porter.wesort.inventory.PhysicalWork.Phase.SELECT, System.nanoTime());
-            else if (repackWork.phase() != com.porter.wesort.inventory.PhysicalWork.Phase.STORE && placed == null)
+            else if (repackWork.phase() != com.porter.wesort.inventory.PhysicalWork.Phase.STORE && placed == null) {
                 repackWork.failBeforeMutation("No safe shulker operation started");
+                PhysicalJournalRuntime.endUnstarted();
+            }
         }
         resetWander();
         // A shulker cleaned or filled is real headway: the counters start again
@@ -9625,6 +9638,41 @@ public class StashSorter extends Module {
     /**
      * The saved stash named in the settings, for other modules like wesort-stash-overlay. Null if there isn't one here.
      */
+    public com.google.gson.JsonObject physicalJournalContext() {
+        var context = new com.google.gson.JsonObject();
+        var manager = Modules.get().get(StashManager.class);
+        String kit = manager == null ? null : manager.physicalKitId();
+        boolean repack = repackWork != null && !repackWork.terminal();
+        context.addProperty("server", Stash.currentServer());
+        context.addProperty("dimension", StashIndex.dimension());
+        context.addProperty("agent", mc.player.getUUID().toString());
+        context.addProperty("kind", kit != null ? "KIT" : repack ? "REPACK" : "DIRECT");
+        if (stash != null) context.addProperty("stash", stash.name);
+        if (kit != null) context.addProperty("jobId", kit);
+        String lease = manager == null ? null : manager.physicalLeaseFingerprint();
+        if (lease != null) context.addProperty("leaseFingerprint", lease);
+        if (orderRunner.orderId() != null) context.addProperty("orderId", orderRunner.orderId());
+        return context;
+    }
+
+    public void capturePhysicalInspection(BlockPos source) {
+        if (stash == null || source == null) return;
+        var box = stash.boxAt(source);
+        if (box != null) read(box);
+    }
+
+    private void journalShulkerPhase(com.porter.wesort.inventory.PhysicalWork.Phase phase) {
+        var evidence = new com.google.gson.JsonObject();
+        if (placed != null) {
+            var block = new com.google.gson.JsonObject();
+            block.addProperty("x", placed.getX());
+            block.addProperty("y", placed.getY());
+            block.addProperty("z", placed.getZ());
+            evidence.add("workspace", block);
+        }
+        PhysicalJournalRuntime.phase(phase.name(), evidence);
+    }
+
     public Stash currentStash() {
         return ensureStash();
     }

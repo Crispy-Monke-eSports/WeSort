@@ -37,9 +37,11 @@ final class StockLedger {
                     if (existed && (!r.next() || r.getInt(1) != APPLICATION_ID)) throw new IOException("Foreign guild database format");
                 }
                 s.execute("PRAGMA journal_mode=WAL");
-                try (var r = s.executeQuery("PRAGMA user_version")) { if (r.next() && r.getInt(1) > 4) throw new IOException("Unsupported guild database schema"); }
+                try (var r = s.executeQuery("PRAGMA user_version")) { if (r.next() && r.getInt(1) > 5) throw new IOException("Unsupported guild database schema"); }
                 s.execute("BEGIN IMMEDIATE");
                 try {
+                    s.execute("CREATE TABLE IF NOT EXISTS physical_operations(id TEXT PRIMARY KEY,server TEXT NOT NULL,agent TEXT NOT NULL,stash TEXT NOT NULL,revision INTEGER NOT NULL,checksum TEXT NOT NULL,payload TEXT NOT NULL,state TEXT NOT NULL,last_seen INTEGER NOT NULL,fence_revision INTEGER NOT NULL)");
+                    s.execute("CREATE TABLE IF NOT EXISTS physical_decisions(id TEXT PRIMARY KEY,operation TEXT NOT NULL,revision INTEGER NOT NULL,checksum TEXT NOT NULL,actor TEXT NOT NULL,action TEXT NOT NULL,state TEXT NOT NULL,issued_at INTEGER NOT NULL,detail TEXT NOT NULL,manager_run TEXT NOT NULL)");
                     s.execute("CREATE TABLE IF NOT EXISTS kit_jobs(id TEXT PRIMARY KEY,server TEXT NOT NULL,name_key TEXT NOT NULL,state TEXT NOT NULL,agent TEXT NOT NULL,token TEXT,deadline INTEGER NOT NULL,payload TEXT NOT NULL)");
                     s.execute("CREATE TABLE IF NOT EXISTS kit_meta(id INTEGER PRIMARY KEY CHECK(id=1),revision INTEGER NOT NULL)");
                     s.execute("INSERT OR IGNORE INTO kit_meta VALUES(1,0)");
@@ -54,7 +56,14 @@ final class StockLedger {
                     s.execute("CREATE TABLE IF NOT EXISTS stock_members(server TEXT NOT NULL,stash TEXT NOT NULL,source TEXT NOT NULL,present INTEGER NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL,verified_at INTEGER NOT NULL,PRIMARY KEY(server,stash,source))");
                     s.execute("CREATE TABLE IF NOT EXISTS stock_indexes(server TEXT NOT NULL,stash TEXT NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL,PRIMARY KEY(server,stash))");
                     try (var p = c.prepareStatement("INSERT OR IGNORE INTO stock_meta VALUES(1,?,0)")) { p.setString(1, UUID.randomUUID().toString()); p.executeUpdate(); }
-                    s.execute("PRAGMA application_id=" + APPLICATION_ID); s.execute("PRAGMA user_version=4"); s.execute("COMMIT");
+                    s.execute("PRAGMA application_id=" + APPLICATION_ID); s.execute("PRAGMA user_version=5");
+                    var interruptedServers=new ArrayList<String>();
+                    try(var leases=s.executeQuery("SELECT server FROM automation_leases WHERE state='ACTIVE'")){while(leases.next())interruptedServers.add(leases.getString(1));}
+                    s.executeUpdate("UPDATE automation_leases SET state='NEEDS_RECONCILIATION' WHERE state='ACTIVE'");
+                    for(String server:interruptedServers)invalidateServer(c,server);
+                    s.executeUpdate("UPDATE physical_decisions SET state='FAILED',detail='Manager restarted; review the current operation' WHERE state='REQUESTED'");
+                    s.executeUpdate("UPDATE physical_operations SET state='NEEDS_RECONCILIATION',fence_revision=revision WHERE state IN ('PLANNED','IN_PROGRESS','VERIFYING')");
+                    s.execute("COMMIT");
                 } catch (Exception e) { s.execute("ROLLBACK"); throw e; }
                 try (var r = s.executeQuery("SELECT epoch FROM stock_meta WHERE id=1")) { if (!r.next()) throw new SQLException("Missing stock epoch"); epoch = r.getString(1); }
             }
@@ -93,6 +102,7 @@ final class StockLedger {
         try (var s = c.createStatement(); var r = s.executeQuery("SELECT revision FROM stock_meta WHERE id=1")) { if (!r.next()) throw new SQLException("Missing stock revision"); return r.getLong(1); }
     }
     String epoch() { return epoch; }
+    String boot() { return run; }
     private static long number(JsonObject o, String key) { return o.get(key).getAsBigDecimal().longValueExact(); }
     static List<JsonObject> validate(JsonObject index) {
         if (!index.has("physicalSources")) return List.of();

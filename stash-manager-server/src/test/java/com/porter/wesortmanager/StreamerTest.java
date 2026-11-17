@@ -479,6 +479,13 @@ class StreamerTest {
     }
 
     @Test
+    void onlyOwnerCanReadPhysicalOperations() throws Exception {
+        assertEquals(200, get(owner, "/api/v1/physical").status());
+        assertEquals(403, get(uma, "/api/v1/physical").status());
+        assertEquals(403, get(fay, "/api/v1/physical").status());
+    }
+
+    @Test
     void everyLoggedInRouteIsClassified() throws Exception {
         java.util.Set<String> redacted = java.util.Set.of(
             "[GET, HEAD] /api/v1/stashes SESSION VIEW",
@@ -512,6 +519,8 @@ class StreamerTest {
             "[GET, HEAD] /api/v1/kits/editor SESSION OWNER",
             "[GET, HEAD] /api/v1/kits/jobs SESSION OWNER",
             "[POST] /api/v1/kits/jobs BROWSER_WRITE OWNER",
+            "[GET, HEAD] /api/v1/physical SESSION OWNER",
+            "[POST] /api/v1/physical/inspect BROWSER_WRITE OWNER",
             "[POST] /api/v1/link/regenerate BROWSER_WRITE OWNER",
             "[GET, HEAD] /api/v1/users SESSION OWNER",
             "[POST] /api/v1/users BROWSER_WRITE OWNER",

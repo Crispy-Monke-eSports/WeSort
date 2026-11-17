@@ -227,9 +227,14 @@ public final class WorldTestDriver {
                     var sorter = Modules.get().get(StashSorter.class);
                     ((Setting<String>) sorter.settings.get("stash-name")).set(stash.name);
                     ((Setting<Boolean>) sorter.settings.get("sort-items")).set(true);
+                    if (command.has("repack")) ((Setting<Boolean>) sorter.settings.get("repack")).set(command.get("repack").getAsBoolean());
+                    if (command.has("compact")) ((Setting<Boolean>) sorter.settings.get("compact")).set(command.get("compact").getAsBoolean());
+                    if (command.has("newBulkAt")) ((Setting<Integer>) sorter.settings.get("new-bulk-at")).set(command.get("newBulkAt").getAsInt());
+                    if (command.has("topUpAt")) ((Setting<Integer>) sorter.settings.get("compact-top-up-at")).set(command.get("topUpAt").getAsInt());
+                    if (command.has("carrySlots")) ((Setting<String>) sorter.settings.get("carry-slots")).set(command.get("carrySlots").getAsString());
                     ((Setting<StashSorter.Mode>) sorter.settings.get("mode")).set(StashSorter.Mode.valueOf(command.has("mode") ? command.get("mode").getAsString() : "Signs"));
                     ((Setting<Boolean>) sorter.settings.get("barrels")).set(true);
-                    ((Setting<Boolean>) sorter.settings.get("walk")).set(true);
+                    ((Setting<Boolean>) sorter.settings.get("walk")).set(!command.has("walk") || command.get("walk").getAsBoolean());
                     ((Setting<Integer>) sorter.settings.get("radius")).set(32);
                     ((Setting<Integer>) sorter.settings.get("delay")).set(1);
                     ((Setting<Integer>) sorter.settings.get("container-delay")).set(0);
@@ -455,6 +460,11 @@ public final class WorldTestDriver {
         }
         out.add("sorterStorage", storage);
         out.addProperty("sorterActive", actualSorter.isActive());
+        out.add("repackProgress", actualSorter.repackProgress());
+        if (actualSorter.repackPosition() != null) {
+            var p = actualSorter.repackPosition(); var position = new JsonArray(); position.add(p.getX()); position.add(p.getY()); position.add(p.getZ());
+            out.add("repackPosition", position);
+        }
         out.addProperty("sortingPermitted", Modules.get().get(StashSorter.class).sortingPermitted());
         out.addProperty("server", Stash.currentServer());
         out.addProperty("player", mc.player.getName().getString());

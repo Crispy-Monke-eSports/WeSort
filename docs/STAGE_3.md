@@ -1,6 +1,7 @@
 # Steg 3 – lagergrunden
 
-W-018 (#19), W-019 (#20) och W-020 (#21) är implementerade. W-021–W-024 återstår.
+W-018 (#19), W-019 (#20), W-020 (#21) och W-021 (#22) är implementerade.
+W-022–W-024 återstår.
 Aktuell klientpolicy är endast Minecraft 26.3 med Java 25; Manager kör Java 21.
 Äldre klienttargets som nämns i tidigare verifieringar är historik från före versionsavvecklingen. Arbetet
 ligger direkt på main och varje issue får en egen commit som pushas innan
@@ -74,10 +75,21 @@ och Manager 182, utan skip eller fel. Webbens DOM-prov och installations-
 isolering passerar. Lokala spelresultat finns i
 `verification/W-020-*`; hosted CI verifieras separat efter push.
 
+## W-021 – repack, consolidation och bulk
+
+Den riktiga pipelinen har en separat VERIFY-fas, exakta metadata-/antalvillkor,
+full kvittens även för passiv pickup och verifierad lagring efter pickup.
+Verktyg, utrymme, försök och absolut tid begränsas; osäkra utfall spärras.
+Se [fasmodell, begränsningar och verkliga prov](MC_26_3_REPACK.md).
+Lokalt passerar 467 klienttester och 188 Manager-tester, webbens DOM-prov,
+15 verkliga repackscenarier samt inventory-/kraschregressionen.
+Denna ändring kräver ingen ny Manager-version; publicerad W-020-backend
+`v0.1.0-dev.4` behålls. Fysisk fasjournal/startup-recovery återstår i W-023.
+
 ## Återstående i steget
 
 W-019:s [sortering och reservationsskydd](MC_26_3_SORTING.md) finns i koden.
-Återstående: W-021 repack/bulk; W-022 exakta kits; W-023 hållbar fysisk journal;
+Återstående: W-022 exakta kits; W-023 hållbar fysisk journal;
 W-024 global atomisk reservationshierarki. Dessa är inte färdiga genom W-018.
 Orderhållningar är fortfarande aggregerade per stash (`reservationPrecision`
 är `aggregate`); exakt fysisk reservation/allokering visas därför inte som

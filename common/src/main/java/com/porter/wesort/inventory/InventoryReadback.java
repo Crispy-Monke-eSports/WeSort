@@ -2,11 +2,30 @@ package com.porter.wesort.inventory;
 
 import java.util.ArrayDeque;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.HashMap;
 
 /** Pure fail-closed protocol state: local prediction never acknowledges a physical operation. */
 public final class InventoryReadback {
-    public record Expected(int menu, List<String> slots, String cursor) {
-        public Expected { slots = List.copyOf(slots); }
+    public record Expected(int menu, List<String> slots, String cursor, Map<Integer, Set<String>> alternatives) {
+        public Expected(int menu, List<String> slots, String cursor) { this(menu, slots, cursor, Map.of()); }
+        public Expected {
+            slots = List.copyOf(slots);
+            Map<Integer, Set<String>> copy = new HashMap<>();
+            for (var entry : alternatives.entrySet()) {
+                if (entry.getKey() < 0 || entry.getKey() >= slots.size() || entry.getValue().isEmpty() || entry.getValue().size() > 2)
+                    throw new IllegalArgumentException("Invalid bounded server outcome");
+                copy.put(entry.getKey(), Set.copyOf(entry.getValue()));
+            }
+            alternatives = Map.copyOf(copy);
+        }
+        boolean matches(Expected observed) {
+            if (menu != observed.menu || !cursor.equals(observed.cursor) || slots.size() != observed.slots.size()) return false;
+            for (int i=0;i<slots.size();i++) if (!slots.get(i).equals(observed.slots.get(i))
+                && !alternatives.getOrDefault(i, Set.of()).contains(observed.slots.get(i))) return false;
+            return true;
+        }
     }
     private record Observed(Expected value, long epoch) {}
     private record Fence(Expected value, long afterEpoch, long deadline) {}
@@ -42,7 +61,7 @@ public final class InventoryReadback {
     public void barrier() {
         if (failed() || fences.isEmpty()) return;
         Fence fence = fences.remove();
-        if (observed == null || observed.epoch <= Math.max(fence.afterEpoch, acknowledgedEpoch) || !observed.value.equals(fence.value)) {
+        if (observed == null || observed.epoch <= Math.max(fence.afterEpoch, acknowledgedEpoch) || !fence.value.matches(observed.value)) {
             fail("Server inventory differs from prediction or no fresh snapshot preceded the barrier");
         } else acknowledgedEpoch = observed.epoch;
     }
@@ -64,7 +83,7 @@ public final class InventoryReadback {
     /** Explicit recovery verifies the original postcondition against a new server read; it sends no real click. */
     public Expected reconcile(int freshMenu, long now) {
         if (!failed() || expected == null) return null;
-        Expected value = new Expected(freshMenu, expected.slots, expected.cursor);
+        Expected value = new Expected(freshMenu, expected.slots, expected.cursor, expected.alternatives);
         failure = ""; fences.clear(); batch = value;
         return fence(now);
     }

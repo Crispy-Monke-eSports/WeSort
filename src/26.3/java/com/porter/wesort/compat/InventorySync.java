@@ -138,6 +138,7 @@ public final class InventorySync {
             return;
         }
         boolean mutation = event.packet instanceof ServerboundContainerClickPacket && ours;
+        Map<Integer, Set<String>> alternatives = Map.of();
         if (event.packet instanceof ServerboundUseItemOnPacket use) {
             lastInteracted = use.hitResult().getBlockPos().immutable();
             if (ours) lastBlockSequence = use.sequence();
@@ -157,6 +158,14 @@ public final class InventorySync {
                 || (action.getAction() == ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK && mc.level.getBlockState(action.getPos()).isAir())) {
                 blocks.put(action.getSequence(), new BlockExpected(action.getSequence(), action.getPos().immutable(), blockId(action.getPos()), System.nanoTime() + 8_000_000_000L));
                 mutation = true;
+                // A successful server break may wear the selected pickaxe once (or not, e.g. Unbreaking).
+                // Only this exact derived tool outcome is admitted; every other item/component stays exact.
+                var tool = mc.player.getMainHandItem();
+                if (tool.is(net.minecraft.tags.ItemTags.PICKAXES) && tool.isDamageableItem() && mc.player.containerMenu == mc.player.inventoryMenu) {
+                    var worn = tool.copy(); worn.setDamageValue(tool.getDamageValue() + 1);
+                    String result = worn.getDamageValue() >= worn.getMaxDamage() ? fingerprint(ItemStack.EMPTY) : fingerprint(worn);
+                    alternatives = Map.of(36 + mc.player.getInventory().getSelectedSlot(), Set.of(result));
+                }
             }
         }
         if (!mutation && event.packet instanceof ServerboundUseItemOnPacket use) {
@@ -176,7 +185,7 @@ public final class InventorySync {
         try {
             if (event.packet instanceof ServerboundContainerClickPacket click && click.containerId() != menu.containerId) throw new IllegalStateException("Inventory menu changed before send");
             gate.predict(new InventoryReadback.Expected(menu.containerId,
-                fingerprints(menu.slots.stream().map(slot -> slot.getItem()).toList()), fingerprint(menu.getCarried())));
+                fingerprints(menu.slots.stream().map(slot -> slot.getItem()).toList()), fingerprint(menu.getCarried()), alternatives));
             origin = new JsonObject();
             origin.addProperty("server", Stash.currentServer());
             origin.addProperty("dimension", dimension());
@@ -235,6 +244,18 @@ public final class InventorySync {
                 ContainerInput.QUICK_MOVE, Int2ObjectMaps.emptyMap(), HashedStack.EMPTY));
             mc.player.connection.send(new ServerboundClientCommandPacket(ServerboundClientCommandPacket.Action.REQUEST_STATS));
         } finally { internal = false; }
+    }
+
+    /** Read-only full verification for passive pickups. A local inventory stack alone is not a receipt. */
+    public static void verifyInventory() {
+        if (!ready() || mc.player == null || mc.level == null || mc.player.containerMenu != mc.player.inventoryMenu) return;
+        try {
+            var menu = mc.player.inventoryMenu;
+            gate.predict(new InventoryReadback.Expected(menu.containerId,
+                fingerprints(menu.slots.stream().map(slot -> slot.getItem()).toList()), fingerprint(menu.getCarried())));
+            origin = new JsonObject(); origin.addProperty("server", Stash.currentServer()); origin.addProperty("dimension", dimension());
+            origin.addProperty("player", mc.player.getUUID().toString()); persist();
+        } catch (Exception failure) { gate.fail("Cannot persist passive pickup verification"); reportFailure(); }
     }
 
     public static boolean confirmedMenu() {
@@ -356,7 +377,10 @@ public final class InventorySync {
         JsonObject out = new JsonObject(); out.addProperty("schema", 1); out.add("origin", origin);
         var expected = gate.expected(); JsonObject value = new JsonObject(); value.addProperty("menu", expected.menu());
         JsonArray slots = new JsonArray(); expected.slots().forEach(slots::add); value.add("slots", slots);
-        value.addProperty("cursor", expected.cursor()); out.add("expected", value);
+        value.addProperty("cursor", expected.cursor());
+        JsonObject alternatives = new JsonObject();
+        expected.alternatives().forEach((slot, outcomes) -> { JsonArray allowed = new JsonArray(); outcomes.forEach(allowed::add); alternatives.add(String.valueOf(slot), allowed); });
+        value.add("alternatives", alternatives); out.add("expected", value);
         JsonArray world = new JsonArray();
         for (var block : blocks.values()) {
             JsonObject b = new JsonObject(); b.addProperty("sequence", block.sequence); b.addProperty("x", block.pos.getX());
@@ -378,7 +402,12 @@ public final class InventorySync {
         JsonArray values = value.getAsJsonArray("slots");
         if (values.size() > 256) throw new IllegalArgumentException("Inventory too large");
         List<String> slots = new ArrayList<>(); values.forEach(item -> slots.add(item.getAsString()));
-        return new InventoryReadback.Expected(value.get("menu").getAsInt(), slots, value.get("cursor").getAsString());
+        Map<Integer, Set<String>> alternatives = new HashMap<>();
+        if (value.has("alternatives")) for (var entry : value.getAsJsonObject("alternatives").entrySet()) {
+            Set<String> allowed = new HashSet<>(); entry.getValue().getAsJsonArray().forEach(item -> allowed.add(item.getAsString()));
+            alternatives.put(Integer.parseInt(entry.getKey()), allowed);
+        }
+        return new InventoryReadback.Expected(value.get("menu").getAsInt(), slots, value.get("cursor").getAsString(), alternatives);
     }
 
     private static void forceDirectory(Path folder) throws Exception {

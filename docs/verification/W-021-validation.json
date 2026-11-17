@@ -1,0 +1,43 @@
+{
+  "result": "PASS",
+  "base_commit": "e20bbb6398bea95fec09c4471bd8e06f893ef985",
+  "dirty_worktree": true,
+  "minecraft": "26.3",
+  "client_java": "25.0.5+8",
+  "manager_java": "21.0.13+9",
+  "junit": {
+    "client": {
+      "tests": 467,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "manager": {
+      "tests": 188,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "web_dom": "PASS",
+  "workflow_lint": "PASS",
+  "native_scenarios": [
+    "abort",
+    "blocked",
+    "bulk",
+    "compact",
+    "full-inventory",
+    "full-stash",
+    "identical",
+    "lag",
+    "mixed",
+    "named",
+    "no-empty",
+    "no-tool",
+    "partial",
+    "reserved",
+    "rounds"
+  ],
+  "local_run_lineage": "Development worktree runs before issue commit. Final named and multiple-round runs plus full builds recheck final code; hosted CI binds the complete matrix to the pushed commit.",
+  "hosted_ci": "pending after push"
+}

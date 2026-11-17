@@ -583,7 +583,7 @@ public class StashSorter extends Module {
     private enum Step { Walking, Opening, Working }
 
     // Repacking a shulker in the world: put it down, open it, move items, break it, pick it back up
-    private enum Handle { Place, Wander, Open, Work, Break, Collect, Return, Leave, Resume }
+    private enum Handle { Place, Wander, Open, Work, Verify, Break, Collect, Return, Leave, Resume }
 
     // Giving way: running, letting go of what is ours, then waiting for the others to finish and be quiet
     private enum Gate { Running, Yielding, Waiting }
@@ -1135,6 +1135,15 @@ public class StashSorter extends Module {
     private boolean settled;
 
     // Repacking
+    private com.porter.wesort.inventory.PhysicalWork repackWork;
+    private ItemStack repackOuter = ItemStack.EMPTY;
+    private String repackExpected = "";
+    private Map<String, Long> repackConservation;
+    private final Map<String, Integer> repackStoreBefore = new HashMap<>();
+    private long repackStoreAt;
+    private int repackExistingCopies;
+    public BlockPos repackPosition() { return placed; }
+    public com.google.gson.JsonObject repackProgress() { return repackWork == null ? new com.google.gson.JsonObject() : repackWork.json(); }
     private int wantSlot = -1;
     private int handledSlot;
     // Where the shulker handled came from, before it was moved to the hotbar to be placed
@@ -1974,7 +1983,12 @@ public class StashSorter extends Module {
     @EventHandler
     private void onTick(TickEvent.Pre event) {
         if (!sortingPermitted()) { step("sorting paused: Manager must exclude reservations before physical moves."); ledgeGuard(false); return; }
+        if (repackWork != null && !repackWork.terminal() && (InventorySync.failed() || repackWork.expired(System.nanoTime()))) {
+            blockRepack("Physical readback failed or phase deadline expired");
+        }
+        if (repackWork != null && repackWork.phase() == com.porter.wesort.inventory.PhysicalWork.Phase.NEEDS_RECONCILIATION) { ledgeGuard(false); return; }
         if (!InventorySync.ready() || com.porter.wesort.compat.NavigationRuntime.paused()) { ledgeGuard(false); return; }
+        verifyRepackStored();
         if (stash == null) {
             turnOff();
             return;
@@ -5826,7 +5840,8 @@ public class StashSorter extends Module {
      */
     private boolean nextRepackJob() {
         // Compacting has the shulkers and the stacks set aside for it
-        if (compactor.active()) return false;
+        if (compactor.active() || repackWork != null && !repackWork.terminal()
+            && repackWork.phase() == com.porter.wesort.inventory.PhysicalWork.Phase.STORE) return false;
 
         // A carried shulker with items in it that belong elsewhere: clean it out right here
         if (freeCarrySlot() != -1) {
@@ -5872,6 +5887,12 @@ public class StashSorter extends Module {
                 if (from != null) return fetch(from, fromSlot);
             }
 
+            // No empty box is an explicit, non-mutating precondition failure, not a successful repack.
+            if (startNew && (repackWork == null || repackWork.terminal())) {
+                repackWork = new com.porter.wesort.inventory.PhysicalWork("Fill", System.nanoTime());
+                repackWork.failBeforeMutation("No verified empty shulker available");
+                step("repacking blocked: no verified empty shulker; keeping items loose.");
+            }
             // Nowhere to pack it: it's put away loose
             packTried.add(key);
         }
@@ -5975,6 +5996,29 @@ public class StashSorter extends Module {
     }
 
     private boolean startHandling(Job next, int slot, BulkKey fill) {
+        if (next != Job.Clean && next != Job.Fill) repackExpected = "";
+        if (next == Job.Clean || next == Job.Fill) {
+            if (slot >= 0) {
+                if (repackWork != null && !repackWork.terminal()) return false;
+                repackWork = new com.porter.wesort.inventory.PhysicalWork(next.name(), System.nanoTime());
+                repackOuter = mc.player.getInventory().getItem(slot).copy(); repackExpected = "";
+                try {
+                    if (repackOuter.has(DataComponents.CUSTOM_NAME) || isKitShulker(repackOuter)) return repackPrecondition("Named or kit shulker is protected");
+                    repackExpected = com.porter.wesort.compat.RepackRuntime.signature(repackOuter);
+                    repackExistingCopies = (int) repackInventory().stream().filter(this::repackMatches).count() - 1;
+                    if (mc.gameMode.getPlayerMode().isBlockPlacingRestricted()) return repackPrecondition("Game mode forbids physical shulker placement");
+                    if (!InvUtils.findInHotbar(it -> it.is(ItemTags.PICKAXES)).found()) return repackPrecondition("A verified hotbar pickaxe is required before placing a shulker");
+                    if (stash.boxes.stream().noneMatch(box -> box.sortable() && !box.dropOff && !box.stale && !isKitBox(box) && roomFor(box, repackOuter)))
+                        return repackPrecondition("No verified storage capacity for the repacked shulker");
+                    repackConservation = com.porter.wesort.compat.RepackRuntime.conservation(repackInventory());
+                } catch (RuntimeException failure) {
+                    return repackPrecondition("Cannot verify exact shulker metadata and inventory counts before placement");
+                }
+            } else if (repackWork == null || repackWork.terminal() || repackOuter.isEmpty()) {
+                repackWork = new com.porter.wesort.inventory.PhysicalWork(next.name(), System.nanoTime());
+                blockRepack("Standing shulker needs fresh recovery verification before work can resume"); return false;
+            } else repackConservation = null; // Next verified round includes newly gathered stock.
+        }
         restoreHotbar();
         resetWander();
         job = next;
@@ -6025,6 +6069,18 @@ public class StashSorter extends Module {
      * One step of repacking a shulker beside us: place, open, move items, break, pick back up.
      */
     private void tickHandling() {
+        if (repackWork != null && !repackWork.terminal() && (job == Job.Clean || job == Job.Fill)) {
+            var phase = switch (handle) {
+                case Place, Wander -> com.porter.wesort.inventory.PhysicalWork.Phase.PLACE;
+                case Open, Return, Resume -> com.porter.wesort.inventory.PhysicalWork.Phase.OPEN;
+                case Work -> com.porter.wesort.inventory.PhysicalWork.Phase.TRANSFER;
+                case Verify -> com.porter.wesort.inventory.PhysicalWork.Phase.VERIFY;
+                case Break -> com.porter.wesort.inventory.PhysicalWork.Phase.BREAK;
+                case Collect -> com.porter.wesort.inventory.PhysicalWork.Phase.PICKUP;
+                case Leave -> com.porter.wesort.inventory.PhysicalWork.Phase.SELECT;
+            };
+            repackWork.enter(phase, System.nanoTime());
+        }
         handleTicks++;
 
         // Written down whenever the shulker's state changes, so a restart can finish the step
@@ -6044,6 +6100,7 @@ public class StashSorter extends Module {
             case Wander -> handleWander();
             case Open -> handleOpen();
             case Work -> handleWork();
+            case Verify -> handleVerify();
             case Break -> handleBreak();
             case Collect -> handleCollect();
             case Return -> handleReturn();
@@ -6109,6 +6166,7 @@ public class StashSorter extends Module {
             return;
         }
 
+        if (repackWork != null && !repackWork.terminal() && !repackWork.attempt(System.nanoTime())) { blockRepack("Placement attempt limit"); return; }
         shulkersBefore = countShulkers();
         placedStacks = StackInfo.of(shulker).contents().size();
         if (!BlockUtils.place(spot, new FindItemResult(hotbar, shulker.getCount()), rotate.get(), 50, true, true, true)) {
@@ -6163,6 +6221,7 @@ public class StashSorter extends Module {
         // The place may still be on its way: longer while the shulker is out of the inventory
         if (!shulkerAt(placed)) {
             if (placedConfirmed) {
+                if (repackWork != null && !repackWork.terminal()) { blockRepack("Placed shulker disappeared before full work verification"); return; }
                 // Was there, now it isn't: broken, or picked up by someone
                 handle = Handle.Collect;
                 handleTicks = 0;
@@ -6172,6 +6231,7 @@ public class StashSorter extends Module {
             if (handleTicks <= (gone ? 200 : 30)) return;
 
             if (gone) {
+                if (repackWork != null && !repackWork.terminal()) { blockRepack("Placement consumed the shulker without a verified world source"); return; }
                 // Out of the inventory but no block: a late update, or it's on the ground. Looked for, and on record
                 warning("The shulker I put down at %s hasn't shown up as a block, looking for it.", placed.toShortString());
                 placedConfirmed = true;
@@ -6197,6 +6257,21 @@ public class StashSorter extends Module {
         lastGoodStand = mc.player.blockPosition();
 
         if (mc.player.containerMenu instanceof ShulkerBoxMenu) {
+            if (!InventorySync.confirmedSource(List.of(placed))) {
+                if (handleTicks > HANDLE_TIMEOUT) blockRepack("Shulker menu has no matching server-confirmed physical source");
+                return;
+            }
+            if (repackWork != null && !repackWork.terminal() && (job == Job.Clean || job == Job.Fill)) {
+                try {
+                    ItemStack[] contents = repackMenuContents(mc.player.containerMenu);
+                    if (!repackExpected.isEmpty() && !repackExpected.equals(com.porter.wesort.compat.RepackRuntime.signature(repackOuter, contents))) {
+                        blockRepack("Standing shulker differs from its last verified contents"); return;
+                    }
+                    var actual = repackCombined(contents);
+                    if (repackConservation != null && !repackConservation.equals(actual)) { blockRepack("Shulker placement did not conserve exact items/components"); return; }
+                    repackConservation = actual;
+                } catch (RuntimeException failure) { blockRepack("Cannot verify exact physical shulker components/counts"); return; }
+            }
             // A shulker picked up again from a saved step is only worked with if it holds what the record says
             if (resumeVerify) {
                 resumeVerify = false;
@@ -6230,12 +6305,14 @@ public class StashSorter extends Module {
         }
 
         if (handleTicks > HANDLE_TIMEOUT) {
+            if (repackWork != null && !repackWork.terminal()) { blockRepack("Shulker could not be opened for full physical verification"); return; }
             handle = Handle.Break;
             handleTicks = 0;
             return;
         }
 
         if (handleTicks == 1 || handleTicks % 20 == 0) {
+            if (repackWork != null && !repackWork.terminal() && !repackWork.attempt(System.nanoTime())) { blockRepack("Open attempt limit"); return; }
             BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(placed), Direction.UP, placed, false);
             BlockUtils.interact(hit, InteractionHand.MAIN_HAND, true);
         }
@@ -6281,8 +6358,22 @@ public class StashSorter extends Module {
             return;
         }
 
-        // Never close with something on the cursor, it would be merged into the inventory or dropped
-        if (!menu.getCarried().isEmpty()) recoverCursor();
+        // Enter a separate phase; the next tick runs only after InventorySync's full readback/barrier.
+        handle = Handle.Verify; handleTicks = 0;
+    }
+
+    private void handleVerify() {
+        if (!(mc.player.containerMenu instanceof ShulkerBoxMenu menu)) { blockRepack("Verification menu disappeared"); return; }
+        if (!menu.getCarried().isEmpty()) { recoverCursor(); return; }
+        if (repackWork != null && !repackWork.terminal() && (job == Job.Clean || job == Job.Fill)) {
+            try {
+                var contents = repackMenuContents(menu);
+                if (!repackConservation.equals(repackCombined(contents))) { blockRepack("Transfer did not conserve exact item components/counts"); return; }
+                repackExpected = com.porter.wesort.compat.RepackRuntime.signature(repackOuter, contents);
+                repackExistingCopies = (int) repackInventory().stream().filter(this::repackMatches).count();
+            } catch (RuntimeException failure) { blockRepack("Cannot verify exact physical shulker components/counts"); return; }
+        }
+        boolean packing = job == Job.Fill && compactor.active();
 
         if (packing) {
             boolean stay = compactor.afterPacking(menu, actions, placed);
@@ -6398,6 +6489,9 @@ public class StashSorter extends Module {
             return;
         }
 
+        if (!InvUtils.findInHotbar(it -> it.is(ItemTags.PICKAXES)).found() && repackWork != null && !repackWork.terminal()) {
+            blockRepack("Pickaxe disappeared before verified break"); return;
+        }
         if (!pickaxeSwapped) {
             FindItemResult pickaxe = InvUtils.findInHotbar(s -> s.is(ItemTags.PICKAXES));
             if (pickaxe.found()) {
@@ -6451,7 +6545,7 @@ public class StashSorter extends Module {
 
         if (pickedUp()) {
             // Picked up: the new shulker, or failing that the one that holds what the plan was packing, in any slot
-            int found = -1;
+            int found = !repackExpected.isEmpty() ? verifiedRepackPickup() : -1;
             for (int i = 0; i <= 40 && found == -1; i++) {
                 if ((i >= 36 && i < 40) || shulkerSlotsBefore.contains(i)) continue;
                 if (Utils.isShulker(mc.player.getInventory().getItem(i).getItem())) found = i;
@@ -6490,6 +6584,11 @@ public class StashSorter extends Module {
                     warning("The repacked shulker ended up in your offhand, please put it in your inventory.");
                 }
                 compactor.collected(collectedSlot, placed, got);
+            }
+            if (repackWork != null && !repackWork.terminal()) {
+                repackStoreAt = System.currentTimeMillis(); repackStoreBefore.clear();
+                for (var box : stash.boxes) if (box.known()) repackStoreBefore.put(box.parts.toString(), repackCount(box.contents));
+                repackWork.enter(com.porter.wesort.inventory.PhysicalWork.Phase.STORE, System.nanoTime());
             }
             clearOrphan(placed);
             endHandling();
@@ -6534,6 +6633,11 @@ public class StashSorter extends Module {
      * once nothing is lying near the spot for a few seconds, a held shulker that matches it counts as picked up.
      */
     private boolean pickedUp() {
+        if (!repackExpected.isEmpty()) {
+            if (verifiedRepackPickup() < 0 || repackInventory().stream().filter(this::repackMatches).count() != repackExistingCopies + 1L) return false;
+            if (!InventorySync.confirmedMenu()) { InventorySync.verifyInventory(); return false; }
+            return true;
+        }
         int now = countShulkers();
         if (now >= shulkersBefore || (shulkersAtBreak >= 0 && now > shulkersAtBreak)) return true;
         // Only standing close by with nothing lying in sight, and only when exactly one held shulker could be it
@@ -6574,7 +6678,65 @@ public class StashSorter extends Module {
         return match;
     }
 
+    private List<ItemStack> repackInventory() {
+        List<ItemStack> items = new ArrayList<>();
+        for (int i = 0; i < 36; i++) items.add(mc.player.getInventory().getItem(i).copy());
+        items.add(mc.player.getOffhandItem().copy()); return items;
+    }
+    private ItemStack[] repackMenuContents(AbstractContainerMenu menu) {
+        ItemStack[] contents = new ItemStack[27];
+        for (int i = 0; i < 27; i++) contents[i] = menu.getSlot(i).getItem().copy();
+        return contents;
+    }
+    private Map<String, Long> repackCombined(ItemStack[] contents) {
+        var items = repackInventory(); var header = repackOuter.copy(); header.remove(DataComponents.CONTAINER);
+        items.add(header); items.addAll(java.util.Arrays.asList(contents));
+        return com.porter.wesort.compat.RepackRuntime.conservation(items);
+    }
+    private boolean repackMatches(ItemStack stack) {
+        if (stack.isEmpty() || !Utils.isShulker(stack.getItem()) || repackExpected.isEmpty()) return false;
+        try { return repackExpected.equals(com.porter.wesort.compat.RepackRuntime.signature(stack)); }
+        catch (RuntimeException ignored) { return false; }
+    }
+    private int verifiedRepackPickup() {
+        for (int i = 0; i <= 40; i++) if (!(i >= 36 && i < 40) && !shulkerSlotsBefore.contains(i)
+            && repackMatches(mc.player.getInventory().getItem(i))) return i;
+        return -1;
+    }
+    private int repackCount(ItemStack[] contents) {
+        int count = 0; for (var stack : contents) if (repackMatches(stack)) count += stack.getCount(); return count;
+    }
+    private void verifyRepackStored() {
+        if (stash == null || repackWork == null || repackWork.phase() != com.porter.wesort.inventory.PhysicalWork.Phase.STORE || mc.player == null) return;
+        long carriedCopies = repackInventory().stream().filter(this::repackMatches).count();
+        if (carriedCopies > repackExistingCopies) {
+            for (var box : stash.boxes) if (box.known() && com.porter.wesort.compat.ObservationRuntime.current(box))
+                repackStoreBefore.put(box.parts.toString(), repackCount(box.contents));
+            return;
+        }
+        if (carriedCopies < repackExistingCopies) { blockRepack("Other identical carried stock changed during storage verification"); return; }
+        for (var box : stash.boxes) if (box.known() && box.lastRead >= repackStoreAt && com.porter.wesort.compat.ObservationRuntime.current(box)
+            && repackCount(box.contents) > repackStoreBefore.getOrDefault(box.parts.toString(), Integer.MAX_VALUE)) {
+            repackWork.enter(com.porter.wesort.inventory.PhysicalWork.Phase.COMPLETED, System.nanoTime()); return;
+        }
+    }
+    private boolean repackPrecondition(String why) {
+        repackWork.failBeforeMutation(why); pauseShulkers(why); return false;
+    }
+    private void blockRepack(String why) {
+        if (repackWork == null || repackWork.terminal() && repackWork.phase() != com.porter.wesort.inventory.PhysicalWork.Phase.NEEDS_RECONCILIATION)
+            repackWork = new com.porter.wesort.inventory.PhysicalWork("Shulker", System.nanoTime());
+        repackWork.reconcile(why);
+        dropLost = true;
+        alertError("Shulker operation NEEDS_RECONCILIATION: %s. No physical retry is sent.", why);
+    }
+
     private void endHandling() {
+        if (repackWork != null && !repackWork.terminal() && (job == Job.Clean || job == Job.Fill)) {
+            if (handle == Handle.Leave) repackWork.enter(com.porter.wesort.inventory.PhysicalWork.Phase.SELECT, System.nanoTime());
+            else if (repackWork.phase() != com.porter.wesort.inventory.PhysicalWork.Phase.STORE && placed == null)
+                repackWork.failBeforeMutation("No safe shulker operation started");
+        }
         resetWander();
         // A shulker cleaned or filled is real headway: the counters start again
         if (job == Job.Clean || job == Job.Fill) {
@@ -6621,6 +6783,7 @@ public class StashSorter extends Module {
      * status with what it holds and where, and no more shulkers are put down until sorting is restarted. Sorting carries on.
      */
     private void abandonShulker(String why) {
+        if (repackWork != null && !repackWork.terminal()) repackWork.reconcile(why);
         Compactor.Plan plan = compactor.plan;
         BlockPos at = placed != null ? placed : plan != null ? plan.placedPos : null;
         String what = placedName();
@@ -7216,6 +7379,9 @@ public class StashSorter extends Module {
     }
 
     private void finishSorting() {
+        if (repackWork != null && !repackWork.terminal() && repackWork.phase() == com.porter.wesort.inventory.PhysicalWork.Phase.STORE) {
+            blockRepack("Repacked shulker has not reached verified storage; inspect the held box and destination capacity"); return;
+        }
         // An order in hand keeps the sorter awake, even when it has to wait (paused, or for a saved kit)
         if (orderRunner.running()) {
             // The pass is over all the same: its counters start again, or the loop watchdog would fire on every tick

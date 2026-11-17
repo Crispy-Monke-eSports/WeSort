@@ -1,0 +1,1334 @@
+{
+  "result": "PASS",
+  "scenario_count": 15,
+  "reports": [
+    {
+      "scenario": "abort",
+      "report": {
+        "result": "PASS",
+        "scenario": "abort",
+        "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+        "source_commit": "e20bbb6398bea95fec09c4471bd8e06f893ef985",
+        "dirty_worktree": true,
+        "checks": [
+          {
+            "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+            "result": "PASS"
+          },
+          {
+            "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+            "result": "PASS"
+          },
+          {
+            "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+            "result": "PASS"
+          },
+          {
+            "scenario": "abort: actual server snapshots conserve full recursive metadata/counts; protected kit unchanged; NEEDS_RECONCILIATION",
+            "result": "PASS"
+          }
+        ],
+        "operation": {
+          "id": "5f6f3ac0-f27a-4197-b0ca-aabb0049f0c6",
+          "kind": "Clean",
+          "phase": "NEEDS_RECONCILIATION",
+          "attempts": 0,
+          "reason": "Physical readback failed or phase deadline expired",
+          "events": [
+            {
+              "phase": "SELECT",
+              "event": "selected"
+            },
+            {
+              "phase": "PLACE",
+              "event": "phase"
+            },
+            {
+              "phase": "PLACE",
+              "event": "attempt"
+            },
+            {
+              "phase": "OPEN",
+              "event": "phase"
+            },
+            {
+              "phase": "OPEN",
+              "event": "attempt"
+            },
+            {
+              "phase": "TRANSFER",
+              "event": "phase"
+            },
+            {
+              "phase": "NEEDS_RECONCILIATION",
+              "event": "blocked"
+            }
+          ]
+        }
+      },
+      "server_before": {
+        "0": "0, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {count: 32, id: \"minecraft:diamond\"}, slot: 0}, {item: {count: 16, id: \"minecraft:dirt\"}, slot: 13}, {item: {components: {\"minecraft:damage\": 4, \"minecraft:custom_name\": \"Keep exact\"}, id: \"minecraft:diamond_sword\"}, slot: 26}]}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "3": "3, 64, 3 has the following block data: []",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: []",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: [{count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}]"
+      },
+      "server_after": {
+        "0": "0, 64, 3 has the following block data: []",
+        "3": "3, 64, 3 has the following block data: []",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: []",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: [{count: 16, Slot: 0b, id: \"minecraft:dirt\"}, {components: {\"minecraft:damage\": 4, \"minecraft:custom_name\": \"Keep exact\"}, count: 1, Slot: 1b, id: \"minecraft:diamond_sword\"}, {count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}]",
+        "standing": "4, 64, 2 has the following block data: [{count: 32, Slot: 0b, id: \"minecraft:diamond\"}]"
+      },
+      "manual_recovery_cursor_before": "Test failed"
+    },
+    {
+      "scenario": "blocked",
+      "report": {
+        "result": "PASS",
+        "scenario": "blocked",
+        "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+        "source_commit": "e20bbb6398bea95fec09c4471bd8e06f893ef985",
+        "dirty_worktree": true,
+        "checks": [
+          {
+            "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+            "result": "PASS"
+          },
+          {
+            "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+            "result": "PASS"
+          },
+          {
+            "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+            "result": "PASS"
+          },
+          {
+            "scenario": "blocked: actual server snapshots conserve full recursive metadata/counts; protected kit unchanged; FAILED",
+            "result": "PASS"
+          }
+        ],
+        "operation": {
+          "id": "37a6f96f-d5bf-463c-95fc-1121c258b657",
+          "kind": "Clean",
+          "phase": "FAILED",
+          "attempts": 0,
+          "reason": "Game mode forbids physical shulker placement",
+          "events": [
+            {
+              "phase": "SELECT",
+              "event": "selected"
+            },
+            {
+              "phase": "FAILED",
+              "event": "precondition"
+            }
+          ]
+        }
+      },
+      "server_before": {
+        "0": "0, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {count: 32, id: \"minecraft:diamond\"}, slot: 0}, {item: {count: 16, id: \"minecraft:dirt\"}, slot: 13}, {item: {components: {\"minecraft:damage\": 4, \"minecraft:custom_name\": \"Keep exact\"}, id: \"minecraft:diamond_sword\"}, slot: 26}]}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "3": "3, 64, 3 has the following block data: []",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: []",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: [{count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}]"
+      },
+      "server_after": {
+        "0": "0, 64, 3 has the following block data: []",
+        "3": "3, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {count: 32, id: \"minecraft:diamond\"}, slot: 0}, {item: {count: 16, id: \"minecraft:dirt\"}, slot: 13}, {item: {components: {\"minecraft:damage\": 4, \"minecraft:custom_name\": \"Keep exact\"}, id: \"minecraft:diamond_sword\"}, slot: 26}]}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: []",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: [{count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}]"
+      }
+    },
+    {
+      "scenario": "bulk",
+      "report": {
+        "result": "PASS",
+        "scenario": "bulk",
+        "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+        "source_commit": "e20bbb6398bea95fec09c4471bd8e06f893ef985",
+        "dirty_worktree": true,
+        "checks": [
+          {
+            "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+            "result": "PASS"
+          },
+          {
+            "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+            "result": "PASS"
+          },
+          {
+            "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+            "result": "PASS"
+          },
+          {
+            "scenario": "bulk: actual server snapshots conserve full recursive metadata/counts; protected kit unchanged; COMPLETED",
+            "result": "PASS"
+          }
+        ],
+        "operation": {
+          "id": "0e910020-c494-462b-9398-3dc85ace0a15",
+          "kind": "Fill",
+          "phase": "COMPLETED",
+          "attempts": 0,
+          "reason": "",
+          "events": [
+            {
+              "phase": "SELECT",
+              "event": "selected"
+            },
+            {
+              "phase": "PLACE",
+              "event": "phase"
+            },
+            {
+              "phase": "PLACE",
+              "event": "attempt"
+            },
+            {
+              "phase": "OPEN",
+              "event": "phase"
+            },
+            {
+              "phase": "OPEN",
+              "event": "attempt"
+            },
+            {
+              "phase": "TRANSFER",
+              "event": "phase"
+            },
+            {
+              "phase": "VERIFY",
+              "event": "phase"
+            },
+            {
+              "phase": "BREAK",
+              "event": "phase"
+            },
+            {
+              "phase": "PICKUP",
+              "event": "phase"
+            },
+            {
+              "phase": "STORE",
+              "event": "phase"
+            },
+            {
+              "phase": "COMPLETED",
+              "event": "phase"
+            }
+          ]
+        }
+      },
+      "server_before": {
+        "0": "0, 64, 3 has the following block data: [{count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}, {count: 64, Slot: 1b, id: \"minecraft:diamond\"}, {count: 64, Slot: 2b, id: \"minecraft:diamond\"}]",
+        "3": "3, 64, 3 has the following block data: []",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: []",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: [{count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}]"
+      },
+      "server_after": {
+        "0": "0, 64, 3 has the following block data: []",
+        "3": "3, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {count: 64, id: \"minecraft:diamond\"}, slot: 0}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 1}]}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: []",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: [{components: {\"minecraft:damage\": 1}, count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}]"
+      }
+    },
+    {
+      "scenario": "compact",
+      "report": {
+        "result": "PASS",
+        "scenario": "compact",
+        "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+        "source_commit": "e20bbb6398bea95fec09c4471bd8e06f893ef985",
+        "dirty_worktree": true,
+        "checks": [
+          {
+            "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+            "result": "PASS"
+          },
+          {
+            "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+            "result": "PASS"
+          },
+          {
+            "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+            "result": "PASS"
+          },
+          {
+            "scenario": "compact: actual server snapshots conserve full recursive metadata/counts; protected kit unchanged; COMPLETED",
+            "result": "PASS"
+          }
+        ],
+        "operation": {
+          "id": "236c82d2-3c70-4128-a34a-864db7478142",
+          "kind": "Fill",
+          "phase": "COMPLETED",
+          "attempts": 0,
+          "reason": "",
+          "events": [
+            {
+              "phase": "SELECT",
+              "event": "selected"
+            },
+            {
+              "phase": "PLACE",
+              "event": "phase"
+            },
+            {
+              "phase": "PLACE",
+              "event": "attempt"
+            },
+            {
+              "phase": "OPEN",
+              "event": "phase"
+            },
+            {
+              "phase": "OPEN",
+              "event": "attempt"
+            },
+            {
+              "phase": "TRANSFER",
+              "event": "phase"
+            },
+            {
+              "phase": "VERIFY",
+              "event": "phase"
+            },
+            {
+              "phase": "BREAK",
+              "event": "phase"
+            },
+            {
+              "phase": "PICKUP",
+              "event": "phase"
+            },
+            {
+              "phase": "STORE",
+              "event": "phase"
+            },
+            {
+              "phase": "COMPLETED",
+              "event": "phase"
+            }
+          ]
+        }
+      },
+      "server_before": {
+        "0": "0, 64, 3 has the following block data: []",
+        "3": "3, 64, 3 has the following block data: [{count: 64, Slot: 0b, id: \"minecraft:diamond\"}, {count: 64, Slot: 1b, id: \"minecraft:diamond\"}, {count: 64, Slot: 2b, id: \"minecraft:diamond\"}, {count: 64, Slot: 3b, id: \"minecraft:diamond\"}, {count: 64, Slot: 4b, id: \"minecraft:diamond\"}, {count: 64, Slot: 5b, id: \"minecraft:diamond\"}, {count: 64, Slot: 6b, id: \"minecraft:diamond\"}, {count: 64, Slot: 7b, id: \"minecraft:diamond\"}, {count: 64, Slot: 8b, id: \"minecraft:diamond\"}, {count: 64, Slot: 9b, id: \"minecraft:diamond\"}, {count: 64, Slot: 10b, id: \"minecraft:diamond\"}, {count: 64, Slot: 11b, id: \"minecraft:diamond\"}, {count: 64, Slot: 12b, id: \"minecraft:diamond\"}, {count: 64, Slot: 13b, id: \"minecraft:diamond\"}, {count: 64, Slot: 14b, id: \"minecraft:diamond\"}, {count: 64, Slot: 15b, id: \"minecraft:diamond\"}, {count: 64, Slot: 16b, id: \"minecraft:diamond\"}, {count: 64, Slot: 17b, id: \"minecraft:diamond\"}, {count: 64, Slot: 18b, id: \"minecraft:diamond\"}, {count: 64, Slot: 19b, id: \"minecraft:diamond\"}, {count: 64, Slot: 20b, id: \"minecraft:diamond\"}, {count: 64, Slot: 21b, id: \"minecraft:diamond\"}, {count: 64, Slot: 22b, id: \"minecraft:diamond\"}, {count: 64, Slot: 23b, id: \"minecraft:diamond\"}, {count: 64, Slot: 24b, id: \"minecraft:diamond\"}, {count: 64, Slot: 25b, id: \"minecraft:diamond\"}, {count: 64, Slot: 26b, id: \"minecraft:diamond\"}]",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: [{count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: [{count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}]"
+      },
+      "server_after": {
+        "0": "0, 64, 3 has the following block data: []",
+        "3": "3, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {count: 64, id: \"minecraft:diamond\"}, slot: 0}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 1}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 2}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 3}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 4}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 5}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 6}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 7}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 8}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 9}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 10}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 11}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 12}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 13}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 14}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 15}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 16}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 17}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 18}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 19}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 20}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 21}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 22}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 23}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 24}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 25}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 26}]}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: []",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: [{components: {\"minecraft:damage\": 1}, count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}]"
+      }
+    },
+    {
+      "scenario": "full-inventory",
+      "report": {
+        "result": "PASS",
+        "scenario": "full-inventory",
+        "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+        "source_commit": "e20bbb6398bea95fec09c4471bd8e06f893ef985",
+        "dirty_worktree": true,
+        "checks": [
+          {
+            "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+            "result": "PASS"
+          },
+          {
+            "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+            "result": "PASS"
+          },
+          {
+            "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+            "result": "PASS"
+          },
+          {
+            "scenario": "full-inventory: actual server snapshots conserve full recursive metadata/counts; protected kit unchanged; NEEDS_RECONCILIATION",
+            "result": "PASS"
+          }
+        ],
+        "operation": {
+          "id": "53a45a70-075d-4e71-8626-f8e67997f89c",
+          "kind": "Clean",
+          "phase": "NEEDS_RECONCILIATION",
+          "attempts": 0,
+          "reason": "Physical readback failed or phase deadline expired",
+          "events": [
+            {
+              "phase": "SELECT",
+              "event": "selected"
+            },
+            {
+              "phase": "PLACE",
+              "event": "phase"
+            },
+            {
+              "phase": "PLACE",
+              "event": "attempt"
+            },
+            {
+              "phase": "OPEN",
+              "event": "phase"
+            },
+            {
+              "phase": "OPEN",
+              "event": "attempt"
+            },
+            {
+              "phase": "TRANSFER",
+              "event": "phase"
+            },
+            {
+              "phase": "NEEDS_RECONCILIATION",
+              "event": "blocked"
+            }
+          ]
+        }
+      },
+      "server_before": {
+        "0": "0, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {count: 32, id: \"minecraft:diamond\"}, slot: 0}, {item: {count: 16, id: \"minecraft:dirt\"}, slot: 13}, {item: {components: {\"minecraft:damage\": 4, \"minecraft:custom_name\": \"Keep exact\"}, id: \"minecraft:diamond_sword\"}, slot: 26}]}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "3": "3, 64, 3 has the following block data: []",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: []",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: [{count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}]"
+      },
+      "server_after": {
+        "0": "0, 64, 3 has the following block data: []",
+        "3": "3, 64, 3 has the following block data: []",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: []",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: [{count: 16, Slot: 0b, id: \"minecraft:dirt\"}, {count: 64, Slot: 1b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 2b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 3b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 4b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 5b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 6b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 7b, id: \"minecraft:bedrock\"}, {count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}, {count: 64, Slot: 9b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 10b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 11b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 12b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 13b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 14b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 15b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 16b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 17b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 18b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 19b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 20b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 21b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 22b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 23b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 24b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 25b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 26b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 27b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 28b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 29b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 30b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 31b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 32b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 33b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 34b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 35b, id: \"minecraft:bedrock\"}]",
+        "standing": "4, 64, 2 has the following block data: [{count: 32, Slot: 0b, id: \"minecraft:diamond\"}, {components: {\"minecraft:damage\": 4, \"minecraft:custom_name\": \"Keep exact\"}, count: 1, Slot: 26b, id: \"minecraft:diamond_sword\"}]",
+        "drop": "Bedrock has the following entity data: {count: 64, id: \"minecraft:bedrock\"}"
+      },
+      "manual_recovery_cursor_before": "Test passed. Count: 64"
+    },
+    {
+      "scenario": "full-stash",
+      "report": {
+        "result": "PASS",
+        "scenario": "full-stash",
+        "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+        "source_commit": "e20bbb6398bea95fec09c4471bd8e06f893ef985",
+        "dirty_worktree": true,
+        "checks": [
+          {
+            "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+            "result": "PASS"
+          },
+          {
+            "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+            "result": "PASS"
+          },
+          {
+            "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+            "result": "PASS"
+          },
+          {
+            "scenario": "full-stash: actual server snapshots conserve full recursive metadata/counts; protected kit unchanged; NEEDS_RECONCILIATION",
+            "result": "PASS"
+          }
+        ],
+        "operation": {
+          "id": "953f8a91-501e-4b48-995c-8b45e6805f6b",
+          "kind": "Clean",
+          "phase": "NEEDS_RECONCILIATION",
+          "attempts": 0,
+          "reason": "Repacked shulker has not reached verified storage; inspect the held box and destination capacity",
+          "events": [
+            {
+              "phase": "SELECT",
+              "event": "selected"
+            },
+            {
+              "phase": "PLACE",
+              "event": "phase"
+            },
+            {
+              "phase": "PLACE",
+              "event": "attempt"
+            },
+            {
+              "phase": "OPEN",
+              "event": "phase"
+            },
+            {
+              "phase": "OPEN",
+              "event": "attempt"
+            },
+            {
+              "phase": "TRANSFER",
+              "event": "phase"
+            },
+            {
+              "phase": "VERIFY",
+              "event": "phase"
+            },
+            {
+              "phase": "BREAK",
+              "event": "phase"
+            },
+            {
+              "phase": "PICKUP",
+              "event": "phase"
+            },
+            {
+              "phase": "STORE",
+              "event": "phase"
+            },
+            {
+              "phase": "NEEDS_RECONCILIATION",
+              "event": "blocked"
+            }
+          ]
+        }
+      },
+      "server_before": {
+        "0": "0, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {count: 32, id: \"minecraft:diamond\"}, slot: 0}, {item: {count: 16, id: \"minecraft:dirt\"}, slot: 13}, {item: {components: {\"minecraft:damage\": 4, \"minecraft:custom_name\": \"Keep exact\"}, id: \"minecraft:diamond_sword\"}, slot: 26}]}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "3": "3, 64, 3 has the following block data: []",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: []",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: [{count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}]"
+      },
+      "server_after": {
+        "0": "0, 64, 3 has the following block data: [{count: 64, Slot: 0b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 1b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 2b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 3b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 4b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 5b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 6b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 7b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 8b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 9b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 10b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 11b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 12b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 13b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 14b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 15b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 16b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 17b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 18b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 19b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 20b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 21b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 22b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 23b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 24b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 25b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 26b, id: \"minecraft:bedrock\"}]",
+        "3": "3, 64, 3 has the following block data: [{count: 64, Slot: 0b, id: \"minecraft:diamond\"}, {count: 64, Slot: 1b, id: \"minecraft:diamond\"}, {count: 64, Slot: 2b, id: \"minecraft:diamond\"}, {count: 64, Slot: 3b, id: \"minecraft:diamond\"}, {count: 64, Slot: 4b, id: \"minecraft:diamond\"}, {count: 64, Slot: 5b, id: \"minecraft:diamond\"}, {count: 64, Slot: 6b, id: \"minecraft:diamond\"}, {count: 64, Slot: 7b, id: \"minecraft:diamond\"}, {count: 64, Slot: 8b, id: \"minecraft:diamond\"}, {count: 64, Slot: 9b, id: \"minecraft:diamond\"}, {count: 64, Slot: 10b, id: \"minecraft:diamond\"}, {count: 64, Slot: 11b, id: \"minecraft:diamond\"}, {count: 64, Slot: 12b, id: \"minecraft:diamond\"}, {count: 64, Slot: 13b, id: \"minecraft:diamond\"}, {count: 64, Slot: 14b, id: \"minecraft:diamond\"}, {count: 64, Slot: 15b, id: \"minecraft:diamond\"}, {count: 64, Slot: 16b, id: \"minecraft:diamond\"}, {count: 64, Slot: 17b, id: \"minecraft:diamond\"}, {count: 64, Slot: 18b, id: \"minecraft:diamond\"}, {count: 64, Slot: 19b, id: \"minecraft:diamond\"}, {count: 64, Slot: 20b, id: \"minecraft:diamond\"}, {count: 64, Slot: 21b, id: \"minecraft:diamond\"}, {count: 64, Slot: 22b, id: \"minecraft:diamond\"}, {count: 64, Slot: 23b, id: \"minecraft:diamond\"}, {count: 64, Slot: 24b, id: \"minecraft:diamond\"}, {count: 64, Slot: 25b, id: \"minecraft:diamond\"}, {count: 64, Slot: 26b, id: \"minecraft:diamond\"}]",
+        "6": "6, 64, 3 has the following block data: [{count: 64, Slot: 0b, id: \"minecraft:dirt\"}, {count: 64, Slot: 1b, id: \"minecraft:dirt\"}, {count: 64, Slot: 2b, id: \"minecraft:dirt\"}, {count: 64, Slot: 3b, id: \"minecraft:dirt\"}, {count: 64, Slot: 4b, id: \"minecraft:dirt\"}, {count: 64, Slot: 5b, id: \"minecraft:dirt\"}, {count: 64, Slot: 6b, id: \"minecraft:dirt\"}, {count: 64, Slot: 7b, id: \"minecraft:dirt\"}, {count: 64, Slot: 8b, id: \"minecraft:dirt\"}, {count: 64, Slot: 9b, id: \"minecraft:dirt\"}, {count: 64, Slot: 10b, id: \"minecraft:dirt\"}, {count: 64, Slot: 11b, id: \"minecraft:dirt\"}, {count: 64, Slot: 12b, id: \"minecraft:dirt\"}, {count: 64, Slot: 13b, id: \"minecraft:dirt\"}, {count: 64, Slot: 14b, id: \"minecraft:dirt\"}, {count: 64, Slot: 15b, id: \"minecraft:dirt\"}, {count: 64, Slot: 16b, id: \"minecraft:dirt\"}, {count: 64, Slot: 17b, id: \"minecraft:dirt\"}, {count: 64, Slot: 18b, id: \"minecraft:dirt\"}, {count: 64, Slot: 19b, id: \"minecraft:dirt\"}, {count: 64, Slot: 20b, id: \"minecraft:dirt\"}, {count: 64, Slot: 21b, id: \"minecraft:dirt\"}, {count: 64, Slot: 22b, id: \"minecraft:dirt\"}, {count: 64, Slot: 23b, id: \"minecraft:dirt\"}, {count: 64, Slot: 24b, id: \"minecraft:dirt\"}, {count: 64, Slot: 25b, id: \"minecraft:dirt\"}, {count: 64, Slot: 26b, id: \"minecraft:dirt\"}]",
+        "9": "9, 64, 3 has the following block data: [{count: 64, Slot: 0b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 1b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 2b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 3b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 4b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 5b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 6b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 7b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 8b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 9b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 10b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 11b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 12b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 13b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 14b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 15b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 16b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 17b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 18b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 19b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 20b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 21b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 22b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 23b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 24b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 25b, id: \"minecraft:bedrock\"}, {count: 64, Slot: 26b, id: \"minecraft:bedrock\"}]",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: [{count: 1, Slot: 0b, id: \"minecraft:diamond_sword\"}, {count: 1, Slot: 1b, id: \"minecraft:diamond_sword\"}, {count: 1, Slot: 2b, id: \"minecraft:diamond_sword\"}, {count: 1, Slot: 3b, id: \"minecraft:diamond_sword\"}, {count: 1, Slot: 4b, id: \"minecraft:diamond_sword\"}, {count: 1, Slot: 5b, id: \"minecraft:diamond_sword\"}, {count: 1, Slot: 6b, id: \"minecraft:diamond_sword\"}, {count: 1, Slot: 7b, id: \"minecraft:diamond_sword\"}, {count: 1, Slot: 8b, id: \"minecraft:diamond_sword\"}, {count: 1, Slot: 9b, id: \"minecraft:diamond_sword\"}, {count: 1, Slot: 10b, id: \"minecraft:diamond_sword\"}, {count: 1, Slot: 11b, id: \"minecraft:diamond_sword\"}, {count: 1, Slot: 12b, id: \"minecraft:diamond_sword\"}, {count: 1, Slot: 13b, id: \"minecraft:diamond_sword\"}, {count: 1, Slot: 14b, id: \"minecraft:diamond_sword\"}, {count: 1, Slot: 15b, id: \"minecraft:diamond_sword\"}, {count: 1, Slot: 16b, id: \"minecraft:diamond_sword\"}, {count: 1, Slot: 17b, id: \"minecraft:diamond_sword\"}, {count: 1, Slot: 18b, id: \"minecraft:diamond_sword\"}, {count: 1, Slot: 19b, id: \"minecraft:diamond_sword\"}, {count: 1, Slot: 20b, id: \"minecraft:diamond_sword\"}, {count: 1, Slot: 21b, id: \"minecraft:diamond_sword\"}, {count: 1, Slot: 22b, id: \"minecraft:diamond_sword\"}, {count: 1, Slot: 23b, id: \"minecraft:diamond_sword\"}, {count: 1, Slot: 24b, id: \"minecraft:diamond_sword\"}, {count: 1, Slot: 25b, id: \"minecraft:diamond_sword\"}, {count: 1, Slot: 26b, id: \"minecraft:diamond_sword\"}]",
+        "player": "WeSortE2E has the following entity data: [{count: 16, Slot: 0b, id: \"minecraft:dirt\"}, {components: {\"minecraft:damage\": 4, \"minecraft:custom_name\": \"Keep exact\"}, count: 1, Slot: 1b, id: \"minecraft:diamond_sword\"}, {components: {\"minecraft:container\": [{item: {count: 32, id: \"minecraft:diamond\"}, slot: 0}]}, count: 1, Slot: 2b, id: \"minecraft:shulker_box\"}, {components: {\"minecraft:damage\": 1}, count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}]"
+      },
+      "manual_recovery_cursor_before": "Test failed"
+    },
+    {
+      "scenario": "identical",
+      "report": {
+        "result": "PASS",
+        "scenario": "identical",
+        "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+        "source_commit": "e20bbb6398bea95fec09c4471bd8e06f893ef985",
+        "dirty_worktree": true,
+        "checks": [
+          {
+            "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+            "result": "PASS"
+          },
+          {
+            "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+            "result": "PASS"
+          },
+          {
+            "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+            "result": "PASS"
+          },
+          {
+            "scenario": "identical: actual server snapshots conserve full recursive metadata/counts; protected kit unchanged; COMPLETED",
+            "result": "PASS"
+          }
+        ],
+        "operation": {
+          "id": "ae5b330d-bc86-4689-82e9-abd3e51e181b",
+          "kind": "Fill",
+          "phase": "COMPLETED",
+          "attempts": 0,
+          "reason": "",
+          "events": [
+            {
+              "phase": "SELECT",
+              "event": "selected"
+            },
+            {
+              "phase": "PLACE",
+              "event": "phase"
+            },
+            {
+              "phase": "PLACE",
+              "event": "attempt"
+            },
+            {
+              "phase": "OPEN",
+              "event": "phase"
+            },
+            {
+              "phase": "OPEN",
+              "event": "attempt"
+            },
+            {
+              "phase": "TRANSFER",
+              "event": "phase"
+            },
+            {
+              "phase": "VERIFY",
+              "event": "phase"
+            },
+            {
+              "phase": "BREAK",
+              "event": "phase"
+            },
+            {
+              "phase": "PICKUP",
+              "event": "phase"
+            },
+            {
+              "phase": "STORE",
+              "event": "phase"
+            },
+            {
+              "phase": "COMPLETED",
+              "event": "phase"
+            }
+          ]
+        }
+      },
+      "server_before": {
+        "0": "0, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {count: 60, id: \"minecraft:diamond\"}, slot: 0}]}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}, {count: 10, Slot: 1b, id: \"minecraft:diamond\"}]",
+        "3": "3, 64, 3 has the following block data: []",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: []",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: [{components: {\"minecraft:container\": [{item: {count: 64, id: \"minecraft:diamond\"}, slot: 0}, {item: {count: 6, id: \"minecraft:diamond\"}, slot: 1}]}, count: 1, Slot: 7b, id: \"minecraft:shulker_box\"}, {count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}]"
+      },
+      "server_after": {
+        "0": "0, 64, 3 has the following block data: []",
+        "3": "3, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {count: 64, id: \"minecraft:diamond\"}, slot: 0}, {item: {count: 6, id: \"minecraft:diamond\"}, slot: 1}]}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: []",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: [{components: {\"minecraft:container\": [{item: {count: 64, id: \"minecraft:diamond\"}, slot: 0}, {item: {count: 6, id: \"minecraft:diamond\"}, slot: 1}]}, count: 1, Slot: 7b, id: \"minecraft:shulker_box\"}, {components: {\"minecraft:damage\": 1}, count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}]"
+      }
+    },
+    {
+      "scenario": "lag",
+      "report": {
+        "result": "PASS",
+        "scenario": "lag",
+        "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+        "source_commit": "e20bbb6398bea95fec09c4471bd8e06f893ef985",
+        "dirty_worktree": true,
+        "checks": [
+          {
+            "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+            "result": "PASS"
+          },
+          {
+            "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+            "result": "PASS"
+          },
+          {
+            "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+            "result": "PASS"
+          },
+          {
+            "scenario": "lag: actual server snapshots conserve full recursive metadata/counts; protected kit unchanged; COMPLETED",
+            "result": "PASS"
+          }
+        ],
+        "operation": {
+          "id": "2868acef-9fb3-419d-8da7-dcb33fa9ab87",
+          "kind": "Clean",
+          "phase": "COMPLETED",
+          "attempts": 0,
+          "reason": "",
+          "events": [
+            {
+              "phase": "SELECT",
+              "event": "selected"
+            },
+            {
+              "phase": "PLACE",
+              "event": "phase"
+            },
+            {
+              "phase": "PLACE",
+              "event": "attempt"
+            },
+            {
+              "phase": "OPEN",
+              "event": "phase"
+            },
+            {
+              "phase": "OPEN",
+              "event": "attempt"
+            },
+            {
+              "phase": "TRANSFER",
+              "event": "phase"
+            },
+            {
+              "phase": "VERIFY",
+              "event": "phase"
+            },
+            {
+              "phase": "BREAK",
+              "event": "phase"
+            },
+            {
+              "phase": "PICKUP",
+              "event": "phase"
+            },
+            {
+              "phase": "STORE",
+              "event": "phase"
+            },
+            {
+              "phase": "COMPLETED",
+              "event": "phase"
+            }
+          ]
+        }
+      },
+      "server_before": {
+        "0": "0, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {count: 32, id: \"minecraft:diamond\"}, slot: 0}, {item: {count: 16, id: \"minecraft:dirt\"}, slot: 13}, {item: {components: {\"minecraft:damage\": 4, \"minecraft:custom_name\": \"Keep exact\"}, id: \"minecraft:diamond_sword\"}, slot: 26}]}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "3": "3, 64, 3 has the following block data: []",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: []",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: [{count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}]"
+      },
+      "server_after": {
+        "0": "0, 64, 3 has the following block data: []",
+        "3": "3, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {count: 32, id: \"minecraft:diamond\"}, slot: 0}]}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: []",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: [{count: 16, Slot: 0b, id: \"minecraft:dirt\"}, {components: {\"minecraft:damage\": 4, \"minecraft:custom_name\": \"Keep exact\"}, count: 1, Slot: 1b, id: \"minecraft:diamond_sword\"}, {components: {\"minecraft:damage\": 1}, count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}]"
+      }
+    },
+    {
+      "scenario": "mixed",
+      "report": {
+        "result": "PASS",
+        "scenario": "mixed",
+        "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+        "source_commit": "e20bbb6398bea95fec09c4471bd8e06f893ef985",
+        "dirty_worktree": true,
+        "checks": [
+          {
+            "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+            "result": "PASS"
+          },
+          {
+            "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+            "result": "PASS"
+          },
+          {
+            "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+            "result": "PASS"
+          },
+          {
+            "scenario": "mixed: actual server snapshots conserve full recursive metadata/counts; protected kit unchanged; COMPLETED",
+            "result": "PASS"
+          }
+        ],
+        "operation": {
+          "id": "432c73c6-25c5-40d7-8e84-33a4e55f9daf",
+          "kind": "Clean",
+          "phase": "COMPLETED",
+          "attempts": 0,
+          "reason": "",
+          "events": [
+            {
+              "phase": "SELECT",
+              "event": "selected"
+            },
+            {
+              "phase": "PLACE",
+              "event": "phase"
+            },
+            {
+              "phase": "PLACE",
+              "event": "attempt"
+            },
+            {
+              "phase": "OPEN",
+              "event": "phase"
+            },
+            {
+              "phase": "OPEN",
+              "event": "attempt"
+            },
+            {
+              "phase": "TRANSFER",
+              "event": "phase"
+            },
+            {
+              "phase": "VERIFY",
+              "event": "phase"
+            },
+            {
+              "phase": "BREAK",
+              "event": "phase"
+            },
+            {
+              "phase": "PICKUP",
+              "event": "phase"
+            },
+            {
+              "phase": "STORE",
+              "event": "phase"
+            },
+            {
+              "phase": "COMPLETED",
+              "event": "phase"
+            }
+          ]
+        }
+      },
+      "server_before": {
+        "0": "0, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {count: 32, id: \"minecraft:diamond\"}, slot: 0}, {item: {count: 16, id: \"minecraft:dirt\"}, slot: 13}, {item: {components: {\"minecraft:damage\": 4, \"minecraft:custom_name\": \"Keep exact\"}, id: \"minecraft:diamond_sword\"}, slot: 26}]}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "3": "3, 64, 3 has the following block data: []",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: []",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: [{count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}]"
+      },
+      "server_after": {
+        "0": "0, 64, 3 has the following block data: []",
+        "3": "3, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {count: 32, id: \"minecraft:diamond\"}, slot: 0}]}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: []",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: [{count: 16, Slot: 0b, id: \"minecraft:dirt\"}, {components: {\"minecraft:damage\": 4, \"minecraft:custom_name\": \"Keep exact\"}, count: 1, Slot: 1b, id: \"minecraft:diamond_sword\"}, {components: {\"minecraft:damage\": 1}, count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}]"
+      }
+    },
+    {
+      "scenario": "named",
+      "report": {
+        "result": "PASS",
+        "scenario": "named",
+        "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+        "source_commit": "e20bbb6398bea95fec09c4471bd8e06f893ef985",
+        "dirty_worktree": true,
+        "checks": [
+          {
+            "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+            "result": "PASS"
+          },
+          {
+            "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+            "result": "PASS"
+          },
+          {
+            "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+            "result": "PASS"
+          },
+          {
+            "scenario": "named: actual server snapshots conserve full recursive metadata/counts; protected kit unchanged; COMPLETED",
+            "result": "PASS"
+          }
+        ],
+        "operation": {
+          "id": "6161d371-4b9a-4475-8639-e9be0dfb39f4",
+          "kind": "Clean",
+          "phase": "COMPLETED",
+          "attempts": 0,
+          "reason": "",
+          "events": [
+            {
+              "phase": "SELECT",
+              "event": "selected"
+            },
+            {
+              "phase": "PLACE",
+              "event": "phase"
+            },
+            {
+              "phase": "PLACE",
+              "event": "attempt"
+            },
+            {
+              "phase": "OPEN",
+              "event": "phase"
+            },
+            {
+              "phase": "OPEN",
+              "event": "attempt"
+            },
+            {
+              "phase": "TRANSFER",
+              "event": "phase"
+            },
+            {
+              "phase": "VERIFY",
+              "event": "phase"
+            },
+            {
+              "phase": "BREAK",
+              "event": "phase"
+            },
+            {
+              "phase": "PICKUP",
+              "event": "phase"
+            },
+            {
+              "phase": "STORE",
+              "event": "phase"
+            },
+            {
+              "phase": "COMPLETED",
+              "event": "phase"
+            }
+          ]
+        }
+      },
+      "server_before": {
+        "0": "0, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {count: 32, id: \"minecraft:diamond\"}, slot: 0}, {item: {count: 16, id: \"minecraft:dirt\"}, slot: 13}, {item: {components: {\"minecraft:damage\": 4, \"minecraft:custom_name\": \"Keep exact\"}, id: \"minecraft:diamond_sword\"}, slot: 26}]}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}, {components: {\"minecraft:container\": [{item: {count: 2, id: \"minecraft:diamond\"}, slot: 0}, {item: {count: 3, id: \"minecraft:dirt\"}, slot: 26}], \"minecraft:custom_name\": \"Keep whole\"}, count: 1, Slot: 20b, id: \"minecraft:shulker_box\"}]",
+        "3": "3, 64, 3 has the following block data: []",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: []",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: [{count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}]"
+      },
+      "server_after": {
+        "0": "0, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {count: 2, id: \"minecraft:diamond\"}, slot: 0}, {item: {count: 3, id: \"minecraft:dirt\"}, slot: 26}], \"minecraft:custom_name\": \"Keep whole\"}, count: 1, Slot: 20b, id: \"minecraft:shulker_box\"}]",
+        "3": "3, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {count: 32, id: \"minecraft:diamond\"}, slot: 0}]}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: []",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: [{count: 16, Slot: 0b, id: \"minecraft:dirt\"}, {components: {\"minecraft:damage\": 4, \"minecraft:custom_name\": \"Keep exact\"}, count: 1, Slot: 1b, id: \"minecraft:diamond_sword\"}, {components: {\"minecraft:damage\": 1}, count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}]"
+      }
+    },
+    {
+      "scenario": "no-empty",
+      "report": {
+        "result": "PASS",
+        "scenario": "no-empty",
+        "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+        "source_commit": "e20bbb6398bea95fec09c4471bd8e06f893ef985",
+        "dirty_worktree": true,
+        "checks": [
+          {
+            "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+            "result": "PASS"
+          },
+          {
+            "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+            "result": "PASS"
+          },
+          {
+            "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+            "result": "PASS"
+          },
+          {
+            "scenario": "no-empty: actual server snapshots conserve full recursive metadata/counts; protected kit unchanged; FAILED",
+            "result": "PASS"
+          }
+        ],
+        "operation": {
+          "id": "7f65e80b-b159-4ed1-bc2a-6edaa9054ed0",
+          "kind": "Fill",
+          "phase": "FAILED",
+          "attempts": 0,
+          "reason": "No verified empty shulker available",
+          "events": [
+            {
+              "phase": "SELECT",
+              "event": "selected"
+            },
+            {
+              "phase": "FAILED",
+              "event": "precondition"
+            }
+          ]
+        }
+      },
+      "server_before": {
+        "0": "0, 64, 3 has the following block data: [{count: 64, Slot: 0b, id: \"minecraft:diamond\"}, {count: 64, Slot: 1b, id: \"minecraft:diamond\"}, {count: 64, Slot: 2b, id: \"minecraft:diamond\"}]",
+        "3": "3, 64, 3 has the following block data: []",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: []",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: [{count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}]"
+      },
+      "server_after": {
+        "0": "0, 64, 3 has the following block data: []",
+        "3": "3, 64, 3 has the following block data: [{count: 64, Slot: 0b, id: \"minecraft:diamond\"}, {count: 64, Slot: 1b, id: \"minecraft:diamond\"}, {count: 64, Slot: 2b, id: \"minecraft:diamond\"}]",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: []",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: [{count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}]"
+      }
+    },
+    {
+      "scenario": "no-tool",
+      "report": {
+        "result": "PASS",
+        "scenario": "no-tool",
+        "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+        "source_commit": "e20bbb6398bea95fec09c4471bd8e06f893ef985",
+        "dirty_worktree": true,
+        "checks": [
+          {
+            "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+            "result": "PASS"
+          },
+          {
+            "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+            "result": "PASS"
+          },
+          {
+            "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+            "result": "PASS"
+          },
+          {
+            "scenario": "no-tool: actual server snapshots conserve full recursive metadata/counts; protected kit unchanged; FAILED",
+            "result": "PASS"
+          }
+        ],
+        "operation": {
+          "id": "8063774d-a463-45e6-8ffe-530b9f258fca",
+          "kind": "Clean",
+          "phase": "FAILED",
+          "attempts": 0,
+          "reason": "A verified hotbar pickaxe is required before placing a shulker",
+          "events": [
+            {
+              "phase": "SELECT",
+              "event": "selected"
+            },
+            {
+              "phase": "FAILED",
+              "event": "precondition"
+            }
+          ]
+        }
+      },
+      "server_before": {
+        "0": "0, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {count: 32, id: \"minecraft:diamond\"}, slot: 0}, {item: {count: 16, id: \"minecraft:dirt\"}, slot: 13}, {item: {components: {\"minecraft:damage\": 4, \"minecraft:custom_name\": \"Keep exact\"}, id: \"minecraft:diamond_sword\"}, slot: 26}]}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "3": "3, 64, 3 has the following block data: []",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: []",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: []"
+      },
+      "server_after": {
+        "0": "0, 64, 3 has the following block data: []",
+        "3": "3, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {count: 32, id: \"minecraft:diamond\"}, slot: 0}, {item: {count: 16, id: \"minecraft:dirt\"}, slot: 13}, {item: {components: {\"minecraft:damage\": 4, \"minecraft:custom_name\": \"Keep exact\"}, id: \"minecraft:diamond_sword\"}, slot: 26}]}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: []",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: []"
+      }
+    },
+    {
+      "scenario": "partial",
+      "report": {
+        "result": "PASS",
+        "scenario": "partial",
+        "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+        "source_commit": "e20bbb6398bea95fec09c4471bd8e06f893ef985",
+        "dirty_worktree": true,
+        "checks": [
+          {
+            "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+            "result": "PASS"
+          },
+          {
+            "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+            "result": "PASS"
+          },
+          {
+            "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+            "result": "PASS"
+          },
+          {
+            "scenario": "partial: actual server snapshots conserve full recursive metadata/counts; protected kit unchanged; COMPLETED",
+            "result": "PASS"
+          }
+        ],
+        "operation": {
+          "id": "1e0d6792-fe29-48a8-bf05-007fa2aec4a3",
+          "kind": "Fill",
+          "phase": "COMPLETED",
+          "attempts": 0,
+          "reason": "",
+          "events": [
+            {
+              "phase": "SELECT",
+              "event": "selected"
+            },
+            {
+              "phase": "PLACE",
+              "event": "phase"
+            },
+            {
+              "phase": "PLACE",
+              "event": "attempt"
+            },
+            {
+              "phase": "OPEN",
+              "event": "phase"
+            },
+            {
+              "phase": "OPEN",
+              "event": "attempt"
+            },
+            {
+              "phase": "TRANSFER",
+              "event": "phase"
+            },
+            {
+              "phase": "VERIFY",
+              "event": "phase"
+            },
+            {
+              "phase": "BREAK",
+              "event": "phase"
+            },
+            {
+              "phase": "PICKUP",
+              "event": "phase"
+            },
+            {
+              "phase": "STORE",
+              "event": "phase"
+            },
+            {
+              "phase": "COMPLETED",
+              "event": "phase"
+            }
+          ]
+        }
+      },
+      "server_before": {
+        "0": "0, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {count: 60, id: \"minecraft:diamond\"}, slot: 0}]}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}, {count: 10, Slot: 1b, id: \"minecraft:diamond\"}]",
+        "3": "3, 64, 3 has the following block data: []",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: []",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: [{count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}]"
+      },
+      "server_after": {
+        "0": "0, 64, 3 has the following block data: []",
+        "3": "3, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {count: 64, id: \"minecraft:diamond\"}, slot: 0}, {item: {count: 6, id: \"minecraft:diamond\"}, slot: 1}]}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: []",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: [{components: {\"minecraft:damage\": 1}, count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}]"
+      }
+    },
+    {
+      "scenario": "reserved",
+      "report": {
+        "result": "PASS",
+        "scenario": "reserved",
+        "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+        "source_commit": "e20bbb6398bea95fec09c4471bd8e06f893ef985",
+        "dirty_worktree": true,
+        "manager_image": "wesort-manager:hierarchy-tests",
+        "checks": [
+          {
+            "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+            "result": "PASS"
+          },
+          {
+            "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+            "result": "PASS"
+          },
+          {
+            "scenario": "Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord",
+            "result": "PASS"
+          },
+          {
+            "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+            "result": "PASS"
+          },
+          {
+            "scenario": "signed Docker Manager reservation blocks real repack before placement or item prediction; authoritative snapshots unchanged",
+            "result": "PASS"
+          }
+        ],
+        "operation": {
+          "phase": "RESERVATION_BLOCKED"
+        }
+      },
+      "server_before": {
+        "0": "0, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {count: 32, id: \"minecraft:diamond\"}, slot: 0}, {item: {count: 16, id: \"minecraft:dirt\"}, slot: 13}, {item: {components: {\"minecraft:damage\": 4, \"minecraft:custom_name\": \"Keep exact\"}, id: \"minecraft:diamond_sword\"}, slot: 26}]}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "3": "3, 64, 3 has the following block data: []",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: []",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: [{count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}]"
+      },
+      "server_after": {
+        "0": "0, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {count: 32, id: \"minecraft:diamond\"}, slot: 0}, {item: {count: 16, id: \"minecraft:dirt\"}, slot: 13}, {item: {components: {\"minecraft:damage\": 4, \"minecraft:custom_name\": \"Keep exact\"}, id: \"minecraft:diamond_sword\"}, slot: 26}]}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "3": "3, 64, 3 has the following block data: []",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: []",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: [{count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}]"
+      }
+    },
+    {
+      "scenario": "rounds",
+      "report": {
+        "result": "PASS",
+        "scenario": "rounds",
+        "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+        "source_commit": "e20bbb6398bea95fec09c4471bd8e06f893ef985",
+        "dirty_worktree": true,
+        "checks": [
+          {
+            "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+            "result": "PASS"
+          },
+          {
+            "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+            "result": "PASS"
+          },
+          {
+            "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+            "result": "PASS"
+          },
+          {
+            "scenario": "rounds: actual server snapshots conserve full recursive metadata/counts; protected kit unchanged; COMPLETED",
+            "result": "PASS"
+          }
+        ],
+        "operation": {
+          "id": "77eddd3f-d84b-421f-b445-0655f5828f5e",
+          "kind": "Fill",
+          "phase": "COMPLETED",
+          "attempts": 0,
+          "reason": "",
+          "events": [
+            {
+              "phase": "SELECT",
+              "event": "selected"
+            },
+            {
+              "phase": "PLACE",
+              "event": "phase"
+            },
+            {
+              "phase": "PLACE",
+              "event": "attempt"
+            },
+            {
+              "phase": "OPEN",
+              "event": "phase"
+            },
+            {
+              "phase": "OPEN",
+              "event": "attempt"
+            },
+            {
+              "phase": "TRANSFER",
+              "event": "phase"
+            },
+            {
+              "phase": "VERIFY",
+              "event": "phase"
+            },
+            {
+              "phase": "SELECT",
+              "event": "phase"
+            },
+            {
+              "phase": "OPEN",
+              "event": "phase"
+            },
+            {
+              "phase": "OPEN",
+              "event": "attempt"
+            },
+            {
+              "phase": "TRANSFER",
+              "event": "phase"
+            },
+            {
+              "phase": "VERIFY",
+              "event": "phase"
+            },
+            {
+              "phase": "BREAK",
+              "event": "phase"
+            },
+            {
+              "phase": "PICKUP",
+              "event": "phase"
+            },
+            {
+              "phase": "STORE",
+              "event": "phase"
+            },
+            {
+              "phase": "COMPLETED",
+              "event": "phase"
+            }
+          ]
+        },
+        "manual_test_recovery": false
+      },
+      "server_before": {
+        "0": "0, 64, 3 has the following block data: []",
+        "3": "3, 64, 3 has the following block data: [{count: 64, Slot: 0b, id: \"minecraft:diamond\"}, {count: 64, Slot: 1b, id: \"minecraft:diamond\"}, {count: 64, Slot: 2b, id: \"minecraft:diamond\"}, {count: 64, Slot: 3b, id: \"minecraft:diamond\"}, {count: 64, Slot: 4b, id: \"minecraft:diamond\"}, {count: 64, Slot: 5b, id: \"minecraft:diamond\"}, {count: 64, Slot: 6b, id: \"minecraft:diamond\"}, {count: 64, Slot: 7b, id: \"minecraft:diamond\"}, {count: 64, Slot: 8b, id: \"minecraft:diamond\"}, {count: 64, Slot: 9b, id: \"minecraft:diamond\"}, {count: 64, Slot: 10b, id: \"minecraft:diamond\"}, {count: 64, Slot: 11b, id: \"minecraft:diamond\"}, {count: 64, Slot: 12b, id: \"minecraft:diamond\"}, {count: 64, Slot: 13b, id: \"minecraft:diamond\"}, {count: 64, Slot: 14b, id: \"minecraft:diamond\"}, {count: 64, Slot: 15b, id: \"minecraft:diamond\"}, {count: 64, Slot: 16b, id: \"minecraft:diamond\"}, {count: 64, Slot: 17b, id: \"minecraft:diamond\"}, {count: 64, Slot: 18b, id: \"minecraft:diamond\"}, {count: 64, Slot: 19b, id: \"minecraft:diamond\"}, {count: 64, Slot: 20b, id: \"minecraft:diamond\"}, {count: 64, Slot: 21b, id: \"minecraft:diamond\"}, {count: 64, Slot: 22b, id: \"minecraft:diamond\"}, {count: 64, Slot: 23b, id: \"minecraft:diamond\"}, {count: 64, Slot: 24b, id: \"minecraft:diamond\"}, {count: 64, Slot: 25b, id: \"minecraft:diamond\"}, {count: 64, Slot: 26b, id: \"minecraft:diamond\"}]",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: [{count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: [{count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}]"
+      },
+      "server_after": {
+        "0": "0, 64, 3 has the following block data: []",
+        "3": "3, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {count: 64, id: \"minecraft:diamond\"}, slot: 0}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 1}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 2}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 3}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 4}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 5}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 6}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 7}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 8}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 9}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 10}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 11}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 12}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 13}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 14}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 15}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 16}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 17}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 18}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 19}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 20}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 21}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 22}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 23}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 24}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 25}, {item: {count: 64, id: \"minecraft:diamond\"}, slot: 26}]}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "6": "6, 64, 3 has the following block data: []",
+        "9": "9, 64, 3 has the following block data: []",
+        "12": "12, 64, 3 has the following block data: [{components: {\"minecraft:container\": [{item: {components: {\"minecraft:damage\": 7, \"minecraft:custom_name\": \"Exact sword\"}, id: \"minecraft:diamond_sword\"}, slot: 26}], \"minecraft:custom_name\": \"Reserved kit\"}, count: 1, Slot: 0b, id: \"minecraft:shulker_box\"}]",
+        "15": "15, 64, 3 has the following block data: []",
+        "player": "WeSortE2E has the following entity data: [{components: {\"minecraft:damage\": 1}, count: 1, Slot: 8b, id: \"minecraft:diamond_pickaxe\"}]"
+      }
+    }
+  ],
+  "hosted_ci": "pending after issue commit; these are development worktree runs"
+}

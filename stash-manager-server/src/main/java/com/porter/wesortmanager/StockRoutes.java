@@ -43,6 +43,18 @@ final class StockRoutes {
             if (snapshot != null && source.status().equals("FRESH")) {
                 JsonArray slots = new JsonArray(); ledger.physicalSlots(id).forEach(slots::add); out.add("slots", slots);
             }
+            var physical = PhysicalReservations.read(ledger, source.server(), source.stash());
+            if (physical.hasSnapshots()) {
+                out.add("observed", Json.GSON.toJsonTree(physical.observed(id)));
+                var held = orders.physicalHolds(source.server()).stream().filter(r -> id.equals(r.allocation().source())).toList();
+                var reserved = new TreeMap<String,Long>();
+                held.forEach(r -> reserved.merge(r.allocation().ref(), r.allocation().count(), Math::addExact));
+                out.add("reserved", Json.GSON.toJsonTree(reserved));
+                var roots = held.stream().map(r -> r.allocation().root()).collect(java.util.stream.Collectors.toSet());
+                var available = index.automation().current(source.server()) == null ? physical.available(roots, id) : Map.of();
+                out.add("available", Json.GSON.toJsonTree(available));
+                if (who.owner()) out.add("allocations", Json.GSON.toJsonTree(held));
+            }
             return out;
         }
     }
@@ -67,6 +79,10 @@ final class StockRoutes {
         Map<IndexStore.StashKey, Map<String, JsonObject>> stashItems = new LinkedHashMap<>();
         Map<String, Long> reserved = new HashMap<>();
         Map<IndexStore.StashKey, Map<String, Long>> stashReserved = new HashMap<>();
+        Map<IndexStore.StashKey, PhysicalReservations> physicalStashes = new HashMap<>();
+        Map<String, Map<String, Long>> exactAvailable = new HashMap<>();
+        Map<IndexStore.StashKey, Map<String, Long>> stashAvailable = new HashMap<>();
+        Map<String, Set<PhysicalReservations.Root>> rootsByServer = new HashMap<>();
         for (var source : sources) {
             var book = new IndexStore.StashKey(source.server(), source.stash());
             if (!stashReserved.containsKey(book)) {
@@ -76,11 +92,22 @@ final class StockRoutes {
             }
             addItems(stashItems.computeIfAbsent(book, key -> new TreeMap<>()), source, who);
             String id = source.value().get("id").getAsString();
+            var roots = rootsByServer.computeIfAbsent(book.server(), orders::heldRoots);
+            if (!physicalStashes.containsKey(book)) {
+                var observations = PhysicalReservations.read(query, book.server(), book.stash());
+                physicalStashes.put(book, observations);
+                if (observations.hasSnapshots()) stashAvailable.put(book, observations.available(roots));
+            }
+            var typed = physicalStashes.get(book);
             if (details.containsKey(id)) {
                 if (!Redact.forced(who)) details.get(id).getAsJsonArray("stashes").add(source.stash());
                 continue;
             }
             addItems(items, source, who);
+            if (typed.hasSnapshots()) {
+                var totals = exactAvailable.computeIfAbsent(book.server(), ignored -> new HashMap<>());
+                typed.available(roots, id).forEach((ref,count) -> totals.merge(ref,count,Math::addExact));
+            }
             var detail = source.value().deepCopy();
             detail.addProperty("server", source.server()); detail.addProperty("serverLabel", serverLabel(source.server(), who));
             detail.addProperty("stash", source.stash());
@@ -88,8 +115,18 @@ final class StockRoutes {
             detail.addProperty("sourceRevision", source.revision()); detail.addProperty("verifiedAt", source.verifiedAt());
             detail.addProperty("state", source.shared() && source.status().equals("FRESH") ? "SHARED_SOURCE" : source.status());
             detail.remove("epoch"); detail.remove("session"); detail.remove("sequence"); detail.remove("baseRevision");
-            // Existing holds have no physical allocation yet. Never invent an exact count per container.
-            detail.add("reserved", JsonNull.INSTANCE); detail.add("available", JsonNull.INSTANCE);
+            if (source.value().has("slotFingerprint") && !Redact.forced(who)) {
+                var held = new TreeMap<String,Long>();
+                for (var reservation : orders.physicalHolds(source.server())) {
+                    var allocation = reservation.allocation();
+                    if (id.equals(allocation.source())) held.merge(allocation.ref(), allocation.count(), Math::addExact);
+                }
+                detail.add("reserved", Json.GSON.toJsonTree(held));
+                detail.add("available", Json.GSON.toJsonTree(blockedServers.contains(book.server()) ? Map.of() : typed.available(roots,id)));
+            } else {
+                detail.add("reserved", JsonNull.INSTANCE);
+                detail.add("available", JsonNull.INSTANCE);
+            }
             if (Redact.forced(who)) {
                 for (String field : List.of("parts", "dimension", "id", "fingerprint", "items", "shulkers", "stashes", "slotSchema", "slotFingerprint", "slotCount")) detail.remove(field);
                 detail.addProperty("stash", Redact.HIDDEN);
@@ -101,12 +138,12 @@ final class StockRoutes {
             var book = entry.getKey(); var stash = new JsonObject();
             stash.addProperty("server", book.server()); stash.addProperty("serverLabel", serverLabel(book.server(), who));
             stash.addProperty("stash", Redact.forced(who) ? Redact.HIDDEN : book.stash());
-            stash.add("items", balances(entry.getValue(), stashReserved.get(book), false, who, blockedServers)); stashes.add(stash);
+            stash.add("items", balances(entry.getValue(), stashReserved.get(book), false, who, blockedServers, stashAvailable.get(book) == null ? Map.of() : Map.of(book.server(), stashAvailable.get(book)))); stashes.add(stash);
         }
         JsonObject out = new JsonObject(); out.addProperty("stockEpoch", query.epoch()); out.addProperty("stockRevision", query.revision());
         out.addProperty("maxAgeMillis", query.maxAge()); out.addProperty("asOf", System.currentTimeMillis());
-        out.addProperty("reservationPrecision", "aggregate");
-        out.add("items", balances(items, reserved, true, who, blockedServers)); out.add("stashes", stashes);
+        out.addProperty("reservationPrecision", exactAvailable.isEmpty() ? "aggregate" : "physical-root");
+        out.add("items", balances(items, reserved, true, who, blockedServers, exactAvailable)); out.add("stashes", stashes);
         JsonArray physical = new JsonArray(); details.values().forEach(physical::add); out.add("sources", physical); out.add("automation", automation);
         return out;
     }
@@ -125,17 +162,23 @@ final class StockRoutes {
             });
             long amount = item.get("count").getAsLong();
             row.addProperty("observed", Math.addExact(row.get("observed").getAsLong(), amount));
-            String bucket = source.status().equals("FRESH") && !source.shared() ? "fresh" : "unknown";
+            String bucket = source.status().equals("FRESH") && (!source.shared() || source.value().has("slotFingerprint")) ? "fresh" : "unknown";
             row.addProperty(bucket, Math.addExact(row.get(bucket).getAsLong(), amount));
         }
     }
 
-    private static JsonArray balances(Map<String, JsonObject> rows, Map<String, Long> holds, boolean guild, Users.Principal who, Set<String> blockedServers) {
+    private static JsonArray balances(Map<String, JsonObject> rows, Map<String, Long> holds, boolean guild,
+                                      Users.Principal who, Set<String> blockedServers, Map<String,Map<String,Long>> exactAvailable) {
         JsonArray result = new JsonArray();
         for (var item : rows.values()) {
             String key = (guild ? item.get("server").getAsString() + "\u0000" : "") + "item:" + item.get("key").getAsString();
             long held = holds.getOrDefault(key, 0L);
-            item.addProperty("reserved", held); item.addProperty("available", blockedServers.contains(item.get("server").getAsString()) ? 0 : Math.max(0, item.get("fresh").getAsLong() - held));
+            String server = item.get("server").getAsString();
+            var exact = exactAvailable.get(server);
+            long available = exact == null ? Math.max(0, item.get("fresh").getAsLong() - held)
+                : exact.getOrDefault("item:" + item.get("key").getAsString(), 0L);
+            item.addProperty("reserved", held);
+            item.addProperty("available", blockedServers.contains(server) ? 0 : available);
             item.remove("fresh"); item.addProperty("serverLabel", serverLabel(item.get("server").getAsString(), who)); result.add(item);
         }
         return result;

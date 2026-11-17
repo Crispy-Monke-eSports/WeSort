@@ -43,6 +43,7 @@ final class KitBuilder {
      * What the builder needs from the sorter.
      */
     interface Owner {
+        default boolean mayTakeFrom(Box box, int slot) { return true; }
         Stash stash();
         default boolean permitted() { return true; }
         default void packed() {}
@@ -334,7 +335,7 @@ final class KitBuilder {
 
                 for (int i = 0; i < box.contents.length; i++) {
                     ItemStack s = box.contents[i];
-                    if (s.isEmpty()) continue;
+                    if (s.isEmpty() || keys.orderKit && !owner.mayTakeFrom(box, i)) continue;
 
                     if (Utils.isShulker(s.getItem())) {
                         boolean named = s.has(DataComponents.CUSTOM_NAME);
@@ -844,7 +845,8 @@ final class KitBuilder {
             diagnose("the container at " + box.pos.toShortString() + " (no free carry slot)", box.contents.length, i -> box.contents[i], live);
             return false;
         }
-        int slot = bestStack(live, box.contents.length, i -> box.contents[i]);
+        int slot = bestStack(live, box.contents.length,
+            i -> kit.orderKit && !owner.mayTakeFrom(box, i) ? ItemStack.EMPTY : box.contents[i]);
         if (slot == -1) {
             diagnose("the container at " + box.pos.toShortString(), box.contents.length, i -> box.contents[i], live);
             return false;

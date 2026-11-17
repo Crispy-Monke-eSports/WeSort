@@ -1,7 +1,7 @@
 name: wesort
 services:
   manager:
-    image: ${WESORT_IMAGE:-ghcr.io/crispy-monke-esports/wesort-manager:v0.1.0-dev.6}
+    image: ${WESORT_IMAGE:-ghcr.io/crispy-monke-esports/wesort-manager:v0.1.0-dev.7}
     platform: linux/amd64
     restart: unless-stopped
     init: true

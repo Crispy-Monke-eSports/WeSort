@@ -103,7 +103,10 @@ final class AddonRoutes {
             return;
         }
         try {
-            store.putIndex(index);
+            synchronized (store) {
+                store.putIndex(index);
+                orders.releaseFromFreshObservation(server);
+            }
         } catch (StockLedger.Conflict e) {
             JsonObject out = new JsonObject(); out.addProperty("error", e.getMessage());
             out.addProperty("stockEpoch", e.epoch); out.addProperty("stockRevision", e.revision);

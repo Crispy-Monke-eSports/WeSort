@@ -9,6 +9,8 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.TreeMap;
 
 /**
@@ -91,15 +93,24 @@ public final class Order {
     public final List<Line> lines;
     /** Null: no naming. */
     public final Names names;
+    public final Map<String,Set<Integer>> protectedRoots;
+    public final Map<String,Set<Integer>> allocatedRoots;
 
     public Order(String id, List<Line> lines) {
         this(id, lines, null);
     }
 
     public Order(String id, List<Line> lines, Names names) {
+        this(id, lines, names, Map.of(), Map.of());
+    }
+
+    private Order(String id, List<Line> lines, Names names, Map<String,Set<Integer>> protectedRoots,
+                  Map<String,Set<Integer>> allocatedRoots) {
         this.id = id;
         this.lines = lines;
         this.names = names;
+        this.protectedRoots = protectedRoots;
+        this.allocatedRoots = allocatedRoots;
     }
 
     /**
@@ -122,7 +133,33 @@ public final class Order {
             }
         }
         String id = o.get("id").getAsString();
-        return id.isEmpty() || lines.isEmpty() ? null : new Order(id, lines, parseNames(o));
+        if (id.isEmpty() || lines.isEmpty()) return null;
+        var guards = new LinkedHashMap<String,Set<Integer>>();
+        if (o.has("allocations") && !o.has("protectedRoots")) throw new IllegalArgumentException("Missing allocation guard");
+        if (o.has("protectedRoots")) {
+            for (var entry : o.getAsJsonObject("protectedRoots").entrySet()) {
+                var slots = new HashSet<Integer>();
+                for (var slot : entry.getValue().getAsJsonArray()) {
+                    int value = slot.getAsBigDecimal().intValueExact();
+                    if (value < 0 || value > 53) throw new IllegalArgumentException("Invalid physical slot guard");
+                    slots.add(value);
+                }
+                guards.put(entry.getKey(), Set.copyOf(slots));
+            }
+        }
+        var allocated = new LinkedHashMap<String,Set<Integer>>();
+        if (o.has("allocations")) {
+            for (var value : o.getAsJsonArray("allocations")) {
+                var allocation = value.getAsJsonObject();
+                var path = allocation.get("path").getAsString();
+                int root = Integer.parseInt(path.split("/", 2)[0]);
+                if (root < 0 || root > 53) throw new IllegalArgumentException("Invalid reserved physical slot");
+                allocated.computeIfAbsent(allocation.get("source").getAsString(), ignored -> new HashSet<>()).add(root);
+            }
+            if (allocated.isEmpty()) throw new IllegalArgumentException("Empty physical allocation");
+        }
+        allocated.replaceAll((source, slots) -> Set.copyOf(slots));
+        return new Order(id, lines, parseNames(o), Map.copyOf(guards), Map.copyOf(allocated));
     }
 
     private static boolean isText(JsonElement e) {

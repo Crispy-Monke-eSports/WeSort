@@ -276,13 +276,18 @@ final class OrderRoutes {
             AddonRoutes.conflict(ex, owner);
             return;
         }
-        OrderStore.Order order = orders.claim(server, stash);
+        String agent = AddonRoutes.string(o, "agent");
+        if (agent != null && !agent.matches("[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")) {
+            Http.error(ex, 400, "Invalid agent ID");
+            return;
+        }
+        JsonObject order = orders.claimPayload(server, stash, agent);
         if (order == null) {
             Http.send(ex, 204, null, null, "no-store");
             return;
         }
         JsonObject out = Http.ok();
-        out.add("order", shown(ex, order.toJson()));
+        out.add("order", shown(ex, order));
         Http.json(ex, 200, out);
     }
 
@@ -325,7 +330,7 @@ final class OrderRoutes {
             return;
         }
         try {
-            OrderStore.Order order = orders.status(m.group(1), status, phase, progress, message, result);
+            OrderStore.Order order = orders.status(m.group(1), status, phase, progress, message, result, AddonRoutes.string(o, "agent"));
             JsonObject out = Http.ok();
             out.add("order", shown(ex, order.toJson()));
             Http.json(ex, 200, out);

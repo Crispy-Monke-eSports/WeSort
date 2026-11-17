@@ -101,6 +101,31 @@ public final class InventorySync {
         if (!gate.failed()) { gate.fail("New automated input attempted before server readback"); reportFailure(); }
         return false;
     }
+    public static boolean allowClick(int slot, ContainerInput input) {
+        if (!allowInput()) return false;
+        var sorter = meteordevelopment.meteorclient.systems.modules.Modules.get().get(com.porter.wesort.modules.StashSorter.class);
+        if (sorter == null || mc.player == null || mc.level == null) return true;
+        var menu = mc.player.containerMenu;
+        if (!sorter.hasPhysicalOrder() || !(menu instanceof net.minecraft.world.inventory.ChestMenu
+            || menu instanceof net.minecraft.world.inventory.ShulkerBoxMenu)) return true;
+        if (readSource == null || readLevel != mc.level || menu.containerId != readMenu
+            || !mc.level.isLoaded(readSource) || !mc.level.getBlockState(readSource).equals(readBlock)) return false;
+        var parts = new ArrayList<BlockPos>();
+        parts.add(readSource);
+        if (readBlock.getBlock() instanceof net.minecraft.world.level.block.ChestBlock
+            && readBlock.getValue(net.minecraft.world.level.block.ChestBlock.TYPE)
+                != net.minecraft.world.level.block.state.properties.ChestType.SINGLE) {
+            var other = readSource.relative(net.minecraft.world.level.block.ChestBlock.getConnectedDirection(readBlock));
+            if (!mc.level.isLoaded(other)) return false;
+            parts.add(other);
+        }
+        String id = ObservationRuntime.sourceId(parts);
+        int storageSlots = menu.slots.size() - 36;
+        if (slot >= 0 && slot < storageSlots) return sorter.orderMayTakeFrom(id, slot, menu.getSlot(slot).getItem());
+        if (input == ContainerInput.QUICK_MOVE) return sorter.orderMayDepositAutomatically(id);
+        return true;
+    }
+
     static BlockPos inspectionSource() { return readSource; }
     public static boolean failed() { return gate.failed(); }
     public static String reason() { return gate.reason(); }

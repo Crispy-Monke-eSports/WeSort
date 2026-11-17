@@ -1143,7 +1143,10 @@ public class StashManager extends Module {
 
     private byte[] bytes(JsonObject o) {
         // Every order request says which bot it comes from: the server only takes them from the stash's owner
-        if (!o.has("player") && mc.player != null) o.addProperty("player", mc.player.getName().getString());
+        if (mc.player != null) {
+            if (!o.has("player")) o.addProperty("player", mc.player.getName().getString());
+            if (!o.has("agent")) o.addProperty("agent", mc.player.getUUID().toString());
+        }
         return o.toString().getBytes(StandardCharsets.UTF_8);
     }
 

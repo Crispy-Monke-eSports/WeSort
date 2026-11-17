@@ -114,12 +114,15 @@ flytten utan omtag. Delvis avbruten packning förblir spärrad när
 hela operationens slutläge inte kan bevisas.
 Se [journal, operatörsflöde och 26.3-proven](MC_26_3_JOURNAL.md).
 
-## Återstående i steget
+## W-024 – fysiska reservationer
 
-W-019:s [sortering och reservationsskydd](MC_26_3_SORTING.md) finns i koden.
-Återstående är W-024 och den globala atomiska reservationshierarkin.
-Orderhållningar är fortfarande aggregerade per stash (`reservationPrecision`
-är `aggregate`); exakt fysisk reservation/allokering visas därför inte som
-om den redan fanns. Delade fysiska källor räknas en gång men spärras för nya
-order tills hierarkin finns. Full cross-stash-orderallokering hör till W-040.
-Ingen Qwerte-data eller befintlig användarvärld läses/importeras.
+Manager allokerar kanonisk container och fysisk slotväg. Order på en
+hel shulker och på dess innehåll delar samma lås över stashalias.
+Slotbevis, stockrevision, sorteringslease och orderstatus avgör
+tillgängligheten. Efter påbörjad exekvering frigörs reservationen vid
+en ny verifierad observation och avstämd fysisk journal.
+Se [reservationsmodell, API och 26.3-prov](MC_26_3_RESERVATIONS.md).
+
+W-040 omfattar orderallokering över flera stashes. Endast Minecraft
+26.3 är en aktiv klientversion. Testningen använder isolerade
+installationer och spelvärldar.

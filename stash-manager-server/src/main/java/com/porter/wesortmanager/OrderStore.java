@@ -14,6 +14,7 @@ import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -63,7 +64,11 @@ final class OrderStore {
         String server;
         String stash;
         List<Line> lines;
-        JsonObject sourceGuards; // Conservative W-020 content preconditions; W-024 supplies exact allocation.
+        JsonObject sourceGuards; // Compatibility for orders created before slot allocation.
+        List<PhysicalReservations.Allocation> allocations;
+        long claimedAt;
+        long releasedAt;
+        String agent;
         JsonObject names; // normalized (see normalizeNames), or null for no naming
         long createdAt;
         long updatedAt;
@@ -93,6 +98,10 @@ final class OrderStore {
             }
             o.add("lines", ls);
             if (sourceGuards != null) o.add("sourceGuards", sourceGuards.deepCopy());
+            if (allocations != null) o.add("allocations", Json.GSON.toJsonTree(allocations));
+            if (claimedAt > 0) o.addProperty("claimedAt", claimedAt);
+            if (agent != null) o.addProperty("agent", agent);
+            if (releasedAt > 0) o.addProperty("releasedAt", releasedAt);
             o.add("names", names == null ? null : names.deepCopy());
             o.addProperty("createdAt", createdAt);
             o.addProperty("updatedAt", updatedAt);
@@ -119,6 +128,11 @@ final class OrderStore {
             Order r = new Order();
             r.id = o.get("id").getAsString();
             r.sourceGuards = o.has("sourceGuards") ? o.getAsJsonObject("sourceGuards").deepCopy() : null;
+            if (o.has("allocations")) r.allocations = List.of(Json.GSON.fromJson(
+                o.get("allocations"), PhysicalReservations.Allocation[].class));
+            r.claimedAt = o.has("claimedAt") ? o.get("claimedAt").getAsLong() : 0;
+            r.agent = str(o, "agent");
+            r.releasedAt = o.has("releasedAt") ? o.get("releasedAt").getAsLong() : 0;
             r.server = o.get("server").getAsString();
             r.stash = o.get("stash").getAsString();
             r.lines = new ArrayList<>();
@@ -215,12 +229,24 @@ final class OrderStore {
         AtomicFiles.write(dir.resolve(IndexStore.fileName(b.server, b.stash)), Json.GSON.toJson(root).getBytes(StandardCharsets.UTF_8));
     }
 
+    private void update(Book book, Order previous, Order next) throws IOException {
+        int position = book.orders.indexOf(previous);
+        book.orders.set(position, next);
+        try {
+            save(book);
+        } catch (IOException failure) {
+            book.orders.set(position, previous);
+            throw failure;
+        }
+        prune(book);
+    }
+
     /** Drops the oldest finished orders beyond KEEP. Open orders are never pruned. */
     private void prune(Book b) {
         int excess = b.orders.size() - KEEP;
         for (int i = 0; i < b.orders.size() && excess > 0; ) {
             Order o = b.orders.get(i);
-            if (FINISHED.contains(o.status)) {
+            if (FINISHED.contains(o.status) && (o.allocations == null || o.claimedAt == 0 || o.releasedAt > 0)) {
                 b.orders.remove(i);
                 byOrderId.remove(o.id, b);
                 excess--;
@@ -233,7 +259,7 @@ final class OrderStore {
     private static Map<String, Long> reserved(Book b) {
         Map<String, Long> out = new HashMap<>();
         for (Order o : b.orders) {
-            if (!OPEN.contains(o.status)) continue;
+            if (!OPEN.contains(o.status) && !holdsPhysical(o)) continue;
             for (Line l : o.lines) out.merge(l.ref(), l.count, Long::sum);
         }
         return out;
@@ -251,9 +277,70 @@ final class OrderStore {
         }
     }
 
+    private List<Order> ordersOnServer(String server) {
+        var found = new ArrayList<Order>();
+        for (var entry : books.entrySet()) {
+            if (!entry.getKey().server().equals(server)) continue;
+            synchronized (entry.getValue()) {
+                found.addAll(entry.getValue().orders);
+            }
+        }
+        return found;
+    }
+
+    private static boolean holdsPhysical(Order order) {
+        return order.allocations != null && order.releasedAt == 0
+            && (OPEN.contains(order.status) || order.claimedAt > 0);
+    }
+
+    void releaseFromFreshObservation(String server) throws IOException {
+        synchronized (index) {
+            PhysicalReservations observations = null;
+            for (var entry : books.entrySet()) {
+                if (!entry.getKey().server().equals(server)) continue;
+                var book = entry.getValue();
+                synchronized (book) {
+                    var released = new ArrayList<Order>();
+                    for (var order : book.orders) {
+                        if (!holdsPhysical(order) || !FINISHED.contains(order.status)) continue;
+                        if (observations == null) observations = PhysicalReservations.read(index.stock(), server, null);
+                        if (observations.refreshedAfter(order.allocations, order.updatedAt)
+                            && !index.stock().unsettledPhysicalOrder(order.id)) {
+                            released.add(order);
+                            order.releasedAt = System.currentTimeMillis();
+                        }
+                    }
+                    if (!released.isEmpty()) {
+                        try { save(book); }
+                        catch (IOException failure) {
+                            released.forEach(order -> order.releasedAt = 0);
+                            throw failure;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    record Reservation(String order, PhysicalReservations.Allocation allocation) {}
+
+    List<Reservation> physicalHolds(String server) {
+        var holds = new ArrayList<Reservation>();
+        for (var order : ordersOnServer(server)) if (holdsPhysical(order)) {
+            for (var allocation : order.allocations) holds.add(new Reservation(order.id, allocation));
+        }
+        return List.copyOf(holds);
+    }
+
+    Set<PhysicalReservations.Root> heldRoots(String server) {
+        var roots = new HashSet<PhysicalReservations.Root>();
+        for (var hold : physicalHolds(server)) roots.add(hold.allocation().root());
+        return Set.copyOf(roots);
+    }
+
     AutomationGate.Lease acquireSorting(String server, String agent, String token) throws IOException {
         synchronized (index) {
-            return hasOpenOnServer(server) ? null : index.automation().acquire(server, agent, token);
+            return hasOpenOnServer(server) || !heldRoots(server).isEmpty() ? null : index.automation().acquire(server, agent, token);
         }
     }
 
@@ -302,6 +389,29 @@ final class OrderStore {
             }
         }
 
+        for (var line : merged.values()) {
+            if (line.count < 1 || line.count > Integer.MAX_VALUE) {
+                throw new OrderException(400, "invalid item count", firstIndex.get(line.ref()));
+            }
+        }
+        var physical = PhysicalReservations.read(index.stock(), server, stash);
+        var existing = ordersOnServer(server);
+        if (existing.stream().anyMatch(order -> order.allocations != null && isExecuting(order))) {
+            throw new OrderException(409, "Wait for the active physical order to finish before reserving more stock", -1);
+        }
+        var held = heldRoots(server);
+        if (!held.isEmpty() && index.stock().sources().stream().anyMatch(source ->
+            source.server().equals(server) && source.status().equals("SUPERSEDED") &&
+                held.stream().anyMatch(root -> root.source().equals(source.value().get("id").getAsString())))) {
+            throw new OrderException(409, "A reserved physical source changed topology and requires reconciliation", -1);
+        }
+        boolean legacyHold = existing.stream()
+            .anyMatch(order -> order.allocations == null && OPEN.contains(order.status));
+        if (physical.hasSnapshots() && legacyHold || !physical.hasSnapshots()
+            && (!held.isEmpty() || merged.values().stream().anyMatch(line -> line.type.equals("shulker")))) {
+            throw new OrderException(409, "Resolve existing reservations before mixing source observation formats", -1);
+        }
+        var allocations = physical.hasSnapshots() ? physical.allocate(merged.values(), held, firstIndex) : null;
         Book b = book(server, stash);
         synchronized (b) {
             long open = b.orders.stream().filter(o -> OPEN.contains(o.status)).count();
@@ -310,10 +420,9 @@ final class OrderStore {
             for (Line l : merged.values()) {
                 int at = firstIndex.get(l.ref());
                 long total = counts.total(l.type, l.key);
-                if (total < 0) throw new OrderException(400, "not in the stash: " + l.key, at);
+                if (total < 0 && allocations == null) throw new OrderException(400, "not in the stash: " + l.key, at);
                 long available = Math.max(0, total - reserved.getOrDefault(l.ref(), 0L));
-                if (l.count > Integer.MAX_VALUE) throw new OrderException(400, "count too large", at);
-                if (l.count > available) {
+                if (allocations == null && l.count > available) {
                     throw new OrderException(400, "only " + available + " available for " + l.key + " (asked for " + l.count + ")", at);
                 }
             }
@@ -329,6 +438,7 @@ final class OrderStore {
             o.stash = stash;
             o.lines = new ArrayList<>(merged.values());
             o.names = names == null ? null : names.deepCopy();
+            o.allocations = allocations;
             o.sourceGuards = sourceGuards(server, stash);
             o.createdAt = now;
             o.updatedAt = now;
@@ -336,9 +446,13 @@ final class OrderStore {
             o.placedById = byId;
             o.placedByName = byId == null ? null : byName;
             b.orders.add(o);
+            try {
+                save(b);
+            } catch (IOException failure) {
+                b.orders.remove(o);
+                throw failure;
+            }
             byOrderId.put(o.id, b);
-            prune(b);
-            save(b);
             return o;
         }
     }
@@ -517,14 +631,27 @@ final class OrderStore {
         }
         out.add("orders", list);
         JsonObject available = new JsonObject();
-        IndexStore.OrderCounts counts;
+        IndexStore.OrderCounts counts = null;
+        Map<String, Long> physicalAvailable = null;
         synchronized (index) {
-            try { counts = index.automation().current(server) == null ? index.orderCounts(server, stash) : null; }
-            catch (IOException e) { counts = null; }
+            try {
+                if (index.automation().current(server) == null) {
+                    var physical = PhysicalReservations.read(index.stock(), server, stash);
+                    if (physical.hasSnapshots()) physicalAvailable = physical.available(heldRoots(server));
+                    counts = index.orderCounts(server, stash);
+                }
+            } catch (IOException ignored) {
+                counts = null;
+            }
         }
         JsonObject items = new JsonObject();
         JsonObject shulkers = new JsonObject();
-        if (counts != null) {
+        if (physicalAvailable != null) {
+            physicalAvailable.forEach((ref, count) -> {
+                int split = ref.indexOf(':');
+                (ref.startsWith("item:") ? items : shulkers).addProperty(ref.substring(split + 1), count);
+            });
+        } else if (counts != null) {
             for (String key : counts.items().keySet()) {
                 items.addProperty(key, Math.max(0, counts.total("item", key) - reserved.getOrDefault("item:" + key, 0L)));
             }
@@ -543,13 +670,17 @@ final class OrderStore {
      * never touched: they hold reservations and the bot may be working on them.
      */
     int clearFinished(String server, String stash) throws IOException {
+        synchronized (index) { return clearFinishedWithObservationLock(server, stash); }
+    }
+
+    private int clearFinishedWithObservationLock(String server, String stash) throws IOException {
         Book b = books.get(new IndexStore.StashKey(server, stash));
         if (b == null) return 0;
         synchronized (b) {
             int removed = 0;
             for (java.util.Iterator<Order> it = b.orders.iterator(); it.hasNext(); ) {
                 Order o = it.next();
-                if (!FINISHED.contains(o.status)) continue;
+                if (!FINISHED.contains(o.status) || holdsPhysical(o)) continue;
                 it.remove();
                 byOrderId.remove(o.id, b);
                 removed++;
@@ -561,11 +692,16 @@ final class OrderStore {
 
     /** pending -> cancelled now; accepted/in_progress -> cancelRequested; finished -> 409. */
     Order cancel(String id) throws OrderException, IOException {
+        synchronized (index) { return cancelWithObservationLock(id); }
+    }
+
+    private Order cancelWithObservationLock(String id) throws OrderException, IOException {
         Book b = byOrderId.get(id);
         if (b == null) throw new OrderException(404, "no such order", -1);
         synchronized (b) {
-            Order o = find(b, id);
-            if (o == null) throw new OrderException(404, "no such order", -1);
+            Order previous = find(b, id);
+            if (previous == null) throw new OrderException(404, "no such order", -1);
+            Order o = Order.fromJson(previous.toJson());
             if (FINISHED.contains(o.status)) throw new OrderException(409, "order is already " + o.status, -1);
             if (o.status.equals("pending")) {
                 o.status = "cancelled";
@@ -575,7 +711,7 @@ final class OrderStore {
                 o.cancelRequestedAt = System.currentTimeMillis();
             }
             o.updatedAt = System.currentTimeMillis();
-            save(b);
+            update(b, previous, o);
             return o;
         }
     }
@@ -586,20 +722,27 @@ final class OrderStore {
      * 409 when no cancel was requested or the order isn't held by the bot.
      */
     Order forceCancel(String id) throws OrderException, IOException {
+        synchronized (index) { return forceCancelWithObservationLock(id); }
+    }
+
+    private Order forceCancelWithObservationLock(String id) throws OrderException, IOException {
         Book b = byOrderId.get(id);
         if (b == null) throw new OrderException(404, "no such order", -1);
         synchronized (b) {
-            Order o = find(b, id);
-            if (o == null) throw new OrderException(404, "no such order", -1);
+            Order previous = find(b, id);
+            if (previous == null) throw new OrderException(404, "no such order", -1);
+            Order o = Order.fromJson(previous.toJson());
             if (FINISHED.contains(o.status)) throw new OrderException(409, "order is already " + o.status, -1);
+            if (o.allocations != null) {
+                throw new OrderException(409, "The assigned agent must finish or reconcile its physical work", -1);
+            }
             if (!o.cancelRequested || o.status.equals("pending")) {
                 throw new OrderException(409, "request a cancel first; force cancel is for orders the bot hasn't confirmed", -1);
             }
             o.status = "cancelled";
             o.message = "cancelled from the website (bot didn't confirm)";
             o.updatedAt = System.currentTimeMillis();
-            prune(b);
-            save(b);
+            update(b, previous, o);
             return o;
         }
     }
@@ -700,6 +843,9 @@ final class OrderStore {
         return out.isEmpty() ? null : out;
     }
     private boolean matchesSources(Order order) throws IOException {
+        if (order.allocations != null) {
+            return PhysicalReservations.read(index.stock(), order.server, order.stash).matches(order.allocations);
+        }
         if (order.sourceGuards == null) return true; // Earlier protocol orders retain their existing aggregate checks.
         var now = sourceGuards(order.server, order.stash);
         if (now == null) return false;
@@ -707,41 +853,95 @@ final class OrderStore {
         return true;
     }
 
-    /** The held (accepted/in_progress) order if there is one, else the oldest pending one, now accepted. Null = none. */
-    Order claim(String server, String stash) throws IOException {
-        synchronized (index) { return claimWithObservationLock(server, stash); }
+    private static boolean isExecuting(Order order) {
+        return order.status.equals("accepted") || order.status.equals("in_progress");
     }
-    private Order claimWithObservationLock(String server, String stash) throws IOException {
+
+    Order claim(String server, String stash) throws IOException {
+        synchronized (index) { return claimWithObservationLock(server, stash, "local"); }
+    }
+
+    JsonObject claimPayload(String server, String stash, String agent) throws IOException {
+        synchronized (index) {
+            Order order = claimWithObservationLock(server, stash, agent);
+            if (order == null) return null;
+            var payload = order.toJson();
+            if (order.allocations != null) {
+                var guards = new JsonObject();
+                for (var hold : physicalHolds(server)) {
+                    if (order.id.equals(hold.order())) continue;
+                    var root = hold.allocation().root();
+                    if (!guards.has(root.source())) guards.add(root.source(), new JsonArray());
+                    guards.getAsJsonArray(root.source()).add(Integer.parseInt(root.path()));
+                }
+                payload.add("protectedRoots", guards);
+            }
+            return payload;
+        }
+    }
+
+    private Order claimWithObservationLock(String server, String stash, String agent) throws IOException {
         var counts = index.orderCounts(server, stash);
-        if (counts == null) return null;
+        if (counts == null || index.automation().current(server) != null) return null;
+        var running = ordersOnServer(server).stream().filter(order -> order.allocations != null && isExecuting(order)).findFirst();
+        if (running.isPresent() && (!stash.equals(running.get().stash) || !java.util.Objects.equals(agent, running.get().agent))) return null;
         Book b = books.get(new IndexStore.StashKey(server, stash));
         if (b == null) return null;
         synchronized (b) {
-            for (Order o : b.orders) {
-                if (o.status.equals("accepted") || o.status.equals("in_progress"))
-                    return matchesSources(o) && o.lines.stream().allMatch(line -> counts.total(line.type, line.key) >= line.count) ? o : null;
+            for (Order order : b.orders) {
+                if (isExecuting(order)) return orderSourcesReady(order, counts, agent) ? order : null;
             }
-            for (Order o : b.orders) {
-                if (o.status.equals("pending")) {
-                    if (!matchesSources(o) || o.lines.stream().anyMatch(line -> counts.total(line.type, line.key) < line.count)) continue;
-                    o.status = "accepted";
-                    o.updatedAt = System.currentTimeMillis();
+            for (Order order : b.orders) {
+                if (!order.status.equals("pending") || !orderSourcesReady(order, counts, agent)) continue;
+                long before = order.updatedAt;
+                order.status = "accepted";
+                order.claimedAt = order.updatedAt = System.currentTimeMillis();
+                order.agent = order.allocations == null ? null : agent;
+                try {
                     save(b);
-                    return o;
+                } catch (IOException failure) {
+                    order.status = "pending";
+                    order.claimedAt = 0;
+                    order.updatedAt = before;
+                    order.agent = null;
+                    throw failure;
                 }
+                return order;
             }
             return null;
         }
     }
 
+    private boolean orderSourcesReady(Order order, IndexStore.OrderCounts counts, String agent) throws IOException {
+        if (order.allocations == null) {
+            return matchesSources(order) && order.lines.stream().allMatch(line -> counts.total(line.type, line.key) >= line.count);
+        }
+        return agent != null && matchesSources(order);
+    }
+
     /** A status report from the bot. Fields are validated by the route; the move is checked here. */
     Order status(String id, String status, String phase, JsonObject progress, String message, JsonObject result)
+        throws OrderException, IOException {
+        return status(id, status, phase, progress, message, result, "local");
+    }
+
+    Order status(String id, String status, String phase, JsonObject progress, String message, JsonObject result, String agent)
+        throws OrderException, IOException {
+        synchronized (index) { return statusWithObservationLock(id, status, phase, progress, message, result, agent); }
+    }
+
+    private Order statusWithObservationLock(String id, String status, String phase, JsonObject progress, String message,
+                                             JsonObject result, String agent)
         throws OrderException, IOException {
         Book b = byOrderId.get(id);
         if (b == null) throw new OrderException(404, "no such order", -1);
         synchronized (b) {
-            Order o = find(b, id);
-            if (o == null) throw new OrderException(404, "no such order", -1);
+            Order previous = find(b, id);
+            if (previous == null) throw new OrderException(404, "no such order", -1);
+            Order o = Order.fromJson(previous.toJson());
+            if (o.agent != null && !o.agent.equals(agent)) {
+                throw new OrderException(403, "Physical order belongs to another agent", -1);
+            }
             if (!allowed(o.status, status)) {
                 throw new OrderException(409, "can't go from " + o.status + " to " + status, -1);
             }
@@ -751,8 +951,7 @@ final class OrderStore {
             if (message != null) o.message = message;
             if (result != null) o.result = result;
             o.updatedAt = System.currentTimeMillis();
-            prune(b);
-            save(b);
+            update(b, previous, o);
             return o;
         }
     }

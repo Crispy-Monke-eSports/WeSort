@@ -73,6 +73,83 @@ class StockHierarchyTest {
         var restarted = new OrderStore(data, store); restarted.load(); assertNull(restarted.claim("s", "a"));
         assertEquals(order.sourceGuards, OrderStore.Order.fromJson(order.toJson()).sourceGuards);
     }
+    @Test void racingWholeBoxesAndContentsAcrossAliasesCannotReserveTheSameRoots() throws Exception {
+        var ledger = new StockLedger(data);
+        var store = new IndexStore(data, CreativeTabs.NONE, ledger);
+        store.load();
+        store.putIndex(index(ledger, 32));
+        var alias = index(ledger, 32);
+        alias.addProperty("stash", "b");
+        store.putIndex(alias);
+        var orders = new OrderStore(data, store);
+        orders.load();
+        var whole = new OrderStore.Line("shulker", "kit", 2);
+        var child = new OrderStore.Line("item", "minecraft:diamond", 64);
+        var start = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.Callable<OrderStore.Order> first = () -> tryOrder(orders, start, "a", whole);
+        java.util.concurrent.Callable<OrderStore.Order> second = () -> tryOrder(orders, start, "b", child);
+        try (var pool = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var a = pool.submit(first);
+            var b = pool.submit(second);
+            start.countDown();
+            OrderStore.Order winner = a.get();
+            OrderStore.Order other = b.get();
+            assertTrue((winner == null) != (other == null));
+            if (winner == null) winner = other;
+            assertEquals(2, orders.heldRoots("s").size());
+            assertNull(orders.acquireSorting("s", java.util.UUID.randomUUID().toString(), null));
+            var restarted = new OrderStore(data, store);
+            restarted.load();
+            assertEquals(orders.heldRoots("s"), restarted.heldRoots("s"));
+            restarted.cancel(winner.id);
+            assertTrue(restarted.heldRoots("s").isEmpty());
+            var after = restarted.place("s", winner.stash.equals("a") ? "b" : "a",
+                List.of(winner.stash.equals("a") ? child : whole), null);
+            assertEquals(2, after.allocations.size());
+        }
+    }
+
+    private static OrderStore.Order tryOrder(OrderStore orders, java.util.concurrent.CountDownLatch start,
+                                              String stash, OrderStore.Line line) throws Exception {
+        start.await();
+        try {
+            return orders.place("s", stash, List.of(line), null);
+        } catch (OrderStore.OrderException conflict) {
+            assertEquals(409, conflict.status);
+            return null;
+        }
+    }
+
+    @Test void failedClaimRetainsRootsUntilFreshReadFromThePhysicalSource() throws Exception {
+        var now = new java.util.concurrent.atomic.AtomicLong(System.currentTimeMillis());
+        var ledger = new StockLedger(data, now::get, 600_000);
+        var store = new IndexStore(data, CreativeTabs.NONE, ledger);
+        store.load();
+        store.putIndex(index(ledger, 32));
+        var orders = new OrderStore(data, store);
+        orders.load();
+        var order = orders.place("s", "a", List.of(new OrderStore.Line("shulker", "kit", 2)), null);
+        String agent = UUID.randomUUID().toString();
+        assertNotNull(orders.claimPayload("s", "a", agent));
+        assertNull(orders.claimPayload("s", "a", UUID.randomUUID().toString()));
+        assertThrows(OrderStore.OrderException.class,
+            () -> orders.status(order.id, "failed", null, null, null, null, "other"));
+        var failed = orders.status(order.id, "failed", null, null, null, null, agent);
+        orders.releaseFromFreshObservation("s");
+        assertEquals(2, orders.heldRoots("s").size());
+        assertEquals(0, orders.clearFinished("s", "a"));
+
+        var refreshed = index(ledger, 32);
+        now.set(failed.updatedAt + 1_000);
+        source(refreshed).addProperty("observedAt", now.get());
+        store.putIndex(refreshed);
+        orders.releaseFromFreshObservation("s");
+        assertTrue(orders.heldRoots("s").isEmpty());
+        var restarted = new OrderStore(data, store);
+        restarted.load();
+        assertTrue(restarted.heldRoots("s").isEmpty());
+    }
+
     @Test void schemaTwoMigratesWithoutLosingHistoricalStock() throws Exception {
         var ledger = new StockLedger(data); ledger.accept(index(ledger, 32));
         try (var c = ledger.open(); var sql = c.createStatement()) {

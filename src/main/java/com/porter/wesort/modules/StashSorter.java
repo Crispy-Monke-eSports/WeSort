@@ -1425,6 +1425,10 @@ public class StashSorter extends Module {
 
     // Building kits
     private final KitBuilder kitBuilder = new KitBuilder(new KitBuilder.Owner() {
+        @Override public boolean mayTakeFrom(Box box, int slot) {
+            return orderRunner.mayTakeFrom(box, slot);
+        }
+
         @Override public boolean permitted() { return sortingPermitted(); }
         @Override public void packed() { Modules.get().get(StashManager.class).kitPacked(); }
         @Override public void uncertain(String reason) { Modules.get().get(StashManager.class).kitUncertain(reason); }
@@ -9638,6 +9642,18 @@ public class StashSorter extends Module {
     /**
      * The saved stash named in the settings, for other modules like wesort-stash-overlay. Null if there isn't one here.
      */
+    public boolean hasPhysicalOrder() {
+        return orderRunner.hasPhysicalAllocation();
+    }
+
+    public boolean orderMayTakeFrom(String source, int slot, ItemStack stack) {
+        return orderRunner.mayTakeFrom(source, slot, stack);
+    }
+
+    public boolean orderMayDepositAutomatically(String source) {
+        return orderRunner.mayDepositAutomatically(source);
+    }
+
     public com.google.gson.JsonObject physicalJournalContext() {
         var context = new com.google.gson.JsonObject();
         var manager = Modules.get().get(StashManager.class);

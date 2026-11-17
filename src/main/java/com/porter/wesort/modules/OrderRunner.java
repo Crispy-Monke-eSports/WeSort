@@ -823,6 +823,37 @@ final class OrderRunner {
         stash.save();
     }
 
+    boolean hasPhysicalAllocation() {
+        return order != null && !order.allocatedRoots.isEmpty();
+    }
+
+    boolean mayTakeFrom(String source, int slot, ItemStack stack) {
+        if (!hasPhysicalAllocation()) return true;
+        if (order.protectedRoots.getOrDefault(source, Set.of()).contains(slot)) return false;
+        if (order.allocatedRoots.getOrDefault(source, Set.of()).contains(slot) || stack.isEmpty()) return true;
+        try {
+            for (var entry : com.porter.wesort.compat.SlotRuntime.snapshot(new ItemStack[]{stack}).located()) {
+                var item = entry.stack().item();
+                for (var wanted : order.lines) {
+                    if (wanted.type().equals(Order.ITEM) && wanted.key().equals(item.key())
+                        || wanted.type().equals(Order.SHULKER) && wanted.key().equals(item.group())) return false;
+                }
+            }
+            return true;
+        } catch (RuntimeException invalid) {
+            return false;
+        }
+    }
+
+    boolean mayDepositAutomatically(String source) {
+        return !hasPhysicalAllocation() || !order.protectedRoots.containsKey(source);
+    }
+
+    boolean mayTakeFrom(Box box, int slot) {
+        return !hasPhysicalAllocation() || mayTakeFrom(com.porter.wesort.compat.ObservationRuntime.sourceId(box.parts),
+            slot, box.contents[slot]);
+    }
+
     /** The id of the order in hand, or null. */
     String orderId() {
         return order == null ? null : order.id;
@@ -1362,7 +1393,7 @@ final class OrderRunner {
             if (!box.sortable() || box.stale || !owner.usable(box)) continue;
             for (int i = 0; i < box.contents.length; i++) {
                 ItemStack s = box.contents[i];
-                if (s.isEmpty() || !Utils.isShulker(s.getItem()) || !matches(u, s)) continue;
+                if (s.isEmpty() || !Utils.isShulker(s.getItem()) || !matches(u, s) || !mayTakeFrom(box, i)) continue;
                 double d = owner.distance(box);
                 if (d < bestDistance) {
                     bestDistance = d;

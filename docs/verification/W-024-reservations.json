@@ -1,0 +1,76 @@
+{
+  "scope": "W-024 local Minecraft 26.3, before commit",
+  "manager_version": "0.1.0-dev.7",
+  "local_scenarios": [
+    {
+      "name": "physical reservation race and release",
+      "result": "PASS",
+      "checks": [
+        {
+          "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+          "result": "PASS"
+        },
+        {
+          "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+          "result": "PASS"
+        },
+        {
+          "scenario": "three identical named shulkers in distinct slots/containers with nested bundle and exact named enchanted damaged sword",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "same live 26.3 shulker roots cannot be reserved as both whole boxes and child stock; sorting lease refused and cancellation restored availability",
+          "result": "PASS"
+        },
+        {
+          "scenario": "native sparse 27-slot hierarchy, metadata and nested contents survive signed sync and SQLite; identical boxes stay separate and totals count each item once",
+          "result": "PASS"
+        },
+        {
+          "scenario": "real server-side inner-content delta invalidates old box fingerprint and advances affected slot revisions; captured old signed observation rejected 409",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "name": "reserved stock blocks repack",
+      "result": "PASS",
+      "checks": [
+        {
+          "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+          "result": "PASS"
+        },
+        {
+          "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "signed Docker Manager reservation blocks real repack before placement or item prediction; authoritative snapshots unchanged",
+          "result": "PASS"
+        }
+      ]
+    }
+  ],
+  "unit_tests": [
+    "race between two stash aliases",
+    "assigned agent only",
+    "failed order release after fresh physical observation",
+    "snapshot revision check"
+  ]
+}

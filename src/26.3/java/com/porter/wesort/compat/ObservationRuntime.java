@@ -42,6 +42,10 @@ public final class ObservationRuntime {
         if (bundle != null) out.addAll(bundle.itemCopies().toList());
         return out;
     }
+    public static String sourceId(List<net.minecraft.core.BlockPos> parts) {
+        return new ContainerIdentity(Stash.currentServer(), StashIndex.dimension(), parts.stream()
+            .map(p -> new ContainerIdentity.Position(p.getX(), p.getY(), p.getZ())).toList()).id();
+    }
     public static boolean canRead(Stash.Box box) { return InventorySync.confirmedSource(box.parts); }
     public static boolean current(Stash.Box box) {
         return mc.level != null && box.observationSession.equals(session())

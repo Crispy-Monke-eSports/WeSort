@@ -14,6 +14,6 @@ public abstract class InventoryInputMixin {
     @Inject(method = "handleContainerInput", at = @At("HEAD"), cancellable = true)
     private void wesort$blockUncertainAutomation(int container, int slot, int button, ContainerInput input, Player player, CallbackInfo ci) {
         // Cancel before vanilla changes the local inventory. Manual user reconciliation remains possible.
-        if (InventorySync.calledFromWeSort() && !InventorySync.allowInput()) ci.cancel();
+        if (InventorySync.calledFromWeSort() && !InventorySync.allowClick(slot, input)) ci.cancel();
     }
 }

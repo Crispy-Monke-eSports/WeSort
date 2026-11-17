@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """W-020: native 26.3 component/slot hierarchy, independent server snapshots and signed Docker persistence."""
 import argparse
+from concurrent.futures import ThreadPoolExecutor
+import uuid
 import importlib.util
 import json
 from pathlib import Path
@@ -16,6 +18,8 @@ require = world.require
 
 
 class HierarchyHarness(stock.StockHarness):
+    reservations = False
+
     def fixture(self):
         world.Harness.fixture(self)
         box = 'minecraft:shulker_box[minecraft:custom_name={text:"Hierarchy box"},minecraft:container=[{slot:0,item:{id:"minecraft:diamond",count:32}},{slot:13,item:{id:"minecraft:bundle",count:1,components:{"minecraft:bundle_contents":[{id:"minecraft:iron_ingot",count:8}]}}},{slot:26,item:{id:"minecraft:diamond_sword",count:1,components:{"minecraft:damage":7,"minecraft:custom_name":{text:"Exact sword"},"minecraft:enchantments":{"minecraft:unbreaking":2}}}}]]'
@@ -40,6 +44,40 @@ class HierarchyHarness(stock.StockHarness):
         require(status == 200, 'Physical detail unavailable')
         return detail
 
+    def verify_reservations(self, row, before):
+        positions = {slot['path']: slot for slot in row['snapshot']['positions']}
+        orders = [
+            {'type': 'shulker', 'key': positions['0']['group'], 'count': 3},
+            {'type': 'item', 'key': positions['0/0']['key'], 'count': 96},
+        ]
+
+        def place(line):
+            return self.http('/api/v1/orders', {'server': self.server_name, 'stash': 'e2e-fixture', 'lines': [line]})
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(place, orders))
+        require(sorted(status for status, _ in results) == [200, 409], 'Physical order race did not exclude the conflicting allocation')
+        winner = next(i for i, (status, _) in enumerate(results) if status == 200)
+        order = results[winner][1]['order']
+        detail = self.detail(row)
+        require(len(order['allocations']) == 3 and len(detail['allocations']) == 2, 'Physical source did not report its exact order allocations')
+        remaining_ref = orders[1 - winner]['type'] + ':' + orders[1 - winner]['key']
+        require(detail['available'].get(remaining_ref, 0) == 0, 'Reserved shulker roots still advertise competing items')
+        agent = stock.signed.Client(f'http://127.0.0.1:{self.manager_port}', self.key)
+        code, _ = agent.post('/api/v1/automation', {
+            'server': self.server_name, 'agent': str(uuid.uuid4()), 'action': 'acquire'
+        })
+        require(code == 409, 'Sorting or kit execution could acquire a lease over reserved stock')
+        code, _ = self.http('/api/v1/orders/' + order['id'] + '/cancel', {})
+        require(code == 200 and self.detail(row)['available'].get(remaining_ref, 0) > 0,
+                'Pending cancellation did not restore the physical availability')
+        code, replacement = place(orders[1 - winner])
+        require(code == 200, 'Cancellation did not make the separate physical request orderable')
+        self.http('/api/v1/orders/' + replacement['order']['id'] + '/cancel', {})
+        require(before == {str(x): self.rcon.command(f'data get block {x} 64 -3 Items') for x in [0, 3, 6]},
+                'The reservation or cancellation changed real world inventory')
+        self.ok('same live 26.3 shulker roots cannot be reserved as both whole boxes and child stock; sorting lease refused and cancellation restored availability')
+
     def execute(self):
         try:
             self.start_server(); self.fixture(); self.start_manager(); self.start_client()
@@ -53,6 +91,8 @@ class HierarchyHarness(stock.StockHarness):
             observed = self.wait(lambda s: all((row := self.source(s, x, -3)) is not None and row['state'] == 'FRESH' for x in [0, 6]), 'Native hierarchy did not reach Manager')
             self.pause()
             a = self.detail(self.source(observed, 0, -3)); b = self.detail(self.source(observed, 6, -3))
+            if self.reservations:
+                self.verify_reservations(a, before)
             positions = {row['path']: row for row in a['snapshot']['positions']}
             other = {row['path']: row for row in b['snapshot']['positions']}
             require(positions['0']['fingerprint'] == positions['20']['fingerprint'] == other['0']['fingerprint'], 'Identical box contents differ by physical location')
@@ -98,4 +138,8 @@ class HierarchyHarness(stock.StockHarness):
 
 if __name__ == '__main__':
     parser=argparse.ArgumentParser(description=__doc__); parser.add_argument('--manager-image',default=world.DEFAULT_IMAGE)
-    HierarchyHarness(parser.parse_args().manager_image).execute()
+    parser.add_argument('--reservations', action='store_true')
+    args = parser.parse_args()
+    harness = HierarchyHarness(args.manager_image)
+    harness.reservations = args.reservations
+    harness.execute()

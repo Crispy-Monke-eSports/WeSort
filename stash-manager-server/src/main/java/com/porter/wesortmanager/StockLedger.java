@@ -330,5 +330,17 @@ final class StockLedger {
             }
         }catch(SQLException e){throw new IOException("Cannot read physical sources",e);}return out;
     }
+    boolean unsettledPhysicalOrder(String order) throws IOException {
+        try (var c = open(); var p = c.prepareStatement("""
+                SELECT 1 FROM physical_operations
+                WHERE state NOT IN ('COMPLETED','FAILED') AND json_extract(payload,'$.context.orderId')=? LIMIT 1
+                """)) {
+            p.setString(1, order);
+            try (var rows = p.executeQuery()) { return rows.next(); }
+        } catch (SQLException failure) {
+            throw new IOException("Cannot verify referenced physical work", failure);
+        }
+    }
+
     long maxAge(){return maxAge;}
 }

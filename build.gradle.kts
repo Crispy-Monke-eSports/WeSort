@@ -49,6 +49,9 @@ sourceSets {
 }
 tasks.compileJava { dependsOn(port26Sources) }
 
+extra["wesortVendorRoot"] = rootProject.file("vendor")
+apply(from = rootProject.file("gradle/frozen-meteor.gradle"))
+
 repositories {
     maven {
         name = "meteor-maven"

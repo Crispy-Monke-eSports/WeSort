@@ -45,6 +45,7 @@ import meteordevelopment.meteorclient.gui.widgets.pressable.WMinus;
 import meteordevelopment.meteorclient.renderer.ShapeMode;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
+import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.utils.Utils;
 import meteordevelopment.meteorclient.utils.misc.input.Input;
 import meteordevelopment.meteorclient.utils.player.ChatUtils;
@@ -121,7 +122,6 @@ public class StashSorter extends Module {
     private final SettingGroup sgWatch = settings.createGroup("Watch");
     private final SettingGroup sgLabels = settings.createGroup("Labels");
     private final SettingGroup sgShulkers = settings.createGroup("Shulkers");
-    private final SettingGroup sgKits = settings.createGroup("Kits");
     private final SettingGroup sgSlots = settings.createGroup("Slots");
     private final SettingGroup sgSearch = settings.createGroup("Search");
     private final SettingGroup sgRender = settings.createGroup("Render");
@@ -451,15 +451,6 @@ public class StashSorter extends Module {
         .range(0, 27)
         .sliderRange(0, 27)
         .visible(repack::get)
-        .build()
-    );
-
-    // Kits
-
-    private final Setting<Boolean> buildKits = sgKits.add(new BoolSetting.Builder()
-        .name("build-kits")
-        .description("Signs mode: builds the kits saved below out of the stash, as many as it can. Takes an empty shulker, gathers the items, and fills it slot for slot with the saved counts, then files it in the chest signed with the kit's name (or \"<name> kit\"). A kit with no such chest isn't built. Uses every empty shulker in the stash.")
-        .defaultValue(false)
         .build()
     );
 
@@ -1142,6 +1133,19 @@ public class StashSorter extends Module {
     private final Map<String, Integer> repackStoreBefore = new HashMap<>();
     private long repackStoreAt;
     private int repackExistingCopies;
+    private boolean handlingProof;
+    public String shulkerPhase() { return handle==null?"":handle.name(); }
+    public com.google.gson.JsonObject kitReport(String name) {
+        var out=new com.google.gson.JsonObject();var kit=Kits.byName(name);
+        if(kit==null){out.addProperty("exists",false);return out;}
+        ensureStash();out.addProperty("exists",true);out.addProperty("shared",Kits.isShared(kit));out.addProperty("permitted",Kits.buildable(kit));
+        out.addProperty("estimateExact",kitBuilder.availability(kit).exact());out.addProperty("built",Kits.built(kit,stash));out.addProperty("possible",kitBuilder.possible(kit));out.addProperty("shortage",Modules.get().get(StashManager.class).kitProblem().isEmpty()?kitBuilder.shortage(kit):Modules.get().get(StashManager.class).kitProblem());
+        var destinations=new com.google.gson.JsonArray();
+        if(stash!=null)for(var box:stash.boxes){var entry=new com.google.gson.JsonObject();var labels=new com.google.gson.JsonArray();box.labels.forEach(labels::add);entry.add("labels",labels);entry.addProperty("home",Kits.isHome(box,kit));entry.addProperty("known",box.known());entry.addProperty("fresh",com.porter.wesort.compat.ObservationRuntime.current(box));destinations.add(entry);}
+        out.add("destinations",destinations);
+        out.add("template",com.porter.wesort.compat.KitRuntime.export(kit).json());
+        out.addProperty("active",kitBuilder.kit()==null?"":kitBuilder.kit().name);return out;
+    }
     public BlockPos repackPosition() { return placed; }
     public com.google.gson.JsonObject repackProgress() { return repackWork == null ? new com.google.gson.JsonObject() : repackWork.json(); }
     private int wantSlot = -1;
@@ -1420,6 +1424,9 @@ public class StashSorter extends Module {
 
     // Building kits
     private final KitBuilder kitBuilder = new KitBuilder(new KitBuilder.Owner() {
+        @Override public boolean permitted() { return sortingPermitted(); }
+        @Override public void packed() { Modules.get().get(StashManager.class).kitPacked(); }
+        @Override public void uncertain(String reason) { Modules.get().get(StashManager.class).kitUncertain(reason); }
         @Override
         public Stash stash() {
             return stash;
@@ -1698,7 +1705,7 @@ public class StashSorter extends Module {
                 return;
             }
         }
-        else if (ordersWanted()) {
+        else if (ordersWanted() || managedKit()) {
             // Not sorting moves nothing by itself, but orders need slots to carry in
             pickCarrySlots(false);
         }
@@ -2052,9 +2059,9 @@ public class StashSorter extends Module {
                 }
             }
             // Scan-only with no carry slot yet: looked for again now and then, for orders
-            if (!sorting() && ordersWanted() && carry.isEmpty() && ticks % 100 == 0 && job == null && mc.player.containerMenu == mc.player.inventoryMenu) pickCarrySlots(false);
+            if (!sorting() && (ordersWanted() || managedKit()) && carry.isEmpty() && ticks % 100 == 0 && job == null && mc.player.containerMenu == mc.player.inventoryMenu) pickCarrySlots(false);
             // Not taking orders and nothing of an order held: no carry slots
-            else if (!sorting() && !ordersWanted() && orderHeld.isEmpty() && !carry.isEmpty()) carry.clear();
+            else if (!sorting() && !ordersWanted() && !managedKit() && orderHeld.isEmpty() && !carry.isEmpty()) carry.clear();
             // Scan-only was switched off: there are carry slots to find now
             if (sorting() && carry.isEmpty()) {
                 if (!pickCarrySlots()) {
@@ -2778,6 +2785,8 @@ public class StashSorter extends Module {
     }
 
     private boolean pickJob() {
+        // A new Manager assignment never authorizes an older interrupted physical operation.
+        if(managedKit()&&pendingResume!=null){Modules.get().get(StashManager.class).kitUncertain("Existing physical recovery must be reconciled before this kit job");return false;}
         // A shulker step that was saved comes before anything else
         if (startResume()) return true;
 
@@ -2805,6 +2814,8 @@ public class StashSorter extends Module {
             Box old = nearest(staleBoxes());
             if (old != null) return start(Job.Survey, old);
         }
+
+        if (managedKit()) return managedKitStep();
 
         // Scan-only: crafting whose order is over is driven to its end (the grid emptied, what was gathered put back)
         if (!sorting() && crafter.active() && (!craftForOrder || !orderRunner.running()) && runCraft(crafter.next())) return true;
@@ -2874,7 +2885,7 @@ public class StashSorter extends Module {
         if (kitBuilder.active() && !rereading && !orderKit()) {
             if (!kitsOn()) {
                 kitBuilder.suspend(!shulkersOk() ? "placing shulkers failed lately, so no shulker work for a few minutes."
-                    : mode.get() != Mode.Signs ? "kits are only built in Signs mode." : "build-kits was switched off.");
+                    : "the live Manager assignment no longer permits this kit.");
             }
             else if (runKit(kitBuilder.next())) return true;
         }
@@ -3054,7 +3065,7 @@ public class StashSorter extends Module {
         Set<Integer> setAside = compactor.reserved();
         for (int slot : carriedSlots()) {
             ItemStack stack = mc.player.getInventory().getItem(slot);
-            if (!fullBundle(stack) || labeller.reservedSlot(slot) || setAside.contains(slot) || ticks < unbundleBlocked.getOrDefault(slot, -1)) continue;
+            if (!fullBundle(stack) || kitBuilder.holds(slot) || kitBuilder.material(stack) || labeller.reservedSlot(slot) || setAside.contains(slot) || ticks < unbundleBlocked.getOrDefault(slot, -1)) continue;
 
             unbundleSlot = slot;
             unbundleTaken = 0;
@@ -3161,7 +3172,42 @@ public class StashSorter extends Module {
     // Building kits
 
     private boolean kitsOn() {
-        return buildKits.get() && mode.get() == Mode.Signs && shulkersOk();
+        return managedKit() && Kits.buildable(Kits.assigned()) && shulkersOk();
+    }
+    private boolean managedKit() {
+        var manager=Modules.get().get(StashManager.class);return manager!=null&&manager.hasKitJob();
+    }
+    public void pauseManagedKit() { releaseGoal(); ledgeGuard(false); }
+    public boolean kitStored() {
+        if(!com.porter.wesort.compat.InventorySync.ready()||kitBuilder.active()||handle!=null||mc.player==null)return false;
+        Kit kit=Kits.assigned();if(kit==null)return false;
+        for(int slot=0;slot<36;slot++){var stack=mc.player.getInventory().getItem(slot);if(Utils.isShulker(stack.getItem())&&kit.exactLayout(Kits.inside(stack)))return false;}
+        if(!leftoverSlots().isEmpty())return false;
+        return Kits.homes(kit,stash).stream().anyMatch(box->com.porter.wesort.compat.ObservationRuntime.current(box)&&java.util.Arrays.stream(box.contents).anyMatch(stack->Utils.isShulker(stack.getItem())&&kit.exactLayout(Kits.inside(stack))));
+    }
+    private boolean managedKitStep() {
+        var manager=Modules.get().get(StashManager.class);
+        if(!manager.kitAllowed()||!sortingPermitted())return false;
+        Box stale=nearest(staleBoxes());if(stale!=null)return start(Job.Survey,stale);
+        if(kitBuilder.active())return runKit(kitBuilder.next());
+        var kit=Kits.assigned();if(kit==null)return false;
+        if(manager.kitIsPacked()){
+            for(int slot:ownedCarry()){
+                var stack=mc.player.getInventory().getItem(slot);
+                if(!Utils.isShulker(stack.getItem())||!kit.exactLayout(Kits.inside(stack)))continue;
+                Box home=nearest(Kits.homes(kit,stash).stream().filter(box->!blocked(box,Job.Deposit)&&roomFor(box,stack)).toList());
+                if(home!=null)return start(Job.Deposit,home);
+                manager.kitUncertain("No verified space at the assigned kit destination");return false;
+            }
+            var leftovers=leftoverSlots();
+            if(!leftovers.isEmpty()){
+                if(returnLeftovers(leftovers))return true;
+                manager.kitUncertain("No safe return capacity for kit materials");
+            }
+            return false;
+        }
+        if(kitBuilder.begin())return runKit(kitBuilder.next());
+        manager.kitUncertain(kitBuilder.shortage(kit));return false;
     }
 
     /**
@@ -3210,7 +3256,7 @@ public class StashSorter extends Module {
     }
 
     private boolean orderWork() {
-        return orderKit() || orderRunner.running() || crafter.active();
+        return managedKit() || orderKit() || orderRunner.running() || crafter.active();
     }
 
     private void noteOrderHeld(int slot, ItemStack baseline) {
@@ -3409,11 +3455,11 @@ public class StashSorter extends Module {
         return isActive() || driven;
     }
 
-    public boolean requiresSortingPermit() { return isActive() && sortItems.get(); }
+    public boolean requiresSortingPermit() { return managedKit() || isActive() && sortItems.get(); }
     public boolean sortingPermitted() {
         if (!requiresSortingPermit()) return true;
         var manager = meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
-        return manager == null || manager.sortingAllowed();
+        return manager != null && manager.sortingAllowed() && (!managedKit() || manager.kitAllowed());
     }
 
     /** Sorting, compacting, labelling, saved kits and ground pickup: only when the module itself is on and sort-items is. */
@@ -3518,7 +3564,7 @@ public class StashSorter extends Module {
 
     /** The kit being built is a transient one made for an order. */
     private boolean orderKit() {
-        return kitBuilder.kit() != null && kitBuilder.kit().exact;
+        return kitBuilder.kit() != null && kitBuilder.kit().orderKit;
     }
 
     private boolean ordersOn() {
@@ -5996,7 +6042,20 @@ public class StashSorter extends Module {
     }
 
     private boolean startHandling(Job next, int slot, BulkKey fill) {
+        handlingProof = next == Job.Clean || next == Job.Fill || next == Job.KitFill || next == Job.KitUnpack;
         if (next != Job.Clean && next != Job.Fill) repackExpected = "";
+        if (next == Job.KitFill || next == Job.KitUnpack) {
+            if (slot < 0) { blockRepack("Kit shulker needs fresh physical recovery verification"); return false; }
+            try {
+                repackOuter = mc.player.getInventory().getItem(slot).copy();
+                repackExpected = com.porter.wesort.compat.RepackRuntime.signature(repackOuter);
+                repackExistingCopies = (int) repackInventory().stream().filter(this::repackMatches).count() - 1;
+                if (mc.gameMode.getPlayerMode().isBlockPlacingRestricted() || !InvUtils.findInHotbar(it -> it.is(ItemTags.PICKAXES)).found()) {
+                    kitBuilder.suspend("Kit packing requires permitted placement and a hotbar pickaxe"); return false;
+                }
+                repackConservation = com.porter.wesort.compat.RepackRuntime.conservation(repackInventory());
+            } catch (RuntimeException invalid) { kitBuilder.suspend("Cannot verify the exact kit box components/counts"); return false; }
+        }
         if (next == Job.Clean || next == Job.Fill) {
             if (slot >= 0) {
                 if (repackWork != null && !repackWork.terminal()) return false;
@@ -6124,8 +6183,19 @@ public class StashSorter extends Module {
 
         // Where first: nothing is moved for a spot that isn't there
         // The spot a walk was made for is placed at directly; else one beside me
+        BlockPos approved = managedKit() ? Modules.get().get(StashManager.class).kitWorkspace() : null;
         BlockPos spot = wanderSpot != null && BlockUtils.canPlace(wanderSpot, true) && spotProblem(wanderSpot) == null ? wanderSpot : null;
-        if (spot == null) {
+        if (managedKit()) {
+            if(approved==null||!mc.level.isLoaded(approved)||!BlockUtils.canPlace(approved,true)||spotProblem(approved)!=null){
+                kitBuilder.suspend("The exact Manager-approved workspace is unavailable");endHandling();return;
+            }
+            if(!inReachOf(approved)){
+                if(!walkOn()||wanderTries++>=WANDER_TRIES){kitBuilder.suspend("Could not reach the exact Manager workspace");endHandling();return;}
+                wanderSpot=approved;wanderStand=approved.north();wanderRestarts=0;wanderStart=handleTicks;
+                walkNear(wanderStand,1);handle=Handle.Wander;return;
+            }
+            spot=approved;
+        } else if (spot == null) {
             wanderSpot = null;
             spot = safeSpot();
         }
@@ -6221,7 +6291,7 @@ public class StashSorter extends Module {
         // The place may still be on its way: longer while the shulker is out of the inventory
         if (!shulkerAt(placed)) {
             if (placedConfirmed) {
-                if (repackWork != null && !repackWork.terminal()) { blockRepack("Placed shulker disappeared before full work verification"); return; }
+                if (handlingProof) { blockRepack("Placed shulker disappeared before full work verification"); return; }
                 // Was there, now it isn't: broken, or picked up by someone
                 handle = Handle.Collect;
                 handleTicks = 0;
@@ -6231,7 +6301,7 @@ public class StashSorter extends Module {
             if (handleTicks <= (gone ? 200 : 30)) return;
 
             if (gone) {
-                if (repackWork != null && !repackWork.terminal()) { blockRepack("Placement consumed the shulker without a verified world source"); return; }
+                if (handlingProof) { blockRepack("Placement consumed the shulker without a verified world source"); return; }
                 // Out of the inventory but no block: a late update, or it's on the ground. Looked for, and on record
                 warning("The shulker I put down at %s hasn't shown up as a block, looking for it.", placed.toShortString());
                 placedConfirmed = true;
@@ -6261,7 +6331,7 @@ public class StashSorter extends Module {
                 if (handleTicks > HANDLE_TIMEOUT) blockRepack("Shulker menu has no matching server-confirmed physical source");
                 return;
             }
-            if (repackWork != null && !repackWork.terminal() && (job == Job.Clean || job == Job.Fill)) {
+            if (handlingProof) {
                 try {
                     ItemStack[] contents = repackMenuContents(mc.player.containerMenu);
                     if (!repackExpected.isEmpty() && !repackExpected.equals(com.porter.wesort.compat.RepackRuntime.signature(repackOuter, contents))) {
@@ -6305,7 +6375,7 @@ public class StashSorter extends Module {
         }
 
         if (handleTicks > HANDLE_TIMEOUT) {
-            if (repackWork != null && !repackWork.terminal()) { blockRepack("Shulker could not be opened for full physical verification"); return; }
+            if (handlingProof) { blockRepack("Shulker could not be opened for full physical verification"); return; }
             handle = Handle.Break;
             handleTicks = 0;
             return;
@@ -6365,7 +6435,7 @@ public class StashSorter extends Module {
     private void handleVerify() {
         if (!(mc.player.containerMenu instanceof ShulkerBoxMenu menu)) { blockRepack("Verification menu disappeared"); return; }
         if (!menu.getCarried().isEmpty()) { recoverCursor(); return; }
-        if (repackWork != null && !repackWork.terminal() && (job == Job.Clean || job == Job.Fill)) {
+        if (handlingProof) {
             try {
                 var contents = repackMenuContents(menu);
                 if (!repackConservation.equals(repackCombined(contents))) { blockRepack("Transfer did not conserve exact item components/counts"); return; }
@@ -6489,7 +6559,7 @@ public class StashSorter extends Module {
             return;
         }
 
-        if (!InvUtils.findInHotbar(it -> it.is(ItemTags.PICKAXES)).found() && repackWork != null && !repackWork.terminal()) {
+        if (!InvUtils.findInHotbar(it -> it.is(ItemTags.PICKAXES)).found() && handlingProof) {
             blockRepack("Pickaxe disappeared before verified break"); return;
         }
         if (!pickaxeSwapped) {
@@ -6585,7 +6655,7 @@ public class StashSorter extends Module {
                 }
                 compactor.collected(collectedSlot, placed, got);
             }
-            if (repackWork != null && !repackWork.terminal()) {
+            if (repackWork != null && !repackWork.terminal() && (job == Job.Clean || job == Job.Fill)) {
                 repackStoreAt = System.currentTimeMillis(); repackStoreBefore.clear();
                 for (var box : stash.boxes) if (box.known()) repackStoreBefore.put(box.parts.toString(), repackCount(box.contents));
                 repackWork.enter(com.porter.wesort.inventory.PhysicalWork.Phase.STORE, System.nanoTime());
@@ -6635,7 +6705,7 @@ public class StashSorter extends Module {
     private boolean pickedUp() {
         if (!repackExpected.isEmpty()) {
             if (verifiedRepackPickup() < 0 || repackInventory().stream().filter(this::repackMatches).count() != repackExistingCopies + 1L) return false;
-            if (!InventorySync.confirmedMenu()) { InventorySync.verifyInventory(); return false; }
+            if (!InventorySync.confirmedMenu()) { releaseGoal(); InventorySync.verifyInventory(); return false; }
             return true;
         }
         int now = countShulkers();
@@ -10092,24 +10162,8 @@ public class StashSorter extends Module {
         fillReport(theme, report);
 
         list.add(theme.horizontalSeparator("Kits"));
-        WHorizontalList saveRow = list.add(theme.horizontalList()).expandX().widget();
-        WTextBox kitName = saveRow.add(theme.textBox("", "Kit name")).expandX().widget();
-        WButton saveKit = saveRow.add(theme.button("Save kit")).widget();
-        saveKit.tooltip = "Saves what's in your 27 main inventory slots (not the hotbar, offhand or armor) as a kit, with the same items in the same slots and the same counts.";
-        WLabel kitStatus = list.add(theme.label("Put a kit in your main inventory, name it and save it.")).expandX().widget();
+        WLabel kitStatus = list.add(theme.label("Kit definitions and packing jobs are managed in Manager web.")).expandX().widget();
         WTable kits = list.add(theme.table()).expandX().widget();
-
-        saveKit.action = () -> {
-            String name = kitName.get().trim();
-            String error = Kits.saveFromInventory(name);
-            if (error != null) {
-                kitStatus.set(error);
-                return;
-            }
-            kitName.set("");
-            kitStatus.set("Saved kit \"" + name + "\".");
-            fillKits(theme, kits, kitStatus);
-        };
         fillKits(theme, kits, kitStatus);
 
         return list;
@@ -10120,12 +10174,8 @@ public class StashSorter extends Module {
         for (String line : labeller.report()) report.add(theme.label(line)).expandX();
     }
 
-    // The kit being asked to delete, until it's clicked again
-    private Kit armedDelete;
-
     private void fillKits(GuiTheme theme, WTable table, WLabel status) {
         table.clear();
-        armedDelete = null;
         if (mc.level == null || mc.player == null) {
             table.add(theme.label("Join a server to see its kits."));
             return;
@@ -10133,7 +10183,7 @@ public class StashSorter extends Module {
 
         List<Kit> saved = new ArrayList<>(Kits.all());
         if (saved.isEmpty()) {
-            table.add(theme.label("No kits saved on this server."));
+            table.add(theme.label("No Manager-assigned kit definitions cached in this session."));
             return;
         }
 
@@ -10145,24 +10195,14 @@ public class StashSorter extends Module {
             table.add(theme.label(kit.name)).expandX();
 
             int possible = current == null ? 0 : kitBuilder.possible(kit);
-            String more = possible < 0 ? String.format("no chest signed \"%s\"", kit.name) : String.format("%d more possible", possible);
+            String more = possible < 0 ? String.format("no chest signed \"%s\"", kit.name) : String.format("%s%d more possible", kitBuilder.availability(kit).exact() ? "" : "at least ", possible);
             table.add(theme.label(String.format("%d slots, %d built, %s", kit.slotCount(), Kits.built(kit, current), more)));
+            String shortage = kitBuilder.shortage(kit);
+            if (!shortage.isEmpty()) table.add(theme.label(shortage));
 
             WButton view = table.add(theme.button("View")).widget();
             view.action = () -> KitPreviewScreen.open(kit);
 
-            WMinus delete = table.add(theme.minus()).widget();
-            delete.tooltip = "Click twice to delete this kit.";
-            delete.action = () -> {
-                if (armedDelete != kit) {
-                    armedDelete = kit;
-                    status.set("Click the minus again to delete \"" + kit.name + "\".");
-                    return;
-                }
-                Kits.delete(kit);
-                fillKits(theme, table, status);
-                status.set("Deleted kit \"" + kit.name + "\".");
-            };
             table.row();
         }
     }
@@ -10261,7 +10301,7 @@ public class StashSorter extends Module {
             if (stack.isEmpty() || !isOwn(slot, stack)) slots.add(slot);
         }
         // Not sorting, only what an order itself took counts as carried: the rest of the slots are the player's
-        if (!sorting()) slots.removeIf(slot -> !mc.player.getInventory().getItem(slot).isEmpty() && !orderHeld.containsKey(slot));
+        if (!sorting()) slots.removeIf(slot -> !mc.player.getInventory().getItem(slot).isEmpty() && !orderHeld.containsKey(slot) && !(managedKit() && stashHeld.containsKey(slot)));
         return slots;
     }
 

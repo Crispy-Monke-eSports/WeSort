@@ -1,0 +1,598 @@
+{
+  "result": "PASS",
+  "scope": "W-022 Manager-owned versioned exact kits, real Minecraft 26.3 and Docker Manager",
+  "minecraft": "26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "local_manager_image": "wesort-manager:kit-tests",
+  "manager_version": "0.1.0-dev.5",
+  "schema": 4,
+  "source_overlay_sha256": "a4bcf9d9f68d30ca4405e6d12aab1586fbc087b7985202e815586bb35ec88f26",
+  "cases": {
+    "pack": {
+      "result": "PASS",
+      "checks": [
+        {
+          "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+          "result": "PASS"
+        },
+        {
+          "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Manager-created versioned exact template from real observed components; no client template administration",
+          "result": "PASS"
+        },
+        {
+          "scenario": "pack: Manager-owned signed version and exact native codec roundtrip, server-authoritative 27-slot/material behavior, protected kit unchanged and no variant substitution",
+          "result": "PASS"
+        }
+      ],
+      "manual_test_recovery": false,
+      "source_commit": "69c3072b0701c445777636aadb481e879dec51fa",
+      "dirty_worktree": true,
+      "world": "mc26-e2e-94a93ef3d3",
+      "manager-receipt": {
+        "id": "eba515a6-b4d3-49ac-af05-64dce93a0a90",
+        "server": "127.0.0.1:39965",
+        "stash": "e2e-fixture",
+        "destination": "c:2a750c8a40f578efdc6e1ffe83ebba98ca73ac1a4d8c57c44b88157a68e7d0a3",
+        "name": "Raid alpha",
+        "revision": 1,
+        "fingerprint": "6a3c50f5f9cfd93691e029c6088d535b4bd5ee5f21dc1760a98a7d2801bcb42b",
+        "createdBy": "owner",
+        "createdAt": 1794939713486,
+        "workspace": {
+          "dimension": "minecraft:overworld",
+          "x": 15,
+          "y": 64,
+          "z": 0
+        },
+        "baseline": 0,
+        "baselineRevision": 2,
+        "executionDeadline": 1794940015473,
+        "agentEstimate": {
+          "built": 2,
+          "possible": 0,
+          "exact": true,
+          "shortage": "Missing 1 x Bundle (exact components), 1 x Kit potion (exact components), 1 x Raid sword (exact components), 32 x Diamond (exact components)",
+          "at": 1794939727188
+        },
+        "receiptRevision": 3,
+        "receiptFingerprint": "9d4df690d346f906394e05ee7c4a435e33f47788d8ebcdcbfcc55050a7a9c518",
+        "state": "COMPLETED",
+        "agent": "74db1bcf-f827-3360-91e1-021bde681bc9"
+      }
+    },
+    "partial": {
+      "result": "PASS",
+      "checks": [
+        {
+          "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+          "result": "PASS"
+        },
+        {
+          "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Manager-created versioned exact template from real observed components; no client template administration",
+          "result": "PASS"
+        },
+        {
+          "scenario": "partial: Manager-owned signed version and exact native codec roundtrip, server-authoritative 27-slot/material behavior, protected kit unchanged and no variant substitution",
+          "result": "PASS"
+        }
+      ],
+      "manual_test_recovery": false,
+      "source_commit": "69c3072b0701c445777636aadb481e879dec51fa",
+      "dirty_worktree": true,
+      "world": "mc26-e2e-fb8b5287f9",
+      "manager-receipt": {
+        "id": "eb363419-4ce4-4cfe-ae43-9eaf4ab0daa0",
+        "server": "127.0.0.1:60015",
+        "stash": "e2e-fixture",
+        "destination": "c:b63ea7c9bf10b3d959faefdd872908d1d9e8ca5a8c722bb5caccbcba087bb927",
+        "name": "Raid alpha",
+        "revision": 1,
+        "fingerprint": "6a3c50f5f9cfd93691e029c6088d535b4bd5ee5f21dc1760a98a7d2801bcb42b",
+        "createdBy": "owner",
+        "createdAt": 1794939166245,
+        "workspace": {
+          "dimension": "minecraft:overworld",
+          "x": 15,
+          "y": 64,
+          "z": 0
+        },
+        "baseline": 0,
+        "baselineRevision": 2,
+        "executionDeadline": 1794939466294,
+        "receiptRevision": 4,
+        "receiptFingerprint": "9d4df690d346f906394e05ee7c4a435e33f47788d8ebcdcbfcc55050a7a9c518",
+        "state": "COMPLETED",
+        "agent": "74db1bcf-f827-3360-91e1-021bde681bc9"
+      }
+    },
+    "variant": {
+      "result": "PASS",
+      "checks": [
+        {
+          "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+          "result": "PASS"
+        },
+        {
+          "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Manager-created versioned exact template from real observed components; no client template administration",
+          "result": "PASS"
+        },
+        {
+          "scenario": "variant: Manager-owned signed version and exact native codec roundtrip, server-authoritative 27-slot/material behavior, protected kit unchanged and no variant substitution",
+          "result": "PASS"
+        }
+      ],
+      "manual_test_recovery": false,
+      "source_commit": "69c3072b0701c445777636aadb481e879dec51fa",
+      "dirty_worktree": true,
+      "world": "mc26-e2e-5be737520a"
+    },
+    "reserved": {
+      "result": "PASS",
+      "checks": [
+        {
+          "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+          "result": "PASS"
+        },
+        {
+          "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Manager-created versioned exact template from real observed components; no client template administration",
+          "result": "PASS"
+        },
+        {
+          "scenario": "reserved: Manager-owned signed version and exact native codec roundtrip, server-authoritative 27-slot/material behavior, protected kit unchanged and no variant substitution",
+          "result": "PASS"
+        }
+      ],
+      "manual_test_recovery": false,
+      "source_commit": "69c3072b0701c445777636aadb481e879dec51fa",
+      "dirty_worktree": true,
+      "world": "mc26-e2e-5e92dff011"
+    },
+    "abort": {
+      "result": "PASS",
+      "checks": [
+        {
+          "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+          "result": "PASS"
+        },
+        {
+          "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Manager-created versioned exact template from real observed components; no client template administration",
+          "result": "PASS"
+        },
+        {
+          "scenario": "abort: Manager-owned signed version and exact native codec roundtrip, server-authoritative 27-slot/material behavior, protected kit unchanged and no variant substitution",
+          "result": "PASS"
+        }
+      ],
+      "manual_test_recovery": true,
+      "source_commit": "69c3072b0701c445777636aadb481e879dec51fa",
+      "dirty_worktree": true,
+      "world": "mc26-e2e-fd4a085b7d"
+    },
+    "offline": {
+      "result": "PASS",
+      "checks": [
+        {
+          "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+          "result": "PASS"
+        },
+        {
+          "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Manager-created versioned exact template from real observed components; no client template administration",
+          "result": "PASS"
+        },
+        {
+          "scenario": "offline: Manager-owned signed version and exact native codec roundtrip, server-authoritative 27-slot/material behavior, protected kit unchanged and no variant substitution",
+          "result": "PASS"
+        }
+      ],
+      "manual_test_recovery": true,
+      "source_commit": "69c3072b0701c445777636aadb481e879dec51fa",
+      "dirty_worktree": true,
+      "world": "mc26-e2e-ae775b04eb",
+      "manager-receipt": {
+        "id": "357a2088-235f-49c2-afe0-10fc0e959522",
+        "server": "127.0.0.1:37945",
+        "stash": "e2e-fixture",
+        "destination": "c:18fbf38ff10051bc9d66c93194615d38ba39b147a3676e221df74ecc9ec399e4",
+        "name": "Raid alpha",
+        "revision": 1,
+        "fingerprint": "6a3c50f5f9cfd93691e029c6088d535b4bd5ee5f21dc1760a98a7d2801bcb42b",
+        "createdBy": "owner",
+        "createdAt": 1794939378477,
+        "workspace": {
+          "dimension": "minecraft:overworld",
+          "x": 15,
+          "y": 64,
+          "z": 0
+        },
+        "baseline": 0,
+        "baselineRevision": 2,
+        "executionDeadline": 1794939680444,
+        "state": "NEEDS_RECONCILIATION",
+        "agent": "74db1bcf-f827-3360-91e1-021bde681bc9"
+      }
+    },
+    "version": {
+      "result": "PASS",
+      "checks": [
+        {
+          "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+          "result": "PASS"
+        },
+        {
+          "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Manager-created versioned exact template from real observed components; no client template administration",
+          "result": "PASS"
+        },
+        {
+          "scenario": "version: Manager-owned signed version and exact native codec roundtrip, server-authoritative 27-slot/material behavior, protected kit unchanged and no variant substitution",
+          "result": "PASS"
+        }
+      ],
+      "manual_test_recovery": true,
+      "source_commit": "69c3072b0701c445777636aadb481e879dec51fa",
+      "dirty_worktree": true,
+      "world": "mc26-e2e-00e206d2e8",
+      "manager-receipt": {
+        "id": "feefb5cd-8e93-4581-982d-b917ef5f8975",
+        "server": "127.0.0.1:32807",
+        "stash": "e2e-fixture",
+        "destination": "c:dee7db441145824b0419cf7671c503685d533158095051a129c25de5317ee850",
+        "name": "Raid alpha",
+        "revision": 1,
+        "fingerprint": "6a3c50f5f9cfd93691e029c6088d535b4bd5ee5f21dc1760a98a7d2801bcb42b",
+        "createdBy": "owner",
+        "createdAt": 1794939437775,
+        "workspace": {
+          "dimension": "minecraft:overworld",
+          "x": 15,
+          "y": 64,
+          "z": 0
+        },
+        "baseline": 0,
+        "baselineRevision": 2,
+        "executionDeadline": 1794939739815,
+        "state": "NEEDS_RECONCILIATION",
+        "agent": "74db1bcf-f827-3360-91e1-021bde681bc9"
+      }
+    },
+    "restart": {
+      "result": "PASS",
+      "checks": [
+        {
+          "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+          "result": "PASS"
+        },
+        {
+          "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Manager-created versioned exact template from real observed components; no client template administration",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "restart: Manager-owned signed version and exact native codec roundtrip, server-authoritative 27-slot/material behavior, protected kit unchanged and no variant substitution",
+          "result": "PASS"
+        }
+      ],
+      "manual_test_recovery": true,
+      "source_commit": "69c3072b0701c445777636aadb481e879dec51fa",
+      "dirty_worktree": true,
+      "world": "mc26-e2e-ceaa6893da",
+      "manager-receipt": {
+        "id": "6c0f89bf-3c6d-4de3-9974-0c92a7b73f1f",
+        "server": "127.0.0.1:39071",
+        "stash": "e2e-fixture",
+        "destination": "c:7edf174dc40f44cbbddd5c50a91533c0a63cf8996c10cc96bdd6f5854ec21541",
+        "name": "Raid alpha",
+        "revision": 1,
+        "fingerprint": "6a3c50f5f9cfd93691e029c6088d535b4bd5ee5f21dc1760a98a7d2801bcb42b",
+        "createdBy": "owner",
+        "createdAt": 1794939492031,
+        "workspace": {
+          "dimension": "minecraft:overworld",
+          "x": 15,
+          "y": 64,
+          "z": 0
+        },
+        "baseline": 0,
+        "baselineRevision": 2,
+        "executionDeadline": 1794939793975,
+        "state": "NEEDS_RECONCILIATION",
+        "agent": "74db1bcf-f827-3360-91e1-021bde681bc9"
+      }
+    },
+    "repeat": {
+      "result": "PASS",
+      "checks": [
+        {
+          "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+          "result": "PASS"
+        },
+        {
+          "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Manager-created versioned exact template from real observed components; no client template administration",
+          "result": "PASS"
+        },
+        {
+          "scenario": "repeat: Manager-owned signed version and exact native codec roundtrip, server-authoritative 27-slot/material behavior, protected kit unchanged and no variant substitution",
+          "result": "PASS"
+        }
+      ],
+      "manual_test_recovery": false,
+      "source_commit": "69c3072b0701c445777636aadb481e879dec51fa",
+      "dirty_worktree": true,
+      "world": "mc26-e2e-41b73ab2ef",
+      "manager-receipt": {
+        "id": "f3af653e-5a40-40c2-8adf-532ab417f1e0",
+        "server": "127.0.0.1:51813",
+        "stash": "e2e-fixture",
+        "destination": "c:2ef9be260754989479ad04ce436cca69e9dca1684d4d96fe9adf9e7be4565556",
+        "name": "Raid alpha",
+        "revision": 1,
+        "fingerprint": "6a3c50f5f9cfd93691e029c6088d535b4bd5ee5f21dc1760a98a7d2801bcb42b",
+        "createdBy": "owner",
+        "createdAt": 1794939958014,
+        "workspace": {
+          "dimension": "minecraft:overworld",
+          "x": 15,
+          "y": 64,
+          "z": 0
+        },
+        "baseline": 1,
+        "baselineRevision": 7,
+        "executionDeadline": 1794940259029,
+        "agentEstimate": {
+          "built": 3,
+          "possible": 0,
+          "exact": true,
+          "shortage": "Missing 1 x Bundle (exact components), 1 x Kit potion (exact components), 1 x Raid sword (exact components), 48 x Diamond (exact components)",
+          "at": 1794939970972
+        },
+        "receiptRevision": 8,
+        "receiptFingerprint": "80b0bc2119e9c6fe9799b0e8e72640f3a04634fa99863b267ea8c2335a578db7",
+        "state": "COMPLETED",
+        "agent": "74db1bcf-f827-3360-91e1-021bde681bc9"
+      },
+      "manager-first-receipt": {
+        "id": "e89f864e-5aa7-4a18-85a7-00a4be949856",
+        "server": "127.0.0.1:51813",
+        "stash": "e2e-fixture",
+        "destination": "c:2ef9be260754989479ad04ce436cca69e9dca1684d4d96fe9adf9e7be4565556",
+        "name": "Raid alpha",
+        "revision": 1,
+        "fingerprint": "6a3c50f5f9cfd93691e029c6088d535b4bd5ee5f21dc1760a98a7d2801bcb42b",
+        "createdBy": "owner",
+        "createdAt": 1794939916176,
+        "workspace": {
+          "dimension": "minecraft:overworld",
+          "x": 15,
+          "y": 64,
+          "z": 0
+        },
+        "baseline": 0,
+        "baselineRevision": 2,
+        "executionDeadline": 1794940217810,
+        "agentEstimate": {
+          "built": 2,
+          "possible": 1,
+          "exact": true,
+          "shortage": "",
+          "at": 1794939939479
+        },
+        "receiptRevision": 4,
+        "receiptFingerprint": "9d4df690d346f906394e05ee7c4a435e33f47788d8ebcdcbfcc55050a7a9c518",
+        "state": "COMPLETED",
+        "agent": "74db1bcf-f827-3360-91e1-021bde681bc9"
+      }
+    },
+    "repeat-version": {
+      "result": "PASS",
+      "checks": [
+        {
+          "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+          "result": "PASS"
+        },
+        {
+          "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord",
+          "result": "PASS"
+        },
+        {
+          "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+          "result": "PASS"
+        },
+        {
+          "scenario": "Manager-created versioned exact template from real observed components; no client template administration",
+          "result": "PASS"
+        },
+        {
+          "scenario": "repeat-version: Manager-owned signed version and exact native codec roundtrip, server-authoritative 27-slot/material behavior, protected kit unchanged and no variant substitution",
+          "result": "PASS"
+        }
+      ],
+      "manual_test_recovery": false,
+      "source_commit": "69c3072b0701c445777636aadb481e879dec51fa",
+      "dirty_worktree": true,
+      "world": "mc26-e2e-a65f7dca3f",
+      "manager-receipt": {
+        "id": "eb80b521-bff5-422f-ae57-2f9809b2ea29",
+        "server": "127.0.0.1:47083",
+        "stash": "e2e-fixture",
+        "destination": "c:b2bee36f4036a6955644ec2b846a8139c41a7a98fcde1c1bde5fd4b3fb4a2b84",
+        "name": "Raid alpha",
+        "revision": 2,
+        "fingerprint": "5fecf3df1e5b64c3fd9c29b1f57b67802603b3c9d874bea50e25aedc3f0f472f",
+        "createdBy": "owner",
+        "createdAt": 1794940406617,
+        "workspace": {
+          "dimension": "minecraft:overworld",
+          "x": 15,
+          "y": 64,
+          "z": 0
+        },
+        "baseline": 0,
+        "baselineRevision": 7,
+        "executionDeadline": 1794940707593,
+        "agentEstimate": {
+          "built": 1,
+          "possible": 0,
+          "exact": true,
+          "shortage": "Missing 1 x Kit potion (exact components), 1 x Raid sword (exact components), 49 x Diamond (exact components), 1 x Bundle (exact components)",
+          "at": 1794940429604
+        },
+        "receiptRevision": 9,
+        "receiptFingerprint": "dfbc46b22c5c76e325082ffee3b70e5a28eca6f8fba2b90ad8cbc51d8e24ca2e",
+        "state": "COMPLETED",
+        "agent": "74db1bcf-f827-3360-91e1-021bde681bc9"
+      },
+      "manager-first-receipt": {
+        "id": "bb92bf7f-3bd5-457c-a90d-2d85ad48b75d",
+        "server": "127.0.0.1:47083",
+        "stash": "e2e-fixture",
+        "destination": "c:b2bee36f4036a6955644ec2b846a8139c41a7a98fcde1c1bde5fd4b3fb4a2b84",
+        "name": "Raid alpha",
+        "revision": 1,
+        "fingerprint": "6a3c50f5f9cfd93691e029c6088d535b4bd5ee5f21dc1760a98a7d2801bcb42b",
+        "createdBy": "owner",
+        "createdAt": 1794940364595,
+        "workspace": {
+          "dimension": "minecraft:overworld",
+          "x": 15,
+          "y": 64,
+          "z": 0
+        },
+        "baseline": 0,
+        "baselineRevision": 2,
+        "executionDeadline": 1794940666574,
+        "agentEstimate": {
+          "built": 2,
+          "possible": 1,
+          "exact": true,
+          "shortage": "",
+          "at": 1794940387745
+        },
+        "receiptRevision": 4,
+        "receiptFingerprint": "9d4df690d346f906394e05ee7c4a435e33f47788d8ebcdcbfcc55050a7a9c518",
+        "state": "COMPLETED",
+        "agent": "74db1bcf-f827-3360-91e1-021bde681bc9"
+      }
+    }
+  },
+  "limits": [
+    "Local real-world results; hosted CI must run on the committed SHA separately.",
+    "Manual test recovery closes cursors only after the operation was fenced; it is not automatic product recovery.",
+    "Global server lease is conservative; exact physical allocation remains W-024.",
+    "Full operation journal/recovery remains W-023; unattended anarchy safety remains W-061."
+  ],
+  "meteor_runtime": "26.3-22, original SHA-256 a61ec522cb02a97a7dc9108c107dedeee75c4286c4d96f3efd7c253b03b7940a"
+}

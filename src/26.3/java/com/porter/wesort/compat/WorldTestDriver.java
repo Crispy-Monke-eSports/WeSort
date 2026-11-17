@@ -221,6 +221,17 @@ public final class WorldTestDriver {
                     if (current != null) result.add("engineIndex", JsonParser.parseString(new String(StashIndex.build(current, false).json(), java.nio.charset.StandardCharsets.UTF_8)));
                     respond(true, "actual production Sorter observation cache", result);
                 }
+                case "kit-info" -> respond(true,"actual kit template and exact supply",Modules.get().get(StashSorter.class).kitReport(command.get("name").getAsString()));
+                case "kit-compare" -> {
+                    var kit=com.porter.wesort.stash.Kits.byName(command.get("name").getAsString());var menu=mc.player.containerMenu;
+                    if(kit==null||!InventorySync.confirmedMenu()){respond(false,"Need a server-confirmed kit container menu",state());break;}
+                    ItemStack[] contents;
+                    if(menu instanceof net.minecraft.world.inventory.ShulkerBoxMenu){contents=new ItemStack[27];for(int i=0;i<27;i++)contents[i]=menu.getSlot(i).getItem().copy();}
+                    else if(command.has("slot")&&command.get("slot").getAsInt()>=0&&command.get("slot").getAsInt()<menu.slots.size()-36){contents=com.porter.wesort.stash.Kits.inside(menu.getSlot(command.get("slot").getAsInt()).getItem());}
+                    else{respond(false,"Select an actual server-observed kit item slot",state());break;}
+                    var report=new JsonObject();report.addProperty("matches",kit.exactLayout(contents));report.addProperty("finished",kit.matchesFinished(contents));
+                    report.add("actual",SlotRuntime.snapshot(contents).json());report.add("expected",KitRuntime.export(kit).json());respond(true,"exact 27-slot server comparison",report);
+                }
                 case "sort-start", "sort-config" -> {
                     if (stash == null) { respond(false, "Capture fixture containers first", null); return; }
                     stash.save();
@@ -461,6 +472,7 @@ public final class WorldTestDriver {
         out.add("sorterStorage", storage);
         out.addProperty("sorterActive", actualSorter.isActive());
         out.add("repackProgress", actualSorter.repackProgress());
+        out.addProperty("shulkerPhase",actualSorter.shulkerPhase());out.addProperty("kitCatalog",Modules.get().get(StashManager.class).kitCatalogStatus());
         if (actualSorter.repackPosition() != null) {
             var p = actualSorter.repackPosition(); var position = new JsonArray(); position.add(p.getX()); position.add(p.getY()); position.add(p.getZ());
             out.add("repackPosition", position);

@@ -86,10 +86,28 @@ Lokalt passerar 467 klienttester och 188 Manager-tester, webbens DOM-prov,
 Denna ändring kräver ingen ny Manager-version; publicerad W-020-backend
 `v0.1.0-dev.4` behålls. Fysisk fasjournal/startup-recovery återstår i W-023.
 
+## W-022 – Managerägda exakta kits
+
+Kitmallar skapas, versionssätts, redigeras och raderas av Owner i Manager-
+webben. Endast ett signerat tilldelat jobb skickar full exekveringsdata till
+Fabric. Lokal inventarie→mall, filkatalog och Share/Delete är borttagna.
+En packning låser 27 slots, exakta komponenter, version/hash, destination och
+godkänd arbetsposition. Malländring, avbrott och omstart ger reconciliation
+utan tyst substitution. Manager kräver en ny exakt fysisk lagringskvittens;
+kit-estimat är tidsstämplad diagnostik och skapar inte saldo eller leverans.
+Se [kontrakt, webbflöde och avgränsning](MC_26_3_KITS.md).
+
+Manager är `0.1.0-dev.5`, SQLite-schema 4. Lokalt passerar 475 klienttester,
+204 Manager-tester utan skip/fel, webb-DOM och actionlint. Tio riktiga
+Minecraft 26.3-kitfall, Docker Manager-packning, repack-regression och
+inventory/kraschregression finns i `verification/W-022-*`. Hosted CI måste
+verifieras separat på den pushade committen. Central anarkisäkerhetsguard
+W-061 samt samlad Agent-/Manager-operatörsyta W-010/steg 4 återstår.
+
 ## Återstående i steget
 
 W-019:s [sortering och reservationsskydd](MC_26_3_SORTING.md) finns i koden.
-Återstående: W-022 exakta kits; W-023 hållbar fysisk journal;
+Återstående: W-023 hållbar fysisk journal;
 W-024 global atomisk reservationshierarki. Dessa är inte färdiga genom W-018.
 Orderhållningar är fortfarande aggregerade per stash (`reservationPrecision`
 är `aggregate`); exakt fysisk reservation/allokering visas därför inte som

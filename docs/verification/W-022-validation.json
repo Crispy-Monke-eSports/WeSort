@@ -1,0 +1,26 @@
+{
+  "client": {
+    "tests": 475,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "manager": {
+    "tests": 204,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "result": "PASS",
+  "minecraft": "26.3",
+  "manager_version": "0.1.0-dev.5",
+  "schema": 4,
+  "web_dom": "PASS: actual 27-slot editor, version-bound updates/jobs, component text, independent slot listeners and timestamps",
+  "actionlint": "PASS",
+  "native": "10 real kit scenarios (including identical and changed-version repeated jobs), Docker Manager pack, repack mixed and full inventory/crash regression",
+  "hosted_ci": "Pending the committed SHA; local results do not assert hosted PASS",
+  "frozen_meteor": "PASS: same original SHA-256, empty dependency cache with --offline, tampering rejected, real client/GUI runtime unchanged",
+  "initial_ci_failure": "Original W-022 client CI failed before compilation because the pinned upstream Meteor JAR returned 404; fixed through the original local Maven distribution, without a version change",
+  "initial_ci_run": "https://github.com/Crispy-Monke-eSports/WeSort/actions/runs/44149685760",
+  "frozen_toolchain_probe_resolution": "PASS"
+}

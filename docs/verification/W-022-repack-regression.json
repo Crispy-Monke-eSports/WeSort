@@ -1,0 +1,80 @@
+{
+  "result": "PASS",
+  "scenario": "mixed",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "source_commit": "69c3072b0701c445777636aadb481e879dec51fa",
+  "dirty_worktree": true,
+  "checks": [
+    {
+      "scenario": "real private vanilla 26.3 server, checksum verified, loopback only",
+      "result": "PASS"
+    },
+    {
+      "scenario": "ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures",
+      "result": "PASS"
+    },
+    {
+      "scenario": "external real 26.3 Fabric/Meteor/WeSort client connected to private server",
+      "result": "PASS"
+    },
+    {
+      "scenario": "mixed: actual server snapshots conserve full recursive metadata/counts; protected kit unchanged; COMPLETED",
+      "result": "PASS"
+    }
+  ],
+  "operation": {
+    "id": "8d8baecc-052d-4976-9b9f-89a4f2d4ee6e",
+    "kind": "Clean",
+    "phase": "COMPLETED",
+    "attempts": 0,
+    "reason": "",
+    "events": [
+      {
+        "phase": "SELECT",
+        "event": "selected"
+      },
+      {
+        "phase": "PLACE",
+        "event": "phase"
+      },
+      {
+        "phase": "PLACE",
+        "event": "attempt"
+      },
+      {
+        "phase": "OPEN",
+        "event": "phase"
+      },
+      {
+        "phase": "OPEN",
+        "event": "attempt"
+      },
+      {
+        "phase": "TRANSFER",
+        "event": "phase"
+      },
+      {
+        "phase": "VERIFY",
+        "event": "phase"
+      },
+      {
+        "phase": "BREAK",
+        "event": "phase"
+      },
+      {
+        "phase": "PICKUP",
+        "event": "phase"
+      },
+      {
+        "phase": "STORE",
+        "event": "phase"
+      },
+      {
+        "phase": "COMPLETED",
+        "event": "phase"
+      }
+    ]
+  },
+  "fault_injected": {},
+  "manual_test_recovery": false
+}

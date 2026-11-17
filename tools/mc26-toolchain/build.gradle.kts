@@ -5,6 +5,9 @@ plugins {
 version = "0.1.0"
 group = "com.porter.wesort"
 
+extra["wesortVendorRoot"] = rootProject.file("../../vendor")
+apply(from = rootProject.file("../../gradle/frozen-meteor.gradle"))
+
 repositories {
     maven("https://maven.meteordev.org/releases")
     maven("https://maven.meteordev.org/snapshots")

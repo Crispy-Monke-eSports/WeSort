@@ -37,9 +37,14 @@ final class StockLedger {
                     if (existed && (!r.next() || r.getInt(1) != APPLICATION_ID)) throw new IOException("Foreign guild database format");
                 }
                 s.execute("PRAGMA journal_mode=WAL");
-                try (var r = s.executeQuery("PRAGMA user_version")) { if (r.next() && r.getInt(1) > 3) throw new IOException("Unsupported guild database schema"); }
+                try (var r = s.executeQuery("PRAGMA user_version")) { if (r.next() && r.getInt(1) > 4) throw new IOException("Unsupported guild database schema"); }
                 s.execute("BEGIN IMMEDIATE");
                 try {
+                    s.execute("CREATE TABLE IF NOT EXISTS kit_jobs(id TEXT PRIMARY KEY,server TEXT NOT NULL,name_key TEXT NOT NULL,state TEXT NOT NULL,agent TEXT NOT NULL,token TEXT,deadline INTEGER NOT NULL,payload TEXT NOT NULL)");
+                    s.execute("CREATE TABLE IF NOT EXISTS kit_meta(id INTEGER PRIMARY KEY CHECK(id=1),revision INTEGER NOT NULL)");
+                    s.execute("INSERT OR IGNORE INTO kit_meta VALUES(1,0)");
+                    s.execute("CREATE TABLE IF NOT EXISTS kit_template_versions(server TEXT NOT NULL,name_key TEXT NOT NULL,revision INTEGER NOT NULL,payload TEXT NOT NULL,fingerprint TEXT NOT NULL,created_by TEXT NOT NULL,PRIMARY KEY(server,name_key,revision))");
+                    s.execute("CREATE TABLE IF NOT EXISTS kit_templates(server TEXT NOT NULL,name_key TEXT NOT NULL,payload TEXT NOT NULL,fingerprint TEXT NOT NULL,revision INTEGER NOT NULL,created_by TEXT NOT NULL,PRIMARY KEY(server,name_key))");
                     s.execute("CREATE TABLE IF NOT EXISTS physical_snapshots(source TEXT NOT NULL,fingerprint TEXT NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL,PRIMARY KEY(source,fingerprint))");
                     s.execute("CREATE TABLE IF NOT EXISTS physical_slots(source TEXT NOT NULL,path TEXT NOT NULL,parent TEXT NOT NULL,payload TEXT NOT NULL,fingerprint TEXT NOT NULL,item_fingerprint TEXT NOT NULL,count INTEGER NOT NULL,copies INTEGER NOT NULL,revision INTEGER NOT NULL,seen_revision INTEGER NOT NULL,present INTEGER NOT NULL,PRIMARY KEY(source,path))");
                     s.execute("CREATE TABLE IF NOT EXISTS automation_leases(server TEXT PRIMARY KEY,agent TEXT NOT NULL,token TEXT NOT NULL,deadline INTEGER NOT NULL,state TEXT NOT NULL)");
@@ -49,7 +54,7 @@ final class StockLedger {
                     s.execute("CREATE TABLE IF NOT EXISTS stock_members(server TEXT NOT NULL,stash TEXT NOT NULL,source TEXT NOT NULL,present INTEGER NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL,verified_at INTEGER NOT NULL,PRIMARY KEY(server,stash,source))");
                     s.execute("CREATE TABLE IF NOT EXISTS stock_indexes(server TEXT NOT NULL,stash TEXT NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL,PRIMARY KEY(server,stash))");
                     try (var p = c.prepareStatement("INSERT OR IGNORE INTO stock_meta VALUES(1,?,0)")) { p.setString(1, UUID.randomUUID().toString()); p.executeUpdate(); }
-                    s.execute("PRAGMA application_id=" + APPLICATION_ID); s.execute("PRAGMA user_version=3"); s.execute("COMMIT");
+                    s.execute("PRAGMA application_id=" + APPLICATION_ID); s.execute("PRAGMA user_version=4"); s.execute("COMMIT");
                 } catch (Exception e) { s.execute("ROLLBACK"); throw e; }
                 try (var r = s.executeQuery("SELECT epoch FROM stock_meta WHERE id=1")) { if (!r.next()) throw new SQLException("Missing stock epoch"); epoch = r.getString(1); }
             }

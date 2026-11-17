@@ -1208,7 +1208,7 @@ final class OrderRunner {
     }
 
     private boolean orderKitActive() {
-        return kits.kit() != null && kits.kit().exact;
+        return kits.kit() != null && kits.kit().orderKit;
     }
 
     /** The variant to take {@code want} from: the smallest with that much left, else the one with the most left; null if none. */

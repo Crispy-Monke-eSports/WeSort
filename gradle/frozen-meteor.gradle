@@ -1,0 +1,42 @@
+import groovy.json.JsonSlurper
+import java.security.MessageDigest
+
+// Original, version-locked Meteor distribution. A vanished upstream snapshot must never select a newer client.
+def vendorRoot = project.ext.get('wesortVendorRoot') as File
+def lock = new JsonSlurper().parse(new File(vendorRoot, 'meteor-client.lock.json'))
+if (lock.format != 'wesort-frozen-meteor:1' || lock.version != '26.3-20261115.173242-22') {
+    throw new GradleException('Unsupported frozen Meteor distribution')
+}
+lock.files.each { relative, expected ->
+    def artifact = new File(vendorRoot, relative)
+    if (!artifact.isFile() || java.nio.file.Files.isSymbolicLink(artifact.toPath())) {
+        throw new GradleException("Missing original Meteor distribution file: ${relative}")
+    }
+    def actual = MessageDigest.getInstance('SHA-256').digest(artifact.bytes).encodeHex().toString()
+    if (actual != expected) throw new GradleException("Frozen Meteor checksum mismatch: ${relative}")
+}
+repositories {
+    exclusiveContent {
+        forRepository {
+            maven {
+                name = 'wesort-frozen-meteor'
+                url = new File(vendorRoot, 'maven').toURI()
+            }
+        }
+        filter { includeModule('meteordevelopment', 'meteor-client') }
+    }
+}
+
+// Check the resolved input too, so a developer/runner cache cannot conceal a different dependency.
+def verifyFrozenMeteor = tasks.register('verifyFrozenMeteor') {
+    doLast {
+        def resolved = configurations.getByName('mainRuntimeDependencyResolve').resolvedConfiguration.resolvedArtifacts
+            .find { it.moduleVersion.id.group == 'meteordevelopment' && it.name == 'meteor-client' }
+        if (resolved == null) throw new GradleException('The frozen Meteor runtime was not resolved')
+        def expected = lock.files.find { key, value -> key.endsWith('.jar') }.value
+        def actual = MessageDigest.getInstance('SHA-256').digest(resolved.file.bytes).encodeHex().toString()
+        if (actual != expected) throw new GradleException('Resolved Meteor runtime differs from the frozen distribution')
+        logger.lifecycle('Verified original Meteor 26.3-22 runtime SHA-256: ' + actual)
+    }
+}
+tasks.named('check').configure { dependsOn(verifyFrozenMeteor) }

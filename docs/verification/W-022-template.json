@@ -1,0 +1,92 @@
+{
+  "format": "wesort-kit:2",
+  "minecraft": "26.3",
+  "name": "Raid alpha",
+  "size": 27,
+  "fingerprint": "6a3c50f5f9cfd93691e029c6088d535b4bd5ee5f21dc1760a98a7d2801bcb42b",
+  "slots": [
+    [
+      0,
+      0,
+      1
+    ],
+    [
+      1,
+      1,
+      32
+    ],
+    [
+      13,
+      1,
+      16
+    ],
+    [
+      25,
+      3,
+      1
+    ],
+    [
+      26,
+      4,
+      1
+    ]
+  ],
+  "slotVariants": [
+    {
+      "id": "minecraft:diamond_sword",
+      "key": "minecraft:diamond_sword#ed95f191",
+      "maxStack": 1,
+      "components": "{\"type\":10,\"value\":{\"minecraft:custom_data\":{\"type\":10,\"value\":{\"typed\":{\"type\":1,\"value\":\"1b\"}}},\"minecraft:custom_name\":{\"type\":10,\"value\":{\"color\":{\"type\":8,\"value\":\"\\\"gold\\\"\"},\"text\":{\"type\":8,\"value\":\"\\\"Raid sword\\\"\"}}},\"minecraft:damage\":{\"type\":3,\"value\":\"7\"},\"minecraft:enchantments\":{\"type\":10,\"value\":{\"minecraft:unbreaking\":{\"type\":3,\"value\":\"2\"}}},\"minecraft:repair_cost\":{\"type\":3,\"value\":\"3\"}}}",
+      "kind": "ITEM",
+      "size": 0,
+      "group": "",
+      "slots": []
+    },
+    {
+      "id": "minecraft:diamond",
+      "key": "minecraft:diamond",
+      "maxStack": 64,
+      "components": "{\"type\":10,\"value\":{}}",
+      "kind": "ITEM",
+      "size": 0,
+      "group": "",
+      "slots": []
+    },
+    {
+      "id": "minecraft:iron_ingot",
+      "key": "minecraft:iron_ingot",
+      "maxStack": 64,
+      "components": "{\"type\":10,\"value\":{}}",
+      "kind": "ITEM",
+      "size": 0,
+      "group": "",
+      "slots": []
+    },
+    {
+      "id": "minecraft:bundle",
+      "key": "minecraft:bundle#5617e3e5",
+      "maxStack": 1,
+      "components": "{\"type\":10,\"value\":{\"minecraft:bundle_contents\":{\"type\":9,\"value\":[{\"type\":10,\"value\":{\"count\":{\"type\":3,\"value\":\"8\"},\"id\":{\"type\":8,\"value\":\"\\\"minecraft:iron_ingot\\\"\"}}}]}}}",
+      "kind": "BUNDLE",
+      "size": 1,
+      "group": "",
+      "slots": [
+        [
+          0,
+          2,
+          8
+        ]
+      ]
+    },
+    {
+      "id": "minecraft:potion",
+      "key": "minecraft:potion#f422e425",
+      "maxStack": 1,
+      "components": "{\"type\":10,\"value\":{\"minecraft:custom_name\":{\"type\":8,\"value\":\"\\\"Kit potion\\\"\"},\"minecraft:potion_contents\":{\"type\":10,\"value\":{\"potion\":{\"type\":8,\"value\":\"\\\"minecraft:strength\\\"\"}}}}}",
+      "kind": "ITEM",
+      "size": 0,
+      "group": "",
+      "slots": []
+    }
+  ]
+}

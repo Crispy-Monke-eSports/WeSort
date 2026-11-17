@@ -1,0 +1,17 @@
+{
+  "format": "wesort-frozen-meteor:1",
+  "version": "26.3-20261115.173242-22",
+  "minecraft": "26.3",
+  "runtime": "26.3-22",
+  "upstream": "https://github.com/MeteorDevelopment/meteor-client",
+  "commit": "474da7c33d391109a4a1feea288ea93ea696cfa9",
+  "original_maven": "https://maven.meteordev.org/snapshots/meteordevelopment/meteor-client/26.3-SNAPSHOT/",
+  "license": "GPL-3.0",
+  "files": {
+    "maven/meteordevelopment/meteor-client/26.3-SNAPSHOT/meteor-client-26.3-20261115.173242-22.jar": "a61ec522cb02a97a7dc9108c107dedeee75c4286c4d96f3efd7c253b03b7940a",
+    "maven/meteordevelopment/meteor-client/26.3-SNAPSHOT/meteor-client-26.3-20261115.173242-22.pom": "69ecfa82979711a9eee8cf3b1c4bb01fb8dbd732c8847d30cb232b4a0c806542",
+    "maven/meteordevelopment/meteor-client/26.3-SNAPSHOT/meteor-client-26.3-20261115.173242-22.module": "1b7802986788bbdcc717124d7c0768693656ff84a4760ee912f026ba120ae15b",
+    "meteor-client-474da7c-source.zip": "06e21eab17867d521b768bac122d3f7708cac9023b8df1e726c8c81fe77ff37d",
+    "LICENSE_meteor-client": "b1e60bceb8b63b265dfe040691bd5ec7a21da3c31be3db4b2925518e9c0836df"
+  }
+}

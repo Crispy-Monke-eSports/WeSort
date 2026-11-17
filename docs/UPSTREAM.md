@@ -25,3 +25,7 @@ inte Minecraft eller fullständiga oförändrade mappings som WeSort-källkod.
 Ingen Qwerte-användardata ingår i baslinjen eller migreras. Nya WeSort-data
 införs separat i W-011. Historiska produktnamn i Git och denna attribution
 är avsiktligt bevarade.
+
+Den oförändrade Meteor 26.3-22-dependencyn bevaras nu med motsvarande upstream-
+källarkiv, originallicens och checksummor i [vendor](../vendor/README.md). Detta
+förhindrar att en försvunnen Maven-snapshot ersätts med en oprövad klientversion.

@@ -1,0 +1,199 @@
+{
+  "matches": true,
+  "finished": true,
+  "actual": {
+    "schema": 1,
+    "size": 27,
+    "fingerprint": "6a3c50f5f9cfd93691e029c6088d535b4bd5ee5f21dc1760a98a7d2801bcb42b",
+    "positions": [
+      {
+        "path": "0",
+        "parent": "",
+        "slot": 0,
+        "count": 1,
+        "copies": 1,
+        "id": "minecraft:diamond_sword",
+        "key": "minecraft:diamond_sword#ed95f191",
+        "maxStack": 1,
+        "kind": "ITEM",
+        "size": 0,
+        "group": "",
+        "components": "{\"type\":10,\"value\":{\"minecraft:custom_data\":{\"type\":10,\"value\":{\"typed\":{\"type\":1,\"value\":\"1b\"}}},\"minecraft:custom_name\":{\"type\":10,\"value\":{\"color\":{\"type\":8,\"value\":\"\\\"gold\\\"\"},\"text\":{\"type\":8,\"value\":\"\\\"Raid sword\\\"\"}}},\"minecraft:damage\":{\"type\":3,\"value\":\"7\"},\"minecraft:enchantments\":{\"type\":10,\"value\":{\"minecraft:unbreaking\":{\"type\":3,\"value\":\"2\"}}},\"minecraft:repair_cost\":{\"type\":3,\"value\":\"3\"}}}",
+        "itemFingerprint": "a59c4945e66ef9e0fbbd520fc01f00d3f2b35dc5d2e59dc5c018fc90f53ca5e9",
+        "fingerprint": "38959b7c77ab99d315bc8ad77704efe1d2f457228af57755472748ef089a3f06"
+      },
+      {
+        "path": "1",
+        "parent": "",
+        "slot": 1,
+        "count": 32,
+        "copies": 1,
+        "id": "minecraft:diamond",
+        "key": "minecraft:diamond",
+        "maxStack": 64,
+        "kind": "ITEM",
+        "size": 0,
+        "group": "",
+        "components": "{\"type\":10,\"value\":{}}",
+        "itemFingerprint": "b62dab8939cdf520df8672570b3e50b7d2f3b58741d00f2c7d26ea37c4eef4dd",
+        "fingerprint": "1dd5d7ab717040c697fc29913904d4d02516f52dfbc55be15f6ac501fedd1057"
+      },
+      {
+        "path": "13",
+        "parent": "",
+        "slot": 13,
+        "count": 16,
+        "copies": 1,
+        "id": "minecraft:diamond",
+        "key": "minecraft:diamond",
+        "maxStack": 64,
+        "kind": "ITEM",
+        "size": 0,
+        "group": "",
+        "components": "{\"type\":10,\"value\":{}}",
+        "itemFingerprint": "b62dab8939cdf520df8672570b3e50b7d2f3b58741d00f2c7d26ea37c4eef4dd",
+        "fingerprint": "05486eb060fdbe9a0e8ebb0c10cb9dc61f4bcf952aeb077049175e9cb2b9fec9"
+      },
+      {
+        "path": "25",
+        "parent": "",
+        "slot": 25,
+        "count": 1,
+        "copies": 1,
+        "id": "minecraft:bundle",
+        "key": "minecraft:bundle#5617e3e5",
+        "maxStack": 1,
+        "kind": "BUNDLE",
+        "size": 1,
+        "group": "",
+        "components": "{\"type\":10,\"value\":{\"minecraft:bundle_contents\":{\"type\":9,\"value\":[{\"type\":10,\"value\":{\"count\":{\"type\":3,\"value\":\"8\"},\"id\":{\"type\":8,\"value\":\"\\\"minecraft:iron_ingot\\\"\"}}}]}}}",
+        "itemFingerprint": "6989ceaf7959647fd602250410330d010e864b957042c1ce31e74068c57a6c3b",
+        "fingerprint": "4be02df9aad4db05cd17b3c882c4208a091fd63df58aa4d486179c39b5b21d44"
+      },
+      {
+        "path": "25/0",
+        "parent": "25",
+        "slot": 0,
+        "count": 8,
+        "copies": 1,
+        "id": "minecraft:iron_ingot",
+        "key": "minecraft:iron_ingot",
+        "maxStack": 64,
+        "kind": "ITEM",
+        "size": 0,
+        "group": "",
+        "components": "{\"type\":10,\"value\":{}}",
+        "itemFingerprint": "c74637dcc525f5c5101c643604e7fe30a48a1579d6706132a39d9ef6f03c489c",
+        "fingerprint": "dc8b143d9e634334e82caec29ac8424a9c50c52a0be48131b348ea8ca9310a67"
+      },
+      {
+        "path": "26",
+        "parent": "",
+        "slot": 26,
+        "count": 1,
+        "copies": 1,
+        "id": "minecraft:potion",
+        "key": "minecraft:potion#f422e425",
+        "maxStack": 1,
+        "kind": "ITEM",
+        "size": 0,
+        "group": "",
+        "components": "{\"type\":10,\"value\":{\"minecraft:custom_name\":{\"type\":8,\"value\":\"\\\"Kit potion\\\"\"},\"minecraft:potion_contents\":{\"type\":10,\"value\":{\"potion\":{\"type\":8,\"value\":\"\\\"minecraft:strength\\\"\"}}}}}",
+        "itemFingerprint": "76cd74f043930fead4c59c72d09f6dc9551b93142c73398f4d89abbc9ed0e2c0",
+        "fingerprint": "556643bd3639749cd574eb337f61fe292d6efc1779b6ee633dd3c7e51850bb6c"
+      }
+    ]
+  },
+  "expected": {
+    "format": "wesort-kit:2",
+    "minecraft": "26.3",
+    "name": "Raid alpha",
+    "size": 27,
+    "fingerprint": "6a3c50f5f9cfd93691e029c6088d535b4bd5ee5f21dc1760a98a7d2801bcb42b",
+    "slots": [
+      [
+        0,
+        0,
+        1
+      ],
+      [
+        1,
+        1,
+        32
+      ],
+      [
+        13,
+        1,
+        16
+      ],
+      [
+        25,
+        3,
+        1
+      ],
+      [
+        26,
+        4,
+        1
+      ]
+    ],
+    "slotVariants": [
+      {
+        "id": "minecraft:diamond_sword",
+        "key": "minecraft:diamond_sword#ed95f191",
+        "maxStack": 1,
+        "components": "{\"type\":10,\"value\":{\"minecraft:custom_data\":{\"type\":10,\"value\":{\"typed\":{\"type\":1,\"value\":\"1b\"}}},\"minecraft:custom_name\":{\"type\":10,\"value\":{\"color\":{\"type\":8,\"value\":\"\\\"gold\\\"\"},\"text\":{\"type\":8,\"value\":\"\\\"Raid sword\\\"\"}}},\"minecraft:damage\":{\"type\":3,\"value\":\"7\"},\"minecraft:enchantments\":{\"type\":10,\"value\":{\"minecraft:unbreaking\":{\"type\":3,\"value\":\"2\"}}},\"minecraft:repair_cost\":{\"type\":3,\"value\":\"3\"}}}",
+        "kind": "ITEM",
+        "size": 0,
+        "group": "",
+        "slots": []
+      },
+      {
+        "id": "minecraft:diamond",
+        "key": "minecraft:diamond",
+        "maxStack": 64,
+        "components": "{\"type\":10,\"value\":{}}",
+        "kind": "ITEM",
+        "size": 0,
+        "group": "",
+        "slots": []
+      },
+      {
+        "id": "minecraft:iron_ingot",
+        "key": "minecraft:iron_ingot",
+        "maxStack": 64,
+        "components": "{\"type\":10,\"value\":{}}",
+        "kind": "ITEM",
+        "size": 0,
+        "group": "",
+        "slots": []
+      },
+      {
+        "id": "minecraft:bundle",
+        "key": "minecraft:bundle#5617e3e5",
+        "maxStack": 1,
+        "components": "{\"type\":10,\"value\":{\"minecraft:bundle_contents\":{\"type\":9,\"value\":[{\"type\":10,\"value\":{\"count\":{\"type\":3,\"value\":\"8\"},\"id\":{\"type\":8,\"value\":\"\\\"minecraft:iron_ingot\\\"\"}}}]}}}",
+        "kind": "BUNDLE",
+        "size": 1,
+        "group": "",
+        "slots": [
+          [
+            0,
+            2,
+            8
+          ]
+        ]
+      },
+      {
+        "id": "minecraft:potion",
+        "key": "minecraft:potion#f422e425",
+        "maxStack": 1,
+        "components": "{\"type\":10,\"value\":{\"minecraft:custom_name\":{\"type\":8,\"value\":\"\\\"Kit potion\\\"\"},\"minecraft:potion_contents\":{\"type\":10,\"value\":{\"potion\":{\"type\":8,\"value\":\"\\\"minecraft:strength\\\"\"}}}}}",
+        "kind": "ITEM",
+        "size": 0,
+        "group": "",
+        "slots": []
+      }
+    ]
+  }
+}

@@ -2147,3 +2147,12 @@ html[data-theme="mac"] .conn-online::before {
   margin: -4px 0 12px;
   text-align: center;
 }
+
+/* Exact Manager kit editor: rows preserve the physical 9 × 3 shulker slot order. */
+.kit-slots { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: .5rem; margin-block: 1rem; }
+.kit-slot { display: flex; flex-direction: column; gap: .25rem; min-width: 0; }
+.kit-slot select, .kit-slot input { width: 100%; min-width: 0; }
+.kit-slot pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 12rem; overflow: auto; }
+#kit-admin form { margin-block: 1rem; }
+#kit-list { display: flex; flex-wrap: wrap; gap: .5rem; }
+@media (max-width: 900px) { .kit-slots { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

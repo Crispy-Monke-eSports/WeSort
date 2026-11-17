@@ -440,12 +440,14 @@ public class StashManager extends Module {
 
     @Override
     public void onActivate() {
+        nextKitCatalogAt=0;
         selfCheck();
         reset();
     }
 
     @Override
     public void onDeactivate() {
+        com.porter.wesort.stash.Kits.revoke();kitUncertain=kitJob!=null;nextKitCatalogAt=0;
         sortingUntil = 0;
         selectDelivery.set(false);
         selectAnvil.set(false);
@@ -521,11 +523,11 @@ public class StashManager extends Module {
         if (!scope.equals(sortingScope)) { sortingToken = null; sortingUntil = 0; sortingScope = scope; }
         JsonObject request = new JsonObject(); request.addProperty("server", Stash.currentServer());
         request.addProperty("agent", mc.player.getUUID().toString()); request.addProperty("token", sortingToken);
-        request.addProperty("action", InventorySync.failed() ? "uncertain" : wants ? "acquire" : "release");
+        request.addProperty("action", InventorySync.failed() || kitJob!=null&&kitUncertain ? "uncertain" : wants ? "acquire" : "release");
         sortingPoll = now + 2_000_000_000L;
         send(base, "/api/v1/automation", bytes(request), apiKey.get().trim(), (code, body) -> {
             if (code != 200) { sortingUntil = 0; return false; }
-            if (InventorySync.failed()) { sortingUntil = 0; return true; }
+            if (InventorySync.failed() || kitJob!=null&&kitUncertain) { sortingUntil = 0; return true; }
             if (!wants) { sortingToken = null; sortingUntil = 0; return true; }
             var reply = JsonParser.parseString(body).getAsJsonObject();
             sortingToken = reply.get("token").getAsString();
@@ -543,7 +545,15 @@ public class StashManager extends Module {
 
     @EventHandler
     private void onTick(TickEvent.Post event) {
+        if(kitJob!=null&&System.nanoTime()>=kitUntil&&!kitUncertain)kitUncertain("Manager execution lease expired");
         if (serviceSorting()) return;
+        // Read-only job coordination continues while physical input awaits verification or is safely paused.
+        if(kitJob!=null&&mc.player!=null&&mc.level!=null&&!inFlight&&!apiKey.get().isBlank()){
+            if(InventorySync.failed())kitUncertain("Inventory needs reconciliation: "+InventorySync.reason());
+            if(com.porter.wesort.compat.NavigationRuntime.paused())kitUncertain("Navigation needs reconciliation: "+com.porter.wesort.compat.NavigationRuntime.status());
+            URI jobBase=parse(serverUrl.get());
+            if(jobBase!=null&&serviceKitCatalog(jobBase,apiKey.get().trim(),System.currentTimeMillis()))return;
+        }
         if (com.porter.wesort.compat.NavigationRuntime.paused()) {
             setStatus(com.porter.wesort.compat.NavigationRuntime.status());
             return;
@@ -601,6 +611,7 @@ public class StashManager extends Module {
 
         // Orders come first: the server should hear how the bot is doing, and a claim is cheap
         if (orderStep(base, key, now)) return;
+        if (serviceKitCatalog(base, key, now)) return;
 
         if (current == null) return;
         StashIndex.Built built = current;
@@ -935,7 +946,7 @@ public class StashManager extends Module {
         // The bot walks only when asked: orders are accepted, or a website rescan is under way. Containers a player opened
         // are not read by the bot on their own
         if (rescanning && !sorter.needsReading()) rescanning = false;
-        boolean want = isActive() && sorter.currentStash() != null && (acceptOrders.get() || rescanning);
+        boolean want = isActive() && sorter.currentStash() != null && (acceptOrders.get() || rescanning || kitJob != null);
         sorter.drive(want);
     }
 
@@ -1133,6 +1144,68 @@ public class StashManager extends Module {
     }
 
     /** What to do with the reply, on the client thread. {@code code} is -1 when the server could not be reached. */
+    private JsonObject kitJob;
+    private String kitCatalogNote = "awaiting Manager assignment", kitProblem = "";
+    private boolean kitUncertain, kitPacked;
+    private long nextKitCatalogAt, kitUntil;
+    public String kitScope() {
+        if(!isActive()||mc.level==null||serverUrl.get().isBlank()||apiKey.get().isBlank())return "";
+        return serverUrl.get().trim()+"|"+Stash.currentServer()+"|"+com.porter.wesort.data.ContainerIdentity.hash(apiKey.get().trim());
+    }
+    public String kitCatalogStatus() { return kitCatalogNote; }
+    public String kitProblem() { return kitProblem; }
+    public boolean kitIsPacked() { return kitPacked; }
+    public boolean hasKitJob() { return kitJob!=null; }
+    public boolean kitAllowed() { return kitJob!=null&&!kitUncertain&&System.nanoTime()<kitUntil&&com.porter.wesort.stash.Kits.buildable(com.porter.wesort.stash.Kits.assigned()); }
+    public net.minecraft.core.BlockPos kitWorkspace() {
+        if(!kitAllowed())return null;var work=kitJob.getAsJsonObject("workspace");
+        if(!com.porter.wesort.stash.StashIndex.dimension().equals(work.get("dimension").getAsString()))return null;
+        return new net.minecraft.core.BlockPos(work.get("x").getAsInt(),work.get("y").getAsInt(),work.get("z").getAsInt());
+    }
+    public void kitPacked() { kitPacked=true;nextKitCatalogAt=0;info("Kit packed exactly; verifying storage at the Manager destination."); }
+    public void kitUncertain(String why) { if(kitJob==null||kitUncertain)return;kitUncertain=true;kitProblem=why;var sorter=Modules.get().get(StashSorter.class);if(sorter!=null)sorter.pauseManagedKit();com.porter.wesort.stash.Kits.revoke();nextKitCatalogAt=0;warning("Kit job paused for reconciliation: %s",why); }
+    private boolean serviceKitCatalog(URI base,String key,long now) {
+        if(kitJob!=null&&System.nanoTime()>=kitUntil&&!kitUncertain)kitUncertain("Manager execution lease expired");
+        if(now<nextKitCatalogAt)return false;
+        var sorter=Modules.get().get(StashSorter.class);var stash=sorter==null?null:sorter.currentStash();
+        if(stash==null||mc.player==null)return false;
+        String scope=kitScope();var body=new JsonObject();String action="claim";
+        if(kitJob!=null){
+            body.addProperty("id",kitJob.get("id").getAsString());body.addProperty("token",kitJob.get("token").getAsString());
+            action=kitUncertain?"uncertain":kitPacked&&!"VERIFYING".equals(kitJob.get("state").getAsString())?"packed":kitPacked&&sorter.kitStored()?"complete":"renew";
+        }
+        if(kitJob!=null){var supply=sorter.kitReport(kitJob.get("name").getAsString());supply.remove("template");supply.remove("destinations");if(supply.has("possible")&&supply.has("estimateExact"))body.add("supply",supply);}
+        body.addProperty("message",kitProblem);body.addProperty("action",action);body.addProperty("server",Stash.currentServer());body.addProperty("stash",stash.name);body.addProperty("agent",mc.player.getUUID().toString());
+        nextKitCatalogAt=now+2_000;long started=System.nanoTime();
+        send(base,"/api/v1/kits/agent",bytes(body),key,(code,text)->{
+            if(!scope.equals(kitScope())){kitUncertain("Manager link changed");return true;}
+            if(code!=200){kitCatalogNote="Manager kit job unavailable";return true;}
+            try{
+                var response=JsonParser.parseString(text).getAsJsonObject();
+                if(!response.has("job")||response.get("job").isJsonNull())return true;
+                var incoming=response.getAsJsonObject("job");String state=incoming.get("state").getAsString();
+                if(kitJob==null){
+                    var template=com.porter.wesort.data.KitTemplate.read(incoming.getAsJsonObject("template"));
+                    if(!template.fingerprint().equals(incoming.get("fingerprint").getAsString())||!stash.name.equals(incoming.get("stash").getAsString())||!Stash.currentServer().equals(incoming.get("server").getAsString()))throw new IllegalArgumentException("Assignment scope/version mismatch");
+                    kitJob=incoming;kitPacked=false;kitUncertain=false;kitProblem="";
+                    com.porter.wesort.stash.Kits.assign(template,scope,incoming.get("destination").getAsString(),started+5_000_000_000L);
+                    info("Manager assigned kit %s, version %d (%s).",template.name(),incoming.get("revision").getAsLong(),template.fingerprint().substring(0,12));
+                }else{
+                    if(!kitJob.get("id").equals(incoming.get("id"))||!kitJob.get("fingerprint").equals(incoming.get("fingerprint"))||!kitJob.get("revision").equals(incoming.get("revision")))throw new IllegalArgumentException("Pinned kit version changed");
+                    kitJob.addProperty("state",state);
+                }
+                if("COMPLETED".equals(state)){
+                    info("Kit stored and verified by Manager. Job %s completed.",kitJob.get("id").getAsString());
+                    kitJob=null;com.porter.wesort.stash.Kits.release();kitCatalogNote="kit storage verified";
+                }else if(!List.of("IN_PROGRESS","VERIFYING").contains(state)){
+                    kitUncertain("Manager state "+state);kitCatalogNote=state;
+                }else if(!kitUncertain){kitUntil=started+5_000_000_000L;com.porter.wesort.stash.Kits.renew(kitUntil);kitCatalogNote=state;}
+            }catch(RuntimeException invalid){kitUncertain("Exact assignment could not be verified by Minecraft 26.3");kitCatalogNote="invalid kit assignment";}
+            return true;
+        },true);
+        return true;
+    }
+
     private interface Reply {
         /** @return false when it failed and should be tried again later */
         boolean done(int code, String body);

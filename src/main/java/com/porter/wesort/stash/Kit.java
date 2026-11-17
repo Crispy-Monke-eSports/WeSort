@@ -1,8 +1,6 @@
 package com.porter.wesort.stash;
 
 import net.minecraft.core.component.DataComponentMap;
-import net.minecraft.core.component.DataComponents;
-import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
@@ -15,14 +13,14 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * A saved kit: what the 27 main inventory slots held, slot for slot, counts included. Items match by everything
- * except durability and anvil cost, so a worn pickaxe is the same item as a fresh one.
+ * An exact Manager kit definition, slot for slot, counts included. Items match by everything
+ * including durability, repair cost, names and every component. Saved kits also require the exact 27-slot layout.
  */
 public final class Kit {
     public static final int SLOTS = 27;
 
     /**
-     * An item as kits see it: the item and its components, less durability and repair cost.
+     * An item as kits see it: the item and its complete components, with count kept separately.
      */
     public record Key(Item item, DataComponentMap components, String exact) {}
 
@@ -47,7 +45,7 @@ public final class Kit {
 
     public final String name;
     /** A transient kit made for an order: items match exactly, damage and repair cost included. Not a saved kit. */
-    public final boolean exact;
+    public final boolean orderKit;
     private final ItemStack[] layout = new ItemStack[SLOTS];
     private final Key[] keys = new Key[SLOTS];
     private final Map<Key, Need> needs = new LinkedHashMap<>();
@@ -58,20 +56,23 @@ public final class Kit {
         this(name, stacks, false);
     }
 
-    public Kit(String name, ItemStack[] stacks, boolean exact) {
+    public Kit(String name, ItemStack[] stacks, boolean orderKit) {
+        if (stacks.length > SLOTS || !orderKit && stacks.length != SLOTS) throw new IllegalArgumentException("A saved WeSort kit has exactly 27 slots");
+        if (!orderKit && (name == null || name.isBlank() || name.length() > 64)) throw new IllegalArgumentException("Invalid WeSort kit name");
         this.name = name;
-        this.exact = exact;
+        this.orderKit = orderKit;
 
         for (int i = 0; i < SLOTS; i++) {
             ItemStack stack = i < stacks.length && stacks[i] != null ? stacks[i] : ItemStack.EMPTY;
             layout[i] = stack.isEmpty() ? ItemStack.EMPTY : stack.copy();
             if (layout[i].isEmpty()) continue;
+            if (layout[i].getCount() > layout[i].getMaxStackSize()) throw new IllegalArgumentException("Kit slot exceeds its stack limit");
 
             ItemStack here = layout[i];
             Key key = key(here);
             keys[i] = key;
             items.add(here.getItem());
-            Need need = needs.computeIfAbsent(key, k -> new Need(k, exact ? here.copyWithCount(1) : normalized(here)));
+            Need need = needs.computeIfAbsent(key, k -> new Need(k, here.copyWithCount(1)));
             need.counts.add(layout[i].getCount());
             need.total += layout[i].getCount();
         }
@@ -89,25 +90,13 @@ public final class Kit {
         order = first.stream().mapToInt(Integer::intValue).toArray();
     }
 
-    /**
-     * Reads the 27 main inventory slots, inventory indexes 9 to 35. The hotbar, offhand, armor and crafting are left out.
-     */
-    public static Kit fromInventory(String name, Inventory inventory) {
-        ItemStack[] stacks = new ItemStack[SLOTS];
-        for (int i = 0; i < SLOTS; i++) stacks[i] = inventory.getItem(9 + i);
-        return new Kit(name, stacks);
-    }
-
     // Items
 
     /**
-     * One of the item with durability and repair cost taken off, for comparing.
+     * One exact item, with count normalized to one for comparing.
      */
     public static ItemStack normalized(ItemStack stack) {
-        ItemStack copy = stack.copyWithCount(1);
-        copy.remove(DataComponents.DAMAGE);
-        copy.remove(DataComponents.REPAIR_COST);
-        return copy;
+        return stack.copyWithCount(1);
     }
 
     public static Key keyOf(ItemStack stack) {
@@ -120,7 +109,7 @@ public final class Kit {
         // An order kit counts by the index key: what the server sends for the same item can differ in components (ViaVersion's
         // marker, the way a shulker's items are stored), so raw components are never compared to decide what is wanted.
         // Which exact variant sits in a slot is decided by the stacks really put there (see KitBuilder.fillOneExact)
-        if (!exact) return keyOf(stack);
+        if (!orderKit) return keyOf(stack);
         String indexKey = StashIndex.keyOf(stack);
         return indexKey != null ? new Key(stack.getItem(), DataComponentMap.EMPTY, indexKey) : new Key(stack.getItem(), stack.copyWithCount(1).getComponents(), null);
     }
@@ -148,15 +137,15 @@ public final class Kit {
     }
 
     public static int kinds(ItemStack[] contents) {
-        Set<Item> kinds = new HashSet<>();
-        for (ItemStack stack : contents) if (stack != null && !stack.isEmpty()) kinds.add(stack.getItem());
+        Set<Key> kinds = new HashSet<>();
+        for (ItemStack stack : contents) if (stack != null && !stack.isEmpty()) kinds.add(keyOf(stack));
         return kinds.size();
     }
 
     // The layout
 
     public ItemStack stackAt(int slot) {
-        return layout[slot];
+        return layout[slot].copy();
     }
 
     public Key keyAt(int slot) {
@@ -196,16 +185,16 @@ public final class Kit {
     }
 
     public ItemStack[] layout() {
-        return layout;
+        return java.util.Arrays.stream(layout).map(ItemStack::copy).toArray(ItemStack[]::new);
     }
 
     // Matching shulkers
 
     /**
-     * Exactly the kit's items in total, nothing else. Where they sit and how they're split over stacks doesn't matter,
-     * so kits made by hand are recognised too.
+     * Saved templates require exact slots/components/counts. Transient order manifests retain their total-based layout.
      */
     public boolean matchesFinished(ItemStack[] contents) {
+        if (!orderKit) return exactLayout(contents);
         Map<Key, Integer> have = totalsOf(contents);
         if (have.size() != needs.size()) return false;
         for (Need need : needs.values()) {
@@ -228,15 +217,16 @@ public final class Kit {
             if (need == null || entry.getValue() > need.total) return false;
             if (entry.getValue() != need.total) complete = false;
         }
-        return !complete;
+        return orderKit ? !complete : !exactLayout(contents);
     }
 
     /**
      * Slot for slot, count for count.
      */
     public boolean exactLayout(ItemStack[] contents) {
+        if (contents.length != SLOTS) return false;
         // An order kit is done when it holds the right totals, in whatever slots
-        if (exact) return matchesFinished(contents);
+        if (orderKit) return matchesFinished(contents);
         for (int i = 0; i < SLOTS; i++) {
             ItemStack stack = i < contents.length && contents[i] != null ? contents[i] : ItemStack.EMPTY;
             if (keys[i] == null) {
@@ -253,13 +243,13 @@ public final class Kit {
      * A sign line naming this kit's chest: the kit's name, or the name with "kit" or "kits" after it.
      */
     public boolean labelMatches(String label) {
-        String line = Categories.normalize(label);
-        String mine = Categories.normalize(name);
+        String line = com.porter.wesort.data.KitTemplate.nameKey(label);
+        String mine = com.porter.wesort.data.KitTemplate.nameKey(name);
         if (line.isEmpty() || mine.isEmpty()) return false;
         return line.equals(mine) || line.equals(mine + " kit") || line.equals(mine + " kits");
     }
 
     public boolean sameName(String other) {
-        return Categories.normalize(name).equals(Categories.normalize(other));
+        return com.porter.wesort.data.KitTemplate.nameKey(name).equals(com.porter.wesort.data.KitTemplate.nameKey(other));
     }
 }

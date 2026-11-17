@@ -264,6 +264,34 @@
         <div class="note">The theme is saved in this browser, not on the bot. It applies at once and is not part of Save / Revert below.</div>
         <div class="theme-grid" id="theme-grid" role="group" aria-labelledby="appearance-title"></div>
       </section>
+      <section class="inset" id="kit-admin" hidden aria-labelledby="kit-admin-title">
+        <h2 class="section-title" id="kit-admin-title">Guild kits</h2>
+        <p class="note">Define the exact 27 shulker slots from observed item variants. Changes create a new version. Packing jobs keep their assigned version.</p>
+        <label>Minecraft server <input id="kit-server" maxlength="128" autocomplete="off"></label>
+        <button type="button" class="mc-button" id="kit-load">Load kits</button>
+        <p role="status" id="kit-status"></p>
+        <div id="kit-list"></div>
+        <form id="kit-editor" hidden>
+          <label>Kit name <input id="kit-name" maxlength="64" required autocomplete="off"></label>
+          <p id="kit-version" class="note"></p>
+          <div id="kit-slots" class="kit-slots"></div>
+          <button class="mc-button" type="submit">Save version</button>
+          <button class="mc-button" type="button" id="kit-new">New kit</button>
+          <button class="mc-button danger" type="button" id="kit-delete">Delete kit</button>
+        </form>
+        <form id="kit-pack" hidden>
+          <h3>Pack one copy of the selected version</h3>
+          <label>Destination <select id="kit-destination" required></select></label>
+          <p class="note">Approve one exact empty work block for placing and breaking this job’s shulker. The agent must be within reach.</p>
+          <label>Dimension <input id="kit-dimension" value="minecraft:overworld" required></label>
+          <label>Work X <input id="kit-work-x" type="number" required></label>
+          <label>Work Y <input id="kit-work-y" type="number" required></label>
+          <label>Work Z <input id="kit-work-z" type="number" required></label>
+          <button class="mc-button" type="submit">Assign packing job</button>
+        </form>
+        <button class="mc-button" type="button" id="kit-jobs-refresh">Refresh packing jobs</button>
+        <div id="kit-jobs" role="status"></div>
+      </section>
       <section class="inset account-section" id="account-section" aria-labelledby="account-title" hidden>
         <div class="appearance-head">
           <h2 class="section-title" id="account-title">Account</h2>

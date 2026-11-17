@@ -214,6 +214,7 @@ public final class WeSortManager {
         new DeliveryRoutes(delivery, owners).register(router);
         new OrderRoutes(orders, owners, audit).register(router);
         new StockRoutes(store, orders).register(router);
+        new KitRoutes(store, audit).register(router);
         new BotRoutes(hub).register(router);
         new DashboardRoutes(hub, store, owners, sessions, audit).register(router);
         new UserRoutes(users, sessions, audit).register(router);

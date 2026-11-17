@@ -4262,6 +4262,7 @@
     if (page === "settings") {
       settingsForm.load(true);
       if (me.owner) loadUsers();
+      $("kit-admin").hidden = !me.owner || forcedStreamer();
     }
 
     window.clearTimeout(act.timer);
@@ -4425,6 +4426,108 @@
     bots.body = el.stashBots;
     renderBots();
   }
+
+  // Manager owns definitions. A browser edit never asserts physical inventory or starts local client work.
+  var kitEditor = { server: "", revision: 0, fingerprint: "", entries: [], variants: [], destinations: [] };
+  function kitMessage(message) { $("kit-status").textContent = message; }
+  function kitFailure(error) { kitMessage(error.status === 409 ? "This kit changed. Reload before editing again." : str(error.body && error.body.error) || "Kit request failed. Reload and try again."); }
+  function editKit(entry) {
+    var template = entry && entry.template;
+    kitEditor.revision = entry ? entry.revision : 0;
+    kitEditor.fingerprint = template ? template.fingerprint : "";
+    $("kit-name").value = template ? template.name : "";
+    $("kit-name").readOnly = !!template;
+    $("kit-version").textContent = entry ? "Version " + entry.revision + " · " + template.fingerprint : "New guild template";
+    $("kit-delete").disabled = !entry;
+    $("kit-pack").hidden = !entry;
+    var holder = $("kit-slots"); holder.replaceChildren();
+    for (let slot = 0; slot < 27; slot++) {
+      var row = document.createElement("label"); row.className = "kit-slot";
+      var caption = document.createElement("span"); caption.textContent = "Slot " + (slot + 1); row.appendChild(caption);
+      let select = document.createElement("select"); select.setAttribute("aria-label", "Item in slot " + (slot + 1));
+      var empty = document.createElement("option"); empty.value = ""; empty.textContent = "Empty"; select.appendChild(empty);
+      kitEditor.variants.forEach(function (variant) {
+        var option = document.createElement("option"); option.value = variant.fingerprint;
+        option.textContent = variant.id + " · " + variant.fingerprint.slice(0, 12);
+        option.title = variant.components; select.appendChild(option);
+      });
+      let quantity = document.createElement("input"); quantity.type = "number"; quantity.min = "1"; quantity.max = "64"; quantity.value = "1";
+      quantity.setAttribute("aria-label", "Count in slot " + (slot + 1));
+      var detail = document.createElement("details"); var summary = document.createElement("summary"); summary.textContent = "Exact components";
+      let metadata = document.createElement("pre"); detail.append(summary, metadata);
+      if (template) template.slots.forEach(function (saved) {
+        if (saved[0] !== slot) return;
+        quantity.value = String(saved[2]);
+      });
+      if (entry && entry.slotFingerprints && entry.slotFingerprints[slot]) select.value = entry.slotFingerprints[slot];
+      function updateKitSlot() {
+        var variant = kitEditor.variants.filter(function (value) { return value.fingerprint === select.value; })[0];
+        quantity.disabled = !variant; quantity.max = String(variant ? variant.maxStack : 64);
+        metadata.textContent = variant ? variant.components : "Empty";
+      }
+      select.addEventListener("change", updateKitSlot); updateKitSlot();
+      row.append(select, quantity, detail); holder.appendChild(row);
+    }
+    $("kit-editor").hidden = false;
+  }
+  function loadKitEditor() {
+    var server = $("kit-server").value.trim(); if (!server) { kitMessage("Enter the Minecraft server identity."); return; }
+    kitMessage("Loading guild templates…");
+    api("/api/v1/kits/editor?server=" + encodeURIComponent(server)).then(function (body) {
+      kitEditor.server = server; kitEditor.entries = body.templates; kitEditor.variants = body.variants; kitEditor.destinations = body.destinations;
+      var destinations = $("kit-destination"); destinations.replaceChildren();
+      body.destinations.forEach(function (destination) {
+        var option = document.createElement("option"); option.value = destination.id;
+        option.textContent = destination.stash + " · " + destination.dimension + " " + JSON.stringify(destination.parts); destinations.appendChild(option);
+      });
+      var list = $("kit-list"); list.replaceChildren();
+      body.templates.forEach(function (entry) {
+        var button = document.createElement("button"); button.type = "button"; button.className = "mc-button";
+        button.textContent = entry.template.name + " · v" + entry.revision;
+        button.addEventListener("click", function () { editKit(entry); }); list.appendChild(button);
+      });
+      editKit(null); kitMessage(body.templates.length + " guild templates. Select a kit to edit, or create a new one.");
+    }).catch(kitFailure);
+  }
+  $("kit-load").addEventListener("click", loadKitEditor);
+  $("kit-new").addEventListener("click", function () { editKit(null); });
+  $("kit-editor").addEventListener("submit", function (event) {
+    event.preventDefault(); var layout = [];
+    Array.prototype.forEach.call($("kit-slots").children, function (row, slot) {
+      var variant = row.querySelector("select").value;
+      if (variant) layout.push({ slot: slot, variant: variant, count: Number(row.querySelector("input").value) });
+    });
+    api("/api/v1/kits", { method: "POST", body: { action: "publish", server: kitEditor.server, name: $("kit-name").value, layout: layout, expectedRevision: kitEditor.revision } }).then(function () { loadKitEditor(); }).catch(kitFailure);
+  });
+  $("kit-delete").addEventListener("click", function () {
+    if (!kitEditor.revision) return;
+    api("/api/v1/kits", { method: "POST", body: { action: "delete", server: kitEditor.server, name: $("kit-name").value, fingerprint: kitEditor.fingerprint, expectedRevision: kitEditor.revision } }).then(function () { loadKitEditor(); }).catch(kitFailure);
+  });
+
+  function loadKitJobs() {
+    if (!kitEditor.server) return;
+    api("/api/v1/kits/jobs?server=" + encodeURIComponent(kitEditor.server)).then(function (body) {
+      var holder = $("kit-jobs"); holder.replaceChildren();
+      body.jobs.forEach(function (job) {
+        var row = document.createElement("p"); row.textContent = job.name + " · v" + job.revision + " · " + job.state + " · " + job.id + (job.message ? " · " + job.message : ""); holder.appendChild(row);
+        if (job.agentEstimate) {
+          var estimate = job.agentEstimate; var detail = document.createElement("p"); detail.className = "note";
+          detail.textContent = "Agent observation: " + estimate.built + " finished; " + (estimate.exact ? "" : "at least ") + estimate.possible + " buildable. " + (estimate.shortage || "") + " Observed " + new Date(estimate.at).toLocaleString(); holder.appendChild(detail);
+        }
+      });
+    }).catch(kitFailure);
+  }
+  $("kit-jobs-refresh").addEventListener("click", loadKitJobs);
+  $("kit-pack").addEventListener("submit", function (event) {
+    event.preventDefault();
+    var destination = kitEditor.destinations.filter(function (value) { return value.id === $("kit-destination").value; })[0];
+    if (!kitEditor.revision || !destination) { kitMessage("Select a saved kit version and a fresh destination."); return; }
+    api("/api/v1/kits/jobs", { method: "POST", body: {
+      server: kitEditor.server, stash: destination.stash, destination: destination.id,
+      name: $("kit-name").value, revision: kitEditor.revision, fingerprint: kitEditor.fingerprint,
+      workspace: { dimension: $("kit-dimension").value, x: Number($("kit-work-x").value), y: Number($("kit-work-y").value), z: Number($("kit-work-z").value) }
+    } }).then(function () { kitMessage("Packing job assigned. Completion requires fresh destination verification."); loadKitJobs(); }).catch(kitFailure);
+  });
 
   // ---------- dashboard: settings forms ----------
   // tree can have thousands of settings, so the Proxy page only renders the selected section (or the search hits).

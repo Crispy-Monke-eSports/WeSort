@@ -24,9 +24,9 @@ class AutomationGateTest {
         var upgraded = new StockLedger(data);
         assertEquals(64, upgraded.sources().getFirst().value().getAsJsonArray("items").get(0).getAsJsonObject().get("count").getAsInt());
         try (var c = upgraded.open(); var sql = c.createStatement()) {
-            try (var rows = sql.executeQuery("PRAGMA user_version")) { assertTrue(rows.next()); assertEquals(3, rows.getInt(1)); }
+            try (var rows = sql.executeQuery("PRAGMA user_version")) { assertTrue(rows.next()); assertEquals(4, rows.getInt(1)); }
             try (var rows = sql.executeQuery("SELECT count(*) FROM automation_leases")) { assertTrue(rows.next()); assertEquals(0, rows.getInt(1)); }
-            sql.execute("PRAGMA user_version=4");
+            sql.execute("PRAGMA user_version=5");
         }
         assertThrows(java.io.IOException.class, () -> new StockLedger(data));
     }

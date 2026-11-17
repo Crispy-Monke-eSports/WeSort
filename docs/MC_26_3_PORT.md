@@ -15,7 +15,7 @@ resultat för den ännu oportade WeSort-klienten eller fysisk lagerautomation.
 | Fabric Loom | 1.17.21, `net.fabricmc.fabric-loom` | Bygg och runClient |
 | Fabric Loader | 0.19.5 | Faktiskt laddad i klient |
 | Mappings | Inga externa mappings/remap | Minecraft är unobfuscated; Mojangnamn direkt |
-| Meteor | 26.3-20261115.173242-22, runtime 26.3-22 | Officiell Maven-jar, laddad addon |
+| Meteor | 26.3-20261115.173242-22, runtime 26.3-22 | Oförändrad officiell JAR, fryst med källkod i `vendor` |
 | Baritone | dekrom 1.4.0-26.3, **api-fabric** | Kompilering och faktisk primary-provider |
 | Fabric API | Meteor-bundlad base 2.0.6+fcdff87f5d och resource-loader 3.0.4+ba0d6c0d5d | Laddade i klient |
 | Full Fabric API | 0.162.0+26.3 finns publicerad | Inte separat nödvändig eller testad i provet |
@@ -33,7 +33,7 @@ Officiella källor:
 - [Fabric 26.3-portningsguide](https://fabricmc.net/2026/09/15/263.html),
   [Loader API](https://meta.fabricmc.net/v2/versions/loader/26.3/0.19.5)
   och [Loom Maven](https://maven.fabricmc.net/net/fabricmc/fabric-loom/).
-- [Meteors exakta snapshotmetadata](https://maven.meteordev.org/snapshots/meteordevelopment/meteor-client/26.3-SNAPSHOT/maven-metadata.xml)
+- [Meteors frysta versions-/checksummeproveniens](../vendor/meteor-client.lock.json)
   och [Meteors källversionsmatris](https://github.com/MeteorDevelopment/meteor-client/blob/474da7c33d391109a4a1feea288ea93ea696cfa9/gradle/libs.versions.toml).
 - [Dekroms Baritone-release](https://github.com/dekrom/baritone/releases/tag/v1.4.0-26.3).
 
@@ -138,3 +138,9 @@ världsprov, komponenter, slotkvittens, sign-/shulkeroperationer, Baritone och
 26.3-resurser dokumenteras separat i [steg 2](STAGE_2.md). Den genererade
 recepttabellen är ingen fysisk crafting-/kitverifiering; dessa flöden behöver
 fortfarande sina senare roadmapstester.
+
+Efter att upstreams snapshot 22 försvann 2026-11-17 bevaras original-JAR, POM
+och modulmetadata tillsammans med GPL-text och motsvarande kompletta källarkiv
+från samma upstream-commit i [vendor](../vendor/README.md). Den historiska
+sources-JAR-checksumman ovan avser den tidigare hämtningen; nu medföljer ett
+komplett GitHub-källarkiv vars egen checksumma finns i låsfilen.

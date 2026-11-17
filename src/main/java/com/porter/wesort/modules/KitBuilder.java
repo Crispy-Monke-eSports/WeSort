@@ -44,6 +44,9 @@ final class KitBuilder {
      */
     interface Owner {
         Stash stash();
+        default boolean permitted() { return true; }
+        default void packed() {}
+        default void uncertain(String reason) {}
 
         /** The inventory slots the sorter carries stash items in. */
         Set<Integer> carry();
@@ -112,6 +115,8 @@ final class KitBuilder {
 
     // The session: the kit being built and where its shulker is
     private Kit kit;
+    private final Set<Key> preservedMaterials = new HashSet<>();
+    private final Map<Kit,String> supplyWarnings = new HashMap<>();
     private int baseSlot = -1;
     private boolean needBase;
     private boolean pendingBase;
@@ -153,6 +158,9 @@ final class KitBuilder {
         return kit != null;
     }
 
+    boolean material(ItemStack stack) {
+        return !stack.isEmpty() && (kit != null && kit.need(kit.key(stack)) != null || preservedMaterials.contains(Kit.keyOf(stack)));
+    }
     boolean holds(int slot) {
         return kit != null && slot == baseSlot;
     }
@@ -164,6 +172,7 @@ final class KitBuilder {
     /** Forgets everything, on turning the module on or leaving the world. */
     void reset() {
         heldKit = null;
+        preservedMaterials.clear();
         clearSession();
         badBases.clear();
         badPacked.clear();
@@ -209,15 +218,16 @@ final class KitBuilder {
     /** Gives up on the kit being built, for now. */
     void suspend(String why) {
         if (kit == null) return;
-        if (!kit.exact) tried.add(kit);
+        if (!kit.orderKit) { owner.uncertain(why); tried.add(kit); for (Need need : kit.needs()) preservedMaterials.add(need.key); }
         owner.warn("Not building kit \"" + kit.name + "\" for now: " + why);
-        if (hadBase && !kit.exact) heldKit = kit;
+        if (hadBase && !kit.orderKit) heldKit = kit;
         clearSession();
     }
 
     /** The kit shulker is finished. */
     void finish() {
-        if (kit != null && !kit.exact) owner.say("Built kit \"" + kit.name + "\".");
+        if (kit != null && !kit.orderKit) owner.say("Built kit \"" + kit.name + "\".");
+        if (kit != null && !kit.orderKit) owner.packed();
         clearSession();
     }
 
@@ -228,7 +238,7 @@ final class KitBuilder {
     private void progressed() {
         tookThisJob++;
         // An order kit gathers from many shulkers: the time allowed starts again with every step that gets somewhere
-        if (kit != null && kit.exact) startedAt = System.currentTimeMillis();
+        if (kit != null && kit.orderKit) startedAt = System.currentTimeMillis();
     }
 
     void jobStarted() {
@@ -319,8 +329,8 @@ final class KitBuilder {
             // Every kit of one scan matches the same way: saved kits together, or one order kit
             Kit keys = kits.get(0);
 
-            for (Box box : stash.boxes) {
-                if (!source(box, keys.exact && owner.namedShulkers())) continue;
+            for (Box box : com.porter.wesort.compat.ObservationRuntime.boxes(stash)) {
+                if (!source(box, keys.orderKit && owner.namedShulkers())) continue;
 
                 for (int i = 0; i < box.contents.length; i++) {
                     ItemStack s = box.contents[i];
@@ -328,7 +338,7 @@ final class KitBuilder {
 
                     if (Utils.isShulker(s.getItem())) {
                         boolean named = s.has(DataComponents.CUSTOM_NAME);
-                        if (named && !(keys.exact && owner.namedShulkers())) continue;
+                        if (named && !(keys.orderKit && owner.namedShulkers())) continue;
 
                         boolean any = false;
                         List<Entry> entries = new ArrayList<>();
@@ -367,7 +377,7 @@ final class KitBuilder {
      *               for whole shulkers too (saved kits never take from those)
      */
     private boolean source(Box box, boolean orders) {
-        return box.sortable() && !box.stale && !box.dropOff && owner.usable(box) && (orders || (!Kits.isKitBox(box) && !owner.keepWhole(box)));
+        return box.sortable() && !box.stale && com.porter.wesort.compat.ObservationRuntime.current(box) && !box.dropOff && owner.usable(box) && (orders || (!Kits.isKitBox(box) && !owner.keepWhole(box)));
     }
 
     /**
@@ -376,23 +386,29 @@ final class KitBuilder {
     private Plan plan(Kit k, Scan scan) {
         Stash stash = owner.stash();
         // An order kit has no chest: it is always built from an empty shulker, and delivered
-        List<Box> homes = k.exact ? List.of() : Kits.homes(k, stash);
-        if (homes.isEmpty() && !k.exact) return null;
+        List<Box> homes = k.orderKit ? List.of() : Kits.homes(k, stash);
+        if (homes.isEmpty() && !k.orderKit) return null;
 
         // A kit part built, in its own chest, is carried on with first
         Spot base = null;
         Map<Key, Integer> have = Map.of();
-        int most = 0;
+        int most = -1;
         boolean room = false;
+        Map<Key, Integer> avail = scan.available(k);
         for (Box home : homes) {
+            if (!com.porter.wesort.compat.ObservationRuntime.current(home)) continue;
             if (home.free() > 0) room = true;
             for (int i = 0; i < home.contents.length; i++) {
                 ItemStack s = home.contents[i];
                 if (s.isEmpty() || !Utils.isShulker(s.getItem()) || s.has(DataComponents.CUSTOM_NAME)) continue;
+                var known=Kits.match(s);if(known!=null&&known.finished())continue;
                 ItemStack[] in = Kits.inside(s);
-                if (!k.matchesPartial(in)) continue;
-
                 Map<Key, Integer> totals = k.totalsOf(in);
+                if (!totals.isEmpty() && !k.matchesPartial(in)) continue;
+                boolean feasible = true;
+                for (Need need : k.needs()) if (avail.getOrDefault(need.key,0) < need.total - Math.min(totals.getOrDefault(need.key,0),need.total)) { feasible=false; break; }
+                if (!feasible) continue;
+
                 int count = totals.values().stream().mapToInt(Integer::intValue).sum();
                 if (count > most) {
                     most = count;
@@ -403,24 +419,23 @@ final class KitBuilder {
         }
 
         // The finished kit needs a place to go
-        if (base == null && !room && !k.exact) return null;
+        if (base == null && !room && !k.orderKit) return null;
 
         if (base == null) {
             for (Spot spot : scan.empties) {
-                if (k.exact && badBases.contains(spot)) continue;
+                if (k.orderKit && badBases.contains(spot)) continue;
                 if (base == null || emptyRank(spot) < emptyRank(base)) base = spot;
             }
-            if (base == null && k.exact && owner.craftedBase() >= 0) base = CRAFTED;
+            if (base == null && k.orderKit && owner.craftedBase() >= 0) base = CRAFTED;
             if (base == null) return null;
         }
 
-        Map<Key, Integer> avail = scan.available(k);
         for (Need need : k.needs()) {
             int want = need.total - Math.min(have.getOrDefault(need.key, 0), need.total);
             if (avail.getOrDefault(need.key, 0) < want) return null;
         }
 
-        double distance = k.exact ? 0 : Double.MAX_VALUE;
+        double distance = k.orderKit ? 0 : Double.MAX_VALUE;
         for (Box home : homes) distance = Math.min(distance, owner.distance(home));
         return new Plan(k, base, distance);
     }
@@ -432,7 +447,7 @@ final class KitBuilder {
     }
 
     /**
-     * Picks a kit that can be built and starts on it: the one with the fewest finished copies, then the nearest.
+     * Starts only the exact definition pinned by the current live Manager assignment.
      * @return true when a kit was started
      */
     boolean begin() {
@@ -440,14 +455,15 @@ final class KitBuilder {
         Stash stash = owner.stash();
         if (stash == null || mc.player == null) return false;
 
-        List<Kit> kits = Kits.all();
-        if (kits.isEmpty()) return false;
+        Kit assigned=Kits.assigned();
+        List<Kit> kits = assigned==null?List.of():List.of(assigned);
+        if (kits.isEmpty() || !owner.permitted()) return false;
 
         Scan scan = null;
         Plan best = null;
         int bestBuilt = 0;
         for (Kit k : kits) {
-            if (tried.contains(k)) continue;
+            if (tried.contains(k) || !Kits.buildable(k)) continue;
 
             if (Kits.homes(k, stash).isEmpty()) {
                 if (warnedNoChest.add(Categories.normalize(k.name))) {
@@ -458,7 +474,12 @@ final class KitBuilder {
 
             if (scan == null) scan = new Scan(kits);
             Plan plan = plan(k, scan);
-            if (plan == null) continue;
+            if (plan == null) {
+                String why = shortage(k);
+                if (!why.equals(supplyWarnings.put(k,why))) owner.warn("Not building kit \"" + k.name + "\": " + why);
+                continue;
+            }
+            supplyWarnings.remove(k);
 
             int built = Kits.built(k, stash);
             if (best == null || built < bestBuilt || (built == bestBuilt && plan.distance < best.distance)) {
@@ -518,35 +539,51 @@ final class KitBuilder {
 
     /** Lets go of an order kit without a word, when its order is over. */
     void dropOrderKit() {
-        if (kit != null && kit.exact) clearSession();
+        if (kit != null && kit.orderKit) clearSession();
     }
 
     /** Whether the kit is still wanted: a saved kit that was not deleted, or a transient order kit. */
     private static boolean alive(Kit k) {
-        return k.exact || Kits.all().contains(k);
+        return k.orderKit || Kits.all().contains(k) && Kits.buildable(k);
     }
 
     /**
      * How many more copies of a kit the stash could build right now, by its items and its empty shulkers. -1 if the
      * kit has no chest to go in.
      */
-    int possible(Kit k) {
-        Stash stash = owner.stash();
-        if (stash == null || mc.player == null) return 0;
-        if (Kits.homes(k, stash).isEmpty()) return -1;
-
-        Scan scan = new Scan(List.of(k));
-        Map<Key, Integer> avail = scan.available(k);
-        int copies = Integer.MAX_VALUE;
-        for (Need need : k.needs()) copies = Math.min(copies, avail.getOrDefault(need.key, 0) / need.total);
-
-        int shulkers = scan.empties.size();
-        for (Box home : Kits.homes(k, stash)) {
-            for (ItemStack s : home.contents) {
-                if (!s.isEmpty() && Utils.isShulker(s.getItem()) && !s.has(DataComponents.CUSTOM_NAME) && k.matchesPartial(Kits.inside(s))) shulkers++;
+    com.porter.wesort.data.KitAvailability.Result<Key> availability(Kit k) {
+        var scan = new Scan(List.of(k)); Map<Key,Integer> required = new HashMap<>();
+        for (Need need : k.needs()) required.put(need.key, need.total);
+        List<Map<Key,Integer>> bases = new ArrayList<>(); int room = 0;
+        for (Box home : Kits.homes(k, owner.stash())) {
+            if (!com.porter.wesort.compat.ObservationRuntime.current(home)) continue;
+            room += home.free();
+            for (var stack : home.contents) if (!stack.isEmpty() && Utils.isShulker(stack.getItem()) && !stack.has(DataComponents.CUSTOM_NAME)) {
+                var known=Kits.match(stack);if(known!=null&&known.finished())continue;
+                var inside = Kits.inside(stack); var totals = k.totalsOf(inside);
+                if (totals.isEmpty() || k.matchesPartial(inside)) bases.add(totals);
             }
         }
-        return Math.max(0, Math.min(copies, shulkers));
+        return com.porter.wesort.data.KitAvailability.assess(required, scan.available(k), bases, scan.empties.size(), room);
+    }
+    int possible(Kit k) {
+        if (owner.stash() == null || mc.player == null || !owner.permitted()) return 0;
+        if (Kits.homes(k, owner.stash()).isEmpty()) return -1;
+        return availability(k).buildable();
+    }
+    String shortage(Kit k) {
+        if (!owner.permitted()) return "Manager reservations or automation lease currently block kit packing";
+        if (!Kits.buildable(k)) return "No live Manager assignment for this exact kit version";
+        if (owner.stash() == null || Kits.homes(k, owner.stash()).isEmpty()) return "No destination signed for this kit";
+        if (Kits.homes(k,owner.stash()).stream().anyMatch(home -> !com.porter.wesort.compat.ObservationRuntime.current(home))) return "Kit destination needs a new server read";
+        var result = availability(k);
+        if (!result.missing().isEmpty()) {
+            List<String> missing = new ArrayList<>();
+            result.missing().forEach((key,count) -> { var need=k.need(key); missing.add(count + " x " + need.sample.getHoverName().getString() + " (exact components)"); });
+            return "Missing " + String.join(", ", missing);
+        }
+        if (result.buildable() == 0) return "Missing an eligible empty/partial shulker or free kit destination";
+        return "";
     }
 
     // The next step
@@ -639,11 +676,11 @@ final class KitBuilder {
         if (signature == lastSignature) stalls++;
         else {
             stalls = 0;
-            if (kit.exact) startedAt = System.currentTimeMillis();
+            if (kit.orderKit) startedAt = System.currentTimeMillis();
         }
         lastSignature = signature;
         // An order kit is given more tries, and says why when it gives up
-        if (stalls >= (kit.exact ? 6 : MAX_STALLS)) {
+        if (stalls >= (kit.orderKit ? 6 : MAX_STALLS)) {
             return new Abort(owner.freeCarryCount() < 1 ? "no room to carry what the order needs (no free inventory slots)" : "it isn't getting anywhere");
         }
 
@@ -722,7 +759,7 @@ final class KitBuilder {
         for (int slot : owner.carry()) {
             if (slot == baseSlot) continue;
             ItemStack s = inv.getItem(slot);
-            if (s.isEmpty() || !Utils.isShulker(s.getItem()) || (s.has(DataComponents.CUSTOM_NAME) && !(kit.exact && owner.namedShulkers())) || Kits.claims(s) || owner.claims(s) || heldKit(s) != null) continue;
+            if (s.isEmpty() || !Utils.isShulker(s.getItem()) || (s.has(DataComponents.CUSTOM_NAME) && !(kit.orderKit && owner.namedShulkers())) || Kits.claims(s) || owner.claims(s) || heldKit(s) != null) continue;
 
             for (ItemStack in : Kits.inside(s)) {
                 if (in == null || in.isEmpty() || !kit.hasItem(in.getItem())) continue;
@@ -829,7 +866,7 @@ final class KitBuilder {
         Live live = live();
         int into = owner.freeCarrySlot();
         // The slot the shulker came out of is free while it stands: it stays free, to pick the shulker up again
-        if (into == -1 || (kit.exact && owner.freeCarryCount() <= 1)) {
+        if (into == -1 || (kit.orderKit && owner.freeCarryCount() <= 1)) {
             diagnose("the opened shulker (no free carry slot)", 27, i -> menu.getSlot(i).getItem(), live);
             return false;
         }
@@ -858,7 +895,7 @@ final class KitBuilder {
      * and what the base holds. At most once per place every 10 seconds, so a mismatch can be found in the log.
      */
     private void diagnose(String where, int size, Contents contents, Live live) {
-        if (!kit.exact || live.deficit.isEmpty() || tookThisJob > 0) return;
+        if (!kit.orderKit || live.deficit.isEmpty() || tookThisJob > 0) return;
         long now = System.currentTimeMillis();
         Long last = lastDiagnosis.get(where);
         if (last != null && now - last < 10_000) return;
@@ -896,7 +933,7 @@ final class KitBuilder {
      * it came from at once, whatever else is still to be gathered.
      */
     boolean sourceSpent(int slot) {
-        if (kit == null || !kit.exact || needBase || pendingBase || slot == baseSlot || !isShulker(baseSlot)) return false;
+        if (kit == null || !kit.orderKit || needBase || pendingBase || slot == baseSlot || !isShulker(baseSlot)) return false;
         ItemStack s = mc.player.getInventory().getItem(slot);
         if (!Utils.isShulker(s.getItem())) return false;
 
@@ -943,7 +980,7 @@ final class KitBuilder {
         if (kit == null || menu.slots.size() != 27 + 36 || stuck(menu)) return false;
         if (continuePending(menu)) return true;
         if (!menu.getCarried().isEmpty()) return settleCursor(menu);
-        if (kit.exact) return fillOneExact(menu);
+        if (kit.orderKit) return fillOneExact(menu);
 
         Inventory inv = mc.player.getInventory();
 

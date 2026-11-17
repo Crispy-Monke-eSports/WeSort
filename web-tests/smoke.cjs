@@ -55,6 +55,7 @@ async function scenario(loggedIn) {
   const w = dom.window;
   const errors = [];
   const requests = [];
+  const kitWrites = [];
   w.addEventListener('error', e => errors.push(e.error || e.message));
   const globals = Object.fromEntries(Object.getOwnPropertyNames(w).map(x => [x, 'readonly']));
   Object.assign(globals, {fetch: 'readonly', EventSource: 'readonly', ResizeObserver: 'readonly',
@@ -63,7 +64,7 @@ async function scenario(loggedIn) {
     rules: {'no-undef': 'error'}}]).map(e => `${e.line}: ${e.message}`), []);
   const bot = {botId: 'b1', player: 'Agent', online: true, lastSeen: Date.now(),
     plugin: {id: 'wesort', version: 'test'}, caps: ['settings', 'activity'], scopes: ['plugin']};
-  w.fetch = async url => {
+  w.fetch = async (url, opts = {}) => {
     requests.push(url);
     const u = new URL(url, w.location.href);
     assert(!/planner|console|viewer/.test(u.pathname), `Retired endpoint: ${url}`);
@@ -79,6 +80,14 @@ async function scenario(loggedIn) {
     if (u.pathname === '/api/v1/stock/source') body = {state: 'STALE_AGE', snapshot: {positions: [{path:'0/26',id:'minecraft:diamond_sword',count:1,copies:1,kind:'ITEM',components:'<img src=x onerror=alert(1)>'}]}};
     if (u.pathname === '/api/v1/stashes') body = [];
     if (u.pathname === '/api/v1/bots') body = [bot];
+    if (u.pathname === '/api/v1/kits/editor') body = {
+      templates: [{ revision: 7, template: { name: '<img src=x onerror=alert(1)>', fingerprint: 'exact-v7', slots: [[0,0,32],[26,0,16]] }, slotFingerprints: {0:'variant-one',26:'variant-one'} }],
+      variants: [{ id: 'minecraft:diamond', fingerprint: 'variant-one', maxStack: 64, components: '<script>bad()</script>' }],
+      destinations: [{ id: 'c:home', stash: 'fixture', dimension: 'minecraft:overworld', parts: [[1,64,2]] }]
+    };
+    if (u.pathname === '/api/v1/kits' && opts.method === 'POST') { kitWrites.push(JSON.parse(opts.body)); body = {}; }
+    if (u.pathname === '/api/v1/kits/jobs' && opts.method === 'POST') { kitWrites.push(JSON.parse(opts.body)); body = {}; }
+    if (u.pathname === '/api/v1/kits/jobs' && opts.method !== 'POST') body = {jobs: [{name:'Raid',revision:7,state:'VERIFYING',id:'job-one',agentEstimate:{built:1,possible:2,exact:false,shortage:'<img src=x>',at:1234}}]};
     if (u.pathname === '/api/v1/users') body = {owner: {name: 'Owner'}, users: [], presets: {}};
     if (u.pathname.endsWith('/settings')) body = {schema: [], values: {}, schemaHash: 'a', valuesHash: 'b'};
     if (u.pathname.endsWith('/activity')) body = {now: [], events: [], modules: [], plugins: []};
@@ -137,6 +146,30 @@ async function scenario(loggedIn) {
       assert.match(details.textContent, /0\/26minecraft:diamond_sword/);
       assert.equal(details.querySelector('img'), null, 'Component patches must remain plain text');
       assert(requests.some(x => x.includes('/settings?scope=plugin')));
+      w.document.querySelector('#dash-nav [data-page="settings"]').click(); await settle();
+      assert.equal(w.document.querySelector('#kit-admin').hidden, false);
+      w.document.querySelector('#kit-server').value = 'test'; w.document.querySelector('#kit-load').click(); await settle();
+      w.document.querySelector('#kit-list button').click();
+      const kitRows = w.document.querySelectorAll('#kit-slots .kit-slot'); assert.equal(kitRows.length, 27);
+      assert.equal(kitRows[0].querySelector('select').value, 'variant-one');
+      assert.equal(kitRows[26].querySelector('input').value, '16');
+      assert.equal(w.document.querySelector('#kit-list img'), null);
+      assert.equal(w.document.querySelector('#kit-slots script'), null);
+      // The first slot's listener must update its own count input, independently of slot 27.
+      kitRows[0].querySelector('select').value = ''; kitRows[0].querySelector('select').dispatchEvent(new w.Event('change'));
+      assert.equal(kitRows[0].querySelector('input').disabled, true); assert.equal(kitRows[26].querySelector('input').disabled, false);
+      kitRows[0].querySelector('select').value = 'variant-one'; kitRows[0].querySelector('select').dispatchEvent(new w.Event('change'));
+      w.document.querySelector('#kit-editor').dispatchEvent(new w.Event('submit', {cancelable:true})); await settle();
+      assert.deepEqual(kitWrites[0].layout, [{slot:0,variant:'variant-one',count:32},{slot:26,variant:'variant-one',count:16}]);
+      assert.equal(kitWrites[0].expectedRevision,7); assert.equal(kitWrites[0].server,'test');
+      w.document.querySelector('#kit-list button').click();
+      w.document.querySelector('#kit-work-x').value='2'; w.document.querySelector('#kit-work-y').value='64'; w.document.querySelector('#kit-work-z').value='0';
+      w.document.querySelector('#kit-pack').dispatchEvent(new w.Event('submit', {cancelable:true})); await settle();
+      assert.equal(kitWrites[1].revision,7); assert.equal(kitWrites[1].fingerprint,'exact-v7'); assert.equal(kitWrites[1].destination,'c:home');
+      assert.deepEqual(kitWrites[1].workspace,{dimension:'minecraft:overworld',x:2,y:64,z:0});
+      assert.match(w.document.querySelector('#kit-jobs').textContent,/VERIFYING/);
+      assert.match(w.document.querySelector('#kit-jobs').textContent,/1 finished; at least 2 buildable/);
+      assert.equal(w.document.querySelector('#kit-jobs img'),null);
     }
     assert.deepEqual(errors, []);
     for (const [key, value] of Object.entries(legacy)) assert.equal(read.call(w.localStorage, key), value);

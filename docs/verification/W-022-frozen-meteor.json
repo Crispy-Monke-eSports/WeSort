@@ -1,0 +1,10 @@
+{
+  "result": "PASS",
+  "version": "26.3-20261115.173242-22",
+  "runtime": "26.3-22",
+  "checks": [
+    "original artifact resolved with empty dependency cache and --offline",
+    "modified binary rejected before use",
+    "corresponding source archive and GPL text checksum verified"
+  ]
+}

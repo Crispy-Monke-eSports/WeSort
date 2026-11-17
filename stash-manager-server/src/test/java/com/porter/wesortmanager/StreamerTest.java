@@ -268,6 +268,25 @@ class StreamerTest {
     }
 
     @Test
+    void kitAdministrationRequiresOwnerAndSignedAgentsCannotPublishOrDownloadUnassignedDefinitions() throws Exception {
+        var item=new com.porter.wesort.data.PhysicalSlots.Item("minecraft:diamond","minecraft:diamond",64,"{}",com.porter.wesort.data.PhysicalSlots.Kind.ITEM,0,List.of(),"");
+        var template=new com.porter.wesort.data.KitTemplate("Raid",new com.porter.wesort.data.PhysicalSlots.Snapshot(27,List.of(new com.porter.wesort.data.PhysicalSlots.Slot(26,32,item))));
+        var body=new JsonObject();body.addProperty("action","publish");body.addProperty("server","2b2t.org");body.add("template",template.json());
+        assertEquals(400,post(owner,"/api/v1/kits","{}").status);
+        assertEquals(400,botPost("/api/v1/kits/agent","{}").status);
+        assertEquals(403,post(uma,"/api/v1/kits",body.toString()).status);
+        assertEquals(403,botPost("/api/v1/kits/agent",body.toString()).status);
+        ok(post(owner,"/api/v1/kits",body.toString()));
+        assertEquals(403,get(uma,"/api/v1/kits/editor?server=2b2t.org").status);
+        assertEquals(403,get(uma,"/api/v1/kits/jobs?server=2b2t.org").status);
+        assertEquals(403,post(uma,"/api/v1/kits/jobs","{}").status);
+        assertEquals(404,get(fay,"/api/v1/kits?server=2b2t.org").status);
+        assertEquals(403,botPost("/api/v1/kits/agent","{\"server\":\"2b2t.org\",\"action\":\"list\"}").status);
+        var claim=new JsonObject();claim.addProperty("server","2b2t.org");claim.addProperty("stash","a");claim.addProperty("agent",java.util.UUID.randomUUID().toString());claim.addProperty("action","claim");
+        var response=botPost("/api/v1/kits/agent",claim.toString());ok(response);assertTrue(JsonParser.parseString(response.body).getAsJsonObject().get("job").isJsonNull());
+    }
+
+    @Test
     void stashesIndexAndDelivery() throws Exception {
         String forced = get(fay, "/api/v1/stashes").body;
         assertFalse(forced.contains("1234") || forced.contains("-5678") || forced.contains("Bobby") || forced.contains("the_nether")
@@ -486,8 +505,13 @@ class StreamerTest {
             "[POST] /api/v1/orders/clear BROWSER_WRITE ORDERS_ALL",
             "[GET, HEAD] /icon/ SESSION ICONS");
         java.util.Set<String> forbidden = java.util.Set.of(
+            "[GET, HEAD] /api/v1/kits SESSION VIEW",
             "[POST] ^/api/v1/bots/([A-Za-z0-9_-]{1,64})/(settings|jobs|activity)$ BROWSER_WRITE ACTIVITY");
         java.util.Set<String> ownerOnly = java.util.Set.of(
+            "[POST] /api/v1/kits BROWSER_WRITE OWNER",
+            "[GET, HEAD] /api/v1/kits/editor SESSION OWNER",
+            "[GET, HEAD] /api/v1/kits/jobs SESSION OWNER",
+            "[POST] /api/v1/kits/jobs BROWSER_WRITE OWNER",
             "[POST] /api/v1/link/regenerate BROWSER_WRITE OWNER",
             "[GET, HEAD] /api/v1/users SESSION OWNER",
             "[POST] /api/v1/users BROWSER_WRITE OWNER",

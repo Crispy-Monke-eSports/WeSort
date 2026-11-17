@@ -1,0 +1,40 @@
+name: Minecraft 26.3 kits
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  kits:
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [pack, partial, repeat, repeat-version, variant, reserved, abort, offline, version, restart]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25.0.5+8'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install software display
+        run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 libgl1 libegl1 libegl-mesa0 mesa-vulkan-drivers libvulkan1 libopenal1
+      - name: Build isolated Manager with versioned kits
+        run: docker build -t wesort-manager:kit-tests .
+      - name: Manager-owned exact kit job and physical server receipt
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          SDL_VIDEO_DRIVER: x11
+          SDL_VIDEO_FORCE_EGL: '1'
+          ALSOFT_DRIVERS: 'null'
+        run: xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/mc26/kit-harness.py --scenario "${{ matrix.scenario }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mc26-kits-${{ matrix.scenario }}-${{ github.sha }}
+          path: build/mc26-e2e-*/evidence/

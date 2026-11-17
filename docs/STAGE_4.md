@@ -34,3 +34,24 @@ orderansvariga med åtkomst till stashen.
 
 Orderändamål, mottagarflöde och godkännande samordnas med W-058.
 Frivilliga uttagskvoter hör till W-059.
+
+## W-026 – atomisk orderlivscykel
+
+Manager sparar order, reservation och idempotenskvittot i samma atomiska
+orderbok. Webben skickar `Idempotency-Key` och behåller nyckeln vid omförsök
+av samma utkast. En identisk upprepning ger tillbaka den första kvittensen
+även efter omstart och arkivering. Ändrat innehåll med samma nyckel ger
+konflikt. Signerade agentrapporter använder `reportId`. Om en äldre agent
+utelämnar det härleder Manager en nyckel från rapportens innehåll.
+
+Orderns fysiska tillstånd är separat från den äldre agentens statusfält.
+En verifierad överföring till utlämningskistan ger PICKUP_READY.
+En rapport om färdig packning utan motsvarande journalbevis ger
+NEEDS_RECONCILIATION och behåller reservationen. Historiska slutrapporter
+som saknar ett fysiskt slutleveransbevis läses också som avstämning.
+Upphämtning, transport och kvittens hos mottagaren hör till W-027.
+
+Det riktiga 26.3-provet skickade samma order med samma nyckel före och efter
+packningen. RCON verifierade att exakt en observerad namngiven shulker hamnade
+i utlämningskistan. Separata API- och persistensprov täcker samtidiga
+anrop, omstart, arkiverade order och rapporter utan fysiskt bevis.

@@ -330,6 +330,23 @@ final class StockLedger {
             }
         }catch(SQLException e){throw new IOException("Cannot read physical sources",e);}return out;
     }
+    boolean verifiedStaging(String order, String agent, int packages) throws IOException {
+        try (var c = open(); var p = c.prepareStatement("""
+                SELECT count(*) FROM physical_operations AS operation
+                WHERE state='COMPLETED' AND agent=? AND json_extract(payload,'$.context.orderId')=?
+                  AND json_extract(payload,'$.context.execution')='STAGE_PACKAGE'
+                  AND EXISTS (SELECT 1 FROM json_each(operation.payload,'$.events') AS event
+                    WHERE json_extract(event.value,'$.type') IN ('VERIFIED','RECONCILED')
+                      AND json_array_length(event.value,'$.evidence.inventoryDiff.slots')>0)
+                """)) {
+            p.setString(1, agent);
+            p.setString(2, order);
+            try (var rows = p.executeQuery()) { return rows.next() && rows.getInt(1) >= packages; }
+        } catch (SQLException failure) {
+            throw new IOException("Cannot read verified warehouse staging", failure);
+        }
+    }
+
     boolean unsettledPhysicalOrder(String order) throws IOException {
         try (var c = open(); var p = c.prepareStatement("""
                 SELECT 1 FROM physical_operations

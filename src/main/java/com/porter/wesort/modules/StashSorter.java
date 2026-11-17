@@ -5770,6 +5770,8 @@ public class StashSorter extends Module {
     }
 
     /** Puts the order's finished shulker into the delivery container, stopping when it is full. */
+    private boolean stagingPackage;
+
     private boolean deliverOne() {
         if (!mc.player.containerMenu.getCarried().isEmpty()) return recoverBounded();
         // A look at a full chest that may have been emptied, not a delivery
@@ -5788,7 +5790,12 @@ public class StashSorter extends Module {
                 orderRunner.deliveryFull();
                 return false;
             }
-            InvUtils.shiftClick().slotId(inventoryToMenu(slot, target.contents.length));
+            stagingPackage = true;
+            try {
+                InvUtils.shiftClick().slotId(inventoryToMenu(slot, target.contents.length));
+            } finally {
+                stagingPackage = false;
+            }
             return true;
         }
         // Only a read after the settle wait, or of a freshly opened window, is the server's word and not our own prediction
@@ -9667,7 +9674,10 @@ public class StashSorter extends Module {
         if (kit != null) context.addProperty("jobId", kit);
         String lease = manager == null ? null : manager.physicalLeaseFingerprint();
         if (lease != null) context.addProperty("leaseFingerprint", lease);
-        if (orderRunner.orderId() != null) context.addProperty("orderId", orderRunner.orderId());
+        if (orderRunner.orderId() != null) {
+            context.addProperty("orderId", orderRunner.orderId());
+            if (stagingPackage) context.addProperty("execution", "STAGE_PACKAGE");
+        }
         return context;
     }
 

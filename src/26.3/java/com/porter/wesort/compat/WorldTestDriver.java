@@ -309,6 +309,19 @@ public final class WorldTestDriver {
                     }
                     report.add("probes", probes); respond(true, "production category and destination diagnostics", report);
                 }
+                case "order-staging-settings" -> {
+                    var pos = position(command);
+                    var box = stash == null ? null : stash.boxAt(pos);
+                    if (box == null || !box.known()) { respond(false, "Observe the staging chest first", null); return; }
+                    box.delivery = true;
+                    box.excluded = true;
+                    stash.deliveryPos = box.pos;
+                    stash.markDirty();
+                    stash.save();
+                    var manager = Modules.get().get(StashManager.class);
+                    ((Setting<Boolean>) manager.settings.get("accept-orders")).set(true);
+                    respond(true, "configured actual production order staging", state());
+                }
                 case "stock-scan-settings" -> {
                     var sorter = Modules.get().get(StashSorter.class);
                     ((Setting<Boolean>) sorter.settings.get("sort-items")).set(false);

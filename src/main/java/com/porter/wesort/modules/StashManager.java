@@ -792,7 +792,7 @@ public class StashManager extends Module {
             JsonObject o = new JsonObject();
             o.addProperty("status", end);
             o.addProperty("message", StashIndex.clamp(why, 300));
-            send(base, "/api/v1/orders/" + id + "/status", bytes(o), key, (code, body) -> {
+            send(base, "/api/v1/orders/" + id + "/status", orderReportBytes(o), key, (code, body) -> {
                 // 409: the server already has it finished; another refusal is not tried again
                 if (code >= 400 && code < 500 && code != 401 && code != 409) WeSortAddon.LOG.warn("wesort-stash-manager: the server refused the status of order {} ({}): {}", id, code, body);
                 else if (code != 200 && code != 409) return false;
@@ -815,7 +815,8 @@ public class StashManager extends Module {
             if (!sig.equals(lastStatusSig) && (report.terminal() || now - lastStatusAt >= STATUS_MS)) {
                 lastStatusAt = now;
                 boolean minimal = report.id().equals(minimalFor);
-                send(base, "/api/v1/orders/" + report.id() + "/status", bytes(minimal ? minimalJson(report) : statusJson(report, runner)), key, (code, body) -> {
+                send(base, "/api/v1/orders/" + report.id() + "/status",
+                    orderReportBytes(minimal ? minimalJson(report) : statusJson(report, runner)), key, (code, body) -> {
                     // A report the server refuses (4xx other than a wrong key or "already finished"): said again in short once,
                     // then given up on, so the bot is never stuck on one it can't send
                     if (code >= 400 && code < 500 && code != 401 && code != 409) {
@@ -1139,6 +1140,12 @@ public class StashManager extends Module {
         o.addProperty("status", r.status());
         o.addProperty("message", StashIndex.clamp(r.message(), 100));
         return o;
+    }
+
+    private byte[] orderReportBytes(JsonObject report) {
+        report.addProperty("reportId", com.porter.wesort.data.ContainerIdentity.hash(
+            com.porter.wesort.data.CanonicalJson.stringify(report)));
+        return bytes(report);
     }
 
     private byte[] bytes(JsonObject o) {

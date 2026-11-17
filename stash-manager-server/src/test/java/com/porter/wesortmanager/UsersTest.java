@@ -134,9 +134,14 @@ class UsersTest {
     }
 
     Res post(String token, String path, String body) throws Exception {
+        return post(token, path, body, null);
+    }
+
+    Res post(String token, String path, String body, String idempotencyKey) throws Exception {
         HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(base + path))
             .header("X-Stash-Manager", "1").header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(body == null ? "{}" : body));
+        if (idempotencyKey != null) b.header("Idempotency-Key", idempotencyKey);
         if (token != null) b.header("Cookie", SessionStore.COOKIE + "=" + token);
         return send(b.build());
     }
@@ -245,6 +250,43 @@ class UsersTest {
         assertEquals(401, get(member, "/api/v1/orders?server=s&stash=a").status);
         assertEquals(balances, get(viewer, "/api/v1/stock").obj().get("items"));
         assertTrue(get(owner, "/api/v1/orders?server=s&stash=a").obj().toString().contains(own));
+    }
+
+    @Test
+    void concurrentOrderReplayPersistsAcrossRestartAndArchive() throws Exception {
+        String owner = owner();
+        String body = """
+            {"server":"s","stash":"a","lines":[{"type":"item","key":"minecraft:diamond","count":2}]}
+            """;
+        var gate = new java.util.concurrent.CountDownLatch(1);
+        String id;
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            java.util.concurrent.Callable<Res> send = () -> {
+                gate.await();
+                return post(owner, "/api/v1/orders", body, "retry-order-1");
+            };
+            var a = pool.submit(send);
+            var b = pool.submit(send);
+            gate.countDown();
+            var first = a.get();
+            var duplicate = b.get();
+            assertEquals(200, first.status);
+            assertEquals(200, duplicate.status);
+            assertEquals(first.obj(), duplicate.obj());
+            id = first.obj().getAsJsonObject("order").get("id").getAsString();
+        }
+        assertEquals(2, orders.reservedFor("s", "a").get("item:minecraft:diamond"));
+        assertEquals(409, post(owner, "/api/v1/orders", body.replace("\"count\":2", "\"count\":3"), "retry-order-1").status);
+        assertEquals(1, audit.newest(30).asList().stream().filter(row -> "order.place".equals(
+            row.getAsJsonObject().get("action").getAsString())).count());
+        assertEquals(200, post(owner, "/api/v1/orders/" + id + "/cancel", "{}").status);
+        assertEquals(1, post(owner, "/api/v1/orders/clear", "{\"server\":\"s\",\"stash\":\"a\"}").obj().get("removed").getAsInt());
+        stop();
+        startServer(Config.load(data));
+        var replay = post(owner(), "/api/v1/orders", body, "retry-order-1");
+        assertEquals(200, replay.status);
+        assertEquals(id, replay.obj().getAsJsonObject("order").get("id").getAsString());
+        assertTrue(orders.reservedFor("s", "a").isEmpty());
     }
 
     @Test

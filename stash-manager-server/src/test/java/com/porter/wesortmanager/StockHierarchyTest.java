@@ -157,6 +157,70 @@ class StockHierarchyTest {
         assertTrue(restarted.heldRoots("s").isEmpty());
     }
 
+    @Test void stagingNeedsNativeReceiptAndCannotBecomeFinalDelivery() throws Exception {
+        var ledger = new StockLedger(data);
+        var store = new IndexStore(data, CreativeTabs.NONE, ledger);
+        store.load();
+        store.putIndex(index(ledger, 32));
+        var orders = new OrderStore(data, store);
+        orders.load();
+        var order = orders.place("s", "a", List.of(new OrderStore.Line("shulker", "kit", 1)), null);
+        assertEquals(OrderStage.RESERVED, order.stage());
+        String agent = UUID.randomUUID().toString();
+        var claim = orders.claimPayload("s", "a", agent);
+        assertEquals("PACKING", claim.get("state").getAsString());
+        var result = new JsonObject();
+        result.addProperty("shulkers", 1);
+        var uncertain = orders.status(order.id, "delivered", null, null, null, result, agent, "receipt-a");
+        assertEquals(OrderStage.NEEDS_RECONCILIATION, uncertain.stage());
+        assertEquals("needs_reconciliation", uncertain.status);
+        var restarted = new OrderStore(data, store);
+        restarted.load();
+        assertEquals(uncertain.toJson(), restarted.status(order.id, "delivered", null, null, null, result, agent, "receipt-a").toJson());
+        assertEquals(409, assertThrows(OrderStore.OrderException.class, () ->
+            restarted.status(order.id, "failed", null, null, null, null, agent, "receipt-a")).status);
+        assertEquals(0, restarted.clearFinished("s", "a"));
+        assertEquals(1, restarted.heldRoots("s").size());
+        assertFalse(OrderStage.PACKING.allows(OrderStage.DELIVERED));
+        assertFalse(OrderStage.PICKUP_READY.allows(OrderStage.DELIVERED));
+        assertFalse(OrderStage.NEEDS_RECONCILIATION.allows(OrderStage.DELIVERED));
+        assertTrue(OrderStage.AWAITING_CUSTOMER.allows(OrderStage.DELIVERED));
+    }
+
+    @Test void verifiedWarehouseHandoffStopsAtPickupReady() throws Exception {
+        var ledger = new StockLedger(data);
+        var store = new IndexStore(data, CreativeTabs.NONE, ledger);
+        store.load();
+        store.putIndex(index(ledger, 32));
+        var orders = new OrderStore(data, store);
+        var order = orders.place("s", "a", List.of(new OrderStore.Line("shulker", "kit", 1)), null);
+        String agent = UUID.randomUUID().toString();
+        assertNotNull(orders.claimPayload("s", "a", agent));
+        var journal = new com.porter.wesort.inventory.PhysicalJournal(data.resolve("fixture-agent"));
+        var context = JsonParser.parseString("""
+            {"server":"s","dimension":"minecraft:overworld","kind":"DIRECT","execution":"STAGE_PACKAGE"}
+            """).getAsJsonObject();
+        context.addProperty("agent", agent);
+        context.addProperty("orderId", order.id);
+        journal.start(context);
+        var evidence = JsonParser.parseString("""
+            {"origin":{"server":"s","dimension":"minecraft:overworld"},
+             "before":{"menu":1,"slots":["empty","box"],"cursor":"empty"},
+             "expected":{"menu":1,"slots":["box","empty"],"cursor":"empty"}}
+            """).getAsJsonObject();
+        journal.intent(evidence);
+        journal.verified(evidence.getAsJsonObject("expected"), false);
+        journal.complete();
+        new PhysicalOperations(ledger).accept(agent, journal.current());
+        var result = new JsonObject();
+        result.addProperty("shulkers", 1);
+        var ready = orders.status(order.id, "delivered", null, null, null, result, agent, "staging-ok");
+        assertEquals(OrderStage.PICKUP_READY, ready.stage());
+        assertEquals("packed", ready.status);
+        assertEquals(0, orders.clearFinished("s", "a"));
+        assertThrows(OrderStore.OrderException.class, () -> orders.cancel(order.id));
+    }
+
     @Test void schemaTwoMigratesWithoutLosingHistoricalStock() throws Exception {
         var ledger = new StockLedger(data); ledger.accept(index(ledger, 32));
         try (var c = ledger.open(); var sql = c.createStatement()) {

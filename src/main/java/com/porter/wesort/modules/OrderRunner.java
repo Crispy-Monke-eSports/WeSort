@@ -1068,7 +1068,7 @@ final class OrderRunner {
                     return new Idle();
                 }
                 if (++u.starts > MAX_STARTS) {
-                    finish(shulkersDelivered > 0 ? State.Delivered : State.Failed, "couldn't put the shulker into the delivery container (" + shulkersDelivered + "/" + units.size() + " delivered)");
+                    finish(shulkersDelivered > 0 ? State.Delivered : State.Failed, "couldn't put the shulker into the delivery container (" + shulkersDelivered + "/" + units.size() + " staged)");
                     return new Idle();
                 }
                 phase = "delivering " + (index + 1) + "/" + units.size();
@@ -1535,10 +1535,10 @@ final class OrderRunner {
             if (got < e.getValue()) shortLines.add(StashIndex.nameOf(e.getKey().startsWith("s:") ? "minecraft:shulker_box" : e.getKey()) + " " + got + "/" + e.getValue());
         }
 
-        String note = shortLines.isEmpty() ? "" : "delivered less than asked: " + String.join(", ", shortLines.size() > 6 ? shortLines.subList(0, 6) : shortLines) + (shortLines.size() > 6 ? ", ..." : "");
+        String note = shortLines.isEmpty() ? "" : "staged less than requested: " + String.join(", ", shortLines.size() > 6 ? shortLines.subList(0, 6) : shortLines) + (shortLines.size() > 6 ? ", ..." : "");
         if (!problems.isEmpty()) note += (note.isEmpty() ? "" : "; ") + String.join(", ", problems.size() > 3 ? problems.subList(0, 3) : problems);
         boolean anything = shulkersDelivered > 0;
-        finish(anything ? State.Delivered : State.Failed, anything ? note : (note.isEmpty() ? "nothing could be delivered" : "nothing could be delivered: " + note));
+        finish(anything ? State.Delivered : State.Failed, anything ? note : (note.isEmpty() ? "nothing could be staged" : "nothing could be staged: " + note));
     }
 
     private void finish(State end, String text) {
@@ -1552,7 +1552,7 @@ final class OrderRunner {
         if (!unnamedNote.isEmpty() && !text.contains(unnamedNote)) text = text.isEmpty() ? unnamedNote : text + "; " + unnamedNote;
         text = cut(text);
         message = text;
-        phase = end.name().toLowerCase();
+        phase = end == State.Delivered ? "ready for pickup" : end.name().toLowerCase();
         epoch++;
         say("Order " + order.id + " " + phase + (text.isEmpty() ? "." : ": " + text));
     }

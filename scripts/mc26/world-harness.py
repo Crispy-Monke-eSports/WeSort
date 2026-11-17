@@ -198,8 +198,8 @@ class Harness:
             require('[' in value and ']' in value, 'No authoritative server item list for ' + pos + ': ' + value)
         return result
 
-    def http(self, path, body=None):
-        headers = {'Content-Type': 'application/json', 'X-Stash-Manager': '1'}
+    def http(self, path, body=None, *, headers=None):
+        headers = {'Content-Type': 'application/json', 'X-Stash-Manager': '1', **(headers or {})}
         request = urllib.request.Request('http://127.0.0.1:' + str(self.manager_port) + path,
             data=None if body is None else json.dumps(body).encode(), headers=headers)
         try:

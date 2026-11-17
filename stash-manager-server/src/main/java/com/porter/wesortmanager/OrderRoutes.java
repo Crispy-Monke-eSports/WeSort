@@ -162,9 +162,10 @@ final class OrderRoutes {
             lines.add(line);
         }
         try {
-            OrderStore.Order order = orders.place(server, stash, lines, names, who.id(), who.name(),
-                guild.profile().id().toString(), intent);
-            audit.add(who, "order.place", order.id + " " + intent.purpose().name(), AuthRoutes.address(ex));
+            var submission = orders.submit(server, stash, lines, names, who.id(), who.name(),
+                guild.profile().id().toString(), intent, idempotencyKey(ex));
+            OrderStore.Order order = submission.order();
+            if (submission.created()) audit.add(who, "order.place", order.id + " " + intent.purpose().name(), AuthRoutes.address(ex));
             JsonObject out = Http.ok();
             out.add("order", shown(ex, order.toJson()));
             Http.json(ex, 200, out);
@@ -332,8 +333,8 @@ final class OrderRoutes {
             }
         }
         String status = AddonRoutes.string(o, "status");
-        if (status == null || !(status.equals("accepted") || status.equals("in_progress") || OrderStore.FINISHED.contains(status))) {
-            Http.error(ex, 400, "status must be accepted, in_progress, delivered, failed or cancelled");
+        if (status == null || !(status.equals("accepted") || status.equals("in_progress") || OrderStore.REPORTED_TERMINAL.contains(status))) {
+            Http.error(ex, 400, "Invalid agent order status");
             return;
         }
         String phase;
@@ -350,7 +351,8 @@ final class OrderRoutes {
             return;
         }
         try {
-            OrderStore.Order order = orders.status(m.group(1), status, phase, progress, message, result, AddonRoutes.string(o, "agent"));
+            OrderStore.Order order = orders.status(m.group(1), status, phase, progress, message, result,
+                AddonRoutes.string(o, "agent"), reportId(o));
             JsonObject out = Http.ok();
             out.add("order", shown(ex, order.toJson()));
             Http.json(ex, 200, out);
@@ -360,6 +362,28 @@ final class OrderRoutes {
     }
 
     // ---------- validation helpers ----------
+
+    private static String reportId(JsonObject report) throws OrderStore.OrderException {
+        if (!report.has("reportId")) return null;
+        String id = AddonRoutes.string(report, "reportId");
+        if (id == null || !validIdempotencyKey(id)) {
+            throw new OrderStore.OrderException(400, "Invalid reportId", -1);
+        }
+        return id;
+    }
+
+    private static boolean validIdempotencyKey(String value) {
+        return value.matches("[A-Za-z0-9_-]{1,128}");
+    }
+
+    private static String idempotencyKey(HttpExchange ex) throws OrderStore.OrderException {
+        var values = ex.getRequestHeaders().get("Idempotency-Key");
+        if (values == null) return null;
+        if (values.size() != 1 || !validIdempotencyKey(values.getFirst())) {
+            throw new OrderStore.OrderException(400, "Invalid Idempotency-Key", -1);
+        }
+        return values.getFirst();
+    }
 
     private static void lineError(HttpExchange ex, int status, String message, int line) throws IOException {
         JsonObject o = new JsonObject();

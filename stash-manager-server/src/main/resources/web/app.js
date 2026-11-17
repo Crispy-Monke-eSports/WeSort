@@ -669,6 +669,7 @@
     if (method !== "GET") {
       init.headers["X-Stash-Manager"] = "1";
       init.headers["Content-Type"] = "application/json";
+      if (opts.idempotencyKey) init.headers["Idempotency-Key"] = opts.idempotencyKey;
       init.body = JSON.stringify(opts.body || {});
     }
     return fetch(path, init).then(function (res) {
@@ -3533,18 +3534,30 @@
     updatePickerCounts();
   });
 
+  var pendingSubmission = null;
+
+  function submissionKey(body) {
+    var serialized = JSON.stringify(body);
+    if (!pendingSubmission || pendingSubmission.body !== serialized) {
+      var random = window.crypto.getRandomValues(new Uint8Array(16));
+      var key = Array.from(random, function (byte) { return byte.toString(16).padStart(2, "0"); }).join("");
+      pendingSubmission = { body: serialized, key: key };
+    }
+    return pendingSubmission.key;
+  }
+
   el.cartPlace.addEventListener("click", function () {
     var s = currentStash();
     if (!s || !cart.lines.length) return;
     el.cartPlace.disabled = true;
     el.cartStatus.textContent = "Placing the order...";
     el.cartStatus.classList.remove("warn");
-    var sent = cart.lines.slice();
+    var draft = { server: s.server, stash: s.stash, names: namesBody(), lines: cart.lines.slice(),
+      purpose: can("guildOrders") ? $("order-purpose").value : "SELF", comment: $("order-comment").value };
     api("/api/v1/orders", {
-      method: "POST",
-      body: { server: s.server, stash: s.stash, names: namesBody(), lines: sent,
-        purpose: can("guildOrders") ? $("order-purpose").value : "SELF", comment: $("order-comment").value }
+      method: "POST", body: draft, idempotencyKey: submissionKey(draft)
     }).then(function () {
+      pendingSubmission = null;
       cart.lines = [];
       cart.badLine = -1;
       plan.selected = null;
@@ -3957,7 +3970,13 @@
 
   var STATUS_LABEL = {
     pending: "Pending", accepted: "Accepted", in_progress: "In progress",
-    delivered: "Delivered", failed: "Failed", cancelled: "Cancelled"
+    delivered: "Delivered", packed: "Ready for pickup", needs_reconciliation: "Needs reconciliation",
+    failed: "Failed", cancelled: "Cancelled"
+  };
+  var ORDER_STATE_LABEL = {
+    CREATED: "Created", RESERVED: "Reserved", PACKING: "Packing", PICKUP_READY: "Ready for pickup",
+    PICKED_UP: "Picked up", IN_TRANSIT: "In transit", AWAITING_CUSTOMER: "Awaiting recipient",
+    DELIVERED: "Delivered", NEEDS_RECONCILIATION: "Needs reconciliation", FAILED: "Failed", CANCELLED: "Cancelled"
   };
   var OPEN_STATUS = { pending: true, accepted: true, in_progress: true };
 
@@ -4007,7 +4026,9 @@
   var FINISHED_STATUS = { delivered: true, failed: true, cancelled: true };
 
   function finishedCount() {
-    return orders.list.filter(function (o) { return o && FINISHED_STATUS[o.status]; }).length;
+    return orders.list.filter(function (o) {
+      return o && (o.state ? ["DELIVERED", "FAILED", "CANCELLED"].indexOf(o.state) >= 0 : FINISHED_STATUS[o.status]);
+    }).length;
   }
 
   el.ordersClear.addEventListener("click", function () {
@@ -4055,7 +4076,7 @@
       head.className = "order-head";
       var badge = document.createElement("span");
       badge.className = "badge st-" + str(o.status);
-      badge.textContent = (STATUS_LABEL[o.status] || str(o.status)) + (o.cancelRequested && OPEN_STATUS[o.status] ? " (cancel requested)" : "");
+      badge.textContent = (ORDER_STATE_LABEL[o.state] || STATUS_LABEL[o.status] || str(o.status)) + (o.cancelRequested && OPEN_STATUS[o.status] ? " (cancel requested)" : "");
       head.appendChild(badge);
       var when = document.createElement("span");
       when.className = "note";
@@ -4190,8 +4211,9 @@
       summary.textContent = lines.slice(0, 3).join(", ") + (lines.length > 3 ? ", +" + (lines.length - 3) + " more" : "");
       details.appendChild(summary);
       lines.forEach(function (t) { details.appendChild(line("order-line", t)); });
-      if (o.result && typeof o.result === "object") {
-        details.appendChild(line("order-line note", "Delivered in " + plural(String(num(o.result.shulkers, 0)), "shulker")));
+      if (o.result && typeof o.result === "object" && (o.state === "PICKUP_READY" || o.state === "DELIVERED")) {
+        var resultLabel = o.state === "PICKUP_READY" ? "Ready in " : "Delivered in ";
+        details.appendChild(line("order-line note", resultLabel + plural(String(num(o.result.shulkers, 0)), "shulker")));
       }
       card.appendChild(details);
       frag.appendChild(card);

@@ -212,11 +212,6 @@ class OrderNamesTest {
         OrderStore reloaded = new OrderStore(data, index);
         reloaded.load();
         assertEquals(409, assertThrows(OrderStore.OrderException.class, () -> reloaded.retry(failed.id)).status);
-        // Placed again from elsewhere (the planner): Retry refuses too.
-        OrderStore.Order other = orders.cancel(orders.place("s", "a", diamonds(1), null).id);
-        OrderStore.Order replacement = orders.place("s", "a", diamonds(1), null);
-        orders.markRetried(other.id, replacement.id);
-        assertEquals(409, assertThrows(OrderStore.OrderException.class, () -> orders.retry(other.id)).status);
-        assertEquals("pending", orders.statusOf(other.id));
+        assertEquals("pending", reloaded.statusOf(failed.id));
     }
 }

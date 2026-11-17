@@ -23,6 +23,7 @@ require = world.require
 class HierarchyHarness(stock.StockHarness):
     reservations = False
     guild = False
+    order_lifecycle = False
 
     def fixture(self):
         world.Harness.fixture(self)
@@ -137,6 +138,36 @@ class HierarchyHarness(stock.StockHarness):
             self.browser = owner
         self.ok('one real Fabric agent feeds a shared Docker guild stock; member, officer and viewer roles and recipient-independent order identity verified')
 
+    def verify_order_lifecycle(self, row):
+        self.rcon.command('setblock 8 64 -3 minecraft:chest')
+        self.read(8, 'minecraft:air', 0)
+        self.command('order-staging-settings', x=8, y=64, z=-3)
+        group = next(slot['group'] for slot in row['snapshot']['positions'] if slot['path'] == '0')
+        draft = {'server': self.server_name, 'stash': 'e2e-fixture',
+                 'lines': [{'type': 'shulker', 'key': group, 'count': 1}]}
+        headers = {'Idempotency-Key': 'staging-fixture-order'}
+        status, placed = self.http('/api/v1/orders', draft, headers=headers)
+        require(status == 200 and placed['order']['state'] == 'RESERVED', 'Physical order could not reserve a complete box')
+        require(self.http('/api/v1/orders', draft, headers=headers) == (200, placed), 'Order replay differed from its original receipt')
+        ident = placed['order']['id']
+        self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key)
+        query = urllib.parse.urlencode({'server': self.server_name, 'stash': 'e2e-fixture'})
+
+        def ready(stock_view):
+            status, listing = self.http('/api/v1/orders?' + query)
+            if status != 200:
+                return False
+            order = next(entry for entry in listing['orders'] if entry['id'] == ident)
+            if order['state'] in ('FAILED', 'NEEDS_RECONCILIATION', 'DELIVERED'):
+                raise RuntimeError('Unexpected order state ' + order['state'] + ': ' + str(order.get('message')))
+            return order['state'] == 'PICKUP_READY'
+
+        self.wait(ready, 'Agent did not stage the actual Minecraft package')
+        stored = self.rcon.command('data get block 8 64 -3 Items')
+        require(stored.count('Hierarchy box') == 1 and 'Exact sword' in stored, 'Pickup-ready package differs from the expected single shulker')
+        require(self.http('/api/v1/orders', draft, headers=headers) == (200, placed), 'Staged order replay created a new order')
+        self.ok('an idempotent 26.3 Fabric order placed one exact named shulker in warehouse staging; Manager exposes pickup-ready custody')
+
     def execute(self):
         try:
             self.start_server(); self.fixture(); self.start_manager(); self.start_client()
@@ -187,6 +218,8 @@ class HierarchyHarness(stock.StockHarness):
             code, _ = replay.post('/api/v1/index', initial)
             require(code == 409, 'Older actual snapshot accepted after changed content')
             self.ok('real server-side inner-content delta invalidates old box fingerprint and advances affected slot revisions; captured old signed observation rejected 409')
+            if self.order_lifecycle:
+                self.verify_order_lifecycle(detail)
             self.command('screenshot'); shutil.copyfile(self.game_dir/'screenshots/fixture.png',self.evidence/'fixture.png')
             (self.evidence/'changed-detail.json').write_text(json.dumps(detail,indent=2)+'\n')
             result = {'result':'PASS','source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=world.ROOT,text=True).strip(),
@@ -201,8 +234,10 @@ if __name__ == '__main__':
     parser=argparse.ArgumentParser(description=__doc__); parser.add_argument('--manager-image',default=world.DEFAULT_IMAGE)
     parser.add_argument('--reservations', action='store_true')
     parser.add_argument('--guild', action='store_true')
+    parser.add_argument('--order-lifecycle', action='store_true')
     args = parser.parse_args()
     harness = HierarchyHarness(args.manager_image)
     harness.reservations = args.reservations
     harness.guild = args.guild
+    harness.order_lifecycle = args.order_lifecycle
     harness.execute()

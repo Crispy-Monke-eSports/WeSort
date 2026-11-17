@@ -68,3 +68,20 @@ to request a fresh inspection. The signed agent response delivers the
 inspection only to the original agent. The agent supplies the exact native
 source and player inventory evidence in its next journal revision and can
 return the decision outcome in `result`. The Owner audit uses operation IDs.
+
+## W-026 order receipts
+
+The browser sends `Idempotency-Key` on order creation. Manager scopes the
+key to the authenticated requester and durably saves the submitted order
+and its first response together. The same key and request return the
+original response. A different request with the same key returns 409.
+
+A signed order status request may include `reportId` in its JSON body.
+Manager scopes it to the order and agent. Older signed reports use a
+content-derived key. Report receipts are committed with the state change.
+A replay returns its committed response without advancing the order again.
+
+`state` is the physical progress of a complete order. The legacy agent
+report `delivered` describes warehouse staging. Manager requires exact
+native staging receipts before exposing `PICKUP_READY`. An uncertain
+report leaves the order in `NEEDS_RECONCILIATION`.

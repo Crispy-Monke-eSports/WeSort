@@ -100,7 +100,7 @@ class Harness:
         self.server_port, self.rcon_port, self.manager_port = [free_port() for _ in range(3)]
         self.password = secrets.token_hex(32)
         self.env = dict(os.environ, WESORT_IMAGE=image, WESORT_PORT=str(self.manager_port),
-            WESORT_BIND='127.0.0.1', WESORT_SECURE_COOKIES='false', WESORT_ICON_SOURCE='game',
+            WESORT_BIND='127.0.0.1', WESORT_SECURE_COOKIES='false', WESORT_EULA='true',
             WESORT_ALLOWED_HOSTS='', WESORT_TRUSTED_PROXIES='')
         self.compose = ['docker', 'compose', '-p', 'wesort-e2e-' + self.id, '-f', str(ROOT / 'compose.yaml')]
         self.server = self.client = self.rcon = None
@@ -212,7 +212,7 @@ class Harness:
 
     def start_manager(self):
         self.run(self.compose + ['up', '-d', '--no-build'])
-        for _ in range(120):
+        for _ in range(240):
             try:
                 if self.http('/health/ready')[0] == 200:
                     break

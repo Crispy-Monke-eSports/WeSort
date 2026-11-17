@@ -26,7 +26,7 @@ project = 'wesort-smoke-' + uuid.uuid4().hex[:10]
 proxy_name = project + '-tls'
 python_image = 'python:3.13-alpine@sha256:9ef1a599f863231c3d91e941389bfdc4a2d6070557243d54df1a4e57015b960e'
 env = dict(os.environ, WESORT_DEV_IMAGE=args.image, WESORT_IMAGE=args.image,
-    WESORT_BIND='127.0.0.1', WESORT_ALLOWED_HOSTS='', WESORT_TRUSTED_PROXIES='', WESORT_ICON_SOURCE='game', WESORT_SECURE_COOKIES='false')
+    WESORT_BIND='127.0.0.1', WESORT_ALLOWED_HOSTS='', WESORT_TRUSTED_PROXIES='', WESORT_EULA='true', WESORT_SECURE_COOKIES='false')
 with socket.socket() as s:
     s.bind(('127.0.0.1', 0)); env['WESORT_PORT'] = str(s.getsockname()[1])
 base = 'http://127.0.0.1:' + env['WESORT_PORT']
@@ -46,7 +46,7 @@ def ok(name):
     print('PASS: ' + name, flush=True)
 
 def wait_ready(container):
-    for _ in range(120):
+    for _ in range(240):
         info = json.loads(run(['docker', 'inspect', container]).stdout)[0]
         if not info['State']['Running']:
             raise AssertionError('Manager stopped before readiness')

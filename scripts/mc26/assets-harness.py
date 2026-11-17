@@ -110,7 +110,7 @@ class AssetsHarness(world.Harness):
         try:
             # Explicit integration-test consent, rather than relying on a production default.
             # This private, disposable Docker instance only; no Minecraft game assets enter the image.
-            self.env['WESORT_ACCEPT_MINECRAFT_DOWNLOAD'] = 'true'
+            self.env['WESORT_EULA'] = 'true'
             self.start_server(); self.fixture(); before = self.physical_snapshot()
             self.start_manager(); self.start_client(); self.command('component-identity'); self.ok('actual item CODEC distinguishes NBT byte/int custom data while canonicalizing compound order'); self.command('window-capture')
             source = self.observe(); expected = self.verify_index(source)

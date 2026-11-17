@@ -22,7 +22,7 @@ services:
       WESORT_ALLOWED_HOSTS: ${WESORT_ALLOWED_HOSTS:-}
       WESORT_TRUSTED_PROXIES: ${WESORT_TRUSTED_PROXIES:-}
       WESORT_SECURE_COOKIES: "false"
-      WESORT_ICON_SOURCE: ${WESORT_ICON_SOURCE:-game}
+      WESORT_EULA: ${WESORT_EULA:-}
     volumes:
       - wesort-data:/var/lib/wesort
     tmpfs:

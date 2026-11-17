@@ -4,6 +4,8 @@
 >
 > WeSort är ett oberoende communityprojekt och är inte godkänt av eller associerat med Mojang eller Microsoft. [Minecraft Usage Guidelines](https://www.minecraft.net/en-us/usage-guidelines).
 
+**Manager kräver `eula=true` innan start.** Läs [Mojangs EULA](https://www.minecraft.net/en-us/eula) och aktivera sedan `WESORT_EULA=true` i Docker Compose-miljön eller `eula=true` i Managers `config.properties`. Manager laddar själv ned Minecraft 26.3-klienten från Mojang till sin privata cache och kontrollerar filens checksumma. Det finns inget stöd för att ange en lokal Minecraft-installation eller klient-JAR. Utan godkännande, eller om verifierad nedladdning misslyckas, startar inte servern.
+
 WeSort är en lagerfokuserad vidareutveckling av Qwerte för ett gemensamt
 guildlager. Minecraft-porten och testplattformen i steg 2 finns nu i koden;
 den färdiga guildplattformen i [roadmap #1](https://github.com/Crispy-Monke-eSports/WeSort/issues/1)

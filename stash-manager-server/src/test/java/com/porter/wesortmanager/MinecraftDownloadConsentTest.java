@@ -2,37 +2,44 @@ package com.porter.wesortmanager;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import static org.junit.jupiter.api.Assertions.*;
 
 class MinecraftDownloadConsentTest {
-    @Test void newInstallDefaultsToNoDownload(@TempDir Path data) throws Exception {
+    @Test void newInstallRequiresEulaBeforeStartup(@TempDir Path data) throws Exception {
         Config config = Config.load(data);
-        assertFalse(config.acceptMinecraftDownload, "Download is opt-in only");
+        assertFalse(config.eulaAccepted);
+        assertTrue(assertThrows(IOException.class, () -> WeSortManager.requireEula(config))
+            .getMessage().contains("eula=true"));
         String text = Files.readString(data.resolve("config.properties"));
-        assertTrue(text.contains("acceptMinecraftDownload=false"));
+        assertTrue(text.contains("eula=false"));
         assertTrue(text.contains("https://www.minecraft.net/en-us/eula"));
         assertTrue(text.contains("Minecraft Java Edition license"));
+        assertFalse(text.contains("\nminecraftJar="));
+        assertFalse(text.contains("\nacceptMinecraftDownload="));
     }
 
-    @Test void existingInstallGetsOptInDocumentationWithoutChangingConsent(@TempDir Path data) throws Exception {
-        Config.load(data); // create the WeSort installation marker before simulating an older config
-        Files.writeString(data.resolve("config.properties"), "port=8765\niconSource=auto\n");
+    @Test void oldDownloadOptInOrLocalClientCannotBypassEula(@TempDir Path data) throws Exception {
+        Config.load(data);
+        Files.writeString(data.resolve("config.properties"),
+            "port=8765\nacceptMinecraftDownload=true\nminecraftJar=/old/client.jar\niconSource=wiki\n");
         Config config = Config.load(data);
-        assertFalse(config.acceptMinecraftDownload);
-        assertTrue(Files.readString(data.resolve("config.properties")).contains("acceptMinecraftDownload=false"));
-        assertFalse(Config.load(data).acceptMinecraftDownload);
+        assertFalse(config.eulaAccepted);
+        assertThrows(IOException.class, () -> WeSortManager.requireEula(config));
+        assertTrue(Files.readString(data.resolve("config.properties")).contains("eula=false"));
     }
 
-    @Test void explicitTrueIsRecognizedAndInvalidValuesFailClosed(@TempDir Path data) throws Exception {
-        Config.load(data); // existing installations carry a marker
-        Path path = data.resolve("config.properties");
-        Files.writeString(path, "port=8765\nacceptMinecraftDownload=true\n");
-        assertTrue(Config.load(data).acceptMinecraftDownload);
-        Files.writeString(path, "port=8765\nacceptMinecraftDownload=yes\n");
-        assertFalse(Config.load(data).acceptMinecraftDownload);
-        Files.writeString(path, "port=8765\nacceptMinecraftDownload=false\n");
-        assertFalse(Config.load(data).acceptMinecraftDownload);
+    @Test void explicitEulaTruePermitsStartupAndOtherValuesFailClosed(@TempDir Path data) throws Exception {
+        Config.load(data);
+        Path file = data.resolve("config.properties");
+        Files.writeString(file, "port=8765\neula=true\n");
+        assertTrue(Config.load(data).eulaAccepted);
+        assertDoesNotThrow(() -> WeSortManager.requireEula(Config.load(data)));
+        Files.writeString(file, "port=8765\neula=yes\n");
+        assertFalse(Config.load(data).eulaAccepted);
+        Files.writeString(file, "port=8765\neula=false\n");
+        assertFalse(Config.load(data).eulaAccepted);
     }
 }

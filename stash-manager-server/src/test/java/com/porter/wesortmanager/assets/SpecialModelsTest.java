@@ -11,7 +11,6 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Optional;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -21,7 +20,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * Block-entity ("special") item icons. Shulker boxes used to fall back to the wiki pipeline, which could cache
@@ -73,45 +71,8 @@ class SpecialModelsTest {
             t -> Optional.empty()));
     }
 
-    /** Every shulker colour, and the other block-entity items, in the real client jars when present. */
-    @Test
-    void realJars() throws IOException {
-        int checked = 0;
-        for (String v : new String[]{"26.3"}) {
-            Optional<Path> jar = GameAssets.locate(v, null);
-            if (jar.isEmpty()) continue;
-            checked++;
-            try (IconRenderer r = IconRenderer.open(jar.get(), 64)) {
-                BufferedImage stone = r.render("minecraft:stone").orElseThrow();
-                BufferedImage first = null;
-                for (String c : COLOURS) {
-                    String id = "minecraft:" + c + "shulker_box";
-                    assertNull(r.explain(id), v + " " + id);
-                    BufferedImage img = r.render(id).orElseThrow();
-                    assertIsometric(img);
-                    assertTrue(silhouetteMatch(img, stone) > 0.97, v + " " + id + " is not the isometric box");
-                    if (first == null) first = img;
-                    else assertEquals(1.0, silhouetteMatch(img, first), 1e-9, v + " " + id + " differs in shape from the other colours");
-                }
-                List<String> others = List.of("chest", "trapped_chest", "ender_chest", "white_bed", "red_bed", "white_banner",
-                    "black_banner", "skeleton_skull", "wither_skeleton_skull", "zombie_head", "creeper_head", "player_head",
-                    "shield", "conduit", "decorated_pot");
-                for (String o : others) {
-                    assertNull(r.explain("minecraft:" + o), v + " " + o);
-                    assertTrue(r.render("minecraft:" + o).isPresent(), v + " " + o);
-                }
-                if (v.equals("26.3")) {
-                    for (String o : List.of("copper_chest", "oxidized_copper_chest", "waxed_weathered_copper_chest")) {
-                        assertTrue(r.render("minecraft:" + o).isPresent(), v + " " + o);
-                    }
-                }
-                // Not drawn by this renderer: these go to the wiki.
-                assertFalse(r.render("minecraft:dragon_head").isPresent());
-                assertFalse(r.render("minecraft:piglin_head").isPresent());
-            }
-        }
-        assumeTrue(checked > 0, "no Minecraft 26.3 client jar on this machine");
-    }
+    // Real Minecraft 26.3 rendering is covered by scripts/mc26/assets-harness.py.
+    // Unit tests never inspect a locally installed game or implicitly download Mojang assets.
 
     // ------------------------------------------------------------------ helpers
 

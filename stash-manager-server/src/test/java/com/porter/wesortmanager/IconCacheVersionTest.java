@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class IconCacheVersionTest {
 
     private static IconService service(Path data) {
-        return new IconService(data, id -> null, v -> false, new GameIcons(data.resolve("icons"), null, false), true);
+        return new IconService(data, id -> null, v -> false, new GameIcons(data.resolve("icons"), false, false), true);
     }
 
     @Test

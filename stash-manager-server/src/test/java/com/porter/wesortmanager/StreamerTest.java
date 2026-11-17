@@ -83,7 +83,7 @@ class StreamerTest {
         orders.load();
         Owners owners = new Owners(data);
         owners.load();
-        IconService icons = new IconService(data, id -> null, v -> false, new GameIcons(data.resolve("icons"), null, false), false);
+        IconService icons = new IconService(data, id -> null, v -> false, new GameIcons(data.resolve("icons"), false, false), false);
         SessionStore sessions = new SessionStore(data);
         sessions.load();
         Users users = new Users(data);

@@ -10,7 +10,7 @@ class Unknown26IconTest {
     @Test void unindexed26ItemNeverReturnsAnUnversionedCachedWikiImage() throws Exception {
         Path icons = data.resolve("icons"); Files.createDirectories(icons.resolve("minecraft"));
         byte[] old = new byte[] {1, 2, 3}; Files.write(icons.resolve("minecraft/unknown.png"), old);
-        try (var service = new IconService(data, id -> null, version -> false, new GameIcons(icons, null, false), true)) {
+        try (var service = new IconService(data, id -> null, version -> false, new GameIcons(icons, false, false), true)) {
             var icon = service.get("minecraft", "unknown", "26.3");
             assertEquals(200, icon.status()); assertEquals("image/png", icon.contentType());
             assertFalse(java.util.Arrays.equals(old, icon.data()));
@@ -22,7 +22,7 @@ class Unknown26IconTest {
     @Test void unsupportedVersionNeverUsesLegacyCachedWikiIcon() throws Exception {
         Path icons = data.resolve("icons"); Files.createDirectories(icons.resolve("minecraft"));
         byte[] old = new byte[] {9, 8, 7}; Files.write(icons.resolve("minecraft/unknown.png"), old);
-        try (var service = new IconService(data, id -> null, version -> false, new GameIcons(icons, null, false), true)) {
+        try (var service = new IconService(data, id -> null, version -> false, new GameIcons(icons, false, false), true)) {
             var icon = service.get("minecraft", "unknown", "1.21.11");
             assertEquals(200, icon.status());
             assertFalse(java.util.Arrays.equals(old, icon.data()));

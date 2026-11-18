@@ -122,6 +122,28 @@ class PhysicalSlotsTest {
         assertEquals("INVALID", PhysicalSlots.boxIdentity("minecraft:shulker_box", PhysicalSlots.Kind.SHULKER, fields.toString()).identityStatus());
     }
 
+    @Test void canonicalUuidInSingleQuotedVanillaSnbtIsRecognizedButRawClaimsAreNot() {
+        String uuid = "550e8400-e29b-41d4-a716-446655440000";
+        var component = new JsonObject();
+        component.addProperty("text", "WeSort-" + uuid);
+        var name = new JsonObject();
+        name.addProperty("type", 8);
+        name.addProperty("value", "'" + component + "'");
+        var values = new JsonObject();
+        values.add("minecraft:custom_name", name);
+        var patch = new JsonObject();
+        patch.addProperty("type", 10);
+        patch.add("value", values);
+        assertTrue(PhysicalSlots.boxIdentity("minecraft:shulker_box",
+            PhysicalSlots.Kind.SHULKER, patch.toString()).hasUUID());
+        name.addProperty("value", component.toString());
+        assertEquals("INVALID", PhysicalSlots.boxIdentity("minecraft:shulker_box",
+            PhysicalSlots.Kind.SHULKER, patch.toString()).identityStatus());
+        name.addProperty("value", "'{" + "text:malformed}" + "'");
+        assertEquals("INVALID", PhysicalSlots.boxIdentity("minecraft:shulker_box",
+            PhysicalSlots.Kind.SHULKER, patch.toString()).identityStatus());
+    }
+
     @Test void duplicatedVisibleIdentifiersAreQuarantinedWithoutChangingTotals() {
         var first = namedShulker("WeSort-550e8400-e29b-41d4-a716-446655440000");
         var second = namedShulker("WeSort-550e8400-e29b-41d4-a716-446655440000");

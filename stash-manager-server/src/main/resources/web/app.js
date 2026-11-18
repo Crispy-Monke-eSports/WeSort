@@ -2995,7 +2995,7 @@
   }
 
   function validLabelText(value) {
-    if (value.length > 33) return false;
+    if (value.length > 33 || /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}§]/u.test(value)) return false;
     for (var i = 0; i < value.length; i++) {
       var ch = value.charCodeAt(i);
       if (ch === 167 || ch < 32 || ch >= 127 && ch <= 159

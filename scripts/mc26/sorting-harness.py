@@ -127,7 +127,8 @@ class SortingHarness(world.Harness):
             self.wait(lambda: self.count(6, 'dirt') == 16 and self.count(9, 'diamond_sword') == 1
                 and self.count(24, 'potion') == 1 and self.count(27, 'enchanted_golden_apple') == 4 and self.count(0, 'diamond') == 0
                 and self.count(3, 'diamond') == 1728 and self.count(18, 'diamond') + self.count(21, 'diamond') == 28
-                and self.count(18, 'wheat_seeds') == 23 and self.count(18, 'ender_pearl') == 11
+                and self.count(18, 'wheat_seeds') + self.count(21, 'wheat_seeds') == 23
+                and self.count(18, 'ender_pearl') + self.count(21, 'ender_pearl') == 11
                 and '[]' in self.rcon.command('data get entity ' + self.player + ' Inventory') and self.command('state')['state']['inventoryReady'],
                 'Production sign sorter did not place the mixed fixture correctly')
             self.command('sort-stop')

@@ -266,9 +266,13 @@ public final class InventorySync {
             else if (!reopenRequested && openRecoverySource()) reopenRequested = true;
         }
         if (gate.failed()) return;
+        // Vanilla may deliver the ordered block ACK before the matching world update is
+        // visible to the client. An ACK alone never clears the physical mutation fence.
+        confirmAckedBlocks();
         for (var block : blocks.values()) if (!recoveringWorld && System.nanoTime() >= block.deadline) {
-            gate.fail("Block acknowledgement timed out; do not replay the placement or break"); reportFailure(); return;
+            gate.fail("Server block acknowledgement/state verification timed out; do not replay the placement or break"); reportFailure(); return;
         }
+        complete();
         gate.expire(System.nanoTime());
         if (gate.failed()) { reportFailure(); return; }
         if (!gate.ready() && (mc.level == null || mc.player == null)) {
@@ -354,6 +358,15 @@ public final class InventorySync {
         }
     }
 
+    /** Keep a physical write pending until both the ordered server ACK and matching world state arrive. */
+    private static void confirmAckedBlocks() {
+        if (mc.level == null) return;
+        for (var block : List.copyOf(blocks.values())) {
+            if (block.sequence <= lastBlockAck && mc.level.isLoaded(block.pos)
+                && blockId(block.pos).equals(block.block)) blocks.remove(block.sequence);
+        }
+    }
+
     public static void blockAck(int sequence) {
         lastBlockAck = Math.max(lastBlockAck, sequence);
         if (readOpen != null && sequence >= readOpen.sequence) {
@@ -368,12 +381,10 @@ public final class InventorySync {
             }
         }
         if (gate.failed()) return;
-        for (var block : List.copyOf(blocks.values())) if (block.sequence <= sequence) {
-            if (!mc.level.isLoaded(block.pos) || !blockId(block.pos).equals(block.block)) {
-                gate.fail("Server rejected or changed the predicted block operation"); reportFailure(); return;
-            }
-            blocks.remove(block.sequence);
-        }
+        // A lagged client world can still have the pre-mutation block at ACK time.
+        // Do not call this a rejection, and do not report success either: the tick
+        // verifier retains the pending journal until the state matches or expires.
+        confirmAckedBlocks();
         complete();
     }
 

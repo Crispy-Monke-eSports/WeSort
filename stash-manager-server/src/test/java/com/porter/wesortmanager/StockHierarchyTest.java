@@ -27,6 +27,47 @@ class StockHierarchyTest {
     }
     private JsonObject source(JsonObject index) { return index.getAsJsonArray("physicalSources").get(0).getAsJsonObject(); }
 
+    /** Real SQLite persistence must preserve observed (never automatically registered) UUID claims. */
+    @Test void duplicateShulkerNameClaimsSurviveStockLedgerPersistenceAndRestart() throws Exception {
+        var ledger = new StockLedger(data);
+        var original = index(ledger, 32);
+        String uuid = "550e8400-e29b-41d4-a716-446655440000";
+        var nameNode = new JsonObject();
+        nameNode.addProperty("type", 8);
+        nameNode.addProperty("value", new JsonPrimitive("{\"text\":\"WeSort-" + uuid + "\"}").toString());
+        var patchValue = new JsonObject();
+        patchValue.add("minecraft:custom_name", nameNode);
+        var patch = new JsonObject();
+        patch.addProperty("type", 10);
+        patch.add("value", patchValue);
+        var diamond = new PhysicalSlots.Item("minecraft:diamond", "minecraft:diamond", 64,
+            "{}", PhysicalSlots.Kind.ITEM, 0, List.of(), "");
+        var shulker = new PhysicalSlots.Item("minecraft:shulker_box", "minecraft:shulker_box", 1,
+            patch.toString(), PhysicalSlots.Kind.SHULKER, 27,
+            List.of(new PhysicalSlots.Slot(26, 32, diamond)), "kit");
+        var observed = new PhysicalSlots.Snapshot(27, List.of(
+            new PhysicalSlots.Slot(0, 1, shulker), new PhysicalSlots.Slot(2, 1, shulker)));
+        assertEquals(frame(32).totals(), observed.totals());
+        var writer = new PhysicalSlots.Writer();
+        source(original).add("slots", writer.slots(observed.slots()));
+        source(original).addProperty("fingerprint", observed.fingerprint());
+        original.add("slotVariants", writer.variants());
+        String id = source(original).get("id").getAsString();
+        ledger.accept(original);
+        var rows = ledger.physicalSlots(id);
+        assertEquals(4, rows.size());
+        for (var row : rows) if ("SHULKER".equals(row.get("kind").getAsString())) {
+            assertTrue(row.get("hasUUID").getAsBoolean());
+            assertEquals(uuid, row.get("boxUUID").getAsString());
+            assertEquals("DUPLICATE", row.get("identityStatus").getAsString());
+            assertEquals(1, row.get("revision").getAsInt());
+        }
+        var restarted = new StockLedger(data);
+        assertEquals(ledger.snapshot(id, observed.fingerprint()), restarted.snapshot(id, observed.fingerprint()));
+        assertEquals(rows, restarted.physicalSlots(id));
+        assertEquals(64L, observed.totals().get("minecraft:diamond"));
+    }
+
     @Test void returnChoiceSurvivesRestartAndStaleChangesCannotReplaceIt() throws Exception {
         var ledger = new StockLedger(data);
         var frame = index(ledger, 32);

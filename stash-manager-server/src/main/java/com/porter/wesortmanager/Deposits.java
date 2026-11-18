@@ -69,7 +69,7 @@ final class Deposits {
         return d;
     }
 
-    /** Confirms a deposit: only a server-confirmed, non-empty content snapshot reaches DELIVERED. Replay is a no-op. */
+    /** Confirms a deposit: only a server-confirmed, non-empty content snapshot of the deposit's own destination reaches DELIVERED. Replay is a no-op. */
     synchronized Deposit confirm(String packageId, String agent, JsonObject snapshot) throws IOException {
         var entry = require(packageId);
         var d = entry.deposit();
@@ -77,6 +77,10 @@ final class Deposits {
         if (snapshot == null || !snapshot.has("chests") || !snapshot.get("chests").isJsonArray()
             || snapshot.getAsJsonArray("chests").isEmpty())
             throw new Conflict("A confirmed, non-empty chest content snapshot is required before DELIVERED");
+        String snapshotDestination = snapshot.has("destination") && snapshot.get("destination").isJsonPrimitive()
+            ? snapshot.get("destination").getAsString() : null;
+        if (snapshotDestination == null || !snapshotDestination.equals(d.destination()))
+            throw new Conflict("The snapshot must be from the deposit's own destination");
         var confirmed = advance(d, Deposit.State.DELIVERED, agent);
         var events = entry.events().deepCopy();
         events.add(event("DELIVERED", agent, snapshot));

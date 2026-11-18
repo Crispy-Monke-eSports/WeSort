@@ -16,6 +16,10 @@ class DepositsTest {
     private static String id() { return UUID.randomUUID().toString(); }
 
     private static JsonObject snapshot() {
+        return snapshot("chest-a");
+    }
+
+    private static JsonObject snapshot(String destination) {
         var chests = new com.google.gson.JsonArray();
         var chest = new JsonObject();
         chest.addProperty("x", 10);
@@ -25,6 +29,7 @@ class DepositsTest {
         chest.addProperty("item", "minecraft:dirt");
         chests.add(chest);
         var out = new JsonObject();
+        out.addProperty("destination", destination);
         out.add("chests", chests);
         return out;
     }
@@ -42,6 +47,8 @@ class DepositsTest {
         // No snapshot -> cannot reach DELIVERED.
         assertThrows(Deposits.Conflict.class, () -> deposits.confirm(packageId, "agent-1", null));
         assertThrows(Deposits.Conflict.class, () -> deposits.confirm(packageId, "agent-1", new JsonObject()));
+        // A snapshot from a different chest cannot confirm this deposit.
+        assertThrows(Deposits.Conflict.class, () -> deposits.confirm(packageId, "agent-1", snapshot("other-chest")));
         assertEquals(Deposit.State.DEPOSITING, deposits.get(packageId).state());
     }
 
@@ -74,7 +81,7 @@ class DepositsTest {
         deposits.begin(a, "o-1", Deposit.Kind.DELIVERY, "chest-a", "agent-1");
         deposits.begin(b, "o-1", Deposit.Kind.TRANSFER, "server/stash", "agent-1");
         deposits.confirm(a, "agent-1", snapshot());
-        deposits.confirm(b, "agent-1", snapshot());
+        deposits.confirm(b, "agent-1", snapshot("server/stash"));
 
         var listed = deposits.list("o-1");
         assertEquals(2, listed.size());
@@ -91,7 +98,7 @@ class DepositsTest {
         var deposits = new Deposits(data);
         String packageId = id();
         deposits.begin(packageId, "o-1", Deposit.Kind.TRANSFER, "server/stash", "agent-1");
-        deposits.confirm(packageId, "agent-1", snapshot());
+        deposits.confirm(packageId, "agent-1", snapshot("server/stash"));
 
         var reloaded = new Deposits(data);
         assertEquals(Deposit.State.DELIVERED, reloaded.get(packageId).state());

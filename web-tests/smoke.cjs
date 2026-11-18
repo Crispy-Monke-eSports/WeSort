@@ -106,6 +106,8 @@ async function scenario(loggedIn) {
     if (u.pathname === '/api/v1/orders') body = {orders: [{
       id:'guild-order', status:'pending', state:'RESERVED', purpose:'GUILD', approvalState:'PENDING',
       recipient:'FixtureRecipient', deliveryMode:'PLAYER', comment:'Projekt Å <img src=x onerror=alert(1)>',
+      names:{mode:'each', names:['WeSort (1/2) - <img src=x>', 'WeSort (2/2) - <img src=x>'],
+        packageLabel:{version:1,text:'<img src=x>',total:2}},
       lines:[{type:'item', key:'minecraft:diamond', count:2}]
     }]};
     if (u.pathname === '/api/v1/orders/guild-order/approval') orderReviews.push(JSON.parse(opts.body));
@@ -196,6 +198,11 @@ async function scenario(loggedIn) {
       const review = w.document.querySelector('#order-list .order-card');
       assert.match(review.textContent, /Awaiting approval.*Confirmed recipient · FixtureRecipient.*Projekt Å <img/);
       assert.equal(review.querySelector('img'), null, 'Order comments must remain plain text');
+      assert.match(review.querySelector('.order-names summary').textContent,
+        /Planned WeSort labels \(2 box\(es\); physical rename not yet confirmed\)/);
+      assert.match(review.querySelector('.order-names').textContent, /WeSort \(1\/2\) - <img src=x>/);
+      assert.equal(review.querySelector('.order-names img'), null,
+        'Generated package label text must not be interpreted as markup');
       Array.from(review.querySelectorAll('button')).find(button => button.textContent === 'Approve').click();
       await settle();
       assert.deepEqual(orderReviews, [{decision:'approve'}]);

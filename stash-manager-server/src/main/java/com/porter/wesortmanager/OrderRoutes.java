@@ -128,7 +128,7 @@ final class OrderRoutes {
         }
         JsonObject names;
         try {
-            names = OrderStore.normalizeNames(o.get("names"));
+            names = OrderStore.normalizeNewOrderNames(o.get("names"));
         } catch (OrderStore.OrderException e) {
             lineError(ex, e.status, e.getMessage(), -1);
             return;

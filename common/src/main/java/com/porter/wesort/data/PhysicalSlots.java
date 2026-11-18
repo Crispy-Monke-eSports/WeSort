@@ -38,7 +38,13 @@ public final class PhysicalSlots {
             JsonObject typed = name.getAsJsonObject();
             if (typed.get("type").getAsInt() != 8 || !typed.get("value").getAsJsonPrimitive().isString())
                 return BoxIdentity.invalid();
-            JsonElement component = JsonParser.parseString(typed.get("value").getAsString());
+            // NbtFingerprint.encode carries the *SNBT StringTag.toString()* value,
+            // not necessarily a JSON double-quoted string: vanilla may wrap
+            // a text component JSON object in single quotes to avoid escapes.
+            String payload = snbtString(typed.get("value").getAsString());
+            if (payload == null || !(payload.startsWith("{") || payload.startsWith("\"")))
+                return BoxIdentity.invalid();
+            JsonElement component = JsonParser.parseString(payload);
             String visible;
             if (component.isJsonPrimitive() && component.getAsJsonPrimitive().isString()) {
                 visible = component.getAsString();
@@ -54,6 +60,33 @@ public final class PhysicalSlots {
         } catch (RuntimeException malformed) {
             return BoxIdentity.invalid();
         }
+    }
+
+    /** Decode a vanilla quoted SNBT StringTag without tolerating unquoted name claims. */
+    private static String snbtString(String snbt) {
+        if (snbt == null || snbt.length() < 2) return null;
+        char quote = snbt.charAt(0);
+        if ((quote != '\'' && quote != '"') || snbt.charAt(snbt.length() - 1) != quote)
+            return null;
+        if (quote == '"') {
+            try {
+                JsonElement decoded = JsonParser.parseString(snbt);
+                return decoded.isJsonPrimitive() && decoded.getAsJsonPrimitive().isString()
+                    ? decoded.getAsString() : null;
+            } catch (RuntimeException malformed) { return null; }
+        }
+        StringBuilder result = new StringBuilder();
+        for (int i = 1; i < snbt.length() - 1; i++) {
+            char c = snbt.charAt(i);
+            if (c == '\'') return null; // unescaped quote ended the SNBT string
+            if (c == '\\') {
+                if (++i >= snbt.length() - 1) return null;
+                char escaped = snbt.charAt(i);
+                if (escaped != '\\' && escaped != '\'' && escaped != '"') return null;
+                result.append(escaped);
+            } else result.append(c);
+        }
+        return result.toString();
     }
 
     public record Slot(int slot, int count, Item item) {

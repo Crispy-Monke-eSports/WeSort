@@ -622,14 +622,17 @@ public class StashManager extends Module {
         }
         if (com.porter.wesort.compat.NavigationRuntime.paused()) {
             setStatus(com.porter.wesort.compat.NavigationRuntime.status());
+            serviceBlockedControl();
             return;
         }
         if (PhysicalJournalRuntime.blocked()) {
             setStatus("physical operation needs reconciliation");
+            serviceBlockedControl();
             return;
         }
         if (!InventorySync.ready()) {
             setStatus(InventorySync.failed() ? "inventory needs reconciliation" : "awaiting server inventory");
+            serviceBlockedControl();
             return;
         }
         if (mc.level == null || mc.player == null) return;
@@ -722,6 +725,18 @@ public class StashManager extends Module {
         }
     }
 
+    private void serviceBlockedControl() {
+        if (inFlight || current == null || mc.player == null || mc.level == null) return;
+        var sorter = Modules.get().get(StashSorter.class);
+        var stash = sorter == null ? null : sorter.currentStash();
+        if (stash == null || !current.server().equals(stash.server) || !current.stash().equals(stash.name)
+            || !current.player().equals(mc.player.getName().getString())) return;
+        String key = apiKey.get().trim();
+        URI base = parse(serverUrl.get());
+        long now = System.currentTimeMillis();
+        if (base != null && !key.isEmpty() && now >= nextAttemptAt) serviceControl(base, key, now);
+    }
+
     private record ControlScope(URI manager, String server, String stash, String dimension, java.util.UUID player) {
         String botId() {
             return java.util.UUID.nameUUIDFromBytes((server + "\u0000" + player).getBytes(StandardCharsets.UTF_8)).toString();
@@ -774,6 +789,11 @@ public class StashManager extends Module {
             request.add("runtime", runtime);
             var capabilities = new JsonArray();
             capabilities.add("settings");
+            capabilities.add("activity");
+            capabilities.add("warehouse-scan");
+            capabilities.add("warehouse-sort");
+            capabilities.add("pack");
+            capabilities.add("stage");
             request.add("caps", capabilities);
             var scopes = new JsonArray();
             scopes.add("plugin");
@@ -880,6 +900,7 @@ public class StashManager extends Module {
             return true;
         }
         request.addProperty("controlEpoch", controlEpoch);
+        request.add("activity", controlActivity());
         send(base, "/api/v1/bot/next", bytes(request), key, (code, body) -> {
             // Replies are dispatched on the client thread after the transport verifies their signature.
             if (code == 409) {
@@ -911,6 +932,28 @@ public class StashManager extends Module {
             return true;
         }, true);
         return true;
+    }
+
+    private JsonObject controlActivity() {
+        var sorter = Modules.get().get(StashSorter.class);
+        var runner = sorter == null ? null : sorter.orders();
+        boolean needsReconciliation = InventorySync.failed() || PhysicalJournalRuntime.blocked() || kitUncertain;
+        String task;
+        if (needsReconciliation) task = "Needs physical reconciliation";
+        else if (com.porter.wesort.compat.NavigationRuntime.paused()) task = "Navigation paused";
+        else if (!InventorySync.ready()) task = "Awaiting server inventory";
+        else if (kitJob != null) task = kitPacked ? "Verifying kit" : "Packing kit";
+        else if (runner != null && runner.running()) task = "Packing " + runner.info();
+        else if (orderIntakePaused.get()) task = "New orders paused";
+        else task = "Monitoring stock";
+        var work = new JsonObject();
+        work.addProperty("title", task);
+        work.addProperty("level", needsReconciliation ? "warn" : "info");
+        var tasks = new JsonArray();
+        tasks.add(work);
+        var activity = new JsonObject();
+        activity.add("current", tasks);
+        return activity;
     }
 
     private static JsonObject controlSetting(String path, String label, String type, Integer min, Integer max) {

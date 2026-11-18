@@ -167,6 +167,8 @@ final class Redact {
         o.add("player", JsonNull.INSTANCE);
         o.add("runtime", new JsonObject());
         o.add("summary", JsonNull.INSTANCE);
+        o.remove("lastLocation");
+        o.add("stashes", new com.google.gson.JsonArray());
         // Plugin details and the bot's settings scopes (plugin ids) are of no use to a forced user.
         o.add("plugin", new JsonObject());
         o.add("scopes", new com.google.gson.JsonArray());

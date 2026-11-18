@@ -79,6 +79,10 @@ final class Owners {
      * 7 days, becomes this player's. A request without a player can't be checked and is let through.
      */
     synchronized String check(String server, String stash, String player, boolean take) {
+        return check(server, stash, player, take, true);
+    }
+
+    synchronized String check(String server, String stash, String player, boolean take, boolean automaticTakeover) {
         if (player == null || player.isEmpty()) return null;
         IndexStore.StashKey key = new IndexStore.StashKey(server, stash);
         long now = System.currentTimeMillis();
@@ -95,7 +99,7 @@ final class Owners {
             if (now - e.writtenSeen >= SEEN_WRITE_MS) save();
             return null;
         }
-        if (take && now - e.seen >= TAKEOVER_MS) {
+        if (take && automaticTakeover && now - e.seen >= TAKEOVER_MS) {
             System.out.println(Instant.now() + " Stash '" + stash + "' @ " + server + ": " + player + " took it over from "
                 + e.owner + " (not seen since " + Instant.ofEpochMilli(e.seen) + ").");
             e.owner = player;

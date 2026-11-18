@@ -2,6 +2,7 @@
 """W-020: native 26.3 component/slot hierarchy, independent server snapshots and signed Docker persistence."""
 import argparse
 from concurrent.futures import ThreadPoolExecutor
+import hashlib
 import uuid
 import importlib.util
 import json
@@ -301,7 +302,7 @@ class HierarchyHarness(stock.StockHarness):
         endpoint = f'http://127.0.0.1:{self.manager_port}'
         shared = stock.signed.Client(endpoint, self.key)
         old = stock.signed.Client(endpoint, self.run(cli + ['agent-issue', *scope]).strip())
-        self.key = self.run(cli + ['agent-issue', *scope]).strip()
+        self.key = self.run(cli + ['agent-issue', *scope, 'secondary-fixture']).strip()
         current = stock.signed.Client(endpoint, self.key)
         foreign_id = str(uuid.uuid4())
         foreign = stock.signed.Client(endpoint, self.run(cli + [
@@ -312,12 +313,60 @@ class HierarchyHarness(stock.StockHarness):
         require(shared.post('/api/v1/heartbeat', heartbeat)[0] == 401, 'Shared credential survived scoped-only activation')
         require(old.post('/api/v1/heartbeat', heartbeat)[0] == 401, 'Rotated credential could still act')
         require(current.post('/api/v1/heartbeat', heartbeat)[0] == 200, 'Current credential could not read its warehouse heartbeat')
+        require(current.post('/api/v1/heartbeat', dict(heartbeat, stash='secondary-fixture'))[0] == 200,
+                'One credential could not reach its second stash')
+        require(current.post('/api/v1/heartbeat', dict(heartbeat, stash='unassigned-fixture'))[0] == 403,
+                'One credential could reach an unassigned stash')
         require(foreign.post('/api/v1/heartbeat', heartbeat)[0] == 403, 'Agent accessed another stash')
         unauthorized = {'server': self.server_name, 'stash': 'other-stash', 'player': 'OtherBot'}
         require(foreign.post('/api/v1/heartbeat', unauthorized)[0] == 200, 'Second credential was unusable in its own scope')
         self.run(cli + ['agent-revoke', foreign_id])
         require(foreign.post('/api/v1/heartbeat', unauthorized)[0] == 401, 'Revoked agent continued to authenticate')
         self.ok('two local credentials have isolated warehouse access; scoped-only, rotation and revocation take effect immediately')
+
+    def verify_fleet_sessions(self):
+        native = None
+
+        def reported_activity(_):
+            nonlocal native
+            status, bots = self.http('/api/v1/bots')
+            require(status == 200, 'Owner could not read the fleet')
+            native = next((bot for bot in bots if bot.get('player') == self.player and bot['online'] and bot.get('summary')), None)
+            return native is not None
+
+        self.wait(reported_activity, 'The actual Fabric agent did not report its current task')
+        require({'warehouse-scan', 'warehouse-sort', 'pack', 'stage'} <= set(native['caps']),
+                'The actual Fabric agent did not advertise its supported warehouse work')
+        require(native['lastLocation'] == {'server': self.server_name, 'stash': 'e2e-fixture', 'dimension': 'minecraft:overworld'},
+                'Manager did not report the connected Minecraft server, stash and dimension')
+        cli = self.compose + ['exec', '-T', 'manager', '/opt/wesort/entrypoint']
+        endpoint = f'http://127.0.0.1:{self.manager_port}'
+        expected = {native['botId']}
+        credentials = []
+        for i in range(1, 5):
+            ident, player, stash = str(uuid.uuid4()), f'FleetPeer{i}', f'fleet-peer-{i}'
+            token = self.run(cli + ['agent-issue', ident, player, self.server_name, stash]).strip()
+            agent = stock.signed.Client(endpoint, token)
+            bot_id = str(uuid.UUID(bytes=hashlib.md5((self.server_name + '\0' + ident).encode()).digest(), version=3))
+            hello = {'botId': bot_id, 'player': player, 'controlSession': secrets.token_hex(32),
+                     'manifestScope': {'server': self.server_name, 'stash': stash,
+                                       'dimension': 'minecraft:overworld', 'agent': ident}}
+            code, reply = agent.post('/api/v1/bot/hello', hello)
+            require(code == 200 and reply.get('controlEpoch'), 'Independent fleet member could not register')
+            require(agent.post('/api/v1/bot/hello', dict(hello, controlSession=secrets.token_hex(32)))[0] == 409,
+                    'A concurrent control session displaced an online agent')
+            require(agent.post('/api/v1/bot/next', {'botId': native['botId'], 'controlSession': hello['controlSession']})[0] == 403,
+                    'A fleet member polled another agent')
+            expected.add(bot_id)
+            credentials.append((ident, player, stash, hello))
+            status, connected = self.http('/api/v1/bots')
+            require(status == 200 and {b['botId'] for b in connected if b['online']} == expected,
+                    'Manager mixed sessions while expanding the fleet')
+        ident, player, stash, hello = credentials[0]
+        replacement = self.run(cli + ['agent-issue', ident, player, self.server_name, stash]).strip()
+        require(stock.signed.Client(endpoint, replacement).post('/api/v1/bot/hello', hello)[0] == 200,
+                'Key rotation caused the signed fleet session to lose its identity')
+        self.ok('one native 26.3 agent and up to four signed endpoint fixtures retain independent online identities and sessions')
 
     def execute(self):
         try:
@@ -377,11 +426,13 @@ class HierarchyHarness(stock.StockHarness):
                 if self.scoped_agent:
                     self.require_scoped_agent()
                 self.verify_order_lifecycle(detail)
+                if self.scoped_agent:
+                    self.verify_fleet_sessions()
             self.command('screenshot'); shutil.copyfile(self.game_dir/'screenshots/fixture.png',self.evidence/'fixture.png')
             (self.evidence/'changed-detail.json').write_text(json.dumps(detail,indent=2)+'\n')
             result = {'result':'PASS','source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=world.ROOT,text=True).strip(),
                 'dirty_worktree':True,'server_sha1':world.SERVER_SHA1,'manager_image':self.env['WESORT_IMAGE'],'checks':self.checks,
-                'limits':'A private fixture with one agent. Package custody is verified through warehouse staging.'}
+                'limits':'One native Minecraft agent with signed HTTP peers for fleet tests. Package custody is verified through warehouse staging.'}
             (self.evidence/'result.json').write_text(json.dumps(result,indent=2)+'\n')
             print('Evidence: '+str(self.evidence),flush=True)
         finally: self.close()

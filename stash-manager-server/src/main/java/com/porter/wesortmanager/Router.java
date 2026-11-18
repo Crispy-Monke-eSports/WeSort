@@ -17,6 +17,7 @@ import java.util.regex.Pattern;
 final class Router implements HttpHandler {
     /** Exchange attribute holding the API key generation that an ADDON_KEY request was made with (a Long). */
     static final String KEY_GENERATION = "wesortmanager.keyGeneration";
+    static final String SCOPED_AGENT = "wesortmanager.scopedAgent";
     /** Exchange attribute holding the session token of a SESSION / BROWSER_WRITE request (a String). */
     static final String SESSION_TOKEN = "wesortmanager.session";
     /** Exchange attribute holding who a SESSION / BROWSER_WRITE request is from (a Users.Principal). */
@@ -403,6 +404,7 @@ final class Router implements HttpHandler {
                 Http.error(ex, 403, "Agent scope does not authorize this request");
                 return false;
             }
+            if (named) Http.attr(ex, SCOPED_AGENT, credential.scope());
             return true;
         }
         if (!dashboard && config.allowBearer && !agentCredentials.scopedOnly()) {

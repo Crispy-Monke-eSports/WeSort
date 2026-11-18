@@ -59,6 +59,18 @@ final class KitJobs {
     private void expire(Connection c)throws SQLException {
         try(var p=c.prepareStatement("UPDATE kit_jobs SET state='NEEDS_RECONCILIATION',payload=json_set(payload,'$.message','Execution lease expired; inspect the physical kit before recovery') WHERE state IN ('IN_PROGRESS','VERIFYING') AND deadline<=?")){p.setLong(1,clock.getAsLong());p.executeUpdate();}
     }
+    static boolean hasActiveWork(StockLedger ledger, String server, String agent) throws IOException {
+        try (var connection = ledger.open(); var query = connection.prepareStatement("""
+                SELECT 1 FROM kit_jobs WHERE server=? AND agent=?
+                  AND state IN ('IN_PROGRESS','VERIFYING') LIMIT 1
+                """)) {
+            query.setString(1, server);
+            query.setString(2, agent);
+            try (var rows = query.executeQuery()) { return rows.next(); }
+        } catch (SQLException error) {
+            throw new IOException("Cannot check active kit work", error);
+        }
+    }
     synchronized JsonObject claim(String server,String stash,String agent)throws IOException {
         UUID.fromString(agent);
         try(var c=ledger.open();var tx=c.createStatement()){

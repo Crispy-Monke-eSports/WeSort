@@ -56,6 +56,7 @@ final class DashboardRoutes {
         Users.Perms perms = Router.user(ex).perms();
         for (BotHub.Bot b : hub.all()) {
             JsonObject o = new JsonObject();
+            BotHub.ManifestScope active;
             synchronized (b) {
                 if (!perms.seesBot(b.botId)) continue;
                 o.addProperty("botId", b.botId);
@@ -74,6 +75,14 @@ final class DashboardRoutes {
                 all.addAll(b.scopes.keySet());
                 all.forEach(scopes::add);
                 o.add("scopes", scopes);
+                active = b.manifestScope;
+                if (active != null && perms.positions() && perms.seesStash(active.server(), active.stash())) {
+                    JsonObject location = new JsonObject();
+                    location.addProperty("server", active.server());
+                    location.addProperty("stash", active.stash());
+                    location.addProperty("dimension", active.dimension());
+                    o.add("lastLocation", location);
+                }
             }
             // Its stashes: the ones this player owns or last used.
             JsonArray mine = new JsonArray();
@@ -83,6 +92,7 @@ final class DashboardRoutes {
                     JsonObject s = e.getAsJsonObject();
                     String server = s.get("server").getAsString();
                     String stash = s.get("stash").getAsString();
+                    if (active != null && !server.equals(active.server())) continue;
                     String owner = owners.owner(server, stash);
                     String used = s.has("player") && !s.get("player").isJsonNull() ? s.get("player").getAsString() : null;
                     if (player.equalsIgnoreCase(owner != null ? owner : used == null ? "" : used) && perms.seesStash(server, stash)) {

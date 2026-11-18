@@ -33,27 +33,31 @@ public final class WeSortManager {
 
         String command = args.length > 0 && !args[0].startsWith("-") ? args[0] : "serve";
         if (!List.of("serve", "bootstrap", "healthcheck", "agent-key", "agent-issue", "agent-revoke", "agent-require-scoped").contains(command)) usage("unknown command");
+        int firstOption = args.length > 0 && args[0].equals(command) ? 1 : 0;
         String request = switch (command) {
             case "bootstrap" -> "BOOTSTRAP";
             case "agent-key" -> "AGENT_KEY";
             case "agent-require-scoped" -> "AGENT_REQUIRE_SCOPED";
             case "agent-revoke" -> {
                 if (args.length < 2) usage("agent-revoke needs an agent UUID");
+                firstOption = 2;
                 yield "AGENT_REVOKE " + args[1];
             }
             case "agent-issue" -> {
-                if (args.length < 5) usage("agent-issue needs agent UUID, player, Minecraft server and stash");
+                if (args.length < 5 || args[4].startsWith("--")) usage("agent-issue needs agent UUID, player, Minecraft server and at least one stash");
                 var row = new com.google.gson.JsonObject();
                 row.addProperty("agent", args[1]); row.addProperty("player", args[2]);
-                row.addProperty("server", args[3]); row.addProperty("stash", args[4]);
+                row.addProperty("server", args[3]);
+                var stashes = new com.google.gson.JsonArray();
+                firstOption = 4;
+                while (firstOption < args.length && !args[firstOption].startsWith("-")) stashes.add(args[firstOption++]);
+                row.add("stashes", stashes);
                 yield "AGENT_ISSUE " + java.util.Base64.getEncoder()
                     .encodeToString(row.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
             }
             default -> "HEALTH";
         };
         Path dataDir = Path.of("wesort-manager-data");
-        int firstOption = command.equals("agent-issue") ? 5 : command.equals("agent-revoke") ? 2
-            : args.length > 0 && args[0].equals(command) ? 1 : 0;
         for (int i = firstOption; i < args.length; i++) {
             switch (args[i]) {
                 case "--data" -> {
@@ -236,7 +240,7 @@ public final class WeSortManager {
         var guild = new GuildRoutes(config.dataDir(), audit);
         new OrderRoutes(orders, owners, audit, guild, users).register(router);
         new StockRoutes(store, orders).register(router, audit);
-        new KitRoutes(store, audit).register(router);
+        new KitRoutes(store, audit, orders, owners).register(router);
         new PhysicalRoutes(store, audit).register(router);
         new BotRoutes(hub, audit, orders, owners).register(router);
         new DashboardRoutes(hub, store, owners, sessions, audit).register(router);
@@ -254,7 +258,7 @@ public final class WeSortManager {
     private static void usage(String error) {
         if (error != null) System.err.println(error);
         System.err.println("Usage: java -jar wesort-manager.jar [serve|bootstrap|healthcheck|agent-key|agent-require-scoped] [--data <dir>]");
-        System.err.println("       agent-issue <uuid> <player> <server> <stash> [--data <dir>]");
+        System.err.println("       agent-issue <uuid> <player> <server> <stash> [<stash> ...] [--data <dir>]");
         System.err.println("       agent-revoke <uuid> [--data <dir>]");
         System.exit(error == null ? 0 : 2);
     }

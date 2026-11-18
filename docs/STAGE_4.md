@@ -165,3 +165,29 @@ packning och staging.
 
 Personkvoter och webbvyer för kvoter, säkerhetspolicy, teleport och
 verifierad UUID-hantering följer W-059 och W-061–W-064.
+
+## W-033 – 1–5 agenter och flera stashes per konto
+
+Varje agent har en egen nyckel för sitt Minecraft-konto, sin server och
+en eller flera stashes. Samma konto har ett stabilt bot-ID oavsett aktiv
+stash. Ett nyckelbyte ändrar bara den agentens autentisering. Gamla
+nyckelfiler med en stash läses vid uppgradering. Manager tillåter högst
+fem aktiva individuella agentnycklar.
+
+En stash har en ägare. För överföring, avsluta eller stäm av arbetet,
+rotera den gamla ägarens nyckel utan den berörda stashen och frigör
+stashen i Manager. Nästa behöriga agent som observerar stashen tar över.
+Individuellt autentiserade agenter kan inte automatiskt ta över en
+annan agents stash efter frånvaro.
+
+Manager sparar agentens identitet med anspråket och kan ge samma
+anspråk tillbaka efter omförsök. Ett nytt anspråk i en annan stash och ett
+samtidigt kitjobb blockeras för agenten som redan arbetar. Webben visar
+senaste kontakt, faktiskt ansluten server och dimension för behöriga
+roller, och de lagerförmågor som klienten annonserat.
+
+Flottprovet använder en verklig 26.3-agent och fyra signerade
+protokollklienter. Det kontrollerar fem oberoende sessioner och en agents
+fysiska flöde fram till staging. Själva upphämtningen, transporten,
+mottagarkvittensen och de tillhörande säkerhets- och teleportprofilerna
+följer W-036–W-039 och W-061–W-062.

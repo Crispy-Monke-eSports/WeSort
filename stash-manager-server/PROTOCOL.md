@@ -185,11 +185,12 @@ restart. The hint uses the same scope checks as the manifest endpoint.
 The local Manager CLI issues a credential in the form
 `<minecraft UUID>.<secret>`. The addon uses the UUID as the identifier
 in `X-SM-Auth` and derives the signing key from the secret. A request
-signed this way must match the credential's player, server, stash and
+signed this way must match the credential's player, server, authorized stash and
 agent or dashboard identity as required by the route. Agent credentials
 use the same HMAC request, response and replay checks as the v1 protocol.
 
-The host can rotate a credential with a new issue of the same binding,
+The host can rotate a credential for the same Minecraft account and server,
+including replacing the full list of authorized stashes,
 revoke it, and make scoped credentials mandatory. In that mode the
 legacy identifier `-` and legacy Bearer credentials are denied. The
 credential registry, scoped-only mode and revocations persist in the

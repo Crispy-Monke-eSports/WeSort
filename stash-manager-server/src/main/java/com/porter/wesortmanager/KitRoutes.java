@@ -8,7 +8,14 @@ import java.util.List;
 
 final class KitRoutes {
     private final IndexStore index; private final AuditLog audit; private KitCatalog catalog; private KitJobs jobs;
-    KitRoutes(IndexStore index,AuditLog audit){this.index=index;this.audit=audit;}
+    private final OrderStore orders;
+    private final Owners owners;
+    KitRoutes(IndexStore index, AuditLog audit, OrderStore orders, Owners owners) {
+        this.index = index;
+        this.audit = audit;
+        this.orders = orders;
+        this.owners = owners;
+    }
     private synchronized KitCatalog catalog() throws IOException {if(catalog==null){catalog=new KitCatalog(index.stock());jobs=new KitJobs(index.stock(),catalog);}return catalog;}
     void register(Router router){
         router.exact(Router.GET,"/api/v1/kits/jobs",Router.Guard.SESSION,Router.Perm.OWNER,this::jobList);
@@ -49,7 +56,14 @@ final class KitRoutes {
         try{
             if(agent&&List.of("claim","renew","packed","complete","uncertain").contains(action)){
                 catalog();String agentId=AddonRoutes.string(body,"agent");JsonObject job;
-                if("claim".equals(action))job=jobs.claim(server,AddonRoutes.string(body,"stash"),agentId);
+                if ("claim".equals(action)) {
+                    String stash = AddonRoutes.string(body, "stash");
+                    synchronized (index) {
+                        String owner = owners.check(server, stash, AddonRoutes.string(body, "player"), false);
+                        if (owner != null) { AddonRoutes.conflict(ex, owner); return; }
+                        job = orders.hasActiveWork(server, agentId) ? null : jobs.claim(server, stash, agentId);
+                    }
+                }
                 else job=jobs.advance(AddonRoutes.string(body,"id"),agentId,AddonRoutes.string(body,"token"),action,AddonRoutes.string(body,"message"),body.has("supply")?body.getAsJsonObject("supply"):null);
                 var out=new JsonObject();out.add("job",job==null?JsonNull.INSTANCE:job);
                 if(job!=null&&!"renew".equals(action))audit.add("agent:"+agentId,"Signed WeSort agent","kit.job."+action,job.get("id").getAsString(),AuthRoutes.address(ex));

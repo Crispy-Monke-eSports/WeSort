@@ -111,7 +111,7 @@ final class BotRoutes {
                     Http.error(ex, 400, "caps must be an array of strings");
                     return;
                 }
-                if (List.of("settings", "activity").contains(c.getAsString())) caps.add(c.getAsString());
+                caps.add(c.getAsString());
             }
         }
         List<String> scopes = new ArrayList<>();
@@ -377,18 +377,28 @@ final class BotRoutes {
     }
 
     private void next(HttpExchange ex) throws IOException {
-        next(ex, Http.query(ex).get("botId"), null, null, BotHub.POLL_WAIT_MS);
+        next(ex, Http.query(ex).get("botId"), null, null, BotHub.POLL_WAIT_MS, null);
     }
 
     private void nextNow(HttpExchange ex) throws IOException {
         var request = body(ex);
         if (request != null) next(ex, AddonRoutes.string(request, "botId"), AddonRoutes.string(request, "controlSession"),
-            AddonRoutes.string(request, "controlEpoch"), 0);
+            AddonRoutes.string(request, "controlEpoch"), 0, request.get("activity"));
     }
 
-    private void next(HttpExchange ex, String botId, String controlSession, String epoch, long waitMillis) throws IOException {
+    private void next(HttpExchange ex, String botId, String controlSession, String epoch, long waitMillis, JsonElement activity) throws IOException {
         BotHub.Bot b = known(ex, botId);
         if (b == null) return;
+        if (activity != null) {
+            var snapshot = Activity.clean(activity, hub.now());
+            if (snapshot == null) { Http.error(ex, 400, "activity must be an object"); return; }
+            synchronized (b) {
+                if (hub.manifestScope(b, controlSession, epoch) == null) {
+                    Http.error(ex, 409, "Control session does not match"); return;
+                }
+                hub.activity(b, snapshot, new JsonArray());
+            }
+        }
         BotHub.Poll p;
         try {
             p = hub.next(b, waitMillis, controlSession);

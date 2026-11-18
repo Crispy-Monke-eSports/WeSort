@@ -97,7 +97,7 @@ final class AddonRoutes {
         String server = index.get("server").getAsString();
         String stash = index.get("stash").getAsString();
         String player = string(index, "player");
-        String owner = owners.check(server, stash, player, true);
+        String owner = owners.check(server, stash, player, true, Http.attr(ex, Router.SCOPED_AGENT) == null);
         if (owner != null) {
             conflict(ex, owner);
             return;
@@ -162,7 +162,7 @@ final class AddonRoutes {
             Http.error(ex, 400, e.getMessage());
             return;
         }
-        String owner = owners.check(server, stash, string(o, "player"), true);
+        String owner = owners.check(server, stash, string(o, "player"), true, Http.attr(ex, Router.SCOPED_AGENT) == null);
         if (owner != null) {
             conflict(ex, owner);
             return;

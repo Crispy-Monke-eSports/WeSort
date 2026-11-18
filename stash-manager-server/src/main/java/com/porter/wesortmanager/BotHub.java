@@ -28,6 +28,7 @@ final class BotHub {
     static final long WATCH_MS = 10_000;
     static final int EVENTS_KEEP = 500;
     static final int JOBS_KEEP = 500;
+    private static final Set<String> CAPABILITIES = Set.of("settings", "activity", "warehouse-scan", "warehouse-sort", "pack", "stage");
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final Set<String> RECEIPT_FIELDS = Set.of("id", "lease", "sequence", "ok", "value", "error");
 
@@ -168,7 +169,7 @@ final class BotHub {
             if (player != null && !player.isEmpty()) b.player = player;
             b.plugin = plugin;
             b.runtime = runtime;
-            b.caps = new LinkedHashSet<>(caps.stream().filter(x -> Set.of("settings", "activity").contains(x)).toList());
+            b.caps = new LinkedHashSet<>(caps.stream().filter(CAPABILITIES::contains).toList());
             b.declaredScopes = new LinkedHashSet<>(scopes.stream().filter("plugin"::equals).toList());
             b.helloAt = now;
             b.lastSeen = now;

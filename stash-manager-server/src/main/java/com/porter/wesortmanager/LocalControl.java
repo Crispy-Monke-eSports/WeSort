@@ -63,9 +63,10 @@ final class LocalControl implements AutoCloseable {
             if (command.startsWith("AGENT_ISSUE ")) {
                 String raw = new String(java.util.Base64.getDecoder().decode(command.substring("AGENT_ISSUE ".length())), StandardCharsets.UTF_8);
                 var row = com.google.gson.JsonParser.parseString(raw).getAsJsonObject();
-                var scope = new AgentCredentials.Scope(AddonRoutes.string(row, "agent"), AddonRoutes.string(row, "player"),
-                    AddonRoutes.string(row, "server"), AddonRoutes.string(row, "stash"));
-                String token = credentials.issue(scope);
+                var scope = AgentCredentials.readScope(row, !row.has("stashes"));
+                String token;
+                try { token = credentials.issue(scope); }
+                catch (IllegalArgumentException invalid) { return "ERR " + invalid.getMessage(); }
                 audit.add("local", "Manager host administrator", "agent.credential.issue", scope.agent(), "local");
                 return "OK " + token;
             }
@@ -112,7 +113,8 @@ final class LocalControl implements AutoCloseable {
     }
 
     private static String line(SocketChannel channel) throws IOException {
-        ByteBuffer buffer = ByteBuffer.allocate(8192);
+        // A provisioning command can carry every registered stash, encoded as base64 JSON.
+        ByteBuffer buffer = ByteBuffer.allocate(131072);
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
         while (buffer.hasRemaining() && System.nanoTime() < deadline) {
             if (channel.read(buffer) < 0) break;

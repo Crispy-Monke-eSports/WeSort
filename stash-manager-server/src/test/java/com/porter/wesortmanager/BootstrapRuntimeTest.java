@@ -49,6 +49,32 @@ class BootstrapRuntimeTest {
         }
     }
 
+    @Test void fleetScopesMigrateAndRotateIndependently() throws Exception {
+        var id = java.util.UUID.randomUUID().toString();
+        var file = data.resolve("agent-credentials.json");
+        var key = java.util.Base64.getEncoder().encodeToString(new byte[32]);
+        Files.writeString(file, """
+            {"version":1,"scopedOnly":true,"agents":[{"agent":"%s","player":"Agent0","server":"srv","stash":"old","key":"%s"}]}
+            """.formatted(id, key));
+        var credentials = new AgentCredentials(data);
+        assertTrue(credentials.find(id).scope().matchesLocation("srv", "old"));
+        assertFalse(credentials.find(id).scope().matchesLocation("srv", "new"));
+        var scope = new AgentCredentials.Scope(id, "Agent0", "srv", java.util.Set.of("old", "new"));
+        assertThrows(IllegalArgumentException.class, () -> credentials.issue(
+            new AgentCredentials.Scope(java.util.UUID.randomUUID().toString(), "agent0", "srv", "new")));
+        for (int i = 1; i < AgentCredentials.MAX_ACTIVE_AGENTS; i++) {
+            credentials.issue(new AgentCredentials.Scope(java.util.UUID.randomUUID().toString(), "Agent" + i, "srv", "stash" + i));
+        }
+        var sixth = new AgentCredentials.Scope(java.util.UUID.randomUUID().toString(), "Agent5", "srv", "stash5");
+        assertThrows(IllegalArgumentException.class, () -> credentials.issue(sixth));
+        credentials.issue(scope);
+        var reopened = new AgentCredentials(data);
+        assertEquals(scope, reopened.find(id).scope());
+        assertFalse(reopened.find(id).scope().matchesLocation("other", "new"));
+        assertTrue(reopened.revoke(id));
+        assertNotNull(reopened.issue(sixth));
+    }
+
     @Test void controlCapabilityIsRequiredForHttpSetupAndCannotBeReplayed() throws Exception {
         Config config = Config.load(data);
         RuntimeHealth health = new RuntimeHealth(false);

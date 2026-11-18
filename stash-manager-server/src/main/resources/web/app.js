@@ -4481,6 +4481,15 @@
       }
       var plugin = b.plugin && typeof b.plugin === "object" ? b.plugin : {};
       card.appendChild(line("note dash-bot-meta", "Agent " + str(plugin.id) + " " + str(plugin.version) + " · id " + str(b.botId)));
+      if (b.lastLocation) {
+        var location = line("note dash-bot-meta", b.online ? "Connected at " : "Last connected at ");
+        location.appendChild(hiddenSpan([b.lastLocation.server, b.lastLocation.stash, b.lastLocation.dimension].join(" · ")));
+        card.appendChild(location);
+      }
+      var caps = Array.isArray(b.caps) ? b.caps : [];
+      var operations = { "warehouse-scan": "Scan", "warehouse-sort": "Sort", pack: "Pack", stage: "Stage packages" };
+      var supported = Object.keys(operations).filter(function (key) { return caps.includes(key); });
+      if (supported.length) card.appendChild(line("note dash-bot-meta", supported.map(function (key) { return operations[key]; }).join(" · ")));
       var stashes = Array.isArray(b.stashes) ? b.stashes : [];
       var st = document.createElement("div");
       st.className = "dash-bot-stashes";
@@ -4501,7 +4510,6 @@
       card.appendChild(st);
       var actions = document.createElement("div");
       actions.className = "dash-bot-actions";
-      var caps = Array.isArray(b.caps) ? b.caps : [];
       [["activity", "Activity"], ["settings", "Settings"]].forEach(function (p) {
         if (caps.indexOf(p[0]) < 0 || !pageAllowed(p[0])) return;
         var btn = document.createElement("button");

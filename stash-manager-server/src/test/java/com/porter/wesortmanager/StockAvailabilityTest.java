@@ -54,6 +54,29 @@ class StockAvailabilityTest {
         assertTrue(view.getAsJsonArray("sources").get(0).getAsJsonObject().get("reserved").isJsonNull());
         assertEquals(64,row.get("observed").getAsLong());assertEquals(10,row.get("reserved").getAsLong());assertEquals(54,row.get("available").getAsLong());assertEquals(0,row.get("unknown").getAsLong());
     }
+    @Test void concurrentClaimsCannotAssignTwoStashesToTheSameAgent() throws Exception {
+        observe("a", 64, 0);
+        observe("b", 64, 2);
+        var lines = List.of(new OrderStore.Line("item", "minecraft:diamond", 1));
+        orders.place("s", "a", lines, null);
+        orders.place("s", "b", lines, null);
+        String agent = UUID.randomUUID().toString();
+        String other = UUID.randomUUID().toString();
+        try (var pool = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var first = pool.submit(() -> orders.claimPayload("s", "a", agent));
+            var second = pool.submit(() -> orders.claimPayload("s", "b", agent));
+            var a = first.get();
+            var b = second.get();
+            assertTrue((a == null) != (b == null));
+            String assigned = a == null ? "b" : "a";
+            String waiting = a == null ? "a" : "b";
+            var claimed = a == null ? b : a;
+            assertEquals(agent, claimed.get("agent").getAsString());
+            assertEquals(claimed.get("id"), orders.claimPayload("s", assigned, agent).get("id"));
+            assertNull(orders.claimPayload("s", assigned, other));
+            assertNotNull(orders.claimPayload("s", waiting, other));
+        }
+    }
     @Test void sharedBalancesCountEachSourceOnceAndScopeLimitsLocationDetails()throws Exception{
         observe("a",64,0);observe("b",64,0);
         var second=StockFixtures.physical(index("b",32),ledger.epoch(),ledger.revision(),ledger.revision()+1,2);

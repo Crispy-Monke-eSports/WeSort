@@ -1030,6 +1030,10 @@ final class OrderStore {
         return order.status.equals("accepted") || order.status.equals("in_progress");
     }
 
+    boolean hasActiveWork(String server, String agent) {
+        return agent != null && ordersOnServer(server).stream().anyMatch(order -> agent.equals(order.agent) && isExecuting(order));
+    }
+
     Order claim(String server, String stash) throws IOException {
         synchronized (index) { return claimWithObservationLock(server, stash, "local"); }
     }
@@ -1056,8 +1060,12 @@ final class OrderStore {
     private Order claimWithObservationLock(String server, String stash, String agent) throws IOException {
         var counts = index.orderCounts(server, stash);
         if (counts == null || index.automation().current(server) != null) return null;
-        var running = ordersOnServer(server).stream().filter(order -> order.allocations != null && isExecuting(order)).findFirst();
-        if (running.isPresent() && (!stash.equals(running.get().stash) || !java.util.Objects.equals(agent, running.get().agent))) return null;
+        if (agent != null && !"local".equals(agent) && KitJobs.hasActiveWork(index.stock(), server, agent)) return null;
+        for (var running : ordersOnServer(server)) {
+            if (!isExecuting(running)) continue;
+            boolean sameAgent = agent != null && agent.equals(running.agent);
+            if ((running.allocations != null || sameAgent) && (!sameAgent || !stash.equals(running.stash))) return null;
+        }
         Book b = books.get(new IndexStore.StashKey(server, stash));
         if (b == null) return null;
         synchronized (b) {
@@ -1071,7 +1079,8 @@ final class OrderStore {
                 order.stage = OrderStage.PACKING;
                 order.status = "accepted";
                 order.claimedAt = order.updatedAt = System.currentTimeMillis();
-                order.agent = order.allocations == null ? null : agent;
+                // Legacy aggregate claims may omit identity. An authenticated agent keeps one claim across its stashes.
+                order.agent = order.allocations == null && "local".equals(agent) ? null : agent;
                 try {
                     save(b);
                 } catch (IOException failure) {
@@ -1089,6 +1098,7 @@ final class OrderStore {
     }
 
     private boolean orderSourcesReady(Order order, IndexStore.OrderCounts counts, String agent) throws IOException {
+        if (order.agent != null && !order.agent.equals(agent)) return false;
         if (order.allocations == null) {
             return matchesSources(order) && order.lines.stream().allMatch(line -> counts.total(line.type, line.key) >= line.count);
         }
@@ -1134,7 +1144,7 @@ final class OrderStore {
             if (previous == null) throw new OrderException(404, "no such order", -1);
             Order o = Order.fromJson(previous.toJson());
             if (o.agent != null && !o.agent.equals(agent)) {
-                throw new OrderException(403, "Physical order belongs to another agent", -1);
+                throw new OrderException(403, "Order belongs to another agent", -1);
             }
             if (!allowed(o.status, status)) {
                 throw new OrderException(409, "can't go from " + o.status + " to " + status, -1);

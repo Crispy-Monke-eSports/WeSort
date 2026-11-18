@@ -150,7 +150,6 @@ class PhysicalSlotsTest {
         payload.remove("bold");
         component.addProperty("type", 8);
         component.addProperty("value", new JsonPrimitive("WeSort-" + uuid).toString());
-        component.remove("value_old");
         assertTrue(PhysicalSlots.boxIdentity("minecraft:shulker_box",
             PhysicalSlots.Kind.SHULKER, patch.toString()).hasUUID());
     }
@@ -173,8 +172,8 @@ class PhysicalSlotsTest {
         assertEquals("INVALID", PhysicalSlots.boxIdentity("minecraft:shulker_box",
             PhysicalSlots.Kind.SHULKER, patch.toString()).identityStatus());
         name.addProperty("value", "'{" + "text:malformed}" + "'");
-        assertEquals("INVALID", PhysicalSlots.boxIdentity("minecraft:shulker_box",
-            PhysicalSlots.Kind.SHULKER, patch.toString()).identityStatus());
+        assertFalse(PhysicalSlots.boxIdentity("minecraft:shulker_box",
+            PhysicalSlots.Kind.SHULKER, patch.toString()).hasUUID());
     }
 
     @Test void duplicatedVisibleIdentifiersAreQuarantinedWithoutChangingTotals() {

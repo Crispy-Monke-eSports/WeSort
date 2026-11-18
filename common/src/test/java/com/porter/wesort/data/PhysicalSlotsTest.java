@@ -122,6 +122,39 @@ class PhysicalSlotsTest {
         assertEquals("INVALID", PhysicalSlots.boxIdentity("minecraft:shulker_box", PhysicalSlots.Kind.SHULKER, fields.toString()).identityStatus());
     }
 
+    @Test void nativeStructuredNbtAndPlainLiteralNamesBothSupportCanonicalUuid() {
+        String uuid = "550e8400-e29b-41d4-a716-446655440000";
+        var textTag = new JsonObject();
+        textTag.addProperty("type", 8);
+        textTag.addProperty("value", new JsonPrimitive("WeSort-" + uuid).toString());
+        var payload = new JsonObject();
+        payload.add("text", textTag);
+        var component = new JsonObject();
+        component.addProperty("type", 10);
+        component.add("value", payload);
+        var fields = new JsonObject();
+        fields.add("minecraft:custom_name", component);
+        var patch = new JsonObject();
+        patch.addProperty("type", 10);
+        patch.add("value", fields);
+        assertEquals(uuid, PhysicalSlots.boxIdentity("minecraft:red_shulker_box",
+            PhysicalSlots.Kind.SHULKER, patch.toString()).boxUUID());
+        // Every extra property is potentially visible styling/translation; never
+        // infer a canonical UUID by stripping it away.
+        var bold = new JsonObject();
+        bold.addProperty("type", 1);
+        bold.addProperty("value", "1b");
+        payload.add("bold", bold);
+        assertEquals("INVALID", PhysicalSlots.boxIdentity("minecraft:red_shulker_box",
+            PhysicalSlots.Kind.SHULKER, patch.toString()).identityStatus());
+        payload.remove("bold");
+        component.addProperty("type", 8);
+        component.addProperty("value", new JsonPrimitive("WeSort-" + uuid).toString());
+        component.remove("value_old");
+        assertTrue(PhysicalSlots.boxIdentity("minecraft:shulker_box",
+            PhysicalSlots.Kind.SHULKER, patch.toString()).hasUUID());
+    }
+
     @Test void canonicalUuidInSingleQuotedVanillaSnbtIsRecognizedButRawClaimsAreNot() {
         String uuid = "550e8400-e29b-41d4-a716-446655440000";
         var component = new JsonObject();

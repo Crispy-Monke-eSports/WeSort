@@ -206,12 +206,21 @@ final class OrderStore {
             r.updatedAt = o.get("updatedAt").getAsLong();
             r.status = o.get("status").getAsString();
             r.stage = o.has("state") ? OrderStage.valueOf(o.get("state").getAsString()) : OrderStage.legacy(r.status);
+            boolean invalidFrozenLabels = o.has("names") && o.get("names").isJsonObject()
+                && o.getAsJsonObject("names").has("packageLabel")
+                && (r.names == null || !r.names.has("packageLabel"));
+            if (invalidFrozenLabels) {
+                // Preserve the original evidence, never replace it with an unnamed order.
+                r.names = o.getAsJsonObject("names").deepCopy();
+                r.status = "needs_reconciliation";
+                r.stage = OrderStage.NEEDS_RECONCILIATION;
+            }
             if (r.status.equals("delivered") && r.stage == OrderStage.NEEDS_RECONCILIATION) {
                 r.status = "needs_reconciliation";
             }
             r.phase = str(o, "phase");
             r.progress = o.has("progress") && o.get("progress").isJsonObject() ? o.getAsJsonObject("progress") : null;
-            r.message = str(o, "message");
+            r.message = invalidFrozenLabels ? "Locked package labels failed integrity verification; manual reconciliation required" : str(o, "message");
             r.cancelRequested = o.has("cancelRequested") && o.get("cancelRequested").getAsBoolean();
             r.cancelRequestedAt = o.has("cancelRequestedAt") && o.get("cancelRequestedAt").isJsonPrimitive()
                 ? o.get("cancelRequestedAt").getAsLong() : 0;
@@ -380,7 +389,7 @@ final class OrderStore {
     private static Map<String, Long> reserved(Book b) {
         Map<String, Long> out = new HashMap<>();
         for (Order o : b.orders) {
-            if (!OPEN.contains(o.status) && !holdsPhysical(o)) continue;
+            if (!OPEN.contains(o.status) && !holdsPhysical(o) && o.stage() != OrderStage.NEEDS_RECONCILIATION) continue;
             for (Line l : o.lines) out.merge(l.ref(), l.count, Long::sum);
         }
         return out;
@@ -411,7 +420,8 @@ final class OrderStore {
 
     private static boolean holdsPhysical(Order order) {
         return order.allocations != null && order.releasedAt == 0
-            && (OPEN.contains(order.status) || order.claimedAt > 0);
+            && (OPEN.contains(order.status) || order.claimedAt > 0
+                || order.stage() == OrderStage.NEEDS_RECONCILIATION);
     }
 
     void releaseFromFreshObservation(String server) throws IOException {
@@ -801,7 +811,7 @@ final class OrderStore {
         if (normal == null || !serialized.isJsonObject()
             || !serialized.getAsJsonObject().has("packageLabel")) return normal;
         JsonObject stored = serialized.getAsJsonObject();
-        if (!"each".equals(stored.get("mode").getAsString())) return normal;
+        if (!"each".equals(stored.get("mode").getAsString())) return null;
         try {
             JsonObject meta = stored.getAsJsonObject("packageLabel");
             int total = meta.get("total").getAsBigDecimal().intValueExact();

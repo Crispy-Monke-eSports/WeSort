@@ -36,22 +36,32 @@ public final class PhysicalSlots {
             JsonElement name = value.get("minecraft:custom_name");
             if (name == null) return BoxIdentity.unregistered();
             JsonObject typed = name.getAsJsonObject();
-            if (typed.get("type").getAsInt() != 8 || !typed.get("value").getAsJsonPrimitive().isString())
-                return BoxIdentity.invalid();
-            // NbtFingerprint.encode carries the *SNBT StringTag.toString()* value,
-            // not necessarily a JSON double-quoted string: vanilla may wrap
-            // a text component JSON object in single quotes to avoid escapes.
-            String payload = snbtString(typed.get("value").getAsString());
-            if (payload == null || !(payload.startsWith("{") || payload.startsWith("\"")))
-                return BoxIdentity.invalid();
-            JsonElement component = JsonParser.parseString(payload);
             String visible;
-            if (component.isJsonPrimitive() && component.getAsJsonPrimitive().isString()) {
-                visible = component.getAsString();
-            } else if (component.isJsonObject() && component.getAsJsonObject().size() == 1
-                && component.getAsJsonObject().has("text")
-                && component.getAsJsonObject().get("text").getAsJsonPrimitive().isString()) {
-                visible = component.getAsJsonObject().get("text").getAsString();
+            int tagType = typed.get("type").getAsBigDecimal().intValueExact();
+            if (tagType == 10) {
+                // Component serialization can be structured NBT rather than a
+                // JSON string. Reject styles, siblings and translations:
+                // only an exact literal text component is an eligible claim.
+                JsonObject data = typed.getAsJsonObject("value");
+                if (data.size() != 1 || !data.has("text")) return BoxIdentity.invalid();
+                JsonObject textTag = data.getAsJsonObject("text");
+                if (textTag.get("type").getAsBigDecimal().intValueExact() != 8)
+                    return BoxIdentity.invalid();
+                visible = snbtString(textTag.get("value").getAsString());
+                if (visible == null) return BoxIdentity.invalid();
+            } else if (tagType == 8) {
+                String payload = snbtString(typed.get("value").getAsString());
+                if (payload == null) return BoxIdentity.invalid();
+                if (payload.startsWith("{") || payload.startsWith("\"")) {
+                    JsonElement component = JsonParser.parseString(payload);
+                    if (component.isJsonPrimitive() && component.getAsJsonPrimitive().isString()) {
+                        visible = component.getAsString();
+                    } else if (component.isJsonObject() && component.getAsJsonObject().size() == 1
+                        && component.getAsJsonObject().has("text")
+                        && component.getAsJsonObject().get("text").getAsJsonPrimitive().isString()) {
+                        visible = component.getAsJsonObject().get("text").getAsString();
+                    } else return BoxIdentity.invalid();
+                } else visible = payload; // Vanilla plain literal StringTag
             } else return BoxIdentity.invalid();
             if (BOX_UUID.matcher(visible).matches()) {
                 return new BoxIdentity(true, visible.substring("WeSort-".length()), "UNKNOWN");

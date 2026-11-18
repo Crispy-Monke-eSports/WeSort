@@ -122,6 +122,35 @@ class PhysicalSlotsTest {
         assertEquals("INVALID", PhysicalSlots.boxIdentity("minecraft:shulker_box", PhysicalSlots.Kind.SHULKER, fields.toString()).identityStatus());
     }
 
+    @Test void duplicatedVisibleIdentifiersAreQuarantinedWithoutChangingTotals() {
+        var first = namedShulker("WeSort-550e8400-e29b-41d4-a716-446655440000");
+        var second = namedShulker("WeSort-550e8400-e29b-41d4-a716-446655440000");
+        var snapshot = new PhysicalSlots.Snapshot(27, List.of(
+            new PhysicalSlots.Slot(0, 1, first), new PhysicalSlots.Slot(20, 1, second)));
+        assertEquals(Map.of("shulker", 2L), snapshot.totals());
+        var rows = snapshot.json().getAsJsonArray("positions");
+        assertEquals("DUPLICATE", rows.get(0).getAsJsonObject().get("identityStatus").getAsString());
+        assertEquals("DUPLICATE", rows.get(1).getAsJsonObject().get("identityStatus").getAsString());
+        assertTrue(rows.get(0).getAsJsonObject().get("hasUUID").getAsBoolean());
+        assertNotEquals(rows.get(0).getAsJsonObject().get("path").getAsString(),
+            rows.get(1).getAsJsonObject().get("path").getAsString());
+        // A singleton shulker carries only a syntactically valid claim, not a registry entry.
+        var one = new PhysicalSlots.Snapshot(27, List.of(new PhysicalSlots.Slot(0, 1, first)));
+        assertEquals("UNKNOWN", one.json().getAsJsonArray("positions").get(0)
+            .getAsJsonObject().get("identityStatus").getAsString());
+    }
+
+    @Test void onlyExactVanillaColoredShulkerIdsMayClaimUUID() {
+        String name = "WeSort-550e8400-e29b-41d4-a716-446655440000";
+        String patch = namedShulker(name).components();
+        for (String id : List.of("minecraft:diamond", "minecraft:not_shulker_box",
+            "modded:shulker_box", "minecraft:shulker_box_hack", "minecraft:infinite_shulker_box")) {
+            assertFalse(PhysicalSlots.boxIdentity(id, PhysicalSlots.Kind.SHULKER, patch).hasUUID(), id);
+        }
+        assertTrue(PhysicalSlots.boxIdentity("minecraft:blue_shulker_box", PhysicalSlots.Kind.SHULKER, patch).hasUUID());
+        assertTrue(PhysicalSlots.boxIdentity("minecraft:shulker_box", PhysicalSlots.Kind.SHULKER, patch).hasUUID());
+    }
+
     @Test void addingDerivedUUIDFieldsDoesNotChangeInventoryFingerprintOrCount() {
         var box = namedShulker("WeSort-550e8400-e29b-41d4-a716-446655440000");
         var snapshot = new PhysicalSlots.Snapshot(27, List.of(

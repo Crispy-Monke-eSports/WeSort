@@ -206,3 +206,16 @@ stale selection receives 409. With `markUuid=false` the receipt is
 `VERIFIED_KEEP_NAME`. With `markUuid=true` it is `UUID_REQUESTED`.
 This records the choice. Anvil execution and registration require a
 separate verified physical operation.
+
+
+### W-064: server-owned shulker package label policy, version 1
+
+New Manager-web orders submit a **suffix-only** `names` object:
+```json
+{"mode":"packageLabel","version":1,"text":"Byggmaterial"}
+```
+Advanced per-box text uses `"texts":["A","B","C"]` (1–54 entries); an empty entry falls back to `text` or `Beställning`. Client-supplied `total`, `packageTotal`, `names`, and other unrecognized policy fields are rejected. The server trims Unicode edge whitespace, enforces a maximum **33 UTF-16 units** per suffix, and rejects `§`, control characters, bidi/invisible formatting characters and isolated UTF-16 surrogates. The global limit remains **54 boxes** and names remain at most **50 UTF-16 units**.
+
+The Manager calculates the authoritative box total from the validated order lines and current stack sizes, freezes it at reservation, and builds `WeSort (X/Y) - <suffix>` (1-based X) for every box. Its persisted `names` payload uses the existing agent-compatible `{"mode":"each","names":[...]}`, with added `packageLabel:{version:1,text:"...",total:Y,texts?:[...]}` metadata. The loader rechecks generated names against stored policy instead of silently renumbering. Existing previously stored `all`/`each` orders remain readable; the legacy API request modes are retained temporarily for compatibility, not for new Manager-web submissions.
+
+**Scope boundary:** This is the Manager/UI label and persistence contract. Physical anvil readback, required rename before `PICKUP_READY`, box `packageId`/manifest custody, loss-of-XP recovery, 2–5 agent claims and a test with real 26.3 anvil are separate remaining W-064/W-063 work. The UI preview derives Y from the cart estimate and does **not** claim physical completion or locked manifest numbers before the server accepts the order.

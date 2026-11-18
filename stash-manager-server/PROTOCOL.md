@@ -240,3 +240,22 @@ re-registered the issued UUID at the exact source and path (the anvil
 rename itself is a verified physical operation passing W-061's guard). A
 Manager restart or expired lease fences an in-flight job to
 `NEEDS_RECONCILIATION`; it is never silently reassigned.
+
+## W-064 user-chosen order box labels
+
+The user chooses the text part of an order's shulker-box names; the Manager
+always generates the prefix `WeSort (X/Y) - `, where `X` is the 1-based box
+number and `Y` the frozen package total (`shulkersNeeded`, never above 54).
+The anvil limit is 50 UTF-16 code units and the longest prefix
+`WeSort (54/54) - ` is 17, so the user text is capped at 33 code units.
+`POST /api/v1/orders` accepts an optional `packageLabel` of
+`{"text":"..."}` (common suffix, the normal flow) or
+`{"texts":["...", ...]}` (a suffix per box). The Manager trims, defaults
+empty to `Beställning`, rejects `§`, control characters, bidi/invisible
+format characters and broken surrogates, and stores the label plus the
+frozen `packageTotal` on the order. Full names are generated on the server
+(`Order.generatedNames()`), never from free client formatting; the client
+cannot replace the prefix or renumber boxes. Legacy orders using
+`names.all|each` remain readable unchanged. The anvil rename becomes a
+precondition for `PICKUP_READY` in the new flow; a failed rename never
+delivers an unmarked box.

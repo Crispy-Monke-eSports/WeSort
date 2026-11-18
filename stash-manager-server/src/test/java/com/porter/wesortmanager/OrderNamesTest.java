@@ -214,4 +214,34 @@ class OrderNamesTest {
         assertEquals(409, assertThrows(OrderStore.OrderException.class, () -> reloaded.retry(failed.id)).status);
         assertEquals("pending", reloaded.statusOf(failed.id));
     }
+
+    @Test
+    void packageLabelIsNormalisedStoredAndGeneratesNames() throws Exception {
+        assertNull(OrderStore.normalizePackageLabel(null));
+        assertNull(OrderStore.normalizePackageLabel(JsonParser.parseString("null")));
+        assertEquals(json("{\"mode\":\"all\",\"text\":\"Byggmaterial\"}"),
+            OrderStore.normalizePackageLabel(JsonParser.parseString("{\"text\":\"  Byggmaterial  \"}")));
+        assertEquals(json("{\"mode\":\"all\",\"text\":\"Beställning\"}"),
+            OrderStore.normalizePackageLabel(JsonParser.parseString("{\"text\":\"\"}")));
+        assertEquals("a".repeat(33), OrderStore.normalizePackageLabel(
+            JsonParser.parseString("{\"text\":\"" + "a".repeat(33) + "\"}")).get("text").getAsString());
+        assertEquals(400, assertThrows(OrderStore.OrderException.class, () -> OrderStore.normalizePackageLabel(
+            JsonParser.parseString("{\"text\":\"" + "a".repeat(34) + "\"}"))).status);
+        assertEquals(400, assertThrows(OrderStore.OrderException.class, () -> OrderStore.normalizePackageLabel(
+            JsonParser.parseString("{\"text\":\"a§b\"}"))).status);
+
+        var label = OrderStore.normalizePackageLabel(JsonParser.parseString("{\"text\":\"Projekt A\"}"));
+        OrderStore.Order o = orders.submit("s", "a", diamonds(16), null, label, null, null, null,
+            OrderIntent.DEFAULT, null, false, ignored -> null).order();
+        assertEquals(label, o.toJson().getAsJsonObject("packageLabel"));
+        assertEquals(1, o.toJson().get("packageTotal").getAsInt());
+        assertEquals("WeSort (1/1) - Projekt A", o.generatedNames().get(0).getAsString());
+
+        // Survives a restart.
+        OrderStore reloaded = new OrderStore(data, index);
+        reloaded.load();
+        var persisted = reloaded.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
+        assertEquals("Projekt A", persisted.getAsJsonObject("packageLabel").get("text").getAsString());
+        assertEquals(1, persisted.get("packageTotal").getAsInt());
+    }
 }

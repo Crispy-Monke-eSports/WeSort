@@ -133,6 +133,13 @@ final class OrderRoutes {
             lineError(ex, e.status, e.getMessage(), -1);
             return;
         }
+        JsonObject packageLabel;
+        try {
+            packageLabel = OrderStore.normalizePackageLabel(o.get("packageLabel"));
+        } catch (OrderStore.OrderException e) {
+            lineError(ex, e.status, e.getMessage(), -1);
+            return;
+        }
         if (!o.has("lines") || !o.get("lines").isJsonArray()) {
             Http.error(ex, 400, "lines must be an array");
             return;
@@ -167,7 +174,7 @@ final class OrderRoutes {
         }
         try {
             var profile = guild.profile();
-            var submission = orders.submit(server, stash, lines, names, who.id(), who.name(),
+            var submission = orders.submit(server, stash, lines, names, packageLabel, who.id(), who.name(),
                 profile.id().toString(), intent, idempotencyKey(ex), profile.approvalPolicy().requiresApproval(intent),
                 draft -> resolveRecipient(who, draft));
             OrderStore.Order order = submission.order();

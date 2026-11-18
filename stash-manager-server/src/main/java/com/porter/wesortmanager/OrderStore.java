@@ -6,6 +6,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonParser;
 
+import com.porter.wesort.data.PackageLabel;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
@@ -87,6 +89,8 @@ final class OrderStore {
         long releasedAt;
         String agent;
         JsonObject names; // normalized (see normalizeNames), or null for no naming
+        JsonObject packageLabel; // normalized (see normalizePackageLabel), or null for the default label
+        int packageTotal; // frozen number of boxes Y, 0 when unknown (legacy orders)
         long createdAt;
         long updatedAt;
         String status;
@@ -182,6 +186,8 @@ final class OrderStore {
             if (agent != null) o.addProperty("agent", agent);
             if (releasedAt > 0) o.addProperty("releasedAt", releasedAt);
             o.add("names", names == null ? null : names.deepCopy());
+            o.add("packageLabel", packageLabel == null ? null : packageLabel.deepCopy());
+            if (packageTotal > 0) o.addProperty("packageTotal", packageTotal);
             o.addProperty("createdAt", createdAt);
             o.addProperty("updatedAt", updatedAt);
             o.addProperty("status", status);
@@ -241,6 +247,12 @@ final class OrderStore {
             } catch (OrderException e) {
                 r.names = null;
             }
+            try {
+                r.packageLabel = normalizePackageLabel(o.get("packageLabel"));
+            } catch (OrderException e) {
+                r.packageLabel = null;
+            }
+            r.packageTotal = o.has("packageTotal") ? o.get("packageTotal").getAsInt() : 0;
             r.createdAt = o.get("createdAt").getAsLong();
             r.updatedAt = o.get("updatedAt").getAsLong();
             r.status = o.get("status").getAsString();
@@ -265,6 +277,12 @@ final class OrderStore {
         }
 
         OrderStage stage() { return stage == null ? OrderStage.legacy(status) : stage; }
+
+        /** The generated W-064 full names for a frozen package total, or null for legacy free-name orders. */
+        JsonArray generatedNames() {
+            if (packageLabel == null || packageTotal <= 0) return null;
+            return PackageLabel.generate(packageLabel, packageTotal);
+        }
 
         void advance(OrderStage next) throws OrderException {
             if (!stage().allows(next)) throw new OrderException(409, "Order cannot move from " + stage() + " to " + next, -1);
@@ -590,10 +608,16 @@ final class OrderStore {
 
     Order place(String server, String stash, List<Line> requested, JsonObject names, String byId,
                 String byName, String organizationId, OrderIntent intent) throws OrderException, IOException {
-        return submit(server, stash, requested, names, byId, byName, organizationId, intent, null, false, ignored -> null).order();
+        return submit(server, stash, requested, names, null, byId, byName, organizationId, intent, null, false, ignored -> null).order();
     }
 
     Submission submit(String server, String stash, List<Line> requested, JsonObject names, String byId,
+                      String byName, String organizationId, OrderIntent intent, String idempotencyKey, boolean needsApproval, RecipientResolver recipient)
+        throws OrderException, IOException {
+        return submit(server, stash, requested, names, null, byId, byName, organizationId, intent, idempotencyKey, needsApproval, recipient);
+    }
+
+    Submission submit(String server, String stash, List<Line> requested, JsonObject names, JsonObject packageLabel, String byId,
                       String byName, String organizationId, OrderIntent intent, String idempotencyKey, boolean needsApproval, RecipientResolver recipient)
         throws OrderException, IOException {
         synchronized (index) {
@@ -605,17 +629,18 @@ final class OrderStore {
                 body.addProperty("stash", stash);
                 body.add("lines", Json.GSON.toJsonTree(requested));
                 body.add("names", names == null ? JsonNull.INSTANCE : names);
+                body.add("packageLabel", packageLabel == null ? JsonNull.INSTANCE : packageLabel);
                 body.add("intent", Json.GSON.toJsonTree(intent));
                 fingerprint = hash(body);
                 var saved = previouslyReceived(key);
                 if (saved != null) return new Submission(replay(saved, fingerprint), false);
             }
-            return new Submission(placeWithObservationLock(server, stash, requested, names, byId, byName,
+            return new Submission(placeWithObservationLock(server, stash, requested, names, packageLabel, byId, byName,
                 organizationId, intent, key, fingerprint, null, needsApproval, recipient.resolve(intent)), true);
         }
     }
 
-    private Order placeWithObservationLock(String server, String stash, List<Line> requested, JsonObject names,
+    private Order placeWithObservationLock(String server, String stash, List<Line> requested, JsonObject names, JsonObject packageLabel,
                                            String byId, String byName, String organizationId, OrderIntent intent,
                                            String receiptKey, String fingerprint, Order retryOf, boolean needsApproval, String recipient)
         throws OrderException, IOException {
@@ -692,6 +717,8 @@ final class OrderStore {
             o.verifiedRecipient = recipient;
             o.lines = new ArrayList<>(merged.values());
             o.names = names == null ? null : names.deepCopy();
+            o.packageLabel = packageLabel == null ? null : packageLabel.deepCopy();
+            o.packageTotal = (int) shulkers;
             o.allocations = allocations;
             o.sourceGuards = sourceGuards(server, stash);
             o.createdAt = now;
@@ -750,7 +777,7 @@ final class OrderStore {
                 if (holdsPhysical(old)) {
                     throw new OrderException(409, "Wait for verified release of the previous reservation", -1);
                 }
-                return placeWithObservationLock(book.server, book.stash, old.lines, old.names, byId, byName,
+                return placeWithObservationLock(book.server, book.stash, old.lines, old.names, old.packageLabel, byId, byName,
                     old.organizationId == null ? organizationId : old.organizationId, old.intent, null, null, old, policy.requiresApproval(old.intent), recipient.resolve(old.intent));
             }
         }
@@ -810,6 +837,21 @@ final class OrderStore {
             return out;
         }
         throw new OrderException(400, "names.mode must be \"all\" or \"each\"", -1);
+    }
+
+    /**
+     * Validates and normalizes a W-064 package label: the user-chosen text part of the automatic
+     * {@code "WeSort (X/Y) - <text>"} name. Returns null for an absent label (the caller then uses the
+     * default "Beställning"), otherwise {@code {mode:"all", text}} or {@code {mode:"each", texts:[...]}}.
+     */
+    static JsonObject normalizePackageLabel(JsonElement e) throws OrderException {
+        if (e == null || e.isJsonNull()) return null;
+        if (!e.isJsonObject()) throw new OrderException(400, "packageLabel must be an object or null", -1);
+        try {
+            return PackageLabel.normalize(e.getAsJsonObject());
+        } catch (IllegalArgumentException invalid) {
+            throw new OrderException(400, invalid.getMessage(), -1);
+        }
     }
 
     /** The trimmed name ("" when blank), or 400 when it is too long or has § or a control character. */

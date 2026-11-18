@@ -6,9 +6,11 @@ import baritone.api.Settings;
 import baritone.api.pathing.goals.Goal;
 import baritone.api.pathing.goals.GoalNear;
 import baritone.api.pathing.goals.GoalXZ;
+import baritone.api.pathing.path.IPathExecutor;
 import baritone.api.process.IBaritoneProcess;
 import baritone.api.process.ICustomGoalProcess;
 import com.porter.wesort.compat.BaritoneFluids;
+import com.porter.wesort.compat.WorldInteractionGuard;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.Block;
 
@@ -80,6 +82,10 @@ public final class BaritoneHelper {
         return baritone().getPathingBehavior().isPathing();
     }
 
+    public static IPathExecutor currentPath() {
+        return baritone().getPathingBehavior().getCurrent();
+    }
+
     /**
      * True if Baritone is busy with something that is not our goal {@code ours}: another process is in control, or
      * the custom goal process was given a different goal (e.g. the user's #goto).
@@ -113,6 +119,23 @@ public final class BaritoneHelper {
 
     public static void stop() {
         baritone().getPathingBehavior().cancelEverything();
+    }
+
+    public static void enforceAgentProfile() {
+        Settings settings = BaritoneAPI.getSettings();
+        settings.allowBreak.value = false;
+        if (!settings.allowBreakAnyway.value.isEmpty()) settings.allowBreakAnyway.value = List.of();
+        settings.allowPlace.value = false;
+        settings.allowPlaceInFluidsSource.value = false;
+        settings.allowPlaceInFluidsFlow.value = false;
+        settings.allowWaterBucketFall.value = false;
+        settings.allowParkour.value = false;
+        settings.allowParkourPlace.value = false;
+        settings.allowParkourAscend.value = false;
+        settings.allowDiagonalDescend.value = false;
+        settings.allowJumpAt256.value = false;
+        settings.allowSprint.value = false;
+        settings.maxFallHeightNoWater.value = 1;
     }
 
     /**
@@ -180,6 +203,7 @@ public final class BaritoneHelper {
             if (Objects.equals(setting.value, saved[2])) setting.value = saved[1];
         }
         confined.clear();
+        if (WorldInteractionGuard.dedicated()) enforceAgentProfile();
     }
 
     /**
@@ -258,5 +282,6 @@ public final class BaritoneHelper {
             waterBucketFall = null;
         }
         BaritoneFluids.restore(settings);
+        if (WorldInteractionGuard.dedicated()) enforceAgentProfile();
     }
 }

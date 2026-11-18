@@ -464,6 +464,10 @@ public class StashManager extends Module {
         reset();
     }
 
+    public boolean dedicatedProfile() {
+        return !serverUrl.get().isBlank() && !apiKey.get().isBlank();
+    }
+
     @Override
     public void onDeactivate() {
         com.porter.wesort.stash.Kits.revoke();kitUncertain=kitJob!=null;nextKitCatalogAt=0;

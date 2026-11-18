@@ -167,6 +167,14 @@ public final class InventorySync {
     @EventHandler
     private void sent(PacketEvent.Send event) {
         if (mc.player == null || mc.level == null) return;
+        if ((event.packet instanceof ServerboundUseItemOnPacket use && !WorldInteractionGuard.allowUse(use.hitResult()))
+            || (event.packet instanceof ServerboundPlayerActionPacket action && switch (action.getAction()) {
+                case START_DESTROY_BLOCK, STOP_DESTROY_BLOCK -> !WorldInteractionGuard.allowBreak(action.getPos());
+                default -> false;
+            })) {
+            event.cancel();
+            return;
+        }
         if(internal){
             if(recoveryOpening&&event.packet instanceof ServerboundUseItemOnPacket use){
                 lastBlockSequence=use.sequence();readSource=null;

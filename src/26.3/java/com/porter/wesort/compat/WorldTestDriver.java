@@ -142,6 +142,23 @@ public final class WorldTestDriver {
                 }
                 case "nav-cancel" -> { NavigationRuntime.cancel(); respond(true, NavigationRuntime.status(), state()); }
                 case "nav-resume" -> respond(NavigationRuntime.resume(), NavigationRuntime.status(), state());
+                case "world-guard-probe" -> {
+                    BlockPos pos = position(command);
+                    var hit = new BlockHitResult(Vec3.atCenterOf(pos), Direction.UP, pos, false);
+                    var used = mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, hit);
+                    boolean broken = mc.gameMode.startDestroyBlock(pos, Direction.UP);
+                    respond(used == net.minecraft.world.InteractionResult.FAIL && !broken,
+                        "Dedicated world guard refused use and break before prediction", state());
+                }
+                case "unsafe-bot-profile" -> {
+                    var settings = baritone.api.BaritoneAPI.getSettings();
+                    settings.allowBreak.value = true;
+                    settings.allowPlace.value = true;
+                    settings.allowBreakAnyway.value = List.of(net.minecraft.world.level.block.Blocks.STONE);
+                    var external = baritone.api.BaritoneAPI.getProvider().getPrimaryBaritone();
+                    external.getCustomGoalProcess().setGoalAndPath(new baritone.api.pathing.goals.GoalBlock(position(command)));
+                    respond(true, "Submitted an external Baritone goal and unsafe profile settings", state());
+                }
                 case "close" -> mc.player.closeContainer();
                 case "click" -> {
                     if (!InventorySync.ready()) { respond(false, "Inventory not ready: " + InventorySync.reason(), state()); return; }
@@ -530,6 +547,7 @@ public final class WorldTestDriver {
         out.addProperty("navigationPaused", NavigationRuntime.paused());
         var settings = baritone.api.BaritoneAPI.getSettings();
         out.addProperty("allowBreak", settings.allowBreak.value);
+        out.addProperty("allowBreakAnyway", settings.allowBreakAnyway.value.size());
         out.addProperty("allowPlace", settings.allowPlace.value);
         out.addProperty("allowParkour", settings.allowParkour.value);
         out.addProperty("allowWaterBucketFall", settings.allowWaterBucketFall.value);

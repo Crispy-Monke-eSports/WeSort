@@ -51,14 +51,35 @@ public final class NavigationRuntime {
     }
     @EventHandler
     private void tick(TickEvent.Pre ignored) {
+        if (WorldInteractionGuard.dedicated()) {
+            BaritoneHelper.enforceAgentProfile();
+            if (BaritoneHelper.controlledByOther(ours)) {
+                BaritoneHelper.stop();
+                if (!paused || ours != null) finish("PAUSED_NAVIGATION_OTHER_PROCESS", true);
+                return;
+            }
+        }
         if (ours == null) return;
         if (mc.player == null || mc.level == null) { finish("PAUSED_NAVIGATION_DISCONNECTED", true); return; }
         String failure = watchdog.check(StashIndex.dimension(), mc.player.getX(), mc.player.getY(), mc.player.getZ(), System.nanoTime());
         if (!failure.isEmpty()) { finish(failure, true); return; }
         if (!InventorySync.ready()) { finish("PAUSED_NAVIGATION_INVENTORY", true); return; }
+        if (WorldInteractionGuard.dedicated() && !allowedRoute()) { finish("PAUSED_NAVIGATION_UNSAFE_BLOCK", true); return; }
         if (ours.isInGoal(mc.player.blockPosition())) { finish("ARRIVED", false); return; }
         if (!BaritoneHelper.goalIs(ours)) { finish("PAUSED_NAVIGATION_RELEASED", true); return; }
         if (BaritoneHelper.controlledByOther(ours)) finish("PAUSED_NAVIGATION_OTHER_PROCESS", true);
+    }
+
+    private boolean allowedRoute() {
+        if (!NavigationGuard.permits(mc.player.blockPosition())) return false;
+        var executor = BaritoneHelper.currentPath();
+        if (executor == null) return true;
+        var positions = executor.getPath().positions();
+        int first = Math.max(0, executor.getPosition());
+        for (int position = first; position < Math.min(first + 3, positions.size()); position++) {
+            if (!NavigationGuard.permits(positions.get(position))) return false;
+        }
+        return true;
     }
     @EventHandler
     private void left(GameLeftEvent ignored) {

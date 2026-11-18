@@ -434,7 +434,7 @@ final class Router implements HttpHandler {
         return switch (path) {
             case "/api/v1/index", "/api/v1/heartbeat", "/api/v1/delivery" ->
                 scope.matchesLocation(server, stash) && scope.player().equalsIgnoreCase(player);
-            case "/api/v1/orders/claim", "/api/v1/kits/agent", "/api/v1/boxes/agent" ->
+            case "/api/v1/orders/claim", "/api/v1/kits/agent", "/api/v1/boxes/agent", "/api/v1/custody/agent" ->
                 scope.matchesLocation(server, stash) && scope.agent().equals(agent) && scope.player().equalsIgnoreCase(player);
             case "/api/v1/automation" ->
                 scope.server().equals(server) && scope.agent().equals(agent) && scope.player().equalsIgnoreCase(player);

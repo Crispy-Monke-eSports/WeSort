@@ -290,3 +290,17 @@ precedence. `GET /api/v1/quotas/me` shows a member's own consumed and
 reserved totals. Reservation is idempotent by order id, and `reserved`/
 `consumed` are separate from physical inventory reservations; a cancel or a
 verified delivery affects the quota exactly once, across restarts.
+
+## W-029 package custody
+
+Each physical package has a Manager-owned `packageId` (never a Minecraft
+UUID and never the visible `WeSort (X/Y) - text` label) and an append-only
+custody chain: `STAGED → PICKUP_VERIFIED → IN_TRANSIT → DEPOSIT_VERIFIED`
+or `PLAYER_HANDOFF_PENDING`, plus `NEEDS_RECONCILIATION`. Owner
+`GET /api/v1/custody` lists packages (optionally by `order`). The signed
+agent endpoint `POST /api/v1/custody/agent` stages or advances a package
+(`stage` or a state name). Custody is mutually exclusive: after an agent
+picks a package up, only that agent — or an explicit reconciliation — may
+advance it, so two couriers can never claim the same package and a package
+is never booked in two places. A reboot or a replayed receipt does not
+change custody.

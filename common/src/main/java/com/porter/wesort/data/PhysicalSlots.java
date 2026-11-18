@@ -21,8 +21,9 @@ public final class PhysicalSlots {
      * Parse vanilla 26.3's typed CUSTOM_NAME, not an untrusted hasUUID field.
      * Only an independent verified Manager registry may upgrade UNKNOWN to REGISTERED.
      */
-    public static BoxIdentity boxIdentity(Kind kind, String components) {
-        if (kind != Kind.SHULKER) return BoxIdentity.unregistered();
+    public static BoxIdentity boxIdentity(String id, Kind kind, String components) {
+        if (kind != Kind.SHULKER || id == null || !id.startsWith("minecraft:")
+            || !id.endsWith("shulker_box")) return BoxIdentity.unregistered();
         try {
             JsonObject patch = JsonParser.parseString(components).getAsJsonObject();
             JsonObject value = patch;
@@ -91,7 +92,7 @@ public final class PhysicalSlots {
         public int maxStack() { return maxStack; }
         public int size() { return size; }
         public List<Slot> contents() { return contents; }
-        public BoxIdentity boxIdentity() { return PhysicalSlots.boxIdentity(kind, components); }
+        public BoxIdentity boxIdentity() { return PhysicalSlots.boxIdentity(id, kind, components); }
     }
 
     public record Located(String path, String parent, Slot stack, long copies) {

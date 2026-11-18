@@ -76,4 +76,24 @@ class PackageCustodyTest {
         // The same agent can continue after restart; a different agent still cannot.
         assertEquals(PackageCustody.State.IN_TRANSIT, reloaded.transition(packageId, "o-1", agent, PackageCustody.State.IN_TRANSIT, null, null).state());
     }
+
+    @Test void bindingBindsManifestJobDestinationAndLabelAndEveryEventCarriesThePhysicalSource() throws Exception {
+        var custody = new PackageCustody(data);
+        String packageId = id();
+        var staged = custody.stage(packageId, "o-1", "sha256:abc", "job-1", "chest-7", "WeSort (2/4) - Raid", location("minecraft:overworld"));
+        assertEquals("sha256:abc", staged.manifest());
+        assertEquals("job-1", staged.jobId());
+        assertEquals("chest-7", staged.destination());
+        assertEquals("WeSort (2/4) - Raid", staged.label());
+
+        // A conflicting binding for the same package is refused; a matching one is idempotent.
+        assertThrows(PackageCustody.Conflict.class, () -> custody.stage(packageId, "o-1", "sha256:other", "job-1", "chest-7", "x", location("minecraft:overworld")));
+        assertEquals(staged.json(), custody.stage(packageId, "o-1", "sha256:abc", "job-1", "chest-7", "WeSort (2/4) - Raid", location("minecraft:overworld")).json());
+
+        // The STAGED event records the physical source (server/dimension/stash/slot).
+        var event = staged.events().get(0).getAsJsonObject();
+        assertEquals("s", event.getAsJsonObject("location").get("server").getAsString());
+        assertEquals("minecraft:overworld", event.getAsJsonObject("location").get("dimension").getAsString());
+        assertEquals("a", event.getAsJsonObject("location").get("stash").getAsString());
+    }
 }

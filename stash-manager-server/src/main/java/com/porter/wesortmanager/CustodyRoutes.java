@@ -42,7 +42,8 @@ final class CustodyRoutes {
             var evidence = body.has("evidence") && body.get("evidence").isJsonObject() ? body.getAsJsonObject("evidence") : null;
             PackageCustody.Package result;
             if ("stage".equals(action)) {
-                result = custody.stage(packageId, orderId, location);
+                result = custody.stage(packageId, orderId, AddonRoutes.string(body, "manifest"),
+                    AddonRoutes.string(body, "jobId"), AddonRoutes.string(body, "destination"), AddonRoutes.string(body, "label"), location);
             } else {
                 result = custody.transition(packageId, orderId, agent, PackageCustody.State.valueOf(action), location, evidence);
             }

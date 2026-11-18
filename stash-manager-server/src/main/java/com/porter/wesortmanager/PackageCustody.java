@@ -8,9 +8,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.LongSupplier;
@@ -19,9 +17,11 @@ import java.util.function.LongSupplier;
  * W-029: custody tracking for a physical order package, from warehouse staging through pickup, transport and a
  * verified deposit or player handoff. The {@code packageId} is the Manager's own persistent identity — never a
  * Minecraft UUID, and never the visible {@code "WeSort (X/Y) - text"} label, so two packages with the same visible
- * name never merge. Custody is mutually exclusive: after an agent picks a package up, only that agent (or an
- * explicit reconciliation) may advance it, so two couriers can never claim the same package. Every change is an
- * append-only event.
+ * name never merge. Each package binds its order, pack job, manifest fingerprint, destination and visible label, and
+ * every custody event records the server-confirmed physical source (server/dimension/stash/slot), the agent and the
+ * evidence. Custody is mutually exclusive: after an agent picks a package up, only that agent (or an explicit
+ * reconciliation) may advance it, so two couriers can never claim the same package. Every change is an append-only
+ * event and a reboot or replayed receipt does not change custody.
  */
 final class PackageCustody {
     enum State {
@@ -47,11 +47,16 @@ final class PackageCustody {
     private final LongSupplier clock;
     private final Map<String, Package> packages = new LinkedHashMap<>();
 
-    record Package(String packageId, String orderId, State state, String agent, JsonObject location, long revision, JsonArray events) {
+    record Package(String packageId, String orderId, String manifest, String jobId, String destination, String label,
+                   State state, String agent, JsonObject location, long revision, JsonArray events) {
         JsonObject json() {
             var out = new JsonObject();
             out.addProperty("packageId", packageId);
             out.addProperty("orderId", orderId);
+            out.addProperty("manifest", manifest);
+            out.addProperty("jobId", jobId);
+            out.addProperty("destination", destination);
+            out.addProperty("label", label);
             out.addProperty("state", state.name());
             out.addProperty("agent", agent);
             out.add("location", location == null ? new JsonObject() : location.deepCopy());
@@ -73,7 +78,8 @@ final class PackageCustody {
             for (var entry : root.getAsJsonArray("packages")) {
                 var p = entry.getAsJsonObject();
                 packages.put(p.get("packageId").getAsString(), new Package(p.get("packageId").getAsString(),
-                    p.get("orderId").getAsString(), State.valueOf(p.get("state").getAsString()), str(p, "agent"),
+                    p.get("orderId").getAsString(), str(p, "manifest"), str(p, "jobId"), str(p, "destination"), str(p, "label"),
+                    State.valueOf(p.get("state").getAsString()), str(p, "agent"),
                     p.has("location") ? p.getAsJsonObject("location") : new JsonObject(), p.get("revision").getAsLong(),
                     p.getAsJsonArray("events").deepCopy()));
             }
@@ -87,19 +93,32 @@ final class PackageCustody {
         return value == null || value.isJsonNull() ? null : value.getAsString();
     }
 
-    /** Stages a package at the warehouse; idempotent for the same package id. */
+    /** Stages a package at the warehouse; idempotent for the same package id and binding. */
     synchronized Package stage(String packageId, String orderId, JsonObject location) throws IOException {
+        return stage(packageId, orderId, null, null, null, null, location);
+    }
+
+    synchronized Package stage(String packageId, String orderId, String manifest, String jobId, String destination,
+                               String label, JsonObject location) throws IOException {
         UUID.fromString(packageId);
         var existing = packages.get(packageId);
         if (existing != null) {
-            if (!existing.orderId().equals(orderId)) throw new Conflict("Package already belongs to another order");
+            if (!existing.orderId().equals(orderId) || !eq(existing.manifest(), manifest)
+                || !eq(existing.jobId(), jobId) || !eq(existing.destination(), destination)) {
+                throw new Conflict("Package already belongs to another order or binding");
+            }
             return existing;
         }
-        var p = new Package(packageId, orderId, State.STAGED, null, location == null ? new JsonObject() : location, 0, new JsonArray());
+        var p = new Package(packageId, orderId, manifest, jobId, destination, label, State.STAGED, null,
+            location == null ? new JsonObject() : location, 0, new JsonArray());
         p = append(p, "STAGED", null, location, new JsonObject());
         packages.put(packageId, p);
         save();
         return p;
+    }
+
+    private static boolean eq(String a, String b) {
+        return a == null ? b == null : a.equals(b);
     }
 
     /**
@@ -144,7 +163,8 @@ final class PackageCustody {
         row.add("evidence", evidence.deepCopy());
         var events = p.events().deepCopy();
         events.add(row);
-        return new Package(p.packageId(), p.orderId(), State.valueOf(event), agent == null ? p.agent() : agent,
+        return new Package(p.packageId(), p.orderId(), p.manifest(), p.jobId(), p.destination(), p.label(),
+            State.valueOf(event), agent == null ? p.agent() : agent,
             location == null ? p.location() : location, revision, events);
     }
 

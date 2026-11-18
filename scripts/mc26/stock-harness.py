@@ -6,6 +6,7 @@ import importlib.util
 import json
 from pathlib import Path
 import time
+import urllib.parse
 
 spec = importlib.util.spec_from_file_location('world_harness', Path(__file__).with_name('world-harness.py'))
 world = importlib.util.module_from_spec(spec); spec.loader.exec_module(world)
@@ -140,7 +141,7 @@ class StockHarness(world.Harness):
             # Freshness conflicts are 409 for physical-root allocations; older aggregate
             # validation returns 400. Both must reject rather than reserve stale stock.
             require(status in (400, 409), f'Expired source allowed a new order (HTTP {status})')
-            code, listed = self.http('/api/v1/orders?' + __import__('urllib.parse', fromlist=['quote']).quote(self.server_name, safe='').join(['server=', '&stash=e2e-fixture']))
+            code, listed = self.http('/api/v1/orders?server=' + urllib.parse.quote(self.server_name, safe='') + '&stash=e2e-fixture')
             require(code == 200 and not listed['orders'], 'Rejected expired-stock request still created an order')
             self.ok('real expiry policy marks last counts unknown and rejects a new reservation; pause/heartbeats do not renew observations')
 

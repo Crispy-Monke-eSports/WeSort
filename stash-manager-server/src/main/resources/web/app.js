@@ -4270,7 +4270,10 @@
             else orders.expanded.delete(openKey);
           });
           var ns = document.createElement("summary");
-          ns.textContent = "Named each (" + named.length + ")";
+          var labelPlan = nm.packageLabel && nm.packageLabel.version === 1 ? nm.packageLabel : null;
+          ns.textContent = labelPlan
+            ? "Planned WeSort labels (" + labelPlan.total + " box(es); physical rename not yet confirmed)"
+            : "Named each (" + named.length + ")";
           nd.appendChild(ns);
           named.forEach(function (t) { nd.appendChild(line("order-line", t)); });
           card.appendChild(nd);

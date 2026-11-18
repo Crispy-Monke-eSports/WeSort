@@ -239,6 +239,8 @@ public final class WeSortManager {
         new DeliveryRoutes(delivery, owners).register(router);
         var guild = new GuildRoutes(config.dataDir(), audit);
         new OrderRoutes(orders, owners, audit, guild, users).register(router);
+        new OrderAuditRoutes(orders, store).register(router);
+        new OperationsRoutes(store, orders, hub).register(router);
         new StockRoutes(store, orders).register(router, audit);
         new KitRoutes(store, audit, orders, owners).register(router);
         new PhysicalRoutes(store, audit).register(router);

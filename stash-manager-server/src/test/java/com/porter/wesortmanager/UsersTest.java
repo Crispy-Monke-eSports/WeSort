@@ -304,6 +304,16 @@ class UsersTest {
         assertEquals(200, replay.status);
         assertEquals(id, replay.obj().getAsJsonObject("order").get("id").getAsString());
         assertTrue(orders.reservedFor("s", "a").isEmpty());
+        var trail = get(owner(), "/api/v1/audit/orders?order=" + id + "&item=diamond&stash=a");
+        assertEquals(200, trail.status);
+        var archived = trail.obj().getAsJsonArray("orders").get(0).getAsJsonObject();
+        var events = archived.getAsJsonArray("events");
+        assertEquals(List.of("order.reserve", "order.cancel"), events.asList().stream()
+            .map(event -> event.getAsJsonObject().get("action").getAsString()).toList());
+        assertEquals(id + ":1", events.get(0).getAsJsonObject().get("id").getAsString());
+        assertFalse(archived.has("allocations"));
+        assertEquals(0, get(owner(), "/api/v1/audit/orders?order=" + id + "&since=" + Long.MAX_VALUE)
+            .obj().getAsJsonArray("orders").size());
     }
 
     @Test
@@ -338,6 +348,13 @@ class UsersTest {
         assertEquals(approved.obj(), post(officer, review, "{\"decision\":\"approve\"}").obj());
         assertEquals(409, post(officer, review, "{\"decision\":\"reject\"}").status);
         assertEquals(id, orders.claim("s", "a").id);
+        var trail = "/api/v1/audit/orders?order=" + id + "&person=Builder";
+        assertEquals(403, get(member, trail).status);
+        var auditOrder = get(officer, trail).obj().getAsJsonArray("orders").get(0).getAsJsonObject();
+        assertEquals(3, auditOrder.getAsJsonArray("events").size());
+        assertEquals("order.approve", auditOrder.getAsJsonArray("events").get(1).getAsJsonObject().get("action").getAsString());
+        create(owner, "OtherVaultAuditor", "{\"view\":true,\"ordersAll\":true,\"stashes\":[{\"server\":\"s\",\"stash\":\"b\"}]}", false);
+        assertEquals(0, get(login("OtherVaultAuditor", TEMP_PW), trail).obj().getAsJsonArray("orders").size());
         var second = post(member, "/api/v1/orders", draft).obj().getAsJsonObject("order");
         String rejected = second.get("id").getAsString();
         assertEquals(200, post(officer, "/api/v1/orders/" + rejected + "/approval", "{\"decision\":\"reject\"}").status);

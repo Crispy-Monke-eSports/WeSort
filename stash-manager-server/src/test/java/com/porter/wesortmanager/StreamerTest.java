@@ -544,6 +544,7 @@ class StreamerTest {
             "[POST] ^/api/v1/orders/(o-[0-9a-f]{12})/force-cancel$ BROWSER_WRITE ORDER_OWN_OR_ALL",
             "[POST] ^/api/v1/orders/(o-[0-9a-f]{12})/retry$ BROWSER_WRITE ORDER_OWN_OR_ALL");
         java.util.Set<String> noData = java.util.Set.of(
+            "[GET, HEAD] /api/v1/operations SESSION ACTIVITY",
             "[POST] /api/v1/auth/logout BROWSER_WRITE ANY",
             "[POST] /api/v1/auth/logout-all BROWSER_WRITE ANY",
             "[POST] /api/v1/auth/password BROWSER_WRITE ANY",
@@ -555,6 +556,7 @@ class StreamerTest {
             "[GET, HEAD] /icon/ SESSION ICONS",
             "[GET, HEAD] /api/v1/guild SESSION ANY");
         java.util.Set<String> forbidden = java.util.Set.of(
+            "[GET, HEAD] /api/v1/audit/orders SESSION ORDERS_ALL",
             "[GET, HEAD] /api/v1/kits SESSION VIEW",
             "[POST] ^/api/v1/bots/([A-Za-z0-9_-]{1,64})/(settings|jobs|activity)$ BROWSER_WRITE ACTIVITY");
         java.util.Set<String> ownerOnly = java.util.Set.of(

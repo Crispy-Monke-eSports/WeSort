@@ -435,5 +435,36 @@ final class StockLedger {
         }
     }
 
+    JsonArray orderOperationHistory(String order, String server, String stash) throws IOException {
+        var history = new JsonArray();
+        try (var connection = open(); var query = connection.prepareStatement("""
+                SELECT id,agent,state,revision,last_seen,json_extract(payload,'$.context.kind'),
+                    json_extract(payload,'$.context.jobId'),json_extract(payload,'$.context.execution')
+                FROM physical_operations WHERE server=? AND stash=? AND json_extract(payload,'$.context.orderId')=?
+                ORDER BY last_seen DESC,id LIMIT 128
+                """)) {
+            query.setString(1, server);
+            query.setString(2, stash);
+            query.setString(3, order);
+            try (var rows = query.executeQuery()) {
+                while (rows.next()) {
+                    var event = new JsonObject();
+                    event.addProperty("id", rows.getString(1));
+                    event.addProperty("actor", rows.getString(2));
+                    event.addProperty("state", rows.getString(3));
+                    event.addProperty("revision", rows.getLong(4));
+                    event.addProperty("at", rows.getLong(5));
+                    event.addProperty("kind", rows.getString(6));
+                    event.addProperty("jobId", rows.getString(7));
+                    event.addProperty("execution", rows.getString(8));
+                    history.add(event);
+                }
+            }
+        } catch (SQLException failure) {
+            throw new IOException("Cannot read order operation history", failure);
+        }
+        return history;
+    }
+
     long maxAge(){return maxAge;}
 }

@@ -191,3 +191,33 @@ protokollklienter. Det kontrollerar fem oberoende sessioner och en agents
 fysiska flöde fram till staging. Själva upphämtningen, transporten,
 mottagarkvittensen och de tillhörande säkerhets- och teleportprofilerna
 följer W-036–W-039 och W-061–W-062.
+
+## W-043 – orderrevision och driftstatus
+
+**Orders → Order audit** söker på beställare, mottagare, vara,
+stash, order-ID och tidsintervall. Owner och orderansvariga ser historik
+inom sin stashbehörighet. Sökning på exakt order-ID visar stabila
+paket- och operations-ID:n från den verifierade fysiska journalen.
+Endast en fysiskt bekräftad staging visas som staged mängd.
+
+Manager sparar reservation, godkännande, avslag, anspråk, avbokning,
+statusövergång och manifestkvittens atomiskt med orderboken. Omförsök
+av samma agentrapport lägger inte till en ny händelse. Avslutade
+ordrar som rensas eller faller ur orderlistan sparas i ett arkiv med
+de 100 senast uppdaterade avslutade ordrarna per stash. Befintliga
+ordrar visar tillgängliga orderfält och fysisk journal. Händelser
+från före införandet av orderhistoriken återskapas inte.
+
+Exportera de filtrerade posterna som JSON från `GET /api/v1/audit/orders`
+via en inloggad, behörig session. Sökningen returnerar högst 200
+ordrar. Exakt order-ID returnerar högst 128 fysiska operationer. Auditen
+innehåller ingen rå inventariesnapshot, slotallokering eller manifestposition.
+Tvingat streamerläge spärrar orderrevisionen. Ägarens separata konto-
+och administrationslogg behåller de senaste 2 000 posterna.
+
+**Bots** visar aktuell stock-, order- och agentsammanställning samt
+larm om gamla eller onåbara källor, frånkopplade agenter och order som
+behöver avstämmas. Agenten rapporterar också sitt lokala tillstånd för
+död, osäker inventarie och platsbrist. Larmsidan använder signerade
+observationer och visar aktiva förhållanden. Leverans, kvoter och
+specialiserade transportjobb får sina händelser när respektive flöde finns.

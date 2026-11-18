@@ -102,6 +102,44 @@ final class OrderStore {
         String placedById; // Users.OWNER_ID or a sub-user's id; null for orders from before accounts (the owner's)
         String placedByName; // the name at the time
         String retriedAs; // the order this one was placed again as (Retry, or the planner's "order part again"), or null
+        private JsonArray history = new JsonArray();
+
+        void record(String action, String actor, long time) {
+            var event = new JsonObject();
+            event.addProperty("action", action);
+            event.addProperty("actor", actor);
+            event.addProperty("at", time);
+            event.addProperty("state", stage().name());
+            history.add(event);
+        }
+
+        JsonObject snapshot() {
+            var saved = toJson();
+            if (!history.isEmpty()) saved.add("history", history.deepCopy());
+            return saved;
+        }
+
+        JsonObject auditJson() {
+            var shown = new JsonObject();
+            var full = toJson();
+            for (String key : List.of("id", "server", "stash", "createdAt", "updatedAt", "state", "purpose",
+                    "requestedBy", "placedBy", "recipient", "comment", "approvalState", "decidedBy", "decidedAt", "lines", "retriedAs")) {
+                if (full.has(key)) shown.add(key, full.get(key));
+            }
+            var events = history.deepCopy();
+            for (int i = 0; i < events.size(); i++) events.get(i).getAsJsonObject().addProperty("id", id + ":" + (i + 1));
+            shown.add("events", events);
+            var packageIds = new JsonArray();
+            if (manifest != null) {
+                for (var item : manifest.getAsJsonArray("packages")) packageIds.add(item.getAsJsonObject().get("packageId"));
+            }
+            shown.add("packageIds", packageIds);
+            if (releasedAt > 0) shown.addProperty("reservationReleasedAt", releasedAt);
+            if (stage() == OrderStage.PICKUP_READY || stage() == OrderStage.DELIVERED) {
+                if (result != null && result.has("lines")) shown.add("stagedAmounts", result.get("lines").deepCopy());
+            }
+            return shown;
+        }
 
         JsonObject toJson() {
             JsonObject o = new JsonObject();
@@ -173,6 +211,7 @@ final class OrderStore {
         static Order fromJson(JsonObject o) {
             Order r = new Order();
             r.id = o.get("id").getAsString();
+            if (o.has("history")) r.history = o.getAsJsonArray("history").deepCopy();
             if (o.has("manifest")) r.manifest = o.getAsJsonObject("manifest").deepCopy();
             if (o.has("manifestAcknowledgedAt")) r.manifestAcknowledgedAt = o.get("manifestAcknowledgedAt").getAsLong();
             r.sourceGuards = o.has("sourceGuards") ? o.getAsJsonObject("sourceGuards").deepCopy() : null;
@@ -243,6 +282,7 @@ final class OrderStore {
         final String server;
         final String stash;
         final List<Order> orders = new ArrayList<>();
+        final List<Order> archived = new ArrayList<>();
         final Map<String, Receipt> receipts = new LinkedHashMap<>();
 
         Book(String server, String stash) {
@@ -322,6 +362,10 @@ final class OrderStore {
                             b.orders.add(o);
                             byOrderId.put(o.id, b);
                         }
+                        if (root.has("archived")) for (var entry : root.getAsJsonArray("archived")) {
+                            b.archived.add(Order.fromJson(entry.getAsJsonObject()));
+                        }
+                        trimArchive(b);
                         b.orders.sort((x, y) -> Long.compare(x.createdAt, y.createdAt));
                     }
                 } catch (RuntimeException e) {
@@ -340,8 +384,13 @@ final class OrderStore {
         root.addProperty("server", b.server);
         root.addProperty("stash", b.stash);
         JsonArray list = new JsonArray();
-        for (Order o : b.orders) list.add(o.toJson());
+        for (Order o : b.orders) list.add(o.snapshot());
         root.add("orders", list);
+        if (!b.archived.isEmpty()) {
+            var archived = new JsonArray();
+            for (Order o : b.archived) archived.add(o.snapshot());
+            root.add("archived", archived);
+        }
         if (!b.receipts.isEmpty()) {
             var receipts = new JsonObject();
             b.receipts.forEach((key, receipt) -> receipts.add(key, receipt.json()));
@@ -352,29 +401,79 @@ final class OrderStore {
 
     private void update(Book book, Order previous, Order next) throws IOException {
         int position = book.orders.indexOf(previous);
+        var before = book.orders.size() > KEEP ? List.copyOf(book.orders) : null;
+        var archiveBefore = before == null ? null : List.copyOf(book.archived);
         book.orders.set(position, next);
+        var pruned = prune(book);
         try {
             save(book);
         } catch (IOException failure) {
-            book.orders.set(position, previous);
+            if (before != null && !pruned.isEmpty()) {
+                book.orders.clear();
+                book.orders.addAll(before);
+                book.archived.clear();
+                book.archived.addAll(archiveBefore);
+            } else book.orders.set(position, previous);
             throw failure;
         }
-        prune(book);
+        pruned.forEach(order -> byOrderId.remove(order.id, book));
     }
 
-    /** Drops the oldest finished orders beyond KEEP. Open orders are never pruned. */
-    private void prune(Book b) {
+    /** Moves the oldest finished orders beyond KEEP out of the operational order list. */
+    private List<Order> prune(Book b) {
+        if (b.orders.size() <= KEEP) return List.of();
+        var pruned = new ArrayList<Order>();
         int excess = b.orders.size() - KEEP;
         for (int i = 0; i < b.orders.size() && excess > 0; ) {
             Order o = b.orders.get(i);
             if (o.stage().archiveable() && (o.allocations == null || o.claimedAt == 0 || o.releasedAt > 0)) {
                 b.orders.remove(i);
-                byOrderId.remove(o.id, b);
+                b.archived.add(o);
+                pruned.add(o);
                 excess--;
             } else {
                 i++;
             }
         }
+        if (!pruned.isEmpty()) trimArchive(b);
+        return pruned;
+    }
+
+    private static void trimArchive(Book book) {
+        book.archived.sort(java.util.Comparator.comparingLong(order -> order.updatedAt));
+        int excess = book.archived.size() - KEEP;
+        if (excess > 0) book.archived.subList(0, excess).clear();
+    }
+
+    JsonArray auditOrders(Users.Principal who, java.util.function.Predicate<Order> matches, int limit) {
+        synchronized (index) {
+            var rows = new ArrayList<Order>();
+            for (Book book : books.values()) {
+                if (!who.perms().seesStash(book.server, book.stash)) continue;
+                synchronized (book) {
+                    for (var orders : List.of(book.orders, book.archived)) {
+                        for (Order order : orders) if (matches.test(order)) rows.add(order);
+                    }
+                }
+            }
+            rows.sort(java.util.Comparator.<Order>comparingLong(order -> order.updatedAt).reversed().thenComparing(order -> order.id));
+            var out = new JsonArray();
+            rows.stream().limit(limit).map(Order::auditJson).forEach(out::add);
+            return out;
+        }
+    }
+
+    Map<String, Integer> activeStates(Users.Principal who) {
+        var totals = new java.util.TreeMap<String, Integer>();
+        for (Book book : books.values()) {
+            if (!who.perms().seesStash(book.server, book.stash)) continue;
+            synchronized (book) {
+                for (Order order : book.orders) if (!order.stage().archiveable()) {
+                    totals.merge(order.stage().name(), 1, Integer::sum);
+                }
+            }
+        }
+        return totals;
     }
 
     private static Map<String, Long> reserved(Book b) {
@@ -602,6 +701,7 @@ final class OrderStore {
             o.advance(OrderStage.RESERVED);
             o.placedById = byId;
             o.placedByName = byId == null ? null : byName;
+            o.record(retryOf == null ? "order.reserve" : "order.retry.reserve", byId == null ? Users.OWNER_ID : byId, now);
             b.orders.add(o);
             if (retryOf != null) retryOf.retriedAs = o.id;
             if (receiptKey != null) b.receipts.put(receiptKey, new Receipt(fingerprint, o.toJson()));
@@ -822,12 +922,17 @@ final class OrderStore {
             var removable = b.orders.stream().filter(o -> o.stage().archiveable() && !holdsPhysical(o)).toList();
             if (removable.isEmpty()) return 0;
             var before = List.copyOf(b.orders);
+            var archiveBefore = List.copyOf(b.archived);
             b.orders.removeAll(removable);
+            b.archived.addAll(removable);
+            trimArchive(b);
             try {
                 save(b);
             } catch (IOException failure) {
                 b.orders.clear();
                 b.orders.addAll(before);
+                b.archived.clear();
+                b.archived.addAll(archiveBefore);
                 throw failure;
             }
             removable.forEach(o -> byOrderId.remove(o.id, b));
@@ -847,7 +952,7 @@ final class OrderStore {
                 if (!before.status.equals("pending") || before.approval != Approval.PENDING) {
                     throw new OrderException(409, "This order is no longer awaiting approval", -1);
                 }
-                Order next = Order.fromJson(before.toJson());
+                Order next = Order.fromJson(before.snapshot());
                 next.approval = decision;
                 next.decidedBy = actor;
                 next.decidedAt = next.updatedAt = System.currentTimeMillis();
@@ -855,6 +960,7 @@ final class OrderStore {
                     next.advance(OrderStage.CANCELLED);
                     next.status = "cancelled";
                 }
+                next.record(approve ? "order.approve" : "order.reject", actor, next.updatedAt);
                 update(book, before, next);
                 return new ApprovalDecision(next, true);
             }
@@ -863,16 +969,20 @@ final class OrderStore {
 
     /** pending -> cancelled now; accepted/in_progress -> cancelRequested; finished -> 409. */
     Order cancel(String id) throws OrderException, IOException {
-        synchronized (index) { return cancelWithObservationLock(id); }
+        return cancel(id, Users.OWNER_ID);
     }
 
-    private Order cancelWithObservationLock(String id) throws OrderException, IOException {
+    Order cancel(String id, String actor) throws OrderException, IOException {
+        synchronized (index) { return cancelWithObservationLock(id, actor); }
+    }
+
+    private Order cancelWithObservationLock(String id, String actor) throws OrderException, IOException {
         Book b = byOrderId.get(id);
         if (b == null) throw new OrderException(404, "no such order", -1);
         synchronized (b) {
             Order previous = find(b, id);
             if (previous == null) throw new OrderException(404, "no such order", -1);
-            Order o = Order.fromJson(previous.toJson());
+            Order o = Order.fromJson(previous.snapshot());
             if (FINISHED.contains(o.status)) throw new OrderException(409, "order is already " + o.status, -1);
             if (o.status.equals("pending")) {
                 o.advance(OrderStage.CANCELLED);
@@ -881,8 +991,9 @@ final class OrderStore {
             } else if (!o.cancelRequested) {
                 o.cancelRequested = true;
                 o.cancelRequestedAt = System.currentTimeMillis();
-            }
+            } else return previous;
             o.updatedAt = System.currentTimeMillis();
+            o.record(o.cancelRequested ? "order.cancel.request" : "order.cancel", actor, o.updatedAt);
             update(b, previous, o);
             return o;
         }
@@ -894,16 +1005,20 @@ final class OrderStore {
      * 409 when no cancel was requested or the order isn't held by the bot.
      */
     Order forceCancel(String id) throws OrderException, IOException {
-        synchronized (index) { return forceCancelWithObservationLock(id); }
+        return forceCancel(id, Users.OWNER_ID);
     }
 
-    private Order forceCancelWithObservationLock(String id) throws OrderException, IOException {
+    Order forceCancel(String id, String actor) throws OrderException, IOException {
+        synchronized (index) { return forceCancelWithObservationLock(id, actor); }
+    }
+
+    private Order forceCancelWithObservationLock(String id, String actor) throws OrderException, IOException {
         Book b = byOrderId.get(id);
         if (b == null) throw new OrderException(404, "no such order", -1);
         synchronized (b) {
             Order previous = find(b, id);
             if (previous == null) throw new OrderException(404, "no such order", -1);
-            Order o = Order.fromJson(previous.toJson());
+            Order o = Order.fromJson(previous.snapshot());
             if (FINISHED.contains(o.status)) throw new OrderException(409, "order is already " + o.status, -1);
             if (o.allocations != null) {
                 throw new OrderException(409, "The assigned agent must finish or reconcile its physical work", -1);
@@ -915,6 +1030,7 @@ final class OrderStore {
             o.status = "cancelled";
             o.message = "cancelled from the website (bot didn't confirm)";
             o.updatedAt = System.currentTimeMillis();
+            o.record("order.force-cancel", actor, o.updatedAt);
             update(b, previous, o);
             return o;
         }
@@ -1081,6 +1197,7 @@ final class OrderStore {
                 order.claimedAt = order.updatedAt = System.currentTimeMillis();
                 // Legacy aggregate claims may omit identity. An authenticated agent keeps one claim across its stashes.
                 order.agent = order.allocations == null && "local".equals(agent) ? null : agent;
+                order.record("order.claim", agent, order.claimedAt);
                 try {
                     save(b);
                 } catch (IOException failure) {
@@ -1089,6 +1206,7 @@ final class OrderStore {
                     order.claimedAt = 0;
                     order.updatedAt = before;
                     order.agent = null;
+                    order.history.remove(order.history.size() - 1);
                     throw failure;
                 }
                 return order;
@@ -1142,7 +1260,7 @@ final class OrderStore {
         synchronized (b) {
             Order previous = find(b, id);
             if (previous == null) throw new OrderException(404, "no such order", -1);
-            Order o = Order.fromJson(previous.toJson());
+            Order o = Order.fromJson(previous.snapshot());
             if (o.agent != null && !o.agent.equals(agent)) {
                 throw new OrderException(403, "Order belongs to another agent", -1);
             }
@@ -1162,6 +1280,7 @@ final class OrderStore {
             if (next == OrderStage.NEEDS_RECONCILIATION) o.result = null;
             else if (result != null) o.result = result;
             o.updatedAt = System.currentTimeMillis();
+            if (next != previous.stage()) o.record("order.transition", agent, o.updatedAt);
             b.receipts.put(key, new Receipt(fingerprint, o.toJson()));
             try {
                 update(b, previous, o);
@@ -1225,8 +1344,9 @@ final class OrderStore {
             if (manifest == null) throw new OrderException(404, "No manifest in this scope", -1);
             if (!hash.equals(manifest.get("hash").getAsString())) throw new OrderException(409, "Manifest hash differs", -1);
             if (order.manifestAcknowledgedAt > 0) return new ManifestReceipt(order.manifestAcknowledgedAt, false);
-            var updated = Order.fromJson(order.toJson());
+            var updated = Order.fromJson(order.snapshot());
             updated.manifestAcknowledgedAt = System.currentTimeMillis();
+            updated.record("order.manifest.confirm", scope.agent(), updated.manifestAcknowledgedAt);
             update(book, order, updated);
             return new ManifestReceipt(updated.manifestAcknowledgedAt, true);
         }

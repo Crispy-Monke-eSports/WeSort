@@ -197,11 +197,29 @@
           </div>
           <div id="order-list"></div>
         </section>
+        <details class="inset order-list" id="order-audit" hidden>
+          <summary>Order audit</summary>
+          <form id="order-audit-search" class="order-audit-filters">
+            <label>Person<input class="mc-input" name="person" type="search"></label>
+            <label>Item key<input class="mc-input" name="item" type="search"></label>
+            <label>Stash<input class="mc-input" name="stash" type="search"></label>
+            <label>Order ID<input class="mc-input" name="order" type="search"></label>
+            <label>From<input class="mc-input" name="since" type="datetime-local"></label>
+            <label>To<input class="mc-input" name="until" type="datetime-local"></label>
+            <button class="mc-button small" type="submit">Search audit</button>
+          </form>
+          <p id="order-audit-status" role="status"></p>
+          <div id="order-audit-results"></div>
+        </details>
       </div>
     </main>
 
     <main class="panel dash-page" id="page-bots" hidden>
       <div class="panel-label">Bots</div>
+      <section class="inset" id="operational-metrics" hidden aria-label="Operational status">
+        <div id="operational-counts"></div>
+        <ul id="operational-alerts" class="note" hidden></ul>
+      </section>
       <section class="inset">
         <div class="section-title">Dashboard bots</div>
         <div class="note">Warehouse agents: status, activity and agent settings.</div>

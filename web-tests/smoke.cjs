@@ -93,6 +93,11 @@ async function scenario(loggedIn) {
         {id:'c:return', slotSchema:1, slotCount:27, server:'test', stash:'fixture', dimension:'minecraft:overworld',
           parts:[[3,64,2]], state:'FRESH', sourceRevision:12, verifiedAt:1000}]};
     if (u.pathname === '/api/v1/stock/source') body = {state: 'STALE_AGE', snapshot: {positions: [{path:'0/26',id:'minecraft:diamond_sword',count:1,copies:1,kind:'ITEM',components:'<img src=x onerror=alert(1)>'}]}};
+    if (u.pathname === '/api/v1/operations') body = {agents: {ONLINE: 1, OFFLINE: 2}, stock: {FRESH: 3},
+      orders: {RESERVED: 1}, alerts: [{code:'STALE', count: 4}]};
+    if (u.pathname === '/api/v1/audit/orders') body = {orders: [{id: 'o-0123456789ab', purpose: 'GUILD', state: 'RESERVED',
+      stash: 'fixture', requestedBy: 'owner', createdAt: 1000, comment: '<img src=secret>', packageIds: [],
+      lines: [{key: 'minecraft:diamond', count: 64}], events: [{at: 1000, actor: 'owner', action: 'order.reserve', state: 'RESERVED'}]}]};
     if (u.pathname === '/api/v1/stock/source' && u.searchParams.get('id') === 'c:return') {
       const slot = {path:'0', id:'minecraft:shulker_box', kind:'SHULKER', count:1, copies:1, present:true, revision:9, components:'{}'};
       body = {id:'c:return', state:'FRESH', snapshot:{positions:[slot]}, slots:[slot], returnIntake:[]};
@@ -172,6 +177,19 @@ async function scenario(loggedIn) {
       }
       assert(requests.includes('/api/v1/bots'));
       assert(requests.includes('/api/v1/stock'));
+      assert.match(w.document.querySelector('#operational-counts').textContent, /1 online.*2 offline.*3 fresh sources/);
+      assert.match(w.document.querySelector('#operational-alerts').textContent, /4.*Sources need a rescan/);
+      const orderAudit = w.document.querySelector('#order-audit');
+      orderAudit.open = true; orderAudit.dispatchEvent(new w.Event('toggle'));
+      await settle();
+      const auditFilter = w.document.querySelector('#order-audit-search [name="item"]');
+      auditFilter.value = 'diamond';
+      auditFilter.form.dispatchEvent(new w.Event('submit', { cancelable: true }));
+      await settle();
+      assert(requests.some(x => x.startsWith('/api/v1/audit/orders?item=diamond')));
+      const orderTrace = w.document.querySelector('#order-audit-results');
+      assert.match(orderTrace.textContent, /GUILD.*<img src=secret>.*64 × minecraft:diamond.*order.reserve/);
+      assert.equal(orderTrace.querySelector('img'), null);
       const review = w.document.querySelector('#order-list .order-card');
       assert.match(review.textContent, /Awaiting approval.*Confirmed recipient · FixtureRecipient.*Projekt Å <img/);
       assert.equal(review.querySelector('img'), null, 'Order comments must remain plain text');

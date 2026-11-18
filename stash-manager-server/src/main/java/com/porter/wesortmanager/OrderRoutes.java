@@ -280,7 +280,7 @@ final class OrderRoutes {
         }
         if (!mayChange(ex, m.group(1))) return;
         try {
-            OrderStore.Order order = orders.cancel(m.group(1));
+            OrderStore.Order order = orders.cancel(m.group(1), Router.user(ex).id());
             audit.add(Router.user(ex), "order.cancel", order.id, AuthRoutes.address(ex));
             JsonObject out = Http.ok();
             out.add("order", shown(ex, order.toJson()));
@@ -326,7 +326,7 @@ final class OrderRoutes {
         }
         if (!mayChange(ex, m.group(1))) return;
         try {
-            OrderStore.Order order = orders.forceCancel(m.group(1));
+            OrderStore.Order order = orders.forceCancel(m.group(1), Router.user(ex).id());
             audit.add(Router.user(ex), "order.force-cancel", order.id, AuthRoutes.address(ex));
             JsonObject out = Http.ok();
             out.add("order", shown(ex, order.toJson()));

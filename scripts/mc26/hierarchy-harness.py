@@ -217,6 +217,15 @@ class HierarchyHarness(stock.StockHarness):
             require(lookup(ident).get('manifestAcknowledgedAt', 0) > 0, 'Manager did not save the signed manifest acknowledgement')
         stored = self.rcon.command('data get block 8 64 -3 Items')
         require(stored.count('Hierarchy box') == 1 and 'Exact sword' in stored, 'Pickup-ready package differs from the expected single shulker')
+        status, audit = self.http('/api/v1/audit/orders?order=' + ident)
+        require(status == 200 and len(audit['orders']) == 1, 'Owner could not find the staged order in the audit')
+        traced = audit['orders'][0]
+        require(len(traced['packageIds']) == 1 and traced['stagedAmounts'][0]['delivered'] == 1,
+                'Audit did not preserve the verified staged package and count')
+        require(any(operation['execution'] == 'STAGE_PACKAGE' and operation['state'] == 'COMPLETED'
+                    for operation in traced['physicalOperations']), 'Audit did not correlate the verified staging operation')
+        require('allocations' not in traced and 'manifest' not in traced, 'Audit contained raw slot evidence')
+        self.ok('physical staging can be traced by order, package and verified operation from the scoped audit API')
         require(self.http('/api/v1/orders', draft, headers=headers) == (200, placed), 'Staged order replay created a new order')
         self.ok('an idempotent 26.3 Fabric order placed one exact named shulker in warehouse staging; Manager exposes pickup-ready custody')
         if approved_order is not None:
@@ -364,9 +373,23 @@ class HierarchyHarness(stock.StockHarness):
                     'Manager mixed sessions while expanding the fleet')
         ident, player, stash, hello = credentials[0]
         replacement = self.run(cli + ['agent-issue', ident, player, self.server_name, stash]).strip()
-        require(stock.signed.Client(endpoint, replacement).post('/api/v1/bot/hello', hello)[0] == 200,
+        rotated = stock.signed.Client(endpoint, replacement)
+        code, reply = rotated.post('/api/v1/bot/hello', hello)
+        require(code == 200,
                 'Key rotation caused the signed fleet session to lose its identity')
         self.ok('one native 26.3 agent and up to four signed endpoint fixtures retain independent online identities and sessions')
+        status, metrics = self.http('/api/v1/operations')
+        require(status == 200 and metrics['agents']['ONLINE'] == 5 and metrics['stock']['FRESH'] > 0,
+                'Operational metrics did not reflect the five online sessions and the native stock observations')
+        poll = {'botId': hello['botId'], 'controlSession': hello['controlSession'], 'controlEpoch': reply['controlEpoch'],
+                'activity': {'incident': 'NO_CAPACITY'}}
+        require(rotated.post('/api/v1/bot/next', dict(poll, controlEpoch=str(uuid.uuid4())))[0] == 409,
+                'An old control epoch could publish an incident')
+        require(rotated.post('/api/v1/bot/next', poll)[0] in (200, 204), 'Could not report a signed incident')
+        status, metrics = self.http('/api/v1/operations')
+        require(status == 200 and {'code': 'NO_CAPACITY', 'count': 1} in metrics['alerts'],
+                'Manager did not classify the current capacity alert')
+        self.ok('operations API reports current agents, native stock freshness and a session-verified capacity incident')
 
     def execute(self):
         try:

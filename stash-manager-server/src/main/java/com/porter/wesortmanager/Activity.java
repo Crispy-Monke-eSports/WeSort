@@ -72,6 +72,10 @@ final class Activity {
         JsonObject out = new JsonObject();
         Double at = num(in, "at");
         out.addProperty("at", sane(at, now) ? at.longValue() : now);
+        String incident = str(in, "incident");
+        if (incident != null && Set.of("DEATH", "INVENTORY_UNVERIFIED", "NO_CAPACITY").contains(incident)) {
+            out.addProperty("incident", incident);
+        }
 
         if (in.has("connection") && in.get("connection").isJsonObject()) {
             JsonObject c = in.getAsJsonObject("connection");

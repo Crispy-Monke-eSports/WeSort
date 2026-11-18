@@ -938,21 +938,33 @@ public class StashManager extends Module {
         var sorter = Modules.get().get(StashSorter.class);
         var runner = sorter == null ? null : sorter.orders();
         boolean needsReconciliation = InventorySync.failed() || PhysicalJournalRuntime.blocked() || kitUncertain;
+        String incident = null;
         String task;
-        if (needsReconciliation) task = "Needs physical reconciliation";
+        if (mc.player.getHealth() <= 0) {
+            task = "Player died";
+            incident = "DEATH";
+        } else if (needsReconciliation) {
+            task = "Needs physical reconciliation";
+            incident = "INVENTORY_UNVERIFIED";
+        }
         else if (com.porter.wesort.compat.NavigationRuntime.paused()) task = "Navigation paused";
         else if (!InventorySync.ready()) task = "Awaiting server inventory";
         else if (kitJob != null) task = kitPacked ? "Verifying kit" : "Packing kit";
         else if (runner != null && runner.running()) task = "Packing " + runner.info();
         else if (orderIntakePaused.get()) task = "New orders paused";
+        else if (sorter != null && acceptOrders.get() && "no free inventory slot".equals(sorter.orderBlocker())) {
+            task = "No free inventory slot";
+            incident = "NO_CAPACITY";
+        }
         else task = "Monitoring stock";
         var work = new JsonObject();
         work.addProperty("title", task);
-        work.addProperty("level", needsReconciliation ? "warn" : "info");
+        work.addProperty("level", incident == null ? "info" : "warn");
         var tasks = new JsonArray();
         tasks.add(work);
         var activity = new JsonObject();
         activity.add("current", tasks);
+        if (incident != null) activity.addProperty("incident", incident);
         return activity;
     }
 

@@ -1,5 +1,6 @@
 package com.porter.wesort.compat;
 
+import com.porter.wesort.data.BlockSafety;
 import net.minecraft.core.BlockPos;
 
 import static meteordevelopment.meteorclient.MeteorClient.mc;
@@ -15,7 +16,7 @@ final class NavigationGuard {
         for (int x = -1; x <= 1; x++) {
             for (int z = -1; z <= 1; z++) {
                 var neighbor = feet.offset(x, 0, z);
-                if (!mc.level.isLoaded(neighbor) || WorldInteractionGuard.passiveTrigger(WorldInteractionGuard.blockPath(neighbor))) return false;
+                if (!mc.level.isLoaded(neighbor) || BlockSafety.passiveTrigger(WorldInteractionGuard.blockPath(neighbor))) return false;
             }
         }
         return true;

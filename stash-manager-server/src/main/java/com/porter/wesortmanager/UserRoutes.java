@@ -19,6 +19,8 @@ final class UserRoutes {
     private static final Pattern USER = Pattern.compile("^/api/v1/users/(u-[0-9a-f]{12})$");
     private static final Pattern ACTION = Pattern.compile("^/api/v1/users/(u-[0-9a-f]{12})/(password|logout|delete)$");
 
+    private static final Pattern MINECRAFT = Pattern.compile("^/api/v1/users/(owner|u-[0-9a-f]{12})/minecraft$");
+
     /** Room for a user with 200 scoped stashes. */
     static final int MAX_BODY = 64 * 1024;
 
@@ -37,6 +39,7 @@ final class UserRoutes {
             .exact(Router.POST, "/api/v1/users", Router.Guard.BROWSER_WRITE, Router.Perm.OWNER, this::create)
             .exact(Router.POST, "/api/v1/users/owner", Router.Guard.BROWSER_WRITE, Router.Perm.OWNER, this::renameOwner)
             .pattern(Router.POST, USER, Router.Guard.BROWSER_WRITE, Router.Perm.OWNER, this::update)
+            .pattern(Router.POST, MINECRAFT, Router.Guard.BROWSER_WRITE, Router.Perm.OWNER, this::minecraftAccount)
             .pattern(Router.POST, ACTION, Router.Guard.BROWSER_WRITE, Router.Perm.OWNER, this::action)
             .exact(Router.GET, "/api/v1/audit", Router.Guard.SESSION, Router.Perm.OWNER, this::audit);
     }
@@ -46,10 +49,15 @@ final class UserRoutes {
         JsonObject out = new JsonObject();
         JsonObject owner = new JsonObject();
         owner.addProperty("name", users.ownerName());
+        owner.addProperty("minecraftAccount", users.minecraftAccount(Users.OWNER_ID));
         owner.addProperty("sessions", counts.getOrDefault(Users.OWNER_ID, 0));
         out.add("owner", owner);
         JsonArray list = new JsonArray();
-        for (Users.User u : users.list()) list.add(u.toJson(counts.getOrDefault(u.id(), 0)));
+        for (Users.User u : users.list()) {
+            var member = u.toJson(counts.getOrDefault(u.id(), 0));
+            member.addProperty("minecraftAccount", users.minecraftAccount(u.id()));
+            list.add(member);
+        }
         out.add("users", list);
         JsonObject presets = new JsonObject();
         Users.PRESETS.forEach((name, p) -> presets.add(name, p.toJson()));
@@ -200,6 +208,26 @@ final class UserRoutes {
         out.add("user", u.toJson(sessions.countByUser().getOrDefault(u.id(), 0)));
         out.addProperty("ended", ended);
         Http.json(ex, 200, out);
+    }
+
+    private void minecraftAccount(HttpExchange ex) throws IOException {
+        var path = MINECRAFT.matcher(ex.getRequestURI().getRawPath());
+        if (!path.matches()) { Http.error(ex, 404, "not found"); return; }
+        if (!unlocked(ex)) return;
+        var body = AuthRoutes.body(ex, MAX_BODY);
+        if (body == null) return;
+        String account = AddonRoutes.string(body, "account");
+        if (account == null) { Http.error(ex, 400, "Expected a Minecraft account name"); return; }
+        String id = path.group(1);
+        try {
+            users.linkMinecraftAccount(id, account);
+            audit.add(Router.user(ex), account.isBlank() ? "user.minecraft.unlink" : "user.minecraft.link", id, AuthRoutes.address(ex));
+            var result = Http.ok();
+            result.addProperty("minecraftAccount", users.minecraftAccount(id));
+            Http.json(ex, 200, result);
+        } catch (Users.UserException e) {
+            Http.error(ex, e.status, e.getMessage());
+        }
     }
 
     private void action(HttpExchange ex) throws IOException {

@@ -58,6 +58,7 @@ async function scenario(loggedIn) {
   const kitWrites = [];
   const physicalReviews = [];
   const guildUpdates = [];
+  const orderReviews = [];
   let guild = {name: "<img src=x> Guild", description: "Shared stock", revision: 1};
   w.addEventListener('error', e => errors.push(e.error || e.message));
   const globals = Object.fromEntries(Object.getOwnPropertyNames(w).map(x => [x, 'readonly']));
@@ -79,7 +80,7 @@ async function scenario(loggedIn) {
       if (opts.method === 'POST') {
         const update = JSON.parse(opts.body);
         guildUpdates.push(update);
-        guild = {name: update.name, description: update.description, revision: guild.revision + 1};
+        guild = {name: update.name, description: update.description, approvalPolicy: update.approvalPolicy, revision: guild.revision + 1};
       }
       body = guild;
     }
@@ -89,7 +90,13 @@ async function scenario(loggedIn) {
       sources: [{id: 'c:test', slotSchema: 1, slotCount: 1, server: 'test', stash: 'fixture', dimension: 'minecraft:overworld', parts: [[1, 64, 2]],
         state: 'STALE_AGE', sourceRevision: 11, verifiedAt: 1000}]};
     if (u.pathname === '/api/v1/stock/source') body = {state: 'STALE_AGE', snapshot: {positions: [{path:'0/26',id:'minecraft:diamond_sword',count:1,copies:1,kind:'ITEM',components:'<img src=x onerror=alert(1)>'}]}};
-    if (u.pathname === '/api/v1/stashes') body = [];
+    if (u.pathname === '/api/v1/stashes') body = [{server:'test', stash:'fixture', online:true}];
+    if (u.pathname === '/api/v1/orders') body = {orders: [{
+      id:'guild-order', status:'pending', state:'RESERVED', purpose:'GUILD', approvalState:'PENDING',
+      recipient:'FixtureRecipient', deliveryMode:'PLAYER', comment:'Projekt Å <img src=x onerror=alert(1)>',
+      lines:[{type:'item', key:'minecraft:diamond', count:2}]
+    }]};
+    if (u.pathname === '/api/v1/orders/guild-order/approval') orderReviews.push(JSON.parse(opts.body));
     if (u.pathname === '/api/v1/bots') body = [bot];
     if (u.pathname === '/api/v1/kits/editor') body = {
       templates: [{ revision: 7, template: { name: '<img src=x onerror=alert(1)>', fingerprint: 'exact-v7', slots: [[0,0,32],[26,0,16]] }, slotFingerprints: {0:'variant-one',26:'variant-one'} }],
@@ -153,6 +160,12 @@ async function scenario(loggedIn) {
       }
       assert(requests.includes('/api/v1/bots'));
       assert(requests.includes('/api/v1/stock'));
+      const review = w.document.querySelector('#order-list .order-card');
+      assert.match(review.textContent, /Awaiting approval.*Confirmed recipient · FixtureRecipient.*Projekt Å <img/);
+      assert.equal(review.querySelector('img'), null, 'Order comments must remain plain text');
+      Array.from(review.querySelectorAll('button')).find(button => button.textContent === 'Approve').click();
+      await settle();
+      assert.deepEqual(orderReviews, [{decision:'approve'}]);
       assert.equal(w.document.querySelector('#stock-balances tr').textContent,
         'test<img src=x onerror=alert(1)>6410540');
       assert.equal(w.document.querySelector('#stock-stashes tr').textContent, 'fixtureminecraft:diamond6410540');
@@ -170,9 +183,11 @@ async function scenario(loggedIn) {
       assert.match(w.document.querySelector('#guild-stock-title').textContent, /<img src=x> Guild.*Shared stock/);
       assert.equal(w.document.querySelector('#guild-stock-title img'), null);
       w.document.querySelector('#guild-name').value = 'New guild';
+      w.document.querySelector('#guild-approval').value = 'GUILD';
       w.document.querySelector('#guild-form').dispatchEvent(new w.Event('submit', {cancelable: true}));
       await settle();
-      assert.deepEqual(guildUpdates, [{name:'New guild', description:'Shared stock', expectedRevision:1}]);
+      assert.deepEqual(guildUpdates, [{name:'New guild', description:'Shared stock', approvalPolicy:'GUILD', expectedRevision:1}]);
+      assert.equal(w.document.querySelector('#guild-approval').value, 'GUILD');
       assert.match(w.document.querySelector('#guild-stock-title').textContent, /New guild/);
       assert.equal(w.document.querySelector('#physical-admin').hidden, false);
       assert.match(w.document.querySelector('#physical-list').textContent, /NEEDS_RECONCILIATION.*BREAK.*Order o-one/);

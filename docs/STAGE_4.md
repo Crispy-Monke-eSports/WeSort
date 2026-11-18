@@ -55,3 +55,27 @@ Det riktiga 26.3-provet skickade samma order med samma nyckel före och efter
 packningen. RCON verifierade att exakt en observerad namngiven shulker hamnade
 i utlämningskistan. Separata API- och persistensprov täcker samtidiga
 anrop, omstart, arkiverade order och rapporter utan fysiskt bevis.
+
+## W-058 – orderändamål, godkännande och mottagare
+
+Owner ställer in direktbeställning, granskning av GUILD eller granskning av
+alla order i **Settings → Guild profile**. Direktbeställning är förval.
+En order som väntar på godkännande reserverar fysiskt lager men blir
+tillgänglig för agenten först när en orderansvarig med åtkomst till
+stashen godkänner den. Avslag från granskningsläget frigör reservationen.
+Ordern sparar granskarens medlems-ID och tidpunkt. Audit loggar aktör,
+åtgärd och order-ID. Unicodekommentaren visas som text för beställaren
+och behöriga orderansvariga.
+
+Owner kan koppla en bekräftad Minecraft-identitet till ett konto under
+**Settings → Users**. SELF använder medlemmens aktiva koppling om
+den finns. En behörig beställare kan ange en aktiv, bekräftad spelare
+som mottagare i en GUILD-order. Utan mottagare pekar destinationen
+på stashens utlämning. Båda ändamålen använder samma lager och kö.
+
+Ordergränsen är 54 shulkers och kön behandlas i placeringsordning bland
+order som kan tas. Före plock frigör avbokning reservationen. När agenten
+har börjat är avbokningen en begäran som kräver agentens rapport.
+Kvarvarande osäkerhet hanteras genom avstämning. Staging ger
+`PICKUP_READY`. W-027 tar vid med transport, mottagarkvittens och
+utfallsbokföring. Valfria kvoter och explicita undantag hör till W-059.

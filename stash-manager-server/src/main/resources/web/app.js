@@ -3517,6 +3517,7 @@
       : "";
     el.cartTotals.classList.toggle("warn", !units);
     $("order-purpose-row").hidden = !can("guildOrders");
+    $("order-recipient-row").hidden = !can("guildOrders");
     el.cartPlace.disabled = !cart.lines.length || !state.items.length || !units;
     el.cartClear.disabled = !cart.lines.length;
     var s = currentStash();
@@ -3554,6 +3555,9 @@
     el.cartStatus.classList.remove("warn");
     var draft = { server: s.server, stash: s.stash, names: namesBody(), lines: cart.lines.slice(),
       purpose: can("guildOrders") ? $("order-purpose").value : "SELF", comment: $("order-comment").value };
+    if (can("guildOrders") && $("order-recipient").value.trim()) {
+      draft.recipient = $("order-recipient").value.trim();
+    }
     api("/api/v1/orders", {
       method: "POST", body: draft, idempotencyKey: submissionKey(draft)
     }).then(function () {
@@ -3564,6 +3568,7 @@
       saveCart();
       resetNames();
       $("order-purpose").value = "SELF";
+      $("order-recipient").value = "";
       $("order-comment").value = "";
       el.cartStatus.textContent = s.online ? "Order placed." : "Order placed. It will start when the bot reconnects.";
       toast("Order placed");
@@ -4086,6 +4091,27 @@
       if (by) head.appendChild(line("note order-by", "by " + by));
       if (o.purpose === "GUILD") head.appendChild(line("note", "Guild order"));
       var manage = canManageOrder(o);
+      if (o.approvalState === "PENDING" && o.status === "pending") {
+        head.appendChild(line("note", "Awaiting approval"));
+        if (can("ordersAll")) ["approve", "reject"].forEach(function (decision) {
+          var action = document.createElement("button");
+          action.type = "button";
+          action.className = "mc-button small";
+          action.textContent = decision === "approve" ? "Approve" : "Reject";
+          action.addEventListener("click", function () {
+            action.disabled = true;
+            api("/api/v1/orders/" + encodeURIComponent(o.id) + "/approval", {
+              method: "POST", body: {decision: decision}
+            }).then(function () {
+              scheduleOrdersPoll(0);
+            }).catch(function (error) {
+              toast(error.body && error.body.error || error.message);
+              action.disabled = false;
+            });
+          });
+          head.appendChild(action);
+        });
+      }
       if (manage && OPEN_STATUS[o.status] && !o.cancelRequested) {
         var cancel = document.createElement("button");
         cancel.type = "button";
@@ -4146,7 +4172,7 @@
         head.appendChild(force);
       }
       card.appendChild(head);
-      if (o.recipient) card.appendChild(line("note", "Requested recipient · " + o.recipient));
+      if (o.recipient) card.appendChild(line("note", (o.deliveryMode === "PLAYER" ? "Confirmed recipient · " : "Requested recipient · ") + o.recipient));
       if (o.comment) card.appendChild(line("note", o.comment));
 
 
@@ -4574,6 +4600,7 @@
     description.hidden = !profile.description;
     $("guild-name").value = profile.name;
     $("guild-description").value = profile.description || "";
+    $("guild-approval").value = profile.approvalPolicy || "DIRECT";
     $("guild-save").disabled = !me.owner;
   }
 
@@ -4589,7 +4616,8 @@
     var save = $("guild-save");
     save.disabled = true;
     api("/api/v1/guild", {method: "POST", body: {
-      name: $("guild-name").value, description: $("guild-description").value, expectedRevision: guildRevision
+      name: $("guild-name").value, description: $("guild-description").value,
+      approvalPolicy: $("guild-approval").value, expectedRevision: guildRevision
     }}).then(function (profile) {
       showGuildProfile(profile);
       $("guild-status").textContent = "Guild profile saved.";
@@ -6344,6 +6372,20 @@
     return { node: form, focus: name.input };
   }
 
+  function minecraftAccountForm(id, name, current) {
+    var form = newForm("Minecraft account for " + name);
+    var account = textField("Confirmed Minecraft username", "text", { maxLength: 16, value: str(current) });
+    form.appendChild(account.node);
+    form.appendChild(line("note", "Confirm this account belongs to the member before saving. Leave blank to remove the link."));
+    var buttons = formButtons(form, "Save account", closeUserForm);
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      submitUserWrite(buttons.save, buttons.msg, "/api/v1/users/" + encodeURIComponent(id) + "/minecraft",
+        { account: account.input.value.trim() }, "Minecraft account saved", "Could not save the Minecraft account");
+    });
+    return { node: form, focus: account.input };
+  }
+
   /** The header shows the owner's name: read it again once the rename went through. */
   function refreshSudoSoon() {
     window.setTimeout(refreshSudo, 1500);
@@ -6400,6 +6442,7 @@
     var id = encodeURIComponent(u.id);
     var name = str(u.name);
     actions.appendChild(smallButton("Edit", "", function () { toggleForm("edit", u.id); }));
+    actions.appendChild(smallButton("Minecraft account", "", function () { toggleForm("minecraft", u.id); }));
     actions.appendChild(smallButton(u.disabled ? "Enable" : "Disable", "", function (b) {
       userAction(b, u.disabled ? "" : "Disable " + name + "? Every session of " + name + " ends now, and they can't log in until you enable the account again.",
         "/api/v1/users/" + id, { disabled: !u.disabled }, (u.disabled ? "Enabled " : "Disabled ") + name, "Could not change the account");
@@ -6418,7 +6461,8 @@
     row.appendChild(actions);
     var f = users.form;
     if (f && f.id === u.id) {
-      var built = f.kind === "edit" ? editUserForm(u) : f.kind === "reset" ? resetPasswordForm(u) : null;
+      var built = f.kind === "edit" ? editUserForm(u) : f.kind === "reset" ? resetPasswordForm(u)
+        : minecraftAccountForm(u.id, name, u.minecraftAccount);
       if (built) {
         row.appendChild(built.node);
         focusTarget.input = built.focus;
@@ -6458,9 +6502,11 @@
     var ownerActions = document.createElement("div");
     ownerActions.className = "user-actions";
     ownerActions.appendChild(smallButton("Rename", "", function () { toggleForm("owner", "owner"); }));
+    ownerActions.appendChild(smallButton("Minecraft account", "", function () { toggleForm("minecraft", "owner"); }));
     ownerRow.appendChild(ownerActions);
-    if (users.form && users.form.kind === "owner") {
-      var rf = renameOwnerForm(ownerName);
+    if (users.form && users.form.id === "owner") {
+      var rf = users.form.kind === "owner" ? renameOwnerForm(ownerName)
+        : minecraftAccountForm("owner", ownerName || "owner", d.owner && d.owner.minecraftAccount);
       ownerRow.appendChild(rf.node);
       focusTarget.input = rf.focus;
     }

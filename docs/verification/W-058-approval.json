@@ -1,0 +1,14 @@
+{
+  "scope": "W-058 guild order approval, requester, intended recipient and shared physical reservations",
+  "minecraft": "26.3",
+  "manager_version": "0.1.0-dev.10",
+  "real_agents": 1,
+  "result": "PASS",
+  "checks": {
+    "manager": "224 tests passed, including unauthorized binding, case-insensitive collisions, revoked recipients, reviewers, approval replay and rejection releasing stock",
+    "browser_dom": "Saved guild approval policy, exercised the order review action and confirmed that the Unicode comment is plain text",
+    "docker": "Isolated Docker smoke passed, including Owner bootstrap, a signed external agent, reverse proxy and restart",
+    "minecraft_e2e": "One Fabric agent staged a SELF order while a GUILD order was pending. After Owner approval it staged the GUILD order. The 26.3 server returned exactly two named shulkers with the expected swords."
+  },
+  "limits": "This test covers Owner-confirmed Minecraft account bindings and custody through warehouse staging. Final recipient handoff and quotas are tracked in separate issues."
+}

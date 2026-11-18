@@ -9,7 +9,15 @@ import java.nio.file.Path;
 import java.util.UUID;
 
 /** The single organisation in this Manager volume. Names, members and Minecraft routing have separate identities. */
-record GuildProfile(UUID id, String name, String description, long revision) {
+record GuildProfile(UUID id, String name, String description, long revision, ApprovalPolicy approvalPolicy) {
+    enum ApprovalPolicy {
+        DIRECT, GUILD, ALL;
+
+        boolean requiresApproval(OrderIntent intent) {
+            return this == ALL || this == GUILD && intent.purpose() == OrderIntent.Purpose.GUILD;
+        }
+    }
+
     private static final int SCHEMA = 1;
 
     GuildProfile {
@@ -21,7 +29,7 @@ record GuildProfile(UUID id, String name, String description, long revision) {
     static GuildProfile open(Path file) throws IOException {
         if (Files.isSymbolicLink(file)) throw new IOException("Invalid guild profile location");
         if (!Files.exists(file)) {
-            var initial = new GuildProfile(UUID.randomUUID(), "WeSort Guild", "", 1);
+            var initial = new GuildProfile(UUID.randomUUID(), "WeSort Guild", "", 1, ApprovalPolicy.DIRECT);
             initial.save(file);
             return initial;
         }
@@ -29,7 +37,8 @@ record GuildProfile(UUID id, String name, String description, long revision) {
             var data = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
             if (data.get("schema").getAsBigDecimal().intValueExact() != SCHEMA) throw new IllegalArgumentException();
             return new GuildProfile(UUID.fromString(data.get("id").getAsString()), string(data, "name"),
-                string(data, "description"), data.get("revision").getAsBigDecimal().longValueExact());
+                string(data, "description"), data.get("revision").getAsBigDecimal().longValueExact(),
+                data.has("approvalPolicy") ? ApprovalPolicy.valueOf(string(data, "approvalPolicy")) : ApprovalPolicy.DIRECT);
         } catch (RuntimeException invalid) {
             throw new IOException("Cannot read the guild profile", invalid);
         }
@@ -42,6 +51,7 @@ record GuildProfile(UUID id, String name, String description, long revision) {
         out.addProperty("name", name);
         out.addProperty("description", description);
         out.addProperty("revision", revision);
+        out.addProperty("approvalPolicy", approvalPolicy.name());
         return out;
     }
 
@@ -50,7 +60,8 @@ record GuildProfile(UUID id, String name, String description, long revision) {
     }
 
     GuildProfile updated(JsonObject request) {
-        return new GuildProfile(id, string(request, "name"), string(request, "description"), Math.addExact(revision, 1));
+        var policy = request.has("approvalPolicy") ? ApprovalPolicy.valueOf(string(request, "approvalPolicy")) : approvalPolicy;
+        return new GuildProfile(id, string(request, "name"), string(request, "description"), Math.addExact(revision, 1), policy);
     }
 
     private static String string(JsonObject value, String field) {

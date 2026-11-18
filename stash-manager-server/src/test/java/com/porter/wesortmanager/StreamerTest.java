@@ -514,6 +514,7 @@ class StreamerTest {
             "[GET, HEAD] /api/v1/delivery SESSION VIEW",
             "[GET, HEAD] /api/v1/orders SESSION VIEW",
             "[POST] /api/v1/orders BROWSER_WRITE ORDER",
+            "[POST] ^/api/v1/orders/(o-[0-9a-f]{12})/approval$ BROWSER_WRITE ORDERS_ALL",
             "[POST] ^/api/v1/orders/(o-[0-9a-f]{12})/cancel$ BROWSER_WRITE ORDER_OWN_OR_ALL",
             "[POST] ^/api/v1/orders/(o-[0-9a-f]{12})/force-cancel$ BROWSER_WRITE ORDER_OWN_OR_ALL",
             "[POST] ^/api/v1/orders/(o-[0-9a-f]{12})/retry$ BROWSER_WRITE ORDER_OWN_OR_ALL");
@@ -543,6 +544,7 @@ class StreamerTest {
             "[POST] /api/v1/users BROWSER_WRITE OWNER",
             "[POST] /api/v1/users/owner BROWSER_WRITE OWNER",
             "[POST] ^/api/v1/users/(u-[0-9a-f]{12})$ BROWSER_WRITE OWNER",
+            "[POST] ^/api/v1/users/(owner|u-[0-9a-f]{12})/minecraft$ BROWSER_WRITE OWNER",
             "[POST] ^/api/v1/users/(u-[0-9a-f]{12})/(password|logout|delete)$ BROWSER_WRITE OWNER",
             "[GET, HEAD] /api/v1/audit SESSION OWNER",
             "[POST] /api/v1/guild BROWSER_WRITE OWNER");

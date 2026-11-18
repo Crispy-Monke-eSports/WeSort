@@ -9,7 +9,7 @@ Detta protokoll är den bevarade baslinjen, inte framtida guildordermotor.
 | Browser-auth | GET auth/state; POST auth/setup, auth/login, auth/logout, auth/logout-all, auth/password, auth/confirm, auth/lock |
 | Agent | POST index, heartbeat, orders/claim, orders/:id/status, delivery |
 | Lager/webb | GET stashes, index, orders, delivery, link; POST stashes/release, rescan, link/regenerate |
-| Order/webb | POST orders, orders/clear, orders/:id/cancel, orders/:id/force-cancel, orders/:id/retry |
+| Order/webb | POST orders, orders/clear, orders/:id/cancel, orders/:id/force-cancel, orders/:id/retry, orders/:id/approval |
 | Drift/agent | POST bot/hello, bot/state, bot/results, bot/activity; GET bot/next |
 | Drift/webb | GET bots, bots/:id/settings, bots/:id/jobs, bots/:id/activity; POST bots/:id/settings |
 | Administration | GET/POST users; POST users/owner, users/:id, users/:id/actions enligt UserRoutes; GET audit |
@@ -85,3 +85,22 @@ A replay returns its committed response without advancing the order again.
 report `delivered` describes warehouse staging. Manager requires exact
 native staging receipts before exposing `PICKUP_READY`. An uncertain
 report leaves the order in `NEEDS_RECONCILIATION`.
+
+## W-058 guild order review and destination
+
+Owner can update `approvalPolicy` on `POST /api/v1/guild` using the current
+profile revision. Values are `DIRECT` (default), `GUILD` and `ALL`.
+Pending approvals hold stock and are omitted from agent claims. A reviewer
+with `ordersAll` and access to the order's stash submits
+`{"decision":"approve"}` or `{"decision":"reject"}` to
+`POST /api/v1/orders/{id}/approval`. A repeated decision preserves the
+original reviewer and time. Rejection before claim releases the hold.
+
+An unlocked Owner session can confirm a member's Minecraft name via
+`POST /api/v1/users/{memberId}/minecraft` with `{"account":"PlayerName"}`.
+An empty string removes the binding. Explicit recipients require
+`guildOrders` and an active binding. SELF uses the sender's active
+binding by default, with warehouse pickup when no binding exists.
+`recipient`, `deliveryMode` and `destination` describe the intended
+delivery. Warehouse staging and verified delivery remain distinct
+physical states.

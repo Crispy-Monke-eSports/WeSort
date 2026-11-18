@@ -24,6 +24,7 @@ class HierarchyHarness(stock.StockHarness):
     reservations = False
     guild = False
     order_lifecycle = False
+    approval = False
 
     def fixture(self):
         world.Harness.fixture(self)
@@ -142,31 +143,59 @@ class HierarchyHarness(stock.StockHarness):
         self.rcon.command('setblock 8 64 -3 minecraft:chest')
         self.read(8, 'minecraft:air', 0)
         self.command('order-staging-settings', x=8, y=64, z=-3)
-        group = next(slot['group'] for slot in row['snapshot']['positions'] if slot['path'] == '0')
+        root = '20' if self.approval else '0'
+        group = next(slot['group'] for slot in row['snapshot']['positions'] if slot['path'] == root)
         draft = {'server': self.server_name, 'stash': 'e2e-fixture',
                  'lines': [{'type': 'shulker', 'key': group, 'count': 1}]}
+        approved_order = None
+        if self.approval:
+            status, profile = self.http('/api/v1/guild')
+            require(status == 200, 'Owner could not read the approval policy')
+            update = {'name': profile['name'], 'description': profile['description'],
+                      'approvalPolicy': 'GUILD', 'expectedRevision': profile['revision']}
+            require(self.http('/api/v1/guild', update)[0] == 200, 'Owner could not set guild approval')
+            require(self.http('/api/v1/users/owner/minecraft', {'account': 'FixtureRecipient'})[0] == 200,
+                    'Owner could not confirm the recipient')
+            status, placed = self.http('/api/v1/orders', dict(draft, purpose='GUILD', recipient='fixturerecipient'))
+            require(status == 200 and placed['order']['approvalState'] == 'PENDING'
+                    and placed['order']['recipient'] == 'FixtureRecipient', 'Guild order did not require explicit approval')
+            approved_order = placed['order']['id']
         headers = {'Idempotency-Key': 'staging-fixture-order'}
         status, placed = self.http('/api/v1/orders', draft, headers=headers)
-        require(status == 200 and placed['order']['state'] == 'RESERVED', 'Physical order could not reserve a complete box')
+        require(status == 200 and placed['order']['state'] == 'RESERVED',
+                'Physical order could not reserve a complete box: ' + str(placed.get('error')))
         require(self.http('/api/v1/orders', draft, headers=headers) == (200, placed), 'Order replay differed from its original receipt')
         ident = placed['order']['id']
         self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key)
         query = urllib.parse.urlencode({'server': self.server_name, 'stash': 'e2e-fixture'})
 
-        def ready(stock_view):
+        def lookup(order_id):
             status, listing = self.http('/api/v1/orders?' + query)
-            if status != 200:
-                return False
-            order = next(entry for entry in listing['orders'] if entry['id'] == ident)
+            require(status == 200, 'Could not read orders from Manager')
+            return next(entry for entry in listing['orders'] if entry['id'] == order_id)
+
+        def ready(order_id):
+            order = lookup(order_id)
             if order['state'] in ('FAILED', 'NEEDS_RECONCILIATION', 'DELIVERED'):
                 raise RuntimeError('Unexpected order state ' + order['state'] + ': ' + str(order.get('message')))
             return order['state'] == 'PICKUP_READY'
 
-        self.wait(ready, 'Agent did not stage the actual Minecraft package')
+        self.wait(lambda _: ready(ident), 'Agent did not stage the actual Minecraft package')
         stored = self.rcon.command('data get block 8 64 -3 Items')
         require(stored.count('Hierarchy box') == 1 and 'Exact sword' in stored, 'Pickup-ready package differs from the expected single shulker')
         require(self.http('/api/v1/orders', draft, headers=headers) == (200, placed), 'Staged order replay created a new order')
         self.ok('an idempotent 26.3 Fabric order placed one exact named shulker in warehouse staging; Manager exposes pickup-ready custody')
+        if approved_order is not None:
+            waiting = lookup(approved_order)
+            require(waiting['state'] == 'RESERVED' and waiting['approvalState'] == 'PENDING',
+                    'Agent claimed an order awaiting review')
+            status, reviewed = self.http('/api/v1/orders/' + approved_order + '/approval', {'decision': 'approve'})
+            require(status == 200 and reviewed['order']['approvedBy'] == 'owner', 'Approval did not record its actor')
+            self.wait(lambda _: ready(approved_order), 'Same agent did not stage the approved guild order')
+            stored = self.rcon.command('data get block 8 64 -3 Items')
+            require(stored.count('Hierarchy box') == 2 and stored.count('Exact sword') == 2,
+                    'Expected exactly two independently staged shulkers')
+            self.ok('one Minecraft 26.3 agent stages SELF directly and GUILD after auditable approval from shared physical stock')
 
     def execute(self):
         try:
@@ -218,13 +247,13 @@ class HierarchyHarness(stock.StockHarness):
             code, _ = replay.post('/api/v1/index', initial)
             require(code == 409, 'Older actual snapshot accepted after changed content')
             self.ok('real server-side inner-content delta invalidates old box fingerprint and advances affected slot revisions; captured old signed observation rejected 409')
-            if self.order_lifecycle:
+            if self.order_lifecycle or self.approval:
                 self.verify_order_lifecycle(detail)
             self.command('screenshot'); shutil.copyfile(self.game_dir/'screenshots/fixture.png',self.evidence/'fixture.png')
             (self.evidence/'changed-detail.json').write_text(json.dumps(detail,indent=2)+'\n')
             result = {'result':'PASS','source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=world.ROOT,text=True).strip(),
                 'dirty_worktree':True,'server_sha1':world.SERVER_SHA1,'manager_image':self.env['WESORT_IMAGE'],'checks':self.checks,
-                'limits':'W-020 verifies observation hierarchy and fingerprint invalidation. Physical reservation/lock races belong to W-024.'}
+                'limits':'A private fixture with one agent. Package custody is verified through warehouse staging.'}
             (self.evidence/'result.json').write_text(json.dumps(result,indent=2)+'\n')
             print('Evidence: '+str(self.evidence),flush=True)
         finally: self.close()
@@ -235,9 +264,11 @@ if __name__ == '__main__':
     parser.add_argument('--reservations', action='store_true')
     parser.add_argument('--guild', action='store_true')
     parser.add_argument('--order-lifecycle', action='store_true')
+    parser.add_argument('--approval', action='store_true')
     args = parser.parse_args()
     harness = HierarchyHarness(args.manager_image)
     harness.reservations = args.reservations
     harness.guild = args.guild
     harness.order_lifecycle = args.order_lifecycle
+    harness.approval = args.approval
     harness.execute()

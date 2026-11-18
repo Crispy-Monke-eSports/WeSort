@@ -176,6 +176,9 @@
               <label id="order-purpose-row" hidden>Order for
                 <select id="order-purpose"><option value="SELF">Myself</option><option value="GUILD">The guild</option></select>
               </label>
+              <label id="order-recipient-row" hidden>Confirmed Minecraft recipient (optional)
+                <input id="order-recipient" maxlength="16" autocomplete="off">
+              </label>
               <label>Comment (optional) <textarea id="order-comment" maxlength="500" rows="2"></textarea></label>
               <div class="cart-actions">
                 <button type="button" class="mc-button" id="cart-place">Place order</button>
@@ -273,6 +276,13 @@
         <form id="guild-form">
           <label>Name <input id="guild-name" maxlength="64" required></label>
           <label>Description <textarea id="guild-description" maxlength="512" rows="2"></textarea></label>
+          <label>Order approval
+            <select id="guild-approval">
+              <option value="DIRECT">Orders proceed directly</option>
+              <option value="GUILD">Review guild orders</option>
+              <option value="ALL">Review all orders</option>
+            </select>
+          </label>
           <button class="mc-button" id="guild-save" type="submit" disabled>Save guild profile</button>
         </form>
         <p class="note" id="guild-status" role="status"></p>

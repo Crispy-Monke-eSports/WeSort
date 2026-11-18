@@ -139,6 +139,9 @@ final class Redact {
         o.remove("agent");
         o.remove("protectedRoots");
         o.remove("recipient");
+        o.remove("declaredRecipient");
+        o.remove("verifiedRecipient");
+        o.remove("destination");
         o.remove("comment");
         JsonObject by = obj(o, "placedBy");
         boolean mine = by != null && by.has("id") && !by.get("id").isJsonNull() && by.get("id").getAsString().equals(selfId);

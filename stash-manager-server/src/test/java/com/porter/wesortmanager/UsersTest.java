@@ -219,17 +219,26 @@ class UsersTest {
             {"server":"s","stash":"a","lines":[{"type":"item","key":"minecraft:diamond","count":2}]}
             """);
         assertEquals(403, post(viewer, "/api/v1/orders", request.toString()).status);
+        String memberBinding = "/api/v1/users/" + memberId + "/minecraft";
+        assertEquals(403, post(member, memberBinding, "{\"account\":\"BuilderIGN\"}").status);
+        assertEquals(400, post(owner, memberBinding, "{\"account\":\"Bad Name\"}").status);
+        assertEquals(200, post(owner, memberBinding, "{\"account\":\"BuilderIGN\"}").status);
+        assertEquals(409, post(owner, "/api/v1/users/owner/minecraft", "{\"account\":\"builderign\"}").status);
         var self = post(member, "/api/v1/orders", request.toString());
         assertEquals(200, self.status);
         var selfOrder = self.obj().getAsJsonObject("order");
         assertEquals("SELF", selfOrder.get("purpose").getAsString());
         assertEquals(memberId, selfOrder.get("requestedBy").getAsString());
         assertEquals(profile.get("id"), selfOrder.get("organizationId"));
+        assertEquals("BuilderIGN", selfOrder.get("recipient").getAsString());
+        assertEquals("PLAYER", selfOrder.get("deliveryMode").getAsString());
 
         request.addProperty("purpose", "GUILD");
-        request.addProperty("recipient", "MinecraftUser");
+        request.addProperty("recipient", "minecraftuser");
         request.addProperty("comment", "Projekt Å <test>");
         assertEquals(403, post(member, "/api/v1/orders", request.toString()).status);
+        assertEquals(400, post(officer, "/api/v1/orders", request.toString()).status);
+        assertEquals(200, post(owner, "/api/v1/users/owner/minecraft", "{\"account\":\"MinecraftUser\"}").status);
         var response = post(officer, "/api/v1/orders", request.toString());
         assertEquals(200, response.status);
         var guildOrder = response.obj().getAsJsonObject("order");
@@ -248,6 +257,8 @@ class UsersTest {
         var balances = get(viewer, "/api/v1/stock").obj().get("items");
         assertEquals(200, post(owner, "/api/v1/users/" + memberId, "{\"disabled\":true}").status);
         assertEquals(401, get(member, "/api/v1/orders?server=s&stash=a").status);
+        request.addProperty("recipient", "BuilderIGN");
+        assertEquals(400, post(owner, "/api/v1/orders", request.toString()).status);
         assertEquals(balances, get(viewer, "/api/v1/stock").obj().get("items"));
         assertTrue(get(owner, "/api/v1/orders?server=s&stash=a").obj().toString().contains(own));
     }
@@ -287,6 +298,44 @@ class UsersTest {
         assertEquals(200, replay.status);
         assertEquals(id, replay.obj().getAsJsonObject("order").get("id").getAsString());
         assertTrue(orders.reservedFor("s", "a").isEmpty());
+    }
+
+    @Test
+    void guildApprovalIsOptionalScopedAndKeepsStockReservedBeforeClaim() throws Exception {
+        String owner = owner();
+        create(owner, "Officer", "officer", false);
+        create(owner, "Builder", "member", false);
+        String member = login("Builder", TEMP_PW);
+        String officer = login("Officer", TEMP_PW);
+        assertEquals("DIRECT", get(officer, "/api/v1/guild").obj().get("approvalPolicy").getAsString());
+        var policy = """
+            {"name":"Guild","description":"","expectedRevision":1,"approvalPolicy":"ALL"}
+            """;
+        assertEquals(403, post(officer, "/api/v1/guild", policy).status);
+        assertEquals(200, post(owner, "/api/v1/guild", policy).status);
+        var draft = """
+            {"server":"s","stash":"a","lines":[{"type":"item","key":"minecraft:diamond","count":2}]}
+            """;
+        var placed = post(member, "/api/v1/orders", draft);
+        assertEquals(200, placed.status);
+        var order = placed.obj().getAsJsonObject("order");
+        String id = order.get("id").getAsString();
+        assertEquals("PENDING", order.get("approvalState").getAsString());
+        assertEquals("RESERVED", order.get("state").getAsString());
+        assertNull(orders.claim("s", "a"));
+        assertEquals(2L, orders.reservedFor("s", "a").get("item:minecraft:diamond"));
+        String review = "/api/v1/orders/" + id + "/approval";
+        assertEquals(403, post(member, review, "{\"decision\":\"approve\"}").status);
+        var approved = post(officer, review, "{\"decision\":\"approve\"}");
+        assertEquals(200, approved.status);
+        assertEquals("APPROVED", approved.obj().getAsJsonObject("order").get("approvalState").getAsString());
+        assertEquals(approved.obj(), post(officer, review, "{\"decision\":\"approve\"}").obj());
+        assertEquals(409, post(officer, review, "{\"decision\":\"reject\"}").status);
+        assertEquals(id, orders.claim("s", "a").id);
+        var second = post(member, "/api/v1/orders", draft).obj().getAsJsonObject("order");
+        String rejected = second.get("id").getAsString();
+        assertEquals(200, post(officer, "/api/v1/orders/" + rejected + "/approval", "{\"decision\":\"reject\"}").status);
+        assertEquals(2L, orders.reservedFor("s", "a").get("item:minecraft:diamond"));
     }
 
     @Test

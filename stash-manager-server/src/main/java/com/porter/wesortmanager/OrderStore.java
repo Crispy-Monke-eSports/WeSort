@@ -61,12 +61,25 @@ final class OrderStore {
         }
     }
 
+    enum Approval { DIRECT, PENDING, APPROVED, REJECTED }
+
+    record ApprovalDecision(Order order, boolean changed) {}
+
+    @FunctionalInterface
+    interface RecipientResolver {
+        String resolve(OrderIntent intent) throws OrderException;
+    }
+
     static final class Order {
         String id;
         String server;
         String stash;
         String organizationId;
         OrderIntent intent = OrderIntent.DEFAULT;
+        Approval approval = Approval.DIRECT;
+        String verifiedRecipient;
+        String decidedBy;
+        long decidedAt;
         List<Line> lines;
         JsonObject sourceGuards; // Compatibility for orders created before slot allocation.
         List<PhysicalReservations.Allocation> allocations;
@@ -95,8 +108,25 @@ final class OrderStore {
             o.addProperty("stash", stash);
             if (organizationId != null) o.addProperty("organizationId", organizationId);
             o.addProperty("purpose", intent.purpose().name());
-            o.addProperty("recipient", intent.recipient());
+            o.addProperty("declaredRecipient", intent.recipient());
+            o.addProperty("verifiedRecipient", verifiedRecipient);
+            o.addProperty("recipient", verifiedRecipient == null ? intent.recipient() : verifiedRecipient);
+            o.addProperty("deliveryMode", verifiedRecipient == null ? "WAREHOUSE_PICKUP" : "PLAYER");
+            var destination = new JsonObject();
+            if (verifiedRecipient == null) {
+                destination.addProperty("server", server);
+                destination.addProperty("stash", stash);
+            } else {
+                destination.addProperty("player", verifiedRecipient);
+            }
+            o.add("destination", destination);
             o.addProperty("comment", intent.comment());
+            o.addProperty("approvalState", approval.name());
+            if (decidedBy != null) {
+                o.addProperty("decidedBy", decidedBy);
+                o.addProperty("decidedAt", decidedAt);
+                if (approval == Approval.APPROVED) o.addProperty("approvedBy", decidedBy);
+            }
             JsonArray ls = new JsonArray();
             for (Line l : lines) {
                 JsonObject lo = new JsonObject();
@@ -148,7 +178,13 @@ final class OrderStore {
             r.server = o.get("server").getAsString();
             r.stash = o.get("stash").getAsString();
             r.organizationId = str(o, "organizationId");
-            r.intent = OrderIntent.read(o);
+            var intent = o.deepCopy();
+            if (o.has("declaredRecipient")) intent.add("recipient", o.get("declaredRecipient"));
+            r.intent = OrderIntent.read(intent);
+            r.verifiedRecipient = str(o, "verifiedRecipient");
+            if (o.has("approvalState")) r.approval = Approval.valueOf(o.get("approvalState").getAsString());
+            r.decidedBy = str(o, "decidedBy");
+            r.decidedAt = o.has("decidedAt") ? o.get("decidedAt").getAsLong() : 0;
             r.lines = new ArrayList<>();
             for (JsonElement e : o.getAsJsonArray("lines")) {
                 JsonObject l = e.getAsJsonObject();
@@ -449,11 +485,11 @@ final class OrderStore {
 
     Order place(String server, String stash, List<Line> requested, JsonObject names, String byId,
                 String byName, String organizationId, OrderIntent intent) throws OrderException, IOException {
-        return submit(server, stash, requested, names, byId, byName, organizationId, intent, null).order();
+        return submit(server, stash, requested, names, byId, byName, organizationId, intent, null, false, ignored -> null).order();
     }
 
     Submission submit(String server, String stash, List<Line> requested, JsonObject names, String byId,
-                      String byName, String organizationId, OrderIntent intent, String idempotencyKey)
+                      String byName, String organizationId, OrderIntent intent, String idempotencyKey, boolean needsApproval, RecipientResolver recipient)
         throws OrderException, IOException {
         synchronized (index) {
             String key = null, fingerprint = null;
@@ -470,13 +506,13 @@ final class OrderStore {
                 if (saved != null) return new Submission(replay(saved, fingerprint), false);
             }
             return new Submission(placeWithObservationLock(server, stash, requested, names, byId, byName,
-                organizationId, intent, key, fingerprint, null), true);
+                organizationId, intent, key, fingerprint, null, needsApproval, recipient.resolve(intent)), true);
         }
     }
 
     private Order placeWithObservationLock(String server, String stash, List<Line> requested, JsonObject names,
                                            String byId, String byName, String organizationId, OrderIntent intent,
-                                           String receiptKey, String fingerprint, Order retryOf)
+                                           String receiptKey, String fingerprint, Order retryOf, boolean needsApproval, String recipient)
         throws OrderException, IOException {
         if (index.automation().current(server) != null) throw new OrderException(409, "Physical sorting active or awaiting reconciliation", -1);
         if (requested.isEmpty()) throw new OrderException(400, "an order needs at least one line", -1);
@@ -547,6 +583,8 @@ final class OrderStore {
             o.stash = stash;
             o.organizationId = organizationId;
             o.intent = intent;
+            o.approval = needsApproval ? Approval.PENDING : Approval.DIRECT;
+            o.verifiedRecipient = recipient;
             o.lines = new ArrayList<>(merged.values());
             o.names = names == null ? null : names.deepCopy();
             o.allocations = allocations;
@@ -584,10 +622,10 @@ final class OrderStore {
 
     /** The same; the new order is recorded as placed by byId (who pressed Retry). */
     Order retry(String id, String byId, String byName) throws OrderException, IOException {
-        return retry(id, byId, byName, true, null);
+        return retry(id, byId, byName, true, null, GuildProfile.ApprovalPolicy.DIRECT, ignored -> null);
     }
 
-    Order retry(String id, String byId, String byName, boolean mayOrderForGuild, String organizationId) throws OrderException, IOException {
+    Order retry(String id, String byId, String byName, boolean mayOrderForGuild, String organizationId, GuildProfile.ApprovalPolicy policy, RecipientResolver recipient) throws OrderException, IOException {
         synchronized (index) {
             Book book = byOrderId.get(id);
             if (book == null) throw new OrderException(404, "no such order", -1);
@@ -607,7 +645,7 @@ final class OrderStore {
                     throw new OrderException(409, "Wait for verified release of the previous reservation", -1);
                 }
                 return placeWithObservationLock(book.server, book.stash, old.lines, old.names, byId, byName,
-                    old.organizationId == null ? organizationId : old.organizationId, old.intent, null, null, old);
+                    old.organizationId == null ? organizationId : old.organizationId, old.intent, null, null, old, policy.requiresApproval(old.intent), recipient.resolve(old.intent));
             }
         }
     }
@@ -791,6 +829,32 @@ final class OrderStore {
         }
     }
 
+    ApprovalDecision review(String id, boolean approve, String actor) throws OrderException, IOException {
+        synchronized (index) {
+            Book book = byOrderId.get(id);
+            if (book == null) throw new OrderException(404, "no such order", -1);
+            synchronized (book) {
+                Order before = find(book, id);
+                if (before == null) throw new OrderException(404, "no such order", -1);
+                Approval decision = approve ? Approval.APPROVED : Approval.REJECTED;
+                if (before.approval == decision) return new ApprovalDecision(before, false);
+                if (!before.status.equals("pending") || before.approval != Approval.PENDING) {
+                    throw new OrderException(409, "This order is no longer awaiting approval", -1);
+                }
+                Order next = Order.fromJson(before.toJson());
+                next.approval = decision;
+                next.decidedBy = actor;
+                next.decidedAt = next.updatedAt = System.currentTimeMillis();
+                if (!approve) {
+                    next.advance(OrderStage.CANCELLED);
+                    next.status = "cancelled";
+                }
+                update(book, before, next);
+                return new ApprovalDecision(next, true);
+            }
+        }
+    }
+
     /** pending -> cancelled now; accepted/in_progress -> cancelRequested; finished -> 409. */
     Order cancel(String id) throws OrderException, IOException {
         synchronized (index) { return cancelWithObservationLock(id); }
@@ -927,7 +991,7 @@ final class OrderStore {
         if (b != null) {
             synchronized (b) {
                 for (Order o : b.orders) {
-                    if (o.status.equals("pending")) pending++;
+                    if (o.status.equals("pending") && o.approval != Approval.PENDING) pending++;
                     else if (o.cancelRequested && (o.status.equals("accepted") || o.status.equals("in_progress"))) cancel.add(o.id);
                 }
             }
@@ -994,7 +1058,7 @@ final class OrderStore {
                 if (isExecuting(order)) return orderSourcesReady(order, counts, agent) ? order : null;
             }
             for (Order order : b.orders) {
-                if (!order.status.equals("pending") || !orderSourcesReady(order, counts, agent)) continue;
+                if (!order.status.equals("pending") || order.approval == Approval.PENDING || !orderSourcesReady(order, counts, agent)) continue;
                 long before = order.updatedAt;
                 if (!order.stage().allows(OrderStage.PACKING)) continue;
                 order.stage = OrderStage.PACKING;

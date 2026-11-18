@@ -30,9 +30,12 @@ final class OrderRoutes {
     private final Owners owners;
     private final AuditLog audit;
 
+    private static final Pattern APPROVAL = Pattern.compile("^/api/v1/orders/(o-[0-9a-f]{12})/approval$");
     private final GuildRoutes guild;
+    private final Users users;
 
-    OrderRoutes(OrderStore orders, Owners owners, AuditLog audit, GuildRoutes guild) {
+    OrderRoutes(OrderStore orders, Owners owners, AuditLog audit, GuildRoutes guild, Users users) {
+        this.users = users;
         this.guild = guild;
         this.orders = orders;
         this.owners = owners;
@@ -87,6 +90,7 @@ final class OrderRoutes {
             .exact(Router.POST, "/api/v1/orders", Router.Guard.BROWSER_WRITE, Router.Perm.ORDER, this::place)
             .exact(Router.POST, "/api/v1/orders/clear", Router.Guard.BROWSER_WRITE, Router.Perm.ORDERS_ALL, this::clear)
             .exact(Router.GET, "/api/v1/orders", Router.Guard.SESSION, Router.Perm.VIEW, this::list)
+            .pattern(Router.POST, APPROVAL, Router.Guard.BROWSER_WRITE, Router.Perm.ORDERS_ALL, this::review)
             .pattern(Router.POST, CANCEL, Router.Guard.BROWSER_WRITE, Router.Perm.ORDER_OWN_OR_ALL, this::cancel)
             .pattern(Router.POST, FORCE_CANCEL, Router.Guard.BROWSER_WRITE, Router.Perm.ORDER_OWN_OR_ALL, this::forceCancel)
             .pattern(Router.POST, RETRY, Router.Guard.BROWSER_WRITE, Router.Perm.ORDER_OWN_OR_ALL, this::retry)
@@ -162,8 +166,10 @@ final class OrderRoutes {
             lines.add(line);
         }
         try {
+            var profile = guild.profile();
             var submission = orders.submit(server, stash, lines, names, who.id(), who.name(),
-                guild.profile().id().toString(), intent, idempotencyKey(ex));
+                profile.id().toString(), intent, idempotencyKey(ex), profile.approvalPolicy().requiresApproval(intent),
+                draft -> resolveRecipient(who, draft));
             OrderStore.Order order = submission.order();
             if (submission.created()) audit.add(who, "order.place", order.id + " " + intent.purpose().name(), AuthRoutes.address(ex));
             JsonObject out = Http.ok();
@@ -213,10 +219,45 @@ final class OrderRoutes {
         Users.Principal viewer = Router.user(ex);
         if (viewer == null || !viewer.perms().ordersAll() && !viewer.id().equals(order.get("requestedBy").getAsString())) {
             order.remove("recipient");
+            order.remove("declaredRecipient");
+            order.remove("verifiedRecipient");
+            order.remove("destination");
             order.remove("comment");
         }
         if (Redact.on(ex)) Redact.order(order, viewer.id());
         return order;
+    }
+
+    private String resolveRecipient(Users.Principal requester, OrderIntent intent) throws OrderStore.OrderException {
+        if (intent.recipient() == null) {
+            return intent.purpose() == OrderIntent.Purpose.SELF ? users.activeMinecraftAccount(requester.id()) : null;
+        }
+        String verified = users.approvedRecipient(intent.recipient());
+        if (verified == null) throw new OrderStore.OrderException(400, "The recipient has no active, Owner-verified Minecraft account", -1);
+        return verified;
+    }
+
+    private void review(HttpExchange ex) throws IOException {
+        Matcher path = APPROVAL.matcher(ex.getRequestURI().getRawPath());
+        if (!path.matches()) { Http.error(ex, 404, "not found"); return; }
+        String id = path.group(1);
+        if (!mayChange(ex, id)) return;
+        var body = AddonRoutes.readJson(ex);
+        String decision = body != null && body.isJsonObject() ? AddonRoutes.string(body.getAsJsonObject(), "decision") : null;
+        if (!"approve".equals(decision) && !"reject".equals(decision)) {
+            Http.error(ex, 400, "Decision must be approve or reject");
+            return;
+        }
+        try {
+            var actor = Router.user(ex);
+            var review = orders.review(id, decision.equals("approve"), actor.id());
+            if (review.changed()) audit.add(actor, "order." + decision, id, AuthRoutes.address(ex));
+            var reply = Http.ok();
+            reply.add("order", shown(ex, review.order().toJson()));
+            Http.json(ex, 200, reply);
+        } catch (OrderStore.OrderException e) {
+            Http.error(ex, e.status, e.getMessage());
+        }
     }
 
     private void cancel(HttpExchange ex) throws IOException {
@@ -251,7 +292,9 @@ final class OrderRoutes {
                 Router.forbid(ex, "place orders", "order");
                 return;
             }
-            OrderStore.Order order = orders.retry(m.group(1), who.id(), who.name(), who.perms().guildOrders(), guild.profile().id().toString());
+            var profile = guild.profile();
+            OrderStore.Order order = orders.retry(m.group(1), who.id(), who.name(), who.perms().guildOrders(),
+                profile.id().toString(), profile.approvalPolicy(), draft -> resolveRecipient(who, draft));
             audit.add(who, "order.retry", m.group(1) + " as " + order.id, AuthRoutes.address(ex));
             JsonObject out = Http.ok();
             out.add("order", shown(ex, order.toJson()));

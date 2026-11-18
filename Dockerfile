@@ -11,7 +11,7 @@ RUN --mount=type=cache,target=/root/.gradle ./gradlew --no-daemon -p stash-manag
 
 # Java 21.0.13+9 runtime; tested independently from the frozen build JDK.
 FROM eclipse-temurin:21-jre-jammy@sha256:dff6eb46527bd293a3c06bbbe9e64e8c9f91f01905b5abbdad31761c03059d2c AS runtime
-ARG VERSION=0.1.0-dev.9
+ARG VERSION=0.1.0-dev.10
 ARG REVISION=unknown
 LABEL org.opencontainers.image.title="WeSort Manager" \
       org.opencontainers.image.description="One Java Manager with built-in web/API for a shared guild stash and order system" \

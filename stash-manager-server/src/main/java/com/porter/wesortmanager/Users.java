@@ -216,6 +216,7 @@ final class Users {
     private final LongSupplier clock;
     private final Map<String, User> users = new LinkedHashMap<>(); // id -> user, in creation order
     private String ownerName = DEFAULT_OWNER_NAME;
+    private final Map<String, String> minecraftAccounts = new LinkedHashMap<>();
 
     Users(Path dataDir) {
         this(dataDir, System::currentTimeMillis);
@@ -262,6 +263,15 @@ final class Users {
                     o.has("mustChange") && o.get("mustChange").getAsBoolean(), longOf(o, "createdAt"), longOf(o, "lastLoginAt"),
                     longOf(o, "passwordChangedAt")));
             }
+            if (root.has("minecraftAccounts")) {
+                for (var entry : root.getAsJsonObject("minecraftAccounts").entrySet()) {
+                    String account = entry.getValue().getAsString();
+                    if (!account.matches("[A-Za-z0-9_]{1,16}") || minecraftAccounts.values().stream().anyMatch(account::equalsIgnoreCase)) {
+                        throw new IllegalArgumentException("Invalid or duplicate Minecraft account mapping");
+                    }
+                    if (OWNER_ID.equals(entry.getKey()) || users.containsKey(entry.getKey())) minecraftAccounts.put(entry.getKey(), account);
+                }
+            }
         } catch (RuntimeException e) {
             throw new IOException(file.getFileName() + " has an unexpected layout (" + e.getMessage() + "); fix or delete it", e);
         }
@@ -292,7 +302,51 @@ final class Users {
             list.add(o);
         }
         root.add("users", list);
+        if (!minecraftAccounts.isEmpty()) {
+            var accounts = new JsonObject();
+            minecraftAccounts.forEach(accounts::addProperty);
+            root.add("minecraftAccounts", accounts);
+        }
         AtomicFiles.write(file, Json.GSON.toJson(root).getBytes(StandardCharsets.UTF_8), true);
+    }
+
+    synchronized String minecraftAccount(String id) {
+        return minecraftAccounts.get(id);
+    }
+
+    synchronized String activeMinecraftAccount(String id) {
+        User member = users.get(id);
+        return OWNER_ID.equals(id) || member != null && !member.disabled ? minecraftAccounts.get(id) : null;
+    }
+
+    synchronized String approvedRecipient(String account) {
+        for (var entry : minecraftAccounts.entrySet()) {
+            if (entry.getValue().equalsIgnoreCase(account)) return activeMinecraftAccount(entry.getKey());
+        }
+        return null;
+    }
+
+    synchronized void linkMinecraftAccount(String id, String account) throws UserException, IOException {
+        if (!OWNER_ID.equals(id)) need(id);
+        String before = minecraftAccounts.get(id);
+        if (account == null || account.isBlank()) {
+            minecraftAccounts.remove(id);
+        } else {
+            account = account.strip();
+            if (!account.matches("[A-Za-z0-9_]{1,16}")) {
+                throw new UserException(400, "Minecraft names must contain 1–16 letters, digits or underscores");
+            }
+            for (var entry : minecraftAccounts.entrySet()) {
+                if (!id.equals(entry.getKey()) && entry.getValue().equalsIgnoreCase(account)) {
+                    throw new UserException(409, "This Minecraft account is already linked to another member");
+                }
+            }
+            minecraftAccounts.put(id, account);
+        }
+        saveOrUndo(() -> {
+            if (before == null) minecraftAccounts.remove(id);
+            else minecraftAccounts.put(id, before);
+        });
     }
 
     synchronized String ownerName() {
@@ -396,9 +450,11 @@ final class Users {
         need(id);
         Map<String, User> before = new LinkedHashMap<>(users);
         users.remove(id);
+        String account = minecraftAccounts.remove(id);
         saveOrUndo(() -> {
             users.clear();
             users.putAll(before);
+            if (account != null) minecraftAccounts.put(id, account);
         });
     }
 

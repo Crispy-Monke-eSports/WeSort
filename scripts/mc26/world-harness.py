@@ -27,7 +27,8 @@ import uuid
 ROOT = Path(__file__).resolve().parents[2]
 SERVER_URL = 'https://piston-data.mojang.com/v1/objects/33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c/server.jar'
 SERVER_SHA1 = '33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c'
-DEFAULT_IMAGE = 'ghcr.io/crispy-monke-esports/wesort-manager@sha256:e08a41b306d135ba8da8931c1fbd2d99483d83bda4e094efac0841b6177b9b69'
+# Build from the same checkout before a real-world test; never silently test an old release image.
+DEFAULT_IMAGE = 'wesort-manager:mc26-tests'
 
 
 def require(value, message):

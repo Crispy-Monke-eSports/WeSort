@@ -54,4 +54,85 @@ class PhysicalSlotsTest {
         var writer = new PhysicalSlots.Writer(); var wire = writer.slots(List.of(new PhysicalSlots.Slot(0, 1, diamond()), new PhysicalSlots.Slot(1, 1, deep)));
         assertThrows(IllegalArgumentException.class, () -> new PhysicalSlots.Reader(writer.variants()).snapshot(27, wire));
     }
+    private PhysicalSlots.Item namedShulker(String text) {
+        var name = new JsonObject();
+        name.addProperty("type", 8);
+        name.addProperty("value", new JsonPrimitive(text).toString());
+        var value = new JsonObject();
+        value.add("minecraft:custom_name", name);
+        var patch = new JsonObject();
+        patch.addProperty("type", 10);
+        patch.add("value", value);
+        return new PhysicalSlots.Item("minecraft:shulker_box", "shulker", 1,
+            patch.toString(), PhysicalSlots.Kind.SHULKER, 27, List.of(), "");
+    }
+
+    @Test void uuidIsStrictVisibleV4NameNotRegistrationProof() {
+        String uuid = "550e8400-e29b-41d4-a716-446655440000";
+        var box = namedShulker("WeSort-" + uuid);
+        assertTrue(box.boxIdentity().hasUUID());
+        assertEquals(uuid, box.boxIdentity().boxUUID());
+        // A forgeable anvil label must NEVER be called registered without Manager provenance.
+        assertEquals("UNKNOWN", box.boxIdentity().identityStatus());
+        var row = new PhysicalSlots.Snapshot(27, List.of(new PhysicalSlots.Slot(1, 1, box)))
+            .json().getAsJsonArray("positions").get(0).getAsJsonObject();
+        assertTrue(row.get("hasUUID").getAsBoolean());
+        assertEquals(uuid, row.get("boxUUID").getAsString());
+        assertEquals("UNKNOWN", row.get("identityStatus").getAsString());
+        assertEquals(box.fingerprint(), row.get("itemFingerprint").getAsString());
+    }
+
+    @Test void malformedLookalikeAndNonV4IdentifiersNeverClaimUUID() {
+        String valid = "550e8400-e29b-41d4-a716-446655440000";
+        for (String value : List.of(
+            "WeSort-" + valid.toUpperCase(Locale.ROOT),
+            "WeSort-550e8400-e29b-11d4-a716-446655440000",
+            "WeSort-550e8400-e29b-41d4-7716-446655440000",
+            "WeSort-" + valid + " ",
+            "WeSort-" + valid + "more",
+            "WeSort-\\u200e" + valid,
+            "WeSort-\\u202e" + valid,
+            "WeSort-" + valid.substring(0, 35),
+            "WeSort-550e8400-e29b-41d4-a716-44665544000g")) {
+            var claim = namedShulker(value).boxIdentity();
+            assertFalse(claim.hasUUID(), value);
+            assertNull(claim.boxUUID(), value);
+        }
+        assertEquals("UNREGISTERED", namedShulker("WeSort (1/4) - Byggmaterial").boxIdentity().identityStatus());
+        assertEquals("UNREGISTERED", box(1).boxIdentity().identityStatus());
+    }
+
+    @Test void typedNameMustBeExactAndOnlyShulkersCanClaimIdentity() {
+        String visible = "WeSort-550e8400-e29b-41d4-a716-446655440000";
+        var box = namedShulker(visible);
+        assertFalse(PhysicalSlots.boxIdentity(PhysicalSlots.Kind.ITEM, box.components()).hasUUID());
+        assertFalse(PhysicalSlots.boxIdentity(PhysicalSlots.Kind.SHULKER,
+            "{\\\"minecraft:custom_name\\\":\\\"WeSort-550e8400-e29b-41d4-a716-446655440000\\\"}").hasUUID());
+        assertEquals("INVALID", PhysicalSlots.boxIdentity(PhysicalSlots.Kind.SHULKER,
+            "{\\\"minecraft:custom_name\\\":{\\\"type\\\":8,\\\"value\\\":\\\"not-json\\\"}}").identityStatus());
+        var styled = new JsonObject();
+        styled.addProperty("text", visible);
+        styled.addProperty("bold", true);
+        var name = new JsonObject();
+        name.addProperty("type", 8);
+        name.addProperty("value", styled.toString());
+        var fields = new JsonObject();
+        fields.add("minecraft:custom_name", name);
+        assertEquals("INVALID", PhysicalSlots.boxIdentity(PhysicalSlots.Kind.SHULKER, fields.toString()).identityStatus());
+    }
+
+    @Test void addingDerivedUUIDFieldsDoesNotChangeInventoryFingerprintOrCount() {
+        var box = namedShulker("WeSort-550e8400-e29b-41d4-a716-446655440000");
+        var snapshot = new PhysicalSlots.Snapshot(27, List.of(
+            new PhysicalSlots.Slot(0, 1, box), new PhysicalSlots.Slot(5, 1, box)));
+        var writer = new PhysicalSlots.Writer();
+        var rows = writer.slots(snapshot.slots());
+        var recovered = new PhysicalSlots.Reader(writer.variants()).snapshot(27, rows);
+        assertEquals(snapshot.fingerprint(), recovered.fingerprint());
+        assertEquals(snapshot.totals(), recovered.totals());
+        assertEquals(2L, recovered.totals().get("shulker"));
+        assertEquals(snapshot.json(), recovered.json());
+        assertNotEquals(recovered.located().get(0).resource("a"), recovered.located().get(1).resource("a"));
+    }
+
 }

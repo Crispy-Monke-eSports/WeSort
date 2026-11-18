@@ -21,8 +21,6 @@ jobs:
           # image build; every scenario below consumes these exact same bits.
           for attempt in 1 2 3; do
             if docker buildx build --load --build-arg REVISION="$GITHUB_SHA" \
-                --cache-from type=gha,scope=manager \
-                --cache-to type=gha,mode=max,scope=manager \
                 -t wesort-manager:kit-tests .; then
               exit 0
             fi

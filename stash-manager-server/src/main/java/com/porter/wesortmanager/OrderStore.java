@@ -762,8 +762,9 @@ final class OrderStore {
                 JsonElement value = input.get(i);
                 if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString())
                     throw new OrderException(400, "packageLabel texts[" + i + "] must be a string", -1);
-                String name = value.getAsString().strip();
-                texts.add(name.isEmpty() ? defaultText : suffix(name, "packageLabel.texts[" + i + "]"));
+                String rawText = value.getAsString();
+                String validated = suffix(rawText, "packageLabel.texts[" + i + "]");
+                texts.add(rawText.strip().isEmpty() ? defaultText : validated);
             }
             normalized.add("texts", texts);
         }

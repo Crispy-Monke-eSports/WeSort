@@ -1308,7 +1308,9 @@ final class OrderStore {
             if (order.agent != null && packages > 0 && packages <= MAX_SHULKERS) {
                 order.manifest = index.stock().stagingManifest(order.server, order.stash, order.id, order.agent, packages);
             }
-            return order.manifest != null && allLinesStaged(order.lines, result)
+            boolean physicalLabelsVerified = order.names == null || !order.names.has("packageLabel")
+                || PackageManifest.requiredLabelsVerified(order.manifest, order.names);
+            return order.manifest != null && allLinesStaged(order.lines, result) && physicalLabelsVerified
                 ? OrderStage.PICKUP_READY : OrderStage.NEEDS_RECONCILIATION;
         }
         return status.equals("cancelled") ? OrderStage.CANCELLED : OrderStage.FAILED;

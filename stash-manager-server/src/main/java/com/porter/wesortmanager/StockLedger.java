@@ -308,6 +308,28 @@ final class StockLedger {
             try (var r = p.executeQuery()) { while (r.next()) {
                 var row = JsonParser.parseString(r.getString(1)).getAsJsonObject(); row.addProperty("revision", r.getLong(2)); row.addProperty("present", r.getBoolean(3)); result.add(row);
             } }
+            // Detect exact name collisions across active sources, including separately
+            // scanned stashes. Alias memberships for the *same* physical source must
+            // not double count it. This is a read-only warning, not registration.
+            Set<String> collisions = new HashSet<>();
+            try (var duplicates = c.prepareStatement("""
+                    SELECT json_extract(s.payload,'$.boxUUID') AS box_uuid
+                      FROM physical_slots s
+                     WHERE s.present=1
+                       AND json_extract(s.payload,'$.hasUUID')=1
+                       AND EXISTS (SELECT 1 FROM stock_members m WHERE m.source=s.source AND m.present=1)
+                     GROUP BY box_uuid
+                    HAVING SUM(s.count * s.copies)>1
+                    """);
+                 var d = duplicates.executeQuery()) {
+                while (d.next()) collisions.add(d.getString(1));
+            }
+            for (JsonObject row : result) {
+                if (row.has("hasUUID") && row.get("hasUUID").getAsBoolean()
+                    && row.has("boxUUID") && !row.get("boxUUID").isJsonNull()
+                    && collisions.contains(row.get("boxUUID").getAsString()))
+                    row.addProperty("identityStatus", "DUPLICATE");
+            }
         } catch (SQLException e) { throw new IOException("Cannot read physical slots", e); }
         return result;
     }

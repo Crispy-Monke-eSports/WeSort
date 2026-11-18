@@ -68,7 +68,7 @@ class StockHierarchyTest {
         assertEquals(64L, observed.totals().get("minecraft:diamond"));
     }
 
-    private JsonObject labeledSource(StockLedger ledger, int x, String uuid) {
+    private JsonObject labeledSource(StockLedger ledger, int x, String uuid) throws Exception {
         var diamond = new PhysicalSlots.Item("minecraft:diamond", "minecraft:diamond", 64,
             "{}", PhysicalSlots.Kind.ITEM, 0, List.of(), "");
         String patchText = "{}";

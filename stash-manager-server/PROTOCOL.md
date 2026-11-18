@@ -333,3 +333,19 @@ reconnect never double-delivers: replaying a confirmation returns the
 same record. An uncertain outcome goes to `NEEDS_RECONCILIATION`, and a
 second agent cannot complete another agent's deposit. Owner
 `GET /api/v1/deposits` lists the ledger (optionally by `order`).
+
+## W-034 job scheduler
+
+Jobs carry a category `SCAN → SORT → PACK → PICKUP → DELIVER` (plus the
+`RECONCILE` override) and a work-unit `chain`; a step is only claimable
+once its predecessor for the same chain is COMPLETED, so a lone agent
+chains every step without a handover. `POST /api/v1/jobs/agent` (signed)
+allocates work atomically: a claim returns the highest-priority eligible
+job with a lease token and deadline, no agent ever holds two physical
+transactions, and two agents can never claim the same job. `renew`
+extends the lease; a lapsed lease moves the job to
+`NEEDS_RECONCILIATION`, and it is only reassignable after the Owner
+reconciles it back to `QUEUED` (`POST /api/v1/jobs`, `reconcile`), so a
+blind restart of an uncertain physical step is impossible. `pause`,
+`resume` and `revoke` round out the controls. Owner `GET /api/v1/jobs`
+shows the queue ordered by state, priority and age.

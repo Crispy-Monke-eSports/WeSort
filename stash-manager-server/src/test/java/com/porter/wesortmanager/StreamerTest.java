@@ -574,6 +574,8 @@ class StreamerTest {
             "[GET, HEAD] /api/v1/delivery-points SESSION OWNER",
             "[POST] /api/v1/delivery-points BROWSER_WRITE OWNER",
             "[GET, HEAD] /api/v1/deposits SESSION OWNER",
+            "[GET, HEAD] /api/v1/jobs SESSION OWNER",
+            "[POST] /api/v1/jobs BROWSER_WRITE OWNER",
             "[POST] /api/v1/kits BROWSER_WRITE OWNER",
             "[GET, HEAD] /api/v1/kits/editor SESSION OWNER",
             "[GET, HEAD] /api/v1/kits/jobs SESSION OWNER",

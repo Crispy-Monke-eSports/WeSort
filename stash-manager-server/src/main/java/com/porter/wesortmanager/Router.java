@@ -439,6 +439,8 @@ final class Router implements HttpHandler {
                 scope.matchesLocation(server, stash) && scope.agent().equals(agent) && scope.player().equalsIgnoreCase(player);
             case "/api/v1/automation" ->
                 scope.server().equals(server) && scope.agent().equals(agent) && scope.player().equalsIgnoreCase(player);
+            case "/api/v1/jobs/agent" ->
+                scope.agent().equals(agent);
             case "/api/v1/physical/agent" -> {
                 var record = object(body, "record");
                 var context = record == null ? null : object(record, "context");

@@ -93,7 +93,10 @@ class RepackHarness(world.Harness):
         if position:
             pos=' '.join(map(str,position))
             if 'Test passed' in self.rcon.command(f'execute if block {pos} minecraft:shulker_box'):
-                result['standing']=self.rcon.command(f'data get block {pos} Items')
+                # The shulker can be broken between the block predicate and the NBT read.
+                # Never feed the RCON "no elements" diagnostic into the conservation parser.
+                observed=self.rcon.command(f'data get block {pos} Items')
+                if 'following block data: ' in observed: result['standing']=observed
         if 'Test passed' in self.rcon.command('execute if entity @e[type=minecraft:item]'):
             result['drop']=self.rcon.command('data get entity @e[type=minecraft:item,limit=1] Item')
         return result
@@ -222,5 +225,5 @@ class RepackHarness(world.Harness):
 
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--manager-image',default='ghcr.io/crispy-monke-esports/wesort-manager@sha256:5d81b3a84a8089c00daa5541d2dab57ed8779aeb6a0d5b43a41c21c726f0f55f');p.add_argument('--scenario',choices=['mixed','partial','bulk','compact','no-tool','full-stash','no-empty','lag','abort','reserved','blocked','full-inventory','named','identical','rounds'],default='mixed')
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--manager-image',default=world.DEFAULT_IMAGE);p.add_argument('--scenario',choices=['mixed','partial','bulk','compact','no-tool','full-stash','no-empty','lag','abort','reserved','blocked','full-inventory','named','identical','rounds'],default='mixed')
     args=p.parse_args();RepackHarness(args.manager_image,args.scenario).execute()

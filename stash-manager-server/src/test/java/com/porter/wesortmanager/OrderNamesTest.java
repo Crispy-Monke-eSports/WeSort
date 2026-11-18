@@ -247,6 +247,7 @@ class OrderNamesTest {
             "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"ok\",\"total\":4}",
             "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"ok\",\"names\":[]}",
             "{\"mode\":\"packageLabel\",\"version\":2,\"text\":\"ok\"}",
+            "{\"mode\":\"packageLabel\",\"version\":1.5,\"text\":\"ok\"}",
             "{\"mode\":\"packageLabel\",\"version\":1,\"texts\":[1]}",
             "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"a\\u202eb\"}",
             "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"a\\u200bb\"}",

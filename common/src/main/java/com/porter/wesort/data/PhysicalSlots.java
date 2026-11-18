@@ -9,6 +9,51 @@ public final class PhysicalSlots {
     public enum Kind { ITEM, SHULKER, BUNDLE, CONTAINER }
     private PhysicalSlots() {}
 
+    /** A visible identity claim is not proof of globally unique registered ownership. */
+    public record BoxIdentity(boolean hasUUID, String boxUUID, String identityStatus) {
+        static BoxIdentity unregistered() { return new BoxIdentity(false, null, "UNREGISTERED"); }
+        static BoxIdentity invalid() { return new BoxIdentity(false, null, "INVALID"); }
+    }
+    private static final java.util.regex.Pattern BOX_UUID = java.util.regex.Pattern.compile(
+        "WeSort-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}");
+
+    /**
+     * Parse vanilla 26.3's typed CUSTOM_NAME, not an untrusted hasUUID field.
+     * Only an independent verified Manager registry may upgrade UNKNOWN to REGISTERED.
+     */
+    public static BoxIdentity boxIdentity(Kind kind, String components) {
+        if (kind != Kind.SHULKER) return BoxIdentity.unregistered();
+        try {
+            JsonObject patch = JsonParser.parseString(components).getAsJsonObject();
+            JsonObject value = patch;
+            if (patch.has("type")) {
+                if (patch.get("type").getAsInt() != 10 || !patch.get("value").isJsonObject())
+                    return BoxIdentity.invalid();
+                value = patch.getAsJsonObject("value");
+            }
+            JsonElement name = value.get("minecraft:custom_name");
+            if (name == null) return BoxIdentity.unregistered();
+            JsonObject typed = name.getAsJsonObject();
+            if (typed.get("type").getAsInt() != 8 || !typed.get("value").getAsJsonPrimitive().isString())
+                return BoxIdentity.invalid();
+            JsonElement component = JsonParser.parseString(typed.get("value").getAsString());
+            String visible;
+            if (component.isJsonPrimitive() && component.getAsJsonPrimitive().isString()) {
+                visible = component.getAsString();
+            } else if (component.isJsonObject() && component.getAsJsonObject().size() == 1
+                && component.getAsJsonObject().has("text")
+                && component.getAsJsonObject().get("text").getAsJsonPrimitive().isString()) {
+                visible = component.getAsJsonObject().get("text").getAsString();
+            } else return BoxIdentity.invalid();
+            if (BOX_UUID.matcher(visible).matches()) {
+                return new BoxIdentity(true, visible.substring("WeSort-".length()), "UNKNOWN");
+            }
+            return visible.startsWith("WeSort-") ? BoxIdentity.invalid() : BoxIdentity.unregistered();
+        } catch (RuntimeException malformed) {
+            return BoxIdentity.invalid();
+        }
+    }
+
     public record Slot(int slot, int count, Item item) {
         public Slot {
             Objects.requireNonNull(item);
@@ -46,6 +91,7 @@ public final class PhysicalSlots {
         public int maxStack() { return maxStack; }
         public int size() { return size; }
         public List<Slot> contents() { return contents; }
+        public BoxIdentity boxIdentity() { return PhysicalSlots.boxIdentity(kind, components); }
     }
 
     public record Located(String path, String parent, Slot stack, long copies) {
@@ -95,7 +141,15 @@ public final class PhysicalSlots {
                 row.addProperty("id", item.id); row.addProperty("key", item.key); row.addProperty("maxStack", item.maxStack);
                 row.addProperty("kind", item.kind.name()); row.addProperty("size", item.size); row.addProperty("group", item.group);
                 row.addProperty("components", item.components); row.addProperty("itemFingerprint", item.fingerprint);
-                row.addProperty("fingerprint", slot.fingerprint()); positions.add(row);
+                row.addProperty("fingerprint", slot.fingerprint());
+                if (item.kind == Kind.SHULKER) {
+                    BoxIdentity identity = item.boxIdentity();
+                    row.addProperty("hasUUID", identity.hasUUID());
+                    if (identity.boxUUID() != null) row.addProperty("boxUUID", identity.boxUUID());
+                    else row.add("boxUUID", JsonNull.INSTANCE);
+                    row.addProperty("identityStatus", identity.identityStatus());
+                }
+                positions.add(row);
             }
             out.add("positions", positions); return out;
         }

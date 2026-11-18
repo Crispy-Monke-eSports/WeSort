@@ -145,6 +145,14 @@ bara en DB-fil medan WAL är aktiv.
 python3 scripts/docker-smoke.py --image wesort-manager:dev --report /tmp/wesort-docker-smoke.json
 ```
 
+För att även prova medlemsflödet i Chromium mot samma container:
+
+```sh
+npm ci --prefix web-tests
+npm exec --prefix web-tests -- playwright install --with-deps chromium
+python3 scripts/docker-smoke.py --image wesort-manager:dev --browser --report /tmp/wesort-docker-browser.json
+```
+
 Testet skapar egna unika Compose-projekt/volymer och städar endast dessa.
 Det bygger inte/pushar inte GHCR själv. Det verifierar non-root/read-only,
 mode 700/600, riktig health/webb/API, säker bootstrap över Docker bridge,
@@ -156,8 +164,9 @@ TLS-testcontainern/certifikaten är testhjälpare och ingår inte i produktimage
 Manager-build JDK: Temurin 21.0.9+10 och wrapper 9.6.0, med pinndigest. Runtime:
 Temurin 21.0.13+9, pinndigest och lokalt verifierad. Rapport:
 [W-055 Docker smoke](verification/W-055-docker-smoke.json). Samma tester körs
-i CI utan package-push. De är HTTP-/DOM-/protokolltester, inte en verklig
-Fabric-session eller fysisk Minecraft-leverans. Ingen sådan E2E påstås körd.
+i CI utan package-push. Chromiumprovet använder samma Manager och en
+signerad lagerfixtur. Fabric-sessioner och fysisk Minecraft-leverans
+verifieras separat i 26.3-proven.
 
 Lokalt slutresultat W-055: Manager 104 tester, 0 fel, 1 känt ikon-skip;
 historiska klienttester för 1.21.4 och 1.21.11: 431 vardera, 0 fel/skips (ej längre stödda). Webbens DOM-/

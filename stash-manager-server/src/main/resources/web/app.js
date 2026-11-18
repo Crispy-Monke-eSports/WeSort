@@ -702,33 +702,83 @@
     });
   }
 
-  function renderGuildStock(data) {
-    var status = document.getElementById("stock-status");
-    var balances = document.getElementById("stock-balances");
-    var sources = document.getElementById("stock-sources");
-    if (!status || !balances || !sources) return;
-    var rows = data && Array.isArray(data.items) ? data.items : [];
-    var physical = data && Array.isArray(data.sources) ? data.sources : [];
-    status.textContent = rows.length || physical.length ? rows.length + " item variants · " + physical.length + " visible physical sources · revision " + data.stockRevision +
-      " · freshness limit " + Math.round(data.maxAgeMillis / 1000) + " s" + (rows.length > 200 ? " · showing 200 of " + rows.length + " item variants" : "") : "No verified physical observations yet. A new scan is required.";
-    if (data && Array.isArray(data.automation) && data.automation.length) status.textContent += " · physical sorting active or awaiting reconciliation; new orders paused";
-    balances.replaceChildren(); sources.replaceChildren();
-    rows.slice(0, 200).forEach(function (item) {
-      var row = document.createElement("tr");
-      [item.serverLabel || item.server, item.name || item.id, item.observed, item.reserved, item.available, item.unknown].forEach(function (value) {
-        var cell = document.createElement("td"); cell.textContent = String(value); row.appendChild(cell);
-      }); balances.appendChild(row);
+  var guildStock = null;
+
+  function stockRow(tbody, location, item) {
+    var row = document.createElement("tr");
+    var cell = row.insertCell();
+    if (typeof location === "string") cell.textContent = location;
+    else cell.appendChild(location);
+    var name = streamerOn() ? item.id : item.name || item.id;
+    var variant = str(item.key).split("#")[1];
+    if (variant) name += " · " + variant;
+    [name, item.observed, item.reserved, item.available, item.unknown].forEach(function (value) {
+      row.insertCell().textContent = String(value);
     });
-    var stashRows = document.getElementById("stock-stashes");
+    tbody.appendChild(row);
+  }
+
+  function renderGuildBalances() {
+    var data = guildStock;
+    var status = $("stock-status");
+    var balances = $("stock-balances");
+    var stashRows = $("stock-stashes");
+    balances.replaceChildren();
     stashRows.replaceChildren();
-    (data && Array.isArray(data.stashes) ? data.stashes : []).forEach(function (stash) {
-      (stash.items || []).forEach(function (item) {
-        var row = document.createElement("tr");
-        [stash.stash, item.name || item.id, item.observed, item.reserved, item.available, item.unknown].forEach(function (value) {
-          var cell = document.createElement("td"); cell.textContent = String(value); row.appendChild(cell);
-        }); stashRows.appendChild(row);
+    var rows = data && Array.isArray(data.items) ? data.items : [];
+    var stashes = data && Array.isArray(data.stashes) ? data.stashes : [];
+    $("stock-per-stash").hidden = !stashes.length;
+    if (!data) {
+      status.textContent = "Stock unavailable. Availability cannot be confirmed.";
+      return;
+    }
+    var query = parseQuery($("stock-search").value);
+    function matchesStock(item) {
+      var id = str(item.id);
+      return matches({ item: item, ns: id.split(":")[0], hay: [item.name, id, item.key].join("\n").toLowerCase() }, query);
+    }
+    var matching = rows.filter(matchesStock);
+    var message = !rows.length ? "No verified stock observations yet."
+      : !matching.length ? "No matching items."
+      : (matching.length > 200 ? "Showing 200 of " : "") + matching.length + " item variants · revision " + data.stockRevision;
+    if (Array.isArray(data.automation) && data.automation.length) message += " · physical sorting active or awaiting reconciliation. New orders paused.";
+    if (status.textContent !== message) status.textContent = message;
+    matching.slice(0, 200).forEach(function (item) {
+      stockRow(balances, streamerOn() ? "Hidden" : item.serverLabel || item.server, item);
+    });
+    var visibleStashes = new Set(state.stashes.map(stashKey));
+    stashes.forEach(function (stash) {
+      var key = stashKey(stash);
+      (stash.items || []).filter(matchesStock).forEach(function (item) {
+        var label = streamerOn() ? "Hidden" : [stash.stash, stash.serverLabel].filter(Boolean).join(" · ");
+        if (!visibleStashes.has(key) || streamerOn()) {
+          stockRow(stashRows, label, item);
+          return;
+        }
+        var button = document.createElement("button");
+        button.type = "button";
+        button.className = "mc-button small";
+        button.textContent = label;
+        button.addEventListener("click", function () {
+          selectStash(key);
+          selectTab("all");
+          el.search.value = "=" + (item.key || item.id);
+          queueRender(0);
+          el.search.focus();
+        });
+        stockRow(stashRows, button, item);
       });
     });
+  }
+
+  function renderGuildStock(data) {
+    if (auth.blocked || !can("view")) return;
+    guildStock = data;
+    renderGuildBalances();
+    var sources = $("stock-sources");
+    var physical = data && can("positions") && !streamerOn() && Array.isArray(data.sources) ? data.sources : [];
+    $("stock-source-details").hidden = !physical.length;
+    sources.replaceChildren();
     physical.forEach(function (source) {
       var row = document.createElement("li");
       var position = Array.isArray(source.parts) ? " · " + source.parts.map(function (p) { return p.join(", "); }).join(" / ") : "";
@@ -804,19 +854,16 @@
   function poll() {
     if (state.polling || auth.blocked) return;
     state.polling = true;
-    if (can("view")) api("/api/v1/stock").then(renderGuildStock, function () {
-      var status = document.getElementById("stock-status"); if (status) status.textContent = "Source status unavailable. Stock freshness cannot be confirmed.";
-    });
+    var stock = can("view") ? api("/api/v1/stock").catch(function () { return null; }) : Promise.resolve(null);
     // Without "view" the server refuses the stash list: don't ask, and don't call that "unreachable".
-    var request = can("view") ? api("/api/v1/stashes") : Promise.resolve([]);
-    request.then(function (list) {
+    var stashes = can("view") ? api("/api/v1/stashes") : Promise.resolve([]);
+    var updatedStashes = stashes.then(function (list) {
       state.unreachable = false;
       state.stashes = Array.isArray(list) ? list : [];
       state.polledOnce = true;
     }, function () {
       state.unreachable = true;
     }).then(function () {
-      state.polling = false;
       // Rendering runs outside the fetch's error handler, so a render bug can't look like "unreachable".
       updateSelect();
       updateHeader();
@@ -826,6 +873,11 @@
         maybeAutoOpenLink();
         deliveryMaybeLoad();
       }
+    });
+    Promise.all([updatedStashes, stock]).then(function (results) {
+      renderGuildStock(results[1]);
+    }).finally(function () {
+      state.polling = false;
     });
   }
 
@@ -1532,18 +1584,22 @@
   function parseQuery(q) {
     var terms = [];
     var namespaces = [];
+    var keys = [];
     q.toLowerCase().split(/\s+/).forEach(function (t) {
       if (!t) return;
       if (t.charAt(0) === "@") {
         if (t.length > 1) namespaces.push(t.slice(1));
+      } else if (t.charAt(0) === "=" && t.length > 1) {
+        keys.push(t.slice(1));
       } else {
         terms.push(t);
       }
     });
-    return { terms: terms, namespaces: namespaces };
+    return { terms: terms, namespaces: namespaces, keys: keys };
   }
 
   function matches(entry, query) {
+    if (query.keys.length && !query.keys.includes(str(entry.item && (entry.item.key || entry.item.id)).toLowerCase())) return false;
     for (var i = 0; i < query.namespaces.length; i++) {
       if (entry.ns.indexOf(query.namespaces[i]) !== 0) return false;
     }
@@ -4042,6 +4098,7 @@
   }
 
   function renderOrderList() {
+    $("order-history-title").textContent = can("ordersAll") ? "Guild orders" : "Your orders";
     el.ordersClear.hidden = !can("ordersAll");
     el.ordersClear.disabled = !finishedCount();
     var frag = document.createDocumentFragment();
@@ -5519,6 +5576,7 @@
     if (!relabel) return;
     updateSelect();
     renderBotSelect();
+    renderGuildStock(guildStock);
   }
 
   el.streamerBtn.addEventListener("click", function () {
@@ -5788,6 +5846,11 @@
     el.accountName.hidden = !name;
     el.accountName.textContent = name ? "Logged in as " + name : "";
     var view = can("view");
+    $("guild-stock").hidden = !view;
+    if (pagesChanged && view) {
+      renderGuildStock(null);
+      poll();
+    }
     var activity = can("activity");
     var stashPicker = document.querySelector(".picker-stash");
     if (stashPicker) stashPicker.hidden = !view;
@@ -6967,6 +7030,7 @@
 
   // ---------- controls ----------
 
+  $("stock-search").addEventListener("input", renderGuildBalances);
   el.search.addEventListener("input", function () { queueRender(SEARCH_DEBOUNCE_MS); });
   el.sort.addEventListener("change", function () {
     if (isCreativeTab(state.tab)) state.sortTab = el.sort.value;

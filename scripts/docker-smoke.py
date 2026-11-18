@@ -21,6 +21,7 @@ p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--image', default='wesort-manager:dev')
 p.add_argument('--compose-file', default='compose.dev.yaml')
 p.add_argument('--report', type=Path)
+p.add_argument('--browser', action='store_true', help='Run the Chromium member portal test with web-tests dependencies installed')
 args = p.parse_args()
 project = 'wesort-smoke-' + uuid.uuid4().hex[:10]
 proxy_name = project + '-tls'
@@ -140,6 +141,29 @@ try:
     order_id = order[1]['order']['id']
     assert agent(network, key, '/api/v1/orders/claim', {'server': fake.SERVER, 'stash': fake.STASH, 'player': fake.PLAYER})['body']['order']['id'] == order_id
     ok('external agent container: signed index, heartbeat and order/claim; invalid signatures and Bearer rejected')
+    if args.browser:
+        portal_stash = 'portal-nether'
+        secondary = fake.build_index()
+        secondary['stash'] = portal_stash
+        secondary['dimension'] = dimension = 'minecraft:the_nether'
+        secondary = fake.protocol_observation(secondary)
+        source = secondary['physicalSources'][0]
+        source['dimension'] = dimension
+        identity = json.dumps([fake.SERVER, dimension, source['parts'][0]], separators=(',', ':'))
+        source['id'] = 'c:' + hashlib.sha256(identity.encode()).hexdigest()
+        assert agent(network, key, '/api/v1/index', secondary)['status'] == 200
+        assert agent(network, key, '/api/v1/heartbeat', {'server': fake.SERVER, 'stash': portal_stash,
+            'player': fake.PLAYER, 'indexHash': secondary['indexHash'], 'delivery': None})['status'] == 200
+        members = ['PortalBuilder', 'PortalMiner']
+        for name in members:
+            assert http('/api/v1/users', {'name': name, 'password': password,
+                'preset': 'member', 'mustChange': False}, opener=browser)[0] == 200
+        completed = run(['node', 'web-tests/guild-portal.cjs'], input=json.dumps({
+            'url': base, 'stash': portal_stash, 'otherStash': fake.STASH, 'password': password, 'members': members,
+        }), check=False)
+        if completed.returncode:
+            raise AssertionError('Chromium portal smoke failed\n' + completed.stderr.replace(password, '<test password>'))
+        ok('Chromium: two members log in, search shared stock, browse the stash, reserve stock and see private order histories')
     digest = run(['docker', 'exec', container, 'sha256sum', '/var/lib/wesort/config.properties']).stdout
     second = run(['docker', 'run', '--rm', '--network', 'none', '--mount', f'type=volume,src={volume},dst=/var/lib/wesort', args.image], check=False)
     assert second.returncode != 0
@@ -148,7 +172,7 @@ try:
     wait_ready(container)
     assert run(['docker', 'exec', container, 'sha256sum', '/var/lib/wesort/config.properties']).stdout == digest
     assert http('/api/v1/auth/login', {'password': password}, opener=browser)[0] == 200
-    assert len(http('/api/v1/stashes', opener=browser)[1]) == 1
+    assert len(http('/api/v1/stashes', opener=browser)[1]) == (2 if args.browser else 1)
     assert order_id in http('/api/v1/orders?server=' + fake.SERVER + '&stash=' + fake.STASH, opener=browser)[3].decode()
     ok('single-process volume lock and SIGTERM/restart preserve keys, Owner, sessions, index, order and audit')
     with tempfile.TemporaryDirectory(prefix='wesort-tls-') as temporary:

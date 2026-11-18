@@ -96,6 +96,16 @@
       <div class="panel-label" id="panel-label">Search</div>
 
       <div class="view view-items" id="view-items">
+        <details class="guild-stock" id="guild-stock" open>
+          <summary id="guild-stock-title">Guild stock</summary>
+          <p id="guild-description-view" hidden></p>
+          <p id="stock-status" role="status">Loading verified stock…</p>
+          <p>Available counts exclude reserved and unverified items.</p>
+          <input id="stock-search" class="mc-input" type="search" aria-label="Search guild stock" placeholder="Search guild stock" autocomplete="off" spellcheck="false">
+          <table><thead><tr><th>Server</th><th>Item</th><th>Observed</th><th>Reserved</th><th>Available</th><th>Unknown</th></tr></thead><tbody id="stock-balances"></tbody></table>
+          <details id="stock-per-stash"><summary>Stock per stash</summary><table><thead><tr><th>Stash</th><th>Item</th><th>Observed</th><th>Reserved</th><th>Available</th><th>Unknown</th></tr></thead><tbody id="stock-stashes"></tbody></table></details>
+          <details id="stock-source-details"><summary>Physical sources</summary><ul id="stock-sources"></ul></details>
+        </details>
         <div class="grid-wrap" id="grid-wrap">
           <div class="item-grid" id="item-grid"></div>
           <div class="empty" id="empty" hidden>
@@ -103,7 +113,7 @@
           </div>
         </div>
         <div class="toolbar">
-          <input id="search" class="mc-input" type="search" placeholder="Search (e.g. diamond sword, @minecraft)" autocomplete="off" spellcheck="false">
+          <input id="search" class="mc-input" type="search" aria-label="Search selected stash" placeholder="Search stash (e.g. diamond sword, @minecraft)" autocomplete="off" spellcheck="false">
           <select id="sort" class="mc-select" aria-label="Sort">
             <option value="creative">Creative order</option>
             <option value="count">Count</option>
@@ -112,15 +122,6 @@
           </select>
         </div>
         <div class="summary" id="summary"></div>
-        <details class="guild-stock" id="guild-stock">
-          <summary><span id="guild-stock-title">Guild stock</span> — verified sources</summary>
-          <p id="guild-description-view" hidden></p>
-          <p id="stock-status">No verified observations yet.</p>
-          <p>Observed counts are the last scan, not live inventory. Only fresh, unreserved sources are available for ordering.</p>
-          <table><thead><tr><th>Server</th><th>Item</th><th>Observed</th><th>Reserved</th><th>Available</th><th>Unknown</th></tr></thead><tbody id="stock-balances"></tbody></table>
-          <details><summary>Stock per stash</summary><table><thead><tr><th>Stash</th><th>Item</th><th>Observed</th><th>Reserved</th><th>Available</th><th>Unknown</th></tr></thead><tbody id="stock-stashes"></tbody></table></details>
-          <details><summary>Physical sources</summary><ul id="stock-sources"></ul></details>
-        </details>
         <div class="hint only-desktop order-hint">Right-click a shulker box to look inside. Shift-click an item to add a stack to the order cart.</div>
         <div class="hint only-mobile order-hint">Tap a shulker box to look inside. Long-press an item, or tap its +, to add a stack to the order cart.</div>
       </div>
@@ -191,7 +192,7 @@
         </section>
         <section class="inset order-list">
           <div class="cart-head">
-            <div class="section-title">Orders</div>
+            <div class="section-title" id="order-history-title">Your orders</div>
             <button type="button" class="mc-button small" id="orders-clear" disabled>Clear history</button>
           </div>
           <div id="order-list"></div>

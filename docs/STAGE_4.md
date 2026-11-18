@@ -146,3 +146,22 @@ Medlemsfönstret och dess kommando registreras inte i produktionsklienten.
 Beställningar går via Manager-webben. Agentens tekniska koppling,
 Minecraft-chatt och lokala nödstopp finns kvar. Kvoter och verkställighet
 av den fysiska policyn hör till W-059 och W-061.
+
+## W-030 – gemensam lagerportal
+
+Browse visar guildens gemensamma saldo först. Sökningen filtrerar både
+guildsaldot och de stashes som kontot får se. Välj en stash i resultatet
+för att öppna den exakta artikelvarianten i inventariet. Orders visar
+egna beställningar för medlemmar och behörig guildhistorik för
+orderansvariga. Det vanliga medlemsflödet använder bara Manager.
+
+Chromiumprovet loggar in två medlemmar i var sin webbläsarsession mot
+Manager i Docker. Båda ser summan av två stashes, beställer från samma
+stash och får ett gemensamt tillgängligt saldo som minskar med exakt
+den reserverade mängden. Varje konto ser sin egen order. Webbläsaren
+låter provet endast anropa Manager. Den signerade lagerfixturen ersätter
+Minecraft i detta prov. W-027 och W-042 har separata 26.3-prov för fysisk
+packning och staging.
+
+Personkvoter och webbvyer för kvoter, säkerhetspolicy, teleport och
+verifierad UUID-hantering följer W-059 och W-061–W-064.

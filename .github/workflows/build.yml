@@ -109,6 +109,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web-tests/package-lock.json
+      - run: npm ci --prefix web-tests
+      - run: npm exec --prefix web-tests -- playwright install --with-deps chromium
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         with:
@@ -120,8 +127,8 @@ jobs:
           build-args: REVISION=${{ github.sha }}
           cache-from: type=gha,scope=manager
           cache-to: type=gha,mode=max,scope=manager
-      - name: Docker bridge, bootstrap, persistence and TLS smoke
-        run: python3 scripts/docker-smoke.py --report build/evidence/docker-smoke.json
+      - name: Docker bridge, browser portal, bootstrap, persistence and TLS smoke
+        run: python3 scripts/docker-smoke.py --browser --report build/evidence/docker-smoke.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

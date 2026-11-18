@@ -3016,7 +3016,8 @@
     el.namesPreview.textContent = n > 0
       ? "Estimated: WeSort (1/" + n + ") - " + previewText
           + " · " + Math.max(0, 33 - firstText.length) + " UTF-16 units remaining"
-      : "Add items to preview your shulker names · 33 UTF-16 units maximum";
+      : "Add items to lock Y; preview: WeSort (1/Y) - " + previewText
+          + " · " + Math.max(0, 33 - firstText.length) + " UTF-16 units remaining";
     var entered = names.mode === "each" ? names.each.slice(0, n) : [names.all];
     var invalid = entered.some(function (text) { return !validLabelText((text || "").trim()); });
     var warning = namesWarnText(currentStash(), namedCount());

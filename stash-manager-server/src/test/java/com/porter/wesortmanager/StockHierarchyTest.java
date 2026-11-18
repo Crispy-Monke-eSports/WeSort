@@ -68,6 +68,74 @@ class StockHierarchyTest {
         assertEquals(64L, observed.totals().get("minecraft:diamond"));
     }
 
+    private JsonObject labeledSource(StockLedger ledger, int x, String uuid) {
+        var diamond = new PhysicalSlots.Item("minecraft:diamond", "minecraft:diamond", 64,
+            "{}", PhysicalSlots.Kind.ITEM, 0, List.of(), "");
+        String patchText = "{}";
+        if (uuid != null) {
+            var name = new JsonObject();
+            name.addProperty("type", 8);
+            name.addProperty("value", new JsonPrimitive("WeSort-" + uuid).toString());
+            var patchValue = new JsonObject();
+            patchValue.add("minecraft:custom_name", name);
+            var typedPatch = new JsonObject();
+            typedPatch.addProperty("type", 10);
+            typedPatch.add("value", patchValue);
+            patchText = typedPatch.toString();
+        }
+        var box = new PhysicalSlots.Item("minecraft:shulker_box", "minecraft:shulker_box", 1,
+            patchText, PhysicalSlots.Kind.SHULKER, 27,
+            List.of(new PhysicalSlots.Slot(26, 32, diamond)), "kit");
+        var frame = new PhysicalSlots.Snapshot(27, List.of(new PhysicalSlots.Slot(0, 1, box)));
+        var root = new JsonObject();
+        root.addProperty("version", 1);
+        root.addProperty("receivedAt", System.currentTimeMillis());
+        root.addProperty("server", "s");
+        root.addProperty("stash", x == 0 ? "a" : "b");
+        root.add("items", amounts(frame.totals()));
+        root.add("shulkers", amounts(frame.shulkers()));
+        root = StockFixtures.physical(root, ledger.epoch(), ledger.revision(), ledger.revision() + 1, x);
+        var writer = new PhysicalSlots.Writer();
+        source(root).add("slots", writer.slots(frame.slots()));
+        source(root).addProperty("fingerprint", frame.fingerprint());
+        root.addProperty("physicalVersion", 2);
+        root.add("slotVariants", writer.variants());
+        return root;
+    }
+
+    @Test void crossStashDuplicateUUIDClaimsStayUnknownUntilSecondSourceAndRevertOnRemoval() throws Exception {
+        var ledger = new StockLedger(data);
+        String uuid = "550e8400-e29b-41d4-a716-446655440000";
+        var first = labeledSource(ledger, 0, uuid);
+        String firstId = source(first).get("id").getAsString();
+        ledger.accept(first);
+        assertEquals("UNKNOWN", ledger.physicalSlots(firstId).stream()
+            .filter(r -> "SHULKER".equals(r.get("kind").getAsString()))
+            .findFirst().orElseThrow().get("identityStatus").getAsString());
+
+        var second = labeledSource(ledger, 10, uuid);
+        String secondId = source(second).get("id").getAsString();
+        ledger.accept(second);
+        assertNotEquals(firstId, secondId);
+        for (String id : List.of(firstId, secondId)) {
+            var box = ledger.physicalSlots(id).stream()
+                .filter(r -> "SHULKER".equals(r.get("kind").getAsString())).findFirst().orElseThrow();
+            assertEquals("DUPLICATE", box.get("identityStatus").getAsString());
+            assertEquals(uuid, box.get("boxUUID").getAsString());
+        }
+        // Dynamic observations, not a unique registration: once a *new*
+        // authoritative read confirms the second box has no UUID, the first
+        // syntactically valid claim is UNKNOWN (never automatically REGISTERED).
+        var renamed = labeledSource(ledger, 10, null);
+        ledger.accept(renamed);
+        var remaining = ledger.physicalSlots(firstId).stream()
+            .filter(r -> "SHULKER".equals(r.get("kind").getAsString())).findFirst().orElseThrow();
+        assertEquals("UNKNOWN", remaining.get("identityStatus").getAsString());
+        assertEquals(32L, ledger.snapshot(firstId,
+            source(first).get("fingerprint").getAsString())
+                .getAsJsonArray("positions").get(1).getAsJsonObject().get("count").getAsLong());
+    }
+
     @Test void returnChoiceSurvivesRestartAndStaleChangesCannotReplaceIt() throws Exception {
         var ledger = new StockLedger(data);
         var frame = index(ledger, 32);

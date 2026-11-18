@@ -3019,7 +3019,7 @@
       : "Add items to lock Y; preview: WeSort (1/Y) - " + previewText
           + " · " + Math.max(0, 33 - firstText.length) + " UTF-16 units remaining";
     var entered = names.mode === "each" ? names.each.slice(0, n) : [names.all];
-    var invalid = entered.some(function (text) { return !validLabelText((text || "").trim()); });
+    var invalid = entered.some(function (text) { return !validLabelText(text || ""); });
     var warning = namesWarnText(currentStash(), namedCount());
     var text = (invalid ? "Invalid label text: maximum 33 UTF-16 units, no control, bidi or invisible characters. " : "") + warning;
     if (el.namesWarn.textContent !== text) el.namesWarn.textContent = text;

@@ -93,6 +93,8 @@ public final class Order {
     public final List<Line> lines;
     /** Null: no naming. */
     public final Names names;
+    /** Versioned server-owned labels MUST be physically verified before staging. */
+    public final boolean requiredPackageLabels;
     public final Map<String,Set<Integer>> protectedRoots;
     public final Map<String,Set<Integer>> allocatedRoots;
 
@@ -101,14 +103,15 @@ public final class Order {
     }
 
     public Order(String id, List<Line> lines, Names names) {
-        this(id, lines, names, Map.of(), Map.of());
+        this(id, lines, names, Map.of(), Map.of(), false);
     }
 
     private Order(String id, List<Line> lines, Names names, Map<String,Set<Integer>> protectedRoots,
-                  Map<String,Set<Integer>> allocatedRoots) {
+                  Map<String,Set<Integer>> allocatedRoots, boolean requiredPackageLabels) {
         this.id = id;
         this.lines = lines;
         this.names = names;
+        this.requiredPackageLabels = requiredPackageLabels;
         this.protectedRoots = protectedRoots;
         this.allocatedRoots = allocatedRoots;
     }
@@ -159,7 +162,34 @@ public final class Order {
             if (allocated.isEmpty()) throw new IllegalArgumentException("Empty physical allocation");
         }
         allocated.replaceAll((source, slots) -> Set.copyOf(slots));
-        return new Order(id, lines, parseNames(o), Map.copyOf(guards), Map.copyOf(allocated));
+        Names names = parseNames(o);
+        boolean required = validatePackageLabels(o, names);
+        return new Order(id, lines, names, Map.copyOf(guards), Map.copyOf(allocated), required);
+    }
+
+    /** Fail closed for an incomplete or tampered Manager-owned package-label plan. */
+    private static boolean validatePackageLabels(JsonObject order, Names names) {
+        if (!order.has("names") || !order.get("names").isJsonObject()
+            || !order.getAsJsonObject("names").has("packageLabel")) return false;
+        try {
+            JsonObject meta = order.getAsJsonObject("names").getAsJsonObject("packageLabel");
+            if (meta == null || !meta.has("version")
+                || meta.get("version").getAsBigDecimal().intValueExact() != 1)
+                throw new IllegalArgumentException("Unsupported package-label policy");
+            int total = meta.get("total").getAsBigDecimal().intValueExact();
+            if (total < 1 || total > MAX_BINS || names == null
+                || !Names.EACH.equals(names.mode()) || names.each().size() != total)
+                throw new IllegalArgumentException("Missing locked package labels");
+            for (int i = 0; i < total; i++) {
+                String label = names.nameFor(i);
+                if (label == null || !valid(label)
+                    || !label.startsWith("WeSort (" + (i + 1) + "/" + total + ") - "))
+                    throw new IllegalArgumentException("Invalid generated package label " + (i + 1));
+            }
+            return true;
+        } catch (RuntimeException malformed) {
+            throw new IllegalArgumentException("Invalid required package labels", malformed);
+        }
     }
 
     private static boolean isText(JsonElement e) {

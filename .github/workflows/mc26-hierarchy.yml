@@ -37,7 +37,7 @@ jobs:
           SDL_VIDEO_DRIVER: x11
           SDL_VIDEO_FORCE_EGL: '1'
           ALSOFT_DRIVERS: 'null'
-        run: xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/mc26/hierarchy-harness.py --manager-image wesort-manager:mc26-tests --reservations --guild --order-lifecycle --approval
+        run: xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/mc26/hierarchy-harness.py --manager-image wesort-manager:mc26-tests --reservations --guild --order-lifecycle --approval --remote-settings
       - uses: actions/upload-artifact@v4
         if: always()
         with:

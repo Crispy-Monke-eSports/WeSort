@@ -297,6 +297,57 @@ class DeliveryTest {
         assertFalse(perms.has("plannerOrder"));
         assertFalse(Users.Perms.parse(JsonParser.parseString("{\"plannerOrder\":true}")).order());
     }
+
+    @Test
+    void signedControlReceiptsAreScopedAndAuditedOnce() throws Exception {
+        String session = "1".repeat(64);
+        var identity = new JsonObject();
+        identity.addProperty("botId", "control-fixture");
+        identity.addProperty("controlSession", session);
+        var hello = identity.deepCopy();
+        hello.add("caps", JsonParser.parseString("[\"settings\"]"));
+        var established = botPost("/api/v1/bot/hello", hello.toString()).obj();
+        assertEquals(2, established.get("protocol").getAsInt());
+        var manifest = identity.deepCopy();
+        manifest.add("controlEpoch", established.get("controlEpoch"));
+        manifest.addProperty("orderId", "o-0123456789ab");
+        assertEquals(404, botPost("/api/v1/bot/manifest", manifest.toString()).status());
+        assertEquals(401, post(login(null, OWNER_PW), "/api/v1/bot/manifest", manifest.toString()).status());
+
+        var settings = identity.deepCopy();
+        settings.addProperty("scope", "plugin");
+        settings.addProperty("schemaHash", HASH_A);
+        settings.addProperty("valuesHash", HASH_B);
+        settings.add("schema", JsonParser.parseString("[{\"path\":\"scan-interval\",\"type\":\"int\",\"min\":2,\"max\":60}]"));
+        settings.add("values", JsonParser.parseString("{\"scan-interval\":10}"));
+        assertEquals(200, botPost("/api/v1/bot/state", settings.toString()).status());
+        String owner = login(null, OWNER_PW);
+        String browserRoute = "/api/v1/bots/control-fixture/settings";
+        String change = "{\"scope\":\"plugin\",\"changes\":[{\"path\":\"scan-interval\",\"value\":12,\"expect\":10}]}";
+        assertEquals(401, post(null, browserRoute, change).status());
+        assertEquals(200, post(owner, browserRoute, change).status());
+        assertEquals(401, post(owner, "/api/v1/bot/next", identity.toString()).status());
+        var foreign = identity.deepCopy();
+        foreign.addProperty("controlSession", "2".repeat(64));
+        assertEquals(409, botPost("/api/v1/bot/next", foreign.toString()).status());
+        var job = botPost("/api/v1/bot/next", identity.toString()).obj().getAsJsonArray("jobs").get(0).getAsJsonObject();
+        var receipt = new JsonObject();
+        for (String key : List.of("id", "lease", "sequence", "value")) receipt.add(key, job.get(key));
+        receipt.addProperty("ok", true);
+        var results = new JsonArray();
+        results.add(receipt);
+        var report = identity.deepCopy();
+        report.add("results", results);
+        assertEquals(200, botPost("/api/v1/bot/results", report.toString()).status());
+        assertEquals(200, botPost("/api/v1/bot/results", report.toString()).status());
+        receipt.addProperty("ok", false);
+        assertEquals(409, botPost("/api/v1/bot/results", report.toString()).status());
+        var entries = get(owner, "/api/v1/audit").obj().getAsJsonArray("entries");
+        assertEquals(1, entries.asList().stream().map(JsonElement::getAsJsonObject)
+            .filter(entry -> "agent.job.applied".equals(entry.get("action").getAsString())).count());
+        assertFalse(entries.toString().contains(session));
+    }
+
     @Test
     void retiredAdminEndpointsCannotQueueCommandsOrProxyChanges() throws Exception {
         String owner = login(null, OWNER_PW);

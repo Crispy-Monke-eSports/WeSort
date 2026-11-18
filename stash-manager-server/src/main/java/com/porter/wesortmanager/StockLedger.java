@@ -37,7 +37,7 @@ final class StockLedger {
                     if (existed && (!r.next() || r.getInt(1) != APPLICATION_ID)) throw new IOException("Foreign guild database format");
                 }
                 s.execute("PRAGMA journal_mode=WAL");
-                try (var r = s.executeQuery("PRAGMA user_version")) { if (r.next() && r.getInt(1) > 5) throw new IOException("Unsupported guild database schema"); }
+                try (var r = s.executeQuery("PRAGMA user_version")) { if (r.next() && r.getInt(1) > 6) throw new IOException("Unsupported guild database schema"); }
                 s.execute("BEGIN IMMEDIATE");
                 try {
                     s.execute("CREATE TABLE IF NOT EXISTS physical_operations(id TEXT PRIMARY KEY,server TEXT NOT NULL,agent TEXT NOT NULL,stash TEXT NOT NULL,revision INTEGER NOT NULL,checksum TEXT NOT NULL,payload TEXT NOT NULL,state TEXT NOT NULL,last_seen INTEGER NOT NULL,fence_revision INTEGER NOT NULL)");
@@ -49,6 +49,7 @@ final class StockLedger {
                     s.execute("CREATE TABLE IF NOT EXISTS kit_templates(server TEXT NOT NULL,name_key TEXT NOT NULL,payload TEXT NOT NULL,fingerprint TEXT NOT NULL,revision INTEGER NOT NULL,created_by TEXT NOT NULL,PRIMARY KEY(server,name_key))");
                     s.execute("CREATE TABLE IF NOT EXISTS physical_snapshots(source TEXT NOT NULL,fingerprint TEXT NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL,PRIMARY KEY(source,fingerprint))");
                     s.execute("CREATE TABLE IF NOT EXISTS physical_slots(source TEXT NOT NULL,path TEXT NOT NULL,parent TEXT NOT NULL,payload TEXT NOT NULL,fingerprint TEXT NOT NULL,item_fingerprint TEXT NOT NULL,count INTEGER NOT NULL,copies INTEGER NOT NULL,revision INTEGER NOT NULL,seen_revision INTEGER NOT NULL,present INTEGER NOT NULL,PRIMARY KEY(source,path))");
+                    s.execute("CREATE TABLE IF NOT EXISTS return_intake(source TEXT NOT NULL,path TEXT NOT NULL,slot_revision INTEGER NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(source,path,slot_revision))");
                     s.execute("CREATE TABLE IF NOT EXISTS automation_leases(server TEXT PRIMARY KEY,agent TEXT NOT NULL,token TEXT NOT NULL,deadline INTEGER NOT NULL,state TEXT NOT NULL)");
                     s.execute("CREATE TABLE IF NOT EXISTS stock_meta(id INTEGER PRIMARY KEY CHECK(id=1),epoch TEXT NOT NULL,revision INTEGER NOT NULL)");
                     s.execute("CREATE TABLE IF NOT EXISTS stock_sources(id TEXT PRIMARY KEY,server TEXT NOT NULL,dimension TEXT NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL,proof TEXT NOT NULL,verified_at INTEGER NOT NULL,run TEXT NOT NULL)");
@@ -56,7 +57,7 @@ final class StockLedger {
                     s.execute("CREATE TABLE IF NOT EXISTS stock_members(server TEXT NOT NULL,stash TEXT NOT NULL,source TEXT NOT NULL,present INTEGER NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL,verified_at INTEGER NOT NULL,PRIMARY KEY(server,stash,source))");
                     s.execute("CREATE TABLE IF NOT EXISTS stock_indexes(server TEXT NOT NULL,stash TEXT NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL,PRIMARY KEY(server,stash))");
                     try (var p = c.prepareStatement("INSERT OR IGNORE INTO stock_meta VALUES(1,?,0)")) { p.setString(1, UUID.randomUUID().toString()); p.executeUpdate(); }
-                    s.execute("PRAGMA application_id=" + APPLICATION_ID); s.execute("PRAGMA user_version=5");
+                    s.execute("PRAGMA application_id=" + APPLICATION_ID); s.execute("PRAGMA user_version=6");
                     var interruptedServers=new ArrayList<String>();
                     try(var leases=s.executeQuery("SELECT server FROM automation_leases WHERE state='ACTIVE'")){while(leases.next())interruptedServers.add(leases.getString(1));}
                     s.executeUpdate("UPDATE automation_leases SET state='NEEDS_RECONCILIATION' WHERE state='ACTIVE'");
@@ -310,6 +311,71 @@ final class StockLedger {
         } catch (SQLException e) { throw new IOException("Cannot read physical slots", e); }
         return result;
     }
+
+    record ReturnDecision(JsonObject record, boolean changed) {}
+
+    synchronized ReturnDecision recordReturn(String source, JsonObject slot, String snapshot, String actor, boolean markUuid, long expectedDecision)
+        throws IOException {
+        String path = slot.get("path").getAsString();
+        long revision = slot.get("revision").getAsLong();
+        var result = new JsonObject();
+        result.addProperty("source", source);
+        result.addProperty("path", path);
+        result.addProperty("slotRevision", revision);
+        result.addProperty("stackFingerprint", slot.get("fingerprint").getAsString());
+        result.addProperty("snapshotFingerprint", snapshot);
+        result.addProperty("markUuid", markUuid);
+        result.addProperty("state", markUuid ? "UUID_REQUESTED" : "VERIFIED_KEEP_NAME");
+        result.addProperty("actor", actor);
+        result.addProperty("recordedAt", clock.getAsLong());
+        try (var c = open()) {
+            long currentDecision = 0;
+            try (var read = c.prepareStatement("SELECT payload FROM return_intake WHERE source=? AND path=? AND slot_revision=?")) {
+                read.setString(1, source);
+                read.setString(2, path);
+                read.setLong(3, revision);
+                try (var rows = read.executeQuery()) {
+                    if (rows.next()) {
+                        var saved = JsonParser.parseString(rows.getString(1)).getAsJsonObject();
+                        if (saved.get("markUuid").getAsBoolean() == markUuid) return new ReturnDecision(saved, false);
+                        currentDecision = saved.has("decisionRevision") ? saved.get("decisionRevision").getAsLong() : 0;
+                    }
+                }
+            }
+            if (expectedDecision != currentDecision) return null;
+            result.addProperty("decisionRevision", currentDecision + 1);
+            try (var write = c.prepareStatement("""
+                    INSERT INTO return_intake VALUES(?,?,?,?)
+                    ON CONFLICT(source,path,slot_revision) DO UPDATE SET payload=excluded.payload
+                    """)) {
+                write.setString(1, source);
+                write.setString(2, path);
+                write.setLong(3, revision);
+                write.setString(4, result.toString());
+                write.executeUpdate();
+            }
+            return new ReturnDecision(result, true);
+        } catch (SQLException failure) {
+            throw new IOException("Cannot save return intake", failure);
+        }
+    }
+
+    synchronized JsonArray returnDecisions(String source) throws IOException {
+        var decisions = new JsonArray();
+        try (var c = open(); var p = c.prepareStatement("""
+                SELECT r.payload FROM return_intake r JOIN physical_slots s
+                  ON r.source=s.source AND r.path=s.path AND r.slot_revision=s.revision
+                WHERE r.source=? AND s.present=1 ORDER BY s.path
+                """)) {
+            p.setString(1, source);
+            try (var rows = p.executeQuery()) {
+                while (rows.next()) decisions.add(JsonParser.parseString(rows.getString(1)));
+            }
+        } catch (SQLException failure) {
+            throw new IOException("Cannot read return intake", failure);
+        }
+        return decisions;
+    }
     synchronized List<JsonObject> indexes() throws IOException {
         List<JsonObject> out=new ArrayList<>();
         try(var c=open();var s=c.createStatement();var r=s.executeQuery("SELECT payload FROM stock_indexes ORDER BY revision")){while(r.next())out.add(JsonParser.parseString(r.getString(1)).getAsJsonObject());}
@@ -330,21 +396,31 @@ final class StockLedger {
             }
         }catch(SQLException e){throw new IOException("Cannot read physical sources",e);}return out;
     }
-    boolean verifiedStaging(String order, String agent, int packages) throws IOException {
+    JsonObject stagingManifest(String server, String stash, String order, String agent, int packages) throws IOException {
+        var proofs = new ArrayList<JsonObject>(packages);
         try (var c = open(); var p = c.prepareStatement("""
-                SELECT count(*) FROM physical_operations AS operation
-                WHERE state='COMPLETED' AND agent=? AND json_extract(payload,'$.context.orderId')=?
+                SELECT payload FROM physical_operations
+                WHERE state='COMPLETED' AND server=? AND stash=? AND agent=?
+                  AND json_extract(payload,'$.context.orderId')=?
                   AND json_extract(payload,'$.context.execution')='STAGE_PACKAGE'
-                  AND EXISTS (SELECT 1 FROM json_each(operation.payload,'$.events') AS event
-                    WHERE json_extract(event.value,'$.type') IN ('VERIFIED','RECONCILED')
-                      AND json_array_length(event.value,'$.evidence.inventoryDiff.slots')>0)
+                ORDER BY json_extract(payload,'$.createdAt'), id LIMIT ?
                 """)) {
-            p.setString(1, agent);
-            p.setString(2, order);
-            try (var rows = p.executeQuery()) { return rows.next() && rows.getInt(1) >= packages; }
+            p.setString(1, server);
+            p.setString(2, stash);
+            p.setString(3, agent);
+            p.setString(4, order);
+            p.setInt(5, packages + 1);
+            try (var rows = p.executeQuery()) {
+                while (rows.next()) {
+                    var proof = PackageManifest.transfer(JsonParser.parseString(rows.getString(1)).getAsJsonObject());
+                    if (proof == null) return null;
+                    proofs.add(proof);
+                }
+            }
         } catch (SQLException failure) {
             throw new IOException("Cannot read verified warehouse staging", failure);
         }
+        return PackageManifest.staged(order, proofs, packages);
     }
 
     boolean unsettledPhysicalOrder(String order) throws IOException {

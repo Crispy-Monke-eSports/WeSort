@@ -25,9 +25,12 @@ class HierarchyHarness(stock.StockHarness):
     guild = False
     order_lifecycle = False
     approval = False
+    remote_settings = False
 
     def fixture(self):
         world.Harness.fixture(self)
+        if self.remote_settings:
+            self.rcon.command('setblock 6 64 -3 minecraft:chest')
         box = 'minecraft:shulker_box[minecraft:custom_name={text:"Hierarchy box"},minecraft:container=[{slot:0,item:{id:"minecraft:diamond",count:32}},{slot:13,item:{id:"minecraft:bundle",count:1,components:{"minecraft:bundle_contents":[{id:"minecraft:iron_ingot",count:8}]}}},{slot:26,item:{id:"minecraft:diamond_sword",count:1,components:{"minecraft:damage":7,"minecraft:custom_name":{text:"Exact sword"},"minecraft:enchantments":{"minecraft:unbreaking":2}}}}]]'
         for command in [
             f'item replace block 0 64 -3 container.0 with {box} 1',
@@ -178,9 +181,31 @@ class HierarchyHarness(stock.StockHarness):
             order = lookup(order_id)
             if order['state'] in ('FAILED', 'NEEDS_RECONCILIATION', 'DELIVERED'):
                 raise RuntimeError('Unexpected order state ' + order['state'] + ': ' + str(order.get('message')))
-            return order['state'] == 'PICKUP_READY'
+            if order['state'] != 'PICKUP_READY':
+                return False
+            if self.remote_settings:
+                require(order.get('packageCount') == 1 and 'manifest' not in order,
+                        'A staged order must expose its count without leaking custody coordinates')
+            return True
+
+        if self.remote_settings:
+            def pause_visible(_):
+                status, stashes = self.http('/api/v1/stashes')
+                return status == 200 and any(
+                    entry.get('orderBlocker') == 'new warehouse orders paused by Manager' for entry in stashes)
+
+            self.wait(pause_visible, 'Warehouse pause did not reach Manager heartbeat')
+            require(lookup(ident)['state'] == 'RESERVED', 'Paused agent took a new order')
+            require('Hierarchy box' not in self.rcon.command('data get block 8 64 -3 Items'),
+                    'Paused agent moved a package')
+            self.apply_remote_setting('order-intake-paused', False)
+            self.ok('signed warehouse pause keeps a new physical order reserved until Manager resumes the same agent')
 
         self.wait(lambda _: ready(ident), 'Agent did not stage the actual Minecraft package')
+        if self.remote_settings:
+            self.wait(lambda _: f'Manager confirmed the staging manifest for {ident} (1 shulker packages)' in
+                      (self.evidence / 'client.log').read_text(), 'Packing agent did not receive its signed staging manifest')
+            require(lookup(ident).get('manifestAcknowledgedAt', 0) > 0, 'Manager did not save the signed manifest acknowledgement')
         stored = self.rcon.command('data get block 8 64 -3 Items')
         require(stored.count('Hierarchy box') == 1 and 'Exact sword' in stored, 'Pickup-ready package differs from the expected single shulker')
         require(self.http('/api/v1/orders', draft, headers=headers) == (200, placed), 'Staged order replay created a new order')
@@ -192,10 +217,73 @@ class HierarchyHarness(stock.StockHarness):
             status, reviewed = self.http('/api/v1/orders/' + approved_order + '/approval', {'decision': 'approve'})
             require(status == 200 and reviewed['order']['approvedBy'] == 'owner', 'Approval did not record its actor')
             self.wait(lambda _: ready(approved_order), 'Same agent did not stage the approved guild order')
+            if self.remote_settings:
+                self.wait(lambda _: f'Manager confirmed the staging manifest for {approved_order} (1 shulker packages)' in
+                          (self.evidence / 'client.log').read_text(), 'Agent did not receive the approved order manifest')
+                require(lookup(approved_order).get('manifestAcknowledgedAt', 0) > 0, 'Approved order has no durable manifest acknowledgement')
             stored = self.rcon.command('data get block 8 64 -3 Items')
             require(stored.count('Hierarchy box') == 2 and stored.count('Exact sword') == 2,
                     'Expected exactly two independently staged shulkers')
             self.ok('one Minecraft 26.3 agent stages SELF directly and GUILD after auditable approval from shared physical stock')
+
+    def apply_remote_setting(self, path, value=None):
+        agent_route = None
+        schema = None
+
+        def published(_):
+            nonlocal agent_route, schema
+            status, bots = self.http('/api/v1/bots')
+            require(status == 200, 'Owner could not list agents')
+            agent = next((bot for bot in bots if bot.get('player') == self.player), None)
+            if agent is None:
+                return False
+            agent_route = '/api/v1/bots/' + agent['botId']
+            status, schema = self.http(agent_route + '/settings?scope=plugin')
+            return status == 200 and path in schema.get('values', {})
+
+        self.wait(published, 'Fabric agent did not publish its actual supported settings')
+        initial = schema['values'][path]
+        changed = initial + 1 if value is None else value
+        status, reply = self.http(agent_route + '/settings', {'scope': 'plugin', 'changes': [
+            {'path': path, 'value': changed, 'expect': initial}
+        ]})
+        require(status == 200, 'Owner could not enqueue a typed agent setting')
+        ident = reply['jobs'][0]['id']
+
+        def observed(_):
+            status, jobs = self.http(agent_route + '/jobs?ids=' + ident)
+            require(status == 200, 'Owner could not read the command receipt')
+            job = jobs[0]
+            require(job['status'] not in ('error', 'expired', 'unknown'), 'Agent setting failed: ' + str(job))
+            status, settings = self.http(agent_route + '/settings?scope=plugin')
+            return job['status'] == 'done' and job['value'] == changed and status == 200 and (
+                settings['values'][path] == changed)
+
+        self.wait(observed, 'Manager did not receive application and refreshed settings from the live agent')
+        status, audit = self.http('/api/v1/audit')
+        require(status == 200 and sum(row.get('action') == 'agent.job.applied' and row.get('detail') == ident
+                    for row in audit['entries']) == 1, 'Manager did not audit the acknowledged Fabric job')
+
+    def verify_remote_settings(self):
+        self.apply_remote_setting('scan-interval')
+        self.apply_remote_setting('order-intake-paused', True)
+        self.ok('Owner updates an allowlisted setting through Admin HTTP, signed lease, real Fabric execution and Manager receipt without opening a client GUI')
+
+    def verify_return_intake(self, left, right):
+        for source, mark, expected in [(left, False, 'VERIFIED_KEEP_NAME'), (right, True, 'UUID_REQUESTED')]:
+            slot = next(item for item in source['slots'] if item['path'] == '0')
+            draft = {'source': source['id'], 'path': '0', 'slotRevision': slot['revision'], 'markUuid': mark,
+                     'expectedDecisionRevision': 0}
+            require(self.http('/api/v1/stock/return-intake', dict(draft, slotRevision=slot['revision'] + 1))[0] == 409,
+                    'A stale return selection could target a different shulker')
+            status, receipt = self.http('/api/v1/stock/return-intake', draft)
+            require(status == 200 and receipt.get('state') == expected and receipt.get('markUuid') == mark,
+                    'Owner could not record the selected return handling')
+            require(self.http('/api/v1/stock/return-intake', draft) == (200, receipt), 'Return replay changed the receipt')
+            require(self.http('/api/v1/stock/return-intake', dict(draft, markUuid=not mark))[0] == 409,
+                    'A browser with an older choice overwrote the current return decision')
+            require(self.detail(source)['returnIntake'] == [receipt], 'Saved choice was missing from the source details')
+        self.ok('return choices use verified shulkers in two ordinary warehouse containers and preserve the current item names')
 
     def execute(self):
         try:
@@ -208,8 +296,12 @@ class HierarchyHarness(stock.StockHarness):
             self.server_name = initial['server']
             self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key)
             observed = self.wait(lambda s: all((row := self.source(s, x, -3)) is not None and row['state'] == 'FRESH' for x in [0, 6]), 'Native hierarchy did not reach Manager')
+            if self.remote_settings:
+                self.verify_remote_settings()
             self.pause()
             a = self.detail(self.source(observed, 0, -3)); b = self.detail(self.source(observed, 6, -3))
+            if self.remote_settings:
+                self.verify_return_intake(a, b)
             if self.reservations:
                 self.verify_reservations(a, before)
             if self.guild:
@@ -265,10 +357,12 @@ if __name__ == '__main__':
     parser.add_argument('--guild', action='store_true')
     parser.add_argument('--order-lifecycle', action='store_true')
     parser.add_argument('--approval', action='store_true')
+    parser.add_argument('--remote-settings', action='store_true')
     args = parser.parse_args()
     harness = HierarchyHarness(args.manager_image)
     harness.reservations = args.reservations
     harness.guild = args.guild
     harness.order_lifecycle = args.order_lifecycle
     harness.approval = args.approval
+    harness.remote_settings = args.remote_settings
     harness.execute()

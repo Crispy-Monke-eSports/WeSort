@@ -15,7 +15,7 @@ import java.util.regex.Pattern;
 
 /**
  * The dashboard's bot side (DASHBOARD-DESIGN.md, "Protocol / Bot"): bot/hello, bot/state, bot/next (long-poll) and
- * bot/results, all with the Bearer API key. Every field is checked for type and size.
+ * bot/results, all using signed agent requests. Every field is checked for type and size.
  */
 final class BotRoutes {
     static final Pattern BOT_ID = Pattern.compile("^[A-Za-z0-9_-]{1,64}$");
@@ -36,16 +36,25 @@ final class BotRoutes {
     private static final int MAX_CAPS = 16;
 
     private final BotHub hub;
+    private final AuditLog audit;
+    private final OrderStore orders;
+    private final Owners owners;
 
-    BotRoutes(BotHub hub) {
+    BotRoutes(BotHub hub, AuditLog audit, OrderStore orders, Owners owners) {
         this.hub = hub;
+        this.audit = audit;
+        this.orders = orders;
+        this.owners = owners;
     }
 
     void register(Router router) {
         router.exact(Router.POST, "/api/v1/bot/hello", Router.Guard.ADDON_KEY, this::hello)
             .exact(Router.POST, "/api/v1/bot/state", Router.Guard.ADDON_KEY, this::state)
             .exact(Router.GET, "/api/v1/bot/next", Router.Guard.ADDON_KEY, this::next)
+            .exact(Router.POST, "/api/v1/bot/next", Router.Guard.ADDON_KEY, this::nextNow)
             .exact(Router.POST, "/api/v1/bot/results", Router.Guard.ADDON_KEY, this::results)
+            .exact(Router.POST, "/api/v1/bot/manifest", Router.Guard.ADDON_KEY, this::manifest)
+            .exact(Router.POST, "/api/v1/bot/manifest/ack", Router.Guard.ADDON_KEY, this::acknowledgeManifest)
             .exact(Router.POST, "/api/v1/bot/activity", Router.Guard.ADDON_KEY, this::activity);
     }
 
@@ -119,13 +128,105 @@ final class BotRoutes {
                 if (!scopes.contains(sc.getAsString())) scopes.add(sc.getAsString());
             }
         }
-        if (!hub.hello(botId, player, plugin, runtime, caps, scopes)) {
-            Http.error(ex, 503, "too many bots (limit " + BotHub.MAX_BOTS + ")");
+        String controlSession = AddonRoutes.string(o, "controlSession");
+        if (o.has("controlSession") && (controlSession == null || !controlSession.matches("[0-9a-f]{64}"))) {
+            Http.error(ex, 400, "Invalid control session");
+            return;
+        }
+        BotHub.ManifestScope manifestScope = null;
+        if (o.has("manifestScope")) {
+            manifestScope = manifestScope(o.get("manifestScope"), player);
+            if (controlSession == null || manifestScope == null || !botId.equals(manifestScope.botId())) {
+                Http.error(ex, 400, "Invalid manifest scope");
+                return;
+            }
+        }
+        int status = hub.register(botId, player, plugin, runtime, caps, scopes, controlSession, manifestScope);
+        if (status != 200) {
+            Http.error(ex, status, status == 409 ? "Bot already has an active control session"
+                : "Too many bots (limit " + BotHub.MAX_BOTS + ")");
             return;
         }
         JsonObject out = Http.ok();
-        out.addProperty("protocol", 1);
+        out.addProperty("protocol", controlSession == null ? 1 : 2);
+        if (controlSession != null) {
+            var bot = hub.bot(botId);
+            synchronized (bot) {
+                out.addProperty("controlEpoch", bot.controlEpoch);
+            }
+        }
         Http.json(ex, 200, out);
+    }
+
+    private static BotHub.ManifestScope manifestScope(JsonElement input, String player) {
+        if (!input.isJsonObject() || player == null || !player.matches("[A-Za-z0-9_]{1,16}")) return null;
+        var scope = input.getAsJsonObject();
+        String server = AddonRoutes.string(scope, "server");
+        String stash = AddonRoutes.string(scope, "stash");
+        String dimension = AddonRoutes.string(scope, "dimension");
+        String agent = AddonRoutes.string(scope, "agent");
+        if (server == null || server.isBlank() || server.length() > 256 || stash == null || stash.isBlank() || stash.length() > 128
+            || dimension == null || dimension.length() > 128 || !dimension.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")
+            || agent == null || !agent.matches("[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")) return null;
+        return new BotHub.ManifestScope(server, stash, dimension, agent, player);
+    }
+
+    private void manifest(HttpExchange ex) throws IOException {
+        var request = body(ex);
+        if (request == null) return;
+        String id = AddonRoutes.string(request, "orderId");
+        if (id == null || !id.matches("o-[0-9a-f]{12}")) {
+            Http.error(ex, 400, "Invalid order ID");
+            return;
+        }
+        var scope = authorizedManifestScope(ex, request);
+        if (scope == null) return;
+        var manifest = orders.manifest(id, scope);
+        if (manifest == null) {
+            Http.error(ex, 404, "No manifest in this scope");
+            return;
+        }
+        var out = Http.ok();
+        out.addProperty("orderId", id);
+        out.add("manifest", manifest);
+        Http.json(ex, 200, out);
+    }
+
+    private BotHub.ManifestScope authorizedManifestScope(HttpExchange ex, JsonObject request) throws IOException {
+        var bot = known(ex, AddonRoutes.string(request, "botId"));
+        if (bot == null) return null;
+        var scope = currentManifestScope(bot, AddonRoutes.string(request, "controlSession"), AddonRoutes.string(request, "controlEpoch"));
+        if (scope == null) Http.error(ex, 404, "No manifest in this scope");
+        return scope;
+    }
+
+    private BotHub.ManifestScope currentManifestScope(BotHub.Bot bot, String session, String epoch) {
+        var scope = hub.manifestScope(bot, session, epoch);
+        return scope != null && scope.player().equalsIgnoreCase(owners.owner(scope.server(), scope.stash())) ? scope : null;
+    }
+
+    private void acknowledgeManifest(HttpExchange ex) throws IOException {
+        var request = body(ex);
+        if (request == null) return;
+        String id = AddonRoutes.string(request, "orderId");
+        String hash = AddonRoutes.string(request, "manifestHash");
+        if (id == null || !id.matches("o-[0-9a-f]{12}") || hash == null || !hash.matches("[a-f0-9]{64}")) {
+            Http.error(ex, 400, "Invalid manifest receipt");
+            return;
+        }
+        var scope = authorizedManifestScope(ex, request);
+        if (scope == null) return;
+        try {
+            var receipt = orders.acknowledgeManifest(id, scope, hash);
+            if (receipt.changed()) audit.add(scope.agent(), scope.player(), "agent.manifest.confirmed", id, AuthRoutes.address(ex));
+            var out = Http.ok();
+            out.addProperty("orderId", id);
+            out.addProperty("manifestHash", hash);
+            out.addProperty("acknowledgedAt", receipt.acknowledgedAt());
+            Http.json(ex, 200, out);
+        } catch (OrderStore.OrderException denied) {
+            Http.error(ex, denied.status, denied.getMessage());
+        }
     }
 
     /** {a, b} with optional short string fields only; missing object = empty. Null when malformed. */
@@ -148,6 +249,9 @@ final class BotRoutes {
         if (o == null) return;
         BotHub.Bot b = known(ex, AddonRoutes.string(o, "botId"));
         if (b == null) return;
+        synchronized (b) {
+            if (!controlSession(ex, b, o)) return;
+        }
         String scope = AddonRoutes.string(o, "scope");
         String schemaHash = AddonRoutes.string(o, "schemaHash");
         String valuesHash = AddonRoutes.string(o, "valuesHash");
@@ -190,7 +294,11 @@ final class BotRoutes {
             if (stored != null) nodes = stored.nodes;
         }
         values = scrubSecrets(values, nodes);
-        JsonArray need = hub.state(b, scope, schemaHash, valuesHash, schema, nodes, values);
+        JsonArray need;
+        synchronized (b) {
+            if (!controlSession(ex, b, o)) return;
+            need = hub.state(b, scope, schemaHash, valuesHash, schema, nodes, values);
+        }
         JsonObject out = Http.ok();
         if (!need.isEmpty()) out.add("need", need);
         Http.json(ex, 200, out);
@@ -269,11 +377,21 @@ final class BotRoutes {
     }
 
     private void next(HttpExchange ex) throws IOException {
-        BotHub.Bot b = known(ex, Http.query(ex).get("botId"));
+        next(ex, Http.query(ex).get("botId"), null, null, BotHub.POLL_WAIT_MS);
+    }
+
+    private void nextNow(HttpExchange ex) throws IOException {
+        var request = body(ex);
+        if (request != null) next(ex, AddonRoutes.string(request, "botId"), AddonRoutes.string(request, "controlSession"),
+            AddonRoutes.string(request, "controlEpoch"), 0);
+    }
+
+    private void next(HttpExchange ex, String botId, String controlSession, String epoch, long waitMillis) throws IOException {
+        BotHub.Bot b = known(ex, botId);
         if (b == null) return;
         BotHub.Poll p;
         try {
-            p = hub.next(b);
+            p = hub.next(b, waitMillis, controlSession);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             Http.send(ex, 204, null, null, "no-store");
@@ -282,10 +400,21 @@ final class BotRoutes {
         if (p.status() == 429) {
             ex.getResponseHeaders().set("Retry-After", "3");
             Http.error(ex, 429, "too many bots waiting; poll every 3 s");
-        } else if (p.status() == 204) {
-            Http.send(ex, 204, null, null, "no-store");
+        } else if (p.status() == 409) {
+            Http.error(ex, 409, "Control session does not match");
         } else {
-            Http.json(ex, 200, p.body());
+            var scope = currentManifestScope(b, controlSession, epoch);
+            var hint = scope == null ? null : orders.pendingManifest(scope);
+            var reply = p.body();
+            if (hint != null) {
+                if (reply == null) {
+                    reply = Http.ok();
+                    reply.add("jobs", new JsonArray());
+                }
+                reply.add("pendingManifest", hint);
+            }
+            if (reply == null) Http.send(ex, 204, null, null, "no-store");
+            else Http.json(ex, 200, reply);
         }
     }
 
@@ -298,7 +427,31 @@ final class BotRoutes {
             Http.error(ex, 400, "results must be an array (at most " + MAX_RESULTS + ")");
             return;
         }
-        for (JsonElement e : o.getAsJsonArray("results")) {
+        String session = AddonRoutes.string(o, "controlSession");
+        synchronized (b) {
+            if (!controlSession(ex, b, o)) return;
+        }
+        var results = o.getAsJsonArray("results");
+        if (session != null) {
+            if (results.size() != 1 || !results.get(0).isJsonObject()) {
+                Http.error(ex, 400, "Expected one leased job result");
+                return;
+            }
+            var receipt = results.get(0).getAsJsonObject();
+            var ack = hub.acknowledge(b, session, receipt);
+            if (ack == BotHub.Acknowledgement.REFUSED) {
+                Http.error(ex, 409, "Expired, conflicting or invalid job receipt");
+                return;
+            }
+            if (ack == BotHub.Acknowledgement.APPLIED) {
+                boolean applied = receipt.get("ok").getAsBoolean();
+                audit.add(b.botId, b.botId, applied ? "agent.job.applied" : "agent.job.rejected",
+                    receipt.get("id").getAsString(), AuthRoutes.address(ex));
+            }
+            Http.json(ex, 200, Http.ok());
+            return;
+        }
+        for (JsonElement e : results) {
             if (!e.isJsonObject()) continue;
             JsonObject r = e.getAsJsonObject();
             String id = AddonRoutes.string(r, "id");
@@ -310,6 +463,12 @@ final class BotRoutes {
             hub.result(b, id, ok, more, value, error == null ? null : Http.truncate(error, 1000));
         }
         Http.json(ex, 200, Http.ok());
+    }
+
+    private static boolean controlSession(HttpExchange ex, BotHub.Bot bot, JsonObject request) throws IOException {
+        if (java.util.Objects.equals(bot.controlSession, AddonRoutes.string(request, "controlSession"))) return true;
+        Http.error(ex, 409, "Control session does not match");
+        return false;
     }
 
     /** bot/activity {botId, activity}: the latest snapshot of what the runtime is doing (at most 256 KiB). */
@@ -334,7 +493,10 @@ final class BotRoutes {
             Http.error(ex, 400, "activity must be an object");
             return;
         }
-        hub.activity(b, snapshot, Activity.events(o.get("activity"), now));
+        synchronized (b) {
+            if (!controlSession(ex, b, o)) return;
+            hub.activity(b, snapshot, Activity.events(o.get("activity"), now));
+        }
         Http.json(ex, 200, Http.ok());
     }
 

@@ -59,6 +59,7 @@ async function scenario(loggedIn) {
   const physicalReviews = [];
   const guildUpdates = [];
   const orderReviews = [];
+  const returnChoices = [];
   let guild = {name: "<img src=x> Guild", description: "Shared stock", revision: 1};
   w.addEventListener('error', e => errors.push(e.error || e.message));
   const globals = Object.fromEntries(Object.getOwnPropertyNames(w).map(x => [x, 'readonly']));
@@ -88,8 +89,19 @@ async function scenario(loggedIn) {
       items: [{server: 'test', id: 'minecraft:diamond', name: '<img src=x onerror=alert(1)>', observed: 64, reserved: 10, available: 54, unknown: 0}],
       stashes: [{server: 'test', stash: 'fixture', items: [{id: 'minecraft:diamond', observed: 64, reserved: 10, available: 54, unknown: 0}]}],
       sources: [{id: 'c:test', slotSchema: 1, slotCount: 1, server: 'test', stash: 'fixture', dimension: 'minecraft:overworld', parts: [[1, 64, 2]],
-        state: 'STALE_AGE', sourceRevision: 11, verifiedAt: 1000}]};
+        state: 'STALE_AGE', sourceRevision: 11, verifiedAt: 1000},
+        {id:'c:return', slotSchema:1, slotCount:27, server:'test', stash:'fixture', dimension:'minecraft:overworld',
+          parts:[[3,64,2]], state:'FRESH', sourceRevision:12, verifiedAt:1000}]};
     if (u.pathname === '/api/v1/stock/source') body = {state: 'STALE_AGE', snapshot: {positions: [{path:'0/26',id:'minecraft:diamond_sword',count:1,copies:1,kind:'ITEM',components:'<img src=x onerror=alert(1)>'}]}};
+    if (u.pathname === '/api/v1/stock/source' && u.searchParams.get('id') === 'c:return') {
+      const slot = {path:'0', id:'minecraft:shulker_box', kind:'SHULKER', count:1, copies:1, present:true, revision:9, components:'{}'};
+      body = {id:'c:return', state:'FRESH', snapshot:{positions:[slot]}, slots:[slot], returnIntake:[]};
+    }
+    if (u.pathname === '/api/v1/stock/return-intake') {
+      const choice = JSON.parse(opts.body);
+      returnChoices.push(choice);
+      body = {state: choice.markUuid ? 'UUID_REQUESTED' : 'VERIFIED_KEEP_NAME', decisionRevision:choice.expectedDecisionRevision + 1};
+    }
     if (u.pathname === '/api/v1/stashes') body = [{server:'test', stash:'fixture', online:true}];
     if (u.pathname === '/api/v1/orders') body = {orders: [{
       id:'guild-order', status:'pending', state:'RESERVED', purpose:'GUILD', approvalState:'PENDING',
@@ -176,6 +188,16 @@ async function scenario(loggedIn) {
       assert(requests.some(x => x.startsWith('/api/v1/stock/source?id=')));
       assert.match(details.textContent, /0\/26minecraft:diamond_sword/);
       assert.equal(details.querySelector('img'), null, 'Component patches must remain plain text');
+      assert.equal(details.querySelector('button'), null);
+      const returnDetails = w.document.querySelectorAll('#stock-sources details')[1];
+      returnDetails.open = true; returnDetails.dispatchEvent(new w.Event('toggle')); await settle();
+      const [keep, mark] = returnDetails.querySelectorAll('button');
+      keep.click(); await settle();
+      assert.match(returnDetails.querySelector('[role="status"]').textContent, /Return recorded/);
+      mark.click(); await settle();
+      assert.match(returnDetails.querySelector('[role="status"]').textContent, /UUID marking requested/);
+      assert.deepEqual(returnChoices, [false, true].map((markUuid, expectedDecisionRevision) =>
+        ({source:'c:return', path:'0', slotRevision:9, markUuid, expectedDecisionRevision})));
       assert(requests.some(x => x.includes('/settings?scope=plugin')));
       w.document.querySelector('#dash-nav [data-page="settings"]').click(); await settle();
       assert.equal(w.document.querySelector('#kit-admin').hidden, false);

@@ -79,3 +79,44 @@ har börjat är avbokningen en begäran som kräver agentens rapport.
 Kvarvarande osäkerhet hanteras genom avstämning. Staging ger
 `PICKUP_READY`. W-027 tar vid med transport, mottagarkvittens och
 utfallsbokföring. Valfria kvoter och explicita undantag hör till W-059.
+
+## W-027 – signerat agentprotokoll och stagingbevis
+
+Manager kan skicka typade inställningsjobb till Fabric-agenten. Jobbet får
+en lease och ett sekvensnummer. Agenten tillämpar ändringen på speltråden
+och publicerar sitt nya värde. Manager sparar en auditpost per kvittens
+och accepterar identiska upprepningar. Webbsessionen behöver bara
+behörighet till agentens inställningar.
+
+Manager kan pausa nya lagerorder och återuppta dem via samma signerade
+inställningsflöde. En pågående order behåller sitt arbete och sin
+reservation. Pausen visas i agentens heartbeat och återupptagning
+använder de ordinarie lager- och inventariekontrollerna.
+
+Stagingmanifestet binder en faktisk shulkerförflyttning från agentens
+inventarie till en verifierad kistslot med journalrevision, checksumma
+och stackfingeravtryck. Manager sparar beviset med orderkvittot och
+visar paketantal. Delvis staging kräver avstämning.
+
+Varje stagingbevis får ett stabilt `packageId`. Den packande agenten läser
+manifestet genom sitt signerade API med aktuell session och kontroll-epoch.
+Manager verifierar agent-ID, stashägare, server, stash och dimension.
+Det signerade svaret innehåller fingerprint, paket-ID och journalrevision.
+Stagingpositioner lagras internt. Agenten kvitterar manifestets hash och
+Manager sparar tidpunkten atomiskt med ordern.
+
+De tillagda kraven på `REGISTER_BOX`, `RENAME_FOR_ORDER` och
+`RETURN_INTAKE` behöver verifierad anvilbehörighet enligt W-061 och den
+frysta paketplanen i W-026/W-064. Transport, mottagarkvittens och dessa
+tre fysiska jobb återstår i W-027.
+
+### Returer i vanliga kistor
+
+En retur kan registreras från en valfri kista som agenten har läst och
+som har en aktuell verifierad shulkerobservation. Owner väljer att
+behålla det aktuella namnet eller begära UUID-märkning i kistans
+detaljvy. Valet sparas mot den fysiska slotrevisionen och det
+verifierade 27-slotinnehållet. Ett byte av shulker i sloten kräver ett
+nytt val. Registreringen använder det observerade lagret och räknar
+inte in nya items från en manuell uppgift. UUID-begäran väntar på ett
+separat behörigt, fysiskt kvitterat anviljobb.

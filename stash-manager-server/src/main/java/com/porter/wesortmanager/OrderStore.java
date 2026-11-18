@@ -97,6 +97,8 @@ final class OrderStore {
         boolean cancelRequested;
         long cancelRequestedAt; // 0 when unknown (orders from before this field)
         JsonObject result;
+        JsonObject manifest;
+        long manifestAcknowledgedAt;
         String placedById; // Users.OWNER_ID or a sub-user's id; null for orders from before accounts (the owner's)
         String placedByName; // the name at the time
         String retriedAs; // the order this one was placed again as (Retry, or the planner's "order part again"), or null
@@ -152,6 +154,8 @@ final class OrderStore {
             o.addProperty("cancelRequested", cancelRequested);
             o.addProperty("cancelRequestedAt", cancelRequestedAt > 0 ? cancelRequestedAt : null);
             o.add("result", result == null ? null : result.deepCopy());
+            if (manifest != null) o.add("manifest", manifest.deepCopy());
+            if (manifestAcknowledgedAt > 0) o.addProperty("manifestAcknowledgedAt", manifestAcknowledgedAt);
             if (retriedAs != null) o.addProperty("retriedAs", retriedAs);
             if (placedById == null) {
                 o.add("placedBy", null);
@@ -169,6 +173,8 @@ final class OrderStore {
         static Order fromJson(JsonObject o) {
             Order r = new Order();
             r.id = o.get("id").getAsString();
+            if (o.has("manifest")) r.manifest = o.getAsJsonObject("manifest").deepCopy();
+            if (o.has("manifestAcknowledgedAt")) r.manifestAcknowledgedAt = o.get("manifestAcknowledgedAt").getAsLong();
             r.sourceGuards = o.has("sourceGuards") ? o.getAsJsonObject("sourceGuards").deepCopy() : null;
             if (o.has("allocations")) r.allocations = List.of(Json.GSON.fromJson(
                 o.get("allocations"), PhysicalReservations.Allocation[].class));
@@ -1163,10 +1169,75 @@ final class OrderStore {
         }
         if (status.equals("delivered")) {
             int packages = result != null && result.has("shulkers") ? result.get("shulkers").getAsInt() : 0;
-            boolean staged = order.agent != null && packages > 0 && index.stock().verifiedStaging(order.id, order.agent, packages);
-            return staged ? OrderStage.PICKUP_READY : OrderStage.NEEDS_RECONCILIATION;
+            if (order.agent != null && packages > 0 && packages <= MAX_SHULKERS) {
+                order.manifest = index.stock().stagingManifest(order.server, order.stash, order.id, order.agent, packages);
+            }
+            return order.manifest != null && allLinesStaged(order.lines, result)
+                ? OrderStage.PICKUP_READY : OrderStage.NEEDS_RECONCILIATION;
         }
         return status.equals("cancelled") ? OrderStage.CANCELLED : OrderStage.FAILED;
+    }
+
+    JsonObject manifest(String id, BotHub.ManifestScope scope) {
+        var book = byOrderId.get(id);
+        if (book == null) return null;
+        synchronized (book) {
+            return scopedManifest(find(book, id), scope);
+        }
+    }
+
+    record ManifestReceipt(long acknowledgedAt, boolean changed) {}
+
+    JsonObject pendingManifest(BotHub.ManifestScope scope) {
+        var book = books.get(new IndexStore.StashKey(scope.server(), scope.stash()));
+        if (book == null) return null;
+        synchronized (book) {
+            for (var order : book.orders) {
+                if (order.manifestAcknowledgedAt > 0) continue;
+                var manifest = scopedManifest(order, scope);
+                if (manifest == null) continue;
+                var hint = new JsonObject();
+                hint.addProperty("orderId", order.id);
+                hint.addProperty("packageCount", manifest.getAsJsonArray("packages").size());
+                return hint;
+            }
+            return null;
+        }
+    }
+
+    ManifestReceipt acknowledgeManifest(String id, BotHub.ManifestScope scope, String hash) throws IOException, OrderException {
+        var book = byOrderId.get(id);
+        if (book == null) throw new OrderException(404, "No manifest in this scope", -1);
+        synchronized (book) {
+            var order = find(book, id);
+            var manifest = scopedManifest(order, scope);
+            if (manifest == null) throw new OrderException(404, "No manifest in this scope", -1);
+            if (!hash.equals(manifest.get("hash").getAsString())) throw new OrderException(409, "Manifest hash differs", -1);
+            if (order.manifestAcknowledgedAt > 0) return new ManifestReceipt(order.manifestAcknowledgedAt, false);
+            var updated = Order.fromJson(order.toJson());
+            updated.manifestAcknowledgedAt = System.currentTimeMillis();
+            update(book, order, updated);
+            return new ManifestReceipt(updated.manifestAcknowledgedAt, true);
+        }
+    }
+
+    private static JsonObject scopedManifest(Order order, BotHub.ManifestScope scope) {
+        if (order == null || order.stage() != OrderStage.PICKUP_READY || order.manifest == null
+            || !scope.server().equals(order.server) || !scope.stash().equals(order.stash)
+            || !scope.agent().equals(order.agent)) return null;
+        return PackageManifest.forAgent(order.manifest, scope.dimension());
+    }
+
+    static boolean allLinesStaged(List<Line> lines, JsonObject result) {
+        if (result == null || !result.has("lines") || !result.get("lines").isJsonArray()) return false;
+        var outstanding = new HashMap<String, Long>();
+        for (var line : lines) outstanding.merge(line.key(), line.count(), Long::sum);
+        for (var entry : result.getAsJsonArray("lines")) {
+            var line = entry.getAsJsonObject();
+            var count = outstanding.remove(line.get("key").getAsString());
+            if (count == null || count.longValue() != line.get("delivered").getAsLong()) return false;
+        }
+        return outstanding.isEmpty();
     }
 
     /**

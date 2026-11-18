@@ -29,6 +29,7 @@ final class BotHub {
     static final int EVENTS_KEEP = 500;
     static final int JOBS_KEEP = 500;
     private static final SecureRandom RANDOM = new SecureRandom();
+    private static final Set<String> RECEIPT_FIELDS = Set.of("id", "lease", "sequence", "ok", "value", "error");
 
     /** A settings scope as the bot last pushed it. */
     static final class Scope {
@@ -47,6 +48,9 @@ final class BotHub {
         final long createdAt;
         String status = "queued"; // queued | sent | done | error | expired | unknown
         long sentAt;
+        long sequence;
+        String lease;
+        JsonObject receipt;
         JsonElement value;
         String error;
 
@@ -71,6 +75,10 @@ final class BotHub {
         long helloAt;
         /** Bumped by every bot/hello: a long-poll from before it (a restarted bot's dangling request) gives up. */
         long helloGen;
+        String controlSession;
+        String controlEpoch;
+        ManifestScope manifestScope;
+        long jobSequence;
         long lastPoll;
         long lastSeen;
         int waiting;
@@ -117,17 +125,46 @@ final class BotHub {
     }
 
     boolean hello(String botId, String player, JsonObject plugin, JsonObject runtime, List<String> caps, List<String> scopes) {
+        return register(botId, player, plugin, runtime, caps, scopes, null) == 200;
+    }
+
+    int register(String botId, String player, JsonObject plugin, JsonObject runtime, List<String> caps,
+                 List<String> scopes, String controlSession) {
+        return register(botId, player, plugin, runtime, caps, scopes, controlSession, null);
+    }
+
+    record ManifestScope(String server, String stash, String dimension, String agent, String player) {
+        String botId() {
+            return java.util.UUID.nameUUIDFromBytes((server + "\u0000" + agent)
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
+        }
+    }
+
+    int register(String botId, String player, JsonObject plugin, JsonObject runtime, List<String> caps,
+                 List<String> scopes, String controlSession, ManifestScope scope) {
         long now = now();
         Bot b;
         synchronized (this) {
             b = bots.get(botId);
             if (b == null) {
-                if (bots.size() >= MAX_BOTS && !evictOne(now)) return false;
+                if (bots.size() >= MAX_BOTS && !evictOne(now)) return 503;
                 b = new Bot(botId);
                 bots.put(botId, b);
             }
         }
         synchronized (b) {
+            boolean sessionChanged = !java.util.Objects.equals(b.controlSession, controlSession);
+            if (sessionChanged && b.controlSession != null && (controlSession == null || online(b, now))) return 409;
+            if (sessionChanged || !java.util.Objects.equals(b.manifestScope, scope)) {
+                for (Job job : b.jobs.values()) {
+                    if (job.status.equals("queued") || job.status.equals("sent")) job.status = "unknown";
+                }
+                b.queue.clear();
+                b.scopes.clear();
+                b.controlSession = controlSession;
+                b.controlEpoch = java.util.UUID.randomUUID().toString();
+                b.manifestScope = scope;
+            }
             if (player != null && !player.isEmpty()) b.player = player;
             b.plugin = plugin;
             b.runtime = runtime;
@@ -142,7 +179,15 @@ final class BotHub {
             b.helloGen++;
             b.notifyAll(); // ends a long-poll from the bot's previous run, so it can't take what this run must be told
         }
-        return true;
+        return 200;
+    }
+
+    ManifestScope manifestScope(Bot bot, String session, String epoch) {
+        synchronized (bot) {
+            if (session == null || epoch == null || !session.equals(bot.controlSession)
+                || !epoch.equals(bot.controlEpoch) || !online(bot, now())) return null;
+            return bot.manifestScope;
+        }
     }
 
     private boolean evictOne(long now) {
@@ -211,16 +256,21 @@ final class BotHub {
 
     /** bot/next: hands out queued jobs and needs, waiting up to 25 s for something to happen. */
     Poll next(Bot b) throws InterruptedException {
+        return next(b, POLL_WAIT_MS, null);
+    }
+
+    Poll next(Bot b, long waitMillis, String controlSession) throws InterruptedException {
         synchronized (this) {
             if (waiters >= MAX_WAITERS) return new Poll(429, null);
             waiters++;
         }
         try {
             synchronized (b) {
+                if (!java.util.Objects.equals(b.controlSession, controlSession)) return new Poll(409, null);
                 b.waiting++;
                 long gen = b.helloGen;
                 try {
-                    long end = now() + POLL_WAIT_MS;
+                    long end = now() + waitMillis;
                     while (true) {
                         // A hello since this poll began: it belongs to the bot's previous run (its socket is
                         // probably dead). Answer 204 without handing out jobs or watch changes.
@@ -236,17 +286,32 @@ final class BotHub {
 ;
                         // A need is repeated at most every 10 s, so a bot that can't answer it doesn't spin.
                         boolean needDue = !b.need.isEmpty() && now - b.needSentAt >= 10_000;
-                        if (!b.queue.isEmpty() || needDue || watchChanged) {
+                        Job leased = controlSession == null ? null : b.jobs.values().stream()
+                            .filter(job -> job.status.equals("sent")).findFirst().orElse(null);
+                        if (!b.queue.isEmpty() || leased != null || needDue || watchChanged) {
                             JsonObject out = new JsonObject();
                             JsonArray jobs = new JsonArray();
-                            while (!b.queue.isEmpty()) {
+                            if (controlSession != null) {
+                                if (leased == null) {
+                                    leased = b.queue.pollFirst();
+                                    if (leased != null) {
+                                        leased.status = "sent";
+                                        leased.sentAt = now;
+                                        leased.lease = java.util.UUID.randomUUID().toString();
+                                    }
+                                }
+                                if (leased != null) {
+                                    JsonObject job = payload(leased);
+                                    job.addProperty("sequence", leased.sequence);
+                                    job.addProperty("lease", leased.lease);
+                                    job.addProperty("expiresAt", leased.sentAt + UNKNOWN_SENT_MS);
+                                    jobs.add(job);
+                                }
+                            } else while (!b.queue.isEmpty()) {
                                 Job j = b.queue.pollFirst();
                                 j.status = "sent";
                                 j.sentAt = now;
-                                JsonObject jo = j.payload.deepCopy();
-                                jo.addProperty("id", j.id);
-                                jo.addProperty("type", j.type);
-                                jobs.add(jo);
+                                jobs.add(payload(j));
                             }
                             out.add("jobs", jobs);
                             JsonArray need = new JsonArray();
@@ -286,14 +351,21 @@ final class BotHub {
         }
     }
 
+    private static JsonObject payload(Job job) {
+        JsonObject out = job.payload.deepCopy();
+        out.addProperty("id", job.id);
+        out.addProperty("type", job.type);
+        return out;
+    }
+
     /** bot/results: one result (a set reply, a command's first reply, or a later output part with more). */
     void result(Bot b, String id, boolean ok, boolean more, JsonElement value, String error) {
         long now = now();
         synchronized (b) {
             b.lastSeen = now;
+            expire(b, now);
             Job j = b.jobs.get(id);
-            if (j == null) return;
-            if (more) return;
+            if (b.controlSession != null || j == null || !j.status.equals("sent") || more) return;
             j.status = ok ? "done" : "error";
             j.value = value;
             j.error = error;
@@ -301,6 +373,40 @@ final class BotHub {
         }
     }
 
+    enum Acknowledgement { APPLIED, REPLAY, REFUSED }
+
+    Acknowledgement acknowledge(Bot b, String controlSession, JsonObject receipt) {
+        synchronized (b) {
+            if (controlSession == null || !controlSession.equals(b.controlSession)) return Acknowledgement.REFUSED;
+            if (!RECEIPT_FIELDS.containsAll(receipt.keySet())) return Acknowledgement.REFUSED;
+            String id = AddonRoutes.string(receipt, "id");
+            String lease = AddonRoutes.string(receipt, "lease");
+            Job job = b.jobs.get(id);
+            var sequence = receipt.get("sequence");
+            var ok = receipt.get("ok");
+            if (job == null || lease == null || !lease.equals(job.lease)
+                || sequence == null || !sequence.equals(new com.google.gson.JsonPrimitive(job.sequence))
+                || !(ok instanceof com.google.gson.JsonPrimitive outcome) || !outcome.isBoolean()) return Acknowledgement.REFUSED;
+            if (outcome.getAsBoolean() && !java.util.Objects.equals(job.payload.get("value"), receipt.get("value"))) {
+                return Acknowledgement.REFUSED;
+            }
+            if (!outcome.getAsBoolean() && receipt.has("value")) return Acknowledgement.REFUSED;
+            String error = AddonRoutes.string(receipt, "error");
+            if (receipt.has("error") && (error == null || error.length() > 1000 || outcome.getAsBoolean())) {
+                return Acknowledgement.REFUSED;
+            }
+            if (job.receipt != null) return job.receipt.equals(receipt) ? Acknowledgement.REPLAY : Acknowledgement.REFUSED;
+            expire(b, now());
+            if (!job.status.equals("sent")) return Acknowledgement.REFUSED;
+            job.receipt = receipt.deepCopy();
+            job.status = outcome.getAsBoolean() ? "done" : "error";
+            job.value = receipt.get("value");
+            job.error = error;
+            b.lastSeen = now();
+            b.notifyAll();
+            return Acknowledgement.APPLIED;
+        }
+    }
 
 
 
@@ -309,7 +415,8 @@ final class BotHub {
     private static void expire(Bot b, long now) {
         for (Iterator<Job> it = b.queue.iterator(); it.hasNext(); ) {
             Job j = it.next();
-            if (now - j.createdAt >= EXPIRE_QUEUED_MS) {
+            long queueLifetime = b.controlSession == null ? EXPIRE_QUEUED_MS : UNKNOWN_SENT_MS;
+            if (now - j.createdAt >= queueLifetime) {
                 it.remove();
                 j.status = "expired";
             }
@@ -424,6 +531,7 @@ final class BotHub {
                 p.add("value", c.has("value") ? c.get("value") : JsonNull.INSTANCE);
                 if (c.has("expect")) p.add("expect", c.get("expect"));
                 Job j = new Job(newId(), "set", p, now);
+                j.sequence = ++b.jobSequence;
                 add(b, j);
                 ids.add(j.id);
             }

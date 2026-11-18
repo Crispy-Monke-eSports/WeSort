@@ -82,6 +82,48 @@ class DashboardTest {
         assertEquals("unknown", hub.jobs(b, List.of(sent)).get(0).getAsJsonObject().get("status").getAsString());
     }
 
+    @Test
+    void controlJobsUseOneScopedLeaseAndImmutableReceipts() throws Exception {
+        AtomicLong now = new AtomicLong(1_000_000);
+        BotHub hub = new BotHub(now::get);
+        String session = "agent-session";
+        assertEquals(200, hub.register("b", "Builder", new JsonObject(), new JsonObject(),
+            List.of("settings"), List.of("plugin"), session));
+        assertEquals(409, hub.register("b", "Other", new JsonObject(), new JsonObject(),
+            List.of("settings"), List.of("plugin"), "different-session"));
+        BotHub.Bot bot = hub.bot("b");
+        var first = node("{\"path\":\"scan-interval\",\"value\":12}");
+        var second = node("{\"path\":\"order-messages\",\"value\":false}");
+        var ids = hub.queueSets(bot, "plugin", List.of(first, second));
+        assertEquals(409, hub.next(bot, 0, null).status());
+        assertEquals(409, hub.next(bot, 0, "different-session").status());
+        var poll = hub.next(bot, 0, session);
+        var leased = poll.body().getAsJsonArray("jobs");
+        assertEquals(1, leased.size());
+        JsonObject job = leased.get(0).getAsJsonObject();
+        assertEquals(ids.get(0), job.get("id").getAsString());
+        assertEquals(leased, hub.next(bot, 0, session).body().getAsJsonArray("jobs"));
+        var receipt = new JsonObject();
+        for (String key : List.of("id", "lease", "sequence", "value")) receipt.add(key, job.get(key));
+        receipt.addProperty("ok", true);
+        assertEquals(BotHub.Acknowledgement.REFUSED, hub.acknowledge(bot, "different-session", receipt));
+        var wrongSequence = receipt.deepCopy();
+        wrongSequence.addProperty("sequence", 2);
+        assertEquals(BotHub.Acknowledgement.REFUSED, hub.acknowledge(bot, session, wrongSequence));
+        assertEquals(BotHub.Acknowledgement.APPLIED, hub.acknowledge(bot, session, receipt));
+        assertEquals(BotHub.Acknowledgement.REPLAY, hub.acknowledge(bot, session, receipt));
+        var conflicting = receipt.deepCopy();
+        conflicting.addProperty("ok", false);
+        assertEquals(BotHub.Acknowledgement.REFUSED, hub.acknowledge(bot, session, conflicting));
+
+        var next = hub.next(bot, 0, session).body().getAsJsonArray("jobs").get(0).getAsJsonObject();
+        assertEquals(ids.get(1), next.get("id").getAsString());
+        for (String key : List.of("id", "lease", "sequence", "value")) receipt.add(key, next.get(key));
+        now.addAndGet(BotHub.UNKNOWN_SENT_MS);
+        assertEquals(BotHub.Acknowledgement.REFUSED, hub.acknowledge(bot, session, receipt));
+        assertEquals("unknown", hub.jobs(bot, List.of(ids.get(1))).get(0).getAsJsonObject().get("status").getAsString());
+    }
+
 
 
     @Test

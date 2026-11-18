@@ -104,3 +104,89 @@ binding by default, with warehouse pickup when no binding exists.
 `recipient`, `deliveryMode` and `destination` describe the intended
 delivery. Warehouse staging and verified delivery remain distinct
 physical states.
+
+## W-027 signed agent control
+
+The Fabric agent sends `POST /api/v1/bot/hello` with its `botId`, player,
+runtime metadata, and a random 32-byte `controlSession` encoded as
+64 lowercase hexadecimal characters. The signed response advertises
+`protocol: 2` and a `controlEpoch`. After a restart or rebinding, a
+different epoch invalidates the agent's cached job receipts.
+
+`POST /api/v1/bot/state` publishes the `plugin` schema and values with
+their SHA-256 hashes. The current Fabric allowlist is `scan-interval`
+(2–60 seconds), `fresh-minutes` (0–30 minutes), `order-messages`
+(boolean), and `order-intake-paused` (boolean). The pause stops new order
+claims and leaves a running order on its existing execution path. Resume
+continues to require the normal warehouse and inventory checks.
+A settings write from the browser requires its own session
+and settings permission. The browser does not exchange the control session.
+The agent's signed request body limit is 1 MiB for these endpoints. The
+schema limit is 5,000 nodes and the settings scope limit is one.
+
+`POST /api/v1/bot/next` is a non-blocking poll with `botId` and
+`controlSession`. It returns at most one job. A settings job includes
+`id`, `type: "set"`, `scope: "plugin"`, `path`, `value`, optional
+`expect`, `sequence`, `lease` and `expiresAt` (Unix milliseconds).
+Unacknowledged jobs can be polled again with the same lease for at most
+60 seconds. The agent checks scope, expiry and the typed value before
+applying the change on the game thread.
+
+`POST /api/v1/bot/results` accepts one leased receipt per request.
+
+```json
+{"botId":"fixture","controlSession":"<64 lowercase hex characters>","results":[{"id":"<job id>","sequence":1,"lease":"<lease UUID>","ok":true,"value":12}]}
+```
+
+Manager replies 200 to an identical replay. A conflicting receipt,
+wrong sequence, expired lease or mismatched session receives 409.
+Protocol 1 remains available to agents that register without a control
+session. Legacy warehouse endpoints continue to use the signed v1
+exchange independently of the control session.
+
+Warehouse staging persists an internal versioned manifest with the order
+receipt. Manager derives it from completed `STAGE_PACKAGE` journal records
+for the order, stash and packing agent. Each entry binds an exact shulker
+stack fingerprint to an operation ID, revision, checksum and staging slot.
+Manager compares the native player and chest slot readbacks and checks that
+the reported staged lines cover the order before writing `PICKUP_READY`.
+Partial staging keeps the evidence and requires reconciliation. The browser
+receives the verified staged package count. The full package
+identity plan and final delivery receipt require their own custody evidence.
+
+The packing agent can read a completed staging manifest via signed
+`POST /api/v1/bot/manifest`. Registration supplies a `manifestScope`
+with the server, stash, dimension and Minecraft agent UUID. When that
+binding changes, Manager rotates the control epoch and invalidates queued
+control jobs. Reads take `botId`, `controlSession`, `controlEpoch` and
+`orderId`. The live binding must match the current stash owner, the
+agent that staged the order and the dimensions in the proof. An
+unavailable or out-of-scope manifest returns 404.
+
+The reply includes the internal manifest hash and a stable `packageId`
+for each journaled shulker. It carries the operation ID, revision,
+checksum and native stack fingerprint. Staging coordinates and slots stay
+in Manager. A manifest read grants no physical operation or custody lease.
+
+After validating the reply, the agent sends the same scope and order
+fields plus `manifestHash` to signed `POST /api/v1/bot/manifest/ack`.
+Manager commits `acknowledgedAt` with the order and audits the first
+acknowledgement. A repeated receipt returns the same timestamp after a
+new control registration or Manager restart. A mismatched hash returns
+409.
+
+A control poll with the current epoch may carry `pendingManifest` with an
+order ID and package count. Manager derives the hint from the durable
+order state, so an agent can recover a missed acknowledgement after a
+restart. The hint uses the same scope checks as the manifest endpoint.
+
+`POST /api/v1/stock/return-intake` records an Owner's return decision
+for a freshly verified root shulker in an ordinary visible chest or
+barrel. The browser sends `source`, `path`, `slotRevision`, `expectedDecisionRevision`, and an
+explicit Boolean `markUuid`. The receipt is tied to that slot revision and
+references its native stack and snapshot fingerprints. Replaying the same
+choice at the same revision returns the original receipt. A changed or
+stale selection receives 409. With `markUuid=false` the receipt is
+`VERIFIED_KEEP_NAME`. With `markUuid=true` it is `UUID_REQUESTED`.
+This records the choice. Anvil execution and registration require a
+separate verified physical operation.

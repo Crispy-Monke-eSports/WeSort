@@ -12,9 +12,11 @@ final class StockRoutes {
 
     StockRoutes(IndexStore index, OrderStore orders) { this.index = index; this.orders = orders; }
 
-    void register(Router router) {
+    void register(Router router, AuditLog audit) {
         router.exact(Router.GET, "/api/v1/stock", Router.Guard.SESSION, Router.Perm.VIEW, this::get);
         router.exact(Router.GET, "/api/v1/stock/source", Router.Guard.SESSION, Router.Perm.VIEW, this::getSource);
+        router.exact(Router.POST, "/api/v1/stock/return-intake", Router.Guard.BROWSER_WRITE, Router.Perm.OWNER,
+            ex -> returnIntake(ex, audit));
     }
 
     private void get(HttpExchange ex) throws IOException { Http.json(ex, 200, view(Router.user(ex))); }
@@ -42,6 +44,7 @@ final class StockRoutes {
             // The history frame carries its original content; current slot revisions must never label an older frame.
             if (snapshot != null && source.status().equals("FRESH")) {
                 JsonArray slots = new JsonArray(); ledger.physicalSlots(id).forEach(slots::add); out.add("slots", slots);
+                if (who.owner() && returnContainer(source)) out.add("returnIntake", ledger.returnDecisions(id));
             }
             var physical = PhysicalReservations.read(ledger, source.server(), source.stash());
             if (physical.hasSnapshots()) {
@@ -57,6 +60,62 @@ final class StockRoutes {
             }
             return out;
         }
+    }
+
+    private static boolean returnContainer(StockLedger.Source source) {
+        return switch (source.value().get("kind").getAsString()) {
+            case "minecraft:chest", "minecraft:trapped_chest", "minecraft:barrel" -> true;
+            default -> false;
+        };
+    }
+
+    private void returnIntake(HttpExchange ex, AuditLog audit) throws IOException {
+        var who = Router.user(ex);
+        if (Redact.on(ex)) { Http.error(ex, 404, "No return source in this scope"); return; }
+        var raw = AddonRoutes.readJson(ex);
+        if (raw == null || !raw.isJsonObject()) { Http.error(ex, 400, "Expected a return decision"); return; }
+        var body = raw.getAsJsonObject();
+        String id = AddonRoutes.string(body, "source");
+        String path = AddonRoutes.string(body, "path");
+        var revision = body.get("slotRevision");
+        var decisionRevision = body.get("expectedDecisionRevision");
+        var choice = body.get("markUuid");
+        if (id == null || !id.matches("c:[a-f0-9]{64}") || path == null || !path.matches("0|[1-9][0-9]?")
+            || !(revision instanceof JsonPrimitive seen) || !seen.isNumber()
+            || !(decisionRevision instanceof JsonPrimitive previous) || !previous.isNumber()
+            || !(choice instanceof JsonPrimitive mark) || !mark.isBoolean()) {
+            Http.error(ex, 400, "Expected a physical source, root slot revision and explicit UUID choice"); return;
+        }
+        long expected;
+        long expectedDecision;
+        try {
+            expected = seen.getAsBigDecimal().longValueExact();
+            expectedDecision = previous.getAsBigDecimal().longValueExact();
+            if (expected < 1 || expectedDecision < 0) throw new ArithmeticException();
+        }
+        catch (ArithmeticException invalid) { Http.error(ex, 400, "Invalid slot revision"); return; }
+        StockLedger.ReturnDecision decision;
+        synchronized (index) {
+            var ledger = index.stock();
+            var source = ledger.sources().stream().filter(s -> id.equals(s.value().get("id").getAsString())
+                && who.perms().seesStash(s.server(), s.stash()) && !s.status().equals("SUPERSEDED")).findFirst().orElse(null);
+            if (source == null || !returnContainer(source)) { Http.error(ex, 404, "No return source in this scope"); return; }
+            if (!source.status().equals("FRESH") || !source.value().has("slotFingerprint")) {
+                Http.error(ex, 409, "Read the container again before recording a return"); return;
+            }
+            var slot = ledger.physicalSlots(id).stream().filter(s -> path.equals(s.get("path").getAsString())
+                && s.get("present").getAsBoolean()).findFirst().orElse(null);
+            if (slot == null || slot.get("revision").getAsLong() != expected || !"SHULKER".equals(slot.get("kind").getAsString())
+                || slot.get("count").getAsInt() != 1 || slot.get("size").getAsInt() != 27) {
+                Http.error(ex, 409, "The selected slot no longer holds the verified shulker"); return;
+            }
+            decision = ledger.recordReturn(id, slot, source.value().get("slotFingerprint").getAsString(), who.id(),
+                mark.getAsBoolean(), expectedDecision);
+        }
+        if (decision == null) { Http.error(ex, 409, "The return choice was updated. Reopen the source to see the current choice."); return; }
+        if (decision.changed()) audit.add(who, mark.getAsBoolean() ? "return.uuid.requested" : "return.keep_name",
+            id + "/" + path, AuthRoutes.address(ex));
+        Http.json(ex, 200, decision.record());
     }
 
     JsonObject view(Users.Principal who) throws IOException {

@@ -14,6 +14,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
 import com.porter.wesort.stash.Order;
 import com.porter.wesort.compat.RightClick;
 import meteordevelopment.meteorclient.events.render.Render3DEvent;
@@ -79,6 +80,14 @@ public class StashManager extends Module {
         .name("accept-orders")
         .description("Let the bot take orders from the web page: it builds shulkers from the stash and delivers them to the delivery container (wesort-stash-sorter pick: Delivery). wesort-stash-sorter does not need to be on: while this module is on it reads containers, takes orders and puts leftovers back by itself, using wesort-stash-sorter's settings (stash-name, area, safe-walk...), and never sorts. Needs a free inventory slot and enough empty shulkers. Loose items an order took out and did not deliver go back to the container they came from, or the nearest one with room when that is not known; shulkers it unpacked go back where they came from. To stop the bot, turn off accept-orders or wesort-stash-manager. Turning wesort-stash-sorter off hands control back to wesort-stash-manager while accept-orders is on.")
         .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> orderIntakePaused = sgGeneral.add(new BoolSetting.Builder()
+        .name("order-intake-paused")
+        .description("Manager pauses new warehouse orders while the current order finishes.")
+        .defaultValue(false)
+        .visible(() -> false)
         .build()
     );
 
@@ -323,6 +332,15 @@ public class StashManager extends Module {
     private boolean needIndex;
     private String status = "idle";
     private String lastLogged = "";
+    private ControlScope controlScope;
+    private String controlSession;
+    private String controlEpoch;
+    private boolean controlRegistered;
+    private String sentControlValues;
+    private JsonArray controlResults;
+    private JsonObject lastControlResult;
+    private long nextControlAt;
+    private PendingManifest pendingManifest;
 
     // Orders
     private int pendingOrders;
@@ -486,6 +504,11 @@ public class StashManager extends Module {
         inFlight = false;
         status = "idle";
         lastLogged = "";
+        controlRegistered = false;
+        sentControlValues = null;
+        controlResults = null;
+        nextControlAt = 0;
+        pendingManifest = null;
         pendingOrders = 0;
         lastClaim = lastStatusAt = 0;
         lastStatusSig = "";
@@ -661,6 +684,7 @@ public class StashManager extends Module {
         if (serviceKitCatalog(base, key, now)) return;
 
         if (current == null) return;
+        if (serviceControl(base, key, now)) return;
         StashIndex.Built built = current;
         String id = built.server() + "|" + built.stash() + "|" + built.hash();
         updateDelivery(now, built.player());
@@ -696,6 +720,279 @@ public class StashManager extends Module {
         } else if (deliveryPending != null && deliverySync.canSend(now)) {
             sendDelivery(base, key, now);
         }
+    }
+
+    private record ControlScope(URI manager, String server, String stash, String dimension, java.util.UUID player) {
+        String botId() {
+            return java.util.UUID.nameUUIDFromBytes((server + "\u0000" + player).getBytes(StandardCharsets.UTF_8)).toString();
+        }
+    }
+
+    private record PendingManifest(String order, String server, String stash, String dimension, int packages, String hash) {
+        boolean matches(ControlScope scope) {
+            return server.equals(scope.server()) && stash.equals(scope.stash()) && dimension.equals(scope.dimension());
+        }
+
+        PendingManifest withHash(String value) {
+            return new PendingManifest(order, server, stash, dimension, packages, value);
+        }
+    }
+
+    private boolean serviceControl(URI base, String key, long now) {
+        var observed = new ControlScope(base, current.server(), current.stash(), StashIndex.dimension(), mc.player.getUUID());
+        if (!observed.equals(controlScope)) {
+            if (controlScope == null || !observed.manager().equals(controlScope.manager()) || !observed.botId().equals(controlScope.botId())) {
+                controlSession = randomHex(32);
+            }
+            controlScope = observed;
+            controlRegistered = false;
+            sentControlValues = null;
+            controlResults = null;
+            lastControlResult = null;
+            nextControlAt = 0;
+        }
+        if (now < nextControlAt) return false;
+        nextControlAt = now + 2_000;
+        var request = new JsonObject();
+        request.addProperty("botId", observed.botId());
+        request.addProperty("controlSession", controlSession);
+        if (!controlRegistered) {
+            request.addProperty("player", current.player());
+            var binding = new JsonObject();
+            binding.addProperty("server", observed.server());
+            binding.addProperty("stash", observed.stash());
+            binding.addProperty("dimension", observed.dimension());
+            binding.addProperty("agent", observed.player().toString());
+            request.add("manifestScope", binding);
+            var plugin = new JsonObject();
+            plugin.addProperty("id", "wesort");
+            net.fabricmc.loader.api.FabricLoader.getInstance().getModContainer("wesort").ifPresent(mod ->
+                plugin.addProperty("version", mod.getMetadata().getVersion().getFriendlyString()));
+            request.add("plugin", plugin);
+            var runtime = new JsonObject();
+            runtime.addProperty("mc", "26.3");
+            request.add("runtime", runtime);
+            var capabilities = new JsonArray();
+            capabilities.add("settings");
+            request.add("caps", capabilities);
+            var scopes = new JsonArray();
+            scopes.add("plugin");
+            request.add("scopes", scopes);
+            send(base, "/api/v1/bot/hello", bytes(request), key, (code, body) -> {
+                controlRegistered = false;
+                if (code == 200) {
+                    var hello = JsonParser.parseString(body).getAsJsonObject();
+                    String epoch = text(hello, "controlEpoch");
+                    if (hello.get("protocol").getAsInt() == 2 && epoch != null) {
+                        if (!epoch.equals(controlEpoch)) lastControlResult = null;
+                        controlEpoch = epoch;
+                        controlRegistered = true;
+                        sentControlValues = null;
+                    }
+                }
+                if (!controlRegistered) nextControlAt = now + 15_000;
+                return controlRegistered;
+            }, true);
+            return true;
+        }
+        if (controlResults != null) {
+            request.add("results", controlResults);
+            send(base, "/api/v1/bot/results", bytes(request), key, (code, body) -> {
+                if (code == 200) controlResults = null;
+                else if (code == 409) {
+                    controlRegistered = false;
+                    controlResults = null;
+                }
+                return code == 200;
+            }, true);
+            return true;
+        }
+        var pending = pendingManifest;
+        if (pending != null) {
+            if (!pending.matches(observed)) {
+                pendingManifest = null;
+                return false;
+            }
+            request.addProperty("controlEpoch", controlEpoch);
+            request.addProperty("orderId", pending.order());
+            boolean acknowledging = pending.hash() != null;
+            if (acknowledging) request.addProperty("manifestHash", pending.hash());
+            send(base, acknowledging ? "/api/v1/bot/manifest/ack" : "/api/v1/bot/manifest", bytes(request), key, (code, body) -> {
+                if (code == 409) {
+                    controlRegistered = false;
+                    if (acknowledging) pendingManifest = pending.withHash(null);
+                    return false;
+                }
+                if (code != 200 && code != 404) return false;
+                pendingManifest = null;
+                if (code == 404) {
+                    controlRegistered = false;
+                    return false;
+                }
+                var reply = JsonParser.parseString(body).getAsJsonObject();
+                if (!pending.order().equals(text(reply, "orderId"))) return false;
+                if (acknowledging) {
+                    if (!pending.hash().equals(text(reply, "manifestHash")) || reply.get("acknowledgedAt").getAsLong() <= 0) return false;
+                    if (orderChat.get()) info("Manager confirmed the staging manifest for %s (%d shulker packages).", pending.order(), pending.packages());
+                    return true;
+                }
+                var manifest = reply.getAsJsonObject("manifest");
+                var hash = text(manifest, "hash");
+                var packages = manifest.getAsJsonArray("packages");
+                if (manifest.get("version").getAsInt() != 1 || hash == null || !hash.matches("[0-9a-f]{64}")
+                    || packages.size() != pending.packages()) return false;
+                var ids = new HashSet<String>();
+                for (var value : packages) {
+                    var entry = value.getAsJsonObject();
+                    String packageId = text(entry, "packageId");
+                    String fingerprint = text(entry, "stackFingerprint");
+                    if (packageId == null || !packageId.matches("[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}")
+                        || fingerprint == null || !fingerprint.matches("[a-f0-9]{64}") || !ids.add(packageId)) return false;
+                }
+                pendingManifest = pending.withHash(hash);
+                return true;
+            }, true);
+            return true;
+        }
+
+        var values = new JsonObject();
+        values.addProperty(scanInterval.name, scanInterval.get());
+        values.addProperty(freshMinutes.name, freshMinutes.get());
+        values.addProperty(orderChat.name, orderChat.get());
+        values.addProperty(orderIntakePaused.name, orderIntakePaused.get());
+        String valuesHash = sha256Hex(values.toString().getBytes(StandardCharsets.UTF_8));
+        if (!valuesHash.equals(sentControlValues)) {
+            var schema = new JsonArray();
+            schema.add(controlSetting(scanInterval.name, "Scan interval (seconds)", "int", 2, 60));
+            schema.add(controlSetting(freshMinutes.name, "Stock freshness (minutes)", "int", 0, 30));
+            schema.add(controlSetting(orderChat.name, "Order chat messages", "bool", null, null));
+            schema.add(controlSetting(orderIntakePaused.name, "Pause new warehouse orders", "bool", null, null));
+            request.addProperty("scope", "plugin");
+            request.addProperty("schemaHash", sha256Hex(schema.toString().getBytes(StandardCharsets.UTF_8)));
+            request.addProperty("valuesHash", valuesHash);
+            request.add("schema", schema);
+            request.add("values", values);
+            send(base, "/api/v1/bot/state", bytes(request), key, (code, body) -> {
+                if (code == 200) sentControlValues = valuesHash;
+                else if (code == 409) controlRegistered = false;
+                return code == 200;
+            }, true);
+            return true;
+        }
+        request.addProperty("controlEpoch", controlEpoch);
+        send(base, "/api/v1/bot/next", bytes(request), key, (code, body) -> {
+            // Replies are dispatched on the client thread after the transport verifies their signature.
+            if (code == 409) {
+                controlRegistered = false;
+                sentControlValues = null;
+            }
+            if (code != 200 || mc.level == null || mc.player == null
+                || !base.equals(parse(serverUrl.get())) || !key.equals(apiKey.get().trim())
+                || !observed.player().equals(mc.player.getUUID())
+                || !observed.server().equals(Stash.currentServer())
+                || current == null || !observed.stash().equals(current.stash())
+                || !observed.dimension().equals(StashIndex.dimension())) return false;
+            var poll = JsonParser.parseString(body).getAsJsonObject();
+            if (poll.has("pendingManifest")) {
+                var hint = poll.getAsJsonObject("pendingManifest");
+                String orderId = text(hint, "orderId");
+                int count = hint.get("packageCount").getAsInt();
+                if (orderId != null && orderId.matches("o-[0-9a-f]{12}") && count > 0 && count <= Order.MAX_BINS) {
+                    pendingManifest = new PendingManifest(orderId, observed.server(), observed.stash(), observed.dimension(), count, null);
+                }
+            }
+            var jobs = poll.getAsJsonArray("jobs");
+            if (jobs.size() != 1 || !jobs.get(0).isJsonObject()) return jobs.isEmpty();
+            var job = jobs.get(0).getAsJsonObject();
+            var result = receiptFor(job, values);
+            if (result == null) return false;
+            controlResults = new JsonArray();
+            controlResults.add(result);
+            return true;
+        }, true);
+        return true;
+    }
+
+    private static JsonObject controlSetting(String path, String label, String type, Integer min, Integer max) {
+        var value = new JsonObject();
+        value.addProperty("path", path);
+        value.addProperty("label", label);
+        value.addProperty("type", type);
+        if (min != null) value.addProperty("min", min);
+        if (max != null) value.addProperty("max", max);
+        return value;
+    }
+
+    private JsonObject applyControlSetting(JsonObject job, JsonObject published) {
+        String id = text(job, "id");
+        if (id == null || !id.matches("[a-zA-Z0-9_-]{1,64}")) return null;
+        var result = new JsonObject();
+        result.addProperty("id", id);
+        String path = text(job, "path");
+        JsonElement newValue = job.get("value");
+        if (!"set".equals(text(job, "type")) || !"plugin".equals(text(job, "scope"))
+            || path == null || !published.has(path) || !(newValue instanceof JsonPrimitive value)) {
+            result.addProperty("ok", false);
+            result.addProperty("error", "Unsupported setting");
+            return result;
+        }
+        boolean applied;
+        if (path.equals(scanInterval.name)) applied = changeInteger(scanInterval, job.get("expect"), value, 2, 60);
+        else if (path.equals(freshMinutes.name)) applied = changeInteger(freshMinutes, job.get("expect"), value, 0, 30);
+        else if (path.equals(orderIntakePaused.name)) {
+            boolean before = orderIntakePaused.get();
+            applied = changeBoolean(orderIntakePaused, job.get("expect"), value);
+            if (applied && before != value.getAsBoolean()) {
+                info(value.getAsBoolean() ? "Manager paused new warehouse orders." : "Manager resumed new warehouse orders.");
+            }
+        } else applied = changeBoolean(orderChat, job.get("expect"), value);
+        result.addProperty("ok", applied);
+        if (applied) result.add("value", value);
+        else result.addProperty("error", "Setting changed or value is invalid");
+        return result;
+    }
+
+    private JsonObject receiptFor(JsonObject job, JsonObject values) {
+        String lease = text(job, "lease");
+        var sequence = job.get("sequence");
+        var expiresAt = job.get("expiresAt");
+        if (lease == null || !lease.matches("[a-f0-9-]{36}") || !(sequence instanceof JsonPrimitive order) || !order.isNumber()
+            || !(expiresAt instanceof JsonPrimitive deadline) || !deadline.isNumber()
+            || deadline.getAsLong() <= System.currentTimeMillis()) return null;
+        if (lastControlResult != null) {
+            if (lease.equals(text(lastControlResult, "lease")) && sequence.equals(lastControlResult.get("sequence"))) return lastControlResult;
+            if (order.getAsLong() <= lastControlResult.get("sequence").getAsLong()) return null;
+        }
+        var result = applyControlSetting(job, values);
+        if (result == null) return null;
+        result.addProperty("lease", lease);
+        result.add("sequence", sequence);
+        lastControlResult = result;
+        return result;
+    }
+
+    private static boolean changeInteger(Setting<Integer> setting, JsonElement expected, JsonPrimitive newValue,
+                                         int minimum, int maximum) {
+        if (!newValue.isNumber() || !matchesSetting(expected, new JsonPrimitive(setting.get()))) return false;
+        try {
+            int number = newValue.getAsBigDecimal().intValueExact();
+            return number >= minimum && number <= maximum && setting.set(number);
+        } catch (ArithmeticException | NumberFormatException malformed) {
+            return false;
+        }
+    }
+
+    private static boolean matchesSetting(JsonElement expected, JsonElement observed) {
+        return expected == null || expected.equals(observed);
+    }
+
+    private static boolean changeBoolean(Setting<Boolean> setting, JsonElement expected, JsonPrimitive value) {
+        return value.isBoolean() && matchesSetting(expected, new JsonPrimitive(setting.get())) && setting.set(value.getAsBoolean());
+    }
+
+    private static String text(JsonObject body, String field) {
+        JsonElement element = body.get(field);
+        return element instanceof JsonPrimitive value && value.isString() ? value.getAsString() : null;
     }
 
     private void resetDelivery() {
@@ -848,7 +1145,8 @@ public class StashManager extends Module {
         }
 
         // Nothing in hand: take the oldest pending order, or the one still held from before a restart
-        if (acceptOrders.get() && blocker == null && stash != null && now - lastClaim >= CLAIM_MS && (pendingOrders > 0 || runner.resumeId() != null)) {
+        if (acceptOrders.get() && !orderIntakePaused.get() && blocker == null && stash != null && now - lastClaim >= CLAIM_MS
+            && (pendingOrders > 0 || runner.resumeId() != null)) {
             lastClaim = now;
             JsonObject o = new JsonObject();
             o.addProperty("server", server);
@@ -932,6 +1230,7 @@ public class StashManager extends Module {
     /** Why the bot can't take orders right now, or null. */
     private String orderBlocker() {
         if (!acceptOrders.get()) return "accept-orders off";
+        if (orderIntakePaused.get()) return "new warehouse orders paused by Manager";
         StashSorter sorter = Modules.get().get(StashSorter.class);
         return sorter == null ? "sorter off" : sorter.orderBlocker();
     }

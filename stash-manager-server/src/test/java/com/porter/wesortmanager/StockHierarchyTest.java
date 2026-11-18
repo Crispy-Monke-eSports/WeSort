@@ -26,6 +26,23 @@ class StockHierarchyTest {
         root.addProperty("physicalVersion", 2); root.add("slotVariants", writer.variants()); return root;
     }
     private JsonObject source(JsonObject index) { return index.getAsJsonArray("physicalSources").get(0).getAsJsonObject(); }
+
+    @Test void returnChoiceSurvivesRestartAndStaleChangesCannotReplaceIt() throws Exception {
+        var ledger = new StockLedger(data);
+        var frame = index(ledger, 32);
+        ledger.accept(frame);
+        String id = source(frame).get("id").getAsString();
+        var slot = ledger.physicalSlots(id).stream().filter(row -> "0".equals(row.get("path").getAsString())).findFirst().orElseThrow();
+        String snapshot = ledger.sources().getFirst().value().get("slotFingerprint").getAsString();
+        var keep = ledger.recordReturn(id, slot, snapshot, "owner", false, 0);
+        assertTrue(keep.changed());
+        var restarted = new StockLedger(data);
+        assertEquals(keep.record(), restarted.returnDecisions(id).get(0).getAsJsonObject());
+        assertNull(restarted.recordReturn(id, slot, snapshot, "owner", true, 0));
+        var mark = restarted.recordReturn(id, slot, snapshot, "owner", true, 1);
+        assertEquals("UUID_REQUESTED", mark.record().get("state").getAsString());
+        assertNull(restarted.recordReturn(id, slot, snapshot, "owner", false, 0));
+    }
     @Test void storesHierarchyInSameTransactionAndKeepsStableSlotRevisions() throws Exception {
         var ledger = new StockLedger(data); var first = index(ledger, 32); var id = source(first).get("id").getAsString(); ledger.accept(first);
         var before = ledger.physicalSlots(id); assertEquals(4, before.size()); assertTrue(before.stream().allMatch(r -> r.get("revision").getAsLong()==1));
@@ -202,23 +219,85 @@ class StockHierarchyTest {
             """).getAsJsonObject();
         context.addProperty("agent", agent);
         context.addProperty("orderId", order.id);
+        context.addProperty("stash", "a");
         journal.start(context);
         var evidence = JsonParser.parseString("""
-            {"origin":{"server":"s","dimension":"minecraft:overworld"},
-             "before":{"menu":1,"slots":["empty","box"],"cursor":"empty"},
-             "expected":{"menu":1,"slots":["box","empty"],"cursor":"empty"}}
+            {"origin":{"server":"s","dimension":"minecraft:overworld","source":[1,64,2]},
+             "before":{"menu":1,"slots":[],"cursor":"empty"},
+             "expected":{"menu":1,"slots":[],"cursor":"empty"}}
             """).getAsJsonObject();
+        evidence.getAsJsonObject("origin").addProperty("player", agent);
+        String stack = """
+            {"type":10,"value":{"count":{"type":3,"value":"1"},
+              "id":{"type":8,"value":"\\"minecraft:shulker_box\\""}}}
+            """;
+        for (int i = 0; i < 63; i++) {
+            evidence.getAsJsonObject("before").getAsJsonArray("slots").add(i == 54 ? stack : "empty");
+            evidence.getAsJsonObject("expected").getAsJsonArray("slots").add(i == 0 ? stack : "empty");
+        }
         journal.intent(evidence);
         journal.verified(evidence.getAsJsonObject("expected"), false);
         journal.complete();
         new PhysicalOperations(ledger).accept(agent, journal.current());
         var result = new JsonObject();
         result.addProperty("shulkers", 1);
+        result.add("lines", JsonParser.parseString("[{\"key\":\"kit\",\"delivered\":1}]"));
         var ready = orders.status(order.id, "delivered", null, null, null, result, agent, "staging-ok");
         assertEquals(OrderStage.PICKUP_READY, ready.stage());
         assertEquals("packed", ready.status);
+        assertEquals(1, ready.manifest.getAsJsonArray("packages").size());
+        assertEquals(journal.current().get("id"), ready.manifest.getAsJsonArray("packages").get(0)
+            .getAsJsonObject().get("operationId"));
+        var restarted = new OrderStore(data, store);
+        restarted.load();
+        assertEquals(ready.manifest, restarted.status(order.id, "delivered", null, null, null, result, agent, "staging-ok").manifest);
+        var scope = new BotHub.ManifestScope("s", "a", "minecraft:overworld", agent, "TestAgent");
+        var manifest = restarted.manifest(order.id, scope);
+        assertEquals(order.id, restarted.pendingManifest(scope).get("orderId").getAsString());
+        assertEquals(ready.manifest.get("hash"), manifest.get("hash"));
+        var publicEntry = manifest.getAsJsonArray("packages").get(0).getAsJsonObject();
+        assertNotNull(UUID.fromString(publicEntry.get("packageId").getAsString()));
+        assertFalse(publicEntry.has("staging"));
+        assertNull(restarted.manifest(order.id, new BotHub.ManifestScope("s", "a", "minecraft:the_nether", agent, "TestAgent")));
+        assertNull(restarted.manifest(order.id, new BotHub.ManifestScope("different", "a", "minecraft:overworld", agent, "TestAgent")));
+        assertNull(restarted.manifest(order.id, new BotHub.ManifestScope("s", "a", "minecraft:overworld", UUID.randomUUID().toString(), "TestAgent")));
+        String hash = manifest.get("hash").getAsString();
+        assertEquals(409, assertThrows(OrderStore.OrderException.class,
+            () -> restarted.acknowledgeManifest(order.id, scope, "0".repeat(64))).status);
+        var receipt = restarted.acknowledgeManifest(order.id, scope, hash);
+        assertTrue(receipt.changed());
+        var reloaded = new OrderStore(data, store);
+        reloaded.load();
+        assertNull(reloaded.pendingManifest(scope));
+        assertEquals(new OrderStore.ManifestReceipt(receipt.acknowledgedAt(), false),
+            reloaded.acknowledgeManifest(order.id, scope, hash));
         assertEquals(0, orders.clearFinished("s", "a"));
         assertThrows(OrderStore.OrderException.class, () -> orders.cancel(order.id));
+    }
+
+    @Test void partialStagingReportsDoNotCoverAnEntireOrder() {
+        var lines = List.of(new OrderStore.Line("shulker", "kit", 2));
+        var partial = JsonParser.parseString("{\"lines\":[{\"key\":\"kit\",\"delivered\":1}]}").getAsJsonObject();
+        assertFalse(OrderStore.allLinesStaged(lines, partial));
+        var duplicate = JsonParser.parseString("""
+            {"lines":[{"key":"kit","delivered":2},{"key":"kit","delivered":2}]}
+            """).getAsJsonObject();
+        assertFalse(OrderStore.allLinesStaged(lines, duplicate));
+    }
+
+    @Test void identicalShulkerFingerprintsStillGetDistinctPackageIds() {
+        var first = JsonParser.parseString("""
+            {"operationId":"first","stackFingerprint":"same-stack",
+             "staging":{"dimension":"minecraft:overworld","position":[1,64,2],"slot":0}}
+            """).getAsJsonObject();
+        var second = first.deepCopy();
+        second.addProperty("operationId", "second");
+        assertNull(PackageManifest.staged("o-fixture", List.of(first, second), 2));
+        second.getAsJsonObject("staging").addProperty("slot", 1);
+        var packages = PackageManifest.staged("o-fixture", List.of(first, second), 2).getAsJsonArray("packages");
+        assertNotEquals(packages.get(0).getAsJsonObject().get("packageId"), packages.get(1).getAsJsonObject().get("packageId"));
+        second.addProperty("operationId", "first");
+        assertNull(PackageManifest.staged("o-fixture", List.of(first, second), 2));
     }
 
     @Test void schemaTwoMigratesWithoutLosingHistoricalStock() throws Exception {

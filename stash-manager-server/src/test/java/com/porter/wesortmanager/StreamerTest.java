@@ -533,6 +533,7 @@ class StreamerTest {
             "[GET, HEAD] /api/v1/kits SESSION VIEW",
             "[POST] ^/api/v1/bots/([A-Za-z0-9_-]{1,64})/(settings|jobs|activity)$ BROWSER_WRITE ACTIVITY");
         java.util.Set<String> ownerOnly = java.util.Set.of(
+            "[POST] /api/v1/stock/return-intake BROWSER_WRITE OWNER",
             "[POST] /api/v1/kits BROWSER_WRITE OWNER",
             "[GET, HEAD] /api/v1/kits/editor SESSION OWNER",
             "[GET, HEAD] /api/v1/kits/jobs SESSION OWNER",

@@ -748,17 +748,59 @@
           api("/api/v1/stock/source?id=" + encodeURIComponent(source.id)).then(function (data) {
             var note = document.createElement("p"); note.textContent = "State: " + data.state + ". Slot paths identify locations; fingerprints describe contents. Uncertain contents require a new physical read."; details.appendChild(note);
             var table = document.createElement("table");
+            var returnSlots = new Map();
+            if (Array.isArray(data.returnIntake)) {
+              (data.slots || []).forEach(function (slot) {
+                if (slot.present && slot.kind === "SHULKER" && slot.count === 1 && !slot.path.includes("/")) returnSlots.set(slot.path, slot);
+              });
+            }
             ((data.snapshot && data.snapshot.positions) || []).forEach(function (slot) {
               var line = document.createElement("tr");
               [slot.path, slot.id, slot.count, slot.copies, slot.kind, slot.components].forEach(function (value) {
                 var cell = document.createElement("td"); cell.textContent = String(value); line.appendChild(cell);
-              }); table.appendChild(line);
+              });
+              var verified = returnSlots.get(slot.path);
+              if (verified) line.appendChild(returnIntakeControls(data, verified));
+              table.appendChild(line);
             }); details.appendChild(table);
           }, function () { details.dataset.loaded = ""; var error = document.createElement("p"); error.textContent = "Snapshot unavailable. Reopen to retry."; details.appendChild(error); });
         }); row.appendChild(details);
       }
       sources.appendChild(row);
     });
+  }
+
+  function returnIntakeControls(source, slot) {
+    var cell = document.createElement("td");
+    var status = document.createElement("p");
+    var saved = source.returnIntake.find(function (entry) { return entry.path === slot.path; });
+    status.setAttribute("role", "status");
+    function show(decision) {
+      saved = decision;
+      status.textContent = decision.state === "UUID_REQUESTED" ? "UUID marking requested" : "Return recorded with its current name";
+    }
+    if (saved) show(saved);
+    var buttons = [false, true].map(function (markUuid) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "mc-button small";
+      button.textContent = markUuid ? "Request UUID marking" : "Record return and keep name";
+      button.addEventListener("click", function () {
+        buttons.forEach(function (control) { control.disabled = true; });
+        api("/api/v1/stock/return-intake", {method: "POST", body: {
+          source: source.id, path: slot.path, slotRevision: slot.revision, markUuid: markUuid,
+          expectedDecisionRevision: saved && saved.decisionRevision || 0
+        }}).then(show, function (error) {
+          status.textContent = error.body && error.body.error || "Could not record the return.";
+        }).finally(function () {
+          buttons.forEach(function (control) { control.disabled = false; });
+        });
+      });
+      cell.appendChild(button);
+      return button;
+    });
+    cell.appendChild(status);
+    return cell;
   }
 
   function poll() {

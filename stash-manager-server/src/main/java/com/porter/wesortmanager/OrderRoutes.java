@@ -216,6 +216,9 @@ final class OrderRoutes {
 
     /** An order as this user may see it (forced streamer mode: other users' names and position-like text hidden). */
     private static JsonObject shown(HttpExchange ex, JsonObject order) {
+        if (order.remove("manifest") instanceof JsonObject manifest) {
+            order.addProperty("packageCount", manifest.getAsJsonArray("packages").size());
+        }
         Users.Principal viewer = Router.user(ex);
         if (viewer == null || !viewer.perms().ordersAll() && !viewer.id().equals(order.get("requestedBy").getAsString())) {
             order.remove("recipient");

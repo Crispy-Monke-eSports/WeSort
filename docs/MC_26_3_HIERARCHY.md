@@ -75,3 +75,18 @@ commitbunden CI i workflow `mc26-hierarchy.yml`.
 
 Repack, exakt fysisk kitpackning, återställningsjournal och global atomisk
 slotreservation verifieras i W-021–W-024. Inga Qwerte-data används.
+
+
+## W-063 foundation: untrusted on-item box UUID claims
+
+A native Minecraft 26.3 physical shulker snapshot now *derives*, rather than trusts, three read-only fields from the observed typed `minecraft:custom_name` patch:
+
+- `hasUUID`: true only for an exact canonical lowercase `WeSort-xxxxxxxx-xxxx-4xxx-[89ab]xxx-xxxxxxxxxxxx` visible name on a **vanilla shulker box** (including its colored variants).
+- `boxUUID`: the UUID string or `null`. This is not a Minecraft-provided immutable object ID.
+- `identityStatus`: `UNREGISTERED` (no recognized claim), `INVALID` (malformed, stylized or nonconforming claim), `UNKNOWN` (syntactically valid but not independently proven registered), or `DUPLICATE` (two or more units in the **same verified inventory snapshot** claim the same UUID).
+
+`UNKNOWN` is intentionally **not** `REGISTERED`. Any player can use an anvil to forge the visible label; a verified local UUID claim is not authorization to withdraw, rename or return a box. Real cross-source uniqueness and `REGISTERED` require a separate, persistent, server-owned registry with provable source/slot lineage, confirmed rename, and reconciliation. Duplicates across multiple sources are **not** yet detected by this foundation.
+
+This metadata is appended to shulker rows in the existing `physicalSlots` hierarchy and stored in the same SQLite snapshot transaction. It does not alter the canonical full-component `itemFingerprint`/`fingerprint` or recursively calculated totals. Manager must keep using the existing physical source/slot/fingerprint reservation model, **not** these names for item identity or inventory allocation.
+
+Regression coverage: `PhysicalSlotsTest` for strictly parsed canonical UUIDs, non-v4/uppercase/invisible/bidi/forged names, colored-vs-non-shulker IDs, same-snapshot duplicates and wire round-trips. `StockHierarchyTest` checks duplicate claims and quantities persist through Manager SQLite restart. Actual anvil registration, live duplication across sources, return intake and conflict fencing are still outstanding in issue #67.

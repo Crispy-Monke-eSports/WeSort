@@ -180,6 +180,22 @@ order ID and package count. Manager derives the hint from the durable
 order state, so an agent can recover a missed acknowledgement after a
 restart. The hint uses the same scope checks as the manifest endpoint.
 
+## W-042 individually scoped agent authentication
+
+The local Manager CLI issues a credential in the form
+`<minecraft UUID>.<secret>`. The addon uses the UUID as the identifier
+in `X-SM-Auth` and derives the signing key from the secret. A request
+signed this way must match the credential's player, server, stash and
+agent or dashboard identity as required by the route. Agent credentials
+use the same HMAC request, response and replay checks as the v1 protocol.
+
+The host can rotate a credential with a new issue of the same binding,
+revoke it, and make scoped credentials mandatory. In that mode the
+legacy identifier `-` and legacy Bearer credentials are denied. The
+credential registry, scoped-only mode and revocations persist in the
+Manager volume. Web responses contain connection and permission
+metadata. Provisioning returns its secret through the local CLI.
+
 `POST /api/v1/stock/return-intake` records an Owner's return decision
 for a freshly verified root shulker in an ordinary visible chest or
 barrel. The browser sends `source`, `path`, `slotRevision`, `expectedDecisionRevision`, and an

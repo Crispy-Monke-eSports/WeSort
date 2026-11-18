@@ -287,31 +287,9 @@ public final class LocalOrders {
         return "L-" + HexFormat.of().formatHex(b);
     }
 
-    /** @return null when the order was taken, else why not */
+    /** Rejects execution from the retained local inventory fixture. */
     public String start(Order o) {
-        String why = blocker();
-        if (why != null) return why;
-        StashSorter s = sorter();
-        Stash st = stash();
-        store.load(st.server);
-        run = settings.get();
-        order = o;
-        stashName = st.name;
-        startedAt = System.currentTimeMillis();
-        endingSince = 0;
-        ticks = 0;
-        lastSig = "";
-        lastSaved = 0;
-        runPlayer = mc.player;
-        endingCancelled = false;
-        loggedFailure = false;
-        entry = newEntry(o, startedAt);
-        s.localOrders(true);
-        phase = Phase.STARTING;
-        MeteorClient.EVENT_BUS.subscribe(this);
-        record(true);
-        chat.info("Order " + o.id + ": started on this client.");
-        return null;
+        return "Place orders in WeSort Manager.";
     }
 
     /** Starts the same order again as a new one. @return null when it started, else why not */

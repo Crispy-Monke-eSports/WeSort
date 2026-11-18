@@ -334,6 +334,10 @@ public final class WorldTestDriver {
                 }
                 case "window-capture" -> {
                     var window = com.porter.wesort.modules.StashWindow.get();
+                    if (window == null) {
+                        window = new com.porter.wesort.modules.StashWindow();
+                        Modules.get().add(window);
+                    }
                     if (!window.isActive()) window.toggle();
                     respond(true, "enabled actual passive Stash Window capture", state());
                 }
@@ -514,6 +518,8 @@ public final class WorldTestDriver {
         out.addProperty("sortingPermitted", Modules.get().get(StashSorter.class).sortingPermitted());
         out.addProperty("server", Stash.currentServer());
         out.addProperty("player", mc.player.getName().getString());
+        out.addProperty("playerUuid", mc.player.getUUID().toString());
+        out.addProperty("legacyMemberWindowRegistered", com.porter.wesort.modules.StashWindow.get() != null);
         out.addProperty("dimension", StashIndex.dimension());
         out.addProperty("x", mc.player.getX()); out.addProperty("y", mc.player.getY()); out.addProperty("z", mc.player.getZ());
         out.addProperty("containerId", mc.player.containerMenu.containerId);

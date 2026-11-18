@@ -223,8 +223,8 @@ class Harness:
         token = self.run(self.compose + ['exec', '-T', 'manager', '/opt/wesort/entrypoint', 'bootstrap']).strip()
         require(self.http('/api/v1/auth/setup', {'code': token, 'password': secrets.token_urlsafe(32)})[0] == 200, 'Owner bootstrap failed')
         status, link = self.http('/api/v1/link')
-        require(status == 200, 'Owner link failed')
-        self.key = link['apiKey']
+        require(status == 200 and 'apiKey' not in link, 'Owner link exposed an agent secret')
+        self.key = self.run(self.compose + ['exec', '-T', 'manager', '/opt/wesort/entrypoint', 'agent-key']).strip()
         self.ok('Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord')
 
     def start_client(self):

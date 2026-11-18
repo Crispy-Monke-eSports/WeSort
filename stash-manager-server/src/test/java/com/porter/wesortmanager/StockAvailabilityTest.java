@@ -60,7 +60,7 @@ class StockAvailabilityTest {
         second.getAsJsonArray("physicalSources").add(StockFixtures.physical(index("b",64),ledger.epoch(),ledger.revision(),ledger.revision()+2,0).getAsJsonArray("physicalSources").get(0));
         store.putIndex(second);
         assertEquals(96,balance(owner).get("observed").getAsLong());
-        var restricted=new Users.Principal("u","Reader",false,Users.Perms.of(true,false,false,false,false,false,false,List.of(new Users.StashRef("s","a")),List.of()),false);
+        var restricted=new Users.Principal("u","Reader",false,Users.Perms.of(true,false,false,false,false,false,false,List.of(new Users.StashRef("s","a")),List.of()).withPositions(true),false);
         assertEquals(96,balance(restricted).get("observed").getAsLong());assertEquals(0,available());
         assertEquals(1,new StockRoutes(store,orders).view(restricted).getAsJsonArray("sources").size());
     }

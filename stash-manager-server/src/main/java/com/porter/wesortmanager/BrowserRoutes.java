@@ -19,15 +19,12 @@ final class BrowserRoutes {
     private final SessionStore sessions;
     private final AuditLog audit;
     private final DeliveryContents delivery;
+    private final AgentCredentials credentials;
 
     BrowserRoutes(IndexStore store, Config config, LinkState link, List<String> urls, OrderStore orders, Owners owners,
-                  SessionStore sessions, AuditLog audit) {
-        this(store, config, link, urls, orders, owners, sessions, audit, new DeliveryContents());
-    }
-
-    BrowserRoutes(IndexStore store, Config config, LinkState link, List<String> urls, OrderStore orders, Owners owners,
-                  SessionStore sessions, AuditLog audit, DeliveryContents delivery) {
+                  SessionStore sessions, AuditLog audit, DeliveryContents delivery, AgentCredentials credentials) {
         this.delivery = delivery;
+        this.credentials = credentials;
         this.sessions = sessions;
         this.audit = audit;
         this.orders = orders;
@@ -90,11 +87,12 @@ final class BrowserRoutes {
             } else {
                 o.add("conflict", com.google.gson.JsonNull.INSTANCE);
             }
-            o.add("orders", orders.summaryJson(server, stash));
+            o.add("orders", orders.summaryJson(server, stash, who.perms().ordersAll() ? null : who.id()));
             // What is already in the delivery storage (the full report: GET /api/v1/delivery). Never in the index.
             DeliveryContents.Snapshot dc = delivery.get(server, stash);
             o.add("deliveryContents", dc == null ? com.google.gson.JsonNull.INSTANCE : dc.summary());
             if (forced) Redact.stash(o);
+            else if (!who.perms().positions()) Redact.stashLocations(o);
         }
         // "Server 1": what a page in streamer mode shows instead of the address (numbered over the visible stashes).
         java.util.Map<String, String> labels = Redact.serverLabels(list);
@@ -144,7 +142,7 @@ final class BrowserRoutes {
             Http.error(ex, 404, "no index for that stash");
             return;
         }
-        if (Redact.on(ex)) {
+        if (Redact.on(ex) || !Router.user(ex).perms().positions()) {
             // Forced streamer mode: without the player and dimension (and no shared ETag with the full form).
             Http.json(ex, 200, Redact.index(index.bytes()));
             return;
@@ -165,18 +163,10 @@ final class BrowserRoutes {
 
     private void getLink(HttpExchange ex) throws IOException {
         JsonObject o = new JsonObject();
-        // The key itself: the owner only (it lets a bot do anything a bot can, past every user's limits), and only in
-        // sudo mode (password typed in the last 15 minutes).
-        if (!Router.user(ex).owner()) {
-            o.addProperty("apiKeySet", true);
-            o.addProperty("apiKeyOwnerOnly", true);
-            o.addProperty("apiKeyHint", "only the owner can see the key");
-        } else if (sessions.elevated((String) Http.attr(ex, Router.SESSION_TOKEN))) {
-            o.addProperty("apiKey", config.apiKey());
-        } else {
-            o.addProperty("apiKeySet", true);
-            o.addProperty("apiKeyHint", "confirm your password to see the key");
-        }
+        o.addProperty("apiKeySet", true);
+        boolean owner = Router.user(ex).owner();
+        o.addProperty("canRotateKey", owner && !credentials.scopedOnly());
+        o.addProperty("canProvisionAgents", owner);
         JsonArray list = new JsonArray();
         urls.forEach(list::add);
         o.add("urls", list);
@@ -209,19 +199,19 @@ final class BrowserRoutes {
     }
 
     private void regenerate(HttpExchange ex) throws IOException {
+        if (credentials.scopedOnly()) {
+            Http.error(ex, 409, "Agent credentials are managed on the Manager host");
+            return;
+        }
         if (!sessions.elevated((String) Http.attr(ex, Router.SESSION_TOKEN))) {
             Http.error(ex, 403, "confirm password");
             return;
         }
-        String key;
         synchronized (config) {
-            key = config.regenerateKey();
+            config.regenerateKey();
             link.reset(config.keyState().generation());
         }
         audit.add(Router.user(ex), "apikey.regenerate", null, AuthRoutes.address(ex));
-        System.out.println("API key regenerated from the website (the new key is in config.properties and the Link addon panel).");
-        JsonObject o = Http.ok();
-        o.addProperty("apiKey", key);
-        Http.json(ex, 200, o);
+        Http.json(ex, 200, Http.ok());
     }
 }

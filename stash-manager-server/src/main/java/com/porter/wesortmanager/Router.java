@@ -128,11 +128,17 @@ final class Router implements HttpHandler {
         return Http.attr(ex, Http.MASK) instanceof ServerIds ids ? ids.bot(value) : value;
     }
 
-    Router(AccessControl access, SessionStore sessions, Config config, Users users) {
+    private final AgentCredentials agentCredentials;
+    private final OrderStore orderStore;
+
+    Router(AccessControl access, SessionStore sessions, Config config, Users users, AgentCredentials agentCredentials,
+           OrderStore orderStore) {
         this.access = access;
         this.sessions = sessions;
         this.config = config;
         this.users = users;
+        this.agentCredentials = agentCredentials;
+        this.orderStore = orderStore;
     }
 
     /** The access rules (the same-origin checks of a long-lived browser GET such as the viewer stream). */
@@ -371,13 +377,19 @@ final class Router implements HttpHandler {
                 Http.error(ex, 401, "bad signature");
                 return false;
             }
+            boolean named = !pre.botId().equals("-");
+            var credential = named ? agentCredentials.find(pre.botId()) : null;
+            if ((named && credential == null) || (!named && agentCredentials.scopedOnly())) {
+                Http.error(ex, 401, "bad signature");
+                return false;
+            }
             byte[] body = Http.readBody(ex, dashboard ? Http.MAX_BOT_BODY : Http.MAX_BODY);
             Http.attr(ex, Http.BODY, body);
             String raw = ex.getRequestURI().getRawPath() + (ex.getRequestURI().getRawQuery() == null ? "" : "?" + ex.getRequestURI().getRawQuery());
             Config.KeyState current = config.keyState();
             Config.KeyState previous = dashboard ? null : config.previousKey();
-            byte[] kCurrent = current.signingKey();
-            byte[] kPrevious = previous == null ? null : previous.signingKey();
+            byte[] kCurrent = named ? credential.key() : current.signingKey();
+            byte[] kPrevious = named || previous == null ? null : previous.signingKey();
             Signer.Auth a = Signer.Auth.parse(header);
             int which = signer.verify(a, ex.getRequestMethod(), raw, body, kCurrent, kPrevious);
             if (which < 0) {
@@ -387,9 +399,13 @@ final class Router implements HttpHandler {
             Http.attr(ex, KEY_GENERATION, which == 0 ? current.generation() : previous.generation());
             Http.attr(ex, Http.SIGN_KEY, which == 0 ? kCurrent : kPrevious);
             Http.attr(ex, Http.SIGN_NONCE, a.nonce());
+            if (named && !agentScopeAllowed(ex, path, credential.scope())) {
+                Http.error(ex, 403, "Agent scope does not authorize this request");
+                return false;
+            }
             return true;
         }
-        if (!dashboard && config.allowBearer) {
+        if (!dashboard && config.allowBearer && !agentCredentials.scopedOnly()) {
             long generation = access.keyGeneration(ex);
             if (generation >= 0) {
                 Http.attr(ex, KEY_GENERATION, generation);
@@ -400,6 +416,55 @@ final class Router implements HttpHandler {
             ? (dashboard || !config.allowBearer ? "Bearer is not accepted: update the bot (requests must be signed)" : "missing or wrong API key")
             : "missing signature (X-SM-Auth)");
         return false;
+    }
+
+    private boolean agentScopeAllowed(HttpExchange ex, String path, AgentCredentials.Scope scope) throws IOException {
+        if (path.equals("/api/v1/bot/next") && ex.getRequestMethod().equals("GET")) {
+            return scope.botId().equals(Http.query(ex).get("botId"));
+        }
+        var request = AddonRoutes.readJson(ex);
+        if (request == null || !request.isJsonObject()) return false;
+        var body = request.getAsJsonObject();
+        String server = AddonRoutes.string(body, "server");
+        String stash = AddonRoutes.string(body, "stash");
+        String player = AddonRoutes.string(body, "player");
+        String agent = AddonRoutes.string(body, "agent");
+        return switch (path) {
+            case "/api/v1/index", "/api/v1/heartbeat", "/api/v1/delivery" ->
+                scope.matchesLocation(server, stash) && scope.player().equalsIgnoreCase(player);
+            case "/api/v1/orders/claim", "/api/v1/kits/agent" ->
+                scope.matchesLocation(server, stash) && scope.agent().equals(agent) && scope.player().equalsIgnoreCase(player);
+            case "/api/v1/automation" ->
+                scope.server().equals(server) && scope.agent().equals(agent) && scope.player().equalsIgnoreCase(player);
+            case "/api/v1/physical/agent" -> {
+                var record = object(body, "record");
+                var context = record == null ? null : object(record, "context");
+                yield context != null && scope.agent().equals(agent) && scope.agent().equals(AddonRoutes.string(context, "agent"))
+                    && scope.matchesLocation(AddonRoutes.string(context, "server"), AddonRoutes.string(context, "stash"));
+            }
+            case "/api/v1/bot/hello" -> {
+                var binding = object(body, "manifestScope");
+                yield binding != null && scope.botId().equals(AddonRoutes.string(body, "botId"))
+                    && scope.player().equalsIgnoreCase(player) && scope.agent().equals(AddonRoutes.string(binding, "agent"))
+                    && scope.matchesLocation(AddonRoutes.string(binding, "server"), AddonRoutes.string(binding, "stash"));
+            }
+            case "/api/v1/bot/state", "/api/v1/bot/next", "/api/v1/bot/results", "/api/v1/bot/activity",
+                 "/api/v1/bot/manifest", "/api/v1/bot/manifest/ack" -> scope.botId().equals(AddonRoutes.string(body, "botId"));
+            default -> {
+                var match = SCOPED_ORDER_STATUS.matcher(path);
+                if (!match.matches()) yield false;
+                var where = orderStore.stashOf(match.group(1));
+                yield where != null && scope.matchesLocation(where.server(), where.stash())
+                    && scope.agent().equals(agent) && scope.player().equalsIgnoreCase(player);
+            }
+        };
+    }
+
+    private static final Pattern SCOPED_ORDER_STATUS = Pattern.compile("^/api/v1/orders/(o-[0-9a-f]{12})/status$");
+
+    private static com.google.gson.JsonObject object(com.google.gson.JsonObject parent, String name) {
+        var value = parent.get(name);
+        return value != null && value.isJsonObject() ? value.getAsJsonObject() : null;
     }
 
     private static void safeError(HttpExchange ex, int status, String message) {

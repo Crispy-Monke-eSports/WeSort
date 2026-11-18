@@ -95,6 +95,7 @@ final class DashboardRoutes {
             }
             o.add("stashes", mine);
             if (Redact.on(ex)) Redact.bot(o);
+            else if (!perms.positions()) o.add("summary", com.google.gson.JsonNull.INSTANCE);
             out.add(o);
         }
         Http.json(ex, 200, out);
@@ -127,9 +128,9 @@ final class DashboardRoutes {
 
         // Forced streamer mode: only the (redacted) activity. Settings values, job results and the console can hold
         // positions and names.
-        if (Redact.on(ex) && !m.group(2).equals("activity")) {
-            streamerForbid(ex);
-            return;
+        if (!m.group(2).equals("activity")) {
+            if (Redact.on(ex)) { streamerForbid(ex); return; }
+            if (!perms(ex).positions()) { Router.forbid(ex, "read agent settings and job details", "positions"); return; }
         }
         BotHub.Bot b = bot(ex, m);
         if (b == null) return;
@@ -138,7 +139,7 @@ final class DashboardRoutes {
             case "activity" -> {
                 // Read-only status: a login is enough (no sudo).
                 hub.watchActivity(b);
-                Http.json(ex, 200, Redact.on(ex) ? Redact.activity(hub.activityJson(b)) : hub.activityJson(b));
+                Http.json(ex, 200, Redact.on(ex) || !perms(ex).positions() ? Redact.activity(hub.activityJson(b)) : hub.activityJson(b));
             }
             case "settings" -> {
                 String scope = q.getOrDefault("scope", "plugin");
@@ -211,6 +212,7 @@ final class DashboardRoutes {
             streamerForbid(ex);
             return;
         }
+        if (!perms(ex).positions()) { Router.forbid(ex, "change agent settings", "positions"); return; }
 
         BotHub.Bot b = bot(ex, m);
         if (b == null) return;

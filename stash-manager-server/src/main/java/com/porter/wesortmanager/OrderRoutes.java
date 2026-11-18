@@ -210,7 +210,15 @@ final class OrderRoutes {
         server = scoped(ex, server, stash);
         if (server == null) return;
         JsonObject list = orders.listJson(server, stash);
-        for (var value : list.getAsJsonArray("orders")) shown(ex, value.getAsJsonObject());
+        var viewer = Router.user(ex);
+        var visible = new JsonArray();
+        for (var value : list.getAsJsonArray("orders")) {
+            var order = value.getAsJsonObject();
+            if (viewer.perms().ordersAll() || viewer.id().equals(order.get("requestedBy").getAsString())) {
+                visible.add(shown(ex, order));
+            }
+        }
+        list.add("orders", visible);
         Http.json(ex, 200, list);
     }
 
@@ -220,6 +228,7 @@ final class OrderRoutes {
             order.addProperty("packageCount", manifest.getAsJsonArray("packages").size());
         }
         Users.Principal viewer = Router.user(ex);
+        if (viewer != null && !viewer.perms().positions()) Redact.orderLocations(order);
         if (viewer == null || !viewer.perms().ordersAll() && !viewer.id().equals(order.get("requestedBy").getAsString())) {
             order.remove("recipient");
             order.remove("declaredRecipient");

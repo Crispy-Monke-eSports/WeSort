@@ -404,14 +404,12 @@
       <div class="field-label">server-url</div>
       <div class="copy-list" id="link-urls"></div>
 
-      <div class="field-label">api-key</div>
-      <div class="copy-row">
-        <code class="copy-value" id="link-key" data-sensitive>Loading...</code>
-        <button type="button" class="mc-button" id="link-key-toggle">Show</button>
-        <button type="button" class="mc-button" id="link-key-copy">Copy</button>
+      <div class="note" id="link-key" hidden>
+        Issue the credential on the Manager host with
+        <code>docker compose exec -T manager /opt/wesort/entrypoint agent-issue &lt;uuid&gt; &lt;player&gt; &lt;server&gt; &lt;stash&gt;</code>.
+        Set it in the agent’s <code>api-key</code> setting.
       </div>
       <div class="note" id="link-key-note" hidden></div>
-      <div class="note">Bots sign every request with this key; the key itself never crosses the network. An addon or plugin from before signing is refused with 401 (unsigned) until it is updated.</div>
 
       <div class="field-label">Linked bots</div>
       <div class="link-bots" id="link-bots"></div>

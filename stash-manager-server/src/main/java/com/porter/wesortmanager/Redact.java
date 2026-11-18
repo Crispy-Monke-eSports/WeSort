@@ -84,11 +84,16 @@ final class Redact {
 
     /** One stash entry: no delivery position, no player or owner names, no position-like bot text. */
     static void stash(JsonObject o) {
-        o.add("delivery", JsonNull.INSTANCE);
+        stashLocations(o);
         o.add("player", JsonNull.INSTANCE);
         o.add("owner", JsonNull.INSTANCE);
         JsonObject c = obj(o, "conflict");
         if (c != null) c.add("player", JsonNull.INSTANCE);
+    }
+
+    static void stashLocations(JsonObject o) {
+        o.addProperty("deliveryConfigured", obj(o, "delivery") != null);
+        o.add("delivery", JsonNull.INSTANCE);
         scrubField(o, "orderBlocker");
         scrubField(o, "rescanBlocked");
         scrubField(obj(o, "deliveryStorage"), "blocked");
@@ -134,10 +139,7 @@ final class Redact {
 
     /** An order: other users' names and shulker names hidden; the bot's phase and message text hidden. */
     static void order(JsonObject o, String selfId) {
-        o.remove("sourceGuards");
-        o.remove("allocations");
-        o.remove("agent");
-        o.remove("protectedRoots");
+        orderLocations(o);
         o.remove("recipient");
         o.remove("declaredRecipient");
         o.remove("verifiedRecipient");
@@ -147,6 +149,13 @@ final class Redact {
         boolean mine = by != null && by.has("id") && !by.get("id").isJsonNull() && by.get("id").getAsString().equals(selfId);
         if (by != null && !mine) by.addProperty("name", ANOTHER_USER);
         if (!mine && o.has("names")) o.add("names", JsonNull.INSTANCE);
+    }
+
+    static void orderLocations(JsonObject o) {
+        o.remove("sourceGuards");
+        o.remove("allocations");
+        o.remove("agent");
+        o.remove("protectedRoots");
         scrubField(o, "phase");
         scrubField(o, "message");
     }

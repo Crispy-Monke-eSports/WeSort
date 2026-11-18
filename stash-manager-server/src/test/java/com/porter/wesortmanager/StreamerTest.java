@@ -341,9 +341,34 @@ class StreamerTest {
         assertEquals(sid, mine.obj().getAsJsonObject("order").get("server").getAsString());
         String forced = get(fay, "/api/v1/orders?server=" + sid + "&stash=a").body;
         assertFalse(forced.contains("\"uma\"") || forced.contains("Uma's kit") || forced.contains("2b2t"), forced);
-        assertTrue(forced.contains(Redact.ANOTHER_USER) && forced.contains("\"fay\""));
+        assertTrue(forced.contains("\"fay\""));
+        assertEquals(1, JsonParser.parseString(forced).getAsJsonObject().getAsJsonArray("orders").size());
         String full = get(uma, "/api/v1/orders?server=2b2t.org&stash=a").body;
-        assertTrue(full.contains("\"fay\"") && full.contains("Uma's kit"));
+        assertFalse(full.contains("\"fay\""));
+        assertTrue(full.contains("Uma's kit"));
+    }
+
+    @Test
+    void membersCanBrowseWithoutReadingWarehouseLocations() throws Exception {
+        String memberId = createUser("member", "{\"view\":true,\"order\":true,\"activity\":true}");
+        String member = login("member", PW);
+        var stash = JsonParser.parseString(get(member, "/api/v1/stashes").body).getAsJsonArray().get(0).getAsJsonObject();
+        assertTrue(stash.get("delivery").isJsonNull());
+        assertTrue(stash.get("deliveryConfigured").getAsBoolean());
+        var stock = get(member, "/api/v1/index?server=2b2t.org&stash=a").obj();
+        assertFalse(stock.has("physicalSources") || stock.has("slotVariants") || stock.has("dimension"));
+        assertFalse(stock.getAsJsonArray("items").isEmpty());
+        assertEquals("null", get(member, "/api/v1/delivery?server=2b2t.org&stash=a").body);
+        assertEquals(403, get(member, "/api/v1/bots/b1/settings?scope=plugin").status);
+        assertFalse(get(member, "/api/v1/bots/b1/activity").body.contains("1234"));
+
+        String path = "/api/v1/users/" + memberId;
+        ok(post(owner, path, "{\"perms\":{\"view\":true,\"order\":true,\"activity\":true,\"positions\":true}}"));
+        var elevated = JsonParser.parseString(get(member, "/api/v1/stashes").body).getAsJsonArray().get(0).getAsJsonObject();
+        assertTrue(elevated.getAsJsonObject("delivery").has("x"));
+        ok(post(owner, path, "{\"perms\":{\"view\":true,\"order\":true,\"activity\":true,\"positions\":false}}"));
+        var revoked = JsonParser.parseString(get(member, "/api/v1/stashes").body).getAsJsonArray().get(0).getAsJsonObject();
+        assertTrue(revoked.get("delivery").isJsonNull());
     }
 
     @Test

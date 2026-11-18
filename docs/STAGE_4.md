@@ -120,3 +120,29 @@ verifierade 27-slotinnehållet. Ett byte av shulker i sloten kräver ett
 nytt val. Registreringen använder det observerade lagret och räknar
 inte in nya items från en manuell uppgift. UUID-begäran väntar på ett
 separat behörigt, fysiskt kvitterat anviljobb.
+
+## W-042 – åtkomst till historik och positioner
+
+Orderlistan visar egna beställningar för medlem. Behörigheten
+`ordersAll` ger åtkomst till andras order inom tillåtna stashes.
+Stashens sammanfattning visar gemensamt antal öppna order och
+filtrerar den aktiva orderns detaljer enligt samma medlemsregel.
+
+`positions` styr fysisk insyn utöver stashscope. Owner och
+Operator har den, med separat tilldelning till andra roller.
+Äldre anpassade roller med agentinställningar får samma
+positionsåtkomst vid migrering om fältet saknas. Medlemmar utan
+behörigheten har åtkomst till gemensamma saldon och orderbara
+varianter. Manager skyddar fysiska snapshots, positioner, råa
+agentmeddelanden och packningsallokeringar på servern.
+
+Värdens administratör utfärdar agentnycklar via den ägarbegränsade
+Unix-sockeln. Manager binder varje nyckel till Minecraft-kontot, servern
+och stashen. Rotation och spärr gäller direkt för individuella nycklar.
+Efter migrering stänger värdens administratör av den delade nyckeln
+med `agent-require-scoped`. Link-vyn visar anslutningsstatus.
+
+Medlemsfönstret och dess kommando registreras inte i produktionsklienten.
+Beställningar går via Manager-webben. Agentens tekniska koppling,
+Minecraft-chatt och lokala nödstopp finns kvar. Kvoter och verkställighet
+av den fysiska policyn hör till W-059 och W-061.

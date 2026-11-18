@@ -55,7 +55,7 @@ public class StashManager extends Module {
 
     private final Setting<String> apiKey = sgGeneral.add(new StringSetting.Builder()
         .name("api-key")
-        .description("The agent API key from the authenticated Owner Link view. Keep it private.")
+        .description("The agent API key from the Manager host's agent-key command. Keep it private.")
         .defaultValue("")
         .build()
     );
@@ -648,7 +648,7 @@ public class StashManager extends Module {
             setStatus("no key");
             if (!warnedKey) {
                 warnedKey = true;
-                warning("No API key set. Copy it from the authenticated Owner Link view into this module's api-key setting.");
+                warning("No API key set. Retrieve it with agent-key on the Manager host and set it here.");
             }
             return;
         }
@@ -1584,7 +1584,13 @@ public class StashManager extends Module {
         }
 
         // The key itself never goes on the wire: the request is signed with a key derived from it (see PROTOCOL.md)
-        byte[] signingKey = signingKey(key);
+        String credentialId = "-";
+        String secret = key;
+        if (key.matches("[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\\.[A-Za-z0-9_-]{43}")) {
+            credentialId = key.substring(0, 36);
+            secret = key.substring(37);
+        }
+        byte[] signingKey = signingKey(secret);
         String nonce = randomHex(16);
         long ts = System.currentTimeMillis();
         String pathQuery = uri.getRawPath() + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery());
@@ -1594,7 +1600,7 @@ public class StashManager extends Module {
         try {
             request = HttpRequest.newBuilder(uri)
                 .timeout(Duration.ofSeconds(15))
-                .header("X-SM-Auth", "v1 - " + ts + " " + nonce + " " + sig)
+                .header("X-SM-Auth", "v1 " + credentialId + " " + ts + " " + nonce + " " + sig)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofByteArray(body))
                 .build();

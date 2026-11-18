@@ -32,9 +32,29 @@ public final class WeSortManager {
         setDefault("sun.net.httpserver.maxRspTime", "60");
 
         String command = args.length > 0 && !args[0].startsWith("-") ? args[0] : "serve";
-        if (!List.of("serve", "bootstrap", "healthcheck").contains(command)) usage("unknown command");
+        if (!List.of("serve", "bootstrap", "healthcheck", "agent-key", "agent-issue", "agent-revoke", "agent-require-scoped").contains(command)) usage("unknown command");
+        String request = switch (command) {
+            case "bootstrap" -> "BOOTSTRAP";
+            case "agent-key" -> "AGENT_KEY";
+            case "agent-require-scoped" -> "AGENT_REQUIRE_SCOPED";
+            case "agent-revoke" -> {
+                if (args.length < 2) usage("agent-revoke needs an agent UUID");
+                yield "AGENT_REVOKE " + args[1];
+            }
+            case "agent-issue" -> {
+                if (args.length < 5) usage("agent-issue needs agent UUID, player, Minecraft server and stash");
+                var row = new com.google.gson.JsonObject();
+                row.addProperty("agent", args[1]); row.addProperty("player", args[2]);
+                row.addProperty("server", args[3]); row.addProperty("stash", args[4]);
+                yield "AGENT_ISSUE " + java.util.Base64.getEncoder()
+                    .encodeToString(row.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+            default -> "HEALTH";
+        };
         Path dataDir = Path.of("wesort-manager-data");
-        for (int i = args.length > 0 && args[0].equals(command) ? 1 : 0; i < args.length; i++) {
+        int firstOption = command.equals("agent-issue") ? 5 : command.equals("agent-revoke") ? 2
+            : args.length > 0 && args[0].equals(command) ? 1 : 0;
+        for (int i = firstOption; i < args.length; i++) {
             switch (args[i]) {
                 case "--data" -> {
                     if (i + 1 >= args.length) usage("--data needs a directory");
@@ -45,7 +65,7 @@ public final class WeSortManager {
             }
         }
         if (!command.equals("serve")) {
-            String reply = LocalControl.request(dataDir, command.equals("bootstrap") ? "BOOTSTRAP" : "HEALTH");
+            String reply = LocalControl.request(dataDir, request);
             System.out.println(reply); // Only this explicitly requested administrator channel returns the token.
             return;
         }
@@ -138,7 +158,7 @@ public final class WeSortManager {
         server.setExecutor(pool);
         server.createContext("/", router);
         LocalControl control;
-        try { control = new LocalControl(dataDir, authRoutes, health, config.port); }
+        try { control = new LocalControl(dataDir, authRoutes, health, config, config.port, built.agentCredentials(), audit); }
         catch (IOException e) { server.stop(0); icons.close(); pool.shutdownNow(); throw e; }
         server.start();
 
@@ -189,19 +209,20 @@ public final class WeSortManager {
         }
     }
 
-    record Routes(Router router, AuthRoutes auth, DeliveryContents delivery) {
+    record Routes(Router router, AuthRoutes auth, DeliveryContents delivery, AgentCredentials agentCredentials) {
     }
 
     /** Every route, in order (the static files last). Shared with the tests, so they check the real registrations. */
     static Routes routes(Config config, IndexStore store, OrderStore orders, Owners owners, IconService icons, LinkState link,
-                         List<String> urls, SessionStore sessions, Users users, AuditLog audit, BotHub hub, LoginLimiter limiter) {
+                         List<String> urls, SessionStore sessions, Users users, AuditLog audit, BotHub hub, LoginLimiter limiter) throws IOException {
         return routes(config, store, orders, owners, icons, link, urls, sessions, users, audit, hub, limiter, new RuntimeHealth(true));
     }
 
     static Routes routes(Config config, IndexStore store, OrderStore orders, Owners owners, IconService icons, LinkState link,
                          List<String> urls, SessionStore sessions, Users users, AuditLog audit, BotHub hub, LoginLimiter limiter,
-                         RuntimeHealth health) {
-        Router router = new Router(new AccessControl(config), sessions, config, users);
+                         RuntimeHealth health) throws IOException {
+        var credentials = new AgentCredentials(config.dataDir());
+        Router router = new Router(new AccessControl(config), sessions, config, users, credentials, orders);
         health.register(router);
         router.ids(new ServerIds(ServerIds.secret(config.dataDir()), store::servers,
             () -> hub.all().stream().map(b -> b.botId).toList()));
@@ -210,7 +231,7 @@ public final class WeSortManager {
         authRoutes.register(router);
         DeliveryContents delivery = new DeliveryContents(); // in memory only
         new AddonRoutes(store, link, icons, orders, owners, delivery).register(router);
-        new BrowserRoutes(store, config, link, urls, orders, owners, sessions, audit, delivery).register(router);
+        new BrowserRoutes(store, config, link, urls, orders, owners, sessions, audit, delivery, credentials).register(router);
         new DeliveryRoutes(delivery, owners).register(router);
         var guild = new GuildRoutes(config.dataDir(), audit);
         new OrderRoutes(orders, owners, audit, guild, users).register(router);
@@ -223,7 +244,7 @@ public final class WeSortManager {
         guild.register(router);
         new IconRoutes(icons).register(router);
         new StaticRoutes().register(router); // last: the catch-all
-        return new Routes(router, authRoutes, delivery);
+        return new Routes(router, authRoutes, delivery, credentials);
     }
 
     private static void setDefault(String key, String value) {
@@ -232,7 +253,9 @@ public final class WeSortManager {
 
     private static void usage(String error) {
         if (error != null) System.err.println(error);
-        System.err.println("Usage (development): java -jar wesort-manager.jar [serve|bootstrap|healthcheck] [--data <dir>]");
+        System.err.println("Usage: java -jar wesort-manager.jar [serve|bootstrap|healthcheck|agent-key|agent-require-scoped] [--data <dir>]");
+        System.err.println("       agent-issue <uuid> <player> <server> <stash> [--data <dir>]");
+        System.err.println("       agent-revoke <uuid> [--data <dir>]");
         System.exit(error == null ? 0 : 2);
     }
 

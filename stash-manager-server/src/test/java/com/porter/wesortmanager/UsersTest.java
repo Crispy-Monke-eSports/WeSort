@@ -251,9 +251,15 @@ class UsersTest {
         assertTrue(audit.newest(30).toString().contains(own + " SELF"));
         assertFalse(audit.newest(30).toString().contains("Projekt Å"));
         String other = guildOrder.get("id").getAsString();
+        var memberHistory = get(member, "/api/v1/orders?server=s&stash=a").obj().getAsJsonArray("orders");
+        assertEquals(1, memberHistory.size());
+        assertEquals(own, memberHistory.get(0).getAsJsonObject().get("id").getAsString());
+        assertTrue(get(viewer, "/api/v1/orders?server=s&stash=a").obj().getAsJsonArray("orders").isEmpty());
+        assertEquals(2, get(officer, "/api/v1/orders?server=s&stash=a").obj().getAsJsonArray("orders").size());
         assertEquals(200, post(officer, "/api/v1/orders/" + other + "/cancel", "{}").status);
         assertEquals(200, post(owner, "/api/v1/users/" + officerId, "{\"preset\":\"member\"}").status);
         assertEquals(403, post(officer, "/api/v1/orders/" + other + "/retry", "{}").status);
+        assertEquals(1, get(officer, "/api/v1/orders?server=s&stash=a").obj().getAsJsonArray("orders").size());
         var balances = get(viewer, "/api/v1/stock").obj().get("items");
         assertEquals(200, post(owner, "/api/v1/users/" + memberId, "{\"disabled\":true}").status);
         assertEquals(401, get(member, "/api/v1/orders?server=s&stash=a").status);
@@ -651,9 +657,10 @@ class UsersTest {
         Res link = get(o, "/api/v1/link");
         assertEquals(200, link.status);
         assertFalse(link.obj().has("apiKey"), "the key is the owner's only, even Admin unlocked");
-        assertTrue(link.obj().get("apiKeyOwnerOnly").getAsBoolean());
+        assertFalse(link.obj().get("canRotateKey").getAsBoolean());
         assertEquals(403, post(o, "/api/v1/link/regenerate", null).status);
-        assertTrue(get(owner, "/api/v1/link").obj().has("apiKey"), "the owner, just logged in, sees it");
+        assertFalse(get(owner, "/api/v1/link").obj().has("apiKey"));
+        assertFalse(post(owner, "/api/v1/link/regenerate", "{}").obj().has("apiKey"));
         assertEquals(200, post(o, "/api/v1/stashes/release", "{\"server\":\"s\",\"stash\":\"a\"}").status, "release in scope is allowed");
         assertEquals(404, post(o, "/api/v1/stashes/release", "{\"server\":\"s\",\"stash\":\"b\"}").status);
     }

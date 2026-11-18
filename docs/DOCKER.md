@@ -91,8 +91,18 @@ från sådana arkiv. Detta bygger på BlueMaps explicita samtyckesprincip
 men använder det enklare startvillkoret `eula=true`.
 
 Inga API-nycklar eller lösenord stöds som Docker build-args eller Compose-env.
-Ändra privata runtimeinställningar i den skyddade volymen om det behövs. Owner
-kan hämta/regenerera agentnyckeln från den autentiserade Link-vyn. Montera inte
+Ändra privata runtimeinställningar i den skyddade volymen om det behövs.
+Efter Owner-setup skapar värdens administratör en individuell agentnyckel
+med `docker compose exec -T manager /opt/wesort/entrypoint agent-issue <uuid> <player> <server> <stash>`.
+Klistra in hela värdet i agentens `api-key`. Samma kommando med samma
+scope roterar nyckeln. `agent-revoke <uuid>` stänger av agentens nyckel
+omedelbart. `agent-require-scoped` stänger av delad autentisering när
+agenterna har fått sina individuella nycklar.
+
+Under migrering kan `agent-key` lämna ut den delade äldre nyckeln på värden.
+Owner kan starta dess rotation i Link-vyn. Äldre lageranrop har ett
+övergångsfönster på tio minuter när delad autentisering är aktiv.
+Montera inte
 Qwerte-data, hemkataloger eller Docker-socketen i Manager. Miljöinställningarna
 för deployment överstyr motsvarande icke-hemliga configvärden vid start.
 

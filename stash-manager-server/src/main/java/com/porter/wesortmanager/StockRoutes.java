@@ -27,7 +27,7 @@ final class StockRoutes {
     }
 
     JsonObject source(Users.Principal who, String id) throws IOException {
-        if (Redact.forced(who)) return null;
+        if (Redact.forced(who) || !who.perms().positions()) return null;
         synchronized (index) {
             var ledger = index.stock();
             // Authorize the membership before loading potentially sensitive component data.
@@ -171,6 +171,7 @@ final class StockRoutes {
             }
             if (!who.perms().seesStash(source.server(), source.stash())) continue;
             addItems(stashItems.computeIfAbsent(book, key -> new TreeMap<>()), source, who);
+            if (!who.perms().positions() && !Redact.forced(who)) continue;
             if (details.containsKey(id)) {
                 if (!Redact.forced(who)) details.get(id).getAsJsonArray("stashes").add(source.stash());
                 continue;
@@ -231,7 +232,7 @@ final class StockRoutes {
             var item = value.getAsJsonObject(); String key = item.get("key").getAsString();
             var row = rows.computeIfAbsent(source.server() + "\u0000" + key, ignored -> {
                 var result = new JsonObject(); result.addProperty("key", key); result.addProperty("server", source.server()); result.add("id", item.get("id"));
-                result.addProperty("name", Redact.forced(who) || !who.perms().seesStash(source.server(), source.stash()) ? Redact.prettyId(item.get("id").getAsString())
+                result.addProperty("name", Redact.forced(who) || !who.perms().positions() || !who.perms().seesStash(source.server(), source.stash()) ? Redact.prettyId(item.get("id").getAsString())
                     : item.has("name") ? item.get("name").getAsString() : item.get("id").getAsString());
                 for (String field : List.of("observed", "fresh", "unknown")) result.addProperty(field, 0L);
                 return result;

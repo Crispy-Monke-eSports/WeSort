@@ -22,6 +22,7 @@ The API key comes from --key, $WESORT_MANAGER_KEY, or apiKey= in <dataDir>/confi
 """
 
 import argparse
+import re
 import copy
 import hashlib
 import hmac
@@ -207,11 +208,15 @@ class Client:
     def __init__(self, url, key, bearer=False):
         self.url = url.rstrip("/")
         self.key = key
-        self.k = signing_key(key)
+        self.credential_id = "-"
+        secret = key
+        if re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\.[A-Za-z0-9_-]{43}", key):
+            self.credential_id, secret = key.split(".", 1)
+        self.k = signing_key(secret)
         self.bearer = bearer
         self.last_error = None
 
-    def request(self, method, path, body=None, timeout=15, bot_id="-", ts=None, nonce=None, key=None, raw=False):
+    def request(self, method, path, body=None, timeout=15, bot_id=None, ts=None, nonce=None, key=None, raw=False):
         data = b"" if body is None else json.dumps(body).encode()
         headers = {}
         if body is not None:
@@ -222,7 +227,7 @@ class Client:
         else:
             ts = ts if ts is not None else int(time.time() * 1000)
             k = signing_key(key) if key else self.k
-            headers["X-SM-Auth"] = "v1 %s %d %s %s" % (bot_id, ts, nonce, request_sig(k, method, path, ts, nonce, data))
+            headers["X-SM-Auth"] = "v1 %s %d %s %s" % (bot_id or self.credential_id, ts, nonce, request_sig(k, method, path, ts, nonce, data))
         req = urllib.request.Request(self.url + path, data=data if method != "GET" else None, method=method, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -244,16 +249,12 @@ class Client:
             return status, text
 
     def get(self, path, timeout=40):
-        bot = "-"
-        if "botId=" in path:
-            bot = urllib.parse.unquote(path.split("botId=", 1)[1].split("&")[0])
-        return self.request("GET", path, timeout=timeout, bot_id=bot)
+        return self.request("GET", path, timeout=timeout)
 
     def post(self, path, body):
         if path.startswith("/api/v1/orders/") and isinstance(body, dict):
             body = dict(body, player=PLAYER)  # claims and status reports name the bot (stash ownership)
-        bot = body.get("botId", "-") if isinstance(body, dict) else "-"
-        return self.request("POST", path, body, bot_id=bot)
+        return self.request("POST", path, body)
 
 
 def load_key(args):

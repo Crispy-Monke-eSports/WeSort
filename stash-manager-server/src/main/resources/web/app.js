@@ -95,8 +95,6 @@
     linkClose: $("link-close"),
     linkUrls: $("link-urls"),
     linkKey: $("link-key"),
-    linkKeyToggle: $("link-key-toggle"),
-    linkKeyCopy: $("link-key-copy"),
     linkKeyNote: $("link-key-note"),
     linkDot: $("link-dot"),
     linkStatusText: $("link-status-text"),
@@ -279,7 +277,7 @@
   // hides what the user can't use. A server without sub-users sends no user: that is the owner, with everything.
 
   var OWNER_PERMS = {
-    view: true, order: true, ordersAll: true, guildOrders: true, activity: true, settings: true,
+    view: true, order: true, ordersAll: true, guildOrders: true, positions: true, activity: true, settings: true,
     rescan: true, link: true, streamer: false, stashes: null, bots: null
   };
   var me = { id: "owner", name: "", owner: true, mustChange: false, perms: OWNER_PERMS };
@@ -1080,7 +1078,7 @@
       row.appendChild(hide(cell(doing.warn ? "warn" : "", doing.text)));
       var d = s.delivery;
       var dc = cell(d && typeof d === "object" ? "" : "warn",
-        d && typeof d === "object" ? num(d.x, 0) + ", " + num(d.y, 0) + ", " + num(d.z, 0) : "not set");
+        d && typeof d === "object" ? num(d.x, 0) + ", " + num(d.y, 0) + ", " + num(d.z, 0) : s.deliveryConfigured ? "set" : "not set");
       row.appendChild(d && typeof d === "object" ? hide(dc) : dc);
       row.appendChild(cell("bots-num", String(s.orders && typeof s.orders === "object" ? num(s.orders.open, 0) : 0)));
       var actions = document.createElement("div");
@@ -1799,7 +1797,6 @@
     open: false,
     autoOpened: false,
     data: null,
-    showKey: false,
     timer: 0,
     urlsShown: null
   };
@@ -1910,31 +1907,9 @@
   }
 
   function renderKey() {
-    // Sub-users never get the key (it lets a bot do anything): no key, Show, Copy or Regenerate for them.
-    var ownerOnly = !!(link.data && link.data.apiKeyOwnerOnly);
-    el.linkKeyToggle.hidden = ownerOnly;
-    el.linkKeyCopy.hidden = ownerOnly;
-    el.linkRegen.hidden = ownerOnly;
-    if (ownerOnly) {
-      el.linkKey.textContent = "Only the owner can see the API key.";
-      el.linkKey.classList.remove("masked");
-      return;
-    }
-    var key = link.data ? str(link.data.apiKey) : "";
-    if (!key && link.data && link.data.apiKeySet) {
-      el.linkKey.textContent = new Array(44).join("\u2022");
-      el.linkKey.classList.add("masked");
-      el.linkKeyToggle.textContent = "Show";
-      return;
-    }
-    if (link.showKey) {
-      el.linkKey.textContent = key;
-      el.linkKey.classList.remove("masked");
-    } else {
-      el.linkKey.textContent = new Array(Math.min(key.length, 43) + 1).join("\u2022");
-      el.linkKey.classList.add("masked");
-    }
-    el.linkKeyToggle.textContent = link.showKey ? "Hide" : "Show";
+    var canRotate = !!(link.data && link.data.canRotateKey);
+    el.linkRegen.hidden = !canRotate;
+    el.linkKey.hidden = !(link.data && link.data.canProvisionAgents);
   }
 
   function note(text, warn) {
@@ -1979,56 +1954,14 @@
     if (currentWindow) closeWindow();
     else if (link.open) closeLink();
   });
-  /** The key is only sent in admin (sudo) mode: ask for the password first, then fetch it. */
-  function withKey(action) {
-    if (link.data && str(link.data.apiKey)) {
-      action();
-      return;
-    }
-    askPassword().then(function () {
-      return api("/api/v1/link").then(function (d) {
-        link.data = d;
-        sudoState(Date.now() + 15 * 60 * 1000);
-        renderLink();
-        action();
-      });
-    }, function () {});
-  }
-
-  el.linkKeyToggle.addEventListener("click", function () {
-    if (streamerOn()) return;
-    withKey(function () {
-      link.showKey = !link.showKey;
-      renderKey();
-    });
-  });
-  el.linkKeyCopy.addEventListener("click", function () {
-    if (streamerOn()) return;
-    withKey(copyKey);
-  });
-
-  function copyKey() {
-    if (!link.data) return;
-    // The fallback selects the visible text, so it has to be the real key.
-    if (!(navigator.clipboard && window.isSecureContext) && !link.showKey) {
-      link.showKey = true;
-      renderKey();
-    }
-    copyText(str(link.data.apiKey), el.linkKey);
-  }
   el.linkRegen.addEventListener("click", function () {
-    var sure = window.confirm("Make a new API key?\n\nThe old key stops working immediately. " +
-      "The addon will be rejected until you paste the new key into its api-key setting.");
+    var sure = window.confirm("Rotate the agent key?\n\nRetrieve the new key from the Manager host and update your agents.");
     if (!sure) return;
     el.linkRegen.disabled = true;
-    withSudo(function () { return api("/api/v1/link/regenerate", { method: "POST", body: {} }); }).then(function (r) {
-      if (!link.data) link.data = {};
-      link.data.apiKey = str(r.apiKey);
-      link.data.linked = null;
-      link.showKey = true;
+    withSudo(function () { return api("/api/v1/link/regenerate", { method: "POST", body: {} }); }).then(function () {
+      if (link.data) { link.data.linked = null; link.data.bots = []; }
       renderLink();
-      el.linkKey.classList.add("fresh");
-      el.linkKeyNote.textContent = "New key made. Re-paste it into the addon's api-key setting.";
+      el.linkKeyNote.textContent = "Key rotated. Retrieve it from the Manager host and update the agent.";
       el.linkKeyNote.hidden = false;
       note("");
     }, function (e) {
@@ -2865,6 +2798,9 @@
     if (d && typeof d === "object" && typeof d.x === "number" && typeof d.y === "number" && typeof d.z === "number") {
       el.deliveryStatus.replaceChildren(document.createTextNode("Delivery container: "),
         hiddenSpan(d.x + ", " + d.y + ", " + d.z + (str(d.dimension) ? " (" + str(d.dimension) + ")" : "")));
+      el.deliveryStatus.className = "bot-line ok";
+    } else if (s.deliveryConfigured) {
+      el.deliveryStatus.textContent = "Delivery container configured.";
       el.deliveryStatus.className = "bot-line ok";
     } else {
       el.deliveryStatus.textContent = "No delivery container set: in Meteor open stash-manager → Delivery → " +
@@ -5549,12 +5485,6 @@
     api("/api/v1/auth/lock", { method: "POST", body: {} }).then(function () {
       sudoState(0);
       toast("Admin locked. Account administration requires your password again.");
-      if (link.data && link.data.apiKey) {
-        delete link.data.apiKey;
-        link.data.apiKeySet = true;
-        link.showKey = false;
-        renderKey();
-      }
     }, function () {});
   });
 
@@ -5581,13 +5511,7 @@
     el.streamerBtn.classList.toggle("locked", locked);
     el.streamerBtn.title = locked ? "Streamer mode is enforced by the owner" : "Blur coordinates, keys, addresses and events (this browser only)";
     el.streamerState.textContent = locked ? ": on (enforced)" : on ? ": on" : ": off";
-    el.linkKeyToggle.disabled = on;
-    el.linkKeyCopy.disabled = on;
     Array.prototype.forEach.call(el.linkUrls.querySelectorAll(".streamer-block"), function (b) { b.disabled = on; });
-    if (on && link.showKey) {
-      link.showKey = false;
-      renderKey();
-    }
     if (on) {
       var sel = window.getSelection && window.getSelection();
       if (sel) sel.removeAllRanges(); // a selection made before turning it on would still copy
@@ -5904,10 +5828,11 @@
     ["order", "Place orders", "Place orders; cancel, retry or force-cancel their own orders."],
     ["ordersAll", "Manage all orders", "Cancel, retry or force-cancel anyone's orders; Clear history."],
     ["guildOrders", "Place guild orders", "Choose a guild purpose or declare a separate recipient when placing an order."],
+    ["positions", "View stash positions", "See coordinates and physical slot details for permitted stashes."],
     ["activity", "Bots and activity", "Bots tab, Activity, job status and the plugin settings (read only)."],
     ["settings", "Change plugin settings", "Save the WeSort plugin settings."],
     ["rescan", "Rescan stashes", "Ask the bot to re-read every container of a stash."],
-    ["link", "Link addon", "The Link addon panel (linked bots in scope) and releasing a stash. The API key itself stays owner-only."],
+    ["link", "Link addon", "The Link addon panel (linked bots in scope) and releasing a stash. The Manager host provides the agent key."],
     ["streamer", "Force streamer mode", "A restriction: the server never sends this user coordinates, player names, server addresses, chat or the bots' free text. Bot settings are refused. The user can't turn it off."]
   ];
   var PRESET_ORDER = ["viewer", "member", "operator", "officer"];

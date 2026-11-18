@@ -27,11 +27,12 @@ public final class ClientRuntimeProbe {
             try {
                 Thread.sleep(10_000);
                 MeteorClient.mc.execute(() -> {
-                    for (var type : java.util.List.<Class<? extends meteordevelopment.meteorclient.systems.modules.Module>>of(StashSorter.class, StashOverlay.class, StashManager.class, StashWindow.class)) {
+                    for (var type : java.util.List.<Class<? extends meteordevelopment.meteorclient.systems.modules.Module>>of(StashSorter.class, StashOverlay.class, StashManager.class)) {
                         if (Modules.get().get(type) == null) throw new IllegalStateException("Missing module " + type);
                     }
                     if (BaritoneAPI.getProvider().getPrimaryBaritone() == null) throw new IllegalStateException("No Baritone");
-                    StashWindow.get().openNow();
+                    if (StashWindow.get() != null) throw new IllegalStateException("Legacy member window registered in production");
+                    new StashWindow().openNow();
                 });
                 Thread.sleep(8_000);
                 MeteorClient.mc.execute(() -> {
@@ -46,7 +47,7 @@ public final class ClientRuntimeProbe {
                         }
                         result.put("java", System.getProperty("java.runtime.version"));
                         result.put("result", "PASS");
-                        result.put("checks", "WeSort modules, packet mixin audit, Baritone linkage, Stash Window render/start/close");
+                        result.put("checks", "WeSort modules, packet mixin audit, Baritone linkage, legacy readback fixture, member window disabled in production");
                         result.put("limits", "No connected world, physical inventory or pathfinding tested.");
                         Files.writeString(loader.getGameDir().resolve("runtime-result.json"),
                             new GsonBuilder().setPrettyPrinting().create().toJson(result));

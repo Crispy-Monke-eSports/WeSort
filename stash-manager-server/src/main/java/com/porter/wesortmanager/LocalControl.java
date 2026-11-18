@@ -21,7 +21,8 @@ final class LocalControl implements AutoCloseable {
     private final Thread worker;
     private final java.net.http.HttpClient http;
 
-    LocalControl(Path data, AuthRoutes auth, RuntimeHealth health, int port) throws IOException {
+    LocalControl(Path data, AuthRoutes auth, RuntimeHealth health, Config config, int port,
+                 AgentCredentials credentials, AuditLog audit) throws IOException {
         path = data.resolve(FILE);
         Files.deleteIfExists(path); // Only after acquiring ManagerLock and validating the own data root.
         server = ServerSocketChannel.open(StandardProtocolFamily.UNIX);
@@ -40,6 +41,12 @@ final class LocalControl implements AutoCloseable {
                     else if (command.equals("BOOTSTRAP")) {
                         String token = auth.issueBootstrap();
                         response = token == null ? "ERR owner already configured" : "OK " + token;
+                    } else if (command.equals("AGENT_KEY")) {
+                        response = config.dashboardPassword() == null ? "ERR configure the owner first"
+                            : credentials.scopedOnly() ? "ERR shared agent keys are disabled" : "OK " + config.apiKey();
+                    } else if (command.startsWith("AGENT_")) {
+                        response = config.dashboardPassword() == null ? "ERR configure the owner first"
+                            : agentCommand(command, credentials, audit);
                     } else response = "ERR unknown command";
                     write(client, response + "\n");
                 } catch (IOException e) {
@@ -49,6 +56,34 @@ final class LocalControl implements AutoCloseable {
         }, "wesort-local-control");
         worker.setDaemon(true);
         worker.start();
+    }
+
+    private static String agentCommand(String command, AgentCredentials credentials, AuditLog audit) throws IOException {
+        try {
+            if (command.startsWith("AGENT_ISSUE ")) {
+                String raw = new String(java.util.Base64.getDecoder().decode(command.substring("AGENT_ISSUE ".length())), StandardCharsets.UTF_8);
+                var row = com.google.gson.JsonParser.parseString(raw).getAsJsonObject();
+                var scope = new AgentCredentials.Scope(AddonRoutes.string(row, "agent"), AddonRoutes.string(row, "player"),
+                    AddonRoutes.string(row, "server"), AddonRoutes.string(row, "stash"));
+                String token = credentials.issue(scope);
+                audit.add("local", "Manager host administrator", "agent.credential.issue", scope.agent(), "local");
+                return "OK " + token;
+            }
+            if (command.startsWith("AGENT_REVOKE ")) {
+                String id = command.substring("AGENT_REVOKE ".length());
+                if (!credentials.revoke(id)) return "ERR no active agent credential";
+                audit.add("local", "Manager host administrator", "agent.credential.revoke", id, "local");
+                return "OK revoked";
+            }
+            if (command.equals("AGENT_REQUIRE_SCOPED")) {
+                credentials.requireScoped();
+                audit.add("local", "Manager host administrator", "agent.credential.require_scoped", null, "local");
+                return "OK scoped credentials required";
+            }
+        } catch (RuntimeException invalid) {
+            return "ERR invalid agent credential request or scope";
+        }
+        return "ERR unknown command";
     }
 
     private boolean httpReady(int port) {
@@ -77,7 +112,7 @@ final class LocalControl implements AutoCloseable {
     }
 
     private static String line(SocketChannel channel) throws IOException {
-        ByteBuffer buffer = ByteBuffer.allocate(256);
+        ByteBuffer buffer = ByteBuffer.allocate(8192);
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
         while (buffer.hasRemaining() && System.nanoTime() < deadline) {
             if (channel.read(buffer) < 0) break;

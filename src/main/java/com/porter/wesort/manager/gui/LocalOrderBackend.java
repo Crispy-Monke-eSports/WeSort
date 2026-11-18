@@ -46,7 +46,7 @@ final class LocalOrderBackend implements OrderBackend {
 
     @Override
     public String title() {
-        return "Orders - this client carries them out";
+        return "Local order history";
     }
 
     @Override
@@ -56,7 +56,7 @@ final class LocalOrderBackend implements OrderBackend {
 
     @Override
     public boolean canPlace() {
-        return true;
+        return false;
     }
 
     @Override

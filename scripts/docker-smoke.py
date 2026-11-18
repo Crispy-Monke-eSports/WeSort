@@ -114,11 +114,20 @@ try:
     assert http('/api/v1/auth/setup', {'code': token, 'password': password}, opener=browser)[0] == 409
     assert run(['docker', 'exec', container, '/opt/wesort/entrypoint', 'bootstrap'], check=False).returncode != 0
     assert http('/api/v1/stashes', opener=browser)[1] == []
-    key = http('/api/v1/link', opener=browser)[1]['apiKey']
+    assert 'apiKey' not in http('/api/v1/link', opener=browser)[1]
+    key_command = ['docker', 'exec', container, '/opt/wesort/entrypoint', 'agent-key']
+    old_key = run(key_command).stdout.strip()
+    status, rotation, _, _ = http('/api/v1/link/regenerate', {}, opener=browser)
+    assert status == 200 and 'apiKey' not in rotation
+    key = run(key_command).stdout.strip()
+    assert key and key != old_key
+    assert agent(network, old_key, '/api/v1/bot/hello', {'botId': 'old'})['status'] == 401
+    assert agent(network, key, '/api/v1/bot/hello', {'botId': 'current'})['status'] == 200
     log_result = run(['docker', 'logs', container])
     logs = log_result.stdout + log_result.stderr
-    assert token not in logs and key not in logs and password not in logs
+    assert token not in logs and key not in logs and old_key not in logs and password not in logs
     ok('Docker bridge Owner bootstrap: local CLI capability, origin checks, replay denied, no secrets in logs')
+    ok('agent credential retrieval is confined to local CLI and rotation immediately retires the old control key')
     index = fake.protocol_observation(fake.build_index())
     assert agent(network, key, '/api/v1/index', index)['status'] == 200
     assert agent(network, key, '/api/v1/heartbeat', {'server': fake.SERVER, 'stash': fake.STASH, 'player': fake.PLAYER,

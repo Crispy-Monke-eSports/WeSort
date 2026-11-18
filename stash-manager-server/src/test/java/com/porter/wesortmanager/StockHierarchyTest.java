@@ -74,6 +74,10 @@ class StockHierarchyTest {
         var routes = new StockRoutes(store, orders); var id = source(original).get("id").getAsString();
         var owner = new Users.Principal("owner", "Owner", true, Users.Perms.ALL, false);
         assertEquals(frame(32).json(), routes.source(owner, id).getAsJsonObject("snapshot"));
+        var member = new Users.Principal("member", "Member", false, Users.PRESETS.get("member"), false);
+        assertNull(routes.source(member, id));
+        assertTrue(routes.view(member).getAsJsonArray("sources").isEmpty());
+        assertFalse(routes.view(member).getAsJsonArray("stashes").isEmpty());
         var hidden = new Users.Principal("hidden", "Hidden", false, Users.Perms.of(true,false,false,false,false,false,false,List.of(new Users.StashRef("s", "other")), List.of()), false);
         assertNull(routes.source(hidden, id));
         var hiddenStock = routes.view(hidden);

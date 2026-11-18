@@ -67,6 +67,7 @@ final class DeliveryRoutes {
         if (server == null) return;
         DeliveryContents.Snapshot s = contents.get(server, stash);
         // null: the bot hasn't reported (an older bot, no delivery container, or not yet since the server started).
-        Http.json(ex, 200, s == null ? JsonNull.INSTANCE : Redact.on(ex) ? Redact.delivery(s.json()) : s.json());
+        boolean positions = Router.user(ex).perms().positions();
+        Http.json(ex, 200, s == null || !positions ? JsonNull.INSTANCE : Redact.on(ex) ? Redact.delivery(s.json()) : s.json());
     }
 }

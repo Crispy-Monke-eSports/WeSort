@@ -168,7 +168,7 @@ public final class Config {
         return config;
     }
 
-    /** Makes a new key, saves it, and only then makes it the live key, so the old key stops working at once. */
+    /** Saves a new key before publishing it. The previous key is available for the warehouse migration window. */
     public synchronized String regenerateKey() throws IOException {
         String next = generateKey();
         writeKeyLine(file, next);

@@ -956,7 +956,7 @@ final class OrderStore {
     }
 
     /** For the website's bot overview: { open: n, active: { id, status, phase, progress } | null }. */
-    JsonObject summaryJson(String server, String stash) {
+    JsonObject summaryJson(String server, String stash, String requester) {
         JsonObject out = new JsonObject();
         int open = 0;
         JsonObject active = null;
@@ -966,7 +966,8 @@ final class OrderStore {
                 for (Order o : b.orders) {
                     if (!OPEN.contains(o.status)) continue;
                     open++;
-                    if (active == null && !o.status.equals("pending")) {
+                    String placedBy = o.placedById == null ? Users.OWNER_ID : o.placedById;
+                    if (active == null && !o.status.equals("pending") && (requester == null || requester.equals(placedBy))) {
                         active = new JsonObject();
                         active.addProperty("id", o.id);
                         active.addProperty("status", o.status);

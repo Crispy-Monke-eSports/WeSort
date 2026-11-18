@@ -2,11 +2,9 @@ package com.porter.wesort;
 
 import com.mojang.logging.LogUtils;
 import com.porter.wesort.compat.ClientRuntimeProbe;
-import com.porter.wesort.commands.StashWindowCommand;
 import com.porter.wesort.modules.StashManager;
 import com.porter.wesort.modules.StashOverlay;
 import com.porter.wesort.modules.StashSorter;
-import com.porter.wesort.modules.StashWindow;
 import meteordevelopment.meteorclient.addons.GithubRepo;
 import meteordevelopment.meteorclient.addons.MeteorAddon;
 import meteordevelopment.meteorclient.commands.Commands;
@@ -26,10 +24,8 @@ public class WeSortAddon extends MeteorAddon {
         Modules.get().add(new StashSorter());
         Modules.get().add(new StashOverlay());
         Modules.get().add(new StashManager());
-        Modules.get().add(new StashWindow());
 
         // Commands
-        Commands.add(new StashWindowCommand());
         Commands.add(new com.porter.wesort.commands.InventoryReconcileCommand());
         Commands.add(new com.porter.wesort.commands.NavigationCommand());
         Commands.add(new com.porter.wesort.commands.SortWhyCommand());

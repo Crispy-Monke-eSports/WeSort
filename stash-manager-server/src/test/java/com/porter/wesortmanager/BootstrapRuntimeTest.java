@@ -58,8 +58,9 @@ class BootstrapRuntimeTest {
         SessionStore sessions = new SessionStore(data);
         Users users = new Users(data);
         IconService icons = new IconService(data, id -> null, v -> false, new GameIcons(data.resolve("icons"), false, false), false);
+        var audit = new AuditLog(data);
         var routes = WeSortManager.routes(config, index, orders, owners, icons, new LinkState(0), List.of(),
-            sessions, users, new AuditLog(data), new BotHub(), new LoginLimiter(), health);
+            sessions, users, audit, new BotHub(), new LoginLimiter(), health);
         var pool = Executors.newCachedThreadPool();
         HttpServer server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 16);
         server.setExecutor(pool);
@@ -67,13 +68,15 @@ class BootstrapRuntimeTest {
         String base = "http://127.0.0.1:" + server.getAddress().getPort();
         server.start();
         AtomicFiles.ownerOnlyDir(data);
-        try (LocalControl control = new LocalControl(data, routes.auth(), health, server.getAddress().getPort()); HttpClient http = HttpClient.newHttpClient()) {
+        try (LocalControl control = new LocalControl(data, routes.auth(), health, config, server.getAddress().getPort(),
+                 routes.agentCredentials(), audit); HttpClient http = HttpClient.newHttpClient()) {
             assertThrows(IOException.class, () -> LocalControl.request(data, "HEALTH"));
             health.ready(true);
             assertEquals("ready", LocalControl.request(data, "HEALTH"));
             var live = http.send(HttpRequest.newBuilder(URI.create(base + "/health/ready")).build(), HttpResponse.BodyHandlers.ofString());
             assertEquals(200, live.statusCode());
             assertEquals("{\"status\":\"ready\"}", live.body());
+            assertThrows(IOException.class, () -> LocalControl.request(data, "AGENT_KEY"));
             String token = LocalControl.request(data, "BOOTSTRAP");
             String json = "{\"code\":\"" + token + "\",\"password\":\"runtime-test-only-83927\"}";
             var badOrigin = HttpRequest.newBuilder(URI.create(base + "/api/v1/auth/setup"))
@@ -93,9 +96,26 @@ class BootstrapRuntimeTest {
             var success = http.send(request, HttpResponse.BodyHandlers.ofString());
             assertEquals(200, success.statusCode());
             assertNotNull(config.dashboardPassword());
+            assertEquals(config.apiKey(), LocalControl.request(data, "AGENT_KEY"));
             assertEquals(409, http.send(request, HttpResponse.BodyHandlers.ofString()).statusCode());
             assertThrows(IOException.class, () -> LocalControl.request(data, "BOOTSTRAP"));
             assertFalse(JsonParser.parseString(success.body()).getAsJsonObject().has("apiKey"));
+            String agent = java.util.UUID.randomUUID().toString();
+            var scope = new AgentCredentials.Scope(agent, "TestAgent", "server", "stash");
+            var credentials = routes.agentCredentials();
+            String first = credentials.issue(scope);
+            String replacement = credentials.issue(scope);
+            assertNotEquals(first, replacement);
+            assertFalse(Files.readString(data.resolve("agent-credentials.json")).contains(replacement.substring(37)));
+            assertThrows(IllegalArgumentException.class,
+                () -> credentials.issue(new AgentCredentials.Scope(agent, "TestAgent", "other-server", "stash")));
+            credentials.requireScoped();
+            assertThrows(IOException.class, () -> LocalControl.request(data, "AGENT_KEY"));
+            var reopened = new AgentCredentials(data);
+            assertTrue(reopened.scopedOnly());
+            assertArrayEquals(Signer.deriveKey(replacement.substring(37)), reopened.find(agent).key());
+            assertTrue(credentials.revoke(agent));
+            assertNull(new AgentCredentials(data).find(agent));
             health.ready(false);
             assertEquals(503, http.send(HttpRequest.newBuilder(URI.create(base + "/health/ready")).build(), HttpResponse.BodyHandlers.ofString()).statusCode());
         } finally { server.stop(0); icons.close(); pool.shutdownNow(); }

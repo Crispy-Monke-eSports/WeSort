@@ -26,6 +26,7 @@ class HierarchyHarness(stock.StockHarness):
     order_lifecycle = False
     approval = False
     remote_settings = False
+    scoped_agent = False
 
     def fixture(self):
         world.Harness.fixture(self)
@@ -116,6 +117,7 @@ class HierarchyHarness(stock.StockHarness):
             status, rows = self.http('/api/v1/stock')
             require(status == 200 and self.amount(rows, 'minecraft:diamond', 'observed') == 96,
                     'Viewer did not observe the actual shared Minecraft stock')
+            require(not rows['sources'], 'Viewer saw physical stock locations')
             draft = {'server': self.server_name, 'stash': 'e2e-fixture',
                      'lines': [{'type': 'item', 'key': 'minecraft:diamond', 'count': 1}]}
             require(self.http('/api/v1/orders', draft)[0] == 403, 'Viewer could order stock')
@@ -131,6 +133,12 @@ class HierarchyHarness(stock.StockHarness):
             require(status == 200 and guild_order['order']['organizationId'] == guild['id']
                     and guild_order['order']['requestedBy'] == identities['Quartermaster'],
                     'Guild order did not reserve stock under the common organisation')
+            query = urllib.parse.urlencode({'server': self.server_name, 'stash': 'e2e-fixture'})
+            self.browser = users['Builder']
+            status, history = self.http('/api/v1/orders?' + query)
+            require(status == 200 and [order['id'] for order in history['orders']] == [self_order['order']['id']],
+                    'Member order history included another requester')
+            require('allocations' not in history['orders'][0], 'Member read physical order allocations')
             self.browser = owner
             require(self.http('/api/v1/users/' + identities['Builder'], {'disabled': True})[0] == 200,
                     'Owner could not revoke membership')
@@ -285,6 +293,32 @@ class HierarchyHarness(stock.StockHarness):
             require(self.detail(source)['returnIntake'] == [receipt], 'Saved choice was missing from the source details')
         self.ok('return choices use verified shulkers in two ordinary warehouse containers and preserve the current item names')
 
+    def require_scoped_agent(self):
+        state = self.command('state')['state']
+        require(state['legacyMemberWindowRegistered'] is False, 'Production Fabric registered the legacy member order window')
+        scope = [state['playerUuid'], self.player, self.server_name, 'e2e-fixture']
+        cli = self.compose + ['exec', '-T', 'manager', '/opt/wesort/entrypoint']
+        endpoint = f'http://127.0.0.1:{self.manager_port}'
+        shared = stock.signed.Client(endpoint, self.key)
+        old = stock.signed.Client(endpoint, self.run(cli + ['agent-issue', *scope]).strip())
+        self.key = self.run(cli + ['agent-issue', *scope]).strip()
+        current = stock.signed.Client(endpoint, self.key)
+        foreign_id = str(uuid.uuid4())
+        foreign = stock.signed.Client(endpoint, self.run(cli + [
+            'agent-issue', foreign_id, 'OtherBot', self.server_name, 'other-stash'
+        ]).strip())
+        self.run(cli + ['agent-require-scoped'])
+        heartbeat = {'server': self.server_name, 'stash': 'e2e-fixture', 'player': self.player}
+        require(shared.post('/api/v1/heartbeat', heartbeat)[0] == 401, 'Shared credential survived scoped-only activation')
+        require(old.post('/api/v1/heartbeat', heartbeat)[0] == 401, 'Rotated credential could still act')
+        require(current.post('/api/v1/heartbeat', heartbeat)[0] == 200, 'Current credential could not read its warehouse heartbeat')
+        require(foreign.post('/api/v1/heartbeat', heartbeat)[0] == 403, 'Agent accessed another stash')
+        unauthorized = {'server': self.server_name, 'stash': 'other-stash', 'player': 'OtherBot'}
+        require(foreign.post('/api/v1/heartbeat', unauthorized)[0] == 200, 'Second credential was unusable in its own scope')
+        self.run(cli + ['agent-revoke', foreign_id])
+        require(foreign.post('/api/v1/heartbeat', unauthorized)[0] == 401, 'Revoked agent continued to authenticate')
+        self.ok('two local credentials have isolated warehouse access; scoped-only, rotation and revocation take effect immediately')
+
     def execute(self):
         try:
             self.start_server(); self.fixture(); self.start_manager(); self.start_client()
@@ -340,6 +374,8 @@ class HierarchyHarness(stock.StockHarness):
             require(code == 409, 'Older actual snapshot accepted after changed content')
             self.ok('real server-side inner-content delta invalidates old box fingerprint and advances affected slot revisions; captured old signed observation rejected 409')
             if self.order_lifecycle or self.approval:
+                if self.scoped_agent:
+                    self.require_scoped_agent()
                 self.verify_order_lifecycle(detail)
             self.command('screenshot'); shutil.copyfile(self.game_dir/'screenshots/fixture.png',self.evidence/'fixture.png')
             (self.evidence/'changed-detail.json').write_text(json.dumps(detail,indent=2)+'\n')
@@ -358,6 +394,7 @@ if __name__ == '__main__':
     parser.add_argument('--order-lifecycle', action='store_true')
     parser.add_argument('--approval', action='store_true')
     parser.add_argument('--remote-settings', action='store_true')
+    parser.add_argument('--scoped-agent', action='store_true')
     args = parser.parse_args()
     harness = HierarchyHarness(args.manager_image)
     harness.reservations = args.reservations
@@ -365,4 +402,5 @@ if __name__ == '__main__':
     harness.order_lifecycle = args.order_lifecycle
     harness.approval = args.approval
     harness.remote_settings = args.remote_settings
+    harness.scoped_agent = args.scoped_agent
     harness.execute()

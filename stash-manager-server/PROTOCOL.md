@@ -319,3 +319,17 @@ only verified `MEMBER` (their own) and `PROJECT` points, redacted —
 coordinates and dimension are removed and a secret `INTERNAL` stash
 never appears. Selecting a point never changes who owns the rest of
 the stock.
+
+## W-038 physical deposition
+
+A package is deposited as either a `DELIVERY` to a recipient outside
+the stock (a withdrawal) or a `TRANSFER` to an internal guild stash (a
+relocation that does not change the guild total); the kind is explicit.
+`POST /api/v1/deposits/agent` (signed) begins, confirms or reconciles a
+deposit keyed by `packageId`; `begin` is idempotent per package + order
++ kind + destination. `DELIVERED` is reached only with a server-
+confirmed, non-empty chest content `snapshot`, so a double report or
+reconnect never double-delivers: replaying a confirmation returns the
+same record. An uncertain outcome goes to `NEEDS_RECONCILIATION`, and a
+second agent cannot complete another agent's deposit. Owner
+`GET /api/v1/deposits` lists the ledger (optionally by `order`).

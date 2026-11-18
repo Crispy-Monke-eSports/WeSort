@@ -259,3 +259,20 @@ cannot replace the prefix or renumber boxes. Legacy orders using
 `names.all|each` remain readable unchanged. The anvil rename becomes a
 precondition for `PICKUP_READY` in the new flow; a failed rename never
 delivers an unmarked box.
+
+## W-062 opt-in per-server transport profile
+
+`/tpa` and `/home` are two independent, default-OFF capabilities per
+verified Minecraft server profile, never generic Minecraft or Baritone
+features. Owner `GET /api/v1/transport` lists the profiles; Owner
+`POST /api/v1/transport` updates one server's `allowTpa`, `allowHome`,
+`tpaVerified` and `homeVerified` with an `expectedRevision` (409 on a stale
+revision). A fresh profile and a clean install have both flags off.
+"Configured" (`allowTpa`/`allowHome`) is kept separate from "verified
+supported" (`tpaVerified`/`homeVerified`), so no support is ever advertised
+without actual server testing. The only transport operations are the typed
+`TPA_REQUEST(target)`, `HOME_GO(home)` and `TPA_ACCEPT(requestId)` in
+`TransportCommands`; there is no arbitrary `/command`, forwarded player
+message or unsanitized field, and a command transmission is never itself
+proof of arrival — the agent acknowledges arrival only from the actual
+server-delivered position and dimension.

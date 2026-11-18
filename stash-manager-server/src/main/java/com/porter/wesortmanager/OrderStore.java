@@ -198,7 +198,7 @@ final class OrderStore {
             }
             // "note" from orders stored before notes were removed is dropped here and never written again.
             try {
-                r.names = normalizeNames(o.get("names"));
+                r.names = readStoredNames(o.get("names"));
             } catch (OrderException e) {
                 r.names = null;
             }
@@ -592,7 +592,9 @@ final class OrderStore {
             o.approval = needsApproval ? Approval.PENDING : Approval.DIRECT;
             o.verifiedRecipient = recipient;
             o.lines = new ArrayList<>(merged.values());
-            o.names = names == null ? null : names.deepCopy();
+            o.names = names == null ? null
+                : "packageLabel".equals(names.get("mode").getAsString())
+                    ? lockPackageLabel(names, Math.toIntExact(shulkers)) : names.deepCopy();
             o.allocations = allocations;
             o.sourceGuards = sourceGuards(server, stash);
             o.createdAt = now;
@@ -669,6 +671,9 @@ final class OrderStore {
         JsonObject o = e.getAsJsonObject();
         JsonElement mode = o.get("mode");
         String m = mode != null && mode.isJsonPrimitive() && mode.getAsJsonPrimitive().isString() ? mode.getAsString() : null;
+        if ("packageLabel".equals(m)) {
+            return normalizePackageLabel(o);
+        }
         if ("all".equals(m)) {
             JsonElement n = o.get("name");
             if (n == null || !n.isJsonPrimitive() || !n.getAsJsonPrimitive().isString()) {
@@ -710,6 +715,100 @@ final class OrderStore {
             return out;
         }
         throw new OrderException(400, "names.mode must be \"all\" or \"each\"", -1);
+    }
+
+    /** Versioned suffix-only request: only the server may freeze total and number. */
+    private static JsonObject normalizePackageLabel(JsonObject raw) throws OrderException {
+        if (!raw.has("version") || !raw.get("version").isJsonPrimitive()
+            || !raw.get("version").getAsJsonPrimitive().isNumber()
+            || raw.get("version").getAsInt() != 1) {
+            throw new OrderException(400, "packageLabel version must be 1", -1);
+        }
+        for (var entry : raw.entrySet()) {
+            if (!Set.of("mode", "version", "text", "texts").contains(entry.getKey())) {
+                throw new OrderException(400, "unexpected packageLabel field: " + entry.getKey(), -1);
+            }
+        }
+        String defaultText = "Beställning";
+        if (raw.has("text")) {
+            if (!raw.get("text").isJsonPrimitive() || !raw.get("text").getAsJsonPrimitive().isString())
+                throw new OrderException(400, "packageLabel text must be a string", -1);
+            defaultText = suffix(raw.get("text").getAsString(), "packageLabel.text");
+        }
+        var normalized = new JsonObject();
+        normalized.addProperty("mode", "packageLabel");
+        normalized.addProperty("version", 1);
+        normalized.addProperty("text", defaultText);
+        if (raw.has("texts")) {
+            if (!raw.get("texts").isJsonArray()) throw new OrderException(400, "packageLabel texts must be an array", -1);
+            JsonArray input = raw.getAsJsonArray("texts");
+            if (input.isEmpty() || input.size() > MAX_SHULKERS) throw new OrderException(400, "packageLabel texts needs 1.." + MAX_SHULKERS + " items", -1);
+            JsonArray texts = new JsonArray();
+            for (int i = 0; i < input.size(); i++) {
+                JsonElement value = input.get(i);
+                if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString())
+                    throw new OrderException(400, "packageLabel texts[" + i + "] must be a string", -1);
+                String name = value.getAsString().strip();
+                texts.add(name.isEmpty() ? defaultText : suffix(name, "packageLabel.texts[" + i + "]"));
+            }
+            normalized.add("texts", texts);
+        }
+        return normalized;
+    }
+
+    private static String suffix(String raw, String field) throws OrderException {
+        String text = checkName(raw, field);
+        if (text.length() > 33) throw new OrderException(400, field + " exceeds 33 UTF-16 code units", -1);
+        return text.isEmpty() ? "Beställning" : text;
+    }
+
+    /**
+     * Convert a validated suffix-only request into a server-owned immutable label plan.
+     * Existing agents already consume the generated legacy each-list, but the plan
+     * must remain pinned and never be accepted as client-supplied packageTotal.
+     */
+    static JsonObject lockPackageLabel(JsonObject request, int total) throws OrderException {
+        if (total < 1 || total > MAX_SHULKERS)
+            throw new OrderException(400, "package total must be 1.." + MAX_SHULKERS, -1);
+        JsonObject normalized = normalizePackageLabel(request);
+        JsonArray texts = normalized.has("texts") ? normalized.getAsJsonArray("texts") : null;
+        if (texts != null && texts.size() != total)
+            throw new OrderException(400, "per-box text count must equal the locked package total", -1);
+        JsonArray labels = new JsonArray();
+        for (int i = 0; i < total; i++) {
+            String text = texts == null ? normalized.get("text").getAsString() : texts.get(i).getAsString();
+            String label = "WeSort (" + (i + 1) + "/" + total + ") - " + text;
+            checkName(label, "generated package label");
+            labels.add(label);
+        }
+        JsonObject meta = normalized.deepCopy();
+        meta.remove("mode");
+        meta.addProperty("total", total);
+        JsonObject stored = new JsonObject();
+        stored.addProperty("mode", "each");
+        stored.add("names", labels);
+        stored.add("packageLabel", meta);
+        return stored;
+    }
+
+    /** Load a pinned generated plan only if its integrity matches the stored suffix policy. */
+    private static JsonObject readStoredNames(JsonElement serialized) throws OrderException {
+        JsonObject normal = normalizeNames(serialized);
+        if (normal == null || !serialized.isJsonObject()
+            || !serialized.getAsJsonObject().has("packageLabel")) return normal;
+        JsonObject stored = serialized.getAsJsonObject();
+        if (!"each".equals(stored.get("mode").getAsString())) return normal;
+        try {
+            JsonObject meta = stored.getAsJsonObject("packageLabel");
+            int total = meta.get("total").getAsBigDecimal().intValueExact();
+            JsonObject request = meta.deepCopy();
+            request.remove("total");
+            request.addProperty("mode", "packageLabel");
+            JsonObject planned = lockPackageLabel(request, total);
+            return planned.equals(stored) ? planned : null;
+        } catch (RuntimeException invalid) {
+            return null;
+        }
     }
 
     /** The trimmed name ("" when blank), or 400 when it is too long or has § or a control character. */

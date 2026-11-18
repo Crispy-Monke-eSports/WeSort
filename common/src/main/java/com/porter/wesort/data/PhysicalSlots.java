@@ -22,8 +22,9 @@ public final class PhysicalSlots {
      * Only an independent verified Manager registry may upgrade UNKNOWN to REGISTERED.
      */
     public static BoxIdentity boxIdentity(String id, Kind kind, String components) {
-        if (kind != Kind.SHULKER || id == null || !id.startsWith("minecraft:")
-            || !id.endsWith("shulker_box")) return BoxIdentity.unregistered();
+        if (kind != Kind.SHULKER || id == null
+            || !id.matches("minecraft:(?:shulker_box|(?:white|orange|magenta|light_blue|yellow|lime|pink|gray|light_gray|cyan|purple|blue|brown|green|red|black)_shulker_box)"))
+            return BoxIdentity.unregistered();
         try {
             JsonObject patch = JsonParser.parseString(components).getAsJsonObject();
             JsonObject value = patch;
@@ -134,6 +135,19 @@ public final class PhysicalSlots {
         }
         public JsonObject json() {
             JsonObject out = new JsonObject(); out.addProperty("schema", 1); out.addProperty("size", size); out.addProperty("fingerprint", fingerprint);
+            // A server-verified inventory may contain several distinct physical boxes
+            // claiming the same visible UUID. Mark those claims DUPLICATE immediately,
+            // without modifying inventory totals/fingerprints or declaring them registered.
+            Map<String, Long> visibleClaims = new HashMap<>();
+            for (Located position : located) {
+                Item item = position.stack.item;
+                if (item.kind != Kind.SHULKER) continue;
+                BoxIdentity identity = item.boxIdentity();
+                if (identity.hasUUID()) {
+                    long copies = Math.multiplyExact(position.copies, position.stack.count);
+                    visibleClaims.merge(identity.boxUUID(), copies, Math::addExact);
+                }
+            }
             JsonArray positions = new JsonArray();
             for (Located position : located) {
                 Slot slot = position.stack; Item item = slot.item;
@@ -148,7 +162,9 @@ public final class PhysicalSlots {
                     row.addProperty("hasUUID", identity.hasUUID());
                     if (identity.boxUUID() != null) row.addProperty("boxUUID", identity.boxUUID());
                     else row.add("boxUUID", JsonNull.INSTANCE);
-                    row.addProperty("identityStatus", identity.identityStatus());
+                    row.addProperty("identityStatus", identity.hasUUID()
+                        && visibleClaims.getOrDefault(identity.boxUUID(), 0L) > 1
+                            ? "DUPLICATE" : identity.identityStatus());
                 }
                 positions.add(row);
             }

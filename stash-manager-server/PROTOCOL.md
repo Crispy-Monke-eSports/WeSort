@@ -304,3 +304,18 @@ picks a package up, only that agent — or an explicit reconciliation — may
 advance it, so two couriers can never claim the same package and a package
 is never booked in two places. A reboot or a replayed receipt does not
 change custody.
+
+## W-037 delivery points
+
+A delivery point is a chest or a player/project meeting place at
+`server` + `dimension` + `x`/`y`/`z`, with an access class (`MEMBER`,
+`PROJECT`, `INTERNAL`) and a status (`PENDING`, `VERIFIED`, `PAUSED`).
+`POST /api/v1/delivery-points` (Owner) creates, updates (`action` +
+`id` + `expectedRevision`) or pauses a point; updates are optimistic
+(409 on a stale revision) and every mutation appends a history event.
+Owner `GET /api/v1/delivery-points` lists every point with coordinates
+and history. Member `GET /api/v1/delivery-points/selectable` returns
+only verified `MEMBER` (their own) and `PROJECT` points, redacted —
+coordinates and dimension are removed and a secret `INTERNAL` stash
+never appears. Selecting a point never changes who owns the rest of
+the stock.

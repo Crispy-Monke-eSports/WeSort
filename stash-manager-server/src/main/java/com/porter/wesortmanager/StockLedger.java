@@ -3,6 +3,7 @@ package com.porter.wesortmanager;
 import com.google.gson.*;
 import com.porter.wesort.data.ContainerIdentity;
 import com.porter.wesort.data.PhysicalSlots;
+import com.porter.wesort.data.ShulkerUuid;
 import java.io.IOException;
 import java.nio.file.*;
 import java.sql.*;
@@ -37,7 +38,7 @@ final class StockLedger {
                     if (existed && (!r.next() || r.getInt(1) != APPLICATION_ID)) throw new IOException("Foreign guild database format");
                 }
                 s.execute("PRAGMA journal_mode=WAL");
-                try (var r = s.executeQuery("PRAGMA user_version")) { if (r.next() && r.getInt(1) > 6) throw new IOException("Unsupported guild database schema"); }
+                try (var r = s.executeQuery("PRAGMA user_version")) { if (r.next() && r.getInt(1) > 7) throw new IOException("Unsupported guild database schema"); }
                 s.execute("BEGIN IMMEDIATE");
                 try {
                     s.execute("CREATE TABLE IF NOT EXISTS physical_operations(id TEXT PRIMARY KEY,server TEXT NOT NULL,agent TEXT NOT NULL,stash TEXT NOT NULL,revision INTEGER NOT NULL,checksum TEXT NOT NULL,payload TEXT NOT NULL,state TEXT NOT NULL,last_seen INTEGER NOT NULL,fence_revision INTEGER NOT NULL)");
@@ -51,13 +52,16 @@ final class StockLedger {
                     s.execute("CREATE TABLE IF NOT EXISTS physical_slots(source TEXT NOT NULL,path TEXT NOT NULL,parent TEXT NOT NULL,payload TEXT NOT NULL,fingerprint TEXT NOT NULL,item_fingerprint TEXT NOT NULL,count INTEGER NOT NULL,copies INTEGER NOT NULL,revision INTEGER NOT NULL,seen_revision INTEGER NOT NULL,present INTEGER NOT NULL,PRIMARY KEY(source,path))");
                     s.execute("CREATE TABLE IF NOT EXISTS return_intake(source TEXT NOT NULL,path TEXT NOT NULL,slot_revision INTEGER NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(source,path,slot_revision))");
                     s.execute("CREATE TABLE IF NOT EXISTS automation_leases(server TEXT PRIMARY KEY,agent TEXT NOT NULL,token TEXT NOT NULL,deadline INTEGER NOT NULL,state TEXT NOT NULL)");
+                    s.execute("CREATE TABLE IF NOT EXISTS box_uuids(uuid TEXT PRIMARY KEY,server TEXT NOT NULL,source TEXT NOT NULL,path TEXT NOT NULL,status TEXT NOT NULL,item_fingerprint TEXT NOT NULL,registered_at INTEGER NOT NULL,verified_at INTEGER NOT NULL,revision INTEGER NOT NULL)");
+                    s.execute("CREATE TABLE IF NOT EXISTS box_uuid_history(uuid TEXT NOT NULL,server TEXT NOT NULL,status TEXT NOT NULL,reason TEXT NOT NULL,source TEXT NOT NULL,path TEXT NOT NULL,recorded_at INTEGER NOT NULL,revision INTEGER NOT NULL)");
+                    s.execute("CREATE INDEX IF NOT EXISTS box_uuid_history_uuid ON box_uuid_history(uuid)");
                     s.execute("CREATE TABLE IF NOT EXISTS stock_meta(id INTEGER PRIMARY KEY CHECK(id=1),epoch TEXT NOT NULL,revision INTEGER NOT NULL)");
                     s.execute("CREATE TABLE IF NOT EXISTS stock_sources(id TEXT PRIMARY KEY,server TEXT NOT NULL,dimension TEXT NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL,proof TEXT NOT NULL,verified_at INTEGER NOT NULL,run TEXT NOT NULL)");
                     s.execute("CREATE TABLE IF NOT EXISTS stock_parts(server TEXT NOT NULL,dimension TEXT NOT NULL,x INTEGER NOT NULL,y INTEGER NOT NULL,z INTEGER NOT NULL,source TEXT NOT NULL,PRIMARY KEY(server,dimension,x,y,z))");
                     s.execute("CREATE TABLE IF NOT EXISTS stock_members(server TEXT NOT NULL,stash TEXT NOT NULL,source TEXT NOT NULL,present INTEGER NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL,verified_at INTEGER NOT NULL,PRIMARY KEY(server,stash,source))");
                     s.execute("CREATE TABLE IF NOT EXISTS stock_indexes(server TEXT NOT NULL,stash TEXT NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL,PRIMARY KEY(server,stash))");
                     try (var p = c.prepareStatement("INSERT OR IGNORE INTO stock_meta VALUES(1,?,0)")) { p.setString(1, UUID.randomUUID().toString()); p.executeUpdate(); }
-                    s.execute("PRAGMA application_id=" + APPLICATION_ID); s.execute("PRAGMA user_version=6");
+                    s.execute("PRAGMA application_id=" + APPLICATION_ID); s.execute("PRAGMA user_version=7");
                     var interruptedServers=new ArrayList<String>();
                     try(var leases=s.executeQuery("SELECT server FROM automation_leases WHERE state='ACTIVE'")){while(leases.next())interruptedServers.add(leases.getString(1));}
                     s.executeUpdate("UPDATE automation_leases SET state='NEEDS_RECONCILIATION' WHERE state='ACTIVE'");
@@ -238,6 +242,7 @@ final class StockLedger {
                         p.setString(6,proof); p.setLong(7,verified); p.setString(8,verifiedRun); p.executeUpdate();
                     }
                     if (fresh) saveSlots(c, id, snapshot, sourceRevision);
+                    if (fresh) reconcileBoxUuids(c, server, id, snapshot, sourceRevision);
                     for (var item : source.getAsJsonArray("parts")) {
                         var pos = item.getAsJsonArray();
                         if (physicalFailure) {
@@ -376,6 +381,151 @@ final class StockLedger {
         }
         return decisions;
     }
+    /** Registers or refreshes one observed box UUID. Duplicates are detected, never re-registered. */
+    private void registerObservedBoxUuid(Connection c, String server, String source, String path, String uuid,
+                                         String fingerprint, long revision) throws SQLException {
+        try (var read = c.prepareStatement("SELECT source,path FROM box_uuids WHERE uuid=?")) {
+            read.setString(1, uuid);
+            try (var rows = read.executeQuery()) {
+                if (rows.next()) {
+                    // Same physical location: refresh verification and fingerprint; the box stays IN_STOCK.
+                    if (rows.getString(1).equals(source) && rows.getString(2).equals(path)) {
+                        try (var refresh = c.prepareStatement("UPDATE box_uuids SET verified_at=?,revision=?,item_fingerprint=? WHERE uuid=?")) {
+                            refresh.setLong(1, clock.getAsLong()); refresh.setLong(2, revision); refresh.setString(3, fingerprint); refresh.setString(4, uuid);
+                            refresh.executeUpdate();
+                        }
+                    }
+                    // Else: the same UUID is registered elsewhere. Leave the original record untouched; it is a duplicate.
+                    return;
+                }
+            }
+        }
+        // Historical UUIDs are never reused.
+        try (var read = c.prepareStatement("SELECT 1 FROM box_uuid_history WHERE uuid=? LIMIT 1")) {
+            read.setString(1, uuid);
+            try (var rows = read.executeQuery()) { if (rows.next()) return; }
+        }
+        long now = clock.getAsLong();
+        try (var insert = c.prepareStatement("INSERT INTO box_uuids VALUES(?,?,?,?,'IN_STOCK',?,?,?,?)")) {
+            insert.setString(1, uuid); insert.setString(2, server); insert.setString(3, source); insert.setString(4, path);
+            insert.setString(5, fingerprint); insert.setLong(6, now); insert.setLong(7, now); insert.setLong(8, revision);
+            insert.executeUpdate();
+        }
+    }
+
+    /** Reconciles the root-level shulker boxes of a fresh snapshot against the UUID registry. */
+    private void reconcileBoxUuids(Connection c, String server, String source, JsonObject snapshot, long revision) throws SQLException {
+        if (snapshot == null || !snapshot.has("positions")) return;
+        for (var value : snapshot.getAsJsonArray("positions")) {
+            var row = value.getAsJsonObject();
+            if (!"SHULKER".equals(row.get("kind").getAsString())) continue;
+            String path = row.get("path").getAsString();
+            if (path.indexOf('/') >= 0) continue; // only root boxes, never shulkers nested inside other shulkers
+            UUID uuid = ShulkerUuid.boxUuid(row.get("components").getAsString());
+            if (uuid != null) registerObservedBoxUuid(c, server, source, path, uuid.toString(),
+                row.get("itemFingerprint").getAsString(), revision);
+        }
+    }
+
+    /** The identity of each root-level shulker box in a source, derived from its server-observed name and the registry. */
+    synchronized JsonArray boxIdentities(String source) throws IOException {
+        var out = new JsonArray();
+        try (var c = open()) {
+            for (var slot : physicalSlots(source)) {
+                if (!"SHULKER".equals(slot.get("kind").getAsString())) continue;
+                if (!slot.get("present").getAsBoolean()) continue;
+                String path = slot.get("path").getAsString();
+                if (path.indexOf('/') >= 0) continue;
+                String components = slot.get("components").getAsString();
+                String name = ShulkerUuid.customName(components);
+                UUID uuid = ShulkerUuid.boxUuid(components);
+                var identity = new JsonObject();
+                identity.addProperty("path", path);
+                identity.addProperty("hasUUID", uuid != null);
+                if (uuid != null) identity.addProperty("boxUUID", uuid.toString());
+                identity.addProperty("identityStatus", statusOfBox(c, source, path, name, uuid));
+                out.add(identity);
+            }
+        } catch (SQLException failure) {
+            throw new IOException("Cannot read box identities", failure);
+        }
+        return out;
+    }
+
+    private static String statusOfBox(Connection c, String source, String path, String name, UUID uuid) throws SQLException {
+        if (name == null) return "UNKNOWN";
+        if (uuid == null) return "INVALID";
+        try (var read = c.prepareStatement("SELECT source,path FROM box_uuids WHERE uuid=?")) {
+            read.setString(1, uuid.toString());
+            try (var rows = read.executeQuery()) {
+                if (rows.next()) return rows.getString(1).equals(source) && rows.getString(2).equals(path)
+                    ? "REGISTERED" : "DUPLICATE";
+            }
+        }
+        try (var read = c.prepareStatement("SELECT 1 FROM box_uuid_history WHERE uuid=? LIMIT 1")) {
+            read.setString(1, uuid.toString());
+            try (var rows = read.executeQuery()) { if (rows.next()) return "DUPLICATE"; }
+        }
+        return "UNREGISTERED";
+    }
+
+    /** Appends the active box UUID to history and removes it from the registry. Idempotent; no historical reuse. */
+    synchronized void deregisterBoxUuid(String server, String uuid, String reason) throws IOException {
+        UUID.fromString(uuid);
+        try (var c = open(); var tx = c.createStatement()) {
+            tx.execute("BEGIN IMMEDIATE");
+            try {
+                try (var read = c.prepareStatement("SELECT source,path,status FROM box_uuids WHERE uuid=? AND server=?")) {
+                    read.setString(1, uuid); read.setString(2, server);
+                    try (var rows = read.executeQuery()) {
+                        if (!rows.next()) { tx.execute("COMMIT"); return; }
+                        long revision = revision(c);
+                        try (var insert = c.prepareStatement("INSERT INTO box_uuid_history VALUES(?,?,?,?,?,?,?,?)")) {
+                            insert.setString(1, uuid); insert.setString(2, server); insert.setString(3, rows.getString(3));
+                            insert.setString(4, reason == null ? "DEREGISTERED" : reason);
+                            insert.setString(5, rows.getString(1)); insert.setString(6, rows.getString(2));
+                            insert.setLong(7, clock.getAsLong()); insert.setLong(8, revision); insert.executeUpdate();
+                        }
+                        try (var del = c.prepareStatement("DELETE FROM box_uuids WHERE uuid=?")) { del.setString(1, uuid); del.executeUpdate(); }
+                    }
+                }
+                tx.execute("COMMIT");
+            } catch (Exception failure) { tx.execute("ROLLBACK"); throw failure; }
+        } catch (SQLException failure) {
+            throw new IOException("Cannot deregister box UUID", failure);
+        }
+    }
+
+    synchronized JsonArray boxUuids() throws IOException {
+        var out = new JsonArray();
+        try (var c = open(); var s = c.createStatement(); var r = s.executeQuery("SELECT uuid,server,source,path,status,item_fingerprint,registered_at,verified_at,revision FROM box_uuids ORDER BY registered_at")) {
+            while (r.next()) {
+                var row = new JsonObject();
+                row.addProperty("uuid", r.getString(1)); row.addProperty("server", r.getString(2));
+                row.addProperty("source", r.getString(3)); row.addProperty("path", r.getString(4));
+                row.addProperty("status", r.getString(5)); row.addProperty("itemFingerprint", r.getString(6));
+                row.addProperty("registeredAt", r.getLong(7)); row.addProperty("verifiedAt", r.getLong(8)); row.addProperty("revision", r.getLong(9));
+                out.add(row);
+            }
+        } catch (SQLException failure) { throw new IOException("Cannot read box UUIDs", failure); }
+        return out;
+    }
+
+    synchronized JsonArray boxUuidHistory() throws IOException {
+        var out = new JsonArray();
+        try (var c = open(); var s = c.createStatement(); var r = s.executeQuery("SELECT uuid,server,status,reason,source,path,recorded_at,revision FROM box_uuid_history ORDER BY recorded_at DESC LIMIT 512")) {
+            while (r.next()) {
+                var row = new JsonObject();
+                row.addProperty("uuid", r.getString(1)); row.addProperty("server", r.getString(2));
+                row.addProperty("status", r.getString(3)); row.addProperty("reason", r.getString(4));
+                row.addProperty("source", r.getString(5)); row.addProperty("path", r.getString(6));
+                row.addProperty("recordedAt", r.getLong(7)); row.addProperty("revision", r.getLong(8));
+                out.add(row);
+            }
+        } catch (SQLException failure) { throw new IOException("Cannot read box UUID history", failure); }
+        return out;
+    }
+
     synchronized List<JsonObject> indexes() throws IOException {
         List<JsonObject> out=new ArrayList<>();
         try(var c=open();var s=c.createStatement();var r=s.executeQuery("SELECT payload FROM stock_indexes ORDER BY revision")){while(r.next())out.add(JsonParser.parseString(r.getString(1)).getAsJsonObject());}

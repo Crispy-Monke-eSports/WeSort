@@ -15,8 +15,19 @@ final class StockRoutes {
     void register(Router router, AuditLog audit) {
         router.exact(Router.GET, "/api/v1/stock", Router.Guard.SESSION, Router.Perm.VIEW, this::get);
         router.exact(Router.GET, "/api/v1/stock/source", Router.Guard.SESSION, Router.Perm.VIEW, this::getSource);
+        router.exact(Router.GET, "/api/v1/stock/boxes", Router.Guard.SESSION, Router.Perm.OWNER, this::boxes);
         router.exact(Router.POST, "/api/v1/stock/return-intake", Router.Guard.BROWSER_WRITE, Router.Perm.OWNER,
             ex -> returnIntake(ex, audit));
+    }
+
+    private void boxes(HttpExchange ex) throws IOException {
+        if (Redact.forced(Router.user(ex))) { Http.error(ex, 404, "not found"); return; }
+        synchronized (index) {
+            var response = new JsonObject();
+            response.add("active", index.stock().boxUuids());
+            response.add("history", index.stock().boxUuidHistory());
+            Http.json(ex, 200, response);
+        }
     }
 
     private void get(HttpExchange ex) throws IOException { Http.json(ex, 200, view(Router.user(ex))); }
@@ -45,6 +56,10 @@ final class StockRoutes {
             if (snapshot != null && source.status().equals("FRESH")) {
                 JsonArray slots = new JsonArray(); ledger.physicalSlots(id).forEach(slots::add); out.add("slots", slots);
                 if (who.owner() && returnContainer(source)) out.add("returnIntake", ledger.returnDecisions(id));
+                if (who.owner()) {
+                    var identities = ledger.boxIdentities(id);
+                    if (!identities.isEmpty()) out.add("boxIdentities", identities);
+                }
             }
             var physical = PhysicalReservations.read(ledger, source.server(), source.stash());
             if (physical.hasSnapshots()) {

@@ -207,3 +207,23 @@ stale selection receives 409. With `markUuid=false` the receipt is
 `VERIFIED_KEEP_NAME`. With `markUuid=true` it is `UUID_REQUESTED`.
 This records the choice. Anvil execution and registration require a
 separate verified physical operation.
+
+## W-063 physical box UUID identity
+
+A shulker box whose anvil `CUSTOM_NAME` is exactly `WeSort-<canonical
+UUID v4>` (43 characters) carries a visible inventory identity. The
+Manager derives `hasUUID`/`boxUUID` from the actual server-observed
+component patch; it never trusts a client-declared boolean. A syntactically
+valid UUID is only `REGISTERED` after the Manager registers it with a
+unique, physical provenance; otherwise it is `UNREGISTERED`, `INVALID`
+(name present but not the `WeSort-` format), `DUPLICATE` (same UUID already
+active elsewhere or reused from history) or `UNKNOWN` (no name). An order
+box is deregistered after a server-confirmed rename and its UUID moves to
+append-only history, never to be reused.
+
+Owner `GET /api/v1/stock/source` exposes `boxIdentities` (path,
+`hasUUID`, `boxUUID`, `identityStatus`) for each root-level shulker box in
+a fresh source. Owner `GET /api/v1/stock/boxes` returns the active registry
+and history. Registration is idempotent and atomic inside the physical
+observation transaction; two identical nameless boxes stay position- and
+fingerprint-identified and are never assigned the same UUID.

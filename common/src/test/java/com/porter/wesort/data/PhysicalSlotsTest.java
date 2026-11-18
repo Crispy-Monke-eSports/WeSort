@@ -105,10 +105,11 @@ class PhysicalSlotsTest {
     @Test void typedNameMustBeExactAndOnlyShulkersCanClaimIdentity() {
         String visible = "WeSort-550e8400-e29b-41d4-a716-446655440000";
         var box = namedShulker(visible);
-        assertFalse(PhysicalSlots.boxIdentity(PhysicalSlots.Kind.ITEM, box.components()).hasUUID());
-        assertFalse(PhysicalSlots.boxIdentity(PhysicalSlots.Kind.SHULKER,
+        assertFalse(PhysicalSlots.boxIdentity("minecraft:diamond", PhysicalSlots.Kind.ITEM, box.components()).hasUUID());
+        assertFalse(PhysicalSlots.boxIdentity("minecraft:diamond", PhysicalSlots.Kind.SHULKER, box.components()).hasUUID());
+        assertFalse(PhysicalSlots.boxIdentity("minecraft:shulker_box", PhysicalSlots.Kind.SHULKER,
             "{\"minecraft:custom_name\":\"WeSort-550e8400-e29b-41d4-a716-446655440000\"}").hasUUID());
-        assertEquals("INVALID", PhysicalSlots.boxIdentity(PhysicalSlots.Kind.SHULKER,
+        assertEquals("INVALID", PhysicalSlots.boxIdentity("minecraft:shulker_box", PhysicalSlots.Kind.SHULKER,
             "{\"minecraft:custom_name\":{\"type\":8,\"value\":\"not-json\"}}").identityStatus());
         var styled = new JsonObject();
         styled.addProperty("text", visible);
@@ -118,7 +119,7 @@ class PhysicalSlotsTest {
         name.addProperty("value", styled.toString());
         var fields = new JsonObject();
         fields.add("minecraft:custom_name", name);
-        assertEquals("INVALID", PhysicalSlots.boxIdentity(PhysicalSlots.Kind.SHULKER, fields.toString()).identityStatus());
+        assertEquals("INVALID", PhysicalSlots.boxIdentity("minecraft:shulker_box", PhysicalSlots.Kind.SHULKER, fields.toString()).identityStatus());
     }
 
     @Test void addingDerivedUUIDFieldsDoesNotChangeInventoryFingerprintOrCount() {

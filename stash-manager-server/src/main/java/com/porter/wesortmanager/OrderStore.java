@@ -719,10 +719,14 @@ final class OrderStore {
 
     /** Versioned suffix-only request: only the server may freeze total and number. */
     private static JsonObject normalizePackageLabel(JsonObject raw) throws OrderException {
-        if (!raw.has("version") || !raw.get("version").isJsonPrimitive()
-            || !raw.get("version").getAsJsonPrimitive().isNumber()
-            || raw.get("version").getAsInt() != 1) {
-            throw new OrderException(400, "packageLabel version must be 1", -1);
+        try {
+            if (!raw.has("version") || !raw.get("version").isJsonPrimitive()
+                || !raw.get("version").getAsJsonPrimitive().isNumber()
+                || raw.get("version").getAsBigDecimal().intValueExact() != 1) {
+                throw new OrderException(400, "packageLabel version must be 1", -1);
+            }
+        } catch (ArithmeticException invalid) {
+            throw new OrderException(400, "packageLabel version must be an exact integer", -1);
         }
         for (var entry : raw.entrySet()) {
             if (!Set.of("mode", "version", "text", "texts").contains(entry.getKey())) {

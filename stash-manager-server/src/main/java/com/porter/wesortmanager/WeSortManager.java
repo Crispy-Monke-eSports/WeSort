@@ -245,6 +245,7 @@ public final class WeSortManager {
         new KitRoutes(store, audit, orders, owners).register(router);
         new BoxRoutes(store, audit, orders, owners).register(router);
         new TransportRoutes(new TransportProfiles(config.dataDir()), audit).register(router);
+        new QuotaRoutes(new Quotas(config.dataDir()), audit).register(router);
         new PhysicalRoutes(store, audit).register(router);
         new BotRoutes(hub, audit, orders, owners).register(router);
         new DashboardRoutes(hub, store, owners, sessions, audit).register(router);

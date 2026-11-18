@@ -276,3 +276,17 @@ without actual server testing. The only transport operations are the typed
 message or unsanitized field, and a command transmission is never itself
 proof of arrival — the agent acknowledges arrival only from the actual
 server-delivered position and dimension.
+
+## W-059 optional withdrawal quotas
+
+Quotas are disabled by default and never create private inventories; they
+only limit how much of the shared guild stock one member may withdraw.
+Owner `GET /api/v1/quotas` returns the policy (enabled flag, revision and
+rules of `subject`/`key`/`max`/`windowSeconds`); Owner `POST /api/v1/quotas`
+updates it with an `expectedRevision` (409 on a stale revision). A rule's
+subject is a member id, a role, or `*`; its key is a line reference
+(`item:<key>`, `shulker:<key>`, or `*`), with member-over-role-over-`*`
+precedence. `GET /api/v1/quotas/me` shows a member's own consumed and
+reserved totals. Reservation is idempotent by order id, and `reserved`/
+`consumed` are separate from physical inventory reservations; a cancel or a
+verified delivery affects the quota exactly once, across restarts.

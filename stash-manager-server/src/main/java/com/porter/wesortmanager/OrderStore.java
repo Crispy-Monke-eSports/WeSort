@@ -815,6 +815,25 @@ final class OrderStore {
         }
     }
 
+    /**
+     * Public new-order API always chooses the versioned server-owned label contract.
+     * Legacy free-form names are still decoded for historical disk orders and their
+     * retries, but cannot be used to create a new unnamed or spoofed customer order.
+     */
+    static JsonObject normalizeNewOrderNames(JsonElement value) throws OrderException {
+        if (value == null || value.isJsonNull()) {
+            JsonObject automatic = new JsonObject();
+            automatic.addProperty("mode", "packageLabel");
+            automatic.addProperty("version", 1);
+            automatic.addProperty("text", "");
+            return normalizeNames(automatic);
+        }
+        JsonObject names = normalizeNames(value);
+        if (names == null || !"packageLabel".equals(names.get("mode").getAsString()))
+            throw new OrderException(400, "New orders require versioned packageLabel suffixes", -1);
+        return names;
+    }
+
     /** The trimmed name ("" when blank), or 400 when it is too long or has § or a control character. */
     private static String checkName(String raw, String field) throws OrderException {
         String name = raw.strip();

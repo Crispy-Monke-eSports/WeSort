@@ -12,11 +12,11 @@ world = importlib.util.module_from_spec(spec); spec.loader.exec_module(world)
 require = world.require
 
 class SortingHarness(world.Harness):
-    locations = list(range(0, 33, 3))
-    labels = {3: 'dias', 6: 'building blocks', 9: 'diamond swords', 12: 'dias', 15: 'dias', 18: 'misc', 24: 'strength', 27: 'egaps'}
+    locations = [-6, -3] + list(range(0, 33, 3))
+    labels = {-6: 'seeds', -3: 'pearls', 3: 'dias', 6: 'building blocks', 9: 'diamond swords', 12: 'dias', 15: 'dias', 18: 'misc', 24: 'strength', 27: 'egaps'}
     def fixture(self):
         super().fixture()
-        self.rcon.command('fill -1 64 -4 35 66 4 minecraft:air')
+        self.rcon.command('fill -7 64 -4 35 66 4 minecraft:air')
         self.rcon.command('kill @e[type=minecraft:item]')
         for x in self.locations:
             self.rcon.command(f'setblock {x} 64 3 minecraft:barrel')
@@ -127,8 +127,7 @@ class SortingHarness(world.Harness):
             self.wait(lambda: self.count(6, 'dirt') == 16 and self.count(9, 'diamond_sword') == 1
                 and self.count(24, 'potion') == 1 and self.count(27, 'enchanted_golden_apple') == 4 and self.count(0, 'diamond') == 0
                 and self.count(3, 'diamond') == 1728 and self.count(18, 'diamond') + self.count(21, 'diamond') == 28
-                and self.count(18, 'wheat_seeds') + self.count(21, 'wheat_seeds') == 23
-                and self.count(18, 'ender_pearl') + self.count(21, 'ender_pearl') == 11
+                and self.count(-6, 'wheat_seeds') == 23 and self.count(-3, 'ender_pearl') == 11
                 and '[]' in self.rcon.command('data get entity ' + self.player + ' Inventory') and self.command('state')['state']['inventoryReady'],
                 'Production sign sorter did not place the mixed fixture correctly')
             self.command('sort-stop')
@@ -139,7 +138,10 @@ class SortingHarness(world.Harness):
                 'Exact name/damage/enchantment components changed during actual sorting')
             require(self.rcon.command('data get block 24 64 3 Items[{id:"minecraft:potion"}].components').split(': ',1)[-1]==potion_components,
                 'Exact potion components changed during actual sorting')
-            self.ok('actual production Signs engine routes mixed items including seeds, dirt and ender pearls, preserves metadata and partial stacks, uses overflow and leaves excluded/protected kit/outbound stock unchanged')
+            require(self.count(18, 'wheat_seeds') + self.count(21, 'wheat_seeds') == 0
+                and self.count(18, 'ender_pearl') + self.count(21, 'ender_pearl') == 0,
+                'Categorized seeds/pearls leaked into miscellaneous overflow')
+            self.ok('actual production Signs engine routes seeds and pearls into distinct labeled categories, dirt into building blocks, preserves metadata and overflow, and protects reserved kit/outbound stock')
             self.wait(lambda: not self.stock()['automation'],'Verified sorting did not release its exclusion',timeout=30)
             self.command('manager-unlink-test')
             self.teleport(15.5,2); self.command('open',x=15,y=64,z=3,slots=27,item='minecraft:diamond',count=7)

@@ -220,6 +220,23 @@ class OrderNamesTest {
         return OrderStore.normalizeNames(request);
     }
 
+    @Test void newApiDoesNotAcceptFreeFormOrOmittedPackageLabels() throws Exception {
+        var automatic = OrderStore.normalizeNewOrderNames(null);
+        assertEquals(json("{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"Beställning\"}"),
+            automatic);
+        assertEquals(automatic, OrderStore.normalizeNewOrderNames(JsonParser.parseString("null")));
+        for (String bypass : List.of(
+            "{\"mode\":\"all\",\"name\":\"Forged full name\"}",
+            "{\"mode\":\"each\",\"names\":[\"Forged full name\"]}",
+            "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"ok\",\"total\":99}")) {
+            assertEquals(400, assertThrows(OrderStore.OrderException.class, () ->
+                OrderStore.normalizeNewOrderNames(JsonParser.parseString(bypass))).status);
+        }
+        assertEquals("Beställning", OrderStore.normalizeNewOrderNames(JsonParser.parseString(
+            "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\" \"}"))
+                .get("text").getAsString());
+    }
+
     @Test void exactPrefixNumbersAndUTF16BudgetAcrossOneTo54Boxes() throws Exception {
         for (int total : List.of(1, 4, 12, 54)) {
             JsonObject pinned = OrderStore.lockPackageLabel(labelRequest("Byggmaterial"), total);

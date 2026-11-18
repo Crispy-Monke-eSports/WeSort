@@ -284,6 +284,29 @@ class OrderNamesTest {
                 .getAsJsonArray("names").get(0).getAsString());
     }
 
+    @Test void modifiedStoredLabelRequiresReconciliationAndRetainsItsReservation() throws Exception {
+        var placed = orders.place("s", "a", diamonds(64), labelRequest("Original"));
+        Path file = data.resolve("orders").resolve(IndexStore.fileName("s", "a"));
+        JsonObject saved = json(Files.readString(file, StandardCharsets.UTF_8));
+        JsonObject persisted = saved.getAsJsonArray("orders").get(0).getAsJsonObject();
+        persisted.getAsJsonObject("names").getAsJsonArray("names").set(0,
+            new com.google.gson.JsonPrimitive("WeSort (1/1) - Forged"));
+        Files.writeString(file, saved.toString(), StandardCharsets.UTF_8);
+        OrderStore restarted = new OrderStore(data, index);
+        restarted.load();
+        JsonObject quarantined = restarted.listJson("s", "a").getAsJsonArray("orders")
+            .get(0).getAsJsonObject();
+        assertEquals(placed.id, quarantined.get("id").getAsString());
+        assertEquals("needs_reconciliation", quarantined.get("status").getAsString());
+        assertEquals("NEEDS_RECONCILIATION", quarantined.get("state").getAsString());
+        assertTrue(quarantined.get("message").getAsString().contains("integrity"));
+        assertEquals("WeSort (1/1) - Forged", quarantined.getAsJsonObject("names")
+            .getAsJsonArray("names").get(0).getAsString(),
+            "Original tampering evidence must not be discarded or silently re-generated");
+        assertEquals(64L, restarted.reservedFor("s", "a").get("item:minecraft:diamond"));
+        assertNull(restarted.claim("s", "a"), "No physical operation may resume from a falsified manifest");
+    }
+
     @Test void serverOwnedPackagePlanSurvivesRestartRetryAndCannotBeRenumbered() throws Exception {
         JsonObject request = labelRequest(" Projekt A ");
         var first = orders.place("s", "a", diamonds(64), request);

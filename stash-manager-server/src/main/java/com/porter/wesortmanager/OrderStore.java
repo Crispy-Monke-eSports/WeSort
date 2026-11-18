@@ -848,8 +848,10 @@ final class OrderStore {
     private static String checkName(String raw, String field) throws OrderException {
         String name = raw.strip();
         if (name.length() > MAX_NAME) throw new OrderException(400, field + " is longer than " + MAX_NAME + " characters", -1);
-        for (int i = 0; i < name.length(); i++) {
-            char c = name.charAt(i);
+        // Validate the *raw* input: stripping must never silently erase
+        // dangerous control/bidi bytes at the start or end of a label.
+        for (int i = 0; i < raw.length(); i++) {
+            char c = raw.charAt(i);
             if (c == '§') throw new OrderException(400, field + " can't contain §", -1);
             if (Character.isISOControl(c)) throw new OrderException(400, field + " can't contain control characters", -1);
             // Invisible or direction-changing characters (bidi overrides, zero-width, line separators) and broken surrogates

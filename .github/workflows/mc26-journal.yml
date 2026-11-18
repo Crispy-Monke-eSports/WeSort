@@ -6,7 +6,40 @@ on:
 permissions:
   contents: read
 jobs:
+  manager-image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v3
+      - name: Build current-commit Manager once for all journal scenarios
+        shell: bash
+        run: |
+          # Maven Central rate-limits large matrix bursts. Retry only a bounded
+          # image build; every scenario below consumes these exact same bits.
+          for attempt in 1 2 3; do
+            if docker buildx build --load --build-arg REVISION="$GITHUB_SHA" \
+                --cache-from type=gha,scope=manager \
+                --cache-to type=gha,mode=max,scope=manager \
+                -t wesort-manager:journal-tests .; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep $((attempt * 20))
+          done
+      - name: Package exact Manager image for matrix jobs
+        run: docker save wesort-manager:journal-tests | gzip -1 > "$RUNNER_TEMP/wesort-manager.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mc26-journal-manager-image-${{ github.sha }}
+          path: ${{ runner.temp }}/wesort-manager.tar.gz
+          compression-level: 0
+          retention-days: 1
+
   recovery:
+    needs: manager-image
     strategy:
       fail-fast: false
       matrix:
@@ -24,8 +57,13 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Install software display
         run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 libgl1 libegl1 libegl-mesa0 mesa-vulkan-drivers libvulkan1 libopenal1
-      - name: Build Manager from the tested revision
-        run: docker build -t wesort-manager:journal-tests .
+      - name: Download the identical tested Manager image
+        uses: actions/download-artifact@v4
+        with:
+          name: mc26-journal-manager-image-${{ github.sha }}
+          path: ${{ runner.temp }}
+      - name: Load Manager image from current commit
+        run: gzip -dc "$RUNNER_TEMP/wesort-manager.tar.gz" | docker load
       - name: Crash and restart actual Minecraft and Manager
         env:
           LIBGL_ALWAYS_SOFTWARE: '1'

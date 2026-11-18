@@ -215,7 +215,7 @@ class OrderNamesTest {
         assertEquals("pending", reloaded.statusOf(failed.id));
     }
     private static JsonObject labelRequest(String text) throws Exception {
-        JsonObject request = json("{\\"mode\\":\\"packageLabel\\",\\"version\\":1}");
+        JsonObject request = json("{\"mode\":\"packageLabel\",\"version\":1}");
         request.addProperty("text", text);
         return OrderStore.normalizeNames(request);
     }
@@ -244,17 +244,17 @@ class OrderNamesTest {
 
     @Test void packageLabelRejectsForgedTotalsControlsAndMalformedAdvancedText() throws Exception {
         for (String payload : List.of(
-            "{\\"mode\\":\\"packageLabel\\",\\"version\\":1,\\"text\\":\\"ok\\",\\"total\\":4}",
-            "{\\"mode\\":\\"packageLabel\\",\\"version\\":1,\\"text\\":\\"ok\\",\\"names\\":[]}",
-            "{\\"mode\\":\\"packageLabel\\",\\"version\\":2,\\"text\\":\\"ok\\"}",
-            "{\\"mode\\":\\"packageLabel\\",\\"version\\":1,\\"texts\\":[1]}",
-            "{\\"mode\\":\\"packageLabel\\",\\"version\\":1,\\"text\\":\\"a\\u202eb\\"}",
-            "{\\"mode\\":\\"packageLabel\\",\\"version\\":1,\\"text\\":\\"a\\u200bb\\"}",
-            "{\\"mode\\":\\"packageLabel\\",\\"version\\":1,\\"text\\":\\"a§b\\"}",
-            "{\\"mode\\":\\"packageLabel\\",\\"version\\":1,\\"text\\":\\"a\\u0000b\\"}")) {
+            "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"ok\",\"total\":4}",
+            "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"ok\",\"names\":[]}",
+            "{\"mode\":\"packageLabel\",\"version\":2,\"text\":\"ok\"}",
+            "{\"mode\":\"packageLabel\",\"version\":1,\"texts\":[1]}",
+            "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"a\\u202eb\"}",
+            "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"a\\u200bb\"}",
+            "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"a§b\"}",
+            "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"a\\u0000b\"}")) {
             assertEquals(400, status(payload), payload);
         }
-        JsonObject request = names("{\\"mode\\":\\"packageLabel\\",\\"version\\":1,\\"text\\":\\"Standard\\",\\"texts\\":[\\"A\\",\\" \\",\\"C\\"]}");
+        JsonObject request = names("{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"Standard\",\"texts\":[\"A\",\" \",\"C\"]}");
         var list = OrderStore.lockPackageLabel(request, 3).getAsJsonArray("names");
         assertEquals("WeSort (1/3) - A", list.get(0).getAsString());
         assertEquals("WeSort (2/3) - Standard", list.get(1).getAsString());
@@ -281,7 +281,7 @@ class OrderNamesTest {
         assertEquals(frozen, retried.toJson().getAsJsonObject("names"));
         assertNotEquals(first.id, retried.id);
         // Older stored orders and their free-text names remain readable, never silently renamed.
-        var old = orders.place("s", "a", diamonds(1), names("{\\"mode\\":\\"all\\",\\"name\\":\\"Legacy\\"}"));
+        var old = orders.place("s", "a", diamonds(1), names("{\"mode\":\"all\",\"name\":\"Legacy\"}"));
         assertEquals("Legacy", old.names.get("name").getAsString());
     }
 

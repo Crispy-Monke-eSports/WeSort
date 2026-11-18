@@ -392,6 +392,10 @@ final class OrderRunner {
 
         String why = checkEmpties(plan.subList(start, plan.size()));
         if (why != null) return why;
+        // The old free-form model allowed partial/unnamed deliveries. A new versioned
+        // Manager label plan is immutable; without every planned slot, X/Y would lie.
+        if (o.requiredPackageLabels && (o.names == null || plan.size() != o.names.each().size()))
+            return "Authoritative package count differs from the locked label plan; physical reconciliation required";
 
         // The names follow the plan by position; a resume keeps the names it saved
         Order.Names names = resumed && !saved.namesMode.isEmpty() ? Order.Names.of(saved.namesMode, saved.namesAll, saved.namesEach) : o.names;
@@ -1010,6 +1014,13 @@ final class OrderRunner {
                 if (!u.nameDone) {
                     Intent rename = naming(u, slot);
                     if (rename != null) return rename;
+                    if (!running()) return new Idle();
+                }
+                // A required label cannot be skipped after missing XP/anvil, restart,
+                // late inventory readback or an ambiguous rename response.
+                if (order.requiredPackageLabels && (!u.named || !isOurName(u, mc.player.getInventory().getItem(slot)))) {
+                    finish(State.Failed, "Required package label has no verified inventory readback (box " + (index + 1) + ")");
+                    return new Idle();
                 }
                 if (full) {
                     full = false;
@@ -1219,6 +1230,10 @@ final class OrderRunner {
             u.nameDone = true;
             u.unnamedReason = why;
             saveUnit(u);
+            if (order.requiredPackageLabels) {
+                finish(State.Failed, "Required package label blocked: " + why);
+                return null;
+            }
             com.porter.wesort.WeSortAddon.LOG.info("orders: shulker {} goes unnamed: {}", index + 1, why);
             return null;
         }
@@ -1235,6 +1250,9 @@ final class OrderRunner {
         u.nameDone = true;
         u.unnamedReason = reason;
         saveUnit(u);
+        if (order.requiredPackageLabels) {
+            finish(State.Failed, "Required package label rename failed; inventory reconciliation required: " + reason);
+        }
         epoch++;
     }
 

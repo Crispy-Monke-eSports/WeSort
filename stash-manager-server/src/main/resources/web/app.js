@@ -2988,10 +2988,10 @@
 
   /** Send only suffixes. The server validates, numbers and freezes final names. */
   function namesBody() {
-    if (names.mode === "all") return { mode: "packageLabel", version: 1, text: names.all.trim() };
+    if (names.mode === "all") return { mode: "packageLabel", version: 1, text: names.all };
     var list = [];
-    for (var i = 0; i < Math.min(plan.units.length, 54); i++) list.push((names.each[i] || "").trim());
-    return { mode: "packageLabel", version: 1, text: names.all.trim(), texts: list };
+    for (var i = 0; i < Math.min(plan.units.length, 54); i++) list.push(names.each[i] || "");
+    return { mode: "packageLabel", version: 1, text: names.all, texts: list };
   }
 
   function validLabelText(value) {

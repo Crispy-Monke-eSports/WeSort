@@ -7,7 +7,7 @@ exempelvis `WeSort-550e8400-e29b-41d4-a716-446655440000`. Utgående
 orderboxar lämnar UUID-registret och får ordernamn via W-064; en återlämnad
 box inventeras och får **nytt** UUID innan den åter blir tillgängligt lager.
 
-## Identitetslagret (denna commit)
+## Identitetslagret
 
 - **`ShulkerUuid`** (`common/.../data`) är en ren, strikt parser/validator:
   `parse` kräver exakt `WeSort-` + canonical UUID v4 (liten bokstav, rätt
@@ -38,9 +38,23 @@ box inventeras och får **nytt** UUID innan den åter blir tillgängligt lager.
   Båda är owner-only och maskeras för forced streamer; boxidentitet röjer
   inte stashpositioner utöver det som redan är synligt för owner.
 - `return-intake` med `markUuid=true` (W-042) fortsätter vara en avsikt
-  (`UUID_REQUESTED`); det faktiska anvil-namnbytet och registerjobbet
-  (`REGISTER_BOX`/`RETURN_INTAKE`) är nästa steg och ska passera samma
-  fail-closed `WorldInteractionGuard` (W-061).
+  (`UUID_REQUESTED`); det faktiska anvil-namnbytet sker via det
+  Manager-auktoriserade box-jobbet nedan.
+
+## Manager-auktoriserat REGISTER_BOX / RETURN_INTAKE-jobb
+
+Owner `POST /api/v1/boxes/jobs` startar ett jobb för en verifierad,
+oskyddad, ej redan UUID-märkt rot-shulker (`server`, `stash`, `source`,
+`path`, `kind`). Manager mintar en ny UUID v4 och lagrar jobbet som
+`PLANNED` (högst ett öppet box-jobb per server). `GET /api/v1/boxes/jobs`
+listar. Agentens signerade `POST /api/v1/boxes/agent` claimar (`claim`) och
+avancerar med `renamed` (→`VERIFYING`), `complete` (→`COMPLETED` först när
+en färsk observation återregistrerat UUID på exakt source/path) eller
+`uncertain` (→`NEEDS_RECONCILIATION`). Anvil-namnbytet är en verifierad
+fysisk operation som måste passera W-061:s fail-closed
+`WorldInteractionGuard` och återanvänder `StashSorter.Job.Name`
+(`OrderRunner.Rename`). Omstart eller utgången lease fencar ett pågående
+jobb till `NEEDS_RECONCILIATION`; det tilldelas aldrig om automatiskt.
 
 ## Testbevis
 
@@ -51,14 +65,17 @@ box inventeras och får **nytt** UUID innan den åter blir tillgängligt lager.
   dubblett på annan plats (registreras aldrig om), avregistrering till
   historik, återanvändning spärras, och `INVALID`/`UNKNOWN` för främmande
   respektive saknade namn.
-- Manager- och common-byggena samt hela managersviten (242 prov) är gröna.
+- `BoxJobsTest`: jobb mintar UUID v4, claim/renamed/complete-livscykel,
+  completion kräver färsk serverobserverad omdöpning, och omstart fencar
+  pågående jobb.
+- Manager- och common-byggena samt hela managersviten är gröna.
 
 ## Gränser och återstår
 
-Detta är identitetslagret ovanpå W-020/W-023/W-024, inte det fysiska
-anvil-utförandet. Återstår: Manager-auktoriserat `REGISTER_BOX`-jobb som
-genererar UUID v4, utför verkligt anvil-namnbyte och kvitterar nytt
-serverfingerprint, det skyddade `RETURN_INTAKE`-jobbet, samordning med
-reservationer/sorting/repack vid omdöpning, samt webb-UI och verklig
-26.3-E2E med 1–5 agenter. `PICKUP_READY` är en verifierad staging-status,
-aldrig kundens slutliga `DELIVERED`.
+Identitetslagret och det Manager-auktoriserade box-jobbet är klara. Återstår
+den agent-sidiga utförandekedjan (claim → hämta box → anvil-omdöpning via
+`StashSorter.Job.Name` → återinventera → `renamed`/`complete`) som en
+verifierad fysisk operation under W-061:s guard, webb-UI för att starta/
+pausa/avstämma registrering, samt verklig 26.3-E2E med 1–5 agenter.
+`PICKUP_READY` är en verifierad staging-status, aldrig kundens slutliga
+`DELIVERED`.

@@ -227,3 +227,16 @@ a fresh source. Owner `GET /api/v1/stock/boxes` returns the active registry
 and history. Registration is idempotent and atomic inside the physical
 observation transaction; two identical nameless boxes stay position- and
 fingerprint-identified and are never assigned the same UUID.
+
+Owner `POST /api/v1/boxes/jobs` starts a `REGISTER_BOX` or `RETURN_INTAKE`
+job for a verified, unprotected, still-unreserved root shulker slot
+(`server`, `stash`, `source`, `path`, `kind`). The Manager mints a fresh
+UUID v4 and stores it as a `PLANNED` job; only one open box job is allowed
+per server. `GET /api/v1/boxes/jobs` lists them. The signed agent endpoint
+`POST /api/v1/boxes/agent` claims the job (`claim`) and advances it with
+`renamed`, `complete` or `uncertain`. `renamed` moves the job to
+`VERIFYING`; `complete` only succeeds after a fresh observation has
+re-registered the issued UUID at the exact source and path (the anvil
+rename itself is a verified physical operation passing W-061's guard). A
+Manager restart or expired lease fences an in-flight job to
+`NEEDS_RECONCILIATION`; it is never silently reassigned.

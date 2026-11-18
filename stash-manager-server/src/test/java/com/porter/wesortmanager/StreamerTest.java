@@ -562,6 +562,8 @@ class StreamerTest {
         java.util.Set<String> ownerOnly = java.util.Set.of(
             "[POST] /api/v1/stock/return-intake BROWSER_WRITE OWNER",
             "[GET, HEAD] /api/v1/stock/boxes SESSION OWNER",
+            "[GET, HEAD] /api/v1/boxes/jobs SESSION OWNER",
+            "[POST] /api/v1/boxes/jobs BROWSER_WRITE OWNER",
             "[POST] /api/v1/kits BROWSER_WRITE OWNER",
             "[GET, HEAD] /api/v1/kits/editor SESSION OWNER",
             "[GET, HEAD] /api/v1/kits/jobs SESSION OWNER",

@@ -173,6 +173,11 @@ class DirectHarness(JournalHarness):
                     'Read-only recovery replayed movement or left the agent paused')
             require(sum('[]' in value for value in inv.chest_halves(self)) == 1 and 'count: 64' in inv.player_items(self),
                     'Exact native source and player totals changed during inspection')
+            # The Manager may request a background rescan after recovery, which can
+            # close the manually opened chest before the test's next click. Stop
+            # that scanner explicitly; no physical operation is replayed.
+            self.command('sort-stop')
+            self.teleport(0.5, 2)
             # A new, explicitly requested move proves the same agent can operate again.
             menu = self.command('open', x=0, y=64, z=3, slots=54, item='minecraft:air', count=0, second=1)['state']
             carry = inv.carry_slot(menu, 54, 'minecraft:diamond', 64)

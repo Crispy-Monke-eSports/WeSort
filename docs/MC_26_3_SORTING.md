@@ -75,3 +75,12 @@ helt fullt lager samt samverkan med signerad Manager-reservation.
 CI kör samma skript i `mc26-sorting.yml`. Lokala rapporter under
 `docs/verification` och hosted CI-resultat är separata bevis. Inga befintliga
 användarvärldar eller Qwerte-data används.
+
+
+## W-005 regression: farming/pearl item types are ordinary stock
+
+The same real vanilla 26.3 sorting harness also exercises **23 wheat seeds, 16 dirt and 11 ender pearls**. It creates and cancels normal Manager-authenticated stock orders for each item (7, 4 and 5 units respectively), proving these resources remain orderable after AutoTill, AutoDirt and ResetPearl were removed. It does not invoke a deleted farming or pearl module.
+
+After canceling the reservation and obtaining the signed sort lease, the agent must physically route all 23 seeds to the barrel labeled `seeds` at x=-6, all 11 pearls to `pearls` at x=-3, and all 16 dirt to `building blocks` at x=6. The test queries every real server slot using RCON, including item conservation and a separate check that seeds/pearls were **not** misrouted into the unlabeled `misc` overflow. Existing tests simultaneously verify the excluded, protected kit and outbound containers remain unchanged.
+
+A pass in `Minecraft 26.3 sorting` demonstrates genuine 26.3 physical sort and Manager order-reservation compatibility, **not** completed customer delivery. The new test addresses the specific outstanding W-005 item regression criterion. It does not restore farming/pearl automation.

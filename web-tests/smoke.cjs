@@ -161,6 +161,27 @@ async function scenario(loggedIn) {
       assert.equal(w.document.querySelector(`#page-${name}`), null);
     }
     if (loggedIn) {
+      const suffixInput = w.document.getElementById('names-all');
+      const labelPreview = w.document.getElementById('names-preview');
+      assert.equal(suffixInput.maxLength, 33, 'Minecraft anvil prefix leaves 33 UTF-16 units');
+      assert.equal(w.document.querySelector('#names-seg [data-mode="none"]'), null,
+        'New customer orders cannot opt out of WeSort package labels');
+      assert.equal(w.document.querySelector('#names-seg [data-mode="all"]').getAttribute('aria-pressed'), 'true');
+      const malicious = '<img src=x onerror=alert(1)>';
+      suffixInput.value = malicious;
+      suffixInput.dispatchEvent(new w.Event('input', {bubbles:true}));
+      assert.match(labelPreview.textContent, /WeSort \(1\/Y\) - <img src=x onerror=alert\(1\)>/);
+      assert.equal(labelPreview.querySelector('img'), null, 'Suffix preview must use textContent, not innerHTML');
+      suffixInput.value = 'a'.repeat(32) + '😀'; // 34 UTF-16 units, despite 33 code points
+      suffixInput.dispatchEvent(new w.Event('input', {bubbles:true}));
+      assert.match(w.document.getElementById('names-warn').textContent, /maximum 33 UTF-16/);
+      suffixInput.value = 'Byggmaterial';
+      suffixInput.dispatchEvent(new w.Event('input', {bubbles:true}));
+      assert.match(labelPreview.textContent, /WeSort \(1\/Y\) - Byggmaterial/);
+      w.document.querySelector('#names-seg [data-mode="each"]').click();
+      assert.equal(w.document.getElementById('names-each').hidden, false);
+      w.document.querySelector('#names-seg [data-mode="all"]').click();
+      assert.equal(suffixInput.hidden, false);
       for (const name of ['orders', 'bots', 'activity', 'settings', 'stash']) {
         const button = w.document.querySelector(`#dash-nav [data-page="${name}"]`);
         assert(button, name);

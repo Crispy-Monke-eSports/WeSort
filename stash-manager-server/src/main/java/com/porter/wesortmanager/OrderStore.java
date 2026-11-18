@@ -857,7 +857,7 @@ final class OrderStore {
             // Invisible or direction-changing characters (bidi overrides, zero-width, line separators) and broken surrogates
             int type = Character.getType(c);
             if (type == Character.FORMAT || type == Character.LINE_SEPARATOR || type == Character.PARAGRAPH_SEPARATOR
-                || (type == Character.SURROGATE && !(Character.isHighSurrogate(c) && i + 1 < name.length() && Character.isLowSurrogate(name.charAt(i + 1)))
+                || (type == Character.SURROGATE && !(Character.isHighSurrogate(c) && i + 1 < raw.length() && Character.isLowSurrogate(raw.charAt(i + 1)))
                     && !(Character.isLowSurrogate(c) && i > 0 && Character.isHighSurrogate(name.charAt(i - 1))))) {
                 throw new OrderException(400, field + " can't contain invisible or direction-changing characters", -1);
             }

@@ -31,7 +31,7 @@ final class DeliveryPointRoutes {
 
     private void selectable(HttpExchange ex) throws IOException {
         var out = new JsonObject();
-        out.add("points", points.selectable(Router.user(ex)));
+        out.add("points", points.selectable(Router.user(ex), Http.query(ex).get("server")));
         Http.json(ex, 200, out);
     }
 

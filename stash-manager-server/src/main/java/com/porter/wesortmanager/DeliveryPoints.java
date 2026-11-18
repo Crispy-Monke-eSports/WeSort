@@ -101,14 +101,21 @@ final class DeliveryPoints {
     }
 
     /**
-     * What a principal may choose as a destination. The owner sees every verified point with full coordinates; anyone
-     * else sees only verified MEMBER (their own) and PROJECT points, redacted, and never a secret INTERNAL stash.
+     * What a principal may choose as a destination, optionally constrained to one server so a member ordering from
+     * that server can never select a delivery point on another server. The owner sees every verified point with full
+     * coordinates; anyone else sees only verified MEMBER (their own) and PROJECT points, redacted, and never a secret
+     * INTERNAL stash.
      */
     synchronized JsonArray selectable(Users.Principal p) {
+        return selectable(p, null);
+    }
+
+    synchronized JsonArray selectable(Users.Principal p, String server) {
         var out = new JsonArray();
         for (var entry : points.values()) {
             var point = entry.point();
             if (point.status() != DeliveryPoint.Status.VERIFIED) continue;
+            if (server != null && !point.server().equals(server)) continue; // cross-server selection is refused
             if (p.owner()) { out.add(point.json()); continue; }
             if (point.access() == DeliveryPoint.Access.INTERNAL) continue;
             if (point.access() == DeliveryPoint.Access.MEMBER

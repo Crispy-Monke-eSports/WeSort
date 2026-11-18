@@ -92,4 +92,14 @@ class DeliveryPointsTest {
         assertEquals(2, reloaded.list().get(0).getAsJsonObject().getAsJsonArray("history").size());
         assertEquals(0, reloaded.selectable(owner).size());
     }
+
+    @Test void selectionCanBeConstrainedToOneServer() throws Exception {
+        var points = new DeliveryPoints(data);
+        points.create(verified("2b2t.org", "PROJECT", null), "owner");
+        points.create(verified("other.example", "PROJECT", null), "owner");
+
+        assertEquals(2, points.selectable(owner).size());
+        assertEquals(1, points.selectable(owner, "2b2t.org").size(), "an order from one server never selects a point on another");
+        assertEquals(1, points.selectable(owner, "other.example").size());
+    }
 }

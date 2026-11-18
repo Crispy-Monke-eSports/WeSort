@@ -250,6 +250,7 @@ public final class WeSortManager {
         new DeliveryPointRoutes(new DeliveryPoints(config.dataDir()), audit).register(router);
         new DepositRoutes(new Deposits(config.dataDir()), audit).register(router);
         new JobRoutes(new JobScheduler(config.dataDir()), audit).register(router);
+        new HandoffRoutes(new Handoffs(config.dataDir()), audit).register(router);
         new PhysicalRoutes(store, audit).register(router);
         new BotRoutes(hub, audit, orders, owners).register(router);
         new DashboardRoutes(hub, store, owners, sessions, audit).register(router);

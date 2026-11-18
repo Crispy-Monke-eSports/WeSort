@@ -349,3 +349,16 @@ reconciles it back to `QUEUED` (`POST /api/v1/jobs`, `reconcile`), so a
 blind restart of an uncertain physical step is impossible. `pause`,
 `resume` and `revoke` round out the controls. Owner `GET /api/v1/jobs`
 shows the queue ordered by state, priority and age.
+
+## W-039 player handoff
+
+A package handed to a player at a registered meeting place is tracked
+separately from a chest deposit. `POST /api/v1/handoffs/agent` (signed)
+reports `arrive`, `no-show` or `drop`; a drop without a verified pickup
+never reaches DELIVERED — it goes to `NEEDS_RECONCILIATION`. DELIVERED
+requires an explicit recipient receipt (`confirm`) from the order
+owner/admin, recorded as `confirmedBy`; a replay is idempotent. A
+no-show is traceable and the stock is not returned until an explicit
+`RETURNED`, so there is no false credit. Only the recorded agent may
+advance the handoff; a second agent cannot take over the cargo. Owner
+`GET /api/v1/handoffs` lists handoffs (optionally by `order`).

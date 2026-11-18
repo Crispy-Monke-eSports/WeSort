@@ -160,17 +160,17 @@
               <div class="cart-lines" id="cart-lines"></div>
               <div class="cart-totals" id="cart-totals"></div>
               <fieldset class="names-box" id="names-box">
-                <legend class="names-legend">Shulker names</legend>
-                <div class="seg" role="group" aria-label="Shulker names" id="names-seg">
-                  <button type="button" class="mc-button small seg-btn" data-mode="none" aria-pressed="true">No names</button>
-                  <button type="button" class="mc-button small seg-btn" data-mode="all" aria-pressed="false">Same name for all</button>
-                  <button type="button" class="mc-button small seg-btn" data-mode="each" aria-pressed="false">Name each shulker</button>
+                <legend class="names-legend">Text på shulkerboxarna</legend>
+                <div class="seg" role="group" aria-label="Shulker label suffix" id="names-seg">
+                  <button type="button" class="mc-button small seg-btn" data-mode="all" aria-pressed="true">Same text for all</button>
+                  <button type="button" class="mc-button small seg-btn" data-mode="each" aria-pressed="false">Individual text per box</button>
                 </div>
-                <input id="names-all" class="mc-input" type="text" maxlength="50" placeholder="Name for every shulker" aria-label="Name for every shulker" autocomplete="off" spellcheck="false" hidden>
+                <input id="names-all" class="mc-input" type="text" maxlength="33" placeholder="Beställning" aria-label="Shulker label text (33 UTF-16 code units max)" autocomplete="off" spellcheck="false">
                 <div class="names-each" id="names-each" hidden>
                   <div class="names-rows" id="names-rows"></div>
-                  <div class="note">The bot plans again from what it can reach, so it may deliver fewer shulkers; names go in this order.</div>
+                  <div class="note">Text only. WeSort adds the mandatory (X/Y) prefix after the Manager locks the authoritative packing plan. The preview is an estimate, not a completed package receipt.</div>
                 </div>
+                <div class="note" id="names-preview" role="status">WeSort (1/1) - Beställning · 33 UTF-16 units remaining</div>
                 <div class="names-warn" id="names-warn" role="status" hidden></div>
                 <div class="note" id="craft-info" role="status" hidden></div>
               </fieldset>

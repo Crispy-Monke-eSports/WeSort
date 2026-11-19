@@ -1,0 +1,8 @@
+{
+  "[java]": {
+    "editor.codeActionsOnSave": {
+      "source.fixAll.spotlessForGradleAndMaven": "explicit"
+    },
+    "editor.formatOnSave": false
+  }
+}

@@ -1,0 +1,69 @@
+name: WeSort CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '29 3 * * *'
+  workflow_call:
+permissions:
+  contents: read
+
+# Distinct event groups and PR numbers; release workflows use their own group.
+concurrency:
+  group: wesort-ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+
+jobs:
+  format:
+    name: Java formatting gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v4
+        with:
+          distribution: temurin
+          java-version: '25.0.5+8'
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v4
+        with:
+          cache-read-only: true
+      - name: Require formatted Minecraft, shared and toolchain Java
+        run: ./gradlew --no-daemon spotlessCheck
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Require formatted Manager Java
+        run: ./gradlew --no-daemon -p stash-manager-server spotlessCheck
+  verify:
+    name: Compile, unit and Docker smoke
+    needs: format
+    uses: ./.github/workflows/_verify.yml
+    permissions:
+      contents: read
+  e2e:
+    name: Full Minecraft 26.3 E2E
+    needs: verify
+    uses: ./.github/workflows/_mc26-e2e.yml
+    permissions:
+      contents: read
+  status:
+    name: ci-required
+    if: always()
+    needs: [format, verify, e2e]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require verification and every E2E check
+        env:
+          FORMAT_RESULT: ${{ needs.format.result }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          E2E_RESULT: ${{ needs.e2e.result }}
+        shell: bash
+        run: |
+          echo "Java format: $FORMAT_RESULT; verification: $VERIFY_RESULT; full E2E: $E2E_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          [[ "$FORMAT_RESULT" == success && "$VERIFY_RESULT" == success && "$E2E_RESULT" == success ]]

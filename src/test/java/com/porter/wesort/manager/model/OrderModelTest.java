@@ -1,13 +1,13 @@
 package com.porter.wesort.manager.model;
 
-import com.google.gson.JsonParser;
-import org.junit.jupiter.api.Test;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.google.gson.JsonParser;
+import org.junit.jupiter.api.Test;
 
 class OrderModelTest {
     private static final String ORDERS = """
@@ -33,11 +33,15 @@ class OrderModelTest {
     }
 
     private static AuthState user(String id, String perms) {
-        return auth("{\"loggedIn\":true,\"user\":{\"id\":\"" + id + "\",\"name\":\"" + id + "\",\"owner\":false,\"perms\":" + perms + "}}");
+        return auth("{\"loggedIn\":true,\"user\":{\"id\":\"" + id + "\",\"name\":\"" + id
+                + "\",\"owner\":false,\"perms\":" + perms + "}}");
     }
 
     private static OrderModel.Entry entry(String id) {
-        return listing().orders().stream().filter(e -> e.id().equals(id)).findFirst().orElseThrow();
+        return listing().orders().stream()
+                .filter(e -> e.id().equals(id))
+                .findFirst()
+                .orElseThrow();
     }
 
     @Test
@@ -70,7 +74,9 @@ class OrderModelTest {
     @Test
     void junkGivesAnEmptyListing() {
         assertTrue(OrderModel.parse(JsonParser.parseString("[]")).orders().isEmpty());
-        assertTrue(OrderModel.parse(JsonParser.parseString("null")).availableItems().isEmpty());
+        assertTrue(OrderModel.parse(JsonParser.parseString("null"))
+                .availableItems()
+                .isEmpty());
     }
 
     @Test
@@ -143,7 +149,27 @@ class OrderModelTest {
         // no cancel requested: never
         assertFalse(OrderModel.canForceCancel(entry("o-1"), owner, false, Long.MAX_VALUE));
         // falls back to updatedAt when the cancel time is missing
-        OrderModel.Entry noStamp = new OrderModel.Entry("o", "accepted", "", "", 0, 0, true, 0, 5_000, 0, false, "", "", "", java.util.List.of(), "", "", java.util.List.of(), 0, false);
+        OrderModel.Entry noStamp = new OrderModel.Entry(
+                "o",
+                "accepted",
+                "",
+                "",
+                0,
+                0,
+                true,
+                0,
+                5_000,
+                0,
+                false,
+                "",
+                "",
+                "",
+                java.util.List.of(),
+                "",
+                "",
+                java.util.List.of(),
+                0,
+                false);
         assertFalse(OrderModel.canForceCancel(noStamp, owner, true, 64_999));
         assertTrue(OrderModel.canForceCancel(noStamp, owner, true, 65_000));
         assertNotNull(OrderModel.progressText(1, 2, 10));

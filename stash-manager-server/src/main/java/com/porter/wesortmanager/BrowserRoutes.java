@@ -3,7 +3,6 @@ package com.porter.wesortmanager;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
-
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
@@ -21,8 +20,17 @@ final class BrowserRoutes {
     private final DeliveryContents delivery;
     private final AgentCredentials credentials;
 
-    BrowserRoutes(IndexStore store, Config config, LinkState link, List<String> urls, OrderStore orders, Owners owners,
-                  SessionStore sessions, AuditLog audit, DeliveryContents delivery, AgentCredentials credentials) {
+    BrowserRoutes(
+            IndexStore store,
+            Config config,
+            LinkState link,
+            List<String> urls,
+            OrderStore orders,
+            Owners owners,
+            SessionStore sessions,
+            AuditLog audit,
+            DeliveryContents delivery,
+            AgentCredentials credentials) {
         this.delivery = delivery;
         this.credentials = credentials;
         this.sessions = sessions;
@@ -36,12 +44,27 @@ final class BrowserRoutes {
     }
 
     void register(Router router) {
-        router.exact(Router.GET, "/api/v1/stashes", Router.Guard.SESSION, Router.Perm.VIEW, ex -> Http.json(ex, 200, stashes(Router.user(ex))))
-            .exact(Router.POST, "/api/v1/stashes/release", Router.Guard.BROWSER_WRITE, Router.Perm.LINK, this::release)
-            .exact(Router.GET, "/api/v1/index", Router.Guard.SESSION, Router.Perm.VIEW, this::getIndex)
-            .exact(Router.GET, "/api/v1/link", Router.Guard.SESSION, Router.Perm.LINK, this::getLink)
-            .exact(Router.POST, "/api/v1/link/regenerate", Router.Guard.BROWSER_WRITE, Router.Perm.OWNER, this::regenerate)
-            .exact(Router.POST, "/api/v1/rescan", Router.Guard.BROWSER_WRITE, Router.Perm.RESCAN, this::rescan);
+        router.exact(
+                        Router.GET,
+                        "/api/v1/stashes",
+                        Router.Guard.SESSION,
+                        Router.Perm.VIEW,
+                        ex -> Http.json(ex, 200, stashes(Router.user(ex))))
+                .exact(
+                        Router.POST,
+                        "/api/v1/stashes/release",
+                        Router.Guard.BROWSER_WRITE,
+                        Router.Perm.LINK,
+                        this::release)
+                .exact(Router.GET, "/api/v1/index", Router.Guard.SESSION, Router.Perm.VIEW, this::getIndex)
+                .exact(Router.GET, "/api/v1/link", Router.Guard.SESSION, Router.Perm.LINK, this::getLink)
+                .exact(
+                        Router.POST,
+                        "/api/v1/link/regenerate",
+                        Router.Guard.BROWSER_WRITE,
+                        Router.Perm.OWNER,
+                        this::regenerate)
+                .exact(Router.POST, "/api/v1/rescan", Router.Guard.BROWSER_WRITE, Router.Perm.RESCAN, this::rescan);
     }
 
     /** POST /api/v1/rescan {server, stash}: asks the bot to re-read every container (PROTOCOL.md, "manual rescan"). */
@@ -154,7 +177,10 @@ final class BrowserRoutes {
         ex.getResponseHeaders().set("ETag", gzip ? gzipTag : plainTag);
         ex.getResponseHeaders().set("Vary", "Accept-Encoding");
         String inm = ex.getRequestHeaders().getFirst("If-None-Match");
-        if (inm != null && (inm.contains(plainTag) || inm.contains(gzipTag) || inm.trim().equals("*"))) {
+        if (inm != null
+                && (inm.contains(plainTag)
+                        || inm.contains(gzipTag)
+                        || inm.trim().equals("*"))) {
             Http.send(ex, 304, null, null, "private, no-cache");
             return;
         }

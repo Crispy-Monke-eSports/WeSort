@@ -1,10 +1,9 @@
 package com.porter.wesort.manager.gui.chrome;
 
 import com.porter.wesort.manager.gui.layout.FlowLayout;
+import java.util.List;
 import meteordevelopment.meteorclient.gui.utils.Cell;
 import meteordevelopment.meteorclient.gui.widgets.containers.WContainer;
-
-import java.util.List;
 
 /**
  * A row of widgets that wraps onto more rows when it is too narrow, like a CSS flex row with {@code flex-wrap}. Set
@@ -13,6 +12,7 @@ import java.util.List;
 public class WFlow extends WContainer {
     /** Space between items, in Meteor pixels (scaled with the theme). */
     public double gapX = 10;
+
     public double gapY = 4;
     public double maxWidth;
     /** The last item sits at the right end of the row it is on (the website's margin-left: auto). */
@@ -67,7 +67,8 @@ public class WFlow extends WContainer {
                 cell.width = cell.widget().width;
                 cell.height = rowHeights[r] - cell.padTop() - cell.padBottom();
                 cell.alignWidget();
-                if (lastRight && i == cells.size() - 1) cell.x = Math.max(cell.x, x + width - cell.padRight() - cell.widget().width);
+                if (lastRight && i == cells.size() - 1)
+                    cell.x = Math.max(cell.x, x + width - cell.padRight() - cell.widget().width);
                 cell.alignWidget();
                 xx += widthOf(cell) + gx;
             }

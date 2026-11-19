@@ -719,6 +719,10 @@ html[data-theme="classic"] .auth-screen {
   gap: 4px;
 }
 #order-list { display: flex; flex-direction: column; gap: 6px; }
+.order-audit-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; margin-top: 8px; align-items: end; }
+.order-audit-filters label { display: grid; gap: 4px; }
+#order-audit-results > details { padding: 6px 0; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
+.streamer #order-audit { display: none; }
 .order-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .order-head .mc-button { margin-left: auto; }
 .order-head .mc-button + .mc-button { margin-left: 0; }

@@ -1,12 +1,11 @@
 package com.porter.wesort.manager.gui.panels;
 
+import java.util.function.Consumer;
 import meteordevelopment.meteorclient.gui.GuiTheme;
 import meteordevelopment.meteorclient.gui.widgets.containers.WContainer;
 import meteordevelopment.meteorclient.gui.widgets.containers.WHorizontalList;
 import meteordevelopment.meteorclient.gui.widgets.input.WTextBox;
 import meteordevelopment.meteorclient.gui.widgets.pressable.WButton;
-
-import java.util.function.Consumer;
 
 /**
  * Asks for the password again before a sensitive action (the server answered "confirm password"). After a right
@@ -16,7 +15,13 @@ public final class ConfirmPanel extends PasswordPanel {
     private WTextBox password;
     private Consumer<String> onConfirm;
 
-    public void build(WContainer parent, GuiTheme theme, String why, String message, Consumer<String> onConfirm, Runnable onCancel) {
+    public void build(
+            WContainer parent,
+            GuiTheme theme,
+            String why,
+            String message,
+            Consumer<String> onConfirm,
+            Runnable onCancel) {
         this.theme = theme;
         this.onConfirm = onConfirm;
         parent.add(theme.label("Confirm your password", true));

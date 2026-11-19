@@ -8,8 +8,7 @@ import java.util.Optional;
 public final class Cookies {
     public static final String NAME = "wesort_session";
 
-    private Cookies() {
-    }
+    private Cookies() {}
 
     /**
      * The value of the {@code wesort_session} cookie the server set, or empty when it set none, cleared it (an empty value
@@ -40,7 +39,12 @@ public final class Cookies {
         if (v.isEmpty() || v.length() > 256) return false;
         for (int i = 0; i < v.length(); i++) {
             char c = v.charAt(i);
-            boolean ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '=';
+            boolean ok = (c >= 'a' && c <= 'z')
+                    || (c >= 'A' && c <= 'Z')
+                    || (c >= '0' && c <= '9')
+                    || c == '-'
+                    || c == '_'
+                    || c == '=';
             if (!ok) return false;
         }
         return true;

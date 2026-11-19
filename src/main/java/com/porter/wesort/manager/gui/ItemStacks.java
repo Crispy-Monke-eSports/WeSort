@@ -1,18 +1,17 @@
 package com.porter.wesort.manager.gui;
 
-import com.porter.wesort.manager.model.IndexModel;
 import com.porter.wesort.compat.ItemComponents;
+import com.porter.wesort.manager.model.IndexModel;
 import com.porter.wesort.manager.model.Text;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 /**
  * Turns what the server says about an item (an id, a name, damage, a glint) into an {@link ItemStack} to draw. Nothing
@@ -31,13 +30,13 @@ public final class ItemStacks {
         }
     };
 
-    private ItemStacks() {
-    }
+    private ItemStacks() {}
 
     private static Item lookup(String id) {
         if (itemsById == null) {
             itemsById = new HashMap<>();
-            for (Item item : BuiltInRegistries.ITEM) itemsById.put(BuiltInRegistries.ITEM.getKey(item).toString(), item);
+            for (Item item : BuiltInRegistries.ITEM)
+                itemsById.put(BuiltInRegistries.ITEM.getKey(item).toString(), item);
         }
         return itemsById.get(id);
     }

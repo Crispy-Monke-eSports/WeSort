@@ -9,7 +9,12 @@ package com.porter.wesort.stash;
  * @param recheck for {@link Kind#RECHECK}: a block of the chest to look at
  */
 public record DeliveryRoom(Kind kind, String why, DeliveryBook.Pos recheck) {
-    public enum Kind { ROOM, RECHECK, EXPAND, WAIT }
+    public enum Kind {
+        ROOM,
+        RECHECK,
+        EXPAND,
+        WAIT
+    }
 
     public static final DeliveryRoom ROOM = new DeliveryRoom(Kind.ROOM, null, null);
     public static final DeliveryRoom EXPAND = new DeliveryRoom(Kind.EXPAND, null, null);

@@ -1,5 +1,9 @@
 package com.porter.wesort.stash;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Set;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -8,11 +12,6 @@ import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
 import net.minecraft.world.level.EmptyBlockGetter;
-
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Set;
 
 /**
  * What the sorter knows about one stack: enough to sort, search and label it. Mirrors the proxy plugin's item. The
@@ -24,12 +23,15 @@ public final class StackInfo {
     public final ItemStack stack;
     /** The registry path, like "diamond_sword". */
     public final String id;
+
     public final int count;
     /** The item's default name. Never the anvil name. */
     public final String name;
+
     public final boolean customName;
     /** What the player named it, for display only. Null if it has no custom name. */
     public final String customText;
+
     public final int maxStack;
     public final boolean food;
     public final boolean music;
@@ -74,7 +76,8 @@ public final class StackInfo {
 
         var potionContents = stack.get(DataComponents.POTION_CONTENTS);
         String kind = null;
-        if (potionContents != null && potionContents.potion().isPresent()) kind = path(potionContents.potion().get().getRegisteredName());
+        if (potionContents != null && potionContents.potion().isPresent())
+            kind = path(potionContents.potion().get().getRegisteredName());
         this.potion = kind;
 
         this.typeValue = typeDefined(id) ? typeValueOf(stack, id) : null;
@@ -120,7 +123,9 @@ public final class StackInfo {
             boolean full = false;
             if (stack.getItem() instanceof BlockItem item) {
                 try {
-                    full = item.getBlock().defaultBlockState().isCollisionShapeFullBlock(EmptyBlockGetter.INSTANCE, BlockPos.ZERO);
+                    full = item.getBlock()
+                            .defaultBlockState()
+                            .isCollisionShapeFullBlock(EmptyBlockGetter.INSTANCE, BlockPos.ZERO);
                 } catch (RuntimeException e) {
                     full = false;
                 }
@@ -173,8 +178,7 @@ public final class StackInfo {
      * What two stacks have to share to be packed into one shulker: the item, and for items whose id doesn't say what
      * they are, the component value that does. Never enchantments, damage, a name or a trim on gear.
      */
-    public record BulkKey(net.minecraft.world.item.Item item, Object typeValue) {
-    }
+    public record BulkKey(net.minecraft.world.item.Item item, Object typeValue) {}
 
     /**
      * The key stacks are bulked by, or null for shulkers and anything with items inside, which are never repacked.
@@ -186,9 +190,20 @@ public final class StackInfo {
     }
 
     private static final Set<String> TYPE_DEFINED = Set.of(
-        "potion", "splash_potion", "lingering_potion", "tipped_arrow", "enchanted_book", "suspicious_stew",
-        "firework_rocket", "goat_horn", "ominous_bottle", "filled_map", "player_head", "written_book", "firework_star",
-        "shield");
+            "potion",
+            "splash_potion",
+            "lingering_potion",
+            "tipped_arrow",
+            "enchanted_book",
+            "suspicious_stew",
+            "firework_rocket",
+            "goat_horn",
+            "ominous_bottle",
+            "filled_map",
+            "player_head",
+            "written_book",
+            "firework_star",
+            "shield");
 
     private static boolean typeDefined(String id) {
         return TYPE_DEFINED.contains(id) || id.endsWith("_banner");
@@ -197,7 +212,8 @@ public final class StackInfo {
     private static Object typeValueOf(ItemStack stack, String id) {
         if (id.endsWith("_banner")) return stack.get(DataComponents.BANNER_PATTERNS);
         return switch (id) {
-            case "potion", "splash_potion", "lingering_potion", "tipped_arrow" -> stack.get(DataComponents.POTION_CONTENTS);
+            case "potion", "splash_potion", "lingering_potion", "tipped_arrow" ->
+                stack.get(DataComponents.POTION_CONTENTS);
             case "enchanted_book" -> stack.get(DataComponents.STORED_ENCHANTMENTS);
             case "suspicious_stew" -> stack.get(DataComponents.SUSPICIOUS_STEW_EFFECTS);
             case "firework_rocket" -> stack.get(DataComponents.FIREWORKS);
@@ -206,7 +222,8 @@ public final class StackInfo {
             case "player_head" -> stack.get(DataComponents.PROFILE);
             case "written_book" -> stack.get(DataComponents.WRITTEN_BOOK_CONTENT);
             case "firework_star" -> stack.get(DataComponents.FIREWORK_EXPLOSION);
-            case "shield" -> Arrays.asList(stack.get(DataComponents.BASE_COLOR), stack.get(DataComponents.BANNER_PATTERNS));
+            case "shield" ->
+                Arrays.asList(stack.get(DataComponents.BASE_COLOR), stack.get(DataComponents.BANNER_PATTERNS));
             default -> stack.get(DataComponents.OMINOUS_BOTTLE_AMPLIFIER);
         };
     }

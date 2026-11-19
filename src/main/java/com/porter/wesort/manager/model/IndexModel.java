@@ -3,7 +3,6 @@ package com.porter.wesort.manager.model;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-
 import java.text.Collator;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -26,11 +25,25 @@ public final class IndexModel {
     private static final Pattern SHULKER_BOX = Pattern.compile("^minecraft:([a-z_]+_)?shulker_box$");
 
     /** The creative menu's tabs in the website's order; an unknown tab counts as "other". */
-    static final List<String> TABS = List.of("building_blocks", "colored_blocks", "natural_blocks", "functional_blocks",
-        "redstone_blocks", "tools_and_utilities", "combat", "food_and_drinks", "ingredients", "spawn_eggs", "op_blocks", "other");
+    static final List<String> TABS = List.of(
+            "building_blocks",
+            "colored_blocks",
+            "natural_blocks",
+            "functional_blocks",
+            "redstone_blocks",
+            "tools_and_utilities",
+            "combat",
+            "food_and_drinks",
+            "ingredients",
+            "spawn_eggs",
+            "op_blocks",
+            "other");
 
     public enum Sort {
-        CREATIVE("Creative"), COUNT("Count"), NAME("Name"), ID("Id");
+        CREATIVE("Creative"),
+        COUNT("Count"),
+        NAME("Name"),
+        ID("Id");
 
         private final String label;
 
@@ -45,8 +58,21 @@ public final class IndexModel {
     }
 
     /** One kind of item. {@code hay} is the lower-case text a search looks in. */
-    public record Item(String key, String id, String name, String englishName, long count, int maxStack, List<String> details,
-                       boolean enchanted, String tab, int tabOrder, int damage, int maxDamage, String ns, String hay) {
+    public record Item(
+            String key,
+            String id,
+            String name,
+            String englishName,
+            long count,
+            int maxStack,
+            List<String> details,
+            boolean enchanted,
+            String tab,
+            int tabOrder,
+            int damage,
+            int maxDamage,
+            String ns,
+            String hay) {
 
         /** Remaining durability 0 to 1 of a damaged item, or -1 when it isn't damaged (or the bot doesn't say). */
         public double durabilityLeft() {
@@ -59,12 +85,11 @@ public final class IndexModel {
         }
     }
 
-    public record Content(int slot, String key, long count) {
-    }
+    public record Content(int slot, String key, long count) {}
 
     /** A group of identical, filled shulker boxes. */
-    public record Shulker(String key, String itemKey, String id, String name, long count, List<Content> contents, String hay) {
-    }
+    public record Shulker(
+            String key, String itemKey, String id, String name, long count, List<Content> contents, String hay) {}
 
     /**
      * What the grid shows: an item or a shulker group, with the count to draw (for a shulker box item that has filled
@@ -93,7 +118,15 @@ public final class IndexModel {
     private final Map<String, List<Shulker>> groupsByItem = new HashMap<>();
     private final long containersKnown, containersTotal, containersStale;
 
-    private IndexModel(String mcVersion, String dimension, long receivedAt, List<Item> items, List<Shulker> shulkers, long known, long total, long stale) {
+    private IndexModel(
+            String mcVersion,
+            String dimension,
+            long receivedAt,
+            List<Item> items,
+            List<Shulker> shulkers,
+            long known,
+            long total,
+            long stale) {
         this.mcVersion = mcVersion;
         this.dimension = dimension;
         this.receivedAt = receivedAt;
@@ -147,8 +180,15 @@ public final class IndexModel {
         JsonObject c = Json.obj(o.get("containers"));
         String mc = Json.str(o, "mcVersion");
         String dim = Json.str(o, "dimension");
-        return new IndexModel(mc.matches("^[0-9][0-9.]{0,31}$") ? mc : "", dim.matches("^[a-z0-9_.:/-]{1,64}$") ? dim : "", Json.lng(o, "receivedAt", 0), items, groups,
-            c == null ? -1 : Json.lng(c, "known", -1), c == null ? -1 : Json.lng(c, "total", -1), c == null ? -1 : Json.lng(c, "stale", -1));
+        return new IndexModel(
+                mc.matches("^[0-9][0-9.]{0,31}$") ? mc : "",
+                dim.matches("^[a-z0-9_.:/-]{1,64}$") ? dim : "",
+                Json.lng(o, "receivedAt", 0),
+                items,
+                groups,
+                c == null ? -1 : Json.lng(c, "known", -1),
+                c == null ? -1 : Json.lng(c, "total", -1),
+                c == null ? -1 : Json.lng(c, "stale", -1));
     }
 
     private static Item parseItem(JsonObject o) {
@@ -164,19 +204,36 @@ public final class IndexModel {
         JsonArray d = Json.arr(o.get("details"));
         if (d != null) {
             for (JsonElement e : d) {
-                if (e.isJsonPrimitive() && e.getAsJsonPrimitive().isString() && details.size() < 40) details.add(Text.sanitize(e.getAsString(), 200));
+                if (e.isJsonPrimitive() && e.getAsJsonPrimitive().isString() && details.size() < 40)
+                    details.add(Text.sanitize(e.getAsString(), 200));
             }
         }
         String tab = Json.str(o, "tab");
         if (!TABS.contains(tab)) tab = "other";
         long count = Math.max(0, (long) Json.num(o, "count", 0));
         int maxStack = (int) Math.max(1, Json.num(o, "maxStack", 64));
-        StringBuilder hay = new StringBuilder(name).append('\n').append(english).append('\n').append(id);
+        StringBuilder hay = new StringBuilder(name)
+                .append('\n')
+                .append(english)
+                .append('\n')
+                .append(id);
         for (String line : details) hay.append('\n').append(line);
         String ns = id.indexOf(':') < 0 ? "minecraft" : id.substring(0, id.indexOf(':'));
-        return new Item(key, id, name, english, count, maxStack, List.copyOf(details), Json.bool(o, "enchanted"), tab,
-            (int) Json.num(o, "tabOrder", 1_000_000), (int) Math.max(0, Json.num(o, "damage", 0)),
-            (int) Math.max(0, Json.num(o, "maxDamage", 0)), ns.toLowerCase(Locale.ROOT), hay.toString().toLowerCase(Locale.ROOT));
+        return new Item(
+                key,
+                id,
+                name,
+                english,
+                count,
+                maxStack,
+                List.copyOf(details),
+                Json.bool(o, "enchanted"),
+                tab,
+                (int) Json.num(o, "tabOrder", 1_000_000),
+                (int) Math.max(0, Json.num(o, "damage", 0)),
+                (int) Math.max(0, Json.num(o, "maxDamage", 0)),
+                ns.toLowerCase(Locale.ROOT),
+                hay.toString().toLowerCase(Locale.ROOT));
     }
 
     private static Shulker parseShulker(JsonObject o, Map<String, Item> items) {
@@ -207,15 +264,28 @@ public final class IndexModel {
         for (Content c : contents) totals.merge(c.key(), c.count(), Long::sum);
         List<Map.Entry<String, Long>> top = new ArrayList<>(totals.entrySet());
         top.sort((a, b) -> Long.compare(b.getValue(), a.getValue()));
-        StringBuilder hay = new StringBuilder(name).append('\n').append(english).append('\n').append(id);
+        StringBuilder hay = new StringBuilder(name)
+                .append('\n')
+                .append(english)
+                .append('\n')
+                .append(id);
         for (int i = 0; i < Math.min(4, top.size()); i++) {
             Item it = items.get(top.get(i).getKey());
-            hay.append('\n').append(it != null ? it.name() : Text.sanitize(top.get(i).getKey(), 100)).append(" x").append(top.get(i).getValue());
+            hay.append('\n')
+                    .append(it != null ? it.name() : Text.sanitize(top.get(i).getKey(), 100))
+                    .append(" x")
+                    .append(top.get(i).getValue());
         }
         if (top.size() > 4) hay.append("\n...and ").append(top.size() - 4).append(" more");
         hay.append('\n').append(contents.size()).append(" stacks");
-        return new Shulker(key, itemKey, id, name, Math.max(0, (long) Json.num(o, "count", 0)), List.copyOf(contents),
-            hay.toString().toLowerCase(Locale.ROOT));
+        return new Shulker(
+                key,
+                itemKey,
+                id,
+                name,
+                Math.max(0, (long) Json.num(o, "count", 0)),
+                List.copyOf(contents),
+                hay.toString().toLowerCase(Locale.ROOT));
     }
 
     // ---------- reading ----------
@@ -327,9 +397,15 @@ public final class IndexModel {
         switch (sort) {
             case CREATIVE:
                 // Damaged copies of the same item: the most worn first, undamaged ones last
-                Comparator<Item> wear = (a, b) -> Double.compare(a.durabilityLeft() < 0 ? 2 : a.durabilityLeft(), b.durabilityLeft() < 0 ? 2 : b.durabilityLeft());
-                return Comparator.<Item>comparingInt(i -> TABS.indexOf(i.tab())).thenComparingInt(Item::tabOrder)
-                    .thenComparing(byName).thenComparing((a, b) -> c.compare(a.id(), b.id())).thenComparing(wear).thenComparing(byKey);
+                Comparator<Item> wear = (a, b) -> Double.compare(
+                        a.durabilityLeft() < 0 ? 2 : a.durabilityLeft(),
+                        b.durabilityLeft() < 0 ? 2 : b.durabilityLeft());
+                return Comparator.<Item>comparingInt(i -> TABS.indexOf(i.tab()))
+                        .thenComparingInt(Item::tabOrder)
+                        .thenComparing(byName)
+                        .thenComparing((a, b) -> c.compare(a.id(), b.id()))
+                        .thenComparing(wear)
+                        .thenComparing(byKey);
             case NAME:
                 return byName.thenComparing(byCount).thenComparing(byKey);
             case ID:
@@ -368,6 +444,7 @@ public final class IndexModel {
 
     /** The website's special tabs: everything (Search), the filled shulkers, and the Orders page (no items of its own). */
     public static final String TAB_ALL = "all";
+
     public static final String TAB_SHULKERS = "shulkers";
     public static final String TAB_ORDERS = "orders";
 
@@ -398,7 +475,8 @@ public final class IndexModel {
      */
     public List<Entry> view(String queryText, Sort sort, boolean shulkersOnly, String tab) {
         if (TAB_SHULKERS.equals(tab)) shulkersOnly = true;
-        String only = tab == null || TAB_ALL.equals(tab) || TAB_ORDERS.equals(tab) || TAB_SHULKERS.equals(tab) ? null : tab;
+        String only =
+                tab == null || TAB_ALL.equals(tab) || TAB_ORDERS.equals(tab) || TAB_SHULKERS.equals(tab) ? null : tab;
         Query q = parseQuery(queryText);
         List<Entry> out = new ArrayList<>();
         if (shulkersOnly) {

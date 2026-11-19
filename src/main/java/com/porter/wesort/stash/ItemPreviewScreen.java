@@ -1,5 +1,7 @@
 package com.porter.wesort.stash;
 
+import static meteordevelopment.meteorclient.MeteorClient.mc;
+
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.DispenserScreen;
 import net.minecraft.network.chat.Component;
@@ -8,8 +10,6 @@ import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.DispenserMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
-
-import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 /**
  * Shows one item from the stash in a vanilla container screen, so hovering it gives the full tooltip: name, enchants,

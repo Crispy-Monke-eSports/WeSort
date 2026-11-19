@@ -18,9 +18,11 @@ public final class PhysicalJournal {
     private final Path folder, active;
     private final LongSupplier clock;
     private JsonObject value, durable;
+
     public PhysicalJournal(Path folder) throws IOException {
         this(folder, System::currentTimeMillis);
     }
+
     public PhysicalJournal(Path folder, LongSupplier clock) throws IOException {
         this.folder = folder;
         this.active = folder.resolve("active.json");
@@ -39,51 +41,57 @@ public final class PhysicalJournal {
             }
         }
     }
+
     public synchronized JsonObject current() {
         return value == null ? null : value.deepCopy();
     }
+
     public synchronized String id() {
         return value == null ? "" : value.get("id").getAsString();
     }
+
     public synchronized long revision() {
         return value == null ? 0 : value.get("revision").getAsLong();
     }
+
     public synchronized String checksum() {
         return value == null ? "" : value.get("checksum").getAsString();
     }
+
     public synchronized JsonObject context() {
         return value == null ? null : value.getAsJsonObject("context").deepCopy();
     }
+
     public synchronized boolean blocked() {
         return value != null && value.get("state").getAsString().equals("NEEDS_RECONCILIATION");
     }
+
     public synchronized boolean terminal() {
-        return value != null && List.of("COMPLETED", "FAILED").contains(value.get("state").getAsString());
+        return value != null
+                && List.of("COMPLETED", "FAILED").contains(value.get("state").getAsString());
     }
+
     public synchronized boolean pending() {
         return value != null && lastIntent() > value.get("verifiedThrough").getAsLong();
     }
+
     public synchronized void start(JsonObject context) throws IOException {
-        if (value != null && !terminal())
-            throw new IOException("Unresolved physical operation");
+        if (value != null && !terminal()) throw new IOException("Unresolved physical operation");
         for (String key : List.of("server", "dimension", "agent", "kind")) {
             String text = context.get(key).getAsString();
             if (text.isBlank() || text.length() > 256)
                 throw new IllegalArgumentException("Invalid physical journal scope");
         }
         UUID.fromString(context.get("agent").getAsString());
-        if (context.toString().length() > 128_000)
-            throw new IllegalArgumentException("Physical context too large");
+        if (context.toString().length() > 128_000) throw new IllegalArgumentException("Physical context too large");
         if (value != null) {
             Path archive = folder.resolve("completed");
             Files.createDirectories(archive);
             mode(archive, "rwx------");
             Path file = archive.resolve(value.get("id").getAsString() + ".json");
             if (Files.exists(file)) {
-                if (!read(file).equals(value))
-                    throw new IOException("Conflicting immutable physical history");
-            } else
-                write(file, value);
+                if (!read(file).equals(value)) throw new IOException("Conflicting immutable physical history");
+            } else write(file, value);
         }
         value = new JsonObject();
         value.addProperty("format", FORMAT);
@@ -97,13 +105,12 @@ public final class PhysicalJournal {
         value.add("events", new JsonArray());
         event("PLANNED", new JsonObject());
     }
+
     public synchronized void phase(String phase, JsonObject evidence) throws IOException {
         requireActive();
-        if (blocked() || terminal())
-            return;
+        if (blocked() || terminal()) return;
         PhysicalWork.Phase.valueOf(phase);
-        if (phase.equals(value.get("phase").getAsString()))
-            return;
+        if (phase.equals(value.get("phase").getAsString())) return;
         value.addProperty("phase", phase);
         value.addProperty("state", List.of("VERIFY", "STORE").contains(phase) ? "VERIFYING" : "IN_PROGRESS");
         event("PHASE", evidence);
@@ -111,8 +118,7 @@ public final class PhysicalJournal {
     /** Must complete before the caller transmits the corresponding packet. */
     public synchronized void intent(JsonObject evidence) throws IOException {
         requireActive();
-        if (blocked() || terminal())
-            throw new IOException("Physical operation is fenced");
+        if (blocked() || terminal()) throw new IOException("Physical operation is fenced");
         if (!evidence.has("before") || !evidence.has("expected") || !evidence.has("origin"))
             throw new IllegalArgumentException("Physical intent needs exact postcondition and source scope");
         var after = expected(evidence.getAsJsonObject("expected"));
@@ -122,9 +128,9 @@ public final class PhysicalJournal {
         value.addProperty("state", "IN_PROGRESS");
         event("INTENT", intent);
     }
+
     public synchronized JsonObject lastIntentEvidence() {
-        if (value == null)
-            return null;
+        if (value == null) return null;
         var events = value.getAsJsonArray("events");
         for (int i = events.size() - 1; i >= 0; i--) {
             var event = events.get(i).getAsJsonObject();
@@ -137,31 +143,28 @@ public final class PhysicalJournal {
     public synchronized void verified(JsonObject frame, boolean sourceReconciled) throws IOException {
         verified(frame, sourceReconciled, null, null);
     }
+
     public synchronized void verified(
-        JsonObject frame, boolean sourceReconciled, JsonObject playerInventory, String decisionId) throws IOException {
+            JsonObject frame, boolean sourceReconciled, JsonObject playerInventory, String decisionId)
+            throws IOException {
         requireActive();
-        if (!pending() && !sourceReconciled)
-            return;
+        if (!pending() && !sourceReconciled) return;
         JsonObject intent = lastIntentEvidence();
-        if (intent == null)
-            return;
+        if (intent == null) return;
         var wanted = expected(intent.getAsJsonObject("expected"));
         var actual = expected(frame);
         if (sourceReconciled)
             wanted = new InventoryReadback.Expected(
-                actual.menu(), wanted.slots(), wanted.cursor(), wanted.alternatives());
-        if (!wanted.matches(actual))
-            throw new IOException("Physical receipt differs from the recorded postcondition");
-        if (blocked() && !sourceReconciled)
-            throw new IOException("Explicit source reconciliation required");
+                    actual.menu(), wanted.slots(), wanted.cursor(), wanted.alternatives());
+        if (!wanted.matches(actual)) throw new IOException("Physical receipt differs from the recorded postcondition");
+        if (blocked() && !sourceReconciled) throw new IOException("Explicit source reconciliation required");
         long verifiedThrough = lastIntent();
         var evidence = new JsonObject();
         evidence.add("frame", frame.deepCopy());
         evidence.addProperty("sourceReconciled", sourceReconciled);
         evidence.addProperty("verifiedThrough", verifiedThrough);
         evidence.add("inventoryDiff", diff(expected(intent.getAsJsonObject("before")), actual));
-        if (playerInventory != null)
-            evidence.add("playerInventory", playerInventory.deepCopy());
+        if (playerInventory != null) evidence.add("playerInventory", playerInventory.deepCopy());
         if (decisionId != null)
             evidence.addProperty("decisionId", UUID.fromString(decisionId).toString());
         validateInspectionEvidence(evidence);
@@ -169,70 +172,67 @@ public final class PhysicalJournal {
         value.addProperty("state", "VERIFYING");
         event(sourceReconciled ? "RECONCILED" : "VERIFIED", evidence);
     }
+
     public synchronized void inspectedWithoutMutation(JsonObject frame, JsonObject playerInventory, String decisionId)
-        throws IOException {
+            throws IOException {
         requireActive();
-        if (lastIntent() != 0)
-            throw new IOException("Recorded physical action requires its exact postcondition");
+        if (lastIntent() != 0) throw new IOException("Recorded physical action requires its exact postcondition");
         expected(frame);
         var evidence = new JsonObject();
         evidence.add("frame", frame.deepCopy());
-        if (playerInventory != null)
-            evidence.add("playerInventory", playerInventory.deepCopy());
+        if (playerInventory != null) evidence.add("playerInventory", playerInventory.deepCopy());
         if (decisionId != null)
             evidence.addProperty("decisionId", UUID.fromString(decisionId).toString());
         validateInspectionEvidence(evidence);
         event("INSPECTED_NO_MUTATION", evidence);
     }
+
     public synchronized void complete() throws IOException {
         requireActive();
-        if (terminal())
-            return;
-        if (blocked() || pending())
-            throw new IOException("Unverified physical work cannot complete");
+        if (terminal()) return;
+        if (blocked() || pending()) throw new IOException("Unverified physical work cannot complete");
         value.addProperty("state", "COMPLETED");
         value.addProperty("phase", "COMPLETED");
         event("COMPLETED", new JsonObject());
     }
+
     public synchronized void block(String reason) throws IOException {
-        if (value == null || terminal() || blocked())
-            return;
+        if (value == null || terminal() || blocked()) return;
         value.addProperty("state", "NEEDS_RECONCILIATION");
         var evidence = new JsonObject();
         evidence.addProperty("reason", bounded(reason));
         event("BLOCKED", evidence);
     }
+
     public synchronized void failBeforeMutation(String reason) throws IOException {
         requireActive();
-        if (lastIntent() != 0)
-            throw new IOException("Physical work with transmitted intent must be reconciled");
+        if (lastIntent() != 0) throw new IOException("Physical work with transmitted intent must be reconciled");
         value.addProperty("state", "FAILED");
         var evidence = new JsonObject();
         evidence.addProperty("reason", bounded(reason));
         event("FAILED", evidence);
     }
+
     public synchronized List<JsonObject> records() throws IOException {
         List<JsonObject> out = new ArrayList<>();
         Path history = folder.resolve("completed");
-        if (Files.isSymbolicLink(history))
-            throw new IOException("Symlink physical history");
+        if (Files.isSymbolicLink(history)) throw new IOException("Symlink physical history");
         if (Files.isDirectory(history))
             try (var files = Files.list(history)) {
-                for (Path file :
-                    files.filter(f -> f.getFileName().toString().matches("[0-9a-f-]{36}\\.json")).sorted().toList())
-                    out.add(read(file));
+                for (Path file : files.filter(f -> f.getFileName().toString().matches("[0-9a-f-]{36}\\.json"))
+                        .sorted()
+                        .toList()) out.add(read(file));
             }
-        if (value != null)
-            out.add(value.deepCopy());
+        if (value != null) out.add(value.deepCopy());
         return List.copyOf(out);
     }
+
     private void requireActive() {
-        if (value == null)
-            throw new IllegalStateException("No physical operation");
+        if (value == null) throw new IllegalStateException("No physical operation");
     }
+
     private long lastIntent() {
-        if (value == null)
-            return 0;
+        if (value == null) return 0;
         var events = value.getAsJsonArray("events");
         for (int i = events.size() - 1; i >= 0; i--) {
             var row = events.get(i).getAsJsonObject();
@@ -241,9 +241,11 @@ public final class PhysicalJournal {
         }
         return 0;
     }
+
     private static String bounded(String reason) {
         return reason == null ? "" : reason.substring(0, Math.min(1000, reason.length()));
     }
+
     private void event(String type, JsonObject evidence) throws IOException {
         var events = value.getAsJsonArray("events");
         if (events.size() >= MAX_EVENTS) {
@@ -256,8 +258,14 @@ public final class PhysicalJournal {
         row.addProperty("at", clock.getAsLong());
         row.addProperty("type", type);
         row.addProperty("phase", value.get("phase").getAsString());
-        row.addProperty("previous",
-            events.isEmpty() ? "" : events.get(events.size() - 1).getAsJsonObject().get("hash").getAsString());
+        row.addProperty(
+                "previous",
+                events.isEmpty()
+                        ? ""
+                        : events.get(events.size() - 1)
+                                .getAsJsonObject()
+                                .get("hash")
+                                .getAsString());
         row.add("evidence", evidence.deepCopy());
         row.addProperty("hash", ContainerIdentity.hash(CanonicalJson.stringify(row)));
         events.add(row);
@@ -273,6 +281,7 @@ public final class PhysicalJournal {
             throw failed;
         }
     }
+
     public static JsonObject validate(JsonObject input) {
         var value = input.deepCopy();
         String checksum = value.remove("checksum").getAsString();
@@ -285,8 +294,7 @@ public final class PhysicalJournal {
         var context = value.getAsJsonObject("context");
         UUID.fromString(context.get("agent").getAsString());
         for (String key : List.of("server", "dimension", "agent", "kind"))
-            if (context.get(key).getAsString().isBlank())
-                throw new IllegalArgumentException("Missing journal scope");
+            if (context.get(key).getAsString().isBlank()) throw new IllegalArgumentException("Missing journal scope");
         if (!List.of("PLANNED", "IN_PROGRESS", "VERIFYING", "COMPLETED", "NEEDS_RECONCILIATION", "FAILED")
                 .contains(value.get("state").getAsString()))
             throw new IllegalArgumentException("Unknown physical state");
@@ -300,8 +308,9 @@ public final class PhysicalJournal {
         for (var entry : events) {
             var row = entry.getAsJsonObject().deepCopy();
             String hash = row.remove("hash").getAsString();
-            if (row.get("seq").getAsLong() != ++sequence || !previous.equals(row.get("previous").getAsString())
-                || !hash.equals(ContainerIdentity.hash(CanonicalJson.stringify(row))))
+            if (row.get("seq").getAsLong() != ++sequence
+                    || !previous.equals(row.get("previous").getAsString())
+                    || !hash.equals(ContainerIdentity.hash(CanonicalJson.stringify(row))))
                 throw new IllegalArgumentException("Broken physical evidence chain");
             previous = hash;
             String type = row.get("type").getAsString();
@@ -314,20 +323,22 @@ public final class PhysicalJournal {
                 expected(intent.getAsJsonObject("expected"));
             }
             if (type.equals("VERIFIED") || type.equals("RECONCILED")) {
-                if (intent == null || pending < verified || type.equals("VERIFIED") && pending == verified
-                    || evidence.get("verifiedThrough").getAsLong() != pending)
+                if (intent == null
+                        || pending < verified
+                        || type.equals("VERIFIED") && pending == verified
+                        || evidence.get("verifiedThrough").getAsLong() != pending)
                     throw new IllegalArgumentException("Unbound physical receipt");
                 var wanted = expected(intent.getAsJsonObject("expected"));
                 var actual = expected(evidence.getAsJsonObject("frame"));
                 if (type.equals("RECONCILED"))
                     wanted = new InventoryReadback.Expected(
-                        actual.menu(), wanted.slots(), wanted.cursor(), wanted.alternatives());
-                if (!wanted.matches(actual))
-                    throw new IllegalArgumentException("Invalid recorded postcondition");
+                            actual.menu(), wanted.slots(), wanted.cursor(), wanted.alternatives());
+                if (!wanted.matches(actual)) throw new IllegalArgumentException("Invalid recorded postcondition");
                 verified = pending;
             }
         }
-        if (value.get("revision").getAsLong() != sequence || value.get("verifiedThrough").getAsLong() != verified)
+        if (value.get("revision").getAsLong() != sequence
+                || value.get("verifiedThrough").getAsLong() != verified)
             throw new IllegalArgumentException("Invalid journal revision");
         if (value.get("state").getAsString().equals("FAILED") && pending > 0)
             throw new IllegalArgumentException("Transmitted physical work cannot fail without reconciliation");
@@ -335,6 +346,7 @@ public final class PhysicalJournal {
             throw new IllegalArgumentException("Unverified completed journal");
         return value;
     }
+
     private static void validateInspectionEvidence(JsonObject evidence) {
         if (!evidence.has("decisionId")) return;
         UUID.fromString(evidence.get("decisionId").getAsString());
@@ -342,7 +354,8 @@ public final class PhysicalJournal {
         int size = inventory.get("size").getAsBigDecimal().intValueExact();
         var reader = new com.porter.wesort.data.PhysicalSlots.Reader(inventory.getAsJsonArray("slotVariants"));
         var actual = reader.snapshot(size, inventory.getAsJsonArray("slots"));
-        if (size != 46 || !actual.fingerprint().equals(inventory.get("fingerprint").getAsString())) {
+        if (size != 46
+                || !actual.fingerprint().equals(inventory.get("fingerprint").getAsString())) {
             throw new IllegalArgumentException("Invalid full player inventory inspection");
         }
     }
@@ -352,8 +365,7 @@ public final class PhysicalJournal {
         var slots = new JsonArray();
         if (before.slots().size() == after.slots().size())
             for (int slot = 0; slot < before.slots().size(); slot++) {
-                if (before.slots().get(slot).equals(after.slots().get(slot)))
-                    continue;
+                if (before.slots().get(slot).equals(after.slots().get(slot))) continue;
                 var row = new JsonObject();
                 row.addProperty("slot", slot);
                 row.addProperty("before", before.slots().get(slot));
@@ -365,12 +377,12 @@ public final class PhysicalJournal {
         out.addProperty("cursorAfter", after.cursor());
         return out;
     }
+
     private static InventoryReadback.Expected expected(JsonObject frame) {
         List<String> slots = new ArrayList<>();
         for (var value : frame.getAsJsonArray("slots")) {
             String fingerprint = value.getAsString();
-            if (fingerprint.length() > 64_000)
-                throw new IllegalArgumentException("Oversized physical fingerprint");
+            if (fingerprint.length() > 64_000) throw new IllegalArgumentException("Oversized physical fingerprint");
             slots.add(fingerprint);
         }
         if (slots.isEmpty() || slots.size() > 256)
@@ -383,8 +395,9 @@ public final class PhysicalJournal {
                 alternatives.put(Integer.parseInt(entry.getKey()), choices);
             }
         return new InventoryReadback.Expected(
-            frame.get("menu").getAsInt(), slots, frame.get("cursor").getAsString(), alternatives);
+                frame.get("menu").getAsInt(), slots, frame.get("cursor").getAsString(), alternatives);
     }
+
     private static JsonObject read(Path file) throws IOException {
         if (Files.isSymbolicLink(file) || Files.size(file) > MAX_BYTES)
             throw new IOException("Invalid physical journal file");
@@ -394,10 +407,10 @@ public final class PhysicalJournal {
             throw new IOException("Cannot validate physical evidence; file left unchanged", invalid);
         }
     }
+
     private static void write(Path target, JsonObject value) throws IOException {
         byte[] data = value.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        if (data.length > MAX_BYTES)
-            throw new IOException("Physical journal exceeds byte bound");
+        if (data.length > MAX_BYTES) throw new IOException("Physical journal exceeds byte bound");
         Path temp = Files.createTempFile(target.getParent(), "wesort-physical-", ".tmp");
         try {
             mode(temp, "rw-------");
@@ -414,6 +427,7 @@ public final class PhysicalJournal {
             Files.deleteIfExists(temp);
         }
     }
+
     private static void mode(Path file, String mode) throws IOException {
         try {
             Files.setPosixFilePermissions(file, PosixFilePermissions.fromString(mode));

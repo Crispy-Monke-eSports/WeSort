@@ -5,8 +5,7 @@ import com.google.gson.JsonObject;
 
 public final class AuthState {
     /** A server without sub-users sends no user: that is the owner, who can do everything. */
-    private static final String[] OWNER_FLAGS = {
-        "view", "order", "ordersAll", "activity", "settings", "rescan", "link"
+    private static final String[] OWNER_FLAGS = {"view", "order", "ordersAll", "activity", "settings", "rescan", "link"
     };
 
     private final boolean loggedIn;
@@ -21,8 +20,18 @@ public final class AuthState {
     private final JsonObject perms;
     private final String message;
 
-    private AuthState(boolean loggedIn, boolean setupNeeded, boolean setupAllowed, int minLength, long elevatedUntil, boolean owner,
-                      boolean mustChange, String userId, String userName, JsonObject perms, String message) {
+    private AuthState(
+            boolean loggedIn,
+            boolean setupNeeded,
+            boolean setupAllowed,
+            int minLength,
+            long elevatedUntil,
+            boolean owner,
+            boolean mustChange,
+            String userId,
+            String userName,
+            JsonObject perms,
+            String message) {
         this.loggedIn = loggedIn;
         this.setupNeeded = setupNeeded;
         this.setupAllowed = setupAllowed;
@@ -57,8 +66,18 @@ public final class AuthState {
             if (p != null) perms = p;
             if (!owner && id.isEmpty()) id = "?";
         }
-        return new AuthState(loggedIn, Json.bool(o, "setupNeeded"), Json.bool(o, "setupAllowed"), min < 1 ? 12 : min,
-            Json.lng(o, "elevatedUntil", 0), owner, mustChange, id, name, perms, Json.str(o, "message"));
+        return new AuthState(
+                loggedIn,
+                Json.bool(o, "setupNeeded"),
+                Json.bool(o, "setupAllowed"),
+                min < 1 ? 12 : min,
+                Json.lng(o, "elevatedUntil", 0),
+                owner,
+                mustChange,
+                id,
+                name,
+                perms,
+                Json.str(o, "message"));
     }
 
     public boolean loggedIn() {
@@ -111,7 +130,6 @@ public final class AuthState {
     }
 
     /** "proxy" (none, read, change) or "console" (none, list, full). */
-
 
     /** The owner forced streamer mode on for this user. The owner can never be forced. */
     public boolean forcedStreamer() {

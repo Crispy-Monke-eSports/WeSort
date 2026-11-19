@@ -1,24 +1,22 @@
 package com.porter.wesort.stash;
 
+import static meteordevelopment.meteorclient.MeteorClient.mc;
+
 import com.porter.wesort.stash.Stash.Box;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import meteordevelopment.meteorclient.utils.Utils;
 import net.minecraft.core.component.DataComponentMap;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-import static meteordevelopment.meteorclient.MeteorClient.mc;
-
 /** Read-only, in-memory exact definitions received with assigned Manager execution jobs. */
 public final class Kits {
-    private Kits() {
-    }
+    private Kits() {}
 
     /**
      * A shulker that is a kit, or part of one. {@code mixed} is two or more kinds of item inside.
@@ -57,8 +55,8 @@ public final class Kits {
 
     public static Kit byName(String name) {
         ensureLoaded();
-        if(assigned!=null&&assigned.sameName(name))return assigned;
-        for(int i=kits.size()-1;i>=0;i--)if(kits.get(i).sameName(name))return kits.get(i);
+        if (assigned != null && assigned.sameName(name)) return assigned;
+        for (int i = kits.size() - 1; i >= 0; i--) if (kits.get(i).sameName(name)) return kits.get(i);
         return null;
     }
 
@@ -67,7 +65,8 @@ public final class Kits {
      */
     public static void clear() {
         kits.clear();
-        release();cacheScope="";
+        release();
+        cacheScope = "";
         loadedFor = null;
         changed();
     }
@@ -81,27 +80,73 @@ public final class Kits {
     private static Kit assigned;
     private static String destination = "", assignmentScope = "", cacheScope = "";
     private static long assignmentUntil;
+
     private static String currentScope() {
-        var manager=meteordevelopment.meteorclient.systems.modules.Modules.get().get(com.porter.wesort.modules.StashManager.class);
-        return manager==null?"":manager.kitScope();
+        var manager = meteordevelopment.meteorclient.systems.modules.Modules.get()
+                .get(com.porter.wesort.modules.StashManager.class);
+        return manager == null ? "" : manager.kitScope();
     }
-    public static boolean isShared(Kit kit) { return kits.contains(kit); }
-    public static boolean buildable(Kit kit) { return kit==assigned&&assignmentUntil>System.nanoTime()&&!assignmentScope.isEmpty()&&assignmentScope.equals(currentScope()); }
-    public static Kit assigned() { return assigned; }
-    public static void assign(com.porter.wesort.data.KitTemplate template,String scope,String target,long until) {
-        ensureLoaded();var incoming=com.porter.wesort.compat.KitRuntime.load(template);
-        if(!scope.equals(cacheScope)){kits.clear();cacheScope=scope;}
-        kits.removeIf(known->known.sameName(template.name())&&com.porter.wesort.compat.KitRuntime.export(known).fingerprint().equals(template.fingerprint()));
+
+    public static boolean isShared(Kit kit) {
+        return kits.contains(kit);
+    }
+
+    public static boolean buildable(Kit kit) {
+        return kit == assigned
+                && assignmentUntil > System.nanoTime()
+                && !assignmentScope.isEmpty()
+                && assignmentScope.equals(currentScope());
+    }
+
+    public static Kit assigned() {
+        return assigned;
+    }
+
+    public static void assign(com.porter.wesort.data.KitTemplate template, String scope, String target, long until) {
+        ensureLoaded();
+        var incoming = com.porter.wesort.compat.KitRuntime.load(template);
+        if (!scope.equals(cacheScope)) {
+            kits.clear();
+            cacheScope = scope;
+        }
+        kits.removeIf(known -> known.sameName(template.name())
+                && com.porter.wesort.compat.KitRuntime.export(known)
+                        .fingerprint()
+                        .equals(template.fingerprint()));
         // Retain observed historical definitions for protection, while execution pins this exact immutable object.
-        assigned=incoming;destination=target;assignmentScope=scope;assignmentUntil=until;
-        kits.add(incoming);changed();
+        assigned = incoming;
+        destination = target;
+        assignmentScope = scope;
+        assignmentUntil = until;
+        kits.add(incoming);
+        changed();
     }
-    public static void renew(long until) { assignmentUntil=until; }
-    public static void revoke() { assignmentUntil=0; }
-    public static void release() { assigned=null;destination="";assignmentScope="";assignmentUntil=0;changed(); }
+
+    public static void renew(long until) {
+        assignmentUntil = until;
+    }
+
+    public static void revoke() {
+        assignmentUntil = 0;
+    }
+
+    public static void release() {
+        assigned = null;
+        destination = "";
+        assignmentScope = "";
+        assignmentUntil = 0;
+        changed();
+    }
+
     public static String sourceId(Box box) {
-        return new com.porter.wesort.data.ContainerIdentity(Stash.currentServer(),StashIndex.dimension(),box.parts.stream()
-            .map(p->new com.porter.wesort.data.ContainerIdentity.Position(p.getX(),p.getY(),p.getZ())).toList()).id();
+        return new com.porter.wesort.data.ContainerIdentity(
+                        Stash.currentServer(),
+                        StashIndex.dimension(),
+                        box.parts.stream()
+                                .map(p -> new com.porter.wesort.data.ContainerIdentity.Position(
+                                        p.getX(), p.getY(), p.getZ()))
+                                .toList())
+                .id();
     }
 
     // Finding kits
@@ -111,7 +156,10 @@ public final class Kits {
      * left as they are).
      */
     public static Match match(ItemStack shulker) {
-        if (shulker == null || shulker.isEmpty() || !Utils.isShulker(shulker.getItem()) || shulker.has(DataComponents.CUSTOM_NAME)) return null;
+        if (shulker == null
+                || shulker.isEmpty()
+                || !Utils.isShulker(shulker.getItem())
+                || shulker.has(DataComponents.CUSTOM_NAME)) return null;
         ensureLoaded();
         if (kits.isEmpty()) return null;
 
@@ -131,9 +179,9 @@ public final class Kits {
         if (!any) return null;
 
         boolean mixed = Kit.kinds(inside) >= 2;
-        if(assigned!=null&&assigned.matchesFinished(inside))return new Match(assigned,true,mixed);
+        if (assigned != null && assigned.matchesFinished(inside)) return new Match(assigned, true, mixed);
         for (Kit kit : kits) if (kit.matchesFinished(inside)) return new Match(kit, true, mixed);
-        if(assigned!=null&&assigned.matchesPartial(inside))return new Match(assigned,false,mixed);
+        if (assigned != null && assigned.matchesPartial(inside)) return new Match(assigned, false, mixed);
         for (Kit kit : kits) if (kit.matchesPartial(inside)) return new Match(kit, false, mixed);
         return null;
     }
@@ -164,7 +212,9 @@ public final class Kits {
     private static int legacyTick = -1;
 
     private static ItemStack[] legacyContents(ItemStack shulker) {
-        int tick = net.minecraft.client.Minecraft.getInstance().player == null ? -1 : net.minecraft.client.Minecraft.getInstance().player.tickCount;
+        int tick = net.minecraft.client.Minecraft.getInstance().player == null
+                ? -1
+                : net.minecraft.client.Minecraft.getInstance().player.tickCount;
         if (tick != legacyTick) {
             LEGACY.clear();
             legacyTick = tick;
@@ -208,13 +258,13 @@ public final class Kits {
     }
 
     public static boolean isKitBox(Box box) {
-        if(assigned!=null&&sourceId(box).equals(destination))return true;
+        if (assigned != null && sourceId(box).equals(destination)) return true;
         for (String label : box.labels) if (isKitLabel(label)) return true;
         return false;
     }
 
     public static boolean isHome(Box box, Kit kit) {
-        if(kit==assigned)return sourceId(box).equals(destination);
+        if (kit == assigned) return sourceId(box).equals(destination);
         for (String label : box.labels) if (kit.labelMatches(label)) return true;
         return false;
     }
@@ -225,7 +275,8 @@ public final class Kits {
     public static List<Box> homes(Kit kit, Stash stash) {
         List<Box> homes = new ArrayList<>();
         if (stash == null) return homes;
-        for (Box box : com.porter.wesort.compat.ObservationRuntime.boxes(stash)) if (box.sortable() && !box.dropOff && isHome(box, kit)) homes.add(box);
+        for (Box box : com.porter.wesort.compat.ObservationRuntime.boxes(stash))
+            if (box.sortable() && !box.dropOff && isHome(box, kit)) homes.add(box);
         return homes;
     }
 
@@ -246,8 +297,11 @@ public final class Kits {
 
     /** No local kit library is discovered or read. Only a signed, assigned Manager job installs execution data. */
     private static void ensureLoaded() {
-        if(mc.level==null)return;
-        String server=Stash.currentServer();
-        if(!server.equals(loadedFor)){clear();loadedFor=server;}
+        if (mc.level == null) return;
+        String server = Stash.currentServer();
+        if (!server.equals(loadedFor)) {
+            clear();
+            loadedFor = server;
+        }
     }
 }

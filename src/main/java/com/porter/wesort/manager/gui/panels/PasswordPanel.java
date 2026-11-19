@@ -1,14 +1,13 @@
 package com.porter.wesort.manager.gui.panels;
 
 import com.porter.wesort.manager.gui.widgets.MaskedRenderer;
+import java.util.ArrayList;
+import java.util.List;
 import meteordevelopment.meteorclient.gui.GuiTheme;
 import meteordevelopment.meteorclient.gui.widgets.WLabel;
 import meteordevelopment.meteorclient.gui.widgets.containers.WContainer;
 import meteordevelopment.meteorclient.gui.widgets.input.WTextBox;
 import meteordevelopment.meteorclient.utils.render.color.Color;
-
-import java.util.ArrayList;
-import java.util.List;
 
 /** Shared bits of the password panels: masked boxes, a notice line, and wiping what was typed. */
 abstract class PasswordPanel {
@@ -21,14 +20,20 @@ abstract class PasswordPanel {
     /** A labelled password box. It has no placeholder: that would be drawn masked too. */
     protected WTextBox secret(WContainer parent, String label) {
         parent.add(theme.label(label));
-        WTextBox box = parent.add(theme.textBox("", null, MaskedRenderer.ANY_CHAR, MaskedRenderer.class)).minWidth(theme.scale(300)).expandX().widget();
+        WTextBox box = parent.add(theme.textBox("", null, MaskedRenderer.ANY_CHAR, MaskedRenderer.class))
+                .minWidth(theme.scale(300))
+                .expandX()
+                .widget();
         secrets.add(box);
         return box;
     }
 
     protected WTextBox plain(WContainer parent, String label, String text) {
         parent.add(theme.label(label));
-        return parent.add(theme.textBox(text)).minWidth(theme.scale(300)).expandX().widget();
+        return parent.add(theme.textBox(text))
+                .minWidth(theme.scale(300))
+                .expandX()
+                .widget();
     }
 
     protected void addNotice(WContainer parent, String message) {

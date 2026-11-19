@@ -10,8 +10,7 @@ import java.util.List;
 import java.util.stream.Stream;
 
 final class AtomicFiles {
-    private AtomicFiles() {
-    }
+    private AtomicFiles() {}
 
     /** Writes bytes to a temp file next to the target, then moves it into place. */
     static void write(Path target, byte[] data) throws IOException {
@@ -56,18 +55,22 @@ final class AtomicFiles {
             warn(path, e);
             return;
         }
-        java.nio.file.attribute.AclFileAttributeView acl = Files.getFileAttributeView(path, java.nio.file.attribute.AclFileAttributeView.class);
+        java.nio.file.attribute.AclFileAttributeView acl =
+                Files.getFileAttributeView(path, java.nio.file.attribute.AclFileAttributeView.class);
         if (acl == null) return;
         try {
             // The user this server runs as (not the file's owner, which may be a group such as Administrators).
-            java.nio.file.attribute.UserPrincipal owner = path.getFileSystem().getUserPrincipalLookupService()
-                .lookupPrincipalByName(System.getProperty("user.name"));
+            java.nio.file.attribute.UserPrincipal owner = path.getFileSystem()
+                    .getUserPrincipalLookupService()
+                    .lookupPrincipalByName(System.getProperty("user.name"));
             java.nio.file.attribute.AclEntry.Builder entry = java.nio.file.attribute.AclEntry.newBuilder()
-                .setType(java.nio.file.attribute.AclEntryType.ALLOW)
-                .setPrincipal(owner)
-                .setPermissions(java.util.EnumSet.allOf(java.nio.file.attribute.AclEntryPermission.class));
+                    .setType(java.nio.file.attribute.AclEntryType.ALLOW)
+                    .setPrincipal(owner)
+                    .setPermissions(java.util.EnumSet.allOf(java.nio.file.attribute.AclEntryPermission.class));
             if (dir) {
-                entry.setFlags(java.nio.file.attribute.AclEntryFlag.FILE_INHERIT, java.nio.file.attribute.AclEntryFlag.DIRECTORY_INHERIT);
+                entry.setFlags(
+                        java.nio.file.attribute.AclEntryFlag.FILE_INHERIT,
+                        java.nio.file.attribute.AclEntryFlag.DIRECTORY_INHERIT);
             }
             acl.setAcl(List.of(entry.build()));
         } catch (IOException | RuntimeException e) {
@@ -76,7 +79,8 @@ final class AtomicFiles {
     }
 
     private static void warn(Path path, Exception e) {
-        if (WARNED.add(path)) System.err.println("Could not restrict " + path.getFileName() + " to this user: " + e.getMessage());
+        if (WARNED.add(path))
+            System.err.println("Could not restrict " + path.getFileName() + " to this user: " + e.getMessage());
     }
 
     /** Atomic move, falling back to a plain replacing move where the file system can't do it. */
@@ -93,7 +97,8 @@ final class AtomicFiles {
         if (!Files.isDirectory(dataDir)) return 0;
         List<Path> tmps;
         try (Stream<Path> walk = Files.walk(dataDir, 3)) {
-            tmps = walk.filter(p -> p.getFileName().toString().endsWith(".tmp") && Files.isRegularFile(p)).toList();
+            tmps = walk.filter(p -> p.getFileName().toString().endsWith(".tmp") && Files.isRegularFile(p))
+                    .toList();
         } catch (IOException e) {
             return 0;
         }

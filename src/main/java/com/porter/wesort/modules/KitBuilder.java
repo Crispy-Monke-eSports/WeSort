@@ -1,23 +1,16 @@
 package com.porter.wesort.modules;
 
+import static meteordevelopment.meteorclient.MeteorClient.mc;
+
 import com.porter.wesort.WeSortAddon;
 import com.porter.wesort.stash.Categories;
-import com.porter.wesort.stash.StashIndex;
 import com.porter.wesort.stash.Kit;
 import com.porter.wesort.stash.Kit.Key;
 import com.porter.wesort.stash.Kit.Need;
 import com.porter.wesort.stash.Kits;
 import com.porter.wesort.stash.Stash;
 import com.porter.wesort.stash.Stash.Box;
-import meteordevelopment.meteorclient.utils.Utils;
-import meteordevelopment.meteorclient.utils.player.InvUtils;
-import net.minecraft.core.component.DataComponents;
-import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.inventory.ClickType;
-import net.minecraft.world.inventory.Slot;
-import net.minecraft.world.item.ItemStack;
-
+import com.porter.wesort.stash.StashIndex;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -26,8 +19,14 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
-import static meteordevelopment.meteorclient.MeteorClient.mc;
+import meteordevelopment.meteorclient.utils.Utils;
+import meteordevelopment.meteorclient.utils.player.InvUtils;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.ItemStack;
 
 /**
  * Builds saved kits out of the stash for the stash sorter: takes an empty shulker (or a half built kit from the kit's
@@ -43,10 +42,18 @@ final class KitBuilder {
      * What the builder needs from the sorter.
      */
     interface Owner {
-        default boolean mayTakeFrom(Box box, int slot) { return true; }
+        default boolean mayTakeFrom(Box box, int slot) {
+            return true;
+        }
+
         Stash stash();
-        default boolean permitted() { return true; }
+
+        default boolean permitted() {
+            return true;
+        }
+
         default void packed() {}
+
         default void uncertain(String reason) {}
 
         /** The inventory slots the sorter carries stash items in. */
@@ -117,7 +124,7 @@ final class KitBuilder {
     // The session: the kit being built and where its shulker is
     private Kit kit;
     private final Set<Key> preservedMaterials = new HashSet<>();
-    private final Map<Kit,String> supplyWarnings = new HashMap<>();
+    private final Map<Kit, String> supplyWarnings = new HashMap<>();
     private int baseSlot = -1;
     private boolean needBase;
     private boolean pendingBase;
@@ -160,8 +167,10 @@ final class KitBuilder {
     }
 
     boolean material(ItemStack stack) {
-        return !stack.isEmpty() && (kit != null && kit.need(kit.key(stack)) != null || preservedMaterials.contains(Kit.keyOf(stack)));
+        return !stack.isEmpty()
+                && (kit != null && kit.need(kit.key(stack)) != null || preservedMaterials.contains(Kit.keyOf(stack)));
     }
+
     boolean holds(int slot) {
         return kit != null && slot == baseSlot;
     }
@@ -206,20 +215,29 @@ final class KitBuilder {
      * The kit this shulker is the leftover of, if a build was given up on with it in hand: a part built shulker of it.
      */
     Kit heldKit(ItemStack stack) {
-        if (heldKit == null || stack.isEmpty() || !Utils.isShulker(stack.getItem()) || stack.has(DataComponents.CUSTOM_NAME)) return null;
+        if (heldKit == null
+                || stack.isEmpty()
+                || !Utils.isShulker(stack.getItem())
+                || stack.has(DataComponents.CUSTOM_NAME)) return null;
         return heldKit.matchesPartial(Kits.inside(stack)) ? heldKit : null;
     }
 
     /** The module was turned off in the middle of building. */
     void deactivate() {
-        if (kit != null && hadBase) owner.warn("Stopped while building kit \"" + kit.name + "\", the unfinished kit shulker is in your inventory.");
+        if (kit != null && hadBase)
+            owner.warn("Stopped while building kit \"" + kit.name
+                    + "\", the unfinished kit shulker is in your inventory.");
         reset();
     }
 
     /** Gives up on the kit being built, for now. */
     void suspend(String why) {
         if (kit == null) return;
-        if (!kit.orderKit) { owner.uncertain(why); tried.add(kit); for (Need need : kit.needs()) preservedMaterials.add(need.key); }
+        if (!kit.orderKit) {
+            owner.uncertain(why);
+            tried.add(kit);
+            for (Need need : kit.needs()) preservedMaterials.add(need.key);
+        }
         owner.warn("Not building kit \"" + kit.name + "\" for now: " + why);
         if (hadBase && !kit.orderKit) heldKit = kit;
         clearSession();
@@ -271,7 +289,8 @@ final class KitBuilder {
         }
 
         ItemStack held = menu.getCarried();
-        long screen = held.isEmpty() ? 0 : held.getCount() * 31L + held.getItem().hashCode();
+        long screen =
+                held.isEmpty() ? 0 : held.getCount() * 31L + held.getItem().hashCode();
         for (Slot slot : menu.slots) {
             ItemStack s = slot.getItem();
             screen = screen * 31 + (s.isEmpty() ? 0 : s.getItem().hashCode() * 64L + s.getCount());
@@ -281,8 +300,7 @@ final class KitBuilder {
                 suspend("the server keeps undoing my clicks.");
                 return true;
             }
-        }
-        else sameScreen = 0;
+        } else sameScreen = 0;
         lastScreen = screen;
         return false;
     }
@@ -297,7 +315,9 @@ final class KitBuilder {
     }
 
     private static boolean isShulker(int slot) {
-        return slot >= 0 && slot < 36 && Utils.isShulker(mc.player.getInventory().getItem(slot).getItem());
+        return slot >= 0
+                && slot < 36
+                && Utils.isShulker(mc.player.getInventory().getItem(slot).getItem());
     }
 
     // Planning
@@ -352,10 +372,9 @@ final class KitBuilder {
                         if (!any) {
                             // A named empty shulker is left alone, only unnamed ones are built in
                             if (!named) empties.add(new Spot(box, i));
-                        }
-                        else if (!entries.isEmpty() && !Kits.claims(s) && !owner.claims(s) && heldKit(s) == null) packed.add(new Packed(box, i, entries));
-                    }
-                    else if (relevant(kits, s)) loose.add(new Loose(box, i, keys.key(s), s.getCount()));
+                        } else if (!entries.isEmpty() && !Kits.claims(s) && !owner.claims(s) && heldKit(s) == null)
+                            packed.add(new Packed(box, i, entries));
+                    } else if (relevant(kits, s)) loose.add(new Loose(box, i, keys.key(s), s.getCount()));
                 }
             }
         }
@@ -363,7 +382,8 @@ final class KitBuilder {
         Map<Key, Integer> available(Kit kit) {
             Map<Key, Integer> avail = new HashMap<>();
             for (Loose l : loose) if (kit.need(l.key) != null) avail.merge(l.key, l.count, Integer::sum);
-            for (Packed p : packed) for (Entry e : p.entries) if (kit.need(e.key) != null) avail.merge(e.key, e.count, Integer::sum);
+            for (Packed p : packed)
+                for (Entry e : p.entries) if (kit.need(e.key) != null) avail.merge(e.key, e.count, Integer::sum);
             return avail;
         }
     }
@@ -378,7 +398,12 @@ final class KitBuilder {
      *               for whole shulkers too (saved kits never take from those)
      */
     private boolean source(Box box, boolean orders) {
-        return box.sortable() && !box.stale && com.porter.wesort.compat.ObservationRuntime.current(box) && !box.dropOff && owner.usable(box) && (orders || (!Kits.isKitBox(box) && !owner.keepWhole(box)));
+        return box.sortable()
+                && !box.stale
+                && com.porter.wesort.compat.ObservationRuntime.current(box)
+                && !box.dropOff
+                && owner.usable(box)
+                && (orders || (!Kits.isKitBox(box) && !owner.keepWhole(box)));
     }
 
     /**
@@ -402,12 +427,18 @@ final class KitBuilder {
             for (int i = 0; i < home.contents.length; i++) {
                 ItemStack s = home.contents[i];
                 if (s.isEmpty() || !Utils.isShulker(s.getItem()) || s.has(DataComponents.CUSTOM_NAME)) continue;
-                var known=Kits.match(s);if(known!=null&&known.finished())continue;
+                var known = Kits.match(s);
+                if (known != null && known.finished()) continue;
                 ItemStack[] in = Kits.inside(s);
                 Map<Key, Integer> totals = k.totalsOf(in);
                 if (!totals.isEmpty() && !k.matchesPartial(in)) continue;
                 boolean feasible = true;
-                for (Need need : k.needs()) if (avail.getOrDefault(need.key,0) < need.total - Math.min(totals.getOrDefault(need.key,0),need.total)) { feasible=false; break; }
+                for (Need need : k.needs())
+                    if (avail.getOrDefault(need.key, 0)
+                            < need.total - Math.min(totals.getOrDefault(need.key, 0), need.total)) {
+                        feasible = false;
+                        break;
+                    }
                 if (!feasible) continue;
 
                 int count = totals.values().stream().mapToInt(Integer::intValue).sum();
@@ -443,7 +474,8 @@ final class KitBuilder {
 
     /** Boxes signed for empty shulkers first, then the nearest. */
     private double emptyRank(Spot spot) {
-        boolean signed = spot.box.labels.stream().anyMatch(l -> Categories.normalize(l).startsWith("empty shulker"));
+        boolean signed =
+                spot.box.labels.stream().anyMatch(l -> Categories.normalize(l).startsWith("empty shulker"));
         return (signed ? 0 : 1_000_000_000.0) + owner.distance(spot.box);
     }
 
@@ -456,8 +488,8 @@ final class KitBuilder {
         Stash stash = owner.stash();
         if (stash == null || mc.player == null) return false;
 
-        Kit assigned=Kits.assigned();
-        List<Kit> kits = assigned==null?List.of():List.of(assigned);
+        Kit assigned = Kits.assigned();
+        List<Kit> kits = assigned == null ? List.of() : List.of(assigned);
         if (kits.isEmpty() || !owner.permitted()) return false;
 
         Scan scan = null;
@@ -468,7 +500,8 @@ final class KitBuilder {
 
             if (Kits.homes(k, stash).isEmpty()) {
                 if (warnedNoChest.add(Categories.normalize(k.name))) {
-                    owner.say("Kit \"" + k.name + "\" has no chest signed \"" + k.name + "\" (or \"" + k.name + " kit\"), so I'm not building it.");
+                    owner.say("Kit \"" + k.name + "\" has no chest signed \"" + k.name + "\" (or \"" + k.name
+                            + " kit\"), so I'm not building it.");
                 }
                 continue;
             }
@@ -477,7 +510,7 @@ final class KitBuilder {
             Plan plan = plan(k, scan);
             if (plan == null) {
                 String why = shortage(k);
-                if (!why.equals(supplyWarnings.put(k,why))) owner.warn("Not building kit \"" + k.name + "\": " + why);
+                if (!why.equals(supplyWarnings.put(k, why))) owner.warn("Not building kit \"" + k.name + "\": " + why);
                 continue;
             }
             supplyWarnings.remove(k);
@@ -529,7 +562,8 @@ final class KitBuilder {
     /** The empty shulkers the stash could give an order, by the same scan kits use. */
     List<ItemStack> emptyShulkers() {
         List<ItemStack> out = new ArrayList<>();
-        for (Spot spot : new Scan(List.of(new Kit("", new ItemStack[0], true))).empties) out.add(spot.box.contents[spot.slot]);
+        for (Spot spot : new Scan(List.of(new Kit("", new ItemStack[0], true))).empties)
+            out.add(spot.box.contents[spot.slot]);
         return out;
     }
 
@@ -553,34 +587,48 @@ final class KitBuilder {
      * kit has no chest to go in.
      */
     com.porter.wesort.data.KitAvailability.Result<Key> availability(Kit k) {
-        var scan = new Scan(List.of(k)); Map<Key,Integer> required = new HashMap<>();
+        var scan = new Scan(List.of(k));
+        Map<Key, Integer> required = new HashMap<>();
         for (Need need : k.needs()) required.put(need.key, need.total);
-        List<Map<Key,Integer>> bases = new ArrayList<>(); int room = 0;
+        List<Map<Key, Integer>> bases = new ArrayList<>();
+        int room = 0;
         for (Box home : Kits.homes(k, owner.stash())) {
             if (!com.porter.wesort.compat.ObservationRuntime.current(home)) continue;
             room += home.free();
-            for (var stack : home.contents) if (!stack.isEmpty() && Utils.isShulker(stack.getItem()) && !stack.has(DataComponents.CUSTOM_NAME)) {
-                var known=Kits.match(stack);if(known!=null&&known.finished())continue;
-                var inside = Kits.inside(stack); var totals = k.totalsOf(inside);
-                if (totals.isEmpty() || k.matchesPartial(inside)) bases.add(totals);
-            }
+            for (var stack : home.contents)
+                if (!stack.isEmpty() && Utils.isShulker(stack.getItem()) && !stack.has(DataComponents.CUSTOM_NAME)) {
+                    var known = Kits.match(stack);
+                    if (known != null && known.finished()) continue;
+                    var inside = Kits.inside(stack);
+                    var totals = k.totalsOf(inside);
+                    if (totals.isEmpty() || k.matchesPartial(inside)) bases.add(totals);
+                }
         }
-        return com.porter.wesort.data.KitAvailability.assess(required, scan.available(k), bases, scan.empties.size(), room);
+        return com.porter.wesort.data.KitAvailability.assess(
+                required, scan.available(k), bases, scan.empties.size(), room);
     }
+
     int possible(Kit k) {
         if (owner.stash() == null || mc.player == null || !owner.permitted()) return 0;
         if (Kits.homes(k, owner.stash()).isEmpty()) return -1;
         return availability(k).buildable();
     }
+
     String shortage(Kit k) {
         if (!owner.permitted()) return "Manager reservations or automation lease currently block kit packing";
         if (!Kits.buildable(k)) return "No live Manager assignment for this exact kit version";
-        if (owner.stash() == null || Kits.homes(k, owner.stash()).isEmpty()) return "No destination signed for this kit";
-        if (Kits.homes(k,owner.stash()).stream().anyMatch(home -> !com.porter.wesort.compat.ObservationRuntime.current(home))) return "Kit destination needs a new server read";
+        if (owner.stash() == null || Kits.homes(k, owner.stash()).isEmpty())
+            return "No destination signed for this kit";
+        if (Kits.homes(k, owner.stash()).stream()
+                .anyMatch(home -> !com.porter.wesort.compat.ObservationRuntime.current(home)))
+            return "Kit destination needs a new server read";
         var result = availability(k);
         if (!result.missing().isEmpty()) {
             List<String> missing = new ArrayList<>();
-            result.missing().forEach((key,count) -> { var need=k.need(key); missing.add(count + " x " + need.sample.getHoverName().getString() + " (exact components)"); });
+            result.missing().forEach((key, count) -> {
+                var need = k.need(key);
+                missing.add(count + " x " + need.sample.getHoverName().getString() + " (exact components)");
+            });
             return "Missing " + String.join(", ", missing);
         }
         if (result.buildable() == 0) return "Missing an eligible empty/partial shulker or free kit destination";
@@ -613,9 +661,16 @@ final class KitBuilder {
             if (baseSlot == -1) {
                 if (lastBase != null) {
                     badBases.add(lastBase);
-                    ItemStack was = lastBase.slot < lastBase.box.contents.length ? lastBase.box.contents[lastBase.slot] : ItemStack.EMPTY;
-                    WeSortAddon.LOG.info("orders: couldn't take the base shulker from slot {} of the container at {} (it holds {} now), free carry slots={}, carry slots={}",
-                        lastBase.slot, lastBase.box.pos.toShortString(), was.isEmpty() ? "nothing" : was.getItem().toString(), owner.freeCarryCount(), owner.carry());
+                    ItemStack was = lastBase.slot < lastBase.box.contents.length
+                            ? lastBase.box.contents[lastBase.slot]
+                            : ItemStack.EMPTY;
+                    WeSortAddon.LOG.info(
+                            "orders: couldn't take the base shulker from slot {} of the container at {} (it holds {} now), free carry slots={}, carry slots={}",
+                            lastBase.slot,
+                            lastBase.box.pos.toShortString(),
+                            was.isEmpty() ? "nothing" : was.getItem().toString(),
+                            owner.freeCarryCount(),
+                            owner.carry());
                 }
                 return new Abort("couldn't take a shulker out of the stash");
             }
@@ -644,10 +699,10 @@ final class KitBuilder {
                 baseSlot = crafted;
                 hadBase = true;
                 needBase = false;
-            }
-            else {
+            } else {
                 shulkersBefore.clear();
-                for (int i = 0; i < 36; i++) if (Utils.isShulker(mc.player.getInventory().getItem(i).getItem())) shulkersBefore.add(i);
+                for (int i = 0; i < 36; i++)
+                    if (Utils.isShulker(mc.player.getInventory().getItem(i).getItem())) shulkersBefore.add(i);
                 pendingBase = true;
                 lastBase = plan.base;
                 return new Fetch(plan.base.box, plan.base.slot);
@@ -660,11 +715,16 @@ final class KitBuilder {
         if (lastPacked != null) {
             boolean got = false;
             for (int slot : owner.carry()) {
-                if (!packedBefore.contains(slot) && Utils.isShulker(mc.player.getInventory().getItem(slot).getItem())) got = true;
+                if (!packedBefore.contains(slot)
+                        && Utils.isShulker(
+                                mc.player.getInventory().getItem(slot).getItem())) got = true;
             }
             if (!got) {
                 badPacked.add(lastPacked);
-                WeSortAddon.LOG.info("orders: couldn't take the shulker from slot {} of the container at {}, not asking for it again", lastPacked.slot, lastPacked.box.pos.toShortString());
+                WeSortAddon.LOG.info(
+                        "orders: couldn't take the shulker from slot {} of the container at {}, not asking for it again",
+                        lastPacked.slot,
+                        lastPacked.box.pos.toShortString());
             }
             lastPacked = null;
         }
@@ -682,7 +742,10 @@ final class KitBuilder {
         lastSignature = signature;
         // An order kit is given more tries, and says why when it gives up
         if (stalls >= (kit.orderKit ? 6 : MAX_STALLS)) {
-            return new Abort(owner.freeCarryCount() < 1 ? "no room to carry what the order needs (no free inventory slots)" : "it isn't getting anywhere");
+            return new Abort(
+                    owner.freeCarryCount() < 1
+                            ? "no room to carry what the order needs (no free inventory slots)"
+                            : "it isn't getting anywhere");
         }
 
         if (live.gather > 0) {
@@ -697,7 +760,10 @@ final class KitBuilder {
 
         if (live.useful > 0 || live.gather == 0) return new Fill(baseSlot);
 
-        return new Abort(owner.freeCarryCount() < 1 ? "not enough free carry slots to gather the rest" : "can't find the rest of the items");
+        return new Abort(
+                owner.freeCarryCount() < 1
+                        ? "not enough free carry slots to gather the rest"
+                        : "can't find the rest of the items");
     }
 
     /** Empty, or part of this kit. */
@@ -760,7 +826,12 @@ final class KitBuilder {
         for (int slot : owner.carry()) {
             if (slot == baseSlot) continue;
             ItemStack s = inv.getItem(slot);
-            if (s.isEmpty() || !Utils.isShulker(s.getItem()) || (s.has(DataComponents.CUSTOM_NAME) && !(kit.orderKit && owner.namedShulkers())) || Kits.claims(s) || owner.claims(s) || heldKit(s) != null) continue;
+            if (s.isEmpty()
+                    || !Utils.isShulker(s.getItem())
+                    || (s.has(DataComponents.CUSTOM_NAME) && !(kit.orderKit && owner.namedShulkers()))
+                    || Kits.claims(s)
+                    || owner.claims(s)
+                    || heldKit(s) != null) continue;
 
             for (ItemStack in : Kits.inside(s)) {
                 if (in == null || in.isEmpty() || !kit.hasItem(in.getItem())) continue;
@@ -814,7 +885,8 @@ final class KitBuilder {
             if (bestPacked != null) {
                 lastPacked = new Spot(bestPacked.box, bestPacked.slot);
                 packedBefore.clear();
-                for (int i = 0; i < 36; i++) if (Utils.isShulker(mc.player.getInventory().getItem(i).getItem())) packedBefore.add(i);
+                for (int i = 0; i < 36; i++)
+                    if (Utils.isShulker(mc.player.getInventory().getItem(i).getItem())) packedBefore.add(i);
                 return new Fetch(bestPacked.box, bestPacked.slot);
             }
         }
@@ -842,11 +914,17 @@ final class KitBuilder {
         Live live = live();
         int into = owner.freeCarrySlot();
         if (into == -1) {
-            diagnose("the container at " + box.pos.toShortString() + " (no free carry slot)", box.contents.length, i -> box.contents[i], live);
+            diagnose(
+                    "the container at " + box.pos.toShortString() + " (no free carry slot)",
+                    box.contents.length,
+                    i -> box.contents[i],
+                    live);
             return false;
         }
-        int slot = bestStack(live, box.contents.length,
-            i -> kit.orderKit && !owner.mayTakeFrom(box, i) ? ItemStack.EMPTY : box.contents[i]);
+        int slot = bestStack(
+                live,
+                box.contents.length,
+                i -> kit.orderKit && !owner.mayTakeFrom(box, i) ? ItemStack.EMPTY : box.contents[i]);
         if (slot == -1) {
             diagnose("the container at " + box.pos.toShortString(), box.contents.length, i -> box.contents[i], live);
             return false;
@@ -869,7 +947,11 @@ final class KitBuilder {
         int into = owner.freeCarrySlot();
         // The slot the shulker came out of is free while it stands: it stays free, to pick the shulker up again
         if (into == -1 || (kit.orderKit && owner.freeCarryCount() <= 1)) {
-            diagnose("the opened shulker (no free carry slot)", 27, i -> menu.getSlot(i).getItem(), live);
+            diagnose(
+                    "the opened shulker (no free carry slot)",
+                    27,
+                    i -> menu.getSlot(i).getItem(),
+                    live);
             return false;
         }
         int slot = bestStack(live, 27, i -> menu.getSlot(i).getItem());
@@ -903,21 +985,45 @@ final class KitBuilder {
         if (last != null && now - last < 10_000) return;
         lastDiagnosis.put(where, now);
 
-        StringBuilder text = new StringBuilder("order kit ").append(kit.name).append(": no progress at ").append(where)
-            .append(". Free carry slots=").append(owner.freeCarryCount()).append(", carry slots=").append(owner.carry())
-            .append(", base=").append(isShulker(baseSlot) ? "slot " + baseSlot + " holding " + summary(Kits.inside(mc.player.getInventory().getItem(baseSlot))) : "not in hand")
-            .append(". Wanted: ");
+        StringBuilder text = new StringBuilder("order kit ")
+                .append(kit.name)
+                .append(": no progress at ")
+                .append(where)
+                .append(". Free carry slots=")
+                .append(owner.freeCarryCount())
+                .append(", carry slots=")
+                .append(owner.carry())
+                .append(", base=")
+                .append(
+                        isShulker(baseSlot)
+                                ? "slot " + baseSlot + " holding "
+                                        + summary(Kits.inside(
+                                                mc.player.getInventory().getItem(baseSlot)))
+                                : "not in hand")
+                .append(". Wanted: ");
         for (Key key : live.deficit.keySet()) {
             Need need = kit.need(key);
-            text.append(key.item()).append(" key=").append(key.exact()).append(" missing=").append(live.deficit.get(key))
-                .append(" components=").append(need == null ? "?" : need.sample.getComponentsPatch()).append("; ");
+            text.append(key.item())
+                    .append(" key=")
+                    .append(key.exact())
+                    .append(" missing=")
+                    .append(live.deficit.get(key))
+                    .append(" components=")
+                    .append(need == null ? "?" : need.sample.getComponentsPatch())
+                    .append("; ");
         }
         text.append("Found: ");
         for (int i = 0; i < size; i++) {
             ItemStack s = contents.at(i);
             if (s.isEmpty()) continue;
-            text.append(s.getItem()).append(" x").append(s.getCount()).append(" key=").append(StashIndex.keyOf(s))
-                .append(" components=").append(s.getComponentsPatch()).append("; ");
+            text.append(s.getItem())
+                    .append(" x")
+                    .append(s.getCount())
+                    .append(" key=")
+                    .append(StashIndex.keyOf(s))
+                    .append(" components=")
+                    .append(s.getComponentsPatch())
+                    .append("; ");
         }
         WeSortAddon.LOG.info("orders: {}", text);
     }
@@ -925,7 +1031,13 @@ final class KitBuilder {
     private static String summary(ItemStack[] contents) {
         StringBuilder text = new StringBuilder();
         for (ItemStack s : contents) {
-            if (s != null && !s.isEmpty()) text.append(s.getItem()).append(" x").append(s.getCount()).append(" key=").append(StashIndex.keyOf(s)).append(", ");
+            if (s != null && !s.isEmpty())
+                text.append(s.getItem())
+                        .append(" x")
+                        .append(s.getCount())
+                        .append(" key=")
+                        .append(StashIndex.keyOf(s))
+                        .append(", ");
         }
         return text.length() == 0 ? "nothing" : text.toString();
     }
@@ -935,7 +1047,8 @@ final class KitBuilder {
      * it came from at once, whatever else is still to be gathered.
      */
     boolean sourceSpent(int slot) {
-        if (kit == null || !kit.orderKit || needBase || pendingBase || slot == baseSlot || !isShulker(baseSlot)) return false;
+        if (kit == null || !kit.orderKit || needBase || pendingBase || slot == baseSlot || !isShulker(baseSlot))
+            return false;
         ItemStack s = mc.player.getInventory().getItem(slot);
         if (!Utils.isShulker(s.getItem())) return false;
 
@@ -948,7 +1061,9 @@ final class KitBuilder {
 
     /** What is missing for the kit that is being built (index key to count), for messages. */
     String fetchPurpose() {
-        return kit != null && pendingBase ? "an empty shulker to build the order in" : "a shulker holding items the order needs";
+        return kit != null && pendingBase
+                ? "an empty shulker to build the order in"
+                : "a shulker holding items the order needs";
     }
 
     private int bestStack(Live live, int size, Contents contents) {
@@ -1006,7 +1121,8 @@ final class KitBuilder {
 
                 owner.held(into, cur);
                 ItemStack there = inv.getItem(into);
-                Clicks clicks = clicksFor(cur.getMaxStackSize(), there.isEmpty() ? 0 : there.getCount(), cur.getCount(), kit.countAt(s));
+                Clicks clicks = clicksFor(
+                        cur.getMaxStackSize(), there.isEmpty() ? 0 : there.getCount(), cur.getCount(), kit.countAt(s));
                 if (clicks == null || clicks.ops.length == 0) return false;
                 run(menu, clicks, inventoryToMenu(into, 27), s);
                 return true;
@@ -1087,7 +1203,11 @@ final class KitBuilder {
                 if (into == -1) return false;
                 owner.held(into, cur);
                 ItemStack there = inv.getItem(into);
-                Clicks clicks = clicksFor(cur.getMaxStackSize(), there.isEmpty() ? 0 : there.getCount(), cur.getCount(), cur.getCount() - out);
+                Clicks clicks = clicksFor(
+                        cur.getMaxStackSize(),
+                        there.isEmpty() ? 0 : there.getCount(),
+                        cur.getCount(),
+                        cur.getCount() - out);
                 if (clicks == null || clicks.ops.length == 0) return false;
                 run(menu, clicks, inventoryToMenu(into, 27), s);
                 return true;
@@ -1108,7 +1228,9 @@ final class KitBuilder {
                 int target = -1;
                 for (int s = 0; s < Kit.SLOTS && target == -1; s++) {
                     ItemStack cur = menu.getSlot(s).getItem();
-                    if (!cur.isEmpty() && cur.getCount() < cur.getMaxStackSize() && ItemStack.isSameItemSameComponents(cur, src)) target = s;
+                    if (!cur.isEmpty()
+                            && cur.getCount() < cur.getMaxStackSize()
+                            && ItemStack.isSameItemSameComponents(cur, src)) target = s;
                 }
                 for (int s = 0; s < Kit.SLOTS && target == -1; s++) {
                     if (menu.getSlot(s).getItem().isEmpty()) target = s;
@@ -1140,7 +1262,10 @@ final class KitBuilder {
         Inventory inv = mc.player.getInventory();
         for (int slot : owner.carry()) {
             ItemStack s = inv.getItem(slot);
-            if (slot != baseSlot && !s.isEmpty() && s.getCount() < s.getMaxStackSize() && ItemStack.isSameItemSameComponents(s, like)) return slot;
+            if (slot != baseSlot
+                    && !s.isEmpty()
+                    && s.getCount() < s.getMaxStackSize()
+                    && ItemStack.isSameItemSameComponents(s, like)) return slot;
         }
         return freeSlot();
     }
@@ -1157,7 +1282,10 @@ final class KitBuilder {
 
         for (int slot : owner.carry()) {
             ItemStack s = inv.getItem(slot);
-            if (slot != baseSlot && !s.isEmpty() && s.getCount() < s.getMaxStackSize() && ItemStack.isSameItemSameComponents(s, held)) {
+            if (slot != baseSlot
+                    && !s.isEmpty()
+                    && s.getCount() < s.getMaxStackSize()
+                    && ItemStack.isSameItemSameComponents(s, held)) {
                 click(menu, inventoryToMenu(slot, size), 0);
                 return true;
             }
@@ -1240,8 +1368,7 @@ final class KitBuilder {
                 if (op < 2) {
                     np = next[1];
                     nq = total - nc - np;
-                }
-                else {
+                } else {
                     nq = next[1];
                     np = total - nc - nq;
                 }
@@ -1305,8 +1432,8 @@ final class KitBuilder {
         int[] expected = pending.after[pendingAt - 1];
         ItemStack held = menu.getCarried();
         if ((held.isEmpty() ? 0 : held.getCount()) != expected[0]
-            || menu.getSlot(pendingFirst).getItem().getCount() != expected[1]
-            || menu.getSlot(pendingSecond).getItem().getCount() != expected[2]) {
+                || menu.getSlot(pendingFirst).getItem().getCount() != expected[1]
+                || menu.getSlot(pendingSecond).getItem().getCount() != expected[2]) {
             pending = null;
             return false;
         }

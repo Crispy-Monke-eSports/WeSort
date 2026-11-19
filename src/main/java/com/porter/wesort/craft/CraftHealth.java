@@ -11,11 +11,14 @@ import java.util.Objects;
 public final class CraftHealth {
     public static final int CLOSED_IN_A_ROW = 2;
 
-    public static final String NOT_REACHED = "couldn't reach the crafting table", NOT_OPENED = "couldn't open the crafting table",
-        CLOSED = "the crafting table closed before it was done", NO_RESULT = "no result from the crafting table in time",
-        NOT_TAKEN = "the crafting table didn't give the result", NO_ROOM = "no room in the inventory for what was crafted",
-        MISSING = "the inputs aren't all in the inventory", GRID = "the grid didn't fill as it should";
-
+    public static final String NOT_REACHED = "couldn't reach the crafting table",
+            NOT_OPENED = "couldn't open the crafting table",
+            CLOSED = "the crafting table closed before it was done",
+            NO_RESULT = "no result from the crafting table in time",
+            NOT_TAKEN = "the crafting table didn't give the result",
+            NO_ROOM = "no room in the inventory for what was crafted",
+            MISSING = "the inputs aren't all in the inventory",
+            GRID = "the grid didn't fill as it should";
     private String failure, order;
     private Object table;
     private int closed;
@@ -33,7 +36,8 @@ public final class CraftHealth {
             closed = 0;
             return;
         }
-        boolean trouble = NOT_REACHED.equals(why) || NOT_OPENED.equals(why) || NO_RESULT.equals(why) || NOT_TAKEN.equals(why);
+        boolean trouble =
+                NOT_REACHED.equals(why) || NOT_OPENED.equals(why) || NO_RESULT.equals(why) || NOT_TAKEN.equals(why);
         if (CLOSED.equals(why)) trouble = ++closed >= CLOSED_IN_A_ROW;
         if (!trouble) return;
         failure = why;
@@ -43,6 +47,8 @@ public final class CraftHealth {
 
     /** The table trouble remembered for this order and table, or null. */
     public String problem(String orderId, Object tableSpot) {
-        return failure != null && orderId != null && Objects.equals(orderId, order) && Objects.equals(tableSpot, table) ? failure : null;
+        return failure != null && orderId != null && Objects.equals(orderId, order) && Objects.equals(tableSpot, table)
+                ? failure
+                : null;
     }
 }

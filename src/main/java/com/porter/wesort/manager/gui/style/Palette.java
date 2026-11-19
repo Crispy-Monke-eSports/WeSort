@@ -10,25 +10,53 @@ import java.util.Map;
  */
 public final class Palette {
     /** Token names in the order of {@link #of}. They are also the keys of dev/themes-palette.json. */
-    public static final String[] TOKENS = {"bg", "surface", "surface2", "text", "muted", "accent", "onAccent", "border", "bar", "barText",
-        "nav", "navText", "navActive", "navActiveBg", "trackOff", "chipBg", "okBg", "okFg", "warnBg", "warnFg", "errBg", "errFg", "hp", "food"};
+    public static final String[] TOKENS = {
+        "bg",
+        "surface",
+        "surface2",
+        "text",
+        "muted",
+        "accent",
+        "onAccent",
+        "border",
+        "bar",
+        "barText",
+        "nav",
+        "navText",
+        "navActive",
+        "navActiveBg",
+        "trackOff",
+        "chipBg",
+        "okBg",
+        "okFg",
+        "warnBg",
+        "warnFg",
+        "errBg",
+        "errFg",
+        "hp",
+        "food"
+    };
 
     private final int[] c;
     /** The website's radius and border width in CSS pixels. */
     public final int radiusCss;
+
     public final int borderCss;
     /** Corner radius and border width in GUI pixels. */
     public final int radius;
+
     public final int borderWidth;
     /** Classic's vanilla bevel (light top-left, dark bottom-right) inside panels. */
     public final boolean bevel;
     /** Mac: the smoky panel glass and the three window dots (0 when the theme has none). */
     public final int glass;
+
     public final int dotRed;
     public final int dotYellow;
     public final int dotGreen;
 
-    private Palette(int[] c, int radiusCss, int borderCss, boolean bevel, int glass, int dotRed, int dotYellow, int dotGreen) {
+    private Palette(
+            int[] c, int radiusCss, int borderCss, boolean bevel, int glass, int dotRed, int dotYellow, int dotGreen) {
         this.c = c;
         this.radiusCss = radiusCss;
         this.borderCss = borderCss;
@@ -43,7 +71,8 @@ public final class Palette {
 
     /** @param radiusCss the website's --radius in CSS pixels; {@code values} follow {@link #TOKENS} */
     public static Palette of(int radiusCss, int borderCss, boolean bevel, String... values) {
-        if (values.length != TOKENS.length) throw new IllegalArgumentException("expected " + TOKENS.length + " colours");
+        if (values.length != TOKENS.length)
+            throw new IllegalArgumentException("expected " + TOKENS.length + " colours");
         int[] c = new int[values.length];
         for (int i = 0; i < c.length; i++) c[i] = parse(values[i]);
         return new Palette(c, radiusCss, borderCss, bevel, 0, 0, 0, 0);
@@ -58,30 +87,101 @@ public final class Palette {
         return glass != 0;
     }
 
-    public int bg() { return c[0]; }
-    public int surface() { return c[1]; }
-    public int surface2() { return c[2]; }
-    public int text() { return c[3]; }
-    public int muted() { return c[4]; }
-    public int accent() { return c[5]; }
-    public int onAccent() { return c[6]; }
-    public int border() { return c[7]; }
-    public int bar() { return c[8]; }
-    public int barText() { return c[9]; }
-    public int nav() { return c[10]; }
-    public int navText() { return c[11]; }
-    public int navActive() { return c[12]; }
-    public int navActiveBg() { return c[13]; }
-    public int trackOff() { return c[14]; }
-    public int chipBg() { return c[15]; }
-    public int okBg() { return c[16]; }
-    public int okFg() { return c[17]; }
-    public int warnBg() { return c[18]; }
-    public int warnFg() { return c[19]; }
-    public int errBg() { return c[20]; }
-    public int errFg() { return c[21]; }
-    public int hp() { return c[22]; }
-    public int food() { return c[23]; }
+    public int bg() {
+        return c[0];
+    }
+
+    public int surface() {
+        return c[1];
+    }
+
+    public int surface2() {
+        return c[2];
+    }
+
+    public int text() {
+        return c[3];
+    }
+
+    public int muted() {
+        return c[4];
+    }
+
+    public int accent() {
+        return c[5];
+    }
+
+    public int onAccent() {
+        return c[6];
+    }
+
+    public int border() {
+        return c[7];
+    }
+
+    public int bar() {
+        return c[8];
+    }
+
+    public int barText() {
+        return c[9];
+    }
+
+    public int nav() {
+        return c[10];
+    }
+
+    public int navText() {
+        return c[11];
+    }
+
+    public int navActive() {
+        return c[12];
+    }
+
+    public int navActiveBg() {
+        return c[13];
+    }
+
+    public int trackOff() {
+        return c[14];
+    }
+
+    public int chipBg() {
+        return c[15];
+    }
+
+    public int okBg() {
+        return c[16];
+    }
+
+    public int okFg() {
+        return c[17];
+    }
+
+    public int warnBg() {
+        return c[18];
+    }
+
+    public int warnFg() {
+        return c[19];
+    }
+
+    public int errBg() {
+        return c[20];
+    }
+
+    public int errFg() {
+        return c[21];
+    }
+
+    public int hp() {
+        return c[22];
+    }
+
+    public int food() {
+        return c[23];
+    }
 
     /** Every colour token by name, for tests. */
     public Map<String, Integer> tokens() {
@@ -103,7 +203,8 @@ public final class Palette {
         try {
             if (s.startsWith("#")) {
                 String h = s.substring(1);
-                if (h.length() == 3) h = "" + h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2);
+                if (h.length() == 3)
+                    h = "" + h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2);
                 if (h.length() != 6) throw new IllegalArgumentException("bad colour " + css);
                 return 0xFF000000 | Integer.parseInt(h, 16);
             }
@@ -116,7 +217,9 @@ public final class Palette {
                 int r = channel(p[0]);
                 int g = channel(p[1]);
                 int b = channel(p[2]);
-                int a = p.length == 4 ? (int) Math.round(Math.max(0, Math.min(1, Double.parseDouble(p[3].trim()))) * 255) : 255;
+                int a = p.length == 4
+                        ? (int) Math.round(Math.max(0, Math.min(1, Double.parseDouble(p[3].trim()))) * 255)
+                        : 255;
                 return a << 24 | r << 16 | g << 8 | b;
             }
         } catch (NumberFormatException e) {

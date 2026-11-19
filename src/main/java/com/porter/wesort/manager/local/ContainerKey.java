@@ -31,7 +31,8 @@ public record ContainerKey(String server, String dimension, int x, int y, int z)
         return c == null ? null : new ContainerKey(server, dimension, c[0], c[1], c[2]);
     }
 
-    private static final java.util.regex.Pattern DEVICE = java.util.regex.Pattern.compile("(con|prn|aux|nul|com[1-9]|lpt[1-9])");
+    private static final java.util.regex.Pattern DEVICE =
+            java.util.regex.Pattern.compile("(con|prn|aux|nul|com[1-9]|lpt[1-9])");
 
     /**
      * A readable part of a file name for a server address: lower case, anything but letters, digits, dot, dash and
@@ -61,7 +62,8 @@ public record ContainerKey(String server, String dimension, int x, int y, int z)
 
     static String shortHash(String s) {
         try {
-            byte[] d = java.security.MessageDigest.getInstance("SHA-256").digest(s.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            byte[] d = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(s.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             return java.util.HexFormat.of().formatHex(d, 0, 4);
         } catch (java.security.NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);

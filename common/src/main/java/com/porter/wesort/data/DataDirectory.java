@@ -11,17 +11,20 @@ import java.util.Locale;
 /** Opens only a new empty directory or an explicitly versioned WeSort installation. Never imports data. */
 public final class DataDirectory {
     public static final String MARKER = ".wesort-installation";
-    private DataDirectory() { }
+
+    private DataDirectory() {}
 
     public static synchronized Path open(Path requested, String role) throws IOException {
-        if (!role.equals("client") && !role.equals("manager")) throw new IllegalArgumentException("unknown WeSort role");
+        if (!role.equals("client") && !role.equals("manager"))
+            throw new IllegalArgumentException("unknown WeSort role");
         Path root = checkedRoot(requested);
         Files.createDirectories(root);
         Path marker = root.resolve(MARKER);
         String schema = "wesort-" + role + ":1\n";
         if (!Files.exists(marker, LinkOption.NOFOLLOW_LINKS)) {
             try (var entries = Files.list(root)) {
-                if (entries.findAny().isPresent()) throw new IOException("Nonempty directory is not a WeSort installation: " + root);
+                if (entries.findAny().isPresent())
+                    throw new IOException("Nonempty directory is not a WeSort installation: " + root);
             }
             try {
                 Files.writeString(marker, schema, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
@@ -32,18 +35,21 @@ public final class DataDirectory {
         existingRoot(root, role);
         // Also refuse an icon/cache/kit/order file linked outside our own installation.
         try (var paths = Files.walk(root)) {
-            if (paths.anyMatch(Files::isSymbolicLink)) throw new IOException("Symlink inside WeSort data directory: " + root);
+            if (paths.anyMatch(Files::isSymbolicLink))
+                throw new IOException("Symlink inside WeSort data directory: " + root);
         }
         return root;
     }
 
     /** Read-only root/marker check for local control and health; never creates data or scans inventory files. */
     public static Path existingRoot(Path requested, String role) throws IOException {
-        if (!role.equals("client") && !role.equals("manager")) throw new IllegalArgumentException("unknown WeSort role");
+        if (!role.equals("client") && !role.equals("manager"))
+            throw new IllegalArgumentException("unknown WeSort role");
         Path root = checkedRoot(requested);
         Path marker = root.resolve(MARKER);
         String schema = "wesort-" + role + ":1\n";
-        if (Files.isSymbolicLink(marker) || !Files.isRegularFile(marker, LinkOption.NOFOLLOW_LINKS)
+        if (Files.isSymbolicLink(marker)
+                || !Files.isRegularFile(marker, LinkOption.NOFOLLOW_LINKS)
                 || !Files.readString(marker).equals(schema)) {
             throw new IOException("Unknown WeSort data schema or installation role: " + root);
         }

@@ -1,13 +1,13 @@
 package com.porter.wesort.stash;
 
+import static meteordevelopment.meteorclient.MeteorClient.mc;
+
 import net.minecraft.client.gui.screens.inventory.ContainerScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
-
-import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 /**
  * Shows a saved kit in a vanilla chest screen, so hovering an item gives its full tooltip. Look only: every click is

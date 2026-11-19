@@ -5,17 +5,14 @@ import com.porter.wesort.manager.gui.layout.GridLayout;
 import com.porter.wesort.manager.gui.style.Paint;
 import com.porter.wesort.manager.gui.style.Palette;
 import com.porter.wesort.manager.gui.style.SmGuiTheme;
-import meteordevelopment.meteorclient.gui.renderer.GuiRenderer;
-import meteordevelopment.meteorclient.gui.widgets.pressable.WPressable;
-import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.world.item.ItemStack;
-
 import java.util.List;
 import java.util.Objects;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
-
-
+import meteordevelopment.meteorclient.gui.renderer.GuiRenderer;
+import meteordevelopment.meteorclient.gui.widgets.pressable.WPressable;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.world.item.ItemStack;
 
 /**
  * A scrolling grid of item slots drawn by one widget: only the visible rows cost anything. It looks like the website's
@@ -29,13 +26,13 @@ import java.util.function.Supplier;
  */
 public class WItemGrid extends WPressable {
     /** One slot. {@code count} is the text to draw on it ("" for none); {@code ref} is what the owner wants back. */
-    public record Cell(ItemStack stack, String count, String tip, Object ref) {
-    }
+    public record Cell(ItemStack stack, String count, String tip, Object ref) {}
 
     /** Padding between the tile's edge and the slots, in GUI pixels (the tile's border and one more). */
     private static final int PAD = 2;
     /** Room kept at the right for the scroll bar of a grid that fills its space (the bar is 4 wide, with room to grab it). */
     private static final int BAR = 7;
+
     private static final int BAR_DRAWN = 4;
 
     private final Supplier<GuiGraphics> graphics;
@@ -214,7 +211,11 @@ public class WItemGrid extends WPressable {
     }
 
     private boolean covered(double px, double py) {
-        return cover != null && px >= cover[0] && px < cover[0] + cover[2] && py >= cover[1] && py < cover[1] + cover[3];
+        return cover != null
+                && px >= cover[0]
+                && px < cover[0] + cover[2]
+                && py >= cover[1]
+                && py < cover[1] + cover[3];
     }
 
     @Override
@@ -246,7 +247,11 @@ public class WItemGrid extends WPressable {
                 dragBar = maxScroll() > 0 && inBar(mouseX, mouseY, u, p);
             }
             if (dragBar) {
-                scrollRow = GridLayout.clampScroll(GridLayout.scrollFromPointer(mouseY, trackY(u), trackH(u), thumbH(u), maxScroll()), cells.size(), cols, rows);
+                scrollRow = GridLayout.clampScroll(
+                        GridLayout.scrollFromPointer(mouseY, trackY(u), trackH(u), thumbH(u), maxScroll()),
+                        cells.size(),
+                        cols,
+                        rows);
             }
         } else {
             dragChecked = false;
@@ -256,13 +261,20 @@ public class WItemGrid extends WPressable {
         boolean blocked = t.overlay != null && t.overlay.isOpen();
         hover = -1;
         if (!blocked && !dragBar && isOver(mouseX, mouseY)) {
-            hover = GridLayout.hit(cells.size(), cols, rows, scrollRow, offX(), PAD, (mouseX - x) / u, (mouseY - y) / u);
+            hover = GridLayout.hit(
+                    cells.size(), cols, rows, scrollRow, offX(), PAD, (mouseX - x) / u, (mouseY - y) / u);
         }
         if (hover >= 0) {
             Cell c = cells.get(hover);
             int hr = hover / cols - scrollRow;
             int hc = hover % cols;
-            SlotArt.card(t, c.tip(), c.stack(), x + (offX() + hc * GridLayout.SLOT) * u, y + (PAD + hr * GridLayout.SLOT) * u, GridLayout.SLOT * u);
+            SlotArt.card(
+                    t,
+                    c.tip(),
+                    c.stack(),
+                    x + (offX() + hc * GridLayout.SLOT) * u,
+                    y + (PAD + hr * GridLayout.SLOT) * u,
+                    GridLayout.SLOT * u);
         }
 
         GuiGraphics g = graphics.get();
@@ -274,10 +286,14 @@ public class WItemGrid extends WPressable {
                 double sx = x + (offX + c * GridLayout.SLOT) * u;
                 double sy = y + (PAD + r * GridLayout.SLOT) * u;
                 SlotArt.draw(renderer, t, sx, sy, u, index == hover);
-                if (index == selected) Paint.outline(renderer, t, sx, sy, GridLayout.SLOT * u, GridLayout.SLOT * u, u, p.accent());
+                if (index == selected)
+                    Paint.outline(renderer, t, sx, sy, GridLayout.SLOT * u, GridLayout.SLOT * u, u, p.accent());
                 Cell cell = cells.get(index);
-                boolean under = cover != null && sx < cover[0] + cover[2] && sx + GridLayout.SLOT * u > cover[0]
-                    && sy < cover[1] + cover[3] && sy + GridLayout.SLOT * u > cover[1];
+                boolean under = cover != null
+                        && sx < cover[0] + cover[2]
+                        && sx + GridLayout.SLOT * u > cover[0]
+                        && sy < cover[1] + cover[3]
+                        && sy + GridLayout.SLOT * u > cover[1];
                 if (!under) ItemLayer.draw(renderer, t, g, cell.stack(), cell.count(), sx + u, sy + u);
             }
         }

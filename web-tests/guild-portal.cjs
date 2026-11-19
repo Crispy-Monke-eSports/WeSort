@@ -4,26 +4,30 @@ const fs = require('node:fs');
 const { chromium } = require('playwright');
 
 async function main() {
-  const { url, stash, otherStash, password, members } = JSON.parse(fs.readFileSync(0, 'utf8'));
+  const { url, stash, otherStash, password, members, officer } = JSON.parse(fs.readFileSync(0, 'utf8'));
   const browser = await chromium.launch({ executablePath: process.env.WESORT_CHROMIUM || undefined });
   const errors = [];
   const external = [];
+  async function login(username) {
+    const context = await browser.newContext();
+    await context.route('**/*', route => {
+      if (new URL(route.request().url()).origin === url) return route.continue();
+      external.push(new URL(route.request().url()).origin);
+      return route.abort();
+    });
+    const page = await context.newPage();
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto(url);
+    await page.locator('#auth-username').fill(username);
+    await page.locator('#auth-password').fill(password);
+    await page.locator('#auth-submit').click();
+    await page.locator('#auth-screen').waitFor({ state: 'hidden' });
+    return page;
+  }
   try {
     const pages = [];
     for (const username of members) {
-      const context = await browser.newContext();
-      await context.route('**/*', route => {
-        if (new URL(route.request().url()).origin === url) return route.continue();
-        external.push(new URL(route.request().url()).origin);
-        return route.abort();
-      });
-      const page = await context.newPage();
-      page.on('pageerror', error => errors.push(error.message));
-      await page.goto(url);
-      await page.locator('#auth-username').fill(username);
-      await page.locator('#auth-password').fill(password);
-      await page.locator('#auth-submit').click();
-      await page.locator('#auth-screen').waitFor({ state: 'hidden' });
+      const page = await login(username);
       const stockSearch = page.getByRole('searchbox', { name: 'Search guild stock' });
       await stockSearch.fill('diamond @minecraft');
       await page.locator('#stock-balances').getByText('Diamond', { exact: true }).waitFor();
@@ -70,11 +74,25 @@ async function main() {
       await history.getByText(notes[i], { exact: false }).waitFor();
       assert.equal(await history.locator('.order-card').count(), 1);
       assert.equal(await history.getByText(notes[1 - i], { exact: false }).count(), 0);
+      assert.equal(await page.locator('#order-audit').isVisible(), false);
       await page.locator('#dash-nav [data-page="stash"]').click();
       await page.getByRole('searchbox', { name: 'Search guild stock' }).fill('=minecraft:diamond');
       await page.locator('#stock-balances tr').waitFor();
       assert.deepEqual(await readBalance(page), [observed, reserved + 128, available - 128, unknown]);
     }
+
+    const reviewer = await login(officer);
+    await reviewer.locator('#dash-nav [data-page="orders"]').click();
+    await reviewer.getByText('Order audit', { exact: true }).click();
+    const audit = reviewer.locator('#order-audit');
+    await audit.getByRole('button', { name: 'Search audit' }).waitFor();
+    await audit.getByRole('searchbox', { name: 'Person' }).fill(members[0]);
+    await audit.getByRole('searchbox', { name: 'Item key' }).fill('diamond');
+    await audit.getByRole('button', { name: 'Search audit' }).click();
+    const result = audit.locator('#order-audit-results details');
+    await result.getByText(members[0], { exact: false }).click();
+    assert.equal(await result.count(), 1);
+    assert.match(await result.textContent(), /64 × minecraft:diamond.*order.reserve/);
     assert.deepEqual(errors, []);
     assert.deepEqual(external, []);
   } finally {

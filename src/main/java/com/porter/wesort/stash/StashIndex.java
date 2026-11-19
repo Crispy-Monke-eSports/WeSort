@@ -1,5 +1,7 @@
 package com.porter.wesort.stash;
 
+import static meteordevelopment.meteorclient.MeteorClient.mc;
+
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -10,16 +12,6 @@ import com.porter.wesort.stash.IndexJson.Agg;
 import com.porter.wesort.stash.IndexJson.Info;
 import com.porter.wesort.stash.IndexJson.Shulker;
 import com.porter.wesort.stash.Stash.Box;
-import meteordevelopment.meteorclient.utils.Utils;
-import net.minecraft.core.component.DataComponentPatch;
-import net.minecraft.core.component.DataComponents;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.nbt.NbtOps;
-import net.minecraft.nbt.Tag;
-import net.minecraft.resources.RegistryOps;
-import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
-
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -30,8 +22,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-
-import static meteordevelopment.meteorclient.MeteorClient.mc;
+import meteordevelopment.meteorclient.utils.Utils;
+import net.minecraft.core.component.DataComponentPatch;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.nbt.Tag;
+import net.minecraft.resources.RegistryOps;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 
 /**
  * Builds the stash index the wesort-stash-manager module pushes to the WeSort Manager server (see stash-manager-server/PROTOCOL.md).
@@ -50,8 +48,18 @@ public final class StashIndex {
     // Filled shulkers retain a separate content group key.
 
     private static final Map<CacheKey, Info> CACHE = new HashMap<>();
-    private static final List<String> TABS = List.of("building_blocks", "colored_blocks", "natural_blocks", "functional_blocks", "redstone_blocks",
-        "tools_and_utilities", "combat", "food_and_drinks", "ingredients", "spawn_eggs", "op_blocks");
+    private static final List<String> TABS = List.of(
+            "building_blocks",
+            "colored_blocks",
+            "natural_blocks",
+            "functional_blocks",
+            "redstone_blocks",
+            "tools_and_utilities",
+            "combat",
+            "food_and_drinks",
+            "ingredients",
+            "spawn_eggs",
+            "op_blocks");
     private static final int OTHER_ORDER = 1_000_000;
 
     private record TabSlot(String tab, int order) {}
@@ -81,8 +89,13 @@ public final class StashIndex {
         if (mc.level != null) h = mix(h, mc.level.dimension().hashCode());
         for (Box box : com.porter.wesort.compat.ObservationRuntime.boxes(stash)) {
             if (box.delivery || box.foreign || box.excluded && !includeExcluded) continue;
-            h = mix(h, (box.known() ? 1 : 0) | (box.stale ? 2 : 0) | (box.unreachable || box.observationUnreachable ? 4 : 0));
-            h = mix(h, box.observationSequence); h = mix(h, box.parts.hashCode());
+            h = mix(
+                    h,
+                    (box.known() ? 1 : 0)
+                            | (box.stale ? 2 : 0)
+                            | (box.unreachable || box.observationUnreachable ? 4 : 0));
+            h = mix(h, box.observationSequence);
+            h = mix(h, box.parts.hashCode());
             if (!box.known()) continue;
             for (ItemStack stack : box.contents) h = mix(h, stackHash(stack));
         }
@@ -155,10 +168,12 @@ public final class StashIndex {
         root.add("items", items);
         root.add("shulkers", shulkerArray);
         com.porter.wesort.compat.ObservationRuntime.append(stash, root, includeExcluded);
-        if (root.has("physicalSources")) hash = sha1(hash + root.get("physicalSources").toString());
+        if (root.has("physicalSources"))
+            hash = sha1(hash + root.get("physicalSources").toString());
         root.addProperty("indexHash", hash);
 
-        return new Built(stash.server, stash.name, player, hash, GSON.toJson(root).getBytes(StandardCharsets.UTF_8));
+        return new Built(
+                stash.server, stash.name, player, hash, GSON.toJson(root).getBytes(StandardCharsets.UTF_8));
     }
 
     /**
@@ -206,7 +221,15 @@ public final class StashIndex {
      * {anvil ready (0/1), XP levels or -1}, or null to leave it out. {@code crafting} is {enabled (0/1), crafting table ready (0/1)},
      * or null to leave it out.
      */
-    public static byte[] heartbeat(Built b, int[] delivery, String orderBlocker, long rescanDone, String rescanBlocked, int[] naming, int[] crafting, String anvilSource) {
+    public static byte[] heartbeat(
+            Built b,
+            int[] delivery,
+            String orderBlocker,
+            long rescanDone,
+            String rescanBlocked,
+            int[] naming,
+            int[] crafting,
+            String anvilSource) {
         return heartbeat(b, delivery, orderBlocker, rescanDone, rescanBlocked, naming, crafting, anvilSource, null);
     }
 
@@ -218,23 +241,62 @@ public final class StashIndex {
     public record DeliveryStorage(boolean autoExpand, int chests, int full, boolean canExpand, String blocked) {}
 
     /** As above, with {@code storage} sent as {@code deliveryStorage}, or left out when null. */
-    public static byte[] heartbeat(Built b, int[] delivery, String orderBlocker, long rescanDone, String rescanBlocked, int[] naming, int[] crafting, String anvilSource,
-                                   DeliveryStorage storage) {
-        return heartbeat(b, delivery, orderBlocker, rescanDone, rescanBlocked, naming, crafting, anvilSource, storage, null);
+    public static byte[] heartbeat(
+            Built b,
+            int[] delivery,
+            String orderBlocker,
+            long rescanDone,
+            String rescanBlocked,
+            int[] naming,
+            int[] crafting,
+            String anvilSource,
+            DeliveryStorage storage) {
+        return heartbeat(
+                b, delivery, orderBlocker, rescanDone, rescanBlocked, naming, crafting, anvilSource, storage, null);
     }
 
     /**
      * As above, with {@code tableSource} sent as {@code crafting.tableSource} ("set", "found", "placed", "crafted" or "none"; 0.4.0-dev.6),
      * or left out when null.
      */
-    public static byte[] heartbeat(Built b, int[] delivery, String orderBlocker, long rescanDone, String rescanBlocked, int[] naming, int[] crafting, String anvilSource,
-                                   DeliveryStorage storage, String tableSource) {
-        return heartbeat(b, delivery, orderBlocker, rescanDone, rescanBlocked, naming, crafting, anvilSource, storage, tableSource, null);
+    public static byte[] heartbeat(
+            Built b,
+            int[] delivery,
+            String orderBlocker,
+            long rescanDone,
+            String rescanBlocked,
+            int[] naming,
+            int[] crafting,
+            String anvilSource,
+            DeliveryStorage storage,
+            String tableSource) {
+        return heartbeat(
+                b,
+                delivery,
+                orderBlocker,
+                rescanDone,
+                rescanBlocked,
+                naming,
+                crafting,
+                anvilSource,
+                storage,
+                tableSource,
+                null);
     }
 
     /** As above, with {@code deliveryHash} (0.4.0-dev.7, the hash of the delivery contents report) sent as {@code deliveryHash}, or left out when null. */
-    public static byte[] heartbeat(Built b, int[] delivery, String orderBlocker, long rescanDone, String rescanBlocked, int[] naming, int[] crafting, String anvilSource,
-                                   DeliveryStorage storage, String tableSource, String deliveryHash) {
+    public static byte[] heartbeat(
+            Built b,
+            int[] delivery,
+            String orderBlocker,
+            long rescanDone,
+            String rescanBlocked,
+            int[] naming,
+            int[] crafting,
+            String anvilSource,
+            DeliveryStorage storage,
+            String tableSource,
+            String deliveryHash) {
         JsonObject o = new JsonObject();
         if (deliveryHash != null) o.addProperty("deliveryHash", deliveryHash);
         if (storage != null) {
@@ -243,7 +305,8 @@ public final class StashIndex {
             d.addProperty("chests", Math.max(0, storage.chests()));
             d.addProperty("full", Math.max(0, Math.min(storage.full(), storage.chests())));
             d.addProperty("canExpand", storage.canExpand());
-            if (storage.blocked() == null || storage.blocked().isEmpty()) d.add("blocked", com.google.gson.JsonNull.INSTANCE);
+            if (storage.blocked() == null || storage.blocked().isEmpty())
+                d.add("blocked", com.google.gson.JsonNull.INSTANCE);
             else d.addProperty("blocked", clamp(storage.blocked(), 160));
             o.add("deliveryStorage", d);
         }
@@ -279,14 +342,20 @@ public final class StashIndex {
         o.addProperty("stash", b.stash());
         o.addProperty("player", b.player());
         o.addProperty("indexHash", b.hash());
-        return new com.google.gson.GsonBuilder().serializeNulls().create().toJson(o).getBytes(StandardCharsets.UTF_8);
+        return new com.google.gson.GsonBuilder()
+                .serializeNulls()
+                .create()
+                .toJson(o)
+                .getBytes(StandardCharsets.UTF_8);
     }
 
     /** Whether a heartbeat reply says the server wants the index. Missing or broken means no. */
     public static boolean needsIndex(String body) {
         try {
             JsonElement e = JsonParser.parseString(body);
-            return e.isJsonObject() && e.getAsJsonObject().has("needIndex") && e.getAsJsonObject().get("needIndex").getAsBoolean();
+            return e.isJsonObject()
+                    && e.getAsJsonObject().has("needIndex")
+                    && e.getAsJsonObject().get("needIndex").getAsBoolean();
         } catch (RuntimeException ex) {
             return false;
         }
@@ -351,12 +420,22 @@ public final class StashIndex {
                     inside = new ArrayList<>();
                     for (ItemStack inner : Kits.inside(stack)) {
                         if (inner == null || inner.isEmpty()) continue;
-                        inside.add(new DeliveryContents.Inner(BuiltInRegistries.ITEM.getKey(inner.getItem()).toString(), inner.getCount()));
+                        inside.add(new DeliveryContents.Inner(
+                                BuiltInRegistries.ITEM.getKey(inner.getItem()).toString(), inner.getCount()));
                     }
                 }
-                items.add(new DeliveryContents.Item(slot, info.id(), info.name(), stack.getCount(), info.maxStack(), inside, info.damage(), info.maxDamage()));
+                items.add(new DeliveryContents.Item(
+                        slot,
+                        info.id(),
+                        info.name(),
+                        stack.getCount(),
+                        info.maxStack(),
+                        inside,
+                        info.damage(),
+                        info.maxDamage()));
             }
-            out.add(new DeliveryContents.Chest(box.parts.size() > 1 || box.contents.length > 27 ? 54 : 27, c.full(), box.lastRead, items));
+            out.add(new DeliveryContents.Chest(
+                    box.parts.size() > 1 || box.contents.length > 27 ? 54 : 27, c.full(), box.lastRead, items));
         }
         return DeliveryContents.build(stash.server, stash.name, player, out, System.currentTimeMillis());
     }
@@ -372,13 +451,16 @@ public final class StashIndex {
     private static void add(Map<String, Agg> groups, RegistryOps<Tag> ops, ItemStack stack, int depth) {
         add(groups, ops, stack, depth, 1L);
     }
+
     private static void add(Map<String, Agg> groups, RegistryOps<Tag> ops, ItemStack stack, int depth, long copies) {
         if (stack == null || stack.isEmpty()) return;
         Info found = infoOf(ops, stack);
         long amount = Math.multiplyExact(copies, stack.getCount());
-        Agg group = groups.computeIfAbsent(found.key(), key -> new Agg(found)); group.count = Math.toIntExact(Math.addExact(group.count, amount));
+        Agg group = groups.computeIfAbsent(found.key(), key -> new Agg(found));
+        group.count = Math.toIntExact(Math.addExact(group.count, amount));
         if (depth >= MAX_DEPTH) return;
-        for (ItemStack inner : com.porter.wesort.compat.ObservationRuntime.contents(stack)) add(groups, ops, inner, depth + 1, amount);
+        for (ItemStack inner : com.porter.wesort.compat.ObservationRuntime.contents(stack))
+            add(groups, ops, inner, depth + 1, amount);
     }
 
     private static Info infoOf(RegistryOps<Tag> ops, ItemStack stack) {
@@ -394,7 +476,8 @@ public final class StashIndex {
     /** The key of a stack as the index lists it, or null with no world. Only on the client thread. */
     public static String keyOf(ItemStack stack) {
         if (mc.level == null || stack == null || stack.isEmpty()) return null;
-        return infoOf(mc.level.registryAccess().createSerializationContext(NbtOps.INSTANCE), stack).key();
+        return infoOf(mc.level.registryAccess().createSerializationContext(NbtOps.INSTANCE), stack)
+                .key();
     }
 
     /** The group key ("s:...") the index gives a shulker with this content, or null if it is not a shulker or is empty. */
@@ -427,7 +510,7 @@ public final class StashIndex {
             ItemStack inner = inside[slot];
             if (inner == null || inner.isEmpty()) continue;
             String k = infoOf(ops, inner).key();
-            slots.add(new int[] { slot, inner.getCount() });
+            slots.add(new int[] {slot, inner.getCount()});
             keys.add(k);
             if (canon.length() > 0) canon.append(',');
             canon.append(slot).append(':').append(k).append(':').append(inner.getCount());
@@ -458,12 +541,16 @@ public final class StashIndex {
                 if (id != null) byPath.put(id.getPath(), tab);
             }
 
-            // Only built if the game has not (the creative screen does it when opened). Building it again could change what
+            // Only built if the game has not (the creative screen does it when opened). Building it again could change
+            // what
             // an open creative screen shows, so never while one is open
             boolean built = false;
             for (var tab : byPath.values()) if (!tab.getDisplayItems().isEmpty()) built = true;
-            if (!built && !(mc.screen instanceof net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen) && mc.level != null) {
-                net.minecraft.world.item.CreativeModeTabs.tryRebuildTabContents(mc.level.enabledFeatures(), false, mc.level.registryAccess());
+            if (!built
+                    && !(mc.screen instanceof net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen)
+                    && mc.level != null) {
+                net.minecraft.world.item.CreativeModeTabs.tryRebuildTabContents(
+                        mc.level.enabledFeatures(), false, mc.level.registryAccess());
             }
 
             for (String path : TABS) {
@@ -490,9 +577,18 @@ public final class StashIndex {
         String id = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
         StackInfo info = StackInfo.of(stack);
         TabSlot tab = tabOf(stack.getItem());
-        return new Info(key(ops, id, stripped), id, stack.getHoverName().getString(), englishName(stack), stack.getMaxStackSize(),
-            details(info), info != null && !info.enchants.isEmpty(), tab.tab(), tab.order(),
-            durability(stack.getDamageValue(), stack.getMaxDamage())[0], durability(stack.getDamageValue(), stack.getMaxDamage())[1]);
+        return new Info(
+                key(ops, id, stripped),
+                id,
+                stack.getHoverName().getString(),
+                englishName(stack),
+                stack.getMaxStackSize(),
+                details(info),
+                info != null && !info.enchants.isEmpty(),
+                tab.tab(),
+                tab.order(),
+                durability(stack.getDamageValue(), stack.getMaxDamage())[0],
+                durability(stack.getDamageValue(), stack.getMaxDamage())[1]);
     }
 
     /** {damage, maxDamage} to send for an item, or {0, 0} to send neither: only damageable (maxDamage > 0) and damaged (damage > 0). */
@@ -506,7 +602,8 @@ public final class StashIndex {
         if (encoded.isEmpty()) {
             if (!encodeWarned) {
                 encodeWarned = true;
-                WeSortAddon.LOG.warn("wesort-stash-manager: couldn't encode the components of {}, using the bare id as its key", id);
+                WeSortAddon.LOG.warn(
+                        "wesort-stash-manager: couldn't encode the components of {}, using the bare id as its key", id);
             }
             return id;
         }
@@ -516,14 +613,18 @@ public final class StashIndex {
     private static List<String> details(StackInfo info) {
         List<String> out = new ArrayList<>();
         if (info == null) return out;
-        info.levels.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(e -> out.add(title(e.getKey()) + level(e.getValue())));
-        info.storedLevels.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(e -> out.add(title(e.getKey()) + level(e.getValue())));
+        info.levels.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(e -> out.add(title(e.getKey()) + level(e.getValue())));
+        info.storedLevels.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(e -> out.add(title(e.getKey()) + level(e.getValue())));
         if (info.potion != null) out.add(title(info.potion));
         return out;
     }
 
     private static String level(int n) {
-        String[] roman = { "", " I", " II", " III", " IV", " V", " VI", " VII", " VIII", " IX", " X" };
+        String[] roman = {"", " I", " II", " III", " IV", " V", " VI", " VII", " VIII", " IX", " X"};
         return n >= 1 && n < roman.length ? roman[n] : " " + n;
     }
 
@@ -536,7 +637,8 @@ public final class StashIndex {
         String id = hash < 0 ? key : key.substring(0, hash);
         if (itemsById == null) {
             itemsById = new HashMap<>();
-            for (Item item : BuiltInRegistries.ITEM) itemsById.put(BuiltInRegistries.ITEM.getKey(item).toString(), item);
+            for (Item item : BuiltInRegistries.ITEM)
+                itemsById.put(BuiltInRegistries.ITEM.getKey(item).toString(), item);
         }
         Item item = itemsById.get(id);
         if (lang == null) loadLang();
@@ -557,14 +659,17 @@ public final class StashIndex {
         Map<String, String> map = new HashMap<>();
         try (var in = net.minecraft.client.Minecraft.class.getResourceAsStream("/assets/minecraft/lang/en_us.json")) {
             if (in == null) throw new java.io.IOException("not found on the classpath");
-            JsonObject o = JsonParser.parseReader(new InputStreamReader(in, StandardCharsets.UTF_8)).getAsJsonObject();
+            JsonObject o = JsonParser.parseReader(new InputStreamReader(in, StandardCharsets.UTF_8))
+                    .getAsJsonObject();
             for (var e : o.entrySet()) {
-                if (e.getValue().isJsonPrimitive()) map.put(e.getKey(), e.getValue().getAsString());
+                if (e.getValue().isJsonPrimitive())
+                    map.put(e.getKey(), e.getValue().getAsString());
             }
         } catch (Exception e) {
             if (!langWarned) {
                 langWarned = true;
-                WeSortAddon.LOG.warn("wesort-stash-manager: couldn't read en_us.json, using item ids as names: {}", e.toString());
+                WeSortAddon.LOG.warn(
+                        "wesort-stash-manager: couldn't read en_us.json, using item ids as names: {}", e.toString());
             }
         }
         lang = map;
@@ -582,7 +687,8 @@ public final class StashIndex {
 
     private static String sha1(String s) {
         try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-1").digest(s.getBytes(StandardCharsets.UTF_8)));
+            return HexFormat.of()
+                    .formatHex(MessageDigest.getInstance("SHA-1").digest(s.getBytes(StandardCharsets.UTF_8)));
         } catch (java.security.NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }

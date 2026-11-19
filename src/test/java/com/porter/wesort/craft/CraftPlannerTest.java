@@ -110,7 +110,8 @@ class CraftPlannerTest {
     void stockBeforeCraftingAndMostAbundantFirst() {
         Recipes r = recipes("26.3");
         // Planks in stock are used before logs are crafted; spruce has more than oak
-        CraftPlanner.Result res = plan(r, 1, pool("shulker_shell", 2, "oak_planks", 3, "spruce_planks", 5, "oak_log", 4));
+        CraftPlanner.Result res =
+                plan(r, 1, pool("shulker_shell", 2, "oak_planks", 3, "spruce_planks", 5, "oak_log", 4));
         assertTrue(res.ok());
         assertEquals(5, res.plan().take().get("minecraft:spruce_planks"));
         assertEquals(3, res.plan().take().get("minecraft:oak_planks"));
@@ -121,12 +122,19 @@ class CraftPlannerTest {
     @Test
     void refusalsWithReasons() {
         Recipes r = recipes("26.3");
-        assertEquals("shulker shells can't be crafted", plan(r, 1, pool("chest", 1)).refusal());
-        assertEquals("shulker shells can't be crafted", plan(r, 1, pool("shulker_shell", 1, "chest", 1)).refusal());
-        assertEquals(CraftPlanner.NOT_ENOUGH, plan(r, 1, pool("shulker_shell", 2, "oak_log", 1)).refusal());
-        assertEquals(CraftPlanner.NOT_ENOUGH, plan(r, 1, pool("shulker_shell", 2)).refusal());
+        assertEquals(
+                "shulker shells can't be crafted", plan(r, 1, pool("chest", 1)).refusal());
+        assertEquals(
+                "shulker shells can't be crafted",
+                plan(r, 1, pool("shulker_shell", 1, "chest", 1)).refusal());
+        assertEquals(
+                CraftPlanner.NOT_ENOUGH,
+                plan(r, 1, pool("shulker_shell", 2, "oak_log", 1)).refusal());
+        assertEquals(
+                CraftPlanner.NOT_ENOUGH, plan(r, 1, pool("shulker_shell", 2)).refusal());
         // Stone is smelted, not crafted
-        CraftPlanner.Result bricks = CraftPlanner.plan(r, "minecraft:stone_bricks", 1, pool("cobblestone", 4), Set.of(), CAPS, 0, 0);
+        CraftPlanner.Result bricks =
+                CraftPlanner.plan(r, "minecraft:stone_bricks", 1, pool("cobblestone", 4), Set.of(), CAPS, 0, 0);
         assertEquals("stone needs a furnace", bricks.refusal());
     }
 
@@ -134,7 +142,8 @@ class CraftPlannerTest {
     void depthIsThree() {
         Recipes r = recipes("26.3");
         // A crafting table is made of planks (made of logs)
-        CraftPlanner.Result res = CraftPlanner.plan(r, "minecraft:crafting_table", 1, pool("oak_log", 1), Set.of(), CAPS, 0, 0);
+        CraftPlanner.Result res =
+                CraftPlanner.plan(r, "minecraft:crafting_table", 1, pool("oak_log", 1), Set.of(), CAPS, 0, 0);
         assertTrue(res.ok());
         // With nothing to make planks from, a box is refused
         assertFalse(plan(r, 1, pool("shulker_shell", 2)).ok());
@@ -144,7 +153,8 @@ class CraftPlannerTest {
     void neverUseListIsHonoured() {
         Recipes r = recipes("26.3");
         Map<String, Long> p = pool("shulker_shell", 2, "oak_planks", 8, "spruce_planks", 8);
-        CraftPlanner.Result res = CraftPlanner.plan(r, BOX, 1, p, Set.of("minecraft:oak_planks", "minecraft:spruce_planks"), CAPS, 0, 0);
+        CraftPlanner.Result res =
+                CraftPlanner.plan(r, BOX, 1, p, Set.of("minecraft:oak_planks", "minecraft:spruce_planks"), CAPS, 0, 0);
         assertFalse(res.ok());
         CraftPlanner.Result ok = CraftPlanner.plan(r, BOX, 1, p, Set.of("minecraft:oak_planks"), CAPS, 0, 0);
         assertTrue(ok.ok());
@@ -159,14 +169,22 @@ class CraftPlannerTest {
         CraftPlanner.Result perOrder = CraftPlanner.plan(r, BOX, 40, big, Set.of(), CAPS, 0, 0);
         assertEquals(27, perOrder.plan().count());
         assertEquals("cap reached (27 more this order)", perOrder.plan().limited());
-        assertEquals("cap reached (0 more this order)", CraftPlanner.plan(r, BOX, 1, big, Set.of(), CAPS, 27, 0).refusal());
-        assertEquals("cap reached (0 more this hour)", CraftPlanner.plan(r, BOX, 1, big, Set.of(), CAPS, 0, 54).refusal());
+        assertEquals(
+                "cap reached (0 more this order)",
+                CraftPlanner.plan(r, BOX, 1, big, Set.of(), CAPS, 27, 0).refusal());
+        assertEquals(
+                "cap reached (0 more this hour)",
+                CraftPlanner.plan(r, BOX, 1, big, Set.of(), CAPS, 0, 54).refusal());
         // Only 4 more this hour
-        assertEquals(4, CraftPlanner.plan(r, BOX, 10, big, Set.of(), CAPS, 0, 50).plan().count());
+        assertEquals(
+                4,
+                CraftPlanner.plan(r, BOX, 10, big, Set.of(), CAPS, 0, 50).plan().count());
         // 3 grid fills a box: 128 allows 42, but the order cap decides; with 10 ops only 3 boxes
         CraftPlanner.Result ops = CraftPlanner.plan(r, BOX, 10, big, Set.of(), new CraftPlanner.Caps(27, 10, 54), 0, 0);
         assertEquals(3, ops.plan().count());
-        assertTrue(CraftPlanner.plan(r, BOX, 1, big, Set.of(), new CraftPlanner.Caps(27, 2, 54), 0, 0).refusal().startsWith("cap reached (3 grid fills, at most 2 a task"));
+        assertTrue(CraftPlanner.plan(r, BOX, 1, big, Set.of(), new CraftPlanner.Caps(27, 2, 54), 0, 0)
+                .refusal()
+                .startsWith("cap reached (3 grid fills, at most 2 a task"));
     }
 
     @Test
@@ -184,7 +202,9 @@ class CraftPlannerTest {
         // The caller hands over the stash less what the other lines need: 10 planks in the stash, 5 are another line's
         assertTrue(plan(r, 1, pool("shulker_shell", 2, "oak_planks", 10)).ok());
         assertFalse(plan(r, 1, pool("shulker_shell", 2, "oak_planks", 5)).ok());
-        assertEquals(CraftPlanner.NOT_ENOUGH, plan(r, 1, pool("shulker_shell", 2, "oak_planks", 5)).refusal());
+        assertEquals(
+                CraftPlanner.NOT_ENOUGH,
+                plan(r, 1, pool("shulker_shell", 2, "oak_planks", 5)).refusal());
     }
 
     @Test

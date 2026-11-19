@@ -4,7 +4,6 @@ import com.porter.wesort.manager.model.AuthState;
 import com.porter.wesort.manager.model.BotList;
 import com.porter.wesort.manager.net.ApiResult;
 import com.porter.wesort.manager.net.SmClient;
-
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -31,7 +30,12 @@ public final class BotDirectory {
      * @param remember told the bot id when the user picks one (the module keeps it for the next time)
      * @param initial  the bot picked last time, or null
      */
-    public BotDirectory(SmClient client, Supplier<AuthState> auth, Consumer<ApiResult> onFail, Consumer<String> remember, String initial) {
+    public BotDirectory(
+            SmClient client,
+            Supplier<AuthState> auth,
+            Consumer<ApiResult> onFail,
+            Consumer<String> remember,
+            String initial) {
         this.client = client;
         this.auth = auth;
         this.onFail = onFail;
@@ -106,7 +110,6 @@ public final class BotDirectory {
                 changed = true;
             }
         });
-
     }
 
     private boolean changed;
@@ -120,7 +123,14 @@ public final class BotDirectory {
 
     private static String signatureOf(BotList l) {
         StringBuilder sb = new StringBuilder();
-        for (BotList.Bot b : l.bots()) sb.append(b.botId()).append(b.online() ? '+' : '-').append(b.player()).append('|').append(b.scopes()).append(b.caps()).append(';');
+        for (BotList.Bot b : l.bots())
+            sb.append(b.botId())
+                    .append(b.online() ? '+' : '-')
+                    .append(b.player())
+                    .append('|')
+                    .append(b.scopes())
+                    .append(b.caps())
+                    .append(';');
         return sb.toString();
     }
 }

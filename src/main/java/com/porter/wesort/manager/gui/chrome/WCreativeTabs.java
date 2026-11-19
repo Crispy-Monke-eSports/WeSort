@@ -7,14 +7,13 @@ import com.porter.wesort.manager.gui.style.Palette;
 import com.porter.wesort.manager.gui.style.SmGuiTheme;
 import com.porter.wesort.manager.gui.widgets.ItemLayer;
 import com.porter.wesort.manager.model.IndexModel;
-import meteordevelopment.meteorclient.gui.renderer.GuiRenderer;
-import meteordevelopment.meteorclient.gui.widgets.pressable.WPressable;
-import net.minecraft.client.gui.GuiGraphics;
-
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import meteordevelopment.meteorclient.gui.renderer.GuiRenderer;
+import meteordevelopment.meteorclient.gui.widgets.pressable.WPressable;
+import net.minecraft.client.gui.GuiGraphics;
 
 /**
  * The website's creative tabs: a row of small tabs with an item icon each, above the inventory panel. The selected tab
@@ -22,21 +21,21 @@ import java.util.function.Supplier;
  */
 public class WCreativeTabs extends WPressable {
     private static final Map<String, String[]> INFO = Map.ofEntries(
-        Map.entry("all", new String[] {"Search", "minecraft:compass"}),
-        Map.entry("building_blocks", new String[] {"Building Blocks", "minecraft:bricks"}),
-        Map.entry("colored_blocks", new String[] {"Colored Blocks", "minecraft:cyan_wool"}),
-        Map.entry("natural_blocks", new String[] {"Natural Blocks", "minecraft:grass_block"}),
-        Map.entry("functional_blocks", new String[] {"Functional Blocks", "minecraft:oak_sign"}),
-        Map.entry("redstone_blocks", new String[] {"Redstone Blocks", "minecraft:redstone"}),
-        Map.entry("tools_and_utilities", new String[] {"Tools & Utilities", "minecraft:diamond_pickaxe"}),
-        Map.entry("combat", new String[] {"Combat", "minecraft:netherite_sword"}),
-        Map.entry("food_and_drinks", new String[] {"Food & Drinks", "minecraft:golden_apple"}),
-        Map.entry("ingredients", new String[] {"Ingredients", "minecraft:iron_ingot"}),
-        Map.entry("spawn_eggs", new String[] {"Spawn Eggs", "minecraft:pig_spawn_egg"}),
-        Map.entry("op_blocks", new String[] {"Operator Utilities", "minecraft:command_block"}),
-        Map.entry("other", new String[] {"Other", "minecraft:chest"}),
-        Map.entry("shulkers", new String[] {"Shulkers", "minecraft:shulker_box"}),
-        Map.entry("orders", new String[] {"Orders", "minecraft:writable_book"}));
+            Map.entry("all", new String[] {"Search", "minecraft:compass"}),
+            Map.entry("building_blocks", new String[] {"Building Blocks", "minecraft:bricks"}),
+            Map.entry("colored_blocks", new String[] {"Colored Blocks", "minecraft:cyan_wool"}),
+            Map.entry("natural_blocks", new String[] {"Natural Blocks", "minecraft:grass_block"}),
+            Map.entry("functional_blocks", new String[] {"Functional Blocks", "minecraft:oak_sign"}),
+            Map.entry("redstone_blocks", new String[] {"Redstone Blocks", "minecraft:redstone"}),
+            Map.entry("tools_and_utilities", new String[] {"Tools & Utilities", "minecraft:diamond_pickaxe"}),
+            Map.entry("combat", new String[] {"Combat", "minecraft:netherite_sword"}),
+            Map.entry("food_and_drinks", new String[] {"Food & Drinks", "minecraft:golden_apple"}),
+            Map.entry("ingredients", new String[] {"Ingredients", "minecraft:iron_ingot"}),
+            Map.entry("spawn_eggs", new String[] {"Spawn Eggs", "minecraft:pig_spawn_egg"}),
+            Map.entry("op_blocks", new String[] {"Operator Utilities", "minecraft:command_block"}),
+            Map.entry("other", new String[] {"Other", "minecraft:chest"}),
+            Map.entry("shulkers", new String[] {"Shulkers", "minecraft:shulker_box"}),
+            Map.entry("orders", new String[] {"Orders", "minecraft:writable_book"}));
 
     private static final int GAP = 1;
     private static final int MIN_TAB = 14;
@@ -138,15 +137,29 @@ public class WCreativeTabs extends WPressable {
                 Paint.panel(renderer, t, tx, ty, tabW, th, radius, bw, fill, p.border());
                 // The selected tab has no line under it: it is one piece with the panel
                 if (sel) Paint.rect(renderer, t, tx + bw, ty + th - bw, tabW - 2 * bw, bw, fill);
-                if (p.bevel && sel) Paint.bevel(renderer, t, tx + bw, ty + bw, tabW - 2 * bw, th - bw, u, 0xFFFFFFFF, 0xFFC6C6C6);
+                if (p.bevel && sel)
+                    Paint.bevel(renderer, t, tx + bw, ty + bw, tabW - 2 * bw, th - bw, u, 0xFFFFFFFF, 0xFFC6C6C6);
                 String[] info = INFO.get(ids.get(i));
                 if (info != null) {
                     double ix = tx + (tabW - 16 * u) / 2;
                     double iy = ty + (th - 16 * u) / 2 + (sel ? 0 : u);
-                    ItemLayer.draw(renderer, t, g, ItemStacks.displayId(info[1]), "", Math.round(ix / u) * u, Math.round(iy / u) * u);
+                    ItemLayer.draw(
+                            renderer,
+                            t,
+                            g,
+                            ItemStacks.displayId(info[1]),
+                            "",
+                            Math.round(ix / u) * u,
+                            Math.round(iy / u) * u);
                 }
             }
         }
-        if (hover >= 0 && t.overlay != null) t.overlay.hoverCard(List.of(nameOf(ids.get(hover))), x + left[hover], y + (ids.get(hover).equals(active) ? 0 : TOP_OFFSET * u), tabW, height - (ids.get(hover).equals(active) ? 0 : TOP_OFFSET * u));
+        if (hover >= 0 && t.overlay != null)
+            t.overlay.hoverCard(
+                    List.of(nameOf(ids.get(hover))),
+                    x + left[hover],
+                    y + (ids.get(hover).equals(active) ? 0 : TOP_OFFSET * u),
+                    tabW,
+                    height - (ids.get(hover).equals(active) ? 0 : TOP_OFFSET * u));
     }
 }

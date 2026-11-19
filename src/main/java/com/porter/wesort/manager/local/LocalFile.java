@@ -2,19 +2,10 @@ package com.porter.wesort.manager.local;
 
 import com.porter.wesort.manager.local.LocalStore.Entry;
 import com.porter.wesort.manager.local.LocalStore.Slot;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.IntTag;
-import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.NbtAccounter;
-import net.minecraft.nbt.NbtIo;
-import net.minecraft.nbt.NbtOps;
-import net.minecraft.nbt.Tag;
-
 import java.io.ByteArrayInputStream;
 import java.io.DataOutputStream;
-import java.io.OutputStream;
-import java.util.zip.GZIPInputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,6 +13,14 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.zip.GZIPInputStream;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.IntTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtAccounter;
+import net.minecraft.nbt.NbtIo;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.nbt.Tag;
 
 /**
  * The local index file of one server: compressed NBT, written next to itself and moved over the old one, so a crash
@@ -36,9 +35,11 @@ public final class LocalFile {
     public static final long MAX_FILE_BYTES = 48L * 1024 * 1024;
     /** The NBT of a file may be this big once uncompressed, at write time and (plus {@link #READ_MARGIN}) at read time. */
     public static final long MAX_UNCOMPRESSED = 96L * 1024 * 1024;
+
     public static final long READ_MARGIN = 8L * 1024 * 1024;
     /** The most server files kept; the oldest go when a new one is made. */
     public static final int MAX_FILES = 64;
+
     private static final int BACKUPS = 3;
 
     private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger("WeSort/wesort-stash-window");
@@ -50,12 +51,23 @@ public final class LocalFile {
      * TOO_BIG: over the size limits, left alone. NEWER: written by a newer version, loaded as far as understood and left
      * alone. For the last three the caller must not write the file.
      */
-    public enum Status { OK, MISSING, CORRUPT, UNREADABLE, TOO_BIG, NEWER }
+    public enum Status {
+        OK,
+        MISSING,
+        CORRUPT,
+        UNREADABLE,
+        TOO_BIG,
+        NEWER
+    }
 
     /** What a read found. {@code skipped} counts containers in the file that were malformed and left out. */
     public record Loaded(Status status, List<Entry> entries, int skipped) {}
 
-    public enum WriteStatus { OK, TOO_BIG, ERROR }
+    public enum WriteStatus {
+        OK,
+        TOO_BIG,
+        ERROR
+    }
 
     // ---------- the NBT shape ----------
 
@@ -92,7 +104,8 @@ public final class LocalFile {
     public static Loaded fromTag(CompoundTag root, String server, int cap) {
         List<Entry> out = new ArrayList<>();
         int skipped = 0;
-        if (root == null || !(root.get("containers") instanceof ListTag list)) return new Loaded(Status.CORRUPT, out, 0);
+        if (root == null || !(root.get("containers") instanceof ListTag list))
+            return new Loaded(Status.CORRUPT, out, 0);
         for (Tag t : list) {
             if (out.size() >= Math.max(1, cap)) {
                 skipped++;
@@ -110,7 +123,8 @@ public final class LocalFile {
             if (!(t instanceof CompoundTag c)) return null;
             String dim = string(c.get("dim"));
             String block = string(c.get("block"));
-            if (dim == null || dim.isEmpty() || dim.length() > 100 || block == null || block.length() > 100) return null;
+            if (dim == null || dim.isEmpty() || dim.length() > 100 || block == null || block.length() > 100)
+                return null;
             int[] pos = readXyz(c.get("pos"));
             if (pos == null) return null;
             List<int[]> parts = new ArrayList<>();
@@ -130,11 +144,20 @@ public final class LocalFile {
                     if (!(it instanceof CompoundTag ic)) continue;
                     int slot = number(ic.get("slot"), -1);
                     Tag item = ic.get("item");
-                    if (slot < 0 || slot >= size || !(item instanceof CompoundTag) || slots.size() >= CaptureRules.MAX_SLOTS) continue;
+                    if (slot < 0
+                            || slot >= size
+                            || !(item instanceof CompoundTag)
+                            || slots.size() >= CaptureRules.MAX_SLOTS) continue;
                     slots.add(new Slot(slot, item));
                 }
             }
-            Entry e = new Entry(new ContainerKey(server, dim, pos[0], pos[1], pos[2]), List.copyOf(parts), block, size, readAt, List.copyOf(slots));
+            Entry e = new Entry(
+                    new ContainerKey(server, dim, pos[0], pos[1], pos[2]),
+                    List.copyOf(parts),
+                    block,
+                    size,
+                    readAt,
+                    List.copyOf(slots));
             return LocalStore.valid(e) ? e : null;
         } catch (RuntimeException ex) {
             return null;
@@ -151,18 +174,26 @@ public final class LocalFile {
 
     private static int[] readXyz(Tag t) {
         if (!(t instanceof ListTag l) || l.size() != 3) return null;
-        return new int[] { number(l.get(0), 0), number(l.get(1), 0), number(l.get(2), 0) };
+        return new int[] {number(l.get(0), 0), number(l.get(1), 0), number(l.get(2), 0)};
     }
 
     // Numbers and strings are read through NbtOps: compound tag accessors differ between Minecraft versions
     private static int number(Tag tag, int fallback) {
         if (tag == null) return fallback;
-        return NbtOps.INSTANCE.getNumberValue(tag).result().map(Number::intValue).orElse(fallback);
+        return NbtOps.INSTANCE
+                .getNumberValue(tag)
+                .result()
+                .map(Number::intValue)
+                .orElse(fallback);
     }
 
     private static long numberLong(Tag tag) {
         if (tag == null) return 0;
-        return NbtOps.INSTANCE.getNumberValue(tag).result().map(Number::longValue).orElse(0L);
+        return NbtOps.INSTANCE
+                .getNumberValue(tag)
+                .result()
+                .map(Number::longValue)
+                .orElse(0L);
     }
 
     private static String string(Tag tag) {
@@ -188,7 +219,8 @@ public final class LocalFile {
         }
         try {
             // Measured first, so a size problem is told apart from a broken file and a bomb is never inflated
-            if (uncompressedSize(bytes, MAX_UNCOMPRESSED + READ_MARGIN) > MAX_UNCOMPRESSED + READ_MARGIN) return new Loaded(Status.TOO_BIG, List.of(), 0);
+            if (uncompressedSize(bytes, MAX_UNCOMPRESSED + READ_MARGIN) > MAX_UNCOMPRESSED + READ_MARGIN)
+                return new Loaded(Status.TOO_BIG, List.of(), 0);
         } catch (IOException | RuntimeException e) {
             return moveAside(file);
         }
@@ -245,7 +277,9 @@ public final class LocalFile {
             Files.move(file, bad, StandardCopyOption.REPLACE_EXISTING);
             String prefix = file.getFileName() + ".bad-";
             try (var files = Files.list(file.getParent())) {
-                List<Path> old = files.filter(f -> f.getFileName().toString().startsWith(prefix)).sorted().toList();
+                List<Path> old = files.filter(f -> f.getFileName().toString().startsWith(prefix))
+                        .sorted()
+                        .toList();
                 for (int i = 0; i < old.size() - BACKUPS; i++) Files.deleteIfExists(old.get(i));
             }
             return new Loaded(Status.CORRUPT, List.of(), 0);
@@ -290,10 +324,16 @@ public final class LocalFile {
     /** Deletes the oldest .nbt files of the folder beyond {@link #MAX_FILES}, never {@code keep}. */
     static void prune(Path folder, Path keep) {
         try (var files = Files.list(folder)) {
-            List<Path> nbt = new ArrayList<>(files.filter(f -> f.getFileName().toString().endsWith(".nbt") && !f.equals(keep)).toList());
+            List<Path> nbt =
+                    new ArrayList<>(files.filter(f -> f.getFileName().toString().endsWith(".nbt") && !f.equals(keep))
+                            .toList());
             // The new file counts toward the cap
             for (Path drop : Evict.oldest(nbt, MAX_FILES - 1, LocalFile::modified)) {
-                if (Files.deleteIfExists(drop)) LOG.info("wesort-stash-window: deleted the oldest local index file {} (more than {} servers)", drop.getFileName(), MAX_FILES);
+                if (Files.deleteIfExists(drop))
+                    LOG.info(
+                            "wesort-stash-window: deleted the oldest local index file {} (more than {} servers)",
+                            drop.getFileName(),
+                            MAX_FILES);
             }
         } catch (IOException | RuntimeException e) {
             // Pruning is a courtesy

@@ -1,8 +1,8 @@
 package com.porter.wesort.manager.gui.frame;
 
-import meteordevelopment.meteorclient.utils.misc.input.Input;
-
 import static com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_LEFT;
+
+import meteordevelopment.meteorclient.utils.misc.input.Input;
 
 /**
  * Whether the left mouse button is down now.
@@ -13,8 +13,7 @@ import static com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_LEFT;
  * head of the same method, whatever screen is up, and is the same in every Meteor build this addon supports.
  */
 public final class Buttons {
-    private Buttons() {
-    }
+    private Buttons() {}
 
     public static boolean leftDown() {
         return Input.isButtonPressed(MOUSE_BUTTON_LEFT);

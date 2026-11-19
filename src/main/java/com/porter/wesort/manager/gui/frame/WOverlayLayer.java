@@ -1,20 +1,19 @@
 package com.porter.wesort.manager.gui.frame;
 
+import static meteordevelopment.meteorclient.utils.Utils.getWindowHeight;
+import static meteordevelopment.meteorclient.utils.Utils.getWindowWidth;
+
 import com.porter.wesort.manager.gui.style.Paint;
 import com.porter.wesort.manager.gui.style.Palette;
 import com.porter.wesort.manager.gui.style.SmGuiTheme;
+import java.util.List;
+import java.util.function.IntConsumer;
 import meteordevelopment.meteorclient.gui.renderer.GuiRenderer;
 import meteordevelopment.meteorclient.gui.utils.Cell;
 import meteordevelopment.meteorclient.gui.widgets.WWidget;
 import meteordevelopment.meteorclient.gui.widgets.containers.WContainer;
 import meteordevelopment.meteorclient.gui.widgets.input.WTextBox;
 import meteordevelopment.meteorclient.gui.widgets.pressable.WPressable;
-
-import java.util.List;
-import java.util.function.IntConsumer;
-
-import static meteordevelopment.meteorclient.utils.Utils.getWindowHeight;
-import static meteordevelopment.meteorclient.utils.Utils.getWindowWidth;
 
 /**
  * The window's top layer: the open list of a select and the hover card of an item. It is the frame's first child, so it
@@ -28,8 +27,8 @@ import static meteordevelopment.meteorclient.utils.Utils.getWindowWidth;
  */
 public class WOverlayLayer extends WPressable {
     /** One open list: the select's rectangle (physical pixels), its rows, the chosen row and what to do on a pick. */
-    public record Popup(double ax, double ay, double aw, double ah, List<String> rows, int selected, IntConsumer pick) {
-    }
+    public record Popup(
+            double ax, double ay, double aw, double ah, List<String> rows, int selected, IntConsumer pick) {}
 
     public final OverlayMask mask = new OverlayMask();
 
@@ -70,8 +69,12 @@ public class WOverlayLayer extends WPressable {
         for (String row : p.rows()) widest = Math.max(widest, t.textWidth(row));
         double rowW = widest + 14 * u;
         popup = p;
-        place = PopupLayout.place(p.ax(), p.ay(), p.aw(), p.ah(), rowW, rowH, p.rows().size(), getWindowWidth(), getWindowHeight());
-        scroll = PopupLayout.clampScroll(PopupLayout.scrollTo(Math.max(0, p.selected()), 0, place.visible()), p.rows().size(), place.visible());
+        place = PopupLayout.place(
+                p.ax(), p.ay(), p.aw(), p.ah(), rowW, rowH, p.rows().size(), getWindowWidth(), getWindowHeight());
+        scroll = PopupLayout.clampScroll(
+                PopupLayout.scrollTo(Math.max(0, p.selected()), 0, place.visible()),
+                p.rows().size(),
+                place.visible());
         mask.set(OverlayMask.POPUP, place.x(), place.y(), place.w(), place.h());
         hoverRow = PopupLayout.rowAt(place, rowH, scroll, p.rows().size(), lastX, lastY);
         // The pointer hasn't moved since the click that opened the list, so Meteor hasn't told this widget it is over
@@ -103,13 +106,15 @@ public class WOverlayLayer extends WPressable {
     public void onMouseMoved(double mouseX, double mouseY, double lastMouseX, double lastMouseY) {
         lastX = mouseX;
         lastY = mouseY;
-        if (popup != null) hoverRow = PopupLayout.rowAt(place, rowH, scroll, popup.rows().size(), mouseX, mouseY);
+        if (popup != null)
+            hoverRow = PopupLayout.rowAt(place, rowH, scroll, popup.rows().size(), mouseX, mouseY);
     }
 
     @Override
     public boolean onMouseScrolled(double amount) {
         if (popup == null) return false;
-        scroll = PopupLayout.clampScroll(scroll - (int) Math.signum(amount) * 2, popup.rows().size(), place.visible());
+        scroll = PopupLayout.clampScroll(
+                scroll - (int) Math.signum(amount) * 2, popup.rows().size(), place.visible());
         hoverRow = PopupLayout.rowAt(place, rowH, scroll, popup.rows().size(), lastX, lastY);
         return true;
     }
@@ -144,7 +149,8 @@ public class WOverlayLayer extends WPressable {
     public void beginFrame() {
         cardLines = null;
         if (popup == null) mouseOver = false;
-        if (tooltipNext != null) mask.set(OverlayMask.TOOLTIP, tooltipNext[0], tooltipNext[1], tooltipNext[2], tooltipNext[3]);
+        if (tooltipNext != null)
+            mask.set(OverlayMask.TOOLTIP, tooltipNext[0], tooltipNext[1], tooltipNext[2], tooltipNext[3]);
         else mask.clear(OverlayMask.TOOLTIP);
         tooltipNext = null;
     }
@@ -220,7 +226,17 @@ public class WOverlayLayer extends WPressable {
         }
         if (popup != null) {
             double bw = p.borderWidth * u;
-            Paint.panel(renderer, t, place.x(), place.y(), place.w(), place.h(), Math.min(p.radius, 3) * u, bw, p.surface2(), p.border());
+            Paint.panel(
+                    renderer,
+                    t,
+                    place.x(),
+                    place.y(),
+                    place.w(),
+                    place.h(),
+                    Math.min(p.radius, 3) * u,
+                    bw,
+                    p.surface2(),
+                    p.border());
             int rows = popup.rows().size();
             renderer.scissorStart(place.x() + bw, place.y() + bw, place.w() - 2 * bw, place.h() - 2 * bw);
             for (int i = 0; i < place.visible() && scroll + i < rows; i++) {
@@ -235,7 +251,9 @@ public class WOverlayLayer extends WPressable {
             if (rows > place.visible()) {
                 double trackH = place.h() - 2 * bw;
                 double barH = Math.max(6 * u, trackH * place.visible() / rows);
-                double barY = place.y() + bw + (trackH - barH) * scroll / Math.max(1, PopupLayout.maxScroll(rows, place.visible()));
+                double barY = place.y()
+                        + bw
+                        + (trackH - barH) * scroll / Math.max(1, PopupLayout.maxScroll(rows, place.visible()));
                 Paint.rect(renderer, t, place.x() + place.w() - bw - 3 * u, barY, 3 * u, barH, p.trackOff());
             }
             renderer.scissorEnd();

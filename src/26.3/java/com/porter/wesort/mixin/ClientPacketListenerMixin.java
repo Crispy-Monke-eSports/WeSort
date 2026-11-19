@@ -1,6 +1,8 @@
 package com.porter.wesort.mixin;
 
 import com.porter.wesort.utils.SnapshotSearch;
+import java.util.Map;
+import java.util.UUID;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.multiplayer.PlayerInfo;
@@ -10,9 +12,6 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-
-import java.util.Map;
-import java.util.UUID;
 
 /**
  * Vanilla 26.3 resolves a name-only player head (a ResolvableProfile.Dynamic) on a worker thread, and
@@ -27,25 +26,30 @@ import java.util.UUID;
 @Mixin(ClientPacketListener.class)
 public abstract class ClientPacketListenerMixin {
     @Inject(method = "handleBlockEntityData", at = @At("TAIL"))
-    private void wesort$blockEntityObservation(net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket packet,
-        org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
+    private void wesort$blockEntityObservation(
+            net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket packet,
+            org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
         com.porter.wesort.compat.WorldTestDriver.blockEntityUpdated(packet.getPos());
     }
+
     @Inject(method = "handleContainerContent", at = @At("TAIL"))
-    private void wesort$inventoryContent(net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket packet,
-        org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
+    private void wesort$inventoryContent(
+            net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket packet,
+            org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
         com.porter.wesort.compat.InventorySync.contents(packet);
     }
 
     @Inject(method = "handleAwardStats", at = @At("TAIL"))
-    private void wesort$inventoryBarrier(net.minecraft.network.protocol.game.ClientboundAwardStatsPacket packet,
-        org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
+    private void wesort$inventoryBarrier(
+            net.minecraft.network.protocol.game.ClientboundAwardStatsPacket packet,
+            org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
         com.porter.wesort.compat.InventorySync.stats();
     }
 
     @Inject(method = "handleBlockChangedAck", at = @At("TAIL"))
-    private void wesort$blockAck(net.minecraft.network.protocol.game.ClientboundBlockChangedAckPacket packet,
-        org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
+    private void wesort$blockAck(
+            net.minecraft.network.protocol.game.ClientboundBlockChangedAckPacket packet,
+            org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
         com.porter.wesort.compat.InventorySync.blockAck(packet.sequence());
     }
 
@@ -56,6 +60,7 @@ public abstract class ClientPacketListenerMixin {
     @Inject(method = "getPlayerInfoIgnoreCase", at = @At("HEAD"), cancellable = true, require = 1)
     private void wesort$safeLookup(String name, CallbackInfoReturnable<PlayerInfo> cir) {
         if (Minecraft.getInstance().isSameThread()) return;
-        cir.setReturnValue(SnapshotSearch.find(playerInfoMap.values(), info -> info.getProfile().name().equalsIgnoreCase(name)));
+        cir.setReturnValue(SnapshotSearch.find(
+                playerInfoMap.values(), info -> info.getProfile().name().equalsIgnoreCase(name)));
     }
 }

@@ -1,21 +1,20 @@
 package com.porter.wesortmanager;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-
-import java.net.URISyntaxException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** The heartbeat's naming and crafting fields, and the creative-tab fallback for items without a tab. */
 class NamingAndTabsTest {
@@ -44,16 +43,31 @@ class NamingAndTabsTest {
         assertTrue(cleared.hasNaming());
         assertNull(cleared.naming());
 
-        assertEquals(new IndexStore.Naming(true, 30), status("{\"naming\":{\"anvil\":true,\"xpLevels\":30}}").naming());
-        assertEquals(new IndexStore.Naming(false, -1), status("{\"naming\":{\"anvil\":false,\"xpLevels\":-1}}").naming());
-        assertEquals(new IndexStore.Naming(true, 7), status("{\"naming\":{\"anvil\":true,\"xpLevels\":7.0}}").naming());
-        assertEquals(new IndexStore.Naming(true, -1), status("{\"naming\":{\"anvil\":true}}").naming());
+        assertEquals(
+                new IndexStore.Naming(true, 30),
+                status("{\"naming\":{\"anvil\":true,\"xpLevels\":30}}").naming());
+        assertEquals(
+                new IndexStore.Naming(false, -1),
+                status("{\"naming\":{\"anvil\":false,\"xpLevels\":-1}}").naming());
+        assertEquals(
+                new IndexStore.Naming(true, 7),
+                status("{\"naming\":{\"anvil\":true,\"xpLevels\":7.0}}").naming());
+        assertEquals(
+                new IndexStore.Naming(true, -1),
+                status("{\"naming\":{\"anvil\":true}}").naming());
 
-        for (String bad : new String[]{
-            "{\"naming\":true}", "{\"naming\":[]}", "{\"naming\":\"x\"}", "{\"naming\":{}}",
-            "{\"naming\":{\"anvil\":\"yes\",\"xpLevels\":1}}", "{\"naming\":{\"anvil\":1,\"xpLevels\":1}}",
-            "{\"naming\":{\"anvil\":true,\"xpLevels\":\"5\"}}", "{\"naming\":{\"anvil\":true,\"xpLevels\":1.5}}",
-            "{\"naming\":{\"anvil\":true,\"xpLevels\":-2}}", "{\"naming\":{\"anvil\":true,\"xpLevels\":3000000000}}"}) {
+        for (String bad : new String[] {
+            "{\"naming\":true}",
+            "{\"naming\":[]}",
+            "{\"naming\":\"x\"}",
+            "{\"naming\":{}}",
+            "{\"naming\":{\"anvil\":\"yes\",\"xpLevels\":1}}",
+            "{\"naming\":{\"anvil\":1,\"xpLevels\":1}}",
+            "{\"naming\":{\"anvil\":true,\"xpLevels\":\"5\"}}",
+            "{\"naming\":{\"anvil\":true,\"xpLevels\":1.5}}",
+            "{\"naming\":{\"anvil\":true,\"xpLevels\":-2}}",
+            "{\"naming\":{\"anvil\":true,\"xpLevels\":3000000000}}"
+        }) {
             assertThrows(IllegalArgumentException.class, () -> status(bad), bad);
         }
     }
@@ -66,14 +80,20 @@ class NamingAndTabsTest {
         assertTrue(entry(store).get("naming").isJsonNull());
 
         store.heartbeat("s", "a", "Bob", null, status("{\"naming\":{\"anvil\":true,\"xpLevels\":12}}"));
-        assertEquals(json("{\"anvil\":true,\"xpLevels\":12,\"anvilSource\":null}"), entry(store).getAsJsonObject("naming"));
+        assertEquals(
+                json("{\"anvil\":true,\"xpLevels\":12,\"anvilSource\":null}"),
+                entry(store).getAsJsonObject("naming"));
 
         // Absent keeps it, and other fields don't touch it.
         store.heartbeat("s", "a", "Bob", null, status("{\"orderBlocker\":\"busy\"}"));
-        assertEquals(json("{\"anvil\":true,\"xpLevels\":12,\"anvilSource\":null}"), entry(store).getAsJsonObject("naming"));
+        assertEquals(
+                json("{\"anvil\":true,\"xpLevels\":12,\"anvilSource\":null}"),
+                entry(store).getAsJsonObject("naming"));
 
         store.heartbeat("s", "a", "Bob", null, status("{\"naming\":{\"anvil\":false,\"xpLevels\":0}}"));
-        assertEquals(json("{\"anvil\":false,\"xpLevels\":0,\"anvilSource\":null}"), entry(store).getAsJsonObject("naming"));
+        assertEquals(
+                json("{\"anvil\":false,\"xpLevels\":0,\"anvilSource\":null}"),
+                entry(store).getAsJsonObject("naming"));
 
         store.heartbeat("s", "a", "Bob", null, status("{\"naming\":null}"));
         assertTrue(entry(store).get("naming").isJsonNull());
@@ -81,15 +101,21 @@ class NamingAndTabsTest {
 
     @Test
     void anvilSourceTypes() {
-        for (String src : new String[]{"set", "found", "placed", "none"}) {
-            assertEquals(new IndexStore.Naming(false, 5, src),
-                status("{\"naming\":{\"anvil\":false,\"xpLevels\":5,\"anvilSource\":\"" + src + "\"}}").naming(), src);
+        for (String src : new String[] {"set", "found", "placed", "none"}) {
+            assertEquals(
+                    new IndexStore.Naming(false, 5, src),
+                    status("{\"naming\":{\"anvil\":false,\"xpLevels\":5,\"anvilSource\":\"" + src + "\"}}")
+                            .naming(),
+                    src);
         }
         // Absent or null (an older bot): null.
-        assertNull(status("{\"naming\":{\"anvil\":true,\"xpLevels\":5}}").naming().anvilSource());
-        assertNull(status("{\"naming\":{\"anvil\":true,\"xpLevels\":5,\"anvilSource\":null}}").naming().anvilSource());
+        assertNull(
+                status("{\"naming\":{\"anvil\":true,\"xpLevels\":5}}").naming().anvilSource());
+        assertNull(status("{\"naming\":{\"anvil\":true,\"xpLevels\":5,\"anvilSource\":null}}")
+                .naming()
+                .anvilSource());
 
-        for (String bad : new String[]{"\"SET\"", "\"\"", "\"anvil\"", "1", "true", "[]", "{}", "[\"set\"]"}) {
+        for (String bad : new String[] {"\"SET\"", "\"\"", "\"anvil\"", "1", "true", "[]", "{}", "[\"set\"]"}) {
             String body = "{\"naming\":{\"anvil\":false,\"xpLevels\":5,\"anvilSource\":" + bad + "}}";
             assertThrows(IllegalArgumentException.class, () -> status(body), body);
         }
@@ -99,11 +125,25 @@ class NamingAndTabsTest {
     void anvilSourceIsListed() throws Exception {
         IndexStore store = new IndexStore(data, CreativeTabs.NONE);
         store.load();
-        store.heartbeat("s", "a", "Bob", null, status("{\"naming\":{\"anvil\":false,\"xpLevels\":4,\"anvilSource\":\"none\"}}"));
-        assertEquals(json("{\"anvil\":false,\"xpLevels\":4,\"anvilSource\":\"none\"}"), entry(store).getAsJsonObject("naming"));
+        store.heartbeat(
+                "s",
+                "a",
+                "Bob",
+                null,
+                status("{\"naming\":{\"anvil\":false,\"xpLevels\":4,\"anvilSource\":\"none\"}}"));
+        assertEquals(
+                json("{\"anvil\":false,\"xpLevels\":4,\"anvilSource\":\"none\"}"),
+                entry(store).getAsJsonObject("naming"));
 
-        store.heartbeat("s", "a", "Bob", null, status("{\"naming\":{\"anvil\":true,\"xpLevels\":4,\"anvilSource\":\"placed\"}}"));
-        assertEquals("placed", entry(store).getAsJsonObject("naming").get("anvilSource").getAsString());
+        store.heartbeat(
+                "s",
+                "a",
+                "Bob",
+                null,
+                status("{\"naming\":{\"anvil\":true,\"xpLevels\":4,\"anvilSource\":\"placed\"}}"));
+        assertEquals(
+                "placed",
+                entry(store).getAsJsonObject("naming").get("anvilSource").getAsString());
 
         // An older bot's heartbeat replaces it with null.
         store.heartbeat("s", "a", "Bob", null, status("{\"naming\":{\"anvil\":true,\"xpLevels\":4}}"));
@@ -120,15 +160,28 @@ class NamingAndTabsTest {
         assertTrue(cleared.hasCrafting());
         assertNull(cleared.crafting());
 
-        assertEquals(new IndexStore.Crafting(true, true), status("{\"crafting\":{\"enabled\":true,\"table\":true}}").crafting());
-        assertEquals(new IndexStore.Crafting(true, false), status("{\"crafting\":{\"enabled\":true,\"table\":false}}").crafting());
-        assertEquals(new IndexStore.Crafting(false, true), status("{\"crafting\":{\"enabled\":false,\"table\":true}}").crafting());
+        assertEquals(
+                new IndexStore.Crafting(true, true),
+                status("{\"crafting\":{\"enabled\":true,\"table\":true}}").crafting());
+        assertEquals(
+                new IndexStore.Crafting(true, false),
+                status("{\"crafting\":{\"enabled\":true,\"table\":false}}").crafting());
+        assertEquals(
+                new IndexStore.Crafting(false, true),
+                status("{\"crafting\":{\"enabled\":false,\"table\":true}}").crafting());
 
-        for (String bad : new String[]{
-            "{\"crafting\":true}", "{\"crafting\":[]}", "{\"crafting\":\"x\"}", "{\"crafting\":{}}",
-            "{\"crafting\":{\"enabled\":true}}", "{\"crafting\":{\"table\":true}}",
-            "{\"crafting\":{\"enabled\":\"yes\",\"table\":true}}", "{\"crafting\":{\"enabled\":true,\"table\":1}}",
-            "{\"crafting\":{\"enabled\":null,\"table\":true}}", "{\"crafting\":{\"enabled\":true,\"table\":null}}"}) {
+        for (String bad : new String[] {
+            "{\"crafting\":true}",
+            "{\"crafting\":[]}",
+            "{\"crafting\":\"x\"}",
+            "{\"crafting\":{}}",
+            "{\"crafting\":{\"enabled\":true}}",
+            "{\"crafting\":{\"table\":true}}",
+            "{\"crafting\":{\"enabled\":\"yes\",\"table\":true}}",
+            "{\"crafting\":{\"enabled\":true,\"table\":1}}",
+            "{\"crafting\":{\"enabled\":null,\"table\":true}}",
+            "{\"crafting\":{\"enabled\":true,\"table\":null}}"
+        }) {
             assertThrows(IllegalArgumentException.class, () -> status(bad), bad);
         }
     }
@@ -146,27 +199,40 @@ class NamingAndTabsTest {
         // Absent keeps it, and other fields (naming included) don't touch it.
         store.heartbeat("s", "a", "Bob", null, status("{\"naming\":{\"anvil\":true,\"xpLevels\":3}}"));
         assertEquals(json("{\"enabled\":true,\"table\":false}"), entry(store).getAsJsonObject("crafting"));
-        assertEquals(json("{\"anvil\":true,\"xpLevels\":3,\"anvilSource\":null}"), entry(store).getAsJsonObject("naming"));
+        assertEquals(
+                json("{\"anvil\":true,\"xpLevels\":3,\"anvilSource\":null}"),
+                entry(store).getAsJsonObject("naming"));
 
         store.heartbeat("s", "a", "Bob", null, status("{\"crafting\":{\"enabled\":true,\"table\":true}}"));
         assertEquals(json("{\"enabled\":true,\"table\":true}"), entry(store).getAsJsonObject("crafting"));
-        assertEquals(json("{\"anvil\":true,\"xpLevels\":3,\"anvilSource\":null}"), entry(store).getAsJsonObject("naming"));
+        assertEquals(
+                json("{\"anvil\":true,\"xpLevels\":3,\"anvilSource\":null}"),
+                entry(store).getAsJsonObject("naming"));
 
         store.heartbeat("s", "a", "Bob", null, status("{\"crafting\":null}"));
         assertTrue(entry(store).get("crafting").isJsonNull());
-        assertEquals(json("{\"anvil\":true,\"xpLevels\":3,\"anvilSource\":null}"), entry(store).getAsJsonObject("naming"));
+        assertEquals(
+                json("{\"anvil\":true,\"xpLevels\":3,\"anvilSource\":null}"),
+                entry(store).getAsJsonObject("naming"));
     }
 
     @Test
     void craftingTableSource() throws Exception {
-        for (String src : new String[]{"set", "found", "placed", "crafted", "none"}) {
-            assertEquals(new IndexStore.Crafting(true, false, src),
-                status("{\"crafting\":{\"enabled\":true,\"table\":false,\"tableSource\":\"" + src + "\"}}").crafting(), src);
+        for (String src : new String[] {"set", "found", "placed", "crafted", "none"}) {
+            assertEquals(
+                    new IndexStore.Crafting(true, false, src),
+                    status("{\"crafting\":{\"enabled\":true,\"table\":false,\"tableSource\":\"" + src + "\"}}")
+                            .crafting(),
+                    src);
         }
         // Absent or null (an older bot): null.
-        assertNull(status("{\"crafting\":{\"enabled\":true,\"table\":true}}").crafting().tableSource());
-        assertNull(status("{\"crafting\":{\"enabled\":true,\"table\":true,\"tableSource\":null}}").crafting().tableSource());
-        for (String bad : new String[]{"\"SET\"", "\"\"", "\"table\"", "1", "true", "[]", "{}", "[\"set\"]"}) {
+        assertNull(status("{\"crafting\":{\"enabled\":true,\"table\":true}}")
+                .crafting()
+                .tableSource());
+        assertNull(status("{\"crafting\":{\"enabled\":true,\"table\":true,\"tableSource\":null}}")
+                .crafting()
+                .tableSource());
+        for (String bad : new String[] {"\"SET\"", "\"\"", "\"table\"", "1", "true", "[]", "{}", "[\"set\"]"}) {
             String body = "{\"crafting\":{\"enabled\":true,\"table\":false,\"tableSource\":" + bad + "}}";
             assertThrows(IllegalArgumentException.class, () -> status(body), body);
         }
@@ -174,8 +240,15 @@ class NamingAndTabsTest {
         // Listed when sent; an older bot's heartbeat goes back to {enabled, table}.
         IndexStore store = new IndexStore(data, CreativeTabs.NONE);
         store.load();
-        store.heartbeat("s", "a", "Bob", null, status("{\"crafting\":{\"enabled\":true,\"table\":true,\"tableSource\":\"crafted\"}}"));
-        assertEquals(json("{\"enabled\":true,\"table\":true,\"tableSource\":\"crafted\"}"), entry(store).getAsJsonObject("crafting"));
+        store.heartbeat(
+                "s",
+                "a",
+                "Bob",
+                null,
+                status("{\"crafting\":{\"enabled\":true,\"table\":true,\"tableSource\":\"crafted\"}}"));
+        assertEquals(
+                json("{\"enabled\":true,\"table\":true,\"tableSource\":\"crafted\"}"),
+                entry(store).getAsJsonObject("crafting"));
         store.heartbeat("s", "a", "Bob", null, status("{\"crafting\":{\"enabled\":true,\"table\":false}}"));
         assertEquals(json("{\"enabled\":true,\"table\":false}"), entry(store).getAsJsonObject("crafting"));
     }
@@ -187,7 +260,10 @@ class NamingAndTabsTest {
     }
 
     private static Path fixtureDir() throws URISyntaxException {
-        return Path.of(NamingAndTabsTest.class.getClassLoader().getResource("creative-tabs-fixture").toURI());
+        return Path.of(NamingAndTabsTest.class
+                .getClassLoader()
+                .getResource("creative-tabs-fixture")
+                .toURI());
     }
 
     private static int stoneOrder(CreativeTabs tabs, String mc) {
@@ -206,12 +282,14 @@ class NamingAndTabsTest {
     }
 
     private static JsonObject index(String mc) {
-        return json("{\"version\":1,\"server\":\"s\",\"stash\":\"a\"" + (mc == null ? "" : ",\"mcVersion\":\"" + mc + "\"") + ",\"items\":["
-            + "{\"key\":\"minecraft:stone\",\"id\":\"minecraft:stone\",\"count\":1,\"tab\":\"other\",\"tabOrder\":1000000},"
-            + "{\"key\":\"minecraft:dirt\",\"id\":\"minecraft:dirt\",\"count\":1},"
-            + "{\"key\":\"minecraft:dirt#named\",\"id\":\"minecraft:dirt\",\"count\":1,\"tab\":null},"
-            + "{\"key\":\"minecraft:diamond_sword\",\"id\":\"minecraft:diamond_sword\",\"count\":1,\"tab\":\"tools_and_utilities\",\"tabOrder\":9},"
-            + "{\"key\":\"minecraft:mystery\",\"id\":\"minecraft:mystery\",\"count\":1,\"tab\":\"other\",\"tabOrder\":1000000}]}");
+        return json(
+                "{\"version\":1,\"server\":\"s\",\"stash\":\"a\"" + (mc == null ? "" : ",\"mcVersion\":\"" + mc + "\"")
+                        + ",\"items\":["
+                        + "{\"key\":\"minecraft:stone\",\"id\":\"minecraft:stone\",\"count\":1,\"tab\":\"other\",\"tabOrder\":1000000},"
+                        + "{\"key\":\"minecraft:dirt\",\"id\":\"minecraft:dirt\",\"count\":1},"
+                        + "{\"key\":\"minecraft:dirt#named\",\"id\":\"minecraft:dirt\",\"count\":1,\"tab\":null},"
+                        + "{\"key\":\"minecraft:diamond_sword\",\"id\":\"minecraft:diamond_sword\",\"count\":1,\"tab\":\"tools_and_utilities\",\"tabOrder\":9},"
+                        + "{\"key\":\"minecraft:mystery\",\"id\":\"minecraft:mystery\",\"count\":1,\"tab\":\"other\",\"tabOrder\":1000000}]}");
     }
 
     private static JsonObject item(JsonArray items, String key) {
@@ -225,13 +303,17 @@ class NamingAndTabsTest {
         JsonObject idx = index("26.3");
         assertEquals(3, tabs.fill(idx));
         JsonArray items = idx.getAsJsonArray("items");
-        assertEquals("building_blocks", item(items, "minecraft:stone").get("tab").getAsString());
+        assertEquals(
+                "building_blocks", item(items, "minecraft:stone").get("tab").getAsString());
         assertEquals(12, item(items, "minecraft:stone").get("tabOrder").getAsInt());
         assertEquals("natural_blocks", item(items, "minecraft:dirt").get("tab").getAsString());
         assertEquals(3, item(items, "minecraft:dirt").get("tabOrder").getAsInt());
-        assertEquals("natural_blocks", item(items, "minecraft:dirt#named").get("tab").getAsString()); // by base id
+        assertEquals(
+                "natural_blocks", item(items, "minecraft:dirt#named").get("tab").getAsString()); // by base id
         // A real tab from the bot wins.
-        assertEquals("tools_and_utilities", item(items, "minecraft:diamond_sword").get("tab").getAsString());
+        assertEquals(
+                "tools_and_utilities",
+                item(items, "minecraft:diamond_sword").get("tab").getAsString());
         assertEquals(9, item(items, "minecraft:diamond_sword").get("tabOrder").getAsInt());
         // Not in the table: stays other.
         assertEquals("other", item(items, "minecraft:mystery").get("tab").getAsString());
@@ -239,7 +321,11 @@ class NamingAndTabsTest {
 
         JsonObject unversioned = index(null);
         assertEquals(0, tabs.fill(unversioned));
-        assertEquals(1000000, item(unversioned.getAsJsonArray("items"), "minecraft:stone").get("tabOrder").getAsInt());
+        assertEquals(
+                1000000,
+                item(unversioned.getAsJsonArray("items"), "minecraft:stone")
+                        .get("tabOrder")
+                        .getAsInt());
     }
 
     @Test
@@ -254,20 +340,26 @@ class NamingAndTabsTest {
         store.load();
         store.putIndex(index("26.3"));
         String served = new String(store.index("s", "a").bytes(), StandardCharsets.UTF_8);
-        assertEquals("other", item(json(served).getAsJsonArray("items"), "minecraft:stone").get("tab").getAsString());
+        assertEquals(
+                "other",
+                item(json(served).getAsJsonArray("items"), "minecraft:stone")
+                        .get("tab")
+                        .getAsString());
     }
 
     @Test
     void bundled26TableFillsApiV1VariantsWithoutMergingKeys() throws Exception {
         IndexStore store = new IndexStore(data, CreativeTabs.bundled());
         store.putIndex(json("{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"mcVersion\":\"26.3\",\"items\":["
-            + "{\"key\":\"minecraft:bundle#a\",\"id\":\"minecraft:bundle\",\"count\":1},"
-            + "{\"key\":\"minecraft:bundle#b\",\"id\":\"minecraft:bundle\",\"count\":2},"
-            + "{\"key\":\"minecraft:copper_sword\",\"id\":\"minecraft:copper_sword\",\"count\":1}]}"));
+                + "{\"key\":\"minecraft:bundle#a\",\"id\":\"minecraft:bundle\",\"count\":1},"
+                + "{\"key\":\"minecraft:bundle#b\",\"id\":\"minecraft:bundle\",\"count\":2},"
+                + "{\"key\":\"minecraft:copper_sword\",\"id\":\"minecraft:copper_sword\",\"count\":1}]}"));
         var served = json(new String(store.index("s", "a").bytes(), StandardCharsets.UTF_8));
         var items = served.getAsJsonArray("items");
         assertEquals(3, items.size());
-        assertEquals("tools_and_utilities", item(items, "minecraft:bundle#a").get("tab").getAsString());
+        assertEquals(
+                "tools_and_utilities",
+                item(items, "minecraft:bundle#a").get("tab").getAsString());
         assertEquals(2, item(items, "minecraft:bundle#b").get("count").getAsInt());
         assertEquals("combat", item(items, "minecraft:copper_sword").get("tab").getAsString());
         assertEquals("26.3", served.get("mcVersion").getAsString());
@@ -279,23 +371,39 @@ class NamingAndTabsTest {
         store.load();
         store.putIndex(index("26.3"));
         JsonObject served = json(new String(store.index("s", "a").bytes(), StandardCharsets.UTF_8));
-        assertEquals(12, item(served.getAsJsonArray("items"), "minecraft:stone").get("tabOrder").getAsInt());
-        assertEquals("tools_and_utilities", item(served.getAsJsonArray("items"), "minecraft:diamond_sword").get("tab").getAsString());
+        assertEquals(
+                12,
+                item(served.getAsJsonArray("items"), "minecraft:stone")
+                        .get("tabOrder")
+                        .getAsInt());
+        assertEquals(
+                "tools_and_utilities",
+                item(served.getAsJsonArray("items"), "minecraft:diamond_sword")
+                        .get("tab")
+                        .getAsString());
 
         Path file = data.resolve("indexes").resolve(IndexStore.fileName("s", "a"));
         JsonObject disk = json(Files.readString(file, StandardCharsets.UTF_8));
-        assertEquals("other", item(disk.getAsJsonArray("items"), "minecraft:stone").get("tab").getAsString());
+        assertEquals(
+                "other",
+                item(disk.getAsJsonArray("items"), "minecraft:stone").get("tab").getAsString());
 
         // An index stored before (or by a bot that was never updated) is filled when it is loaded.
         IndexStore reloaded = new IndexStore(data, fixture());
         reloaded.load();
         JsonObject again = json(new String(reloaded.index("s", "a").bytes(), StandardCharsets.UTF_8));
-        assertEquals("building_blocks", item(again.getAsJsonArray("items"), "minecraft:stone").get("tab").getAsString());
+        assertEquals(
+                "building_blocks",
+                item(again.getAsJsonArray("items"), "minecraft:stone")
+                        .get("tab")
+                        .getAsString());
         // ...and an old server without tables serves it unchanged.
         IndexStore plain = new IndexStore(data, CreativeTabs.NONE);
         plain.load();
         JsonObject raw = json(new String(plain.index("s", "a").bytes(), StandardCharsets.UTF_8));
-        assertEquals("other", item(raw.getAsJsonArray("items"), "minecraft:stone").get("tab").getAsString());
+        assertEquals(
+                "other",
+                item(raw.getAsJsonArray("items"), "minecraft:stone").get("tab").getAsString());
     }
 
     @Test
@@ -303,7 +411,8 @@ class NamingAndTabsTest {
         assertNull(CreativeTabs.parse("{\"version\":\"x.y\",\"items\":{}}"));
         assertNull(CreativeTabs.parse("{\"items\":{}}"));
         assertNull(CreativeTabs.parse("{\"version\":\"1.21.4\",\"items\":{}}"));
-        CreativeTabs.Table t = CreativeTabs.parse("{\"version\":\"26.3\",\"items\":{\"a\":[\"combat\",1],\"b\":\"combat\",\"c\":[1,2],\"d\":[\"other\",3]}}");
+        CreativeTabs.Table t = CreativeTabs.parse(
+                "{\"version\":\"26.3\",\"items\":{\"a\":[\"combat\",1],\"b\":\"combat\",\"c\":[1,2],\"d\":[\"other\",3]}}");
         assertEquals(1, t.items().size());
         assertTrue(t.items().containsKey("a"));
     }
@@ -311,7 +420,7 @@ class NamingAndTabsTest {
     @Test
     void rejectsExplicitUnsupportedMinecraftIndexes() throws Exception {
         IndexStore store = new IndexStore(data, CreativeTabs.NONE);
-        for (String version : new String[]{"1.21.4", "1.21.11", "26.4"}) {
+        for (String version : new String[] {"1.21.4", "1.21.11", "26.4"}) {
             JsonObject unsupported = index(version);
             assertEquals("mcVersion must be 26.3", IndexStore.validate(unsupported));
             assertThrows(IllegalArgumentException.class, () -> store.putIndex(unsupported));
@@ -324,22 +433,39 @@ class NamingAndTabsTest {
         IndexStore store = new IndexStore(java.nio.file.Files.createTempDirectory("ds"), CreativeTabs.NONE);
         store.load();
         com.google.gson.JsonObject hb = com.google.gson.JsonParser.parseString(
-            "{\"deliveryStorage\":{\"autoExpand\":true,\"chests\":3,\"full\":3,\"canExpand\":false,\"blocked\":\"stone is in the way above the top chest\"}}").getAsJsonObject();
+                        "{\"deliveryStorage\":{\"autoExpand\":true,\"chests\":3,\"full\":3,\"canExpand\":false,\"blocked\":\"stone is in the way above the top chest\"}}")
+                .getAsJsonObject();
         store.heartbeat("s", "a", "P", null, AddonRoutes.botStatus(hb));
-        com.google.gson.JsonObject ds = store.listJson().get(0).getAsJsonObject().getAsJsonObject("deliveryStorage");
+        com.google.gson.JsonObject ds =
+                store.listJson().get(0).getAsJsonObject().getAsJsonObject("deliveryStorage");
         org.junit.jupiter.api.Assertions.assertEquals(3, ds.get("chests").getAsInt());
         org.junit.jupiter.api.Assertions.assertEquals(3, ds.get("full").getAsInt());
         org.junit.jupiter.api.Assertions.assertFalse(ds.get("canExpand").getAsBoolean());
-        org.junit.jupiter.api.Assertions.assertEquals("stone is in the way above the top chest", ds.get("blocked").getAsString());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "stone is in the way above the top chest", ds.get("blocked").getAsString());
         // Absent keeps it; null clears it; nonsense is refused.
         store.heartbeat("s", "a", "P", null, AddonRoutes.botStatus(new com.google.gson.JsonObject()));
-        org.junit.jupiter.api.Assertions.assertTrue(store.listJson().get(0).getAsJsonObject().get("deliveryStorage").isJsonObject());
-        store.heartbeat("s", "a", "P", null, AddonRoutes.botStatus(com.google.gson.JsonParser.parseString("{\"deliveryStorage\":null}").getAsJsonObject()));
-        org.junit.jupiter.api.Assertions.assertTrue(store.listJson().get(0).getAsJsonObject().get("deliveryStorage").isJsonNull());
-        for (String bad : new String[]{"{\"deliveryStorage\":5}", "{\"deliveryStorage\":{\"autoExpand\":true,\"chests\":1,\"full\":2,\"canExpand\":true}}",
-            "{\"deliveryStorage\":{\"autoExpand\":\"yes\",\"chests\":1,\"full\":0,\"canExpand\":true}}"}) {
-            org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
-                () -> AddonRoutes.botStatus(com.google.gson.JsonParser.parseString(bad).getAsJsonObject()), bad);
+        org.junit.jupiter.api.Assertions.assertTrue(
+                store.listJson().get(0).getAsJsonObject().get("deliveryStorage").isJsonObject());
+        store.heartbeat(
+                "s",
+                "a",
+                "P",
+                null,
+                AddonRoutes.botStatus(com.google.gson.JsonParser.parseString("{\"deliveryStorage\":null}")
+                        .getAsJsonObject()));
+        org.junit.jupiter.api.Assertions.assertTrue(
+                store.listJson().get(0).getAsJsonObject().get("deliveryStorage").isJsonNull());
+        for (String bad : new String[] {
+            "{\"deliveryStorage\":5}",
+            "{\"deliveryStorage\":{\"autoExpand\":true,\"chests\":1,\"full\":2,\"canExpand\":true}}",
+            "{\"deliveryStorage\":{\"autoExpand\":\"yes\",\"chests\":1,\"full\":0,\"canExpand\":true}}"
+        }) {
+            org.junit.jupiter.api.Assertions.assertThrows(
+                    IllegalArgumentException.class,
+                    () -> AddonRoutes.botStatus(
+                            com.google.gson.JsonParser.parseString(bad).getAsJsonObject()),
+                    bad);
         }
     }
 }

@@ -5,7 +5,8 @@ package com.porter.wesort.manager.model;
  * the network; {@link #SERVER} is the optional connection to a WeSort Manager server. Pure.
  */
 public enum WindowMode {
-    LOCAL, SERVER;
+    LOCAL,
+    SERVER;
 
     /** The mode for the module's connect-to-server setting: off means local, whatever address or session is saved. */
     public static WindowMode of(boolean connectToServer) {

@@ -155,15 +155,17 @@ try:
         assert agent(network, key, '/api/v1/heartbeat', {'server': fake.SERVER, 'stash': portal_stash,
             'player': fake.PLAYER, 'indexHash': secondary['indexHash'], 'delivery': None})['status'] == 200
         members = ['PortalBuilder', 'PortalMiner']
-        for name in members:
+        officer = 'PortalOfficer'
+        for name, preset in [(member, 'member') for member in members] + [(officer, 'officer')]:
             assert http('/api/v1/users', {'name': name, 'password': password,
-                'preset': 'member', 'mustChange': False}, opener=browser)[0] == 200
+                'preset': preset, 'mustChange': False}, opener=browser)[0] == 200
         completed = run(['node', 'web-tests/guild-portal.cjs'], input=json.dumps({
-            'url': base, 'stash': portal_stash, 'otherStash': fake.STASH, 'password': password, 'members': members,
+            'url': base, 'stash': portal_stash, 'otherStash': fake.STASH, 'password': password, 'members': members, 'officer': officer,
         }), check=False)
         if completed.returncode:
             raise AssertionError('Chromium portal smoke failed\n' + completed.stderr.replace(password, '<test password>'))
         ok('Chromium: two members log in, search shared stock, browse the stash, reserve stock and see private order histories')
+        ok('Chromium: an officer searches by person and item and inspects the corresponding order audit')
     digest = run(['docker', 'exec', container, 'sha256sum', '/var/lib/wesort/config.properties']).stdout
     second = run(['docker', 'run', '--rm', '--network', 'none', '--mount', f'type=volume,src={volume},dst=/var/lib/wesort', args.image], check=False)
     assert second.returncode != 0
@@ -207,7 +209,7 @@ try:
         assert run(['docker', 'exec', container, 'sha256sum', '/var/lib/wesort/config.properties']).stdout == digest
         ok('real TLS reverse proxy: configured Host/Origin, Secure cookie, spoofed forwarding headers scrubbed, volume upgrade preserved')
     report = {'image': args.image, 'platform': 'linux/amd64', 'checks': checks, 'result': 'PASS',
-        'limits': 'Protocol agent and HTTP/DOM bootstrap tested; no real Minecraft account or physical delivery tested.'}
+        'limits': 'Manager uses a signed synthetic stock fixture. Physical Minecraft operations are verified separately.'}
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(json.dumps(report, indent=2) + '\n')

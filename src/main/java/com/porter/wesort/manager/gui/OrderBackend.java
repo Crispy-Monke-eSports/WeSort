@@ -7,7 +7,6 @@ import com.porter.wesort.manager.model.NamesDraft;
 import com.porter.wesort.manager.model.OrderModel;
 import com.porter.wesort.modules.LocalOrders;
 import com.porter.wesort.stash.Order;
-
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -18,8 +17,7 @@ import java.util.function.Consumer;
  */
 public interface OrderBackend {
     /** {@code badLine} is the index of the line the server refused, or -1. */
-    record PlaceResult(boolean ok, String message, int badLine) {
-    }
+    record PlaceResult(boolean ok, String message, int badLine) {}
 
     /** Where the cart and names are kept: one per stash and per way of fulfilling. */
     String cartKey();

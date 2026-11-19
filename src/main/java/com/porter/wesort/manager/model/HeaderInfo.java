@@ -10,8 +10,7 @@ import java.util.List;
 public final class HeaderInfo {
     public static final String SEP = " · ";
 
-    private HeaderInfo() {
-    }
+    private HeaderInfo() {}
 
     /** "Bot online, last seen 5 s ago", with the bot's name instead of "Bot" when names are not hidden. */
     public static String botStatus(StashRef s, boolean hideNames, long now) {
@@ -40,7 +39,8 @@ public final class HeaderInfo {
         List<String> parts = new ArrayList<>();
         parts.add(indexed(s, now));
         if (idx != null && idx.containersTotal() >= 0 && idx.containersKnown() >= 0) {
-            parts.add("Containers: " + Text.grouped(idx.containersKnown()) + " / " + Text.grouped(idx.containersTotal()) + " known");
+            parts.add("Containers: " + Text.grouped(idx.containersKnown()) + " / " + Text.grouped(idx.containersTotal())
+                    + " known");
             if (idx.containersStale() >= 0) parts.add(Text.grouped(idx.containersStale()) + " stale");
         } else if (s.containersTotal() >= 0) {
             parts.add("Containers: " + Text.grouped(s.containersTotal()));

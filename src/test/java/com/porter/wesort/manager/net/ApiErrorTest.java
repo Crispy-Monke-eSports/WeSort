@@ -1,12 +1,12 @@
 package com.porter.wesort.manager.net;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
 import com.google.gson.JsonNull;
 import com.google.gson.JsonParser;
 import com.porter.wesort.manager.net.ApiError.Kind;
 import org.junit.jupiter.api.Test;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 
 class ApiErrorTest {
     private static Kind kind(String path, int status, String json) {
@@ -44,9 +44,19 @@ class ApiErrorTest {
 
     @Test
     void a403IsMustChangeConfirmOrNoPermission() {
-        assertEquals(Kind.MUST_CHANGE, kind("/api/v1/stashes", 403, "{\"ok\":false,\"error\":\"change your password first\",\"mustChange\":true}"));
+        assertEquals(
+                Kind.MUST_CHANGE,
+                kind(
+                        "/api/v1/stashes",
+                        403,
+                        "{\"ok\":false,\"error\":\"change your password first\",\"mustChange\":true}"));
         assertEquals(Kind.CONFIRM, kind("/api/v1/rescan", 403, "{\"error\":\"confirm password\"}"));
-        assertEquals(Kind.NO_PERMISSION, kind("/api/v1/orders", 403, "{\"error\":\"you don't have permission to order\",\"permission\":\"order\"}"));
+        assertEquals(
+                Kind.NO_PERMISSION,
+                kind(
+                        "/api/v1/orders",
+                        403,
+                        "{\"error\":\"you don't have permission to order\",\"permission\":\"order\"}"));
         assertEquals(Kind.NO_PERMISSION, kind("/api/v1/auth/login", 403, "{\"error\":\"this account is disabled\"}"));
         assertEquals(Kind.NO_PERMISSION, kind("/api/v1/x", 403, null));
         assertEquals(Kind.NO_PERMISSION, kind("/api/v1/x", 403, "[1]"));
@@ -74,7 +84,8 @@ class ApiErrorTest {
     void retryAfterComesFromTheHeaderOrTheBody() {
         ApiResult withHeader = new ApiResult(429, JsonNull.INSTANCE, null, 45, Kind.RATE_LIMIT);
         assertEquals(45, withHeader.wait429());
-        ApiResult withBody = new ApiResult(429, JsonParser.parseString("{\"retryAfter\":30}"), null, 0, Kind.RATE_LIMIT);
+        ApiResult withBody =
+                new ApiResult(429, JsonParser.parseString("{\"retryAfter\":30}"), null, 0, Kind.RATE_LIMIT);
         assertEquals(30, withBody.wait429());
         assertEquals(60, new ApiResult(429, JsonNull.INSTANCE, null, 0, Kind.RATE_LIMIT).wait429());
     }

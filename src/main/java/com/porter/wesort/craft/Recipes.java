@@ -102,13 +102,15 @@ public final class Recipes {
                 if (shaped && (w < 1 || h < 1 || w > 3 || h > 3 || cells.size() != w * h)) continue;
                 if (!shaped && (cells.isEmpty() || cells.size() > 9)) continue;
                 int count = Math.max(1, num(r.get("count")));
-                Recipe recipe = new Recipe(id, shaped, w, h, java.util.Collections.unmodifiableList(cells), result, count);
+                Recipe recipe =
+                        new Recipe(id, shaped, w, h, java.util.Collections.unmodifiableList(cells), result, count);
                 out.byResult.computeIfAbsent(result, k -> new ArrayList<>()).add(recipe);
                 out.size++;
             }
         }
         if (top.get("otherStations") instanceof Map<?, ?> others) {
-            for (Map.Entry<?, ?> e : others.entrySet()) if (e.getKey() instanceof String k && e.getValue() instanceof String v) out.stations.put(k, v);
+            for (Map.Entry<?, ?> e : others.entrySet())
+                if (e.getKey() instanceof String k && e.getValue() instanceof String v) out.stations.put(k, v);
         }
         return out;
     }

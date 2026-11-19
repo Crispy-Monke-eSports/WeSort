@@ -1,12 +1,11 @@
 package com.porter.wesort.manager.gui.widgets;
 
 import com.porter.wesort.manager.gui.style.SmGuiTheme;
+import java.util.function.Supplier;
 import meteordevelopment.meteorclient.gui.renderer.GuiRenderer;
 import meteordevelopment.meteorclient.gui.widgets.WWidget;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.world.item.ItemStack;
-
-import java.util.function.Supplier;
 
 /** One item icon (16 GUI pixels) in a table row, drawn through {@link ItemLayer} so popups stay on top of it. */
 public final class WItemIcon extends WWidget {

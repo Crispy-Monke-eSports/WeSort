@@ -6,7 +6,6 @@ import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
-
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -38,18 +37,30 @@ final class AuthRoutes {
 
     /** Called only by the administrator's owner-only local control socket. */
     String issueBootstrap() {
-        synchronized (config) { return config.dashboardPassword() == null ? bootstrap.issue() : null; }
+        synchronized (config) {
+            return config.dashboardPassword() == null ? bootstrap.issue() : null;
+        }
     }
 
     void register(Router router) {
         router.exact(Router.GET, "/api/v1/auth/state", Router.Guard.OPEN, this::state)
-            .exact(Router.POST, "/api/v1/auth/setup", Router.Guard.CSRF, this::setup)
-            .exact(Router.POST, "/api/v1/auth/login", Router.Guard.CSRF, this::login)
-            .exact(Router.POST, "/api/v1/auth/logout", Router.Guard.BROWSER_WRITE, Router.Perm.ANY, this::logout)
-            .exact(Router.POST, "/api/v1/auth/logout-all", Router.Guard.BROWSER_WRITE, Router.Perm.ANY, this::logoutAll)
-            .exact(Router.POST, "/api/v1/auth/password", Router.Guard.BROWSER_WRITE, Router.Perm.ANY, this::password)
-            .exact(Router.POST, "/api/v1/auth/confirm", Router.Guard.BROWSER_WRITE, Router.Perm.ANY, this::confirm)
-            .exact(Router.POST, "/api/v1/auth/lock", Router.Guard.BROWSER_WRITE, Router.Perm.ANY, this::lock);
+                .exact(Router.POST, "/api/v1/auth/setup", Router.Guard.CSRF, this::setup)
+                .exact(Router.POST, "/api/v1/auth/login", Router.Guard.CSRF, this::login)
+                .exact(Router.POST, "/api/v1/auth/logout", Router.Guard.BROWSER_WRITE, Router.Perm.ANY, this::logout)
+                .exact(
+                        Router.POST,
+                        "/api/v1/auth/logout-all",
+                        Router.Guard.BROWSER_WRITE,
+                        Router.Perm.ANY,
+                        this::logoutAll)
+                .exact(
+                        Router.POST,
+                        "/api/v1/auth/password",
+                        Router.Guard.BROWSER_WRITE,
+                        Router.Perm.ANY,
+                        this::password)
+                .exact(Router.POST, "/api/v1/auth/confirm", Router.Guard.BROWSER_WRITE, Router.Perm.ANY, this::confirm)
+                .exact(Router.POST, "/api/v1/auth/lock", Router.Guard.BROWSER_WRITE, Router.Perm.ANY, this::lock);
     }
 
     /**
@@ -70,7 +81,7 @@ final class AuthRoutes {
 
     /** A request that went through a proxy on the server PC is not "from the server PC". */
     static boolean proxied(Headers h) {
-        for (String name : new String[]{"X-Forwarded-For", "Forwarded", "Via", "X-Real-IP", "CF-Connecting-IP"}) {
+        for (String name : new String[] {"X-Forwarded-For", "Forwarded", "Via", "X-Real-IP", "CF-Connecting-IP"}) {
             if (h.containsKey(name)) return true;
         }
         return false;
@@ -89,7 +100,8 @@ final class AuthRoutes {
     }
 
     private static final java.util.regex.Pattern IPV4 = java.util.regex.Pattern.compile("(\\d{1,3}\\.){3}\\d{1,3}");
-    private static final java.util.regex.Pattern IPV6 = java.util.regex.Pattern.compile("[0-9a-fA-F]{0,4}(:[0-9a-fA-F]{0,4}){2,7}");
+    private static final java.util.regex.Pattern IPV6 =
+            java.util.regex.Pattern.compile("[0-9a-fA-F]{0,4}(:[0-9a-fA-F]{0,4}){2,7}");
 
     /** A plain IPv4 or IPv6 address literal (never a name, so parsing it never asks DNS). */
     static boolean isIpLiteral(String s) {
@@ -201,7 +213,10 @@ final class AuthRoutes {
             return null;
         }
         try {
-            JsonElement json = JsonParser.parseString(StandardCharsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(bytes)).toString());
+            JsonElement json = JsonParser.parseString(StandardCharsets.UTF_8
+                    .newDecoder()
+                    .decode(java.nio.ByteBuffer.wrap(bytes))
+                    .toString());
             if (json.isJsonObject()) return json.getAsJsonObject();
         } catch (java.nio.charset.CharacterCodingException | JsonParseException | IllegalStateException e) {
             // falls through to 400
@@ -270,14 +285,21 @@ final class AuthRoutes {
             Http.error(ex, 400, "username must be a string");
             return;
         }
-        String username = ue == null || ue.isJsonNull() ? null : AddonRoutes.string(o, "username").trim();
-        if (username != null && username.length() > Users.MAX_NAME * 4) username = username.substring(0, Users.MAX_NAME * 4);
+        String username = ue == null || ue.isJsonNull()
+                ? null
+                : AddonRoutes.string(o, "username").trim();
+        if (username != null && username.length() > Users.MAX_NAME * 4)
+            username = username.substring(0, Users.MAX_NAME * 4);
 
         // Failures count per address and account, so a success with one account doesn't wipe the failures run up
         // guessing another's from the same address.
-        String key = LoginLimiter.key(remote(ex)) + "|" + (users.isOwnerName(username) ? Users.OWNER_ID : String.valueOf(username).toLowerCase(java.util.Locale.ROOT));
+        String key = LoginLimiter.key(remote(ex)) + "|"
+                + (users.isOwnerName(username)
+                        ? Users.OWNER_ID
+                        : String.valueOf(username).toLowerCase(java.util.Locale.ROOT));
         boolean loopback = fromLoopback(ex) && !proxied(ex.getRequestHeaders());
-        long wait = Math.max(limiter.tryAcquire(key, loopback), limiter.tryAcquire(LoginLimiter.key(remote(ex)), loopback));
+        long wait =
+                Math.max(limiter.tryAcquire(key, loopback), limiter.tryAcquire(LoginLimiter.key(remote(ex)), loopback));
         if (wait > 0) {
             tooMany(ex, wait);
             return;
@@ -352,7 +374,8 @@ final class AuthRoutes {
     private void startSession(HttpExchange ex, String userId, boolean mustChange, String stored) throws IOException {
         String token = sessions.create(userId, Auth.tag(stored));
         sessions.elevate(token); // the password was just typed
-        ex.getResponseHeaders().add("Set-Cookie", SessionStore.cookie(token) + (config.secureCookies ? "; Secure" : ""));
+        ex.getResponseHeaders()
+                .add("Set-Cookie", SessionStore.cookie(token) + (config.secureCookies ? "; Secure" : ""));
         JsonObject out = Http.ok();
         out.addProperty("mustChange", mustChange);
         Http.json(ex, 200, out);
@@ -370,8 +393,10 @@ final class AuthRoutes {
 
     private void logout(HttpExchange ex) throws IOException {
         sessions.remove((String) Http.attr(ex, Router.SESSION_TOKEN));
-        ex.getResponseHeaders().add("Set-Cookie", SessionStore.clearCookie() + (config.secureCookies ? "; Secure" : ""));
-        ex.getResponseHeaders().set("Clear-Site-Data", "\"cache\""); // nothing this login saw stays in the browser cache
+        ex.getResponseHeaders()
+                .add("Set-Cookie", SessionStore.clearCookie() + (config.secureCookies ? "; Secure" : ""));
+        ex.getResponseHeaders()
+                .set("Clear-Site-Data", "\"cache\""); // nothing this login saw stays in the browser cache
         Http.json(ex, 200, Http.ok());
     }
 
@@ -380,10 +405,12 @@ final class AuthRoutes {
         Users.Principal who = Router.user(ex);
         int n = who.owner() ? sessions.removeAllExcept(null) : sessions.removeUser(who.id(), null);
         System.out.println("Logged out " + (who.owner() ? "every website session" : "every session of " + who.name())
-            + " (" + n + ") from " + address(ex) + ".");
+                + " (" + n + ") from " + address(ex) + ".");
         audit.add(who, "logout-all", who.owner() ? "every user" : null, address(ex));
-        ex.getResponseHeaders().add("Set-Cookie", SessionStore.clearCookie() + (config.secureCookies ? "; Secure" : ""));
-        ex.getResponseHeaders().set("Clear-Site-Data", "\"cache\""); // nothing this login saw stays in the browser cache
+        ex.getResponseHeaders()
+                .add("Set-Cookie", SessionStore.clearCookie() + (config.secureCookies ? "; Secure" : ""));
+        ex.getResponseHeaders()
+                .set("Clear-Site-Data", "\"cache\""); // nothing this login saw stays in the browser cache
         JsonObject out = Http.ok();
         out.addProperty("ended", n);
         Http.json(ex, 200, out);
@@ -445,7 +472,8 @@ final class AuthRoutes {
         }
         int ended = sessions.removeUser(who.id(), token);
         sessions.elevate(token);
-        System.out.println("Website password of " + who.name() + " changed from " + address(ex) + "; " + ended + " other session(s) logged out.");
+        System.out.println("Website password of " + who.name() + " changed from " + address(ex) + "; " + ended
+                + " other session(s) logged out.");
         audit.add(who, "password.change", null, address(ex));
         JsonObject out = Http.ok();
         out.addProperty("ended", ended);

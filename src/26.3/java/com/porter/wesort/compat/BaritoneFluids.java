@@ -9,8 +9,7 @@ import baritone.api.Settings;
 public final class BaritoneFluids {
     private static Boolean placeInSource, placeInFlow;
 
-    private BaritoneFluids() {
-    }
+    private BaritoneFluids() {}
 
     public static void protect(Settings settings) {
         if (placeInSource != null) return;

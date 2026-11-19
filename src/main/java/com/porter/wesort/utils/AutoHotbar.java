@@ -1,13 +1,8 @@
 package com.porter.wesort.utils;
 
-import com.porter.wesort.compat.Players;
-import meteordevelopment.meteorclient.utils.Utils;
-import meteordevelopment.meteorclient.utils.player.InvUtils;
-import net.minecraft.core.component.DataComponents;
-import net.minecraft.tags.ItemTags;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
+import static meteordevelopment.meteorclient.MeteorClient.mc;
 
+import com.porter.wesort.compat.Players;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -16,8 +11,12 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 import java.util.function.Predicate;
-
-import static meteordevelopment.meteorclient.MeteorClient.mc;
+import meteordevelopment.meteorclient.utils.Utils;
+import meteordevelopment.meteorclient.utils.player.InvUtils;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.tags.ItemTags;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 /**
  * Keeps the tools and resources a module works with in the hotbar. An item missing from the hotbar is pulled out of the
@@ -43,7 +42,8 @@ public class AutoHotbar {
          * @param stackable whether a low stack should be topped up from the inventory
          * @param active    whether the module needs it right now
          */
-        public Need(String name, Predicate<ItemStack> test, IntSupplier slot, boolean stackable, BooleanSupplier active) {
+        public Need(
+                String name, Predicate<ItemStack> test, IntSupplier slot, boolean stackable, BooleanSupplier active) {
             this.name = name;
             this.test = test;
             this.slot = slot;
@@ -80,7 +80,12 @@ public class AutoHotbar {
      * @param keep items that are never swapped out of the way on top of {@link #isProtected}, whether or not they are a
      *             need (a shovel for digging, say)
      */
-    public AutoHotbar(BooleanSupplier enabled, Predicate<ItemStack> keep, Consumer<String> warn, Consumer<String> info, List<Need> needs) {
+    public AutoHotbar(
+            BooleanSupplier enabled,
+            Predicate<ItemStack> keep,
+            Consumer<String> warn,
+            Consumer<String> info,
+            List<Need> needs) {
         this.enabled = enabled;
         this.keep = keep;
         this.warn = warn;
@@ -131,7 +136,8 @@ public class AutoHotbar {
         if (!canMove()) {
             // Only worth saying if the item is actually stuck in the inventory
             if (!present(need) && inInventory(need) != -1 && warned.add("blocked:" + need.name)) {
-                warn.accept("Can't move the " + need.name + " into your hotbar while a screen is open or the cursor holds an item.");
+                warn.accept("Can't move the " + need.name
+                        + " into your hotbar while a screen is open or the cursor holds an item.");
             }
             return false;
         }
@@ -145,9 +151,11 @@ public class AutoHotbar {
 
     // Moving items around while a container is open or the cursor holds something would click the wrong slots
     private boolean canMove() {
-        return mc.player != null && mc.gameMode != null && mc.screen == null
-            && mc.player.containerMenu == mc.player.inventoryMenu
-            && mc.player.containerMenu.getCarried().isEmpty();
+        return mc.player != null
+                && mc.gameMode != null
+                && mc.screen == null
+                && mc.player.containerMenu == mc.player.inventoryMenu
+                && mc.player.containerMenu.getCarried().isEmpty();
     }
 
     private List<Need> active() {
@@ -170,13 +178,12 @@ public class AutoHotbar {
             int slot = need.slot.getAsInt() - 1;
             if (slot < 0 || slot > 8) {
                 preferred[i] = -1;
-            }
-            else if (claimed[slot]) {
+            } else if (claimed[slot]) {
                 preferred[i] = -1;
-                String message = "Hotbar slot " + (slot + 1) + " is assigned to more than one item, using any free slot for the " + need.name + ".";
+                String message = "Hotbar slot " + (slot + 1)
+                        + " is assigned to more than one item, using any free slot for the " + need.name + ".";
                 if (warned.add(message)) warn.accept(message);
-            }
-            else {
+            } else {
                 claimed[slot] = true;
                 preferred[i] = slot;
             }
@@ -199,17 +206,30 @@ public class AutoHotbar {
      */
     public static boolean isProtected(ItemStack stack) {
         if (stack.isEmpty()) return false;
-        return stack.is(ItemTags.SWORDS) || stack.is(ItemTags.AXES)
-            || stack.is(Items.MACE) || stack.is(Items.TRIDENT) || stack.is(Items.BOW) || stack.is(Items.CROSSBOW)
-            || stack.is(Items.TOTEM_OF_UNDYING) || stack.is(Items.SHIELD)
-            || stack.has(DataComponents.FOOD) || stack.is(Items.GOLDEN_APPLE) || stack.is(Items.ENCHANTED_GOLDEN_APPLE)
-            || stack.is(Items.ENDER_PEARL) || stack.is(Items.FIREWORK_ROCKET) || stack.is(Items.ELYTRA)
-            || stack.has(DataComponents.EQUIPPABLE)
-            || stack.is(ItemTags.ARROWS) || stack.is(Items.FISHING_ROD) || stack.is(Items.WIND_CHARGE)
-            || stack.is(Items.FLINT_AND_STEEL) || stack.is(Items.LAVA_BUCKET) || Players.isSpear(stack)
-            // Potions, milk and the like. A need's own item is never judged by this, only what's in its way.
-            || stack.has(DataComponents.CONSUMABLE)
-            || Utils.isShulker(stack.getItem());
+        return stack.is(ItemTags.SWORDS)
+                || stack.is(ItemTags.AXES)
+                || stack.is(Items.MACE)
+                || stack.is(Items.TRIDENT)
+                || stack.is(Items.BOW)
+                || stack.is(Items.CROSSBOW)
+                || stack.is(Items.TOTEM_OF_UNDYING)
+                || stack.is(Items.SHIELD)
+                || stack.has(DataComponents.FOOD)
+                || stack.is(Items.GOLDEN_APPLE)
+                || stack.is(Items.ENCHANTED_GOLDEN_APPLE)
+                || stack.is(Items.ENDER_PEARL)
+                || stack.is(Items.FIREWORK_ROCKET)
+                || stack.is(Items.ELYTRA)
+                || stack.has(DataComponents.EQUIPPABLE)
+                || stack.is(ItemTags.ARROWS)
+                || stack.is(Items.FISHING_ROD)
+                || stack.is(Items.WIND_CHARGE)
+                || stack.is(Items.FLINT_AND_STEEL)
+                || stack.is(Items.LAVA_BUCKET)
+                || Players.isSpear(stack)
+                // Potions, milk and the like. A need's own item is never judged by this, only what's in its way.
+                || stack.has(DataComponents.CONSUMABLE)
+                || Utils.isShulker(stack.getItem());
     }
 
     private boolean neededByOther(ItemStack stack, Need except, List<Need> active) {
@@ -233,7 +253,8 @@ public class AutoHotbar {
         int to = pickSlot(need, preferred, reserved, active);
         if (to == -1) {
             if (warned.add("full:" + need.name)) {
-                warn.accept("No hotbar slot to put the " + need.name + " in, your hotbar is full of items I won't move. Free up a slot.");
+                warn.accept("No hotbar slot to put the " + need.name
+                        + " in, your hotbar is full of items I won't move. Free up a slot.");
             }
             return false;
         }
@@ -243,7 +264,8 @@ public class AutoHotbar {
 
         ItemStack evicted = mc.player.getInventory().getItem(to);
         if (!evicted.isEmpty() && warned.add("evict")) {
-            info.accept("Moved " + evicted.getHoverName().getString() + " out of hotbar slot " + (to + 1) + " into your inventory to make room for the " + need.name + ".");
+            info.accept("Moved " + evicted.getHoverName().getString() + " out of hotbar slot " + (to + 1)
+                    + " into your inventory to make room for the " + need.name + ".");
         }
 
         // Moving onto another item swaps them, so what was in the way ends up where the item came from

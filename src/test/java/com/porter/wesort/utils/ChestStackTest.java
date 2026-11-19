@@ -1,17 +1,16 @@
 package com.porter.wesort.utils;
 
-import com.porter.wesort.stash.DeliveryBook.Pos;
-import org.junit.jupiter.api.Test;
-
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.porter.wesort.stash.DeliveryBook.Pos;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import org.junit.jupiter.api.Test;
 
 /** The next row of the delivery storage: where it goes, why it can't, and where the bot can stand to put it there. */
 class ChestStackTest {
@@ -46,7 +45,10 @@ class ChestStackTest {
         @Override
         public boolean standable(int x, int y, int z) {
             Pos p = new Pos(x, y, z);
-            if (solid.contains(p) || chests.contains(p) || solid.contains(new Pos(x, y + 1, z)) || chests.contains(new Pos(x, y + 1, z))) return false;
+            if (solid.contains(p)
+                    || chests.contains(p)
+                    || solid.contains(new Pos(x, y + 1, z))
+                    || chests.contains(new Pos(x, y + 1, z))) return false;
             // The floor is at y 63, and a solid block below also holds a bot
             return y == 64 || solid.contains(new Pos(x, y - 1, z));
         }
@@ -109,13 +111,15 @@ class ChestStackTest {
     void aSingleChestGetsASingleOne() {
         World w = new World();
         w.chests.remove(new Pos(11, 64, 20));
-        ChestStack.Plan plan = ChestStack.next(List.of(new Pos(10, 64, 20)), 0, 1, true, 64, NEAR, w).plan();
+        ChestStack.Plan plan = ChestStack.next(List.of(new Pos(10, 64, 20)), 0, 1, true, 64, NEAR, w)
+                .plan();
         assertNotNull(plan);
         assertEquals(new Pos(10, 65, 20), plan.first());
         assertNull(plan.second());
         assertTrue(plan.secondStands().isEmpty());
         // A single with no facing may face any way: stands on every side
-        ChestStack.Plan free = ChestStack.next(List.of(new Pos(10, 64, 20)), 0, 0, true, 64, NEAR, w).plan();
+        ChestStack.Plan free = ChestStack.next(List.of(new Pos(10, 64, 20)), 0, 0, true, 64, NEAR, w)
+                .plan();
         assertTrue(free.firstStands().stream().map(ChestStack.Stand::facingX).anyMatch(x -> x != 0));
     }
 
@@ -156,11 +160,13 @@ class ChestStackTest {
     @Test
     void fromTheFloorOnlyTheFirstRowAboveTheBaseIsInReach() {
         World w = new World();
-        // Two rows stand now (y 64 and 65): a third row at y 66 needs the top of the second (65.875) in sight, above the eyes
+        // Two rows stand now (y 64 and 65): a third row at y 66 needs the top of the second (65.875) in sight, above
+        // the eyes
         // of a sneaking bot on the floor (65.27)
         w.chests.add(new Pos(10, 65, 20));
         w.chests.add(new Pos(11, 65, 20));
-        ChestStack.Result r = ChestStack.next(List.of(new Pos(10, 65, 20), new Pos(11, 65, 20)), 0, 1, true, 64, NEAR, w);
+        ChestStack.Result r =
+                ChestStack.next(List.of(new Pos(10, 65, 20), new Pos(11, 65, 20)), 0, 1, true, 64, NEAR, w);
         assertNull(r.plan());
         assertTrue(r.blocked().startsWith("out of reach"), r.blocked());
         assertFalse(r.blocked().matches(".*[0-9].*"), "no numbers in the reason: " + r.blocked());
@@ -171,9 +177,11 @@ class ChestStackTest {
         World w = new World();
         w.chests.add(new Pos(10, 65, 20));
         w.chests.add(new Pos(11, 65, 20));
-        // A solid block to stand on beside the stack: the bot stands on it at y 65, eyes at 66.27, above the top at 65.875
+        // A solid block to stand on beside the stack: the bot stands on it at y 65, eyes at 66.27, above the top at
+        // 65.875
         w.solid.add(new Pos(10, 64, 22));
-        ChestStack.Result r = ChestStack.next(List.of(new Pos(10, 65, 20), new Pos(11, 65, 20)), 0, 1, true, 64, new Pos(10, 65, 22), w);
+        ChestStack.Result r = ChestStack.next(
+                List.of(new Pos(10, 65, 20), new Pos(11, 65, 20)), 0, 1, true, 64, new Pos(10, 65, 22), w);
         assertNotNull(r.plan(), r.blocked());
         assertTrue(r.plan().firstStands().stream().anyMatch(s -> s.cell().equals(new Pos(10, 65, 22))));
     }

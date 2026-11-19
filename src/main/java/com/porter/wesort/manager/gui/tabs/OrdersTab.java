@@ -15,6 +15,13 @@ import com.porter.wesort.manager.model.OrderModel;
 import com.porter.wesort.manager.model.Text;
 import com.porter.wesort.modules.LocalOrders;
 import com.porter.wesort.stash.Order;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import meteordevelopment.meteorclient.gui.GuiTheme;
 import meteordevelopment.meteorclient.gui.widgets.WLabel;
 import meteordevelopment.meteorclient.gui.widgets.containers.WContainer;
@@ -26,14 +33,6 @@ import meteordevelopment.meteorclient.gui.widgets.pressable.WButton;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.world.item.ItemStack;
-
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 /**
  * The Orders tab: pick items into a cart, see the shulkers they are packed into laid out in the delivery chest next to what
@@ -129,8 +128,10 @@ public final class OrdersTab {
     public String addToCart(String type, String key, boolean shulkerWorth) {
         if (!cartEnabled()) return "Your account can't place orders.";
         IndexModel idx = backend.catalog();
-        if (type.equals(Order.ITEM) && idx.item(key) == null) return "That item is not in the stash this order would be taken from.";
-        if (type.equals(Order.SHULKER) && findGroup(idx, key) == null) return "That shulker is not in the stash this order would be taken from.";
+        if (type.equals(Order.ITEM) && idx.item(key) == null)
+            return "That item is not in the stash this order would be taken from.";
+        if (type.equals(Order.SHULKER) && findGroup(idx, key) == null)
+            return "That shulker is not in the stash this order would be taken from.";
         Cart cart = host.cart(backend.cartKey());
         Cart.Result r = cart.addStacks(type, key, shulkerWorth, idx, backend::availableTotal);
         if (!r.ok()) return r.message();
@@ -149,7 +150,10 @@ public final class OrdersTab {
         WVerticalList pickCol = main.add(theme.verticalList()).top().widget();
         if (backend.canPlace()) {
             pickCol.add(theme.label("Add to the cart", true));
-            WTextBox search = pickCol.add(theme.textBox(searchText, "Search items")).minWidth(theme.scale(200)).expandX().widget();
+            WTextBox search = pickCol.add(theme.textBox(searchText, "Search items"))
+                    .minWidth(theme.scale(200))
+                    .expandX()
+                    .widget();
             search.action = () -> {
                 searchText = search.get();
                 searchDirty = true;
@@ -162,13 +166,16 @@ public final class OrdersTab {
                 String msg = addToCart(type, e.key(), button == 1);
                 host.status(msg);
             };
-            pickerHint = pickCol.add(theme.label("Click: one stack. Right-click: a shulker's worth.", theme.scale(220))).expandX().widget();
+            pickerHint = pickCol.add(theme.label("Click: one stack. Right-click: a shulker's worth.", theme.scale(220)))
+                    .expandX()
+                    .widget();
         } else {
             picker = null;
             pickerHint = null;
         }
 
-        cartCol = main.add(theme.verticalList()).top().minWidth(theme.scale(340)).widget();
+        cartCol =
+                main.add(theme.verticalList()).top().minWidth(theme.scale(340)).widget();
         planCol = main.add(theme.verticalList()).top().widget();
         ordersCol = parent.add(theme.verticalList()).expandX().widget();
         refreshAll();
@@ -194,8 +201,10 @@ public final class OrdersTab {
             buildOrders();
         }
         if (changed) {
-            // Only what changed is redrawn. The cart column holds text boxes, so it is rebuilt only when what it shows changed
-            // and none of its boxes has the keyboard (held back while one has focus); the order list and the preview have none
+            // Only what changed is redrawn. The cart column holds text boxes, so it is rebuilt only when what it shows
+            // changed
+            // and none of its boxes has the keyboard (held back while one has focus); the order list and the preview
+            // have none
             buildHeader();
             refreshPicker();
             buildOrders();
@@ -218,7 +227,12 @@ public final class OrdersTab {
         if (!backend.canPlace()) return "-";
         IndexModel idx = backend.catalog();
         StringBuilder sb = new StringBuilder();
-        for (Order.Line l : host.cart(backend.cartKey()).lines()) sb.append(l.type()).append(l.key()).append(l.count()).append(lineName(l, idx)).append(';');
+        for (Order.Line l : host.cart(backend.cartKey()).lines())
+            sb.append(l.type())
+                    .append(l.key())
+                    .append(l.count())
+                    .append(lineName(l, idx))
+                    .append(';');
         sb.append(host.names(backend.cartKey()).mode()).append(units.size()).append(badLine);
         return sb.toString();
     }
@@ -237,9 +251,18 @@ public final class OrdersTab {
     private void buildHeader() {
         BotInfo bot = backend.bot();
         LocalOrders.Setup setup = backend.setup();
-        String sig = backend.title() + "|" + backend.blocker() + "|" + bot + "|" + backend.warning() + "|" + host.mode() + "|" + host.hideNames() + "|" + backend.busy() + "|"
-            + (setup == null ? "-" : setup.stash() + java.util.Arrays.toString(setup.delivery()) + java.util.Arrays.toString(setup.anvil()) + java.util.Arrays.toString(setup.table())
-                + setup.anvilSource() + setup.tableSource() + setup.craftingOn() + setup.xpLevels());
+        String sig = backend.title() + "|" + backend.blocker() + "|" + bot + "|" + backend.warning() + "|" + host.mode()
+                + "|" + host.hideNames() + "|" + backend.busy() + "|"
+                + (setup == null
+                        ? "-"
+                        : setup.stash()
+                                + java.util.Arrays.toString(setup.delivery())
+                                + java.util.Arrays.toString(setup.anvil())
+                                + java.util.Arrays.toString(setup.table())
+                                + setup.anvilSource()
+                                + setup.tableSource()
+                                + setup.craftingOn()
+                                + setup.xpLevels());
         if (sig.equals(headerSignature)) return;
         headerSignature = sig;
         header.clear();
@@ -254,41 +277,74 @@ public final class OrdersTab {
                 host.later(() -> host.setMode(picked));
             };
         }
-        if (!backend.canPlace()) header.add(theme.label("Your account can't place orders. You can see the orders of this stash.", wrap)).expandX();
+        if (!backend.canPlace())
+            header.add(theme.label("Your account can't place orders. You can see the orders of this stash.", wrap))
+                    .expandX();
         String blocker = backend.blocker();
-        if (!blocker.isEmpty()) header.add(theme.label(Text.sanitize(blocker, 200), wrap)).expandX().widget().color(WARN);
+        if (!blocker.isEmpty())
+            header.add(theme.label(Text.sanitize(blocker, 200), wrap))
+                    .expandX()
+                    .widget()
+                    .color(WARN);
         String info = bot.craftInfo();
         if (!info.isEmpty()) header.add(theme.label(info, wrap)).expandX();
         String warning = backend.warning();
-        if (!warning.isEmpty()) header.add(theme.label(warning, wrap)).expandX().widget().color(BAD);
+        if (!warning.isEmpty())
+            header.add(theme.label(warning, wrap)).expandX().widget().color(BAD);
         if (backend.localRun()) buildSetup(setup, wrap);
     }
 
     private void buildSetup(LocalOrders.Setup setup, double wrap) {
         if (setup == null) {
-            header.add(theme.label("No stash is loaded. Set stash-name in wesort-stash-sorter and scan the stash first.", wrap)).expandX().widget().color(WARN);
+            header.add(theme.label(
+                            "No stash is loaded. Set stash-name in wesort-stash-sorter and scan the stash first.",
+                            wrap))
+                    .expandX()
+                    .widget()
+                    .color(WARN);
             return;
         }
-        header.add(theme.label("Stash: " + (host.hideNames() ? "(hidden)" : Text.sanitize(setup.stash(), 40)) + ". The order is taken from it and delivered to its delivery container.", wrap)).expandX();
+        header.add(theme.label(
+                        "Stash: " + (host.hideNames() ? "(hidden)" : Text.sanitize(setup.stash(), 40))
+                                + ". The order is taken from it and delivered to its delivery container.",
+                        wrap))
+                .expandX();
         pickRow("Delivery container", setup.delivery(), "delivery", "");
-        pickRow("Anvil (to name shulkers)", setup.anvil(), "anvil", setup.anvilSource().isEmpty() || setup.anvilSource().equals("none") ? "" : setup.anvilSource());
-        pickRow("Crafting table", setup.table(), "crafting-table", setup.tableSource().isEmpty() || setup.tableSource().equals("none") ? "" : setup.tableSource());
-        header.add(theme.label("Crafting empty shulkers is " + (setup.craftingOn() ? "on" : "off") + ", and shulkers with a custom name are "
-            + (setup.namedShulkers() ? "used" : "left alone") + " (wesort-stash-manager settings: enable-crafting, craft-never-use, use-named-shulkers, auto-expand-delivery).", wrap)).expandX();
+        pickRow(
+                "Anvil (to name shulkers)",
+                setup.anvil(),
+                "anvil",
+                setup.anvilSource().isEmpty() || setup.anvilSource().equals("none") ? "" : setup.anvilSource());
+        pickRow(
+                "Crafting table",
+                setup.table(),
+                "crafting-table",
+                setup.tableSource().isEmpty() || setup.tableSource().equals("none") ? "" : setup.tableSource());
+        header.add(theme.label(
+                        "Crafting empty shulkers is " + (setup.craftingOn() ? "on" : "off")
+                                + ", and shulkers with a custom name are "
+                                + (setup.namedShulkers() ? "used" : "left alone")
+                                + " (wesort-stash-manager settings: enable-crafting, craft-never-use, use-named-shulkers, auto-expand-delivery).",
+                        wrap))
+                .expandX();
     }
 
     private void pickRow(String name, int[] pos, String what, String source) {
         WHorizontalList row = header.add(theme.horizontalList()).expandX().widget();
         String where = pos == null ? "not set" : host.hideNames() ? "set" : pos[0] + " " + pos[1] + " " + pos[2];
-        row.add(theme.label(name + ": " + where + (source.isEmpty() || pos == null ? "" : " (" + source + ")"))).expandX();
+        row.add(theme.label(name + ": " + where + (source.isEmpty() || pos == null ? "" : " (" + source + ")")))
+                .expandX();
         // Not while an order of this client runs: the sorter is using these
         if (backend.busy()) return;
         WButton set = row.add(theme.button(pos == null ? "Set" : "Change")).widget();
-        set.tooltip = "Closes the window; then right-click the block in the world. Right-click the current one to clear it.";
+        set.tooltip =
+                "Closes the window; then right-click the block in the world. Right-click the current one to clear it.";
         set.action = () -> host.later(() -> {
             String err = backend.select(what);
             if (err != null) host.status(err);
-            else host.closeWindow("Right-click the " + name.toLowerCase(java.util.Locale.ROOT).replace(" (to name shulkers)", "") + " now.");
+            else
+                host.closeWindow("Right-click the "
+                        + name.toLowerCase(java.util.Locale.ROOT).replace(" (to name shulkers)", "") + " now.");
         });
         if (pos != null) {
             WButton clear = row.add(theme.button("Clear")).widget();
@@ -312,10 +368,18 @@ public final class OrdersTab {
             long avail = backend.availableTotal(e.item() != null ? Order.ITEM : Order.SHULKER, e.key());
             if (avail < 1) continue;
             ItemStack stack = e.item() != null ? ItemStacks.display(e.item()) : ItemStacks.display(e.shulker());
-            cells.add(new WItemGrid.Cell(stack, e.count() == 1 ? "" : Text.compact(avail), e.name() + " x" + Text.grouped(avail) + " available", e));
+            cells.add(new WItemGrid.Cell(
+                    stack,
+                    e.count() == 1 ? "" : Text.compact(avail),
+                    e.name() + " x" + Text.grouped(avail) + " available",
+                    e));
         }
         picker.setCells(cells);
-        if (pickerHint != null && idx.items().isEmpty()) pickerHint.set(backend.localRun() ? "The sorter's stash has nothing indexed yet." : "No index for this stash yet.");
+        if (pickerHint != null && idx.items().isEmpty())
+            pickerHint.set(
+                    backend.localRun()
+                            ? "The sorter's stash has nothing indexed yet."
+                            : "No index for this stash yet.");
         else if (pickerHint != null) pickerHint.set("Click: one stack. Right-click: a shulker's worth.");
     }
 
@@ -369,16 +433,22 @@ public final class OrdersTab {
         double wrap = theme.scale(330);
 
         cartCol.add(theme.label("Cart", true));
-        if (cart.isEmpty()) cartCol.add(theme.label("The cart is empty. Pick items on the left, or right-click items in Browse.", wrap)).expandX();
+        if (cart.isEmpty())
+            cartCol.add(theme.label("The cart is empty. Pick items on the left, or right-click items in Browse.", wrap))
+                    .expandX();
         List<Order.Line> lines = cart.lines();
         long packed = 0, empties = 0, items = 0;
         for (int i = 0; i < lines.size(); i++) {
             Order.Line l = lines.get(i);
             int index = i;
             WHorizontalList row = cartCol.add(theme.horizontalList()).expandX().widget();
-            WLabel name = row.add(theme.label(Text.sanitize(lineName(l, idx), 36))).expandX().widget();
+            WLabel name = row.add(theme.label(Text.sanitize(lineName(l, idx), 36)))
+                    .expandX()
+                    .widget();
             if (i == badLine) name.color(BAD);
-            WTextBox qty = row.add(theme.textBox(String.valueOf(l.count()), "1", (t, c) -> Character.isDigit(c))).minWidth(theme.scale(70)).widget();
+            WTextBox qty = row.add(theme.textBox(String.valueOf(l.count()), "1", (t, c) -> Character.isDigit(c)))
+                    .minWidth(theme.scale(70))
+                    .widget();
             cartBoxes.add(qty);
             qty.actionOnUnfocused = () -> {
                 long wanted;
@@ -411,8 +481,11 @@ public final class OrdersTab {
             if (items > 0) parts.add(Text.grouped(items) + (items == 1 ? " item" : " items"));
             if (packed > 0) parts.add(packed + (packed == 1 ? " packed shulker" : " packed shulkers"));
             if (empties > 0) parts.add(empties + (empties == 1 ? " empty shulker" : " empty shulkers"));
-            String totals = String.join(" + ", parts) + " - " + need + (need == 1 ? " shulker" : " shulkers") + " to deliver"
-                + (tooMany ? ". Too many: one order can fill at most " + CartPlan.MAX_SHULKERS + " (one double chest)." : "");
+            String totals = String.join(" + ", parts) + " - " + need + (need == 1 ? " shulker" : " shulkers")
+                    + " to deliver"
+                    + (tooMany
+                            ? ". Too many: one order can fill at most " + CartPlan.MAX_SHULKERS + " (one double chest)."
+                            : "");
             WLabel t = cartCol.add(theme.label(totals, wrap)).expandX().widget();
             if (tooMany) t.color(WARN);
         }
@@ -421,13 +494,16 @@ public final class OrdersTab {
         if (!lines.isEmpty()) {
             WHorizontalList nameRow = cartCol.add(theme.horizontalList()).widget();
             nameRow.add(theme.label("Shulker names: "));
-            WDropdown<NamesDraft.Mode> mode = nameRow.add(theme.dropdown(names.mode())).widget();
+            WDropdown<NamesDraft.Mode> mode =
+                    nameRow.add(theme.dropdown(names.mode())).widget();
             mode.action = () -> {
                 names.setMode(mode.get());
                 host.later(this::onCartChanged);
             };
             if (names.mode() == NamesDraft.Mode.ALL) {
-                WTextBox all = cartCol.add(theme.textBox(names.all(), "Name for every shulker (up to 50 characters)")).expandX().widget();
+                WTextBox all = cartCol.add(theme.textBox(names.all(), "Name for every shulker (up to 50 characters)"))
+                        .expandX()
+                        .widget();
                 cartBoxes.add(all);
                 all.action = () -> {
                     names.setAll(all.get());
@@ -436,9 +512,14 @@ public final class OrdersTab {
             } else if (names.mode() == NamesDraft.Mode.EACH) {
                 for (int i = 0; i < units.size(); i++) {
                     int index = i;
-                    WHorizontalList row = cartCol.add(theme.horizontalList()).expandX().widget();
-                    row.add(theme.label("Shulker " + (i + 1) + ": " + Text.sanitize(unitSummary(units.get(i), idx), 40))).expandX();
-                    WTextBox each = row.add(theme.textBox(names.each(i), "unnamed")).minWidth(theme.scale(140)).widget();
+                    WHorizontalList row =
+                            cartCol.add(theme.horizontalList()).expandX().widget();
+                    row.add(theme.label(
+                                    "Shulker " + (i + 1) + ": " + Text.sanitize(unitSummary(units.get(i), idx), 40)))
+                            .expandX();
+                    WTextBox each = row.add(theme.textBox(names.each(i), "unnamed"))
+                            .minWidth(theme.scale(140))
+                            .widget();
                     cartBoxes.add(each);
                     each.action = () -> {
                         names.setEach(index, each.get());
@@ -455,9 +536,11 @@ public final class OrdersTab {
         cartStatus.color(WARN);
         if (!lines.isEmpty()) {
             WHorizontalList buttons = cartCol.add(theme.horizontalList()).widget();
-            WButton place = buttons.add(theme.button(backend.localRun() ? "Start order here" : "Place order")).widget();
+            WButton place = buttons.add(theme.button(backend.localRun() ? "Start order here" : "Place order"))
+                    .widget();
             place.action = () -> host.later(() -> place(cart, names));
-            WButton clear = buttons.add(theme.button(armed("cart") ? "Confirm clear?" : "Clear cart")).widget();
+            WButton clear = buttons.add(theme.button(armed("cart") ? "Confirm clear?" : "Clear cart"))
+                    .widget();
             clear.action = () -> host.later(() -> {
                 if (armOrRun("cart", clear, "Confirm clear?", "Clear cart")) {
                     cart.clear();
@@ -534,7 +617,9 @@ public final class OrdersTab {
                 for (int i = 0; i < Math.min(3, top.size()); i++) {
                     IndexModel.Item it = idx.item(top.get(i).getKey());
                     if (i > 0) sb.append(", ");
-                    sb.append(it == null ? Text.sanitize(top.get(i).getKey(), 30) : it.name()).append(" x").append(Text.grouped(top.get(i).getValue()));
+                    sb.append(it == null ? Text.sanitize(top.get(i).getKey(), 30) : it.name())
+                            .append(" x")
+                            .append(Text.grouped(top.get(i).getValue()));
                 }
                 if (top.size() > 3) sb.append(", +").append(top.size() - 3).append(" more");
                 return sb.toString();
@@ -552,14 +637,16 @@ public final class OrdersTab {
         fitLabel = warnLabel = binTitle = null;
         if (!backend.canPlace()) return;
         planCol.add(theme.label("Planned delivery chest", true));
-        planGrid = planCol.add(new WSlotGrid(host::graphics, DeliveryModel.GRID)).widget();
+        planGrid =
+                planCol.add(new WSlotGrid(host::graphics, DeliveryModel.GRID)).widget();
         planGrid.onSlot = (slot, button) -> {
             if (layout == null || slot < 0 || slot >= layout.slotUnit().length) return;
             int ui = layout.slotUnit()[slot];
             if (ui < 0 || ui >= units.size()) return;
             CartPlan.Unit u = units.get(ui);
             if (button == 1 && u.kind() != CartPlan.Kind.BIN) {
-                host.cart(backend.cartKey()).removeAmount(u.kind() == CartPlan.Kind.SHULKER ? Order.SHULKER : Order.ITEM, u.key(), 1);
+                host.cart(backend.cartKey())
+                        .removeAmount(u.kind() == CartPlan.Kind.SHULKER ? Order.SHULKER : Order.ITEM, u.key(), 1);
                 host.later(this::onCartChanged);
             } else {
                 selectedUnit = ui;
@@ -570,7 +657,8 @@ public final class OrdersTab {
         warnLabel = planCol.add(theme.label("", theme.scale(330))).expandX().widget();
         warnLabel.color(WARN);
         binTitle = planCol.add(theme.label("")).expandX().widget();
-        binGrid = planCol.add(new WSlotGrid(host::graphics, IndexModel.SHULKER_SLOTS)).widget();
+        binGrid = planCol.add(new WSlotGrid(host::graphics, IndexModel.SHULKER_SLOTS))
+                .widget();
         refreshPlan();
     }
 
@@ -591,14 +679,25 @@ public final class OrdersTab {
             DeliveryModel.Item ex = layout.existing()[i];
             int ui = layout.slotUnit()[i];
             if (ex != null) {
-                cells.add(new WItemGrid.Cell(ItemStacks.displayId(ex.id()), ex.count() > 1 ? Text.compact(ex.count()) : "", existingTip(ex, idx), null));
+                cells.add(new WItemGrid.Cell(
+                        ItemStacks.displayId(ex.id()),
+                        ex.count() > 1 ? Text.compact(ex.count()) : "",
+                        existingTip(ex, idx),
+                        null));
                 marks[i] = WSlotGrid.Mark.EXISTING;
             } else if (ui >= 0 && ui < units.size()) {
                 CartPlan.Unit u = units.get(ui);
                 String where = "Shulker " + (ui + 1) + " of " + units.size();
-                cells.add(new WItemGrid.Cell(unitStack(u, idx), "", where + ": " + unitSummary(u, idx) + (u.kind() == CartPlan.Kind.BIN ? " (" + u.used() + "/27 slots)" : "")
-                    + (layout.overflow()[i] ? ". Doesn't fit in this chest: goes to the next one" : ""), null));
-                marks[i] = ui == shown ? WSlotGrid.Mark.SELECTED : layout.overflow()[i] ? WSlotGrid.Mark.OVERFLOW : WSlotGrid.Mark.NONE;
+                cells.add(new WItemGrid.Cell(
+                        unitStack(u, idx),
+                        "",
+                        where + ": " + unitSummary(u, idx)
+                                + (u.kind() == CartPlan.Kind.BIN ? " (" + u.used() + "/27 slots)" : "")
+                                + (layout.overflow()[i] ? ". Doesn't fit in this chest: goes to the next one" : ""),
+                        null));
+                marks[i] = ui == shown
+                        ? WSlotGrid.Mark.SELECTED
+                        : layout.overflow()[i] ? WSlotGrid.Mark.OVERFLOW : WSlotGrid.Mark.NONE;
             } else {
                 cells.add(null);
                 if (layout.size() > 0 && i >= layout.size()) marks[i] = WSlotGrid.Mark.OUTSIDE;
@@ -612,7 +711,8 @@ public final class OrdersTab {
         fitLabel.set(fit.text());
         warnLabel.set(fit.warning());
 
-        List<WItemGrid.Cell> inside = new ArrayList<>(java.util.Collections.nCopies(IndexModel.SHULKER_SLOTS, (WItemGrid.Cell) null));
+        List<WItemGrid.Cell> inside =
+                new ArrayList<>(java.util.Collections.nCopies(IndexModel.SHULKER_SLOTS, (WItemGrid.Cell) null));
         if (shown >= 0) {
             CartPlan.Unit u = units.get(shown);
             if (u.kind() == CartPlan.Kind.BIN) {
@@ -622,9 +722,14 @@ public final class OrdersTab {
                 }
             } else if (u.kind() == CartPlan.Kind.SHULKER) {
                 IndexModel.Shulker g = findGroup(idx, u.key());
-                if (g != null) for (IndexModel.Content c : idx.contentsOf(g)) if (c.slot() < inside.size()) inside.set(c.slot(), contentCell(c.key(), c.count(), idx));
+                if (g != null)
+                    for (IndexModel.Content c : idx.contentsOf(g))
+                        if (c.slot() < inside.size()) inside.set(c.slot(), contentCell(c.key(), c.count(), idx));
             }
-            binTitle.set("Shulker " + (shown + 1) + " of " + units.size() + (u.kind() == CartPlan.Kind.BIN ? " - " + u.used() + "/27 slots" : u.kind() == CartPlan.Kind.EMPTY ? " - empty" : " - packed"));
+            binTitle.set("Shulker " + (shown + 1) + " of " + units.size()
+                    + (u.kind() == CartPlan.Kind.BIN
+                            ? " - " + u.used() + "/27 slots"
+                            : u.kind() == CartPlan.Kind.EMPTY ? " - empty" : " - packed"));
         } else {
             binTitle.set("Shulker box - nothing planned yet");
         }
@@ -635,7 +740,8 @@ public final class OrdersTab {
         IndexModel.Item it = idx.item(key);
         ItemStack stack = it != null ? ItemStacks.display(it) : ItemStacks.displayId(key);
         String name = it != null ? it.name() : Text.sanitize(key, 40);
-        return new WItemGrid.Cell(stack, count == 1 ? "" : Text.compact(count), name + " x" + Text.grouped(count), null);
+        return new WItemGrid.Cell(
+                stack, count == 1 ? "" : Text.compact(count), name + " x" + Text.grouped(count), null);
     }
 
     private ItemStack unitStack(CartPlan.Unit u, IndexModel idx) {
@@ -652,8 +758,13 @@ public final class OrdersTab {
 
     private static String existingTip(DeliveryModel.Item it, IndexModel idx) {
         IndexModel.Item known = idx.item(it.id());
-        String name = !it.name().isEmpty() ? it.name() : known != null ? known.name() : it.id().replaceFirst("^minecraft:", "");
-        StringBuilder sb = new StringBuilder("Already in the delivery chest: ").append(Text.grouped(it.count())).append(" x ").append(name);
+        String name = !it.name().isEmpty()
+                ? it.name()
+                : known != null ? known.name() : it.id().replaceFirst("^minecraft:", "");
+        StringBuilder sb = new StringBuilder("Already in the delivery chest: ")
+                .append(Text.grouped(it.count()))
+                .append(" x ")
+                .append(name);
         if (it.shulker()) {
             if (it.contents() == null) sb.append(". Contents not reported");
             else if (it.contents().isEmpty()) sb.append(". Empty");
@@ -663,9 +774,12 @@ public final class OrdersTab {
                     DeliveryModel.Inner in = it.contents().get(i);
                     IndexModel.Item k = idx.item(in.id());
                     if (i > 0) sb.append(", ");
-                    sb.append(Text.grouped(in.count())).append(" x ").append(k != null ? k.name() : in.id().replaceFirst("^minecraft:", ""));
+                    sb.append(Text.grouped(in.count()))
+                            .append(" x ")
+                            .append(k != null ? k.name() : in.id().replaceFirst("^minecraft:", ""));
                 }
-                if (it.contents().size() > 6) sb.append(", and ").append(it.contents().size() - 6).append(" more");
+                if (it.contents().size() > 6)
+                    sb.append(", and ").append(it.contents().size() - 6).append(" more");
             }
         }
         return sb.toString();
@@ -693,8 +807,19 @@ public final class OrdersTab {
     private String signature(List<OrderModel.Entry> list) {
         StringBuilder sb = new StringBuilder(armedKey).append(host.hideNames());
         for (OrderModel.Entry e : list) {
-            sb.append(e.id()).append(e.status()).append(e.phase()).append(e.done()).append('/').append(e.total()).append(e.cancelRequested())
-                .append(e.message()).append(e.retriedAs()).append(backend.canCancel(e)).append(backend.canRetry(e)).append(backend.canForceCancel(e)).append(';');
+            sb.append(e.id())
+                    .append(e.status())
+                    .append(e.phase())
+                    .append(e.done())
+                    .append('/')
+                    .append(e.total())
+                    .append(e.cancelRequested())
+                    .append(e.message())
+                    .append(e.retriedAs())
+                    .append(backend.canCancel(e))
+                    .append(backend.canRetry(e))
+                    .append(backend.canForceCancel(e))
+                    .append(';');
         }
         return sb.toString();
     }
@@ -713,7 +838,9 @@ public final class OrdersTab {
         int finished = 0;
         for (OrderModel.Entry e : list) if (e.finished()) finished++;
         if (backend.canClear() && finished > 0) {
-            WButton clear = title.add(theme.button(armed("clear") ? "Confirm clear?" : "Clear finished (" + finished + ")")).widget();
+            WButton clear = title.add(
+                            theme.button(armed("clear") ? "Confirm clear?" : "Clear finished (" + finished + ")"))
+                    .widget();
             clear.tooltip = "Removes the finished orders from this list. Open orders are kept.";
             clear.action = () -> host.later(() -> {
                 if (armOrRun("clear", clear, "Confirm clear?", "Clear finished")) {
@@ -725,25 +852,40 @@ public final class OrdersTab {
                 }
             });
         }
-        if (list.isEmpty()) ordersCol.add(theme.label("No orders yet for this stash.")).expandX();
+        if (list.isEmpty())
+            ordersCol.add(theme.label("No orders yet for this stash.")).expandX();
         int shownCount = 0;
         for (OrderModel.Entry e : list) {
             if (shownCount++ >= SHOWN_ORDERS) {
-                ordersCol.add(theme.label("...and " + (list.size() - SHOWN_ORDERS) + " older orders")).expandX();
+                ordersCol
+                        .add(theme.label("...and " + (list.size() - SHOWN_ORDERS) + " older orders"))
+                        .expandX();
                 break;
             }
-            WHorizontalList head = ordersCol.add(theme.horizontalList()).expandX().widget();
-            String status = OrderModel.statusLabel(e.status()) + (e.cancelRequested() && e.open() ? " (cancel requested)" : "");
+            WHorizontalList head =
+                    ordersCol.add(theme.horizontalList()).expandX().widget();
+            String status =
+                    OrderModel.statusLabel(e.status()) + (e.cancelRequested() && e.open() ? " (cancel requested)" : "");
             WLabel badge = head.add(theme.label("[" + status + "]")).widget();
-            badge.color(OrderModel.DELIVERED.equals(e.status()) ? GOOD : OrderModel.FAILED.equals(e.status()) ? BAD : e.open() ? WARN : new Color(160, 160, 160));
-            String when = e.createdAt() > 0 ? Instant.ofEpochMilli(e.createdAt()).atZone(ZoneId.systemDefault()).format(WHEN) + " " : "";
+            badge.color(
+                    OrderModel.DELIVERED.equals(e.status())
+                            ? GOOD
+                            : OrderModel.FAILED.equals(e.status()) ? BAD : e.open() ? WARN : new Color(160, 160, 160));
+            String when = e.createdAt() > 0
+                    ? Instant.ofEpochMilli(e.createdAt())
+                                    .atZone(ZoneId.systemDefault())
+                                    .format(WHEN) + " "
+                    : "";
             String by = !host.hideNames() && !e.placedByName().isEmpty() ? " by " + e.placedByName() : "";
             head.add(theme.label(when + Text.sanitize(e.id(), 24) + by)).expandX();
             if (backend.canCancel(e)) {
                 String key = "cancel:" + e.id();
                 boolean running = !OrderModel.PENDING.equals(e.status());
-                WButton b = head.add(theme.button(armed(key) ? "Confirm?" : "Cancel")).widget();
-                b.tooltip = backend.localRun() ? "Stops the order now; the sorter lets go of everything." : running ? "Asks the bot to stop this order at a safe point." : "Cancels this order.";
+                WButton b = head.add(theme.button(armed(key) ? "Confirm?" : "Cancel"))
+                        .widget();
+                b.tooltip = backend.localRun()
+                        ? "Stops the order now; the sorter lets go of everything."
+                        : running ? "Asks the bot to stop this order at a safe point." : "Cancels this order.";
                 b.action = () -> host.later(() -> {
                     if (armOrRun(key, b, "Confirm?", "Cancel")) backend.cancel(e, msg -> afterAction(msg));
                     else ordersSignature = "";
@@ -756,17 +898,24 @@ public final class OrdersTab {
             }
             if (backend.canForceCancel(e)) {
                 String key = "force:" + e.id();
-                WButton b = head.add(theme.button(armed(key) ? "Confirm?" : "Force cancel")).widget();
-                b.tooltip = "The bot hasn't confirmed. Marks the order cancelled anyway; if the bot is still working on it, it stops when it next reports.";
+                WButton b = head.add(theme.button(armed(key) ? "Confirm?" : "Force cancel"))
+                        .widget();
+                b.tooltip =
+                        "The bot hasn't confirmed. Marks the order cancelled anyway; if the bot is still working on it, it stops when it next reports.";
                 b.action = () -> host.later(() -> {
                     if (armOrRun(key, b, "Confirm?", "Force cancel")) backend.forceCancel(e, msg -> afterAction(msg));
                     else ordersSignature = "";
                 });
             }
-            if (!e.phase().isEmpty() && e.open()) ordersCol.add(theme.label(e.phase(), wrap)).expandX();
-            if (e.total() > 0) ordersCol.add(theme.label(OrderModel.progressText(e.done(), e.total(), 20))).expandX();
+            if (!e.phase().isEmpty() && e.open())
+                ordersCol.add(theme.label(e.phase(), wrap)).expandX();
+            if (e.total() > 0)
+                ordersCol
+                        .add(theme.label(OrderModel.progressText(e.done(), e.total(), 20)))
+                        .expandX();
             if (!e.message().isEmpty()) {
-                WLabel msg = ordersCol.add(theme.label(e.message(), wrap)).expandX().widget();
+                WLabel msg =
+                        ordersCol.add(theme.label(e.message(), wrap)).expandX().widget();
                 if (OrderModel.FAILED.equals(e.status())) msg.color(BAD);
             }
             if (Order.Names.ALL.equals(e.namesMode()) && !e.namesAll().isEmpty()) {
@@ -774,13 +923,20 @@ public final class OrdersTab {
             } else if (Order.Names.EACH.equals(e.namesMode())) {
                 int named = 0;
                 for (String n : e.namesEach()) if (!n.trim().isEmpty()) named++;
-                if (named > 0) ordersCol.add(theme.label("Named each (" + named + ")")).expandX();
+                if (named > 0)
+                    ordersCol.add(theme.label("Named each (" + named + ")")).expandX();
             }
             List<String> lineTexts = new ArrayList<>();
-            for (Order.Line l : e.lines()) lineTexts.add(Text.grouped(l.count()) + " x " + Text.sanitize(lineName(l, idx), 40));
-            String summary = String.join(", ", lineTexts.size() > 3 ? lineTexts.subList(0, 3) : lineTexts) + (lineTexts.size() > 3 ? ", +" + (lineTexts.size() - 3) + " more" : "");
+            for (Order.Line l : e.lines())
+                lineTexts.add(Text.grouped(l.count()) + " x " + Text.sanitize(lineName(l, idx), 40));
+            String summary = String.join(", ", lineTexts.size() > 3 ? lineTexts.subList(0, 3) : lineTexts)
+                    + (lineTexts.size() > 3 ? ", +" + (lineTexts.size() - 3) + " more" : "");
             ordersCol.add(theme.label(summary, wrap)).expandX();
-            if (e.hasResult()) ordersCol.add(theme.label("Delivered in " + e.shulkers() + (e.shulkers() == 1 ? " shulker" : " shulkers"))).expandX();
+            if (e.hasResult())
+                ordersCol
+                        .add(theme.label(
+                                "Delivered in " + e.shulkers() + (e.shulkers() == 1 ? " shulker" : " shulkers")))
+                        .expandX();
         }
     }
 

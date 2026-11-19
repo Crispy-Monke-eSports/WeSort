@@ -441,7 +441,8 @@ public final class InventorySync {
         confirmAckedBlocks();
         for (var block : blocks.values())
             if (!recoveringWorld && System.nanoTime() >= block.deadline) {
-                gate.fail("Server block acknowledgement/state verification timed out; do not replay the placement or break");
+                gate.fail(
+                        "Server block acknowledgement/state verification timed out; do not replay the placement or break");
                 reportFailure();
                 return;
             }

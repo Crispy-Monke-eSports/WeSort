@@ -88,14 +88,21 @@ final class PhysicalReservations {
         return !sources.isEmpty();
     }
 
-    List<Allocation> allocate(Iterable<OrderStore.Line> requested, Set<Root> reserved, Map<String, Integer> firstIndex)
+    /**
+     * Slot-level reservation. Fresh candidates only, unless allowStale: while no bot is online the
+     * sources are stale and verified counts read zero, so a queued order may reserve last-verified
+     * slots. Claim ({@link #matches}) still requires fresh candidates, so the bot re-verifies
+     * fingerprints and counts before it touches anything.
+     */
+    List<Allocation> allocate(
+            Iterable<OrderStore.Line> requested, Set<Root> reserved, Map<String, Integer> firstIndex, boolean allowStale)
             throws OrderStore.OrderException {
         var selected = new ArrayList<Allocation>();
         var used = new HashMap<Root, List<Allocation>>();
         for (var line : requested) {
             long remaining = line.count();
             for (var candidate : candidates) {
-                if (!candidate.fresh() || !candidate.reference().equals(line.ref())) continue;
+                if ((!allowStale && !candidate.fresh()) || !candidate.reference().equals(line.ref())) continue;
                 var allocation = candidate.allocate(line.ref(), Math.min(remaining, candidate.count()));
                 var existing = used.get(allocation.root());
                 if (reserved.contains(allocation.root())
@@ -131,13 +138,18 @@ final class PhysicalReservations {
     }
 
     Map<String, Long> available(Set<Root> held) {
-        return available(held, null);
+        return available(held, null, false);
     }
 
     Map<String, Long> available(Set<Root> held, String source) {
+        return available(held, source, false);
+    }
+
+    /** Like {@link #available(Set, String)}, but counting last-verified slots for the order queue. */
+    Map<String, Long> available(Set<Root> held, String source, boolean allowStale) {
         var totals = new HashMap<String, Long>();
         for (var candidate : source == null ? candidates : bySource.getOrDefault(source, List.of())) {
-            if (!candidate.fresh()) continue;
+            if (!allowStale && !candidate.fresh()) continue;
             String ref = candidate.reference();
             if (!held.contains(candidate.allocate(ref, 0).root())) totals.merge(ref, candidate.count(), Math::addExact);
         }

@@ -31,7 +31,7 @@ jobs:
           } > build/evidence/versions.txt
           python3 scripts/test-summary.py build > build/evidence/tests.txt 2>&1 || true
           cat build/evidence/tests.txt >> "$GITHUB_STEP_SUMMARY"
-- uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: always()
         with:
           name: client-26.3-${{ github.run_id }}
@@ -76,7 +76,7 @@ jobs:
           } > stash-manager-server/build/evidence/versions.txt
           python3 scripts/test-summary.py stash-manager-server/build > stash-manager-server/build/evidence/tests.txt 2>&1 || true
           cat stash-manager-server/build/evidence/tests.txt >> "$GITHUB_STEP_SUMMARY"
-- uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: always()
         with:
           name: manager-${{ github.run_id }}
@@ -158,7 +158,7 @@ jobs:
       - run: npm exec --prefix web-tests -- playwright install --with-deps chromium
       - name: Docker bridge, browser portal, bootstrap, persistence and TLS smoke
         run: python3 scripts/docker-smoke.py --image wesort-manager:ci --browser --report build/evidence/docker-smoke.json
-- uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: always()
         with:
           name: docker-smoke-${{ github.run_id }}

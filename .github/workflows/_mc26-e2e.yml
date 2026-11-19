@@ -224,7 +224,10 @@ jobs:
     timeout-minutes: 110
     strategy:
       fail-fast: false
-      max-parallel: 3
+      # Maven Central is mirrored and Gradle caches are read-only in E2E
+      # shards, so shards no longer contend on downloads. Run all 10 shards
+      # at once to cut wall-clock time.
+      max-parallel: 10
       matrix:
         include:
           - {suite: journal, shard: 1}

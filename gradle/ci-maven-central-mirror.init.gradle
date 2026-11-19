@@ -1,0 +1,43 @@
+// CI-only. Maven Central returns HTTP 429 on shared GitHub runners; use Google's
+// public Maven Central mirror instead. Keep Fabric, Meteor, Mojang and the Gradle
+// Plugin Portal untouched (they host artifacts not necessarily on Central).
+// Based on Gradle's "Good Neighbors" repository-mirroring guidance.
+//
+// This is installed in GRADLE_USER_HOME/init.d for all normal CI Gradle calls,
+// including nested Python harness calls. Docker invokes it via --init-script.
+import org.gradle.api.artifacts.repositories.MavenArtifactRepository
+
+def mirrorUrl = "https://maven-central.storage-download.googleapis.com/maven2/"
+
+def configureMirror = { repositories ->
+    repositories.withType(MavenArtifactRepository).configureEach { repo ->
+        def url = repo.url.toString().replaceAll('/+$', '')
+        if (url == "https://repo.maven.apache.org/maven2" ||
+                url == "https://repo1.maven.org/maven2") {
+            repo.setUrl(mirrorUrl)
+        }
+    }
+}
+
+gradle.beforeSettings { settings ->
+    configureMirror(settings.buildscript.repositories)
+
+    // The default Plugin Portal does not reliably provide transitive JARs that
+    // originate on Maven Central. Putting the mirror first resolves those JARs
+    // there, while plugin markers and artifacts unavailable on Central still
+    // use repositories explicitly configured by settings.gradle(.kts).
+    settings.pluginManagement.repositories.maven { MavenArtifactRepository repo ->
+        repo.setName("CI Maven Central mirror for plugins")
+        repo.setUrl(mirrorUrl)
+    }
+    configureMirror(settings.pluginManagement.repositories)
+}
+gradle.settingsEvaluated { settings ->
+    configureMirror(settings.dependencyResolutionManagement.repositories)
+}
+gradle.beforeProject { project ->
+    configureMirror(project.buildscript.repositories)
+}
+gradle.afterProject { project ->
+    configureMirror(project.repositories)
+}

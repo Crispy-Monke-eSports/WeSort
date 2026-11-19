@@ -30,7 +30,9 @@ import java.util.function.LongSupplier;
  */
 final class Backups {
     static final class Conflict extends IOException {
-        Conflict(String reason) { super(reason); }
+        Conflict(String reason) {
+            super(reason);
+        }
     }
 
     static final int FORMAT = 1;
@@ -38,8 +40,8 @@ final class Backups {
     private static final String DIR = "backups";
     private static final String MANIFEST = "manifest.json";
     /** Transient sockets/locks and regenerable caches that are never part of a backup. */
-    private static final Set<String> EXCLUDED = Set.of(
-            DIR, ".manager.lock", ".control.sock", "icons", "sources", "game-26.3-v2");
+    private static final Set<String> EXCLUDED =
+            Set.of(DIR, ".manager.lock", ".control.sock", "icons", "sources", "game-26.3-v2");
 
     private final Path dataDir;
     private final Path dir;
@@ -110,7 +112,8 @@ final class Backups {
             JsonObject row = new JsonObject();
             row.addProperty("id", p.getFileName().toString());
             try {
-                var manifest = JsonParser.parseString(Files.readString(p.resolve(MANIFEST))).getAsJsonObject();
+                var manifest = JsonParser.parseString(Files.readString(p.resolve(MANIFEST)))
+                        .getAsJsonObject();
                 row.addProperty("at", manifest.get("at").getAsLong());
                 row.addProperty("files", manifest.getAsJsonObject("entries").size());
             } catch (RuntimeException | IOException corrupt) {
@@ -139,7 +142,8 @@ final class Backups {
             var row = entry.getValue().getAsJsonObject();
             entries.put(
                     entry.getKey(),
-                    new Snapshot.Entry(row.get("sha256").getAsString(),
+                    new Snapshot.Entry(
+                            row.get("sha256").getAsString(),
                             row.has("schema") ? row.get("schema").getAsInt() : null));
         }
         for (var entry : entries.entrySet()) {
@@ -228,7 +232,8 @@ final class Backups {
     private static Integer readSchema(Path file) {
         try {
             var root = JsonParser.parseString(Files.readString(file));
-            if (root.isJsonObject() && root.getAsJsonObject().has("schema")
+            if (root.isJsonObject()
+                    && root.getAsJsonObject().has("schema")
                     && root.getAsJsonObject().get("schema").isJsonPrimitive())
                 return root.getAsJsonObject().get("schema").getAsInt();
         } catch (RuntimeException | IOException ignored) {
@@ -243,7 +248,8 @@ final class Backups {
                 if (Files.isDirectory(p) && !p.getFileName().toString().startsWith(".staging-")) backups.add(p);
             }
         }
-        backups.sort(Comparator.comparing((Path p) -> p.getFileName().toString()).reversed());
+        backups.sort(
+                Comparator.comparing((Path p) -> p.getFileName().toString()).reversed());
         while (backups.size() > retention) {
             deleteRecursively(backups.remove(backups.size() - 1));
         }

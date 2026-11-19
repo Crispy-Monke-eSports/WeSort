@@ -1,5 +1,7 @@
 package com.porter.wesortmanager;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.nio.file.Files;
@@ -8,11 +10,12 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 class BackupsTest {
-    @TempDir Path data;
-    @TempDir Path fresh;
+    @TempDir
+    Path data;
+
+    @TempDir
+    Path fresh;
 
     private Backups backups() {
         return new Backups(data);
@@ -37,11 +40,14 @@ class BackupsTest {
         write(Path.of("audit.json"), "{\"schema\":1,\"events\":[{\"event\":\"login\"}]}");
         write(Path.of("custody.json"), "{\"schema\":1,\"packages\":[]}");
         write(Path.of("streamer-ids.key"), "streamer-secret");
-        write(Path.of("orders/o-1.json"), "{\"schema\":1,\"order\":{\"id\":\"o-1\",\"kind\":\"SELF\",\"comment\":\"x\"}}");
+        write(
+                Path.of("orders/o-1.json"),
+                "{\"schema\":1,\"order\":{\"id\":\"o-1\",\"kind\":\"SELF\",\"comment\":\"x\"}}");
         write(Path.of("indexes/s.json"), "{\"server\":\"s\",\"items\":[]}");
     }
 
-    @Test void backupRestoreRoundTripsEveryGuildFileAndCredential() throws Exception {
+    @Test
+    void backupRestoreRoundTripsEveryGuildFileAndCredential() throws Exception {
         fixture();
         String users = read(Path.of("users.json"));
         String quotas = read(Path.of("quotas.json"));
@@ -63,7 +69,8 @@ class BackupsTest {
         assertEquals(order, read(Path.of("orders/o-1.json")), "order type and comment must survive a restore");
     }
 
-    @Test void restoreOntoAFreshHostDirectory() throws Exception {
+    @Test
+    void restoreOntoAFreshHostDirectory() throws Exception {
         fixture();
         String users = read(Path.of("users.json"));
         String id = backups().create();
@@ -75,7 +82,8 @@ class BackupsTest {
         assertEquals(read(Path.of("config.properties")), Files.readString(fresh.resolve("config.properties")));
     }
 
-    @Test void retentionPrunesTheOldestBackups() throws Exception {
+    @Test
+    void retentionPrunesTheOldestBackups() throws Exception {
         fixture();
         AtomicLong clock = new AtomicLong(1000);
         Backups b = new Backups(data, clock::get, 2);
@@ -91,7 +99,8 @@ class BackupsTest {
         assertEquals("3000", ids.get(1).getAsJsonObject().get("id").getAsString());
     }
 
-    @Test void aCorruptedBackupIsRefusedOnVerifyAndRestore() throws Exception {
+    @Test
+    void aCorruptedBackupIsRefusedOnVerifyAndRestore() throws Exception {
         fixture();
         String id = backups().create();
         Files.writeString(data.resolve("backups").resolve(id).resolve("users.json"), "tampered");
@@ -100,7 +109,8 @@ class BackupsTest {
         assertThrows(Backups.Conflict.class, () -> backups().restore(id));
     }
 
-    @Test void transientAndRegenerableEntriesAreNeverBackedUp() throws Exception {
+    @Test
+    void transientAndRegenerableEntriesAreNeverBackedUp() throws Exception {
         fixture();
         write(Path.of("icons/x.png"), "icon");
         write(Path.of("sources/26.3/foo"), "client");
@@ -116,7 +126,8 @@ class BackupsTest {
         assertFalse(entries.containsKey(".manager.lock"));
     }
 
-    @Test void theManifestRecordsPerStoreSchemaVersions() throws Exception {
+    @Test
+    void theManifestRecordsPerStoreSchemaVersions() throws Exception {
         fixture();
         String id = backups().create();
         var entries = backups().verify(id).entries();
@@ -127,7 +138,8 @@ class BackupsTest {
         assertNull(entries.get("orders/o-1.json").schema(), "nested order files are checksummed, not schema-read");
     }
 
-    @Test void restoreRejectsAnEntryThatEscapesTheDataDirectory() throws Exception {
+    @Test
+    void restoreRejectsAnEntryThatEscapesTheDataDirectory() throws Exception {
         fixture();
         String id = backups().create();
         Path manifestFile = data.resolve("backups").resolve(id).resolve("manifest.json");
@@ -140,7 +152,8 @@ class BackupsTest {
         assertThrows(Backups.Conflict.class, () -> backups().restore(id));
     }
 
-    @Test void anInterruptedBackupLeavesOnlyStagingThatStartupSweeps() throws Exception {
+    @Test
+    void anInterruptedBackupLeavesOnlyStagingThatStartupSweeps() throws Exception {
         fixture();
         Path staging = data.resolve("backups").resolve(".staging-123");
         Files.createDirectories(staging);

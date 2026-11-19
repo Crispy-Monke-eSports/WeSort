@@ -31,6 +31,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v4
         with:
           cache-read-only: true
+      - uses: ./.github/actions/configure-gradle-mirror
       - name: Format and verify client, Minecraft 26.3, and shared Java
         run: ./gradlew --no-daemon spotlessApply spotlessCheck
       - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v4
@@ -69,6 +70,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v4
         with:
           cache-read-only: true
+      - uses: ./.github/actions/configure-gradle-mirror
       - name: Format and verify client, Minecraft 26.3, and shared Java
         run: ./gradlew --no-daemon spotlessApply spotlessCheck
       - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v4

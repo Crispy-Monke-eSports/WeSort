@@ -64,6 +64,10 @@ def parse(text):
 
 
 def items(reply):
+    # An empty holder has no Items tag at all (e.g. a freshly placed empty
+    # standing shulker). That is authoritative empty, not missing evidence.
+    if 'Found no elements matching' in reply:
+        return []
     marker = 'following entity data: '
     if marker not in reply: marker = 'following block data: '
     if marker not in reply: raise ValueError('Server returned no authoritative data: ' + reply)

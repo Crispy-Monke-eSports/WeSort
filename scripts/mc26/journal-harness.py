@@ -169,8 +169,21 @@ class DirectHarness(JournalHarness):
             else:
                 raise RuntimeError('Verified postcondition did not clear the operation fence')
             state = self.command('state')['state']
-            require(state['attemptedClicks'] == 0 and state['physicalJournal'] == 'READY',
-                    'Read-only recovery replayed movement or left the agent paused')
+            # The Manager marks the Owner inspection COMPLETED on receipt of the
+            # client's read-only verification. The client still needs one
+            # background agent upload round-trip to mirror the new revision and
+            # clear WAITING_MANAGER_RECEIPT. Poll briefly instead of asserting
+            # the receipt synchronously; any click replay still fails below.
+            receipt_end = time.monotonic() + 30
+            while not (state['attemptedClicks'] == 0 and state['physicalJournal'] == 'READY'):
+                require(state['attemptedClicks'] == 0,
+                        'Read-only recovery replayed movement or left the agent paused')
+                require(state['physicalJournal'] in ('READY', 'WAITING_MANAGER_RECEIPT'),
+                        'Read-only recovery replayed movement or left the agent paused: ' + str(state['physicalJournal']))
+                require(time.monotonic() < receipt_end,
+                        'Read-only recovery replayed movement or left the agent paused')
+                time.sleep(0.5)
+                state = self.command('state')['state']
             require(sum('[]' in value for value in inv.chest_halves(self)) == 1 and 'count: 64' in inv.player_items(self),
                     'Exact native source and player totals changed during inspection')
             # A new, explicitly requested move proves the same agent can operate again.

@@ -97,7 +97,10 @@ class KitHarness(repack.RepackHarness):
             self.command('open',x=x,y=64,z=3,slots=27,item='minecraft:'+item,count=count);self.command('close')
         self.command('sort-mark',x=18,y=64,z=3,protected=True)
         self.teleport(18.5,2);self.command('open',x=18,y=64,z=3,slots=27,item='minecraft:shulker_box',count=1);self.command('close')
-        self.settings=dict(kits=False,repack=False,compact=False,newBulkAt=0,carrySlots='1-8,10-36',walk=True)
+        # Keep interactions well inside actual server reach. The partial-kit
+        # source at x=12 is behind adjacent barrels; a 4.5-block center-distance
+        # check can stop walking too early and get an unaccepted click.
+        self.settings=dict(kits=False,repack=False,compact=False,newBulkAt=0,carrySlots='1-8,10-36',walk=True,reach=3.0)
         self.command('sort-config',**self.settings)
     def completed(self):
         job=self.job();require(job['state']!='NEEDS_RECONCILIATION','Kit execution paused: '+str(self.info()))

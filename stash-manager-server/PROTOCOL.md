@@ -362,3 +362,23 @@ no-show is traceable and the stock is not returned until an explicit
 `RETURNED`, so there is no false credit. Only the recorded agent may
 advance the handoff; a second agent cannot take over the cargo. Owner
 `GET /api/v1/handoffs` lists handoffs (optionally by `order`).
+
+## W-044 backup and restore
+
+The Manager host administrator takes and restores whole-data backups
+against a **stopped** Manager, never over HTTP. `backup` snapshots every
+guild-owned file in the persistent data directory — users, roles, quota
+policy, order comments, audit, stock, package journals and credentials —
+into an owner-only `backups/<id>/` directory with a `manifest.json`
+recording each file's SHA-256 and, for schema-versioned stores, its
+`schema`. The snapshot is staged and renamed atomically, is retried while
+the directory keeps changing, and is pruned to a bounded retention.
+`backup-list` enumerates backups; `backup-restore <id>` verifies every
+checksum and the manifest format before rewriting the data files (it
+refuses an entry that escapes the directory). Regenerable caches (icons,
+the downloaded Minecraft client) and transient locks/sockets are never
+backed up, and no Qwerte data is ever read. On restart, any job whose
+lease lapsed while the Manager was down is moved to
+`NEEDS_RECONCILIATION` before the first claim, so an uncertain physical
+step is never blindly resumed or double-delivered.
+

@@ -16,8 +16,30 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
 
 jobs:
+  format:
+    name: Java formatting gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v4
+        with:
+          distribution: temurin
+          java-version: '25.0.5+8'
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v4
+      - name: Require formatted Minecraft, shared and toolchain Java
+        run: ./gradlew --no-daemon spotlessCheck
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Require formatted Manager Java
+        run: ./gradlew --no-daemon -p stash-manager-server spotlessCheck
   verify:
     name: Compile, unit and Docker smoke
+    needs: format
     uses: ./.github/workflows/_verify.yml
     permissions:
       contents: read
@@ -30,15 +52,16 @@ jobs:
   status:
     name: ci-required
     if: always()
-    needs: [verify, e2e]
+    needs: [format, verify, e2e]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Require verification and every E2E check
         env:
+          FORMAT_RESULT: ${{ needs.format.result }}
           VERIFY_RESULT: ${{ needs.verify.result }}
           E2E_RESULT: ${{ needs.e2e.result }}
         shell: bash
         run: |
-          echo "Verification: $VERIFY_RESULT; full E2E: $E2E_RESULT" >> "$GITHUB_STEP_SUMMARY"
-          [[ "$VERIFY_RESULT" == success && "$E2E_RESULT" == success ]]
+          echo "Java format: $FORMAT_RESULT; verification: $VERIFY_RESULT; full E2E: $E2E_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          [[ "$FORMAT_RESULT" == success && "$VERIFY_RESULT" == success && "$E2E_RESULT" == success ]]

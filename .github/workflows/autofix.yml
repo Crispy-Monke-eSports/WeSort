@@ -1,0 +1,104 @@
+# Keep the workflow name exactly "autofix.ci" so its GitHub App can identify it.
+name: autofix.ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Pull requests run untrusted code: no write token is available to their job.
+permissions:
+  contents: read
+
+concurrency:
+  group: java-format-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  pull-request:
+    name: Format Java in pull requests (autofix.ci)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v4
+        with:
+          distribution: temurin
+          java-version: '25.0.5+8'
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v4
+      - name: Format and verify client, Minecraft 26.3, and shared Java
+        run: ./gradlew --no-daemon spotlessApply spotlessCheck
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Format and verify Manager Java
+        run: ./gradlew --no-daemon -p stash-manager-server spotlessApply spotlessCheck
+      - name: Commit formatting changes to the PR branch
+        uses: autofix-ci/action@c5b2d67aa2274e7b5a18224e8171550871fc7e4a # v1.3.4
+      - name: Require formatted Java in the PR
+        shell: bash
+        run: |
+          if ! git diff --quiet -- '*.java'; then
+            git diff --stat -- '*.java'
+            echo '::error::Java files need formatting; autofix.ci has been asked to commit the fixes. The corrected PR commit will be rechecked.'
+            exit 1
+          fi
+
+  main:
+    name: Format Java on main (auto-commit)
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    # Only this job can push to main; it never runs for PRs.
+    permissions:
+      contents: write
+      actions: write # Dispatch CI on the newly formatted main commit.
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v4
+        with:
+          distribution: temurin
+          java-version: '25.0.5+8'
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v4
+      - name: Format and verify client, Minecraft 26.3, and shared Java
+        run: ./gradlew --no-daemon spotlessApply spotlessCheck
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Format and verify Manager Java
+        run: ./gradlew --no-daemon -p stash-manager-server spotlessApply spotlessCheck
+      - name: Commit and push formatting fixes to main
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Stage only tracked Java files changed by the formatters.
+          git add -u -- '*.java'
+          if git diff --cached --quiet; then
+            echo 'All Java files already follow Spotless.'
+            exit 0
+          fi
+
+          git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m 'style: apply Spotless Java formatting'
+
+          # No force push: fail if main advanced or branch rules prohibit updates.
+          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:refs/heads/main
+
+          # A push with GITHUB_TOKEN never triggers push workflows. Explicitly
+          # dispatch WeSort CI against the new head, so verify/E2E can run.
+          # workflow_dispatch is an exception to the GITHUB_TOKEN recursion rule.
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer ${GITHUB_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --data '{"ref":"main"}' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/dispatches"

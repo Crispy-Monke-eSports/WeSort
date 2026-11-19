@@ -32,7 +32,7 @@ jobs:
         run: xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/mc26/assets-harness.py --manager-image wesort-manager:ci
         env:
           NODE_PATH: '${{ github.workspace }}/web-tests/node_modules'
-- uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: always()
         with:
           name: mc26-assets-${{ github.run_id }}
@@ -54,7 +54,7 @@ jobs:
         run: python3 scripts/mc26/frozen-meteor-test.py
       - name: Start real Minecraft 26.3 client and Stash Window
         run: xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/mc26/client-runtime.py
-- uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: always()
         with:
           name: mc26-client-runtime-${{ github.run_id }}
@@ -80,7 +80,7 @@ jobs:
 
       - name: Real shulker hierarchy and lifecycle
         run: xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/mc26/hierarchy-harness.py --manager-image wesort-manager:ci --reservations --guild --order-lifecycle --approval --remote-settings --scoped-agent
-- uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: always()
         with:
           name: mc26-hierarchy-${{ github.run_id }}
@@ -101,7 +101,7 @@ jobs:
 
       - name: Real inventory, block operations, packet delays, restart
         run: xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/mc26/inventory-harness.py --manager-image wesort-manager:ci
-- uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: always()
         with:
           name: mc26-inventory-${{ github.run_id }}
@@ -122,7 +122,7 @@ jobs:
 
       - name: Real Baritone navigation, timeout, cancel and dimension changes
         run: xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/mc26/navigation-harness.py --manager-image wesort-manager:ci
-- uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: always()
         with:
           name: mc26-navigation-${{ github.run_id }}
@@ -143,7 +143,7 @@ jobs:
 
       - name: Real sorting, reservations and full storage
         run: xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/mc26/sorting-harness.py --manager-image wesort-manager:ci
-- uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: always()
         with:
           name: mc26-sorting-${{ github.run_id }}
@@ -164,7 +164,7 @@ jobs:
 
       - name: Real observations, expiry and Manager restart
         run: xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/mc26/stock-harness.py --manager-image wesort-manager:ci
-- uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: always()
         with:
           name: mc26-physical-stock-${{ github.run_id }}
@@ -184,7 +184,7 @@ jobs:
 
       - name: Start actual Minecraft, Meteor and Baritone
         run: xvfb-run -a -s '-screen 0 1280x720x24' python3 tools/mc26-toolchain/verify.py
-- uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: always()
         with:
           name: mc26-toolchain-${{ github.run_id }}
@@ -207,7 +207,7 @@ jobs:
 
       - name: Real private server, Fabric client and Docker Manager
         run: xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/mc26/world-harness.py --manager-image wesort-manager:ci
-- uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: always()
         with:
           name: mc26-world-${{ github.run_id }}

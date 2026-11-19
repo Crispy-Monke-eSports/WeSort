@@ -4099,6 +4099,7 @@
 
   function renderOrderList() {
     $("order-history-title").textContent = can("ordersAll") ? "Guild orders" : "Your orders";
+    $("order-audit").hidden = !can("ordersAll") || !can("view") || forcedStreamer();
     el.ordersClear.hidden = !can("ordersAll");
     el.ordersClear.disabled = !finishedCount();
     var frag = document.createDocumentFragment();
@@ -4450,7 +4451,38 @@
 
   // ---------- dashboard: Bots page ----------
 
+  var ALERT_LABEL = { DISCONNECTED: "Agents offline", STALE: "Sources need a rescan", UNREACHABLE: "Unreachable sources",
+    DEATH: "Agent deaths", NO_CAPACITY: "Agents without a free inventory slot", INVENTORY_UNVERIFIED: "Agents with unverified inventory",
+    NEEDS_RECONCILIATION: "Orders awaiting reconciliation" };
+
+  function loadOperationalMetrics() {
+    api("/api/v1/operations").then(function (metrics) {
+      if (dash.page !== "bots") return;
+      var section = $("operational-metrics");
+      section.hidden = false;
+      var agents = metrics.agents || {};
+      var stock = metrics.stock || {};
+      var orders = metrics.orders || {};
+      $("operational-counts").textContent = [
+        (agents.ONLINE || 0) + " online · " + (agents.OFFLINE || 0) + " offline",
+        can("view") ? (stock.FRESH || 0) + " fresh sources" : "",
+        can("ordersAll") ? (orders.RESERVED || 0) + " reserved · " + (orders.PACKING || 0) + " packing" : ""
+      ].filter(Boolean).join(" · ");
+      var alerts = $("operational-alerts");
+      var rows = Array.isArray(metrics.alerts) ? metrics.alerts : [];
+      alerts.hidden = !rows.length;
+      alerts.replaceChildren();
+      rows.forEach(function (alert) {
+        if (!ALERT_LABEL[alert.code]) return;
+        var item = document.createElement("li");
+        item.textContent = alert.count + " · " + ALERT_LABEL[alert.code];
+        alerts.appendChild(item);
+      });
+    }, function () { $("operational-metrics").hidden = true; });
+  }
+
   function renderDashBots() {
+    loadOperationalMetrics();
     var frag = document.createDocumentFragment();
     if (!dash.bots.length) {
       frag.appendChild(line("note", "No warehouse agents connected yet."));
@@ -4475,12 +4507,21 @@
       head.appendChild(line("note", "last seen " + ago(num(b.lastSeen, null))));
       card.appendChild(head);
       if (str(b.summary)) {
-        var doing = line("dash-bot-doing", "Now: ");
+        var doing = line("dash-bot-doing", b.online ? "Now: " : "Last task: ");
         doing.appendChild(hiddenSpan(str(b.summary)));
         card.appendChild(doing);
       }
       var plugin = b.plugin && typeof b.plugin === "object" ? b.plugin : {};
       card.appendChild(line("note dash-bot-meta", "Agent " + str(plugin.id) + " " + str(plugin.version) + " · id " + str(b.botId)));
+      if (b.lastLocation) {
+        var location = line("note dash-bot-meta", b.online ? "Connected at " : "Last connected at ");
+        location.appendChild(hiddenSpan([b.lastLocation.server, b.lastLocation.stash, b.lastLocation.dimension].join(" · ")));
+        card.appendChild(location);
+      }
+      var caps = Array.isArray(b.caps) ? b.caps : [];
+      var operations = { "warehouse-scan": "Scan", "warehouse-sort": "Sort", pack: "Pack", stage: "Stage packages" };
+      var supported = Object.keys(operations).filter(function (key) { return caps.includes(key); });
+      if (supported.length) card.appendChild(line("note dash-bot-meta", supported.map(function (key) { return operations[key]; }).join(" · ")));
       var stashes = Array.isArray(b.stashes) ? b.stashes : [];
       var st = document.createElement("div");
       st.className = "dash-bot-stashes";
@@ -4501,7 +4542,6 @@
       card.appendChild(st);
       var actions = document.createElement("div");
       actions.className = "dash-bot-actions";
-      var caps = Array.isArray(b.caps) ? b.caps : [];
       [["activity", "Activity"], ["settings", "Settings"]].forEach(function (p) {
         if (caps.indexOf(p[0]) < 0 || !pageAllowed(p[0])) return;
         var btn = document.createElement("button");
@@ -6608,6 +6648,60 @@
     if (el.audit.open) loadAudit();
   });
   el.auditRefresh.addEventListener("click", loadAudit);
+
+  var orderAuditForm = $("order-audit-search");
+  orderAuditForm.addEventListener("submit", function (event) {
+    event.preventDefault();
+    loadOrderAudit();
+  });
+  $("order-audit").addEventListener("toggle", function () {
+    if (this.open && !this.hidden) loadOrderAudit();
+  });
+
+  function loadOrderAudit() {
+    var submit = orderAuditForm.querySelector("button");
+    if (submit.disabled) return;
+    var query = new URLSearchParams();
+    new FormData(orderAuditForm).forEach(function (value, field) {
+      if (!value) return;
+      query.set(field, field === "since" || field === "until" ? new Date(value).getTime() : value);
+    });
+    var status = $("order-audit-status");
+    var results = $("order-audit-results");
+    submit.disabled = true;
+    status.textContent = "Loading order audit…";
+    results.replaceChildren();
+    api("/api/v1/audit/orders?" + query.toString()).then(function (data) {
+      var orders = Array.isArray(data.orders) ? data.orders : [];
+      status.textContent = orders.length ? orders.length + " orders shown" : "No matching orders.";
+      orders.forEach(function (order) {
+        var detail = document.createElement("details");
+        var title = document.createElement("summary");
+        title.textContent = [order.id, order.purpose, order.placedBy && order.placedBy.name || order.requestedBy,
+          ORDER_STATE_LABEL[order.state] || order.state].join(" · ");
+        detail.appendChild(title);
+        detail.appendChild(line("note", new Date(order.createdAt).toLocaleString() + " · " + order.stash));
+        function field(label, value) {
+          if (value) detail.appendChild(line("note", label + " · " + value));
+        }
+        field("Recipient", order.recipient);
+        field("Comment", order.comment);
+        field("Requested", order.lines.map(function (item) { return item.count + " × " + item.key; }).join(", "));
+        field("Staged", (order.stagedAmounts || []).map(function (item) { return item.delivered + " × " + item.key; }).join(", "));
+        field("Packages", order.packageIds.join(", "));
+        order.events.forEach(function (entry) {
+          detail.appendChild(line("note", [new Date(entry.at).toLocaleString(), entry.actor, entry.action,
+            ORDER_STATE_LABEL[entry.state] || entry.state].filter(Boolean).join(" · ")));
+        });
+        (order.physicalOperations || []).forEach(function (entry) {
+          detail.appendChild(line("note", [new Date(entry.at).toLocaleString(), entry.execution || entry.kind, entry.state, entry.id].join(" · ")));
+        });
+        results.appendChild(detail);
+      });
+    }, function (error) {
+      status.textContent = failText(error, "Could not load the order audit");
+    }).finally(function () { submit.disabled = false; });
+  }
 
   // ---------- dashboard: Activity page ----------
   // Polled every 2 s while visible (the bot then pushes every 2 s), every 15 s otherwise. textContent only.

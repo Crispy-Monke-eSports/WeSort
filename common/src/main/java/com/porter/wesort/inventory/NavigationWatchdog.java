@@ -8,8 +8,13 @@ public final class NavigationWatchdog {
     private double x, y, z;
 
     public NavigationWatchdog(String dimension, double x, double y, double z, long now, long timeout, long stuck) {
-        this.dimension = dimension; this.x = x; this.y = y; this.z = z;
-        this.started = this.progressed = now; this.timeout = timeout; this.stuck = stuck;
+        this.dimension = dimension;
+        this.x = x;
+        this.y = y;
+        this.z = z;
+        this.started = this.progressed = now;
+        this.timeout = timeout;
+        this.stuck = stuck;
     }
 
     public String check(String currentDimension, double x, double y, double z, long now) {
@@ -17,7 +22,10 @@ public final class NavigationWatchdog {
         if (now - started >= timeout) return "PAUSED_NAVIGATION_TIMEOUT";
         double dx = x - this.x, dy = y - this.y, dz = z - this.z;
         if (dx * dx + dy * dy + dz * dz >= 0.16) {
-            this.x = x; this.y = y; this.z = z; progressed = now;
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            progressed = now;
         }
         return now - progressed >= stuck ? "PAUSED_NAVIGATION_STUCK" : "";
     }

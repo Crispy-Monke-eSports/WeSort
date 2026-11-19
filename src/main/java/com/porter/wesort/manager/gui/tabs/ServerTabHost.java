@@ -8,11 +8,10 @@ import com.porter.wesort.manager.model.NavPage;
 import com.porter.wesort.manager.model.StashRef;
 import com.porter.wesort.manager.net.ApiResult;
 import com.porter.wesort.manager.net.SmClient;
-import net.minecraft.client.gui.GuiGraphics;
-
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import net.minecraft.client.gui.GuiGraphics;
 
 /**
  * What the server-only tabs (Map, Settings, Proxy, Users, Bots) need from the window. They never exist in local mode, so everything

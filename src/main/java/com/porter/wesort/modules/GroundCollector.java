@@ -1,9 +1,21 @@
 package com.porter.wesort.modules;
 
+import static meteordevelopment.meteorclient.MeteorClient.mc;
+
 import com.porter.wesort.compat.Drops;
 import com.porter.wesort.stash.StackInfo;
 import com.porter.wesort.stash.Stash;
 import com.porter.wesort.stash.Stash.Box;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import meteordevelopment.meteorclient.utils.entity.fakeplayer.FakePlayerEntity;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.core.BlockPos;
@@ -15,19 +27,6 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentLinkedQueue;
-
-import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 /**
  * Picks up what other people left on the ground in the stash: dropped items lying still inside the stash area, when
@@ -215,8 +214,7 @@ final class GroundCollector {
             if (s == null) {
                 seen.put(id, new Seen(pos, now));
                 if (!mine.containsKey(id) && playersOwn(pos)) mine.put(id, Boolean.TRUE);
-            }
-            else if (s.pos.distanceToSqr(pos) > MOVED_SQ) {
+            } else if (s.pos.distanceToSqr(pos) > MOVED_SQ) {
                 s.pos = pos;
                 s.since = now;
             }
@@ -247,8 +245,9 @@ final class GroundCollector {
         BlockPos cell = BlockPos.containing(pos);
         for (Dig dig : digs) {
             if (Vec3.atCenterOf(dig.pos).distanceToSqr(pos) <= DIG_RADIUS_SQ) return true;
-            if (Math.abs(cell.getX() - dig.pos.getX()) <= 1 && Math.abs(cell.getY() - dig.pos.getY()) <= 1
-                && Math.abs(cell.getZ() - dig.pos.getZ()) <= 1) return true;
+            if (Math.abs(cell.getX() - dig.pos.getX()) <= 1
+                    && Math.abs(cell.getY() - dig.pos.getY()) <= 1
+                    && Math.abs(cell.getZ() - dig.pos.getZ()) <= 1) return true;
         }
         return false;
     }
@@ -280,7 +279,13 @@ final class GroundCollector {
         if (stash.hasArea()) {
             BlockPos lo = stash.areaMin(), hi = stash.areaMax();
             int range = owner.range();
-            return new AABB(lo.getX() - range, lo.getY() - VERTICAL, lo.getZ() - range, hi.getX() + 1 + range, hi.getY() + 1 + VERTICAL, hi.getZ() + 1 + range);
+            return new AABB(
+                    lo.getX() - range,
+                    lo.getY() - VERTICAL,
+                    lo.getZ() - range,
+                    hi.getX() + 1 + range,
+                    hi.getY() + 1 + VERTICAL,
+                    hi.getZ() + 1 + range);
         }
         if (stash.boxes.isEmpty()) return null;
 
@@ -305,11 +310,16 @@ final class GroundCollector {
      * isn't loaded.
      */
     private static boolean hazardous(BlockPos cell) {
-        for (BlockPos pos : new BlockPos[] { cell, cell.below() }) {
+        for (BlockPos pos : new BlockPos[] {cell, cell.below()}) {
             if (!mc.level.isLoaded(pos)) return true;
             BlockState state = mc.level.getBlockState(pos);
-            if (state.is(Blocks.LAVA) || state.is(Blocks.FIRE) || state.is(Blocks.SOUL_FIRE) || state.is(Blocks.CACTUS)
-                || state.is(Blocks.MAGMA_BLOCK) || state.is(Blocks.SWEET_BERRY_BUSH) || state.is(Blocks.POWDER_SNOW)) return true;
+            if (state.is(Blocks.LAVA)
+                    || state.is(Blocks.FIRE)
+                    || state.is(Blocks.SOUL_FIRE)
+                    || state.is(Blocks.CACTUS)
+                    || state.is(Blocks.MAGMA_BLOCK)
+                    || state.is(Blocks.SWEET_BERRY_BUSH)
+                    || state.is(Blocks.POWDER_SNOW)) return true;
         }
         return false;
     }
@@ -324,8 +334,11 @@ final class GroundCollector {
 
         for (Map.Entry<Integer, Seen> entry : seen.entrySet()) {
             int id = entry.getKey();
-            if (mine.containsKey(id) || skipUntil.containsKey(id) || now - entry.getValue().since < STILL_TICKS) continue;
-            if (!(mc.level.getEntity(id) instanceof ItemEntity item) || item.isRemoved() || item.getItem().isEmpty()) continue;
+            if (mine.containsKey(id) || skipUntil.containsKey(id) || now - entry.getValue().since < STILL_TICKS)
+                continue;
+            if (!(mc.level.getEntity(id) instanceof ItemEntity item)
+                    || item.isRemoved()
+                    || item.getItem().isEmpty()) continue;
             if (area.contains(item.position()) && !hazardous(item.blockPosition())) list.add(item);
         }
         return list;
@@ -354,7 +367,8 @@ final class GroundCollector {
         }
 
         if (player != null) {
-            status = String.format("waiting for %s to leave (%d item%s)", player, found.size(), found.size() == 1 ? "" : "s");
+            status = String.format(
+                    "waiting for %s to leave (%d item%s)", player, found.size(), found.size() == 1 ? "" : "s");
             if (!playerNoted) {
                 playerNoted = true;
                 owner.debug(String.format("Ground items waiting: %s is nearby.", player));
@@ -369,7 +383,9 @@ final class GroundCollector {
         }
 
         Vec3 here = mc.player.position();
-        ItemEntity item = found.stream().min(Comparator.comparingDouble(e -> e.position().distanceToSqr(here))).orElse(null);
+        ItemEntity item = found.stream()
+                .min(Comparator.comparingDouble(e -> e.position().distanceToSqr(here)))
+                .orElse(null);
         if (item == null) return false;
 
         targetId = item.getId();
@@ -384,8 +400,12 @@ final class GroundCollector {
         before = snapshot();
         tripping = true;
         status = String.format("picking up %d %s", targetStack.getCount(), targetName);
-        owner.say(String.format("Picking up %d %s from the ground at [%d, %d, %d].", targetStack.getCount(), targetName, at.getX(), at.getY(), at.getZ()));
-        owner.step(String.format("ground: picking up %d stacks near %d %d %d; next: put them away.", found.size(), at.getX(), at.getY(), at.getZ()));
+        owner.say(String.format(
+                "Picking up %d %s from the ground at [%d, %d, %d].",
+                targetStack.getCount(), targetName, at.getX(), at.getY(), at.getZ()));
+        owner.step(String.format(
+                "ground: picking up %d stacks near %d %d %d; next: put them away.",
+                found.size(), at.getX(), at.getY(), at.getZ()));
         confined = true;
         owner.confine();
         owner.walkTo(at);
@@ -448,8 +468,7 @@ final class GroundCollector {
                 giveUp(at, "standing on it didn't pick it up");
                 return;
             }
-        }
-        else standingSince = -1;
+        } else standingSince = -1;
 
         // Told again every few seconds, following the item if it moved
         if (now - lastIssue >= REPATH_TICKS) {
@@ -479,8 +498,9 @@ final class GroundCollector {
 
     private void giveUp(BlockPos at, String reason) {
         skipUntil.put(targetId, now + SKIP_TICKS);
-        owner.say(String.format("Couldn't pick up the %s from the ground at [%d, %d, %d]: %s. Leaving it alone for 5 minutes.",
-            targetName, at.getX(), at.getY(), at.getZ(), reason));
+        owner.say(String.format(
+                "Couldn't pick up the %s from the ground at [%d, %d, %d]: %s. Leaving it alone for 5 minutes.",
+                targetName, at.getX(), at.getY(), at.getZ(), reason));
         end(false);
     }
 
@@ -498,7 +518,8 @@ final class GroundCollector {
 
     private static ItemStack[] snapshot() {
         ItemStack[] stacks = new ItemStack[36];
-        for (int slot = 0; slot < 36; slot++) stacks[slot] = mc.player.getInventory().getItem(slot).copy();
+        for (int slot = 0; slot < 36; slot++)
+            stacks[slot] = mc.player.getInventory().getItem(slot).copy();
         return stacks;
     }
 
@@ -537,8 +558,7 @@ final class GroundCollector {
             boolean merged = !was.isEmpty() && ItemStack.isSameItemSameComponents(was, stack);
             if (owner.carries(slot)) {
                 owner.held(slot, stack);
-            }
-            else if (!merged) {
+            } else if (!merged) {
                 int to = owner.moveToCarry(slot);
                 if (to >= 0) owner.held(to, stack);
             }

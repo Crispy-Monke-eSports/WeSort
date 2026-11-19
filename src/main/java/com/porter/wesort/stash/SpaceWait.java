@@ -35,7 +35,10 @@ public final class SpaceWait {
         String why = room.why() == null ? "delivery storage full" : room.why();
         if (since == 0) since = now;
         else if (now - since > TIMEOUT_MS) {
-            return new Decision(null, "delivery container full (" + delivered + "/" + total + "): waited " + (TIMEOUT_MS / 60_000) + " min for space, " + why);
+            return new Decision(
+                    null,
+                    "delivery container full (" + delivered + "/" + total + "): waited " + (TIMEOUT_MS / 60_000)
+                            + " min for space, " + why);
         }
         return new Decision("paused: " + PREFIX + why, null);
     }

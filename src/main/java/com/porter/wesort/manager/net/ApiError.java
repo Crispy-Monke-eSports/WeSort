@@ -5,8 +5,7 @@ import com.google.gson.JsonObject;
 
 /** Sorts a server answer into what the window has to do about it. Mirrors how the website's page reacts. */
 public final class ApiError {
-    private ApiError() {
-    }
+    private ApiError() {}
 
     public enum Kind {
         OK,
@@ -46,7 +45,10 @@ public final class ApiError {
                 return passwordPath(path) ? Kind.WRONG_PASSWORD : Kind.LOGIN;
             case 403: {
                 JsonObject o = body != null && body.isJsonObject() ? body.getAsJsonObject() : null;
-                if (o != null && o.has("mustChange") && o.get("mustChange").isJsonPrimitive() && "true".equals(o.get("mustChange").getAsString())) {
+                if (o != null
+                        && o.has("mustChange")
+                        && o.get("mustChange").isJsonPrimitive()
+                        && "true".equals(o.get("mustChange").getAsString())) {
                     return Kind.MUST_CHANGE;
                 }
                 if ("confirm password".equals(string(o, "error"))) return Kind.CONFIRM;
@@ -65,8 +67,11 @@ public final class ApiError {
 
     /** The paths whose 401 means "that password is wrong", not "you are logged out". */
     private static boolean passwordPath(String path) {
-        return path != null && (path.equals("/api/v1/auth/login") || path.equals("/api/v1/auth/confirm")
-            || path.equals("/api/v1/auth/password") || path.equals("/api/v1/auth/setup"));
+        return path != null
+                && (path.equals("/api/v1/auth/login")
+                        || path.equals("/api/v1/auth/confirm")
+                        || path.equals("/api/v1/auth/password")
+                        || path.equals("/api/v1/auth/setup"));
     }
 
     /** The {@code permission} a 403 names, or null. */

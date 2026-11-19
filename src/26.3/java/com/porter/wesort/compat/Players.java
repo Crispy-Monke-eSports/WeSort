@@ -1,16 +1,15 @@
 package com.porter.wesort.compat;
 
+import static meteordevelopment.meteorclient.MeteorClient.mc;
+
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.item.ItemStack;
-
-import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 /**
  * Player helpers that differ between Minecraft versions, for Minecraft 26.3.
  */
 public final class Players {
-    private Players() {
-    }
+    private Players() {}
 
     /**
      * The hotbar slot the player has selected.

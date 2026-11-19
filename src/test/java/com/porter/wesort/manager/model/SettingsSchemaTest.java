@@ -1,5 +1,9 @@
 package com.porter.wesort.manager.model;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
@@ -8,20 +12,15 @@ import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 import com.porter.wesort.manager.model.SettingsSchema.Leaf;
 import com.porter.wesort.manager.model.SettingsSchema.Node;
-import org.junit.jupiter.api.Test;
-
 import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Test;
 
 class SettingsSchemaTest {
     static final String TREE = "[{\"path\":\"a\",\"type\":\"group\",\"label\":\"Sorting\",\"children\":["
-        + "{\"path\":\"a.enabled\",\"type\":\"bool\",\"label\":\"Enabled\"},"
-        + "{\"path\":\"a.sub\",\"type\":\"group\",\"label\":\"Sub\",\"children\":[{\"path\":\"a.sub.n\",\"type\":\"int\",\"min\":1,\"max\":10,\"nullable\":true}]}]},"
-        + "{\"path\":\"b\",\"type\":\"group\",\"label\":\"Delivery\",\"children\":[{\"path\":\"b.mode\",\"type\":\"enum\",\"options\":[\"x\",\"y\"]},"
-        + "{\"path\":\"b.key\",\"type\":\"string\",\"secret\":true,\"set\":true},{\"path\":\"b.list\",\"type\":\"stringList\",\"section\":\"Lists\"}]}]";
+            + "{\"path\":\"a.enabled\",\"type\":\"bool\",\"label\":\"Enabled\"},"
+            + "{\"path\":\"a.sub\",\"type\":\"group\",\"label\":\"Sub\",\"children\":[{\"path\":\"a.sub.n\",\"type\":\"int\",\"min\":1,\"max\":10,\"nullable\":true}]}]},"
+            + "{\"path\":\"b\",\"type\":\"group\",\"label\":\"Delivery\",\"children\":[{\"path\":\"b.mode\",\"type\":\"enum\",\"options\":[\"x\",\"y\"]},"
+            + "{\"path\":\"b.key\",\"type\":\"string\",\"secret\":true,\"set\":true},{\"path\":\"b.list\",\"type\":\"stringList\",\"section\":\"Lists\"}]}]";
 
     static Node node(String json) {
         List<Leaf> l = SettingsSchema.leaves(JsonParser.parseString("[" + json + "]"));
@@ -37,7 +36,9 @@ class SettingsSchemaTest {
         assertEquals(List.of("Sub"), leaves.get(1).trail());
         assertEquals("Lists", leaves.get(4).section());
         List<SettingsSchema.Section> sections = SettingsSchema.sections(leaves);
-        assertEquals(List.of("Sorting", "Delivery", "Lists"), sections.stream().map(SettingsSchema.Section::name).toList());
+        assertEquals(
+                List.of("Sorting", "Delivery", "Lists"),
+                sections.stream().map(SettingsSchema.Section::name).toList());
         assertEquals(2, sections.get(0).count());
         assertEquals(2, SettingsSchema.inSection(leaves, "Delivery").size());
         assertEquals(1, SettingsSchema.search(leaves, "MODE", 10).size());
@@ -48,7 +49,8 @@ class SettingsSchemaTest {
     @Test
     void numbersAreParsedAndRangeChecked() {
         Node n = node("{\"path\":\"p\",\"type\":\"int\",\"min\":1,\"max\":10}");
-        assertEquals(new JsonPrimitive(5L), SettingsSchema.parse(n, " 5 ", false).value());
+        assertEquals(
+                new JsonPrimitive(5L), SettingsSchema.parse(n, " 5 ", false).value());
         assertEquals("at least 1", SettingsSchema.parse(n, "0", false).error());
         assertEquals("at most 10", SettingsSchema.parse(n, "11", false).error());
         assertEquals("a whole number", SettingsSchema.parse(n, "1.5", false).error());
@@ -85,7 +87,8 @@ class SettingsSchemaTest {
         Node i = node("{\"path\":\"p\",\"type\":\"int\",\"max\":5}");
         assertFalse(SettingsSchema.validate(i, new JsonPrimitive(6)).isEmpty());
         assertFalse(SettingsSchema.validate(i, new JsonPrimitive(1.5)).isEmpty());
-        assertFalse(SettingsSchema.validate(i, new JsonPrimitive(3_000_000_000L)).isEmpty());
+        assertFalse(
+                SettingsSchema.validate(i, new JsonPrimitive(3_000_000_000L)).isEmpty());
         Node list = node("{\"path\":\"p\",\"type\":\"stringList\"}");
         JsonArray ok = new JsonArray();
         ok.add("a");
@@ -98,7 +101,9 @@ class SettingsSchemaTest {
         assertFalse(SettingsSchema.validate(list, big).isEmpty());
         Node secret = node("{\"path\":\"p\",\"type\":\"string\",\"secret\":true}");
         assertFalse(SettingsSchema.validate(secret, new JsonPrimitive("x")).isEmpty());
-        assertFalse(SettingsSchema.validate(node("{\"path\":\"p\",\"type\":\"string\",\"readOnly\":true}"), new JsonPrimitive("x")).isEmpty());
+        assertFalse(SettingsSchema.validate(
+                        node("{\"path\":\"p\",\"type\":\"string\",\"readOnly\":true}"), new JsonPrimitive("x"))
+                .isEmpty());
     }
 
     @Test

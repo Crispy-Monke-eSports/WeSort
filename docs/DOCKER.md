@@ -94,10 +94,13 @@ Inga API-nycklar eller lösenord stöds som Docker build-args eller Compose-env.
 Ändra privata runtimeinställningar i den skyddade volymen om det behövs.
 Efter Owner-setup skapar värdens administratör en individuell agentnyckel
 med `docker compose exec -T manager /opt/wesort/entrypoint agent-issue <uuid> <player> <server> <stash>`.
-Klistra in hela värdet i agentens `api-key`. Samma kommando med samma
-scope roterar nyckeln. `agent-revoke <uuid>` stänger av agentens nyckel
+Lägg till fler stashnamn efter det första när samma Minecraft-konto ska
+driva flera stashes på servern. Ange hela listan varje gång du roterar
+nyckeln. Klistra in hela returvärdet i agentens `api-key`.
+`agent-revoke <uuid>` stänger av agentens nyckel
 omedelbart. `agent-require-scoped` stänger av delad autentisering när
-agenterna har fått sina individuella nycklar.
+agenterna har fått sina individuella nycklar. Upp till fem individuella
+nycklar kan vara aktiva samtidigt.
 
 Under migrering kan `agent-key` lämna ut den delade äldre nyckeln på värden.
 Owner kan starta dess rotation i Link-vyn. Äldre lageranrop har ett

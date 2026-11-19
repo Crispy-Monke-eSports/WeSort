@@ -23,7 +23,11 @@ public final class StashSafety {
     public record Spot(Pt at, boolean read, boolean delivery) {}
 
     /** What an area check does with a container: nothing, keep it but skip it (read), or delete it (never read). */
-    public enum Outside { INSIDE, SKIP, DROP }
+    public enum Outside {
+        INSIDE,
+        SKIP,
+        DROP
+    }
 
     public static Outside outside(boolean delivery, boolean outsideArea, boolean neverRead) {
         if (delivery || !outsideArea) return Outside.INSIDE;

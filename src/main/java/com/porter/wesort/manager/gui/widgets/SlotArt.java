@@ -3,12 +3,11 @@ package com.porter.wesort.manager.gui.widgets;
 import com.porter.wesort.manager.gui.frame.WOverlayLayer;
 import com.porter.wesort.manager.gui.style.Paint;
 import com.porter.wesort.manager.gui.style.SmGuiTheme;
+import java.util.ArrayList;
+import java.util.List;
 import meteordevelopment.meteorclient.gui.renderer.GuiRenderer;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.ItemStack;
-
-import java.util.ArrayList;
-import java.util.List;
 
 /** The vanilla inventory slot, as the website draws it (themes don't change it), and the hover card's text. */
 final class SlotArt {
@@ -17,8 +16,7 @@ final class SlotArt {
     private static final int DARK = 0xFF373737;
     private static final int LIGHT = 0xFFFFFFFF;
 
-    private SlotArt() {
-    }
+    private SlotArt() {}
 
     /** A slot whose top-left corner is ({@code sx, sy}) physical pixels: 18 GUI pixels square. */
     static void draw(GuiRenderer r, SmGuiTheme t, double sx, double sy, int u, boolean hot) {

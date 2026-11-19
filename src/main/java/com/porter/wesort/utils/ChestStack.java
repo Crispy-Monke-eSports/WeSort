@@ -27,8 +27,7 @@ import java.util.List;
  * </ul>
  */
 public final class ChestStack {
-    private ChestStack() {
-    }
+    private ChestStack() {}
 
     /** Eyes of a sneaking player above its feet. */
     public static final double SNEAK_EYE = 1.27;
@@ -62,8 +61,7 @@ public final class ChestStack {
     }
 
     /** Where a stand is, and the way the front of the first chest then faces (a unit step: x and z). */
-    public record Stand(Pos cell, int facingX, int facingZ) {
-    }
+    public record Stand(Pos cell, int facingX, int facingZ) {}
 
     /**
      * The next row.
@@ -72,12 +70,10 @@ public final class ChestStack {
      * @param firstStands where to stand to put the first chest up (top face of the chest below), nearest first
      * @param secondStands where to stand for the second half (side face of the first), nearest first; empty for a single
      */
-    public record Plan(Pos first, Pos second, List<Stand> firstStands, List<Pos> secondStands) {
-    }
+    public record Plan(Pos first, Pos second, List<Stand> firstStands, List<Pos> secondStands) {}
 
     /** The plan, or why there is none ("blocked": the reason, without the "can't place higher: " lead). */
-    public record Result(Plan plan, String blocked) {
-    }
+    public record Result(Plan plan, String blocked) {}
 
     /**
      * @param topParts  the blocks of the top chest: one (single, or a barrel) or two (a double chest), the same y
@@ -86,14 +82,18 @@ public final class ChestStack {
      * @param lowestY   y of the lowest chest of the storage (for the reason)
      * @param near      the bot's feet: stands are ordered by how far they are from it
      */
-    public static Result next(List<Pos> topParts, int facingX, int facingZ, boolean belowIsChest, int lowestY, Pos near, View v) {
-        if (topParts.isEmpty() || topParts.size() > 2) return new Result(null, "the top chest is not a single or a double chest");
+    public static Result next(
+            List<Pos> topParts, int facingX, int facingZ, boolean belowIsChest, int lowestY, Pos near, View v) {
+        if (topParts.isEmpty() || topParts.size() > 2)
+            return new Result(null, "the top chest is not a single or a double chest");
         int y = topParts.get(0).y();
         int ny = y + 1;
         if (ny >= v.maxY()) return new Result(null, "the build height limit is reached");
 
         Pos first = new Pos(topParts.get(0).x(), ny, topParts.get(0).z());
-        Pos second = topParts.size() == 2 ? new Pos(topParts.get(1).x(), ny, topParts.get(1).z()) : null;
+        Pos second = topParts.size() == 2
+                ? new Pos(topParts.get(1).x(), ny, topParts.get(1).z())
+                : null;
         for (Pos p : second == null ? List.of(first) : List.of(first, second)) {
             if (!v.loaded(p.x(), p.z())) return new Result(null, "the chunk above the top chest is not loaded");
             if (!v.air(p.x(), p.y(), p.z())) {
@@ -103,7 +103,9 @@ public final class ChestStack {
             // The new chest's lid: a solid block right above it keeps it shut
             if (p.y() + 1 < v.maxY() && v.conductor(p.x(), p.y() + 1, p.z())) {
                 String n = v.name(p.x(), p.y() + 1, p.z());
-                return new Result(null, (n == null ? "a solid block" : n) + " above the next chest would keep its lid from opening");
+                return new Result(
+                        null,
+                        (n == null ? "a solid block" : n) + " above the next chest would keep its lid from opening");
             }
         }
 
@@ -117,11 +119,14 @@ public final class ChestStack {
                     if (cy < v.minY() || !v.loaded(cx, cz) || occupied(cx, cy, cz, topParts, first, second)) continue;
                     if (!v.standable(cx, cy, cz)) continue;
                     double ex = cx + 0.5, ey = cy + SNEAK_EYE, ez = cz + 0.5;
-                    // The top face is in sight from an eye above it, near enough to click, not from straight above the column
+                    // The top face is in sight from an eye above it, near enough to click, not from straight above the
+                    // column
                     if (ey < top + 0.1) continue;
                     double horizontal = Math.hypot(aimX - ex, aimZ - ez);
-                    if (horizontal < 0.9 || Math.sqrt(horizontal * horizontal + (ey - top) * (ey - top)) > REACH) continue;
-                    // The way the bot looks decides the way the chest faces: the opposite of it. Diagonals are ambiguous
+                    if (horizontal < 0.9 || Math.sqrt(horizontal * horizontal + (ey - top) * (ey - top)) > REACH)
+                        continue;
+                    // The way the bot looks decides the way the chest faces: the opposite of it. Diagonals are
+                    // ambiguous
                     double lx = aimX - ex, lz = aimZ - ez;
                     if (Math.abs(Math.abs(lx) - Math.abs(lz)) < 0.2) continue;
                     int fx = 0, fz = 0;
@@ -145,14 +150,17 @@ public final class ChestStack {
                 for (int dz = -STAND_RADIUS - 1; dz <= STAND_RADIUS + 1; dz++) {
                     for (int dy = -STAND_DOWN; dy <= STAND_UP; dy++) {
                         int cx = first.x() + dx, cz = first.z() + dz, cy = y + dy;
-                        if (cy < v.minY() || !v.loaded(cx, cz) || occupied(cx, cy, cz, topParts, first, second)) continue;
+                        if (cy < v.minY() || !v.loaded(cx, cz) || occupied(cx, cy, cz, topParts, first, second))
+                            continue;
                         if (!v.standable(cx, cy, cz)) continue;
                         if (sideClickable(cx, cy, cz, first, second, ddx, ddz)) secondStands.add(new Pos(cx, cy, cz));
                     }
                 }
             }
             if (secondStands.isEmpty()) {
-                return new Result(null, "out of reach: nowhere to stand where the side of the first chest can be clicked for the second half");
+                return new Result(
+                        null,
+                        "out of reach: nowhere to stand where the side of the first chest can be clicked for the second half");
             }
             secondStands.sort(Comparator.comparingDouble(s -> dist2(s, near)));
         }

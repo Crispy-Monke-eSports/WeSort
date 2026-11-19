@@ -1,9 +1,9 @@
 package com.porter.wesort.manager.net;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 import com.google.gson.JsonParser;
 import org.junit.jupiter.api.Test;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class ApiResultTest {
     private static ApiResult with(long header, String body) {

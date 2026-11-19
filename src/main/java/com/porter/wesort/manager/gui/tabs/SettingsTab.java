@@ -19,6 +19,14 @@ import com.porter.wesort.manager.model.UsersModel;
 import com.porter.wesort.manager.net.ApiError;
 import com.porter.wesort.manager.net.ServerUrl;
 import com.porter.wesort.manager.net.SmClient;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
 import meteordevelopment.meteorclient.gui.GuiTheme;
 import meteordevelopment.meteorclient.gui.widgets.WLabel;
 import meteordevelopment.meteorclient.gui.widgets.containers.WContainer;
@@ -31,23 +39,15 @@ import meteordevelopment.meteorclient.gui.widgets.pressable.WCheckbox;
 import meteordevelopment.meteorclient.utils.Utils;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.regex.Pattern;
-
 public final class SettingsTab {
-    private enum Page { BOT, ACCOUNT }
-
-    private record Job(String path, JsonElement sent, long since) {
+    private enum Page {
+        BOT,
+        ACCOUNT
     }
 
-    private record Note(String kind, String text) {
-    }
+    private record Job(String path, JsonElement sent, long since) {}
+
+    private record Note(String kind, String text) {}
 
     private static final Color WARN = new Color(255, 190, 80);
     private static final Color BAD = new Color(255, 110, 110);
@@ -62,9 +62,12 @@ public final class SettingsTab {
     private static final int LIST_SHOWN = 40;
     private static final Pattern JOB_ID = Pattern.compile("^[A-Za-z0-9_.-]{1,64}$");
     // Settings whose value is an address, port or URL: hidden in streamer display, like the website
-    private static final Pattern SENSITIVE_SECTION = Pattern.compile("(^|\\.)(server\\.bind|client\\.server|connectionProxy)(\\.|$)", Pattern.CASE_INSENSITIVE);
-    private static final Pattern SENSITIVE_WORD = Pattern.compile("^(address|addresses|host|hostname|ip|ips|port|url|urls|uri|domain|endpoint)$", Pattern.CASE_INSENSITIVE);
-    private static final Pattern SENSITIVE_SUFFIX = Pattern.compile("[a-z0-9](Address|Addresses|Host|Hostname|Ip|IP|Ips|IPs|Port|Url|URL|Urls|Uri|URI|Domain|Endpoint)$");
+    private static final Pattern SENSITIVE_SECTION =
+            Pattern.compile("(^|\\.)(server\\.bind|client\\.server|connectionProxy)(\\.|$)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern SENSITIVE_WORD = Pattern.compile(
+            "^(address|addresses|host|hostname|ip|ips|port|url|urls|uri|domain|endpoint)$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern SENSITIVE_SUFFIX = Pattern.compile(
+            "[a-z0-9](Address|Addresses|Host|Hostname|Ip|IP|Ips|IPs|Port|Url|URL|Urls|Uri|URI|Domain|Endpoint)$");
 
     private final ServerTabHost host;
     private GuiTheme theme;
@@ -164,18 +167,29 @@ public final class SettingsTab {
 
     /** "" when the bot settings can be shown, else why not. */
     private String denied() {
-        if (auth().forcedStreamer()) return "Bot settings are not available in streamer mode: the owner enforces it for your account (they can hold coordinates).";
+        if (auth().forcedStreamer())
+            return "Bot settings are not available in streamer mode: the owner enforces it for your account (they can hold coordinates).";
         if (!auth().can("activity")) return "Your account can't see the bot's settings; ask the owner.";
         return "";
     }
 
-    private List<String> scopes() { return List.of("plugin"); }
-    private static String scopeLabel(String scope) { return "WeSort agent"; }
-    private boolean readOnly() { return !auth().can("settings"); }
+    private List<String> scopes() {
+        return List.of("plugin");
+    }
+
+    private static String scopeLabel(String scope) {
+        return "WeSort agent";
+    }
+
+    private boolean readOnly() {
+        return !auth().can("settings");
+    }
 
     private boolean sensitive(String path) {
         String last = path.substring(path.lastIndexOf('.') + 1);
-        return SENSITIVE_SECTION.matcher(path).find() || SENSITIVE_WORD.matcher(last).matches() || SENSITIVE_SUFFIX.matcher(last).find();
+        return SENSITIVE_SECTION.matcher(path).find()
+                || SENSITIVE_WORD.matcher(last).matches()
+                || SENSITIVE_SUFFIX.matcher(last).find();
     }
 
     private JsonElement serverValue(String path) {
@@ -214,7 +228,8 @@ public final class SettingsTab {
 
     private String botSignature() {
         StringBuilder sb = new StringBuilder();
-        for (BotList.Bot b : host.bots().list().bots()) sb.append(b.botId()).append(b.online()).append(b.scopes()).append(';');
+        for (BotList.Bot b : host.bots().list().bots())
+            sb.append(b.botId()).append(b.online()).append(b.scopes()).append(';');
         return sb.toString();
     }
 
@@ -245,48 +260,64 @@ public final class SettingsTab {
         int token = requestToken;
         Map<String, String> q = new LinkedHashMap<>();
         q.put("scope", scope);
-        host.client().get("/api/v1/bots/" + ServerUrl.seg(bot) + "/settings", q, etag, false, SmClient.DEFAULT_TIMEOUT, null, (r, ignored) -> {
-            if (token != requestToken) return;
-            getBusy = false;
-            if (host.closed()) return;
-            switch (r.kind()) {
-                case OK -> {
-                    etag = r.etag();
-                    apply(r.obj());
-                }
-                case NOT_MODIFIED -> {
-                    // unchanged
-                }
-                case NOT_FOUND -> {
-                    JsonObject o = r.obj();
-                    haveState = false;
-                    values = new JsonObject();
-                    leaves = List.of();
-                    String m = Json.bool(o, "loading") ? "Asking the bot for these settings..."
-                        : o.has("online") && !Json.bool(o, "online") ? "The bot is offline; its settings show here once it is back."
-                        : "This bot hasn't sent these settings yet.";
-                    setMessage(m);
-                }
-                case CONFIRM -> {
-                    locked = true;
-                    haveState = false;
-                    setMessage("These settings are only shown after you confirm your password.");
-                }
-                case NO_PERMISSION -> {
-                    nextGet = System.currentTimeMillis() + 10_000;
-                    setMessage(Text.sentence(Text.sanitize(r.error(), 160)).isEmpty() ? "Your account can't see these settings." : Text.sentence(Text.sanitize(r.error(), 160)));
-                    host.failed(r);
-                }
-                default -> {
-                    nextGet = System.currentTimeMillis() + 5_000;
-                    if (r.kind() == ApiError.Kind.NETWORK || r.kind() == ApiError.Kind.SERVER || r.kind() == ApiError.Kind.RATE_LIMIT) {
-                        setMessage(host.describe(r, "Could not load the settings."));
-                    } else {
-                        host.failed(r);
-                    }
-                }
-            }
-        });
+        host.client()
+                .get(
+                        "/api/v1/bots/" + ServerUrl.seg(bot) + "/settings",
+                        q,
+                        etag,
+                        false,
+                        SmClient.DEFAULT_TIMEOUT,
+                        null,
+                        (r, ignored) -> {
+                            if (token != requestToken) return;
+                            getBusy = false;
+                            if (host.closed()) return;
+                            switch (r.kind()) {
+                                case OK -> {
+                                    etag = r.etag();
+                                    apply(r.obj());
+                                }
+                                case NOT_MODIFIED -> {
+                                    // unchanged
+                                }
+                                case NOT_FOUND -> {
+                                    JsonObject o = r.obj();
+                                    haveState = false;
+                                    values = new JsonObject();
+                                    leaves = List.of();
+                                    String m = Json.bool(o, "loading")
+                                            ? "Asking the bot for these settings..."
+                                            : o.has("online") && !Json.bool(o, "online")
+                                                    ? "The bot is offline; its settings show here once it is back."
+                                                    : "This bot hasn't sent these settings yet.";
+                                    setMessage(m);
+                                }
+                                case CONFIRM -> {
+                                    locked = true;
+                                    haveState = false;
+                                    setMessage("These settings are only shown after you confirm your password.");
+                                }
+                                case NO_PERMISSION -> {
+                                    nextGet = System.currentTimeMillis() + 10_000;
+                                    setMessage(
+                                            Text.sentence(Text.sanitize(r.error(), 160))
+                                                            .isEmpty()
+                                                    ? "Your account can't see these settings."
+                                                    : Text.sentence(Text.sanitize(r.error(), 160)));
+                                    host.failed(r);
+                                }
+                                default -> {
+                                    nextGet = System.currentTimeMillis() + 5_000;
+                                    if (r.kind() == ApiError.Kind.NETWORK
+                                            || r.kind() == ApiError.Kind.SERVER
+                                            || r.kind() == ApiError.Kind.RATE_LIMIT) {
+                                        setMessage(host.describe(r, "Could not load the settings."));
+                                    } else {
+                                        host.failed(r);
+                                    }
+                                }
+                            }
+                        });
     }
 
     private void setMessage(String text) {
@@ -365,7 +396,9 @@ public final class SettingsTab {
                 return;
             }
             if (r.ok()) {
-                JsonArray js = r.obj().has("jobs") && r.obj().get("jobs").isJsonArray() ? r.obj().getAsJsonArray("jobs") : new JsonArray();
+                JsonArray js = r.obj().has("jobs") && r.obj().get("jobs").isJsonArray()
+                        ? r.obj().getAsJsonArray("jobs")
+                        : new JsonArray();
                 long now = System.currentTimeMillis();
                 for (JsonElement e : js) {
                     JsonObject j = Json.obj(e);
@@ -385,10 +418,14 @@ public final class SettingsTab {
             JsonObject o = r.obj();
             String error = Text.sanitize(r.error(), 160);
             if (r.kind() == ApiError.Kind.CONFLICT) {
-                barStatus = error.equals("bot offline") ? "The bot is offline: nothing was changed." : error.isEmpty() ? "Refused." : Text.sentence(error);
+                barStatus = error.equals("bot offline")
+                        ? "The bot is offline: nothing was changed."
+                        : error.isEmpty() ? "Refused." : Text.sentence(error);
                 etag = null;
                 nextGet = 0;
-            } else if (r.kind() == ApiError.Kind.BAD_REQUEST && o.has("path") && o.get("path").isJsonPrimitive()) {
+            } else if (r.kind() == ApiError.Kind.BAD_REQUEST
+                    && o.has("path")
+                    && o.get("path").isJsonPrimitive()) {
                 String path = Text.sanitize(o.get("path").getAsString(), 200);
                 note(path, "error", error.isEmpty() ? "refused" : error);
                 Leaf l = byPath.get(path);
@@ -398,7 +435,9 @@ public final class SettingsTab {
                     pendingRebuild = true;
                 }
                 barStatus = "Not saved: fix the marked value.";
-            } else if (r.kind() == ApiError.Kind.NO_PERMISSION || r.kind() == ApiError.Kind.LOGIN || r.kind() == ApiError.Kind.MUST_CHANGE) {
+            } else if (r.kind() == ApiError.Kind.NO_PERMISSION
+                    || r.kind() == ApiError.Kind.LOGIN
+                    || r.kind() == ApiError.Kind.MUST_CHANGE) {
                 host.failed(r);
                 barStatus = "Not saved: your account can't do that.";
             } else {
@@ -430,12 +469,15 @@ public final class SettingsTab {
             long t = System.currentTimeMillis();
             if (!r.ok()) {
                 nextJobs = t + 2_000;
-                if (r.kind() != ApiError.Kind.NETWORK && r.kind() != ApiError.Kind.SERVER && r.kind() != ApiError.Kind.RATE_LIMIT) host.failed(r);
+                if (r.kind() != ApiError.Kind.NETWORK
+                        && r.kind() != ApiError.Kind.SERVER
+                        && r.kind() != ApiError.Kind.RATE_LIMIT) host.failed(r);
                 giveUpOldJobs(t);
                 return;
             }
             boolean conflict = false;
-            JsonArray list = r.body() != null && r.body().isJsonArray() ? r.body().getAsJsonArray() : new JsonArray();
+            JsonArray list =
+                    r.body() != null && r.body().isJsonArray() ? r.body().getAsJsonArray() : new JsonArray();
             for (JsonElement e : list) {
                 JsonObject j = Json.obj(e);
                 if (j == null) continue;
@@ -446,18 +488,28 @@ public final class SettingsTab {
                 busy.remove(job.path());
                 JsonElement value = j.has("value") ? j.get("value") : JsonNull.INSTANCE;
                 String error = Text.sanitize(Json.str(j, "error"), 120);
-                if (status.equals("done") || (status.equals("error") && error.equals("conflict"))) values.add(job.path(), value);
+                if (status.equals("done") || (status.equals("error") && error.equals("conflict")))
+                    values.add(job.path(), value);
                 if (status.equals("done")) {
-                    if (draft.get(job.path()) != null && SettingsDraft.same(draft.get(job.path()), job.sent())) draft.remove(job.path());
+                    if (draft.get(job.path()) != null && SettingsDraft.same(draft.get(job.path()), job.sent()))
+                        draft.remove(job.path());
                     notes.put(job.path(), new Note("ok", "applied: " + SettingsSchema.show(value)));
                 } else if (status.equals("error") && error.equals("conflict")) {
                     conflict = true;
                     draft.remove(job.path());
-                    notes.put(job.path(), new Note("error", "changed elsewhere meanwhile; reloaded (now " + SettingsSchema.show(value) + ")"));
+                    notes.put(
+                            job.path(),
+                            new Note(
+                                    "error",
+                                    "changed elsewhere meanwhile; reloaded (now " + SettingsSchema.show(value) + ")"));
                 } else if (status.equals("error")) {
                     notes.put(job.path(), new Note("error", error.isEmpty() ? "failed" : error));
                 } else {
-                    notes.put(job.path(), new Note("error", status.equals("expired") ? "the bot didn't pick it up" : "no answer from the bot"));
+                    notes.put(
+                            job.path(),
+                            new Note(
+                                    "error",
+                                    status.equals("expired") ? "the bot didn't pick it up" : "no answer from the bot"));
                 }
             }
             giveUpOldJobs(t);
@@ -509,7 +561,8 @@ public final class SettingsTab {
         WHorizontalList pages = parent.add(theme.horizontalList()).widget();
         for (Page p : Page.values()) {
             String title = p == Page.BOT ? "Bot settings" : "Account";
-            WButton b = pages.add(theme.button(p == page ? "[ " + title + " ]" : title)).widget();
+            WButton b = pages.add(theme.button(p == page ? "[ " + title + " ]" : title))
+                    .widget();
             b.action = () -> {
                 if (page != p) {
                     page = p;
@@ -533,7 +586,10 @@ public final class SettingsTab {
         boolean hide = host.policy().hideNames();
         List<BotList.Bot> bots = host.bots().list().bots();
         if (bots.isEmpty()) {
-            parent.add(theme.label(host.bots().loaded() ? "No warehouse agents connected yet." : "Loading the bots...", theme.scale(520))).expandX();
+            parent.add(theme.label(
+                            host.bots().loaded() ? "No warehouse agents connected yet." : "Loading the bots...",
+                            theme.scale(520)))
+                    .expandX();
             return;
         }
         WHorizontalList top = parent.add(theme.horizontalList()).expandX().widget();
@@ -545,7 +601,8 @@ public final class SettingsTab {
             labels[i] = (b.online() ? "[on] " : "[off] ") + host.bots().list().name(b, hide);
             if (b.botId().equals(selected)) current = labels[i];
         }
-        WDropdown<String> pick = top.add(theme.dropdown(labels, current == null ? labels[0] : current)).widget();
+        WDropdown<String> pick = top.add(theme.dropdown(labels, current == null ? labels[0] : current))
+                .widget();
         pick.action = () -> {
             String picked = pick.get();
             for (int i = 0; i < labels.length; i++) {
@@ -559,7 +616,6 @@ public final class SettingsTab {
             }
         };
         List<String> scopes = scopes();
-
 
         barLabel = top.add(theme.label("")).expandX().widget();
         barLabel.color(WARN);
@@ -583,7 +639,12 @@ public final class SettingsTab {
         if (saveButton != null) saveButton.set(n > 0 ? "Save (" + n + ")" : "Save");
         if (barLabel != null) {
             String t = barStatus;
-            if (t.isEmpty()) t = !jobs.isEmpty() ? "Applying..." : draft.hasInvalid() ? "Fix the marked values first." : n > 0 ? n + " unsaved change" + (n == 1 ? "" : "s") : "";
+            if (t.isEmpty())
+                t = !jobs.isEmpty()
+                        ? "Applying..."
+                        : draft.hasInvalid()
+                                ? "Fix the marked values first."
+                                : n > 0 ? n + " unsaved change" + (n == 1 ? "" : "s") : "";
             barLabel.set(t);
         }
     }
@@ -597,15 +658,19 @@ public final class SettingsTab {
         boxes.clear();
         updateBar();
         if (!message.isEmpty()) {
-            formBox.add(theme.label(message, theme.scale(520))).expandX().widget().color(WARN);
+            formBox.add(theme.label(message, theme.scale(520)))
+                    .expandX()
+                    .widget()
+                    .color(WARN);
             if (locked) {
                 WButton unlock = formBox.add(theme.button("Confirm password")).widget();
-                unlock.action = () -> host.later(() -> host.confirm("These settings are only shown after you confirm your password.", () -> {
-                    locked = false;
-                    nextGet = 0;
-                    message = "";
-                    host.rebuild();
-                }));
+                unlock.action = () -> host.later(
+                        () -> host.confirm("These settings are only shown after you confirm your password.", () -> {
+                            locked = false;
+                            nextGet = 0;
+                            message = "";
+                            host.rebuild();
+                        }));
             }
             return;
         }
@@ -616,13 +681,28 @@ public final class SettingsTab {
         BotList.Bot bot = host.bots().selectedBot();
         if (!online) {
             String name = bot == null ? "The bot" : host.bots().list().name(bot, hide);
-            formBox.add(theme.label(name + " is offline" + (lastSeen > 0 ? " (last seen " + Text.ago(System.currentTimeMillis() - lastSeen) + ")" : "")
-                + ". Settings are read-only until it is back.", theme.scale(520))).expandX().widget().color(WARN);
+            formBox.add(theme.label(
+                            name + " is offline"
+                                    + (lastSeen > 0
+                                            ? " (last seen " + Text.ago(System.currentTimeMillis() - lastSeen) + ")"
+                                            : "")
+                                    + ". Settings are read-only until it is back.",
+                            theme.scale(520)))
+                    .expandX()
+                    .widget()
+                    .color(WARN);
         }
-        if (readOnly()) formBox.add(theme.label("Read only: your account can't change these settings.", theme.scale(520))).expandX().widget().color(DIM);
+        if (readOnly())
+            formBox.add(theme.label("Read only: your account can't change these settings.", theme.scale(520)))
+                    .expandX()
+                    .widget()
+                    .color(DIM);
 
         WHorizontalList bar = formBox.add(theme.horizontalList()).expandX().widget();
-        WTextBox search = bar.add(theme.textBox(query, "Search all settings")).minWidth(theme.scale(200)).expandX().widget();
+        WTextBox search = bar.add(theme.textBox(query, "Search all settings"))
+                .minWidth(theme.scale(200))
+                .expandX()
+                .widget();
         boxes.add(search);
         searchBox = search;
         search.action = () -> {
@@ -641,7 +721,8 @@ public final class SettingsTab {
                 names[i] = s.name() + " (" + s.count() + ")";
                 if (s.name().equals(section)) cur = names[i];
             }
-            WDropdown<String> dd = bar.add(theme.dropdown(names, cur == null ? names[0] : cur)).widget();
+            WDropdown<String> dd =
+                    bar.add(theme.dropdown(names, cur == null ? names[0] : cur)).widget();
             dd.action = () -> {
                 String picked = dd.get();
                 for (int i = 0; i < names.length; i++) {
@@ -669,9 +750,12 @@ public final class SettingsTab {
         noteLabels.clear();
         boxes.removeIf(b -> b != searchBox);
         WVerticalList formBox = listBox;
-        List<Leaf> shown = query.trim().isEmpty() ? (section == null ? List.of() : SettingsSchema.inSection(leaves, section)) : SettingsSchema.search(leaves, query, 300);
+        List<Leaf> shown = query.trim().isEmpty()
+                ? (section == null ? List.of() : SettingsSchema.inSection(leaves, section))
+                : SettingsSchema.search(leaves, query, 300);
         if (shown.isEmpty()) {
-            formBox.add(theme.label(query.trim().isEmpty() ? "No settings." : "Nothing matches.")).expandX();
+            formBox.add(theme.label(query.trim().isEmpty() ? "No settings." : "Nothing matches."))
+                    .expandX();
             return;
         }
         var view = formBox.add(theme.view()).expandX().widget();
@@ -680,13 +764,19 @@ public final class SettingsTab {
         int count = 0;
         for (Leaf l : shown) {
             if (count++ >= PAGE_LIMIT) {
-                view.add(theme.label("Showing the first " + PAGE_LIMIT + " of " + shown.size() + ". Use the search or another section for the rest.")).expandX().widget().color(DIM);
+                view.add(theme.label("Showing the first " + PAGE_LIMIT + " of " + shown.size()
+                                + ". Use the search or another section for the rest."))
+                        .expandX()
+                        .widget()
+                        .color(DIM);
                 break;
             }
-            String group = (!query.trim().isEmpty() ? l.section() + (l.trail().isEmpty() ? "" : " > ") : "") + String.join(" > ", l.trail());
+            String group = (!query.trim().isEmpty() ? l.section() + (l.trail().isEmpty() ? "" : " > ") : "")
+                    + String.join(" > ", l.trail());
             if (!group.equals(lastGroup)) {
                 lastGroup = group;
-                if (!group.isEmpty()) view.add(theme.label(Text.sanitize(group, 120), true)).expandX();
+                if (!group.isEmpty())
+                    view.add(theme.label(Text.sanitize(group, 120), true)).expandX();
             }
             buildField(view, l.node(), hide);
         }
@@ -706,19 +796,23 @@ public final class SettingsTab {
 
     private void buildField(WContainer parent, Node n, boolean hide) {
         WHorizontalList row = parent.add(theme.horizontalList()).expandX().widget();
-        WLabel title = row.add(theme.label(n.title())).minWidth(theme.scale(190)).widget();
+        WLabel title =
+                row.add(theme.label(n.title())).minWidth(theme.scale(190)).widget();
         title.tooltip = n.help().isEmpty() ? n.path() : n.path() + ": " + n.help();
         String path = n.path();
         JsonElement shownValue = draft.get(path) != null ? draft.get(path) : serverValue(path);
         boolean hidden = n.secret() || (hide && sensitive(path));
         boolean editable = !hidden && !readOnly() && online && !n.locked() && !busy.contains(path) && jobs.isEmpty();
         if (n.secret()) {
-            row.add(theme.label(n.set() ? "secret, set" : "secret, not set")).widget().color(DIM);
+            row.add(theme.label(n.set() ? "secret, set" : "secret, not set"))
+                    .widget()
+                    .color(DIM);
         } else if (hidden) {
             row.add(theme.label("(hidden in streamer display)")).widget().color(DIM);
         } else if (!editable) {
             row.add(theme.label(SettingsSchema.show(shownValue))).widget();
-            if (n.locked() && !n.reason().isEmpty()) row.add(theme.label(n.reason())).widget().color(DIM);
+            if (n.locked() && !n.reason().isEmpty())
+                row.add(theme.label(n.reason())).widget().color(DIM);
         } else {
             try {
                 control(row, n, shownValue);
@@ -757,7 +851,9 @@ public final class SettingsTab {
                 JsonElement[] cur = {value};
                 WButton t = row.add(theme.button(boolText(cur[0]))).widget();
                 t.action = () -> {
-                    boolean on = cur[0].isJsonPrimitive() && cur[0].getAsJsonPrimitive().isBoolean() && cur[0].getAsBoolean();
+                    boolean on = cur[0].isJsonPrimitive()
+                            && cur[0].getAsJsonPrimitive().isBoolean()
+                            && cur[0].getAsBoolean();
                     cur[0] = new JsonPrimitive(cur[0].isJsonNull() || !on);
                     t.set(boolText(cur[0]));
                     editedValue(n, cur[0]);
@@ -773,24 +869,30 @@ public final class SettingsTab {
                 }
                 String cur = value.isJsonPrimitive() ? value.getAsString() : (n.nullable() ? "(none)" : opts.get(0));
                 if (!opts.contains(cur)) opts.add(cur);
-                WDropdown<String> dd = row.add(theme.dropdown(opts.toArray(new String[0]), cur)).widget();
-                dd.action = () -> editedValue(n, dd.get().equals("(none)") && n.nullable() ? JsonNull.INSTANCE : new JsonPrimitive(dd.get()));
+                WDropdown<String> dd = row.add(theme.dropdown(opts.toArray(new String[0]), cur))
+                        .widget();
+                dd.action = () -> editedValue(
+                        n, dd.get().equals("(none)") && n.nullable() ? JsonNull.INSTANCE : new JsonPrimitive(dd.get()));
             }
             case "stringList" -> listControl(row, n, value);
             default -> {
                 String text = value.isJsonNull() ? "" : value.isJsonPrimitive() ? value.getAsString() : "";
-                WTextBox box = row.add(theme.textBox(text)).minWidth(theme.scale(n.numeric() ? 120 : 220)).widget();
+                WTextBox box = row.add(theme.textBox(text))
+                        .minWidth(theme.scale(n.numeric() ? 120 : 220))
+                        .widget();
                 boxes.add(box);
                 WCheckbox[] unset = {null};
                 if (n.nullable()) {
                     unset[0] = row.add(theme.checkbox(value.isJsonNull())).widget();
                     row.add(theme.label("unset"));
                 }
-                Runnable changed = () -> edited(n, SettingsSchema.parse(n, box.get(), unset[0] != null && unset[0].checked));
+                Runnable changed =
+                        () -> edited(n, SettingsSchema.parse(n, box.get(), unset[0] != null && unset[0].checked));
                 box.action = changed;
                 if (unset[0] != null) unset[0].action = changed;
                 if (n.numeric()) {
-                    String range = (Double.isNaN(n.min()) ? "" : "min " + n.min()) + (Double.isNaN(n.max()) ? "" : (Double.isNaN(n.min()) ? "" : ", ") + "max " + n.max());
+                    String range = (Double.isNaN(n.min()) ? "" : "min " + n.min())
+                            + (Double.isNaN(n.max()) ? "" : (Double.isNaN(n.min()) ? "" : ", ") + "max " + n.max());
                     if (!range.isEmpty()) box.tooltip = range;
                 }
             }
@@ -805,7 +907,8 @@ public final class SettingsTab {
     /** A list of text: the entries with a remove button each, and a box to add one. */
     private void listControl(WHorizontalList row, Node n, JsonElement value) {
         List<String> items = new ArrayList<>();
-        if (value.isJsonArray()) for (JsonElement e : value.getAsJsonArray()) if (e.isJsonPrimitive()) items.add(e.getAsString());
+        if (value.isJsonArray())
+            for (JsonElement e : value.getAsJsonArray()) if (e.isJsonPrimitive()) items.add(e.getAsString());
         WVerticalList col = row.add(theme.verticalList()).widget();
         for (int i = 0; i < items.size() && i < LIST_SHOWN; i++) {
             int index = i;
@@ -819,9 +922,13 @@ public final class SettingsTab {
                 host.later(this::renderForm);
             };
         }
-        if (items.size() > LIST_SHOWN) col.add(theme.label("and " + (items.size() - LIST_SHOWN) + " more (kept as they are)")).widget().color(DIM);
+        if (items.size() > LIST_SHOWN)
+            col.add(theme.label("and " + (items.size() - LIST_SHOWN) + " more (kept as they are)"))
+                    .widget()
+                    .color(DIM);
         WHorizontalList add = col.add(theme.horizontalList()).widget();
-        WTextBox box = add.add(theme.textBox("", "add...")).minWidth(theme.scale(160)).widget();
+        WTextBox box =
+                add.add(theme.textBox("", "add...")).minWidth(theme.scale(160)).widget();
         boxes.add(box);
         WButton plus = add.add(theme.button("Add")).widget();
         plus.action = () -> {
@@ -846,14 +953,28 @@ public final class SettingsTab {
         boolean hide = host.policy().hideNames();
         String who = a.userName().isBlank() ? "owner" : Text.sanitize(a.userName(), 40);
         parent.add(theme.label("Account", true));
-        parent.add(theme.label(hide ? "Logged in" : "Logged in as " + who + (a.owner() ? " (owner)" : ""))).expandX();
+        parent.add(theme.label(hide ? "Logged in" : "Logged in as " + who + (a.owner() ? " (owner)" : "")))
+                .expandX();
         if (a.owner()) {
-            parent.add(theme.label("The owner has every permission.", theme.scale(520))).expandX().widget().color(DIM);
+            parent.add(theme.label("The owner has every permission.", theme.scale(520)))
+                    .expandX()
+                    .widget()
+                    .color(DIM);
         } else {
             List<String> can = new ArrayList<>();
-            for (UsersModel.Switch s : UsersModel.SWITCHES) if (a.can(s.key()) && !s.key().equals("streamer")) can.add(s.label());
-            parent.add(theme.label("Your account can: " + (can.isEmpty() ? "nothing yet" : String.join(", ", can)) + ".", theme.scale(520))).expandX().widget().color(DIM);
-            if (a.forcedStreamer()) parent.add(theme.label("Streamer mode is enforced for your account by the owner.", theme.scale(520))).expandX().widget().color(WARN);
+            for (UsersModel.Switch s : UsersModel.SWITCHES)
+                if (a.can(s.key()) && !s.key().equals("streamer")) can.add(s.label());
+            parent.add(theme.label(
+                            "Your account can: " + (can.isEmpty() ? "nothing yet" : String.join(", ", can)) + ".",
+                            theme.scale(520)))
+                    .expandX()
+                    .widget()
+                    .color(DIM);
+            if (a.forcedStreamer())
+                parent.add(theme.label("Streamer mode is enforced for your account by the owner.", theme.scale(520)))
+                        .expandX()
+                        .widget()
+                        .color(WARN);
         }
         passwordPanel = new OwnPasswordPanel();
         passwordPanel.build(parent, theme, a.minLength(), passwordMessage, this::changePassword);
@@ -871,8 +992,9 @@ public final class SettingsTab {
         WButton logout = row.add(theme.button("Log out")).widget();
         logout.action = () -> host.later(host::logout);
         logoutAllButton = row.add(theme.button("Log out everywhere")).widget();
-        logoutAllButton.tooltip = a.owner() ? "Ends every session of every account, including this one. Click twice."
-            : "Ends every session of your account, including this one. Click twice.";
+        logoutAllButton.tooltip = a.owner()
+                ? "Ends every session of every account, including this one. Click twice."
+                : "Ends every session of your account, including this one. Click twice.";
         logoutAllButton.action = () -> {
             long now = System.currentTimeMillis();
             if (now > logoutAllArmedUntil) {
@@ -902,7 +1024,10 @@ public final class SettingsTab {
             else text = host.describe(r, "Could not change the password (HTTP " + r.status() + ").");
             passwordMessage = text;
             if (passwordPanel != null) passwordPanel.setNotice(text);
-            if (!r.ok() && r.kind() != ApiError.Kind.WRONG_PASSWORD && r.kind() != ApiError.Kind.RATE_LIMIT && r.kind() != ApiError.Kind.NETWORK) host.failed(r);
+            if (!r.ok()
+                    && r.kind() != ApiError.Kind.WRONG_PASSWORD
+                    && r.kind() != ApiError.Kind.RATE_LIMIT
+                    && r.kind() != ApiError.Kind.NETWORK) host.failed(r);
         });
     }
 

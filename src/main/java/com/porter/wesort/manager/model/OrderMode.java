@@ -5,7 +5,8 @@ package com.porter.wesort.manager.model;
  * this client must refuse.
  */
 public enum OrderMode {
-    SERVER_BOTS("Send to server bots"), THIS_CLIENT("Fulfil here (this client)");
+    SERVER_BOTS("Send to server bots"),
+    THIS_CLIENT("Fulfil here (this client)");
 
     private final String label;
 
@@ -36,8 +37,13 @@ public enum OrderMode {
      * Why this client cannot start an order now, or null. {@code stashManagerOn} is the bot module: it drives the same sorter
      * and may be handed server orders at any time, so the two never run together.
      */
-    public static String localRefusal(boolean inWorld, boolean stashManagerOn, boolean localRunning, boolean sorterHoldsOrder,
-                                      boolean hasStash, boolean hasDelivery) {
+    public static String localRefusal(
+            boolean inWorld,
+            boolean stashManagerOn,
+            boolean localRunning,
+            boolean sorterHoldsOrder,
+            boolean hasStash,
+            boolean hasDelivery) {
         return localRefusal(inWorld, stashManagerOn, localRunning, sorterHoldsOrder, hasStash, hasDelivery, null);
     }
 
@@ -53,14 +59,22 @@ public enum OrderMode {
      * server order (wesort-stash-manager was turned off with it in hand) is kept for wesort-stash-manager to finish, so this client does not
      * start while it is there; a saved order of this client is simply replaced.
      */
-    public static String localRefusal(boolean inWorld, boolean stashManagerOn, boolean localRunning, boolean sorterHoldsOrder,
-                                      boolean hasStash, boolean hasDelivery, String savedOrderId) {
+    public static String localRefusal(
+            boolean inWorld,
+            boolean stashManagerOn,
+            boolean localRunning,
+            boolean sorterHoldsOrder,
+            boolean hasStash,
+            boolean hasDelivery,
+            String savedOrderId) {
         if (!inWorld) return "Join the world with your stash first.";
         if (localRunning) return "An order is already running on this client.";
-        if (stashManagerOn) return "wesort-stash-manager is on and may be taking server orders with the same sorter. Turn it off to fulfil orders here.";
+        if (stashManagerOn)
+            return "wesort-stash-manager is on and may be taking server orders with the same sorter. Turn it off to fulfil orders here.";
         if (sorterHoldsOrder) return "The sorter is busy with another order.";
         if (!hasStash) return "No stash is loaded. Set stash-name in wesort-stash-sorter and scan the stash first.";
-        if (!hasDelivery) return "No delivery container is set. Use Set delivery below, then right-click a chest in the stash.";
+        if (!hasDelivery)
+            return "No delivery container is set. Use Set delivery below, then right-click a chest in the stash.";
         if (savedOrderId != null && !isLocalId(savedOrderId)) {
             return "A server order is parked in this stash. Turn wesort-stash-manager on again to finish it, or cancel it on the website.";
         }

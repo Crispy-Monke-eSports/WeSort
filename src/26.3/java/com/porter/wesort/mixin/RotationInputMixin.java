@@ -10,6 +10,8 @@ import org.spongepowered.asm.mixin.injection.ModifyVariable;
 public abstract class RotationInputMixin {
     @ModifyVariable(method = "rotate(DDIZLjava/lang/Runnable;)V", at = @At("HEAD"), argsOnly = true)
     private static Runnable wesort$preserveAutomationScope(Runnable callback) {
-        return callback != null && InventorySync.calledFromWeSort() ? InventorySync.scopedAutomation(callback) : callback;
+        return callback != null && InventorySync.calledFromWeSort()
+                ? InventorySync.scopedAutomation(callback)
+                : callback;
     }
 }

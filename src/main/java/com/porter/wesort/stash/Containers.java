@@ -1,6 +1,10 @@
 package com.porter.wesort.stash;
 
+import static meteordevelopment.meteorclient.MeteorClient.mc;
+
 import com.porter.wesort.stash.Stash.Box;
+import java.util.ArrayList;
+import java.util.List;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.ClipContext;
@@ -15,16 +19,11 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
-import java.util.ArrayList;
-import java.util.List;
-
-import static meteordevelopment.meteorclient.MeteorClient.mc;
-
 /**
  * Where the signs of a container can be, and what they say.
  */
 public final class Containers {
-    private static final Direction[] HORIZONTALS = { Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST };
+    private static final Direction[] HORIZONTALS = {Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST};
 
     private Containers() {}
 
@@ -66,13 +65,14 @@ public final class Containers {
                 BlockState state = mc.level.getBlockState(signPos);
                 // A wall hanging sign hangs between the blocks at its ends, whichever way it faces, so any beside the
                 // container is its own unless another container of the stash is right beside it too
-                boolean ours = (state.getBlock() instanceof WallSignBlock && state.getValue(WallSignBlock.FACING) == dir)
-                    || (state.getBlock() instanceof WallHangingSignBlock && !sharedWithAnother(stash, box, signPos));
+                boolean ours =
+                        (state.getBlock() instanceof WallSignBlock && state.getValue(WallSignBlock.FACING) == dir)
+                                || (state.getBlock() instanceof WallHangingSignBlock
+                                        && !sharedWithAnother(stash, box, signPos));
                 if (ours) {
                     any = true;
                     addLines(labels, signPos);
-                }
-                else if (mc.level.getBlockEntity(signPos) instanceof SignBlockEntity) any = true;
+                } else if (mc.level.getBlockEntity(signPos) instanceof SignBlockEntity) any = true;
             }
 
             BlockPos above = part.above();
@@ -80,8 +80,7 @@ public final class Containers {
             if (mc.level.getBlockState(above).getBlock() instanceof StandingSignBlock) {
                 any = true;
                 addLines(labels, above);
-            }
-            else if (mc.level.getBlockEntity(above) instanceof SignBlockEntity) any = true;
+            } else if (mc.level.getBlockEntity(above) instanceof SignBlockEntity) any = true;
         }
         return new Signs(labels, any);
     }
@@ -95,7 +94,9 @@ public final class Containers {
         for (Box other : stash.boxes) {
             if (other == box) continue;
             for (BlockPos part : other.parts) {
-                if (part.getY() == signPos.getY() && Math.abs(part.getX() - signPos.getX()) + Math.abs(part.getZ() - signPos.getZ()) == 1) return true;
+                if (part.getY() == signPos.getY()
+                        && Math.abs(part.getX() - signPos.getX()) + Math.abs(part.getZ() - signPos.getZ()) == 1)
+                    return true;
             }
         }
         return false;
@@ -153,7 +154,8 @@ public final class Containers {
                 if (!mc.level.isLoaded(part)) return null;
                 BlockState state = mc.level.getBlockState(part);
                 Direction front = null;
-                if (state.hasProperty(BlockStateProperties.HORIZONTAL_FACING)) front = state.getValue(BlockStateProperties.HORIZONTAL_FACING);
+                if (state.hasProperty(BlockStateProperties.HORIZONTAL_FACING))
+                    front = state.getValue(BlockStateProperties.HORIZONTAL_FACING);
                 else if (state.hasProperty(BlockStateProperties.FACING)) {
                     Direction facing = state.getValue(BlockStateProperties.FACING);
                     if (facing.getAxis().isHorizontal()) front = facing;
@@ -186,7 +188,8 @@ public final class Containers {
                     BlockPos feet = sign.offset(dx, dy, dz);
                     if (!mc.level.isLoaded(feet)) continue;
                     // On the side of the sign
-                    if ((feet.getX() - part.getX()) * dir.getStepX() + (feet.getZ() - part.getZ()) * dir.getStepZ() < 1) continue;
+                    if ((feet.getX() - part.getX()) * dir.getStepX() + (feet.getZ() - part.getZ()) * dir.getStepZ() < 1)
+                        continue;
                     BlockPos head = feet.above();
                     if (stash.boxAt(feet) != null || stash.boxAt(head) != null) continue;
                     if (!free(feet) || !free(head)) continue;
@@ -208,7 +211,9 @@ public final class Containers {
     private static boolean free(BlockPos pos) {
         BlockState state = mc.level.getBlockState(pos);
         if (state.isAir()) return true;
-        return state.getCollisionShape(mc.level, pos).isEmpty() && state.getFluidState().isEmpty() && !(state.getBlock() instanceof BaseFireBlock);
+        return state.getCollisionShape(mc.level, pos).isEmpty()
+                && state.getFluidState().isEmpty()
+                && !(state.getBlock() instanceof BaseFireBlock);
     }
 
     /**
@@ -217,12 +222,14 @@ public final class Containers {
      */
     private static boolean seesSide(BlockPos feet, Direction dir, BlockPos part) {
         Vec3 eyes = new Vec3(feet.getX() + 0.5, feet.getY() + SNEAKING_EYE, feet.getZ() + 0.5);
-        Vec3 point = new Vec3(part.getX() + 0.5 + dir.getStepX() * 0.4, part.getY() + 0.5, part.getZ() + 0.5 + dir.getStepZ() * 0.4);
+        Vec3 point = new Vec3(
+                part.getX() + 0.5 + dir.getStepX() * 0.4, part.getY() + 0.5, part.getZ() + 0.5 + dir.getStepZ() * 0.4);
         double length = eyes.distanceTo(point);
         if (length > SIGN_REACH) return false;
 
         Vec3 end = eyes.add(point.subtract(eyes).scale(SIGN_REACH / length));
-        BlockHitResult hit = mc.level.clip(new ClipContext(eyes, end, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, mc.player));
+        BlockHitResult hit = mc.level.clip(
+                new ClipContext(eyes, end, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, mc.player));
         return hit.getType() == HitResult.Type.BLOCK && hit.getBlockPos().equals(part) && hit.getDirection() == dir;
     }
 }

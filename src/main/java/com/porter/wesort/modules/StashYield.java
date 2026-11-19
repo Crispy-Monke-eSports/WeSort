@@ -1,17 +1,16 @@
 package com.porter.wesort.modules;
 
-import meteordevelopment.meteorclient.systems.modules.Modules;
-import meteordevelopment.meteorclient.systems.modules.player.AutoEat;
-import meteordevelopment.meteorclient.utils.misc.input.Input;
-import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
-import net.minecraft.client.Options;
-import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.item.ItemStack;
+import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 import java.util.ArrayDeque;
 import java.util.Set;
-
-import static meteordevelopment.meteorclient.MeteorClient.mc;
+import meteordevelopment.meteorclient.systems.modules.Modules;
+import meteordevelopment.meteorclient.systems.modules.player.AutoEat;
+import meteordevelopment.meteorclient.utils.misc.input.Input;
+import net.minecraft.client.Options;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.item.ItemStack;
 
 /**
  * Tells when someone else is using the client, so the sorter can give way: an open screen that isn't its own container,
@@ -102,7 +101,8 @@ final class StashYield {
      */
     Reason check() {
         now++;
-        while (!interruptions.isEmpty() && now - interruptions.peekFirst() > INTERRUPTION_WINDOW) interruptions.pollFirst();
+        while (!interruptions.isEmpty() && now - interruptions.peekFirst() > INTERRUPTION_WINDOW)
+            interruptions.pollFirst();
 
         Reason reason = detect();
         if (reason != null) {
@@ -115,7 +115,8 @@ final class StashYield {
     private Reason detect() {
         if (mc.player == null || mc.level == null) return null;
 
-        // Any screen that isn't the container the sorter has open: chat, the inventory, menus, a chest the player opened
+        // Any screen that isn't the container the sorter has open: chat, the inventory, menus, a chest the player
+        // opened
         if (mc.screen != null) {
             boolean ours = mc.screen instanceof AbstractContainerScreen<?> screen && owner.ourMenu(screen.getMenu());
             if (!ours) {
@@ -138,7 +139,8 @@ final class StashYield {
         Modules modules = Modules.get();
         AutoEat eat = modules.get(AutoEat.class);
         if (eat != null && eat.isActive() && eat.eating) return Reason.Eating;
-        // Something was taken, moved or swapped outside the carry slots and the sorter didn't do it. Items turning up (picked
+        // Something was taken, moved or swapped outside the carry slots and the sorter didn't do it. Items turning up
+        // (picked
         // up off the ground) don't count
         if (taken && !owner.ownInventoryActivity() && !owner.walkingOurs()) return Reason.Inventory;
 
@@ -147,8 +149,14 @@ final class StashYield {
 
     private static boolean keysDown() {
         Options o = mc.options;
-        return Input.isPressed(o.keyUp) || Input.isPressed(o.keyDown) || Input.isPressed(o.keyLeft) || Input.isPressed(o.keyRight)
-            || Input.isPressed(o.keyJump) || Input.isPressed(o.keyShift) || Input.isPressed(o.keyAttack) || Input.isPressed(o.keyUse);
+        return Input.isPressed(o.keyUp)
+                || Input.isPressed(o.keyDown)
+                || Input.isPressed(o.keyLeft)
+                || Input.isPressed(o.keyRight)
+                || Input.isPressed(o.keyJump)
+                || Input.isPressed(o.keyShift)
+                || Input.isPressed(o.keyAttack)
+                || Input.isPressed(o.keyUse);
     }
 
     /**
@@ -160,7 +168,9 @@ final class StashYield {
         boolean first = !invSigSet;
         boolean taken = false;
         for (int slot = 0; slot < 36; slot++) {
-            ItemStack now = carry.contains(slot) ? ItemStack.EMPTY : mc.player.getInventory().getItem(slot);
+            ItemStack now = carry.contains(slot)
+                    ? ItemStack.EMPTY
+                    : mc.player.getInventory().getItem(slot);
             ItemStack before = seen[slot];
             if (!first && before != null && !before.isEmpty() && !carry.contains(slot)) {
                 // Wear on a tool is not a change: only the item and the count are compared
@@ -220,8 +230,11 @@ final class StashYield {
     void startWaiting(Reason reason) {
         if (waitStart >= 0) return;
         waitStart = now;
-        owner.say(String.format("Waiting for you/another module (%s).", reason == null ? "a stack on the cursor" : reason.label));
-        owner.step(String.format("waiting: %s; next: carry on after %ds of quiet.", reason == null ? "a stack on the cursor" : reason.label, quietTicks() / 20));
+        owner.say(String.format(
+                "Waiting for you/another module (%s).", reason == null ? "a stack on the cursor" : reason.label));
+        owner.step(String.format(
+                "waiting: %s; next: carry on after %ds of quiet.",
+                reason == null ? "a stack on the cursor" : reason.label, quietTicks() / 20));
     }
 
     void endWaiting() {

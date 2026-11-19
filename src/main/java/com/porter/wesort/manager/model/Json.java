@@ -6,8 +6,7 @@ import com.google.gson.JsonObject;
 
 /** Forgiving readers for server JSON: a wrong type gives the default, never an exception. */
 public final class Json {
-    private Json() {
-    }
+    private Json() {}
 
     public static JsonObject obj(JsonElement e) {
         return e != null && e.isJsonObject() ? e.getAsJsonObject() : null;

@@ -13,6 +13,14 @@ import com.porter.wesort.manager.model.UsersModel.User;
 import com.porter.wesort.manager.net.ApiError;
 import com.porter.wesort.manager.net.ApiResult;
 import com.porter.wesort.manager.net.ServerUrl;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import meteordevelopment.meteorclient.gui.GuiTheme;
 import meteordevelopment.meteorclient.gui.widgets.WLabel;
 import meteordevelopment.meteorclient.gui.widgets.containers.WContainer;
@@ -25,17 +33,14 @@ import meteordevelopment.meteorclient.gui.widgets.pressable.WCheckbox;
 import meteordevelopment.meteorclient.utils.Utils;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
 public final class UsersTab {
-    private enum Kind { NONE, ADD, EDIT, RESET, OWNER }
+    private enum Kind {
+        NONE,
+        ADD,
+        EDIT,
+        RESET,
+        OWNER
+    }
 
     private static final Color WARN = new Color(255, 190, 80);
     private static final Color BAD = new Color(255, 110, 110);
@@ -167,17 +172,22 @@ public final class UsersTab {
         secrets.clear();
         boolean hide = host.policy().hideNames();
         if (locked) {
-            box.add(theme.label("The users are only shown after you confirm your password.", theme.scale(520))).expandX();
+            box.add(theme.label("The users are only shown after you confirm your password.", theme.scale(520)))
+                    .expandX();
             WButton unlock = box.add(theme.button("Confirm password")).widget();
-            unlock.action = () -> host.later(() -> host.confirm("Managing users needs your password again. It is not asked for again for 15 minutes.", () -> {
-                locked = false;
-                data = null;
-                host.rebuild();
-            }));
+            unlock.action = () -> host.later(() -> host.confirm(
+                    "Managing users needs your password again. It is not asked for again for 15 minutes.", () -> {
+                        locked = false;
+                        data = null;
+                        host.rebuild();
+                    }));
             return;
         }
         if (data == null) {
-            box.add(theme.label(error.isEmpty() ? "Loading..." : error, theme.scale(520))).expandX().widget().color(error.isEmpty() ? DIM : BAD);
+            box.add(theme.label(error.isEmpty() ? "Loading..." : error, theme.scale(520)))
+                    .expandX()
+                    .widget()
+                    .color(error.isEmpty() ? DIM : BAD);
             if (!error.isEmpty()) {
                 WButton retry = box.add(theme.button("Try again")).widget();
                 retry.action = () -> host.later(() -> {
@@ -199,17 +209,23 @@ public final class UsersTab {
         if (kind == Kind.OWNER) renameForm();
 
         WHorizontalList bar = box.add(theme.horizontalList()).expandX().widget();
-        bar.add(theme.label(data.users().size() + " of " + data.maxUsers() + " sub-users")).expandX();
+        bar.add(theme.label(data.users().size() + " of " + data.maxUsers() + " sub-users"))
+                .expandX();
         WButton add = bar.add(theme.button("Add user")).widget();
         add.action = () -> {
             toggle(Kind.ADD, "");
             formName = "";
             formMust = true;
-            formPreset = data.presets().isEmpty() ? "custom" : data.presets().keySet().iterator().next();
-            formPerms = formPreset.equals("custom") ? defaultPerms() : data.presets().get(formPreset).copy();
+            formPreset = data.presets().isEmpty()
+                    ? "custom"
+                    : data.presets().keySet().iterator().next();
+            formPerms = formPreset.equals("custom")
+                    ? defaultPerms()
+                    : data.presets().get(formPreset).copy();
         };
         if (data.users().size() >= data.maxUsers()) add.tooltip = "At most " + data.maxUsers() + " sub-users";
-        WButton auditButton = bar.add(theme.button(showAudit ? "Hide audit log" : "Audit log")).widget();
+        WButton auditButton = bar.add(theme.button(showAudit ? "Hide audit log" : "Audit log"))
+                .widget();
         auditButton.action = () -> {
             showAudit = !showAudit;
             if (showAudit) loadAudit();
@@ -217,9 +233,18 @@ public final class UsersTab {
         };
         if (kind == Kind.ADD) addForm();
 
-        if (data.users().isEmpty()) box.add(theme.label("No sub-users yet. Add one to let someone else in with fewer permissions.", theme.scale(520))).expandX().widget().color(DIM);
+        if (data.users().isEmpty())
+            box.add(theme.label(
+                            "No sub-users yet. Add one to let someone else in with fewer permissions.",
+                            theme.scale(520)))
+                    .expandX()
+                    .widget()
+                    .color(DIM);
         for (User u : data.users()) userRow(u, hide);
-        box.add(theme.label(UsersModel.IMPLIED_HINT, theme.scale(560))).expandX().widget().color(DIM);
+        box.add(theme.label(UsersModel.IMPLIED_HINT, theme.scale(560)))
+                .expandX()
+                .widget()
+                .color(DIM);
         if (showAudit) auditPanel(hide);
     }
 
@@ -244,11 +269,15 @@ public final class UsersTab {
         WVerticalList card = box.add(theme.verticalList()).expandX().widget();
         WHorizontalList head = card.add(theme.horizontalList()).expandX().widget();
         head.add(theme.label(hide ? "User" : u.name(), true));
-        head.add(theme.label("[" + UsersModel.presetLabel(u.perms(), data) + "]")).widget().color(DIM);
+        head.add(theme.label("[" + UsersModel.presetLabel(u.perms(), data) + "]"))
+                .widget()
+                .color(DIM);
         if (u.disabled()) head.add(theme.label("Disabled")).widget().color(BAD);
-        if (u.mustChange()) head.add(theme.label("Must change password")).widget().color(WARN);
+        if (u.mustChange())
+            head.add(theme.label("Must change password")).widget().color(WARN);
         List<String> meta = new ArrayList<>();
-        meta.add("Last login " + (u.lastLoginAt() < 0 ? "never" : Text.ago(System.currentTimeMillis() - u.lastLoginAt())));
+        meta.add("Last login "
+                + (u.lastLoginAt() < 0 ? "never" : Text.ago(System.currentTimeMillis() - u.lastLoginAt())));
         meta.add(u.sessions() + (u.sessions() == 1 ? " session" : " sessions"));
         String scope = UsersModel.scopeText(u.perms());
         if (!scope.isEmpty()) meta.add(scope);
@@ -263,12 +292,17 @@ public final class UsersTab {
             formPerms = u.perms().copy();
         };
         String disableKey = "disable:" + u.id();
-        WButton disable = actions.add(theme.button(u.disabled() ? "Enable" : armedKey.equals(disableKey) ? "Confirm disable?" : "Disable")).widget();
-        disable.tooltip = u.disabled() ? "Lets " + name + " log in again." : "Ends every session of " + name + " now and blocks logging in. Click twice.";
+        WButton disable = actions.add(theme.button(
+                        u.disabled() ? "Enable" : armedKey.equals(disableKey) ? "Confirm disable?" : "Disable"))
+                .widget();
+        disable.tooltip = u.disabled()
+                ? "Lets " + name + " log in again."
+                : "Ends every session of " + name + " now and blocks logging in. Click twice.";
         disable.action = () -> {
             JsonObject b = new JsonObject();
             b.addProperty("disabled", !u.disabled());
-            if (u.disabled() || armed(disableKey)) post("/api/v1/users/" + ServerUrl.seg(u.id()), b, u.disabled() ? "Enabled." : "Disabled.");
+            if (u.disabled() || armed(disableKey))
+                post("/api/v1/users/" + ServerUrl.seg(u.id()), b, u.disabled() ? "Enabled." : "Disabled.");
         };
         WButton reset = actions.add(theme.button("Reset password")).widget();
         reset.action = () -> {
@@ -278,16 +312,22 @@ public final class UsersTab {
             formMust = true;
         };
         String logoutKey = "logout:" + u.id();
-        WButton logout = actions.add(theme.button(armedKey.equals(logoutKey) ? "Confirm log out?" : "Log out everywhere")).widget();
+        WButton logout = actions.add(
+                        theme.button(armedKey.equals(logoutKey) ? "Confirm log out?" : "Log out everywhere"))
+                .widget();
         logout.tooltip = "Ends every session of " + name + ". Click twice.";
         logout.action = () -> {
-            if (armed(logoutKey)) post("/api/v1/users/" + ServerUrl.seg(u.id()) + "/logout", new JsonObject(), "Sessions ended.");
+            if (armed(logoutKey))
+                post("/api/v1/users/" + ServerUrl.seg(u.id()) + "/logout", new JsonObject(), "Sessions ended.");
         };
         String deleteKey = "delete:" + u.id();
-        WButton delete = actions.add(theme.button(armedKey.equals(deleteKey) ? "Confirm delete?" : "Delete")).widget();
-        delete.tooltip = "Deletes " + name + ". Their sessions end now; their orders stay. This can't be undone. Click twice.";
+        WButton delete = actions.add(theme.button(armedKey.equals(deleteKey) ? "Confirm delete?" : "Delete"))
+                .widget();
+        delete.tooltip =
+                "Deletes " + name + ". Their sessions end now; their orders stay. This can't be undone. Click twice.";
         delete.action = () -> {
-            if (armed(deleteKey)) post("/api/v1/users/" + ServerUrl.seg(u.id()) + "/delete", new JsonObject(), "Deleted.");
+            if (armed(deleteKey))
+                post("/api/v1/users/" + ServerUrl.seg(u.id()) + "/delete", new JsonObject(), "Deleted.");
         };
         if (kind == Kind.EDIT && formId.equals(u.id())) editForm(u);
         if (kind == Kind.RESET && formId.equals(u.id())) resetForm(u);
@@ -318,7 +358,9 @@ public final class UsersTab {
                 return;
             }
             formBusy = false;
-            String text = r.kind() == ApiError.Kind.CANCELLED ? "Cancelled: the password was not confirmed." : serverText(r, "Could not do that (HTTP " + r.status() + ").");
+            String text = r.kind() == ApiError.Kind.CANCELLED
+                    ? "Cancelled: the password was not confirmed."
+                    : serverText(r, "Could not do that (HTTP " + r.status() + ").");
             formMessage = text;
             host.notice(text);
             if (r.kind() == ApiError.Kind.LOGIN || r.kind() == ApiError.Kind.MUST_CHANGE) host.failed(r);
@@ -335,21 +377,28 @@ public final class UsersTab {
 
     private WTextBox field(WContainer parent, String label, String text, java.util.function.Consumer<String> set) {
         parent.add(theme.label(label));
-        WTextBox b = parent.add(theme.textBox(text)).minWidth(theme.scale(300)).expandX().widget();
+        WTextBox b = parent.add(theme.textBox(text))
+                .minWidth(theme.scale(300))
+                .expandX()
+                .widget();
         b.action = () -> set.accept(b.get());
         return b;
     }
 
     private WTextBox secret(WContainer parent, String label, String text, java.util.function.Consumer<String> set) {
         parent.add(theme.label(label));
-        WTextBox b = parent.add(theme.textBox(text, null, MaskedRenderer.ANY_CHAR, MaskedRenderer.class)).minWidth(theme.scale(300)).expandX().widget();
+        WTextBox b = parent.add(theme.textBox(text, null, MaskedRenderer.ANY_CHAR, MaskedRenderer.class))
+                .minWidth(theme.scale(300))
+                .expandX()
+                .widget();
         b.action = () -> set.accept(b.get());
         secrets.add(b);
         return b;
     }
 
     private WLabel message(WContainer parent) {
-        WLabel l = parent.add(theme.label(formMessage, theme.scale(520))).expandX().widget();
+        WLabel l =
+                parent.add(theme.label(formMessage, theme.scale(520))).expandX().widget();
         l.color(BAD);
         return l;
     }
@@ -382,7 +431,9 @@ public final class UsersTab {
         WVerticalList f = formBox();
         f.add(theme.label("Rename the owner", true));
         field(f, "Owner name (1-32 letters, digits, _ . -)", formName, v -> formName = v);
-        f.add(theme.label("The owner can still log in with a blank username.")).widget().color(DIM);
+        f.add(theme.label("The owner can still log in with a blank username."))
+                .widget()
+                .color(DIM);
         buttons(f, "Rename", () -> {
             String n = formName.trim();
             if (n.equals(data.ownerName())) {
@@ -408,7 +459,11 @@ public final class UsersTab {
         WVerticalList f = formBox();
         f.add(theme.label("Add user", true));
         field(f, "Username (1-32 letters, digits, _ . -)", formName, v -> formName = v);
-        secret(f, "Temporary password (at least " + data.minLength() + " characters)", formPassword, v -> formPassword = v);
+        secret(
+                f,
+                "Temporary password (at least " + data.minLength() + " characters)",
+                formPassword,
+                v -> formPassword = v);
         secret(f, "Temporary password again", formAgain, v -> formAgain = v);
         List<String> ids = new ArrayList<>(data.presets().keySet());
         List<String> labels = new ArrayList<>();
@@ -416,20 +471,27 @@ public final class UsersTab {
         labels.add("Custom");
         ids.add("custom");
         f.add(theme.label("Permissions"));
-        WDropdown<String> dd = f.add(theme.dropdown(labels.toArray(new String[0]), labels.get(ids.indexOf(formPreset)))).widget();
+        WDropdown<String> dd = f.add(theme.dropdown(labels.toArray(new String[0]), labels.get(ids.indexOf(formPreset))))
+                .widget();
         dd.action = () -> {
             int i = labels.indexOf(dd.get());
             if (i < 0 || ids.get(i).equals(formPreset)) return;
-            Perms from = formPreset.equals("custom") ? formPerms : data.presets().get(formPreset);
+            Perms from =
+                    formPreset.equals("custom") ? formPerms : data.presets().get(formPreset);
             formPreset = ids.get(i);
             // Custom starts from the preset picked before
-            formPerms = formPreset.equals("custom") ? (from == null ? defaultPerms() : from.copy()) : data.presets().get(formPreset).copy();
+            formPerms = formPreset.equals("custom")
+                    ? (from == null ? defaultPerms() : from.copy())
+                    : data.presets().get(formPreset).copy();
             later();
         };
         if (formPreset.equals("custom")) {
             permsEditor(f);
         } else {
-            f.add(theme.label(UsersModel.describe(data.presets().get(formPreset)), theme.scale(520))).expandX().widget().color(DIM);
+            f.add(theme.label(UsersModel.describe(data.presets().get(formPreset)), theme.scale(520)))
+                    .expandX()
+                    .widget()
+                    .color(DIM);
         }
         WHorizontalList must = f.add(theme.horizontalList()).widget();
         WCheckbox mc = must.add(theme.checkbox(formMust)).widget();
@@ -482,7 +544,11 @@ public final class UsersTab {
     private void resetForm(User u) {
         WVerticalList f = formBox();
         f.add(theme.label("Reset the password of " + u.name(), true));
-        secret(f, "New temporary password (at least " + data.minLength() + " characters)", formPassword, v -> formPassword = v);
+        secret(
+                f,
+                "New temporary password (at least " + data.minLength() + " characters)",
+                formPassword,
+                v -> formPassword = v);
         secret(f, "New temporary password again", formAgain, v -> formAgain = v);
         WHorizontalList must = f.add(theme.horizontalList()).widget();
         WCheckbox mc = must.add(theme.checkbox(formMust)).widget();
@@ -518,7 +584,8 @@ public final class UsersTab {
             boolean forced = implied.contains(s.key());
             WHorizontalList row = e.add(theme.horizontalList()).widget();
             WCheckbox c = row.add(theme.checkbox(forced || p.flag(s.key()))).widget();
-            WLabel l = row.add(theme.label(s.label() + (forced ? " (on, implied)" : ""))).widget();
+            WLabel l = row.add(theme.label(s.label() + (forced ? " (on, implied)" : "")))
+                    .widget();
             l.tooltip = s.help();
             if (s.key().equals("streamer")) l.color(WARN);
             c.action = () -> {
@@ -536,14 +603,16 @@ public final class UsersTab {
         });
         if (p.stashes != null) {
             Map<String, StashScope> known = new LinkedHashMap<>();
-            for (StashRef s : host.stashes()) known.put(new StashScope(s.server(), s.stash()).key(), new StashScope(s.server(), s.stash()));
+            for (StashRef s : host.stashes())
+                known.put(new StashScope(s.server(), s.stash()).key(), new StashScope(s.server(), s.stash()));
             for (StashScope s : p.stashes) known.putIfAbsent(s.key(), s);
             if (known.isEmpty()) e.add(theme.label("None known yet.")).widget().color(DIM);
             boolean hide = host.policy().hideNames();
             for (StashScope s : known.values()) {
                 WHorizontalList row = e.add(theme.horizontalList()).widget();
                 WCheckbox c = row.add(theme.checkbox(p.stashes.contains(s))).widget();
-                row.add(theme.label(Text.sanitize(s.stash(), 60) + (hide ? "" : " @ " + Text.sanitize(s.server(), 60))));
+                row.add(theme.label(
+                        Text.sanitize(s.stash(), 60) + (hide ? "" : " @ " + Text.sanitize(s.server(), 60))));
                 c.action = () -> {
                     if (c.checked) {
                         if (!p.stashes.contains(s)) p.stashes.add(s);
@@ -568,7 +637,10 @@ public final class UsersTab {
                 BotList.Bot b = list.find(id);
                 WHorizontalList row = e.add(theme.horizontalList()).widget();
                 WCheckbox c = row.add(theme.checkbox(p.bots.contains(id))).widget();
-                row.add(theme.label(b == null ? Text.sanitize(id, 40) + " (not seen now)" : list.name(b, hide) + (hide ? "" : " (" + Text.sanitize(id, 40) + ")")));
+                row.add(theme.label(
+                        b == null
+                                ? Text.sanitize(id, 40) + " (not seen now)"
+                                : list.name(b, hide) + (hide ? "" : " (" + Text.sanitize(id, 40) + ")")));
                 c.action = () -> {
                     if (c.checked) {
                         if (!p.bots.contains(id)) p.bots.add(id);
@@ -617,7 +689,8 @@ public final class UsersTab {
             later();
         };
         if (audit.isEmpty()) {
-            if (auditStatus.isEmpty()) box.add(theme.label("Nothing logged yet.")).widget().color(DIM);
+            if (auditStatus.isEmpty())
+                box.add(theme.label("Nothing logged yet.")).widget().color(DIM);
             return;
         }
         var view = box.add(theme.view()).expandX().widget();
@@ -625,10 +698,18 @@ public final class UsersTab {
         int shown = 0;
         for (UsersModel.AuditEntry a : audit) {
             if (shown++ >= 200) break;
-            String when = a.at() > 0 ? Instant.ofEpochMilli(a.at()).atZone(ZoneId.systemDefault()).format(WHEN) : "";
+            String when = a.at() > 0
+                    ? Instant.ofEpochMilli(a.at())
+                            .atZone(ZoneId.systemDefault())
+                            .format(WHEN)
+                    : "";
             String text = when + "  " + (hide ? "-" : a.user().isEmpty() ? "-" : a.user()) + "  " + a.action()
-                + (a.detail().isEmpty() ? "" : "  " + a.detail()) + (a.address().isEmpty() || hide ? "" : "  (" + a.address() + ")");
-            view.add(theme.label(text, theme.scale(620))).expandX().widget().color(a.failed() ? BAD : new Color(225, 225, 230));
+                    + (a.detail().isEmpty() ? "" : "  " + a.detail())
+                    + (a.address().isEmpty() || hide ? "" : "  (" + a.address() + ")");
+            view.add(theme.label(text, theme.scale(620)))
+                    .expandX()
+                    .widget()
+                    .color(a.failed() ? BAD : new Color(225, 225, 230));
         }
     }
 }

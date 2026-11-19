@@ -1,8 +1,14 @@
 package com.porter.wesort.manager.gui.style;
 
+import static meteordevelopment.meteorclient.MeteorClient.mc;
+
 import com.porter.wesort.compat.ScaledText;
 import com.porter.wesort.manager.gui.frame.WOverlayLayer;
 import com.porter.wesort.manager.gui.widgets.TextWrap;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.IntSupplier;
+import java.util.function.Supplier;
 import meteordevelopment.meteorclient.gui.renderer.packer.GuiTexture;
 import meteordevelopment.meteorclient.gui.themes.meteor.MeteorGuiTheme;
 import meteordevelopment.meteorclient.gui.utils.CharFilter;
@@ -17,13 +23,6 @@ import meteordevelopment.meteorclient.settings.Setting;
 import meteordevelopment.meteorclient.utils.Utils;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
-
-import java.util.HashMap;
-import java.util.Map;
-import java.util.function.IntSupplier;
-import java.util.function.Supplier;
-
-import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 /**
  * The look of the Stash Window: Meteor's own widgets, drawn with the game's font, sized by the Minecraft GUI scale
@@ -205,7 +204,8 @@ public class SmGuiTheme extends MeteorGuiTheme {
     private void put(String name, int argb) {
         Setting<?> s = settings.get(name);
         if (s == null || !(s.get() instanceof SettingColor)) return; // a setting a Meteor build doesn't have: skipped
-        ((Setting<SettingColor>) s).set(new SettingColor(Palette.red(argb), Palette.green(argb), Palette.blue(argb), Palette.alpha(argb)));
+        ((Setting<SettingColor>) s)
+                .set(new SettingColor(Palette.red(argb), Palette.green(argb), Palette.blue(argb), Palette.alpha(argb)));
     }
 
     // ---------- widgets ----------
@@ -249,7 +249,8 @@ public class SmGuiTheme extends MeteorGuiTheme {
     }
 
     @Override
-    public WTextBox textBox(String text, String placeholder, CharFilter filter, Class<? extends WTextBox.Renderer> renderer) {
+    public WTextBox textBox(
+            String text, String placeholder, CharFilter filter, Class<? extends WTextBox.Renderer> renderer) {
         return w(new SmTextBox(text, placeholder, filter, renderer));
     }
 

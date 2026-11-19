@@ -1,5 +1,7 @@
 package com.porter.wesort.modules;
 
+import static meteordevelopment.meteorclient.MeteorClient.mc;
+
 import com.porter.wesort.manager.local.LocalOrderStore;
 import com.porter.wesort.manager.local.LocalSafety;
 import com.porter.wesort.manager.model.OrderMode;
@@ -8,6 +10,11 @@ import com.porter.wesort.manager.model.OrderModel.Entry;
 import com.porter.wesort.stash.Order;
 import com.porter.wesort.stash.Stash;
 import com.porter.wesort.stash.StashIndex;
+import java.security.SecureRandom;
+import java.util.ArrayList;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.function.Supplier;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.game.GameLeftEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
@@ -20,14 +27,6 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.AABB;
-
-import java.security.SecureRandom;
-import java.util.ArrayList;
-import java.util.HexFormat;
-import java.util.List;
-import java.util.function.Supplier;
-
-import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 /**
  * Carries out an order with this client as the bot, with no server: the stash window hands it an {@link Order}, and the
@@ -59,11 +58,24 @@ public final class LocalOrders {
     private static final String LEFTOVERS_NOTE = " Items taken for the order may still be in your inventory.";
 
     /** The delivery container, anvil and crafting table of the sorter's stash (null: not set), for display. */
-    public record Setup(String stash, int[] delivery, int[] anvil, int[] table, String anvilSource, String tableSource,
-                        boolean craftingOn, boolean namedShulkers, boolean autoExpand, int xpLevels) {
-    }
+    public record Setup(
+            String stash,
+            int[] delivery,
+            int[] anvil,
+            int[] table,
+            String anvilSource,
+            String tableSource,
+            boolean craftingOn,
+            boolean namedShulkers,
+            boolean autoExpand,
+            int xpLevels) {}
 
-    private enum Phase { IDLE, STARTING, RUNNING, ENDING }
+    private enum Phase {
+        IDLE,
+        STARTING,
+        RUNNING,
+        ENDING
+    }
 
     private static final long START_WAIT_MS = 20_000;
     private static final long ENDING_MIN_MS = 3_000, ENDING_MAX_MS = 60_000;
@@ -126,8 +138,14 @@ public final class LocalOrders {
         StashManager m = manager();
         Stash st = inWorld ? s.currentStash() : null;
         String saved = st == null || st.activeOrder == null ? null : st.activeOrder.id;
-        String why = OrderMode.localRefusal(inWorld, m != null && m.isActive(), active(), inWorld && s.orders().holdsOrder(),
-            st != null, st != null && s.orders().deliveryBox() != null, saved);
+        String why = OrderMode.localRefusal(
+                inWorld,
+                m != null && m.isActive(),
+                active(),
+                inWorld && s.orders().holdsOrder(),
+                st != null,
+                st != null && s.orders().deliveryBox() != null,
+                saved);
         if (why != null || st == null) return why;
         // What the sorter's loop would refuse a moment after starting, said up front
         String away = notInStashWorld(st);
@@ -140,7 +158,9 @@ public final class LocalOrders {
         if (!dim.isEmpty()) return dim.equals(Stash.currentDimension()) ? null : "wrong dimension";
         net.minecraft.world.phys.Vec3 at = mc.player.position();
         for (Stash.Box box : st.boxes) {
-            if (box.known() && !box.foreign && at.distanceToSqr(net.minecraft.world.phys.Vec3.atCenterOf(box.pos)) <= 128 * 128) return null;
+            if (box.known()
+                    && !box.foreign
+                    && at.distanceToSqr(net.minecraft.world.phys.Vec3.atCenterOf(box.pos)) <= 128 * 128) return null;
         }
         return "too far from the stash";
     }
@@ -157,14 +177,17 @@ public final class LocalOrders {
         } catch (RuntimeException | LinkageError e) {
             if (!loggedFailure) {
                 loggedFailure = true;
-                com.porter.wesort.WeSortAddon.LOG.warn("wesort-stash-window: local order, step '{}' failed: {}", step, e.toString());
+                com.porter.wesort.WeSortAddon.LOG.warn(
+                        "wesort-stash-window: local order, step '{}' failed: {}", step, e.toString());
             }
         }
     }
 
     /** Said while leftovers are being put back after the order ended and the user asked to cancel; "" otherwise. */
     public String note() {
-        return phase == Phase.ENDING && endingCancelled ? "Returning leftovers... (Cancel again to stop now)" : phase == Phase.ENDING ? "Returning leftovers..." : "";
+        return phase == Phase.ENDING && endingCancelled
+                ? "Returning leftovers... (Cancel again to stop now)"
+                : phase == Phase.ENDING ? "Returning leftovers..." : "";
     }
 
     public static boolean isLocalId(String id) {
@@ -203,12 +226,21 @@ public final class LocalOrders {
         Stash st = stash();
         if (s == null || st == null) return null;
         StashManager m = manager();
-        return new Setup(st.name, xyz(st.deliveryPos), xyz(st.anvilPos), xyz(st.craftingTablePos), s.anvilSource(), s.craftingTableSource(),
-            m != null && m.craftingEnabled(), m == null || m.useNamedShulkers(), m != null && m.autoExpandDelivery(), s.xpLevels());
+        return new Setup(
+                st.name,
+                xyz(st.deliveryPos),
+                xyz(st.anvilPos),
+                xyz(st.craftingTablePos),
+                s.anvilSource(),
+                s.craftingTableSource(),
+                m != null && m.craftingEnabled(),
+                m == null || m.useNamedShulkers(),
+                m != null && m.autoExpandDelivery(),
+                s.xpLevels());
     }
 
     private static int[] xyz(BlockPos p) {
-        return p == null ? null : new int[] { p.getX(), p.getY(), p.getZ() };
+        return p == null ? null : new int[] {p.getX(), p.getY(), p.getZ()};
     }
 
     /** How the sorter's stash would be reported to a server: for the window's naming and delivery warnings. */
@@ -259,7 +291,8 @@ public final class LocalOrders {
         if (active()) return "An order is running on this client. Stop it first.";
         StashManager m = manager();
         if (m == null) return "wesort-stash-manager is not available.";
-        if (stash() == null) return "No stash is loaded. Set stash-name in wesort-stash-sorter and scan the stash first.";
+        if (stash() == null)
+            return "No stash is loaded. Set stash-name in wesort-stash-sorter and scan the stash first.";
         Setting<?> pick = m.settings.get("select-" + what);
         if (!(pick instanceof BoolSetting bool)) return "That setting does not exist.";
         bool.set(true);
@@ -310,7 +343,9 @@ public final class LocalOrders {
      */
     public void cancel(String reason) {
         if (phase == Phase.IDLE) return;
-        if (phase == Phase.ENDING && !endingCancelled && !"stopped: wesort-stash-window was turned off".equals(reason)) {
+        if (phase == Phase.ENDING
+                && !endingCancelled
+                && !"stopped: wesort-stash-window was turned off".equals(reason)) {
             endingCancelled = true;
             chat.info("Returning leftovers... (Cancel again to stop now)");
             return;
@@ -334,7 +369,8 @@ public final class LocalOrders {
             OrderRunner runner = s == null ? null : s.orders();
             boolean alreadyDone = entry != null && entry.finished();
             if (runner != null && phase != Phase.IDLE) {
-                // Like StashManager.onDeactivate: nobody is left to carry the order, so it is parked and the loop let go
+                // Like StashManager.onDeactivate: nobody is left to carry the order, so it is parked and the loop let
+                // go
                 safely("park", runner::park);
                 safely("stop driving", () -> s.drive(false));
                 safely("drop saved plan", () -> dropLocalSaved(runner, null));
@@ -351,7 +387,8 @@ public final class LocalOrders {
         } catch (RuntimeException | LinkageError e) {
             if (!loggedFailure) {
                 loggedFailure = true;
-                com.porter.wesort.WeSortAddon.LOG.warn("wesort-stash-window: local order, could not end cleanly: {}", e.toString());
+                com.porter.wesort.WeSortAddon.LOG.warn(
+                        "wesort-stash-window: local order, could not end cleanly: {}", e.toString());
             }
         } finally {
             finish();
@@ -377,7 +414,9 @@ public final class LocalOrders {
     @EventHandler
     private void onGameLeft(GameLeftEvent event) {
         if (phase == Phase.IDLE) return;
-        if (entry != null && !entry.finished()) entry = LocalOrderStore.withEnd(entry, OrderModel.FAILED, "stopped: you left the game", System.currentTimeMillis());
+        if (entry != null && !entry.finished())
+            entry = LocalOrderStore.withEnd(
+                    entry, OrderModel.FAILED, "stopped: you left the game", System.currentTimeMillis());
         finish();
     }
 
@@ -396,7 +435,8 @@ public final class LocalOrders {
         long now = System.currentTimeMillis();
         StashSorter s = sorter();
         if (mc.level == null || mc.player == null || s == null) {
-            if (entry != null && !entry.finished()) entry = LocalOrderStore.withEnd(entry, OrderModel.FAILED, "stopped: no world", now);
+            if (entry != null && !entry.finished())
+                entry = LocalOrderStore.withEnd(entry, OrderModel.FAILED, "stopped: no world", now);
             finish();
             return;
         }
@@ -415,7 +455,11 @@ public final class LocalOrders {
             return;
         }
         if (ticks % SCAN_EVERY == 0) {
-            String why = LocalSafety.check(run.limits(), nearest(false, run.limits().playerRadius()), nearest(true, run.limits().hostileRadius()), now - startedAt);
+            String why = LocalSafety.check(
+                    run.limits(),
+                    nearest(false, run.limits().playerRadius()),
+                    nearest(true, run.limits().hostileRadius()),
+                    now - startedAt);
             if (why != null) {
                 abort(why);
                 return;
@@ -453,7 +497,8 @@ public final class LocalOrders {
                     runner.ack(r.id());
                     phase = Phase.ENDING;
                     endingSince = now;
-                    String text = "Order " + order.id + " " + r.status().replace('_', ' ') + (r.message().isEmpty() ? "." : ": " + r.message());
+                    String text = "Order " + order.id + " " + r.status().replace('_', ' ')
+                            + (r.message().isEmpty() ? "." : ": " + r.message());
                     if (r.status().equals("delivered")) chat.info(text);
                     else chat.warn(text);
                 }
@@ -467,8 +512,7 @@ public final class LocalOrders {
                     return;
                 }
             }
-            default -> {
-            }
+            default -> {}
         }
         if (phase != Phase.IDLE) record(false);
     }
@@ -478,9 +522,27 @@ public final class LocalOrders {
         if (sig.equals(lastSig)) return;
         lastSig = sig;
         boolean terminal = r.terminal();
-        entry = new Entry(entry.id(), r.status(), clean(r.phase(), 120), clean(r.message(), 320), r.done(), r.total(), entry.cancelRequested(), 0,
-            System.currentTimeMillis(), entry.createdAt(), entry.hasPlacedBy(), entry.placedById(), entry.placedByName(), entry.retriedAs(),
-            entry.lines(), entry.namesMode(), entry.namesAll(), entry.namesEach(), terminal ? r.shulkers() : 0, terminal && !r.status().equals("cancelled"));
+        entry = new Entry(
+                entry.id(),
+                r.status(),
+                clean(r.phase(), 120),
+                clean(r.message(), 320),
+                r.done(),
+                r.total(),
+                entry.cancelRequested(),
+                0,
+                System.currentTimeMillis(),
+                entry.createdAt(),
+                entry.hasPlacedBy(),
+                entry.placedById(),
+                entry.placedByName(),
+                entry.retriedAs(),
+                entry.lines(),
+                entry.namesMode(),
+                entry.namesAll(),
+                entry.namesEach(),
+                terminal ? r.shulkers() : 0,
+                terminal && !r.status().equals("cancelled"));
     }
 
     private static String clean(String s, int max) {
@@ -499,7 +561,10 @@ public final class LocalOrders {
         if (radius <= 0) return -1;
         AABB box = mc.player.getBoundingBox().inflate(radius);
         double best = -1;
-        for (Entity e : mc.level.getEntities(mc.player, box, x -> x.isAlive() && (hostile ? x instanceof Enemy : x instanceof Player p && !p.isSpectator()))) {
+        for (Entity e : mc.level.getEntities(
+                mc.player,
+                box,
+                x -> x.isAlive() && (hostile ? x instanceof Enemy : x instanceof Player p && !p.isSpectator()))) {
             double d = e.distanceTo(mc.player);
             if (best < 0 || d < best) best = d;
         }
@@ -509,7 +574,26 @@ public final class LocalOrders {
     private Entry newEntry(Order o, long now) {
         Order.Names n = o.names;
         List<String> each = new ArrayList<>(n == null ? List.of() : n.each());
-        return new Entry(o.id, OrderModel.IN_PROGRESS, "starting", "", 0, 0, false, 0, now, now, false, "", "", "", List.copyOf(o.lines),
-            n == null ? "" : n.mode(), n == null ? "" : n.all(), each, 0, false);
+        return new Entry(
+                o.id,
+                OrderModel.IN_PROGRESS,
+                "starting",
+                "",
+                0,
+                0,
+                false,
+                0,
+                now,
+                now,
+                false,
+                "",
+                "",
+                "",
+                List.copyOf(o.lines),
+                n == null ? "" : n.mode(),
+                n == null ? "" : n.all(),
+                each,
+                0,
+                false);
     }
 }

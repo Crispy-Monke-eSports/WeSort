@@ -1,18 +1,17 @@
 package com.porter.wesort.manager.model;
 
-import com.google.gson.JsonParser;
-import com.porter.wesort.manager.model.IndexModel.Entry;
-import com.porter.wesort.manager.model.IndexModel.Sort;
-import org.junit.jupiter.api.Test;
-
-import java.util.List;
-import java.util.stream.Collectors;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.google.gson.JsonParser;
+import com.porter.wesort.manager.model.IndexModel.Entry;
+import com.porter.wesort.manager.model.IndexModel.Sort;
+import java.util.List;
+import java.util.stream.Collectors;
+import org.junit.jupiter.api.Test;
 
 class IndexModelTest {
     /** The PROTOCOL sample, a few more items and two filled shulker groups. */
@@ -82,9 +81,13 @@ class IndexModelTest {
     @Test
     void badBodiesGiveAnEmptyIndex() {
         assertTrue(IndexModel.parse(JsonParser.parseString("[]")).items().isEmpty());
-        assertTrue(IndexModel.parse(JsonParser.parseString("{\"items\":\"x\",\"shulkers\":5}")).items().isEmpty());
-        assertTrue(IndexModel.parse(com.google.gson.JsonNull.INSTANCE).shulkers().isEmpty());
-        IndexModel m = IndexModel.parse(JsonParser.parseString("{\"items\":[1,null,{},{\"key\":\"a\",\"count\":\"x\"},{\"key\":\"a\"}]}"));
+        assertTrue(IndexModel.parse(JsonParser.parseString("{\"items\":\"x\",\"shulkers\":5}"))
+                .items()
+                .isEmpty());
+        assertTrue(
+                IndexModel.parse(com.google.gson.JsonNull.INSTANCE).shulkers().isEmpty());
+        IndexModel m = IndexModel.parse(
+                JsonParser.parseString("{\"items\":[1,null,{},{\"key\":\"a\",\"count\":\"x\"},{\"key\":\"a\"}]}"));
         assertEquals(1, m.items().size());
         assertEquals(0, m.items().get(0).count());
     }
@@ -100,7 +103,9 @@ class IndexModelTest {
         assertEquals(List.of("minecraft:diamond_sword#3f2a9c1d"), keys(m.view("diamond sharpness", Sort.COUNT, false)));
         assertEquals(List.of("minecraft:diamond_sword#3f2a9c1d"), keys(m.view("UNBREAKING", Sort.COUNT, false)));
         assertTrue(m.view("zzz", Sort.COUNT, false).isEmpty());
-        assertEquals(m.view("", Sort.COUNT, false).size(), m.view("   ", Sort.COUNT, false).size());
+        assertEquals(
+                m.view("", Sort.COUNT, false).size(),
+                m.view("   ", Sort.COUNT, false).size());
     }
 
     @Test
@@ -110,7 +115,9 @@ class IndexModelTest {
         assertEquals(List.of("create:andesite_alloy"), keys(m.view("@cre andesite", Sort.COUNT, false)));
         assertTrue(m.view("@create diamond", Sort.COUNT, false).isEmpty());
         // a lone @ is ignored
-        assertEquals(m.view("", Sort.COUNT, false).size(), m.view("@", Sort.COUNT, false).size());
+        assertEquals(
+                m.view("", Sort.COUNT, false).size(),
+                m.view("@", Sort.COUNT, false).size());
     }
 
     @Test
@@ -119,9 +126,16 @@ class IndexModelTest {
         List<String> byCount = keys(m.view("", Sort.COUNT, false));
         assertEquals("minecraft:cobblestone", byCount.get(0));
         assertEquals("minecraft:diamond", byCount.get(1));
-        List<String> byName = keys(m.view("sword", Sort.NAME, false)).stream().filter(k -> k.startsWith("minecraft:diamond_sword")).collect(Collectors.toList());
+        List<String> byName = keys(m.view("sword", Sort.NAME, false)).stream()
+                .filter(k -> k.startsWith("minecraft:diamond_sword"))
+                .collect(Collectors.toList());
         // same name: most items first
-        assertEquals(List.of("minecraft:diamond_sword#3f2a9c1d", "minecraft:diamond_sword", "minecraft:diamond_sword#aaaaaaaa"), byName);
+        assertEquals(
+                List.of(
+                        "minecraft:diamond_sword#3f2a9c1d",
+                        "minecraft:diamond_sword",
+                        "minecraft:diamond_sword#aaaaaaaa"),
+                byName);
         List<String> byId = keys(m.view("", Sort.ID, false));
         assertEquals("create:andesite_alloy", byId.get(0));
     }
@@ -131,7 +145,9 @@ class IndexModelTest {
         IndexModel m = model();
         List<String> creative = keys(m.view("", Sort.CREATIVE, false));
         assertEquals("minecraft:cobblestone", creative.get(0)); // building_blocks
-        List<String> swords = creative.stream().filter(k -> k.startsWith("minecraft:diamond_sword")).collect(Collectors.toList());
+        List<String> swords = creative.stream()
+                .filter(k -> k.startsWith("minecraft:diamond_sword"))
+                .collect(Collectors.toList());
         assertEquals("minecraft:diamond_sword#aaaaaaaa", swords.get(0)); // the damaged one first
         assertEquals("create:andesite_alloy", creative.get(creative.size() - 1)); // other, tabOrder 1000000
         // ingredients come after combat and food
@@ -141,7 +157,8 @@ class IndexModelTest {
     @Test
     void emptyShulkerAvailabilityIsTheTotalMinusTheFilledGroups() {
         IndexModel m = model();
-        assertEquals(2, m.emptyShulkerAvailable("minecraft:red_shulker_box")); // 8 - 4 - 2 (one group by key, one by id)
+        assertEquals(
+                2, m.emptyShulkerAvailable("minecraft:red_shulker_box")); // 8 - 4 - 2 (one group by key, one by id)
         assertEquals(3, m.emptyShulkerAvailable("minecraft:shulker_box"));
         assertEquals(0, m.emptyShulkerAvailable("minecraft:diamond"));
         assertEquals(0, m.emptyShulkerAvailable("nope"));
@@ -159,7 +176,9 @@ class IndexModelTest {
     void aShulkerBoxItemShowsItsEmptyBoxesThenTheMatchingFilledGroups() {
         IndexModel m = model();
         List<Entry> all = m.view("shulker", Sort.COUNT, false);
-        List<Entry> red = all.stream().filter(e -> e.id().equals("minecraft:red_shulker_box")).collect(Collectors.toList());
+        List<Entry> red = all.stream()
+                .filter(e -> e.id().equals("minecraft:red_shulker_box"))
+                .collect(Collectors.toList());
         assertEquals(3, red.size());
         assertEquals("minecraft:red_shulker_box", red.get(0).key());
         assertEquals(2, red.get(0).count()); // the empty ones
@@ -198,12 +217,24 @@ class IndexModelTest {
 
     @Test
     void visibleTabsFollowTheWebsite() {
-        // Search first, the creative tabs that have items in the website's order, Shulkers (filled ones exist), Orders last
-        assertEquals(List.of("all", "building_blocks", "colored_blocks", "combat", "ingredients", "other", "shulkers", "orders"), model().visibleTabs());
+        // Search first, the creative tabs that have items in the website's order, Shulkers (filled ones exist), Orders
+        // last
+        assertEquals(
+                List.of(
+                        "all",
+                        "building_blocks",
+                        "colored_blocks",
+                        "combat",
+                        "ingredients",
+                        "other",
+                        "shulkers",
+                        "orders"),
+                model().visibleTabs());
         IndexModel empty = IndexModel.empty();
         assertEquals(List.of("all", "orders"), empty.visibleTabs());
-        IndexModel noShulkers = IndexModel.parse(JsonParser.parseString(
-            "{\"items\":[{\"key\":\"minecraft:stone\",\"id\":\"minecraft:stone\",\"name\":\"Stone\",\"count\":5,\"tab\":\"natural_blocks\"}]}"));
+        IndexModel noShulkers = IndexModel.parse(
+                JsonParser.parseString(
+                        "{\"items\":[{\"key\":\"minecraft:stone\",\"id\":\"minecraft:stone\",\"name\":\"Stone\",\"count\":5,\"tab\":\"natural_blocks\"}]}"));
         assertEquals(List.of("all", "natural_blocks", "orders"), noShulkers.visibleTabs());
     }
 
@@ -218,7 +249,8 @@ class IndexModelTest {
         assertEquals(List.of("create:andesite_alloy"), keys(m.view("", Sort.COUNT, false, "other")));
         // the search still applies inside the tab
         assertTrue(m.view("zzz", Sort.COUNT, false, "combat").isEmpty());
-        assertEquals(List.of("minecraft:diamond_sword#3f2a9c1d"), keys(m.view("sharpness", Sort.COUNT, false, "combat")));
+        assertEquals(
+                List.of("minecraft:diamond_sword#3f2a9c1d"), keys(m.view("sharpness", Sort.COUNT, false, "combat")));
         // a tab nobody has heard of is empty
         assertTrue(m.view("", Sort.COUNT, false, "no_such_tab").isEmpty());
     }

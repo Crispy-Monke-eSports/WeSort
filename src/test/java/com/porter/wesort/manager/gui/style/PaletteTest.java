@@ -1,21 +1,20 @@
 package com.porter.wesort.manager.gui.style;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import org.junit.jupiter.api.Test;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Test;
 
 class PaletteTest {
     @Test
@@ -84,7 +83,8 @@ class PaletteTest {
     void matchesTheWebsitePaletteJson() throws IOException {
         Path file = Path.of("stash-manager-server", "dev", "themes-palette.json");
         if (!Files.isRegularFile(file)) return; // not part of every checkout
-        JsonObject root = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8)).getAsJsonObject();
+        JsonObject root = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8))
+                .getAsJsonObject();
         JsonArray themes = root.getAsJsonArray("themes");
         int seen = 0;
         for (JsonElement e : themes) {
@@ -100,7 +100,10 @@ class PaletteTest {
             JsonObject colors = o.getAsJsonObject("colors");
             for (Map.Entry<String, Integer> token : p.tokens().entrySet()) {
                 assertTrue(colors.has(token.getKey()), id + " JSON lacks " + token.getKey());
-                assertEquals(Palette.parse(colors.get(token.getKey()).getAsString()), token.getValue(), id + " " + token.getKey());
+                assertEquals(
+                        Palette.parse(colors.get(token.getKey()).getAsString()),
+                        token.getValue(),
+                        id + " " + token.getKey());
             }
             if (o.has("extra")) {
                 JsonObject extra = o.getAsJsonObject("extra");

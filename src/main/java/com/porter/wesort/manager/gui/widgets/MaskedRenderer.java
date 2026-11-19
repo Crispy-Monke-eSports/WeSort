@@ -17,8 +17,7 @@ public class MaskedRenderer implements WTextBox.Renderer {
      */
     public static final CharFilter ANY_CHAR = (text, c) -> true;
 
-    public MaskedRenderer() {
-    }
+    public MaskedRenderer() {}
 
     @Override
     public void render(GuiRenderer renderer, double x, double y, String text, Color color) {

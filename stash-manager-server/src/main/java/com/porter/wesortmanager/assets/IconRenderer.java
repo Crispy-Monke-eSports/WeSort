@@ -4,8 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-
-import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
@@ -23,6 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
+import javax.imageio.ImageIO;
 
 /**
  * Renders inventory-style item icons straight from a vanilla client jar (1.21.4+ layout, i.e. with
@@ -40,7 +39,8 @@ import java.util.zip.ZipFile;
 public final class IconRenderer implements AutoCloseable {
     public static final int DEFAULT_SIZE = 64;
 
-    private static final Pattern ID = Pattern.compile("^(?:([a-z0-9_.-]{1,64}):)?([a-z0-9_.-]{1,128}(?:/[a-z0-9_.-]{1,128}){0,8})$");
+    private static final Pattern ID =
+            Pattern.compile("^(?:([a-z0-9_.-]{1,64}):)?([a-z0-9_.-]{1,128}(?:/[a-z0-9_.-]{1,128}){0,8})$");
     private static final int MAX_DEPTH = 32;
 
     private final ZipFile zip;
@@ -147,7 +147,11 @@ public final class IconRenderer implements AutoCloseable {
         }
         if (out == null) return null;
         boolean any = false;
-        for (int px : out) if ((px >>> 24) != 0) { any = true; break; }
+        for (int px : out)
+            if ((px >>> 24) != 0) {
+                any = true;
+                break;
+            }
         if (!any) return null;
         BufferedImage bi = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
         bi.setRGB(0, 0, size, size, out, 0, size);
@@ -193,7 +197,8 @@ public final class IconRenderer implements AutoCloseable {
                 if ("display_context".equals(stripNs(str(node, "property", ""))) && cases != null) {
                     for (JsonElement c : cases) {
                         JsonObject co = c.getAsJsonObject();
-                        if (whenMatches(co.get("when"), "gui")) return collect(co.getAsJsonObject("model"), out, depth + 1);
+                        if (whenMatches(co.get("when"), "gui"))
+                            return collect(co.getAsJsonObject("model"), out, depth + 1);
                     }
                 }
                 if (node.has("fallback")) return collect(node.getAsJsonObject("fallback"), out, depth + 1);
@@ -214,7 +219,10 @@ public final class IconRenderer implements AutoCloseable {
                     for (JsonElement e : entries) {
                         JsonObject eo = e.getAsJsonObject();
                         float t = eo.has("threshold") ? eo.get("threshold").getAsFloat() : 0f;
-                        if (t <= 0f && t >= best) { best = t; pick = eo.getAsJsonObject("model"); }
+                        if (t <= 0f && t >= best) {
+                            best = t;
+                            pick = eo.getAsJsonObject("model");
+                        }
                     }
                 }
                 if (pick == null && node.has("fallback")) pick = node.getAsJsonObject("fallback");
@@ -226,7 +234,8 @@ public final class IconRenderer implements AutoCloseable {
             case "special" -> {
                 JsonObject sm = node.getAsJsonObject("model");
                 String base = str(node, "base", null);
-                if (sm == null || base == null) return "special renderer (" + SpecialModels.typeOf(sm) + ") without base";
+                if (sm == null || base == null)
+                    return "special renderer (" + SpecialModels.typeOf(sm) + ") without base";
                 if (SpecialModels.build(sm, this::texture) == null) {
                     return "special renderer (" + SpecialModels.typeOf(sm) + ") not supported";
                 }
@@ -283,7 +292,8 @@ public final class IconRenderer implements AutoCloseable {
     private static int color(JsonElement e) {
         if (e.isJsonArray()) { // [r, g, b] floats
             JsonArray a = e.getAsJsonArray();
-            int r = Math.round(a.get(0).getAsFloat() * 255), g = Math.round(a.get(1).getAsFloat() * 255),
+            int r = Math.round(a.get(0).getAsFloat() * 255),
+                    g = Math.round(a.get(1).getAsFloat() * 255),
                     b = Math.round(a.get(2).getAsFloat() * 255);
             return 0xFF000000 | (r << 16) | (g << 8) | b;
         }
@@ -304,8 +314,14 @@ public final class IconRenderer implements AutoCloseable {
     // ------------------------------------------------------------------ block/item models
 
     /** A model with its parent chain merged. */
-    record Model(Map<String, String> textures, JsonArray elements, float[] guiRotation, float[] guiTranslation,
-                 float[] guiScale, boolean frontLight, boolean generated) {
+    record Model(
+            Map<String, String> textures,
+            JsonArray elements,
+            float[] guiRotation,
+            float[] guiTranslation,
+            float[] guiScale,
+            boolean frontLight,
+            boolean generated) {
         /** Resolves "#ref" chains; returns a texture id or null. */
         String texture(String ref) {
             String r = ref;
@@ -324,7 +340,10 @@ public final class IconRenderer implements AutoCloseable {
         for (int i = 0; i < MAX_DEPTH && cur != null; i++) {
             String[] id = parseId(cur);
             if (id == null) return null;
-            if (id[0].equals("minecraft") && id[1].equals("builtin/generated")) { generated = true; break; }
+            if (id[0].equals("minecraft") && id[1].equals("builtin/generated")) {
+                generated = true;
+                break;
+            }
             if (id[0].equals("minecraft") && id[1].startsWith("builtin/")) return null; // builtin/entity etc.
             Optional<JsonObject> j = json(id[0], "models/" + id[1] + ".json");
             if (j.isEmpty()) return null;
@@ -343,7 +362,8 @@ public final class IconRenderer implements AutoCloseable {
                     JsonElement v = e.getValue();
                     if (v.isJsonPrimitive()) textures.put(e.getKey(), v.getAsString());
                     else if (v.isJsonObject() && v.getAsJsonObject().has("sprite")) {
-                        textures.put(e.getKey(), v.getAsJsonObject().get("sprite").getAsString());
+                        textures.put(
+                                e.getKey(), v.getAsJsonObject().get("sprite").getAsString());
                     }
                 }
             }
@@ -412,21 +432,32 @@ public final class IconRenderer implements AutoCloseable {
         if (firstFrame) {
             JsonObject anim = null;
             Optional<JsonObject> meta = mcmeta(entry + ".mcmeta");
-            if (meta.isPresent() && meta.get().has("animation")) anim = meta.get().getAsJsonObject("animation");
+            if (meta.isPresent() && meta.get().has("animation"))
+                anim = meta.get().getAsJsonObject("animation");
             if (anim != null || h > w) {
                 int def = Math.min(w, h);
                 fw = anim != null && anim.has("width") ? anim.get("width").getAsInt() : def;
                 fh = anim != null && anim.has("height") ? anim.get("height").getAsInt() : def;
-                if (fw <= 0 || fh <= 0 || fw > w || fh > h) { fw = def; fh = def; }
+                if (fw <= 0 || fh <= 0 || fw > w || fh > h) {
+                    fw = def;
+                    fh = def;
+                }
                 int index = 0;
-                if (anim != null && anim.has("frames") && anim.getAsJsonArray("frames").size() > 0) {
+                if (anim != null
+                        && anim.has("frames")
+                        && anim.getAsJsonArray("frames").size() > 0) {
                     JsonElement f0 = anim.getAsJsonArray("frames").get(0);
-                    index = f0.isJsonObject() ? f0.getAsJsonObject().get("index").getAsInt() : f0.getAsInt();
+                    index = f0.isJsonObject()
+                            ? f0.getAsJsonObject().get("index").getAsInt()
+                            : f0.getAsInt();
                 }
                 int cols = Math.max(1, w / fw);
                 fx = (index % cols) * fw;
                 fy = (index / cols) * fh;
-                if (fx + fw > w || fy + fh > h) { fx = 0; fy = 0; }
+                if (fx + fw > w || fy + fh > h) {
+                    fx = 0;
+                    fy = 0;
+                }
             }
         }
         return Optional.of(new Tex(fw, fh, pixels(img, fx, fy, fw, fh)));
@@ -439,7 +470,8 @@ public final class IconRenderer implements AutoCloseable {
     private static int[] pixels(BufferedImage img, int x0, int y0, int w, int h) {
         int[] px = new int[w * h];
         var cm = img.getColorModel();
-        if (cm.getColorSpace().getType() == java.awt.color.ColorSpace.TYPE_GRAY && !(cm instanceof java.awt.image.IndexColorModel)) {
+        if (cm.getColorSpace().getType() == java.awt.color.ColorSpace.TYPE_GRAY
+                && !(cm instanceof java.awt.image.IndexColorModel)) {
             var raster = img.getRaster();
             int bands = raster.getNumBands();
             int grayMax = (1 << cm.getComponentSize(0)) - 1;
@@ -479,7 +511,7 @@ public final class IconRenderer implements AutoCloseable {
         if (!m.matches()) return null;
         String path = m.group(2);
         for (String seg : path.split("/")) if (seg.equals("..") || seg.equals(".")) return null;
-        return new String[]{m.group(1) == null ? "minecraft" : m.group(1), path};
+        return new String[] {m.group(1) == null ? "minecraft" : m.group(1), path};
     }
 
     private static String stripNs(String s) {
@@ -497,6 +529,5 @@ public final class IconRenderer implements AutoCloseable {
     }
 
     /** A decoded texture (single frame), ARGB pixels row-major. */
-    record Tex(int w, int h, int[] argb) {
-    }
+    record Tex(int w, int h, int[] argb) {}
 }

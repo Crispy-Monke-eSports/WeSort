@@ -1,10 +1,9 @@
 package com.porter.wesort.manager.local;
 
-import net.minecraft.world.level.storage.LevelResource;
+import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 import java.nio.file.Path;
-
-import static meteordevelopment.meteorclient.MeteorClient.mc;
+import net.minecraft.world.level.storage.LevelResource;
 
 /**
  * Which server (or single-player world) the local index belongs to. Single-player worlds are told apart by their
@@ -29,7 +28,8 @@ public final class ServerId {
             if (mc.isSingleplayer()) {
                 var server = mc.getSingleplayerServer();
                 if (server == null) return null;
-                Path root = server.getWorldPath(LevelResource.ROOT).toAbsolutePath().normalize();
+                Path root =
+                        server.getWorldPath(LevelResource.ROOT).toAbsolutePath().normalize();
                 Path name = root.getFileName();
                 return of(true, name == null ? null : name.toString(), null);
             }

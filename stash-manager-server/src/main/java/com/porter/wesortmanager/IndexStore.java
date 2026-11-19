@@ -4,7 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
@@ -14,8 +13,8 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HexFormat;
 import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -37,34 +36,34 @@ public final class IndexStore {
     private final Path dir;
     private StockLedger stock;
     private AutomationGate automation;
+
     synchronized AutomationGate automation() throws IOException {
         if (automation == null) automation = new AutomationGate(stock());
         return automation;
     }
+
     private final Set<StashKey> physicalIndexes = ConcurrentHashMap.newKeySet();
     private final Map<StashKey, Long> freshnessRequests = new ConcurrentHashMap<>();
+
     synchronized StockLedger stock() throws IOException {
         if (stock == null) stock = new StockLedger(dir.getParent());
         return stock;
     }
+
     private final CreativeTabs tabs;
     private final Map<StashKey, Stash> stashes = new ConcurrentHashMap<>();
     private final Object createLock = new Object();
 
-    public record StashKey(String server, String stash) {
-    }
+    public record StashKey(String server, String stash) {}
 
     /** What the icon proxy needs to fetch an id's icon. */
-    public record IconInfo(String englishName, String mcVersion) {
-    }
+    public record IconInfo(String englishName, String mcVersion) {}
 
     /** A prepared index plus the bytes to write to disk (as the bot sent it, without the creative-tab fallback). */
-    private record Built(Prepared p, byte[] disk) {
-    }
+    private record Built(Prepared p, byte[] disk) {}
 
     /** A stored index ready to serve: the bytes and their ETag. */
-    public record IndexBytes(byte[] bytes, byte[] gzip, String etag) {
-    }
+    public record IndexBytes(byte[] bytes, byte[] gzip, String etag) {}
 
     /** Thrown when a new (server, stash) would go past {@link #MAX_STASHES}. */
     public static final class FullException extends Exception {
@@ -74,19 +73,35 @@ public final class IndexStore {
     }
 
     /** An index after validation, merging and serialization, built outside any lock. */
-    private record Prepared(String server, String stash, String player, String indexHash, long receivedAt,
-                            int itemTypes, long itemTotal, byte[] bytes, byte[] gzip, String etag,
-                            Map<String, String> idNames, String mcVersion, OrderCounts orderCounts, long[] containers,
-                            Map<String, CreativeTabs.Entry> tabOrder) {
-    }
+    private record Prepared(
+            String server,
+            String stash,
+            String player,
+            String indexHash,
+            long receivedAt,
+            int itemTypes,
+            long itemTotal,
+            byte[] bytes,
+            byte[] gzip,
+            String etag,
+            Map<String, String> idNames,
+            String mcVersion,
+            OrderCounts orderCounts,
+            long[] containers,
+            Map<String, CreativeTabs.Entry> tabOrder) {}
 
     /**
      * What an order may take from one index. items: item key -> count; itemIds: item key -> item id;
      * shulkers: shulker group key -> count; filledByItemKey: shulker item key -> filled shulkers of it (from
      * shulkers[].itemKey); filledById: the same by item id, for groups without itemKey (older indexes).
      */
-    public record OrderCounts(Map<String, Long> items, Map<String, String> itemIds, Map<String, Integer> maxStacks,
-                              Map<String, Long> shulkers, Map<String, Long> filledByItemKey, Map<String, Long> filledById) {
+    public record OrderCounts(
+            Map<String, Long> items,
+            Map<String, String> itemIds,
+            Map<String, Integer> maxStacks,
+            Map<String, Long> shulkers,
+            Map<String, Long> filledByItemKey,
+            Map<String, Long> filledById) {
         /**
          * Units the index holds for a line, before reservations; -1 when the key isn't in the index.
          * An item line for a shulker box means EMPTY shulkers: its count minus the filled ones of that id.
@@ -120,8 +135,7 @@ public final class IndexStore {
     }
 
     /** The delivery container the bot reported in its heartbeat. */
-    public record Delivery(int x, int y, int z, String dimension) {
-    }
+    public record Delivery(int x, int y, int z, String dimension) {}
 
     /**
      * Whether the bot can name shulkers: an anvil is set (and looks like one), its XP level (-1 = unknown), and where
@@ -140,7 +154,8 @@ public final class IndexStore {
      * its table comes from ("set", "found", "placed", "crafted" or "none"; null for an older bot that doesn't report it).
      */
     public record Crafting(boolean enabled, boolean table, String tableSource) {
-        public static final java.util.Set<String> TABLE_SOURCES = java.util.Set.of("set", "found", "placed", "crafted", "none");
+        public static final java.util.Set<String> TABLE_SOURCES =
+                java.util.Set.of("set", "found", "placed", "crafted", "none");
 
         public Crafting(boolean enabled, boolean table) {
             this(enabled, table, null);
@@ -151,29 +166,60 @@ public final class IndexStore {
      * The delivery storage (plugin 1.9.0 / addon 0.4.0-dev.5 heartbeat "deliveryStorage"): how many delivery chests
      * there are, how many are full, whether more can be put up, and why not. Never positions.
      */
-    public record DeliveryStorage(boolean autoExpand, int chests, int full, boolean canExpand, String blocked) {
-    }
+    public record DeliveryStorage(boolean autoExpand, int chests, int full, boolean canExpand, String blocked) {}
 
     /**
      * The bot-status fields of one heartbeat. A field is only changed when the heartbeat carried it
      * (hasDelivery / hasBlocker / hasNaming / hasCrafting), so an older addon that never sends them leaves them null.
      */
-    public record BotStatus(boolean hasDelivery, Delivery delivery, boolean hasBlocker, String orderBlocker,
-                            long rescanDone, boolean hasRescanBlocked, String rescanBlocked, boolean hasNaming, Naming naming,
-                            boolean hasCrafting, Crafting crafting, boolean hasStorage, DeliveryStorage storage) {
-        public static final BotStatus NONE = new BotStatus(false, null, false, null, -1, false, null, false, null, false, null, false, null);
+    public record BotStatus(
+            boolean hasDelivery,
+            Delivery delivery,
+            boolean hasBlocker,
+            String orderBlocker,
+            long rescanDone,
+            boolean hasRescanBlocked,
+            String rescanBlocked,
+            boolean hasNaming,
+            Naming naming,
+            boolean hasCrafting,
+            Crafting crafting,
+            boolean hasStorage,
+            DeliveryStorage storage) {
+        public static final BotStatus NONE =
+                new BotStatus(false, null, false, null, -1, false, null, false, null, false, null, false, null);
 
-        public BotStatus(boolean hasDelivery, Delivery delivery, boolean hasBlocker, String orderBlocker, long rescanDone,
-                         boolean hasRescanBlocked, String rescanBlocked, boolean hasNaming, Naming naming, boolean hasCrafting,
-                         Crafting crafting) {
-            this(hasDelivery, delivery, hasBlocker, orderBlocker, rescanDone, hasRescanBlocked, rescanBlocked, hasNaming, naming,
-                hasCrafting, crafting, false, null);
+        public BotStatus(
+                boolean hasDelivery,
+                Delivery delivery,
+                boolean hasBlocker,
+                String orderBlocker,
+                long rescanDone,
+                boolean hasRescanBlocked,
+                String rescanBlocked,
+                boolean hasNaming,
+                Naming naming,
+                boolean hasCrafting,
+                Crafting crafting) {
+            this(
+                    hasDelivery,
+                    delivery,
+                    hasBlocker,
+                    orderBlocker,
+                    rescanDone,
+                    hasRescanBlocked,
+                    rescanBlocked,
+                    hasNaming,
+                    naming,
+                    hasCrafting,
+                    crafting,
+                    false,
+                    null);
         }
     }
 
     /** A stash's stored player and when it was last seen, for adopting owners on load. */
-    public record PlayerSeen(String player, long seen) {
-    }
+    public record PlayerSeen(String player, long seen) {}
 
     /** Every stash's stored player (from its index or heartbeats). */
     public Map<StashKey, PlayerSeen> players() {
@@ -200,8 +246,7 @@ public final class IndexStore {
     }
 
     /** What a heartbeat reply needs: whether to push the index, and the unacknowledged rescan id (or null). */
-    public record HeartbeatResult(boolean needIndex, Long rescan) {
-    }
+    public record HeartbeatResult(boolean needIndex, Long rescan) {}
 
     /** One (server, stash). The monitor guards the state fields; writeLock orders disk writes. */
     private static final class Stash {
@@ -215,7 +260,7 @@ public final class IndexStore {
         DeliveryStorage storage;
         String orderBlocker;
         long rescanRequested; // latest rescan request id, 0 = none
-        long rescanDone;      // highest id the bot acknowledged
+        long rescanDone; // highest id the bot acknowledged
         String rescanBlocked;
         Prepared index;
         long version;
@@ -233,7 +278,10 @@ public final class IndexStore {
         this(dataDir, CreativeTabs.bundled());
     }
 
-    IndexStore(Path dataDir, CreativeTabs tabs) { this(dataDir, tabs, null); }
+    IndexStore(Path dataDir, CreativeTabs tabs) {
+        this(dataDir, tabs, null);
+    }
+
     IndexStore(Path dataDir, CreativeTabs tabs, StockLedger stock) {
         this.stock = stock;
         this.dir = dataDir.resolve("indexes");
@@ -244,8 +292,7 @@ public final class IndexStore {
 
     public void load() throws IOException {
         Files.createDirectories(dir);
-        record Loaded(Path file, Prepared p, byte[] disk) {
-        }
+        record Loaded(Path file, Prepared p, byte[] disk) {}
         Map<StashKey, Loaded> newest = new HashMap<>();
         List<Path> superseded = new ArrayList<>();
         try (DirectoryStream<Path> files = Files.newDirectoryStream(dir, "*.json")) {
@@ -258,8 +305,9 @@ public final class IndexStore {
                         continue;
                     }
                     JsonObject index = json.getAsJsonObject();
-                    long receivedAt = isNumber(index, "receivedAt") ? index.get("receivedAt").getAsLong()
-                        : Files.getLastModifiedTime(file).toMillis();
+                    long receivedAt = isNumber(index, "receivedAt")
+                            ? index.get("receivedAt").getAsLong()
+                            : Files.getLastModifiedTime(file).toMillis();
                     Built b = prepare(index, receivedAt, tabs);
                     Prepared p = b.p;
                     StashKey key = new StashKey(p.server, p.stash);
@@ -306,7 +354,10 @@ public final class IndexStore {
             for (var index : stock().indexes()) {
                 long receivedAt = index.get("receivedAt").getAsLong();
                 Prepared p = prepare(index, receivedAt, tabs).p;
-                Stash loaded = new Stash(p.server, p.stash); loaded.index = p; loaded.player = p.player; loaded.lastSeen = receivedAt;
+                Stash loaded = new Stash(p.server, p.stash);
+                loaded.index = p;
+                loaded.player = p.player;
+                loaded.lastSeen = receivedAt;
                 stashes.put(new StashKey(p.server, p.stash), loaded);
                 physicalIndexes.add(new StashKey(p.server, p.stash));
             }
@@ -355,18 +406,19 @@ public final class IndexStore {
         if (!isNumber(o, "version") || o.get("version").getAsDouble() != 1) return "version must be 1";
         if (!isNonEmptyString(o, "server")) return "server must be a non-empty string";
         if (!isNonEmptyString(o, "stash")) return "stash must be a non-empty string";
-        for (String field : new String[]{"player", "mcVersion", "dimension", "indexHash"}) {
+        for (String field : new String[] {"player", "mcVersion", "dimension", "indexHash"}) {
             if (o.has(field) && !o.get(field).isJsonNull() && !isString(o, field)) return field + " must be a string";
         }
         // Missing mcVersion remains valid for API v1; it is interpreted as 26.3.
         // An explicitly older version is always unsupported.
         String mcVersion = stringOrNull(o, "mcVersion");
         if (mcVersion != null && !IconService.DEFAULT_MC.equals(mcVersion)) return "mcVersion must be 26.3";
-        if (o.has("generatedAt") && !o.get("generatedAt").isJsonNull() && !isNumber(o, "generatedAt")) return "generatedAt must be a number";
+        if (o.has("generatedAt") && !o.get("generatedAt").isJsonNull() && !isNumber(o, "generatedAt"))
+            return "generatedAt must be a number";
         if (o.has("containers") && !o.get("containers").isJsonNull()) {
             if (!o.get("containers").isJsonObject()) return "containers must be an object";
             JsonObject c = o.getAsJsonObject("containers");
-            for (String field : new String[]{"known", "total", "stale"}) {
+            for (String field : new String[] {"known", "total", "stale"}) {
                 if (c.has(field) && !isNumber(c, field)) return "containers." + field + " must be a number";
             }
         }
@@ -378,21 +430,28 @@ public final class IndexStore {
             JsonObject item = e.getAsJsonObject();
             if (!isNonEmptyString(item, "key")) return "items[" + i + "].key must be a non-empty string";
             if (!isNonEmptyString(item, "id")) return "items[" + i + "].id must be a non-empty string";
-            for (String field : new String[]{"name", "englishName"}) {
+            for (String field : new String[] {"name", "englishName"}) {
                 if (item.has(field) && !isString(item, field)) return "items[" + i + "]." + field + " must be a string";
             }
             if (!isNumber(item, "count")) return "items[" + i + "].count must be a number";
-            if (item.has("maxStack") && !isNumber(item, "maxStack")) return "items[" + i + "].maxStack must be a number";
-            if (item.has("enchanted") && !(item.get("enchanted").isJsonPrimitive() && item.get("enchanted").getAsJsonPrimitive().isBoolean())) {
+            if (item.has("maxStack") && !isNumber(item, "maxStack"))
+                return "items[" + i + "].maxStack must be a number";
+            if (item.has("enchanted")
+                    && !(item.get("enchanted").isJsonPrimitive()
+                            && item.get("enchanted").getAsJsonPrimitive().isBoolean())) {
                 return "items[" + i + "].enchanted must be a boolean";
             }
-            if (item.has("tab") && !item.get("tab").isJsonNull()
-                && (!isString(item, "tab") || item.get("tab").getAsString().length() > 40)) return "items[" + i + "].tab must be a short string";
-            if (item.has("tabOrder") && !item.get("tabOrder").isJsonNull() && !isNumber(item, "tabOrder")) return "items[" + i + "].tabOrder must be a number";
+            if (item.has("tab")
+                    && !item.get("tab").isJsonNull()
+                    && (!isString(item, "tab") || item.get("tab").getAsString().length() > 40))
+                return "items[" + i + "].tab must be a short string";
+            if (item.has("tabOrder") && !item.get("tabOrder").isJsonNull() && !isNumber(item, "tabOrder"))
+                return "items[" + i + "].tabOrder must be a number";
             if (item.has("details")) {
                 if (!item.get("details").isJsonArray()) return "items[" + i + "].details must be an array";
                 for (JsonElement d : item.getAsJsonArray("details")) {
-                    if (!(d.isJsonPrimitive() && d.getAsJsonPrimitive().isString())) return "items[" + i + "].details must hold strings";
+                    if (!(d.isJsonPrimitive() && d.getAsJsonPrimitive().isString()))
+                        return "items[" + i + "].details must hold strings";
                 }
             }
         }
@@ -403,10 +462,13 @@ public final class IndexStore {
                 String at = "shulkers[" + i + "]";
                 if (!shulkers.get(i).isJsonObject()) return at + " must be an object";
                 JsonObject g = shulkers.get(i).getAsJsonObject();
-                if (!isNonEmptyString(g, "key") || g.get("key").getAsString().length() > 64) return at + ".key must be a short non-empty string";
+                if (!isNonEmptyString(g, "key") || g.get("key").getAsString().length() > 64)
+                    return at + ".key must be a short non-empty string";
                 if (!isNonEmptyString(g, "id")) return at + ".id must be a non-empty string";
-                if (g.has("name") && !g.get("name").isJsonNull() && !isString(g, "name")) return at + ".name must be a string";
-                if (g.has("itemKey") && !g.get("itemKey").isJsonNull() && !isString(g, "itemKey")) return at + ".itemKey must be a string";
+                if (g.has("name") && !g.get("name").isJsonNull() && !isString(g, "name"))
+                    return at + ".name must be a string";
+                if (g.has("itemKey") && !g.get("itemKey").isJsonNull() && !isString(g, "itemKey"))
+                    return at + ".itemKey must be a string";
                 if (!isNumber(g, "count")) return at + ".count must be a number";
                 if (g.has("contents") && !g.get("contents").isJsonNull()) {
                     if (!g.get("contents").isJsonArray()) return at + ".contents must be an array";
@@ -416,7 +478,9 @@ public final class IndexStore {
                         String cat = at + ".contents[" + j + "]";
                         if (!contents.get(j).isJsonObject()) return cat + " must be an object";
                         JsonObject c = contents.get(j).getAsJsonObject();
-                        if (!isNumber(c, "slot") || c.get("slot").getAsDouble() < 0 || c.get("slot").getAsDouble() > 26) return cat + ".slot must be 0..26";
+                        if (!isNumber(c, "slot")
+                                || c.get("slot").getAsDouble() < 0
+                                || c.get("slot").getAsDouble() > 26) return cat + ".slot must be 0..26";
                         if (!isNonEmptyString(c, "key")) return cat + ".key must be a non-empty string";
                         if (!isNumber(c, "count")) return cat + ".count must be a number";
                     }
@@ -495,7 +559,9 @@ public final class IndexStore {
             JsonObject item = e.getValue();
             itemIds.put(e.getKey(), item.get("id").getAsString());
             // Same rule as the page: floor, at least 1, 64 when missing. (int) of a huge double saturates.
-            int max = isNumber(item, "maxStack") ? (int) Math.max(1, Math.floor(item.get("maxStack").getAsDouble())) : 64;
+            int max = isNumber(item, "maxStack")
+                    ? (int) Math.max(1, Math.floor(item.get("maxStack").getAsDouble()))
+                    : 64;
             maxStacks.put(e.getKey(), max);
         }
         Map<String, Long> shulkerCounts = new HashMap<>();
@@ -511,8 +577,13 @@ public final class IndexStore {
                 else filledById.merge(g.get("id").getAsString(), n, Long::sum);
             }
         }
-        OrderCounts orderCounts = new OrderCounts(Map.copyOf(itemCounts), Map.copyOf(itemIds), Map.copyOf(maxStacks), Map.copyOf(shulkerCounts),
-            Map.copyOf(filledByItemKey), Map.copyOf(filledById));
+        OrderCounts orderCounts = new OrderCounts(
+                Map.copyOf(itemCounts),
+                Map.copyOf(itemIds),
+                Map.copyOf(maxStacks),
+                Map.copyOf(shulkerCounts),
+                Map.copyOf(filledByItemKey),
+                Map.copyOf(filledById));
 
         index.addProperty("receivedAt", receivedAt);
         byte[] disk = Json.GSON.toJson(index).getBytes(StandardCharsets.UTF_8);
@@ -521,28 +592,36 @@ public final class IndexStore {
         for (JsonElement e : index.getAsJsonArray("items")) {
             JsonObject item = e.getAsJsonObject();
             JsonElement tab = item.get("tab");
-            if (tab == null || !tab.isJsonPrimitive() || !tab.getAsJsonPrimitive().isString()) continue;
-            int order = isNumber(item, "tabOrder") ? (int) Math.max(Integer.MIN_VALUE, Math.min(Integer.MAX_VALUE, item.get("tabOrder").getAsDouble())) : 1_000_000;
+            if (tab == null
+                    || !tab.isJsonPrimitive()
+                    || !tab.getAsJsonPrimitive().isString()) continue;
+            int order = isNumber(item, "tabOrder")
+                    ? (int) Math.max(
+                            Integer.MIN_VALUE,
+                            Math.min(Integer.MAX_VALUE, item.get("tabOrder").getAsDouble()))
+                    : 1_000_000;
             tabOrder.putIfAbsent(item.get("key").getAsString(), new CreativeTabs.Entry(tab.getAsString(), order));
         }
         String mc = stringOrNull(index, "mcVersion");
         if (mc == null) mc = IconService.DEFAULT_MC;
-        return new Built(new Prepared(
-            index.get("server").getAsString(),
-            index.get("stash").getAsString(),
-            stringOrNull(index, "player"),
-            stringOrNull(index, "indexHash"),
-            receivedAt,
-            byKey.size(),
-            total,
-            bytes,
-            Http.gzip(bytes),
-            "\"" + sha1Hex(bytes).substring(0, 20) + "\"",
-            Map.copyOf(idNames),
-            mc,
-            orderCounts,
-            containers(index),
-            Map.copyOf(tabOrder)), disk);
+        return new Built(
+                new Prepared(
+                        index.get("server").getAsString(),
+                        index.get("stash").getAsString(),
+                        stringOrNull(index, "player"),
+                        stringOrNull(index, "indexHash"),
+                        receivedAt,
+                        byKey.size(),
+                        total,
+                        bytes,
+                        Http.gzip(bytes),
+                        "\"" + sha1Hex(bytes).substring(0, 20) + "\"",
+                        Map.copyOf(idNames),
+                        mc,
+                        orderCounts,
+                        containers(index),
+                        Map.copyOf(tabOrder)),
+                disk);
     }
 
     /** {known, total, stale} from the index's containers object (missing numbers are 0), or null. */
@@ -551,7 +630,8 @@ public final class IndexStore {
         JsonObject c = index.getAsJsonObject("containers");
         long[] out = new long[3];
         String[] fields = {"known", "total", "stale"};
-        for (int i = 0; i < 3; i++) out[i] = isNumber(c, fields[i]) ? Math.max(0, c.get(fields[i]).getAsLong()) : 0;
+        for (int i = 0; i < 3; i++)
+            out[i] = isNumber(c, fields[i]) ? Math.max(0, c.get(fields[i]).getAsLong()) : 0;
         return out;
     }
 
@@ -567,7 +647,8 @@ public final class IndexStore {
         index.addProperty("receivedAt", now);
         if (index.has("physicalSources")) {
             stock().accept(index);
-            physicalIndexes.add(new StashKey(index.get("server").getAsString(), index.get("stash").getAsString()));
+            physicalIndexes.add(new StashKey(
+                    index.get("server").getAsString(), index.get("stash").getAsString()));
         }
         Built b = prepare(index, now, tabs);
         Prepared p = b.p;
@@ -588,7 +669,8 @@ public final class IndexStore {
     }
 
     /** Records a heartbeat and returns whether the addon should push its index. */
-    public HeartbeatResult heartbeat(String server, String stash, String player, String indexHash, BotStatus status) throws FullException {
+    public HeartbeatResult heartbeat(String server, String stash, String player, String indexHash, BotStatus status)
+            throws FullException {
         Stash s = getOrCreate(server, stash);
         synchronized (s) {
             s.lastSeen = System.currentTimeMillis();
@@ -600,16 +682,29 @@ public final class IndexStore {
             if (status.hasStorage()) s.storage = status.storage();
             if (status.hasRescanBlocked()) s.rescanBlocked = status.rescanBlocked();
             if (status.rescanDone() > s.rescanDone) s.rescanDone = status.rescanDone();
-            if (stock != null) try {
-                var stale = stock.sources().stream().filter(source -> source.server().equals(server) && source.stash().equals(stash)
-                    && (source.status().equals("STALE_AGE") || source.status().equals("STALE_STARTUP") || source.status().equals("STALE") || source.status().equals("UNKNOWN"))).toList();
-                long staleRevision = stale.stream().mapToLong(StockLedger.Source::revision).max().orElse(0);
-                var key = new StashKey(server, stash);
-                if (physicalIndexes.contains(key) && !freshnessRequests.containsKey(key)
-                    || !stale.isEmpty() && staleRevision > freshnessRequests.getOrDefault(key, -1L)) {
-                    freshnessRequests.put(key, staleRevision); requestRescan(server, stash);
+            if (stock != null)
+                try {
+                    var stale = stock.sources().stream()
+                            .filter(source -> source.server().equals(server)
+                                    && source.stash().equals(stash)
+                                    && (source.status().equals("STALE_AGE")
+                                            || source.status().equals("STALE_STARTUP")
+                                            || source.status().equals("STALE")
+                                            || source.status().equals("UNKNOWN")))
+                            .toList();
+                    long staleRevision = stale.stream()
+                            .mapToLong(StockLedger.Source::revision)
+                            .max()
+                            .orElse(0);
+                    var key = new StashKey(server, stash);
+                    if (physicalIndexes.contains(key) && !freshnessRequests.containsKey(key)
+                            || !stale.isEmpty() && staleRevision > freshnessRequests.getOrDefault(key, -1L)) {
+                        freshnessRequests.put(key, staleRevision);
+                        requestRescan(server, stash);
+                    }
+                } catch (IOException ignored) {
+                    /* Availability queries fail closed if SQLite is unavailable. */
                 }
-            } catch (IOException ignored) { /* Availability queries fail closed if SQLite is unavailable. */ }
             boolean needIndex = s.index == null || indexHash == null || !indexHash.equals(s.index.indexHash);
             return new HeartbeatResult(needIndex, rescanPending(s));
         }
@@ -744,14 +839,22 @@ public final class IndexStore {
         }
         if (p == null) return null;
         try {
-            Map<String, Long> items = new HashMap<>(), shulkers = new HashMap<>(), filledKeys = new HashMap<>(), filledIds = new HashMap<>();
+            Map<String, Long> items = new HashMap<>(),
+                    shulkers = new HashMap<>(),
+                    filledKeys = new HashMap<>(),
+                    filledIds = new HashMap<>();
             for (var source : stock().sources()) {
-                if (!source.server().equals(server) || !source.stash().equals(stash) || !source.status().equals("FRESH") || source.shared()) continue;
+                if (!source.server().equals(server)
+                        || !source.stash().equals(stash)
+                        || !source.status().equals("FRESH")
+                        || source.shared()) continue;
                 for (var e : source.value().getAsJsonArray("items")) {
-                    var item = e.getAsJsonObject(); items.merge(item.get("key").getAsString(), item.get("count").getAsLong(), Math::addExact);
+                    var item = e.getAsJsonObject();
+                    items.merge(item.get("key").getAsString(), item.get("count").getAsLong(), Math::addExact);
                 }
                 for (var e : source.value().getAsJsonArray("shulkers")) {
-                    var box = e.getAsJsonObject(); long count = box.get("count").getAsLong();
+                    var box = e.getAsJsonObject();
+                    long count = box.get("count").getAsLong();
                     shulkers.merge(box.get("key").getAsString(), count, Math::addExact);
                     if (box.has("itemKey")) filledKeys.merge(box.get("itemKey").getAsString(), count, Math::addExact);
                     else filledIds.merge(box.get("id").getAsString(), count, Math::addExact);
@@ -760,8 +863,16 @@ public final class IndexStore {
             // Known-but-unsafe keys remain visible with zero availability, not an invented fresh total.
             p.orderCounts.items.keySet().forEach(key -> items.putIfAbsent(key, 0L));
             p.orderCounts.shulkers.keySet().forEach(key -> shulkers.putIfAbsent(key, 0L));
-            return new OrderCounts(Map.copyOf(items), p.orderCounts.itemIds, p.orderCounts.maxStacks, Map.copyOf(shulkers), Map.copyOf(filledKeys), Map.copyOf(filledIds));
-        } catch (IOException | ArithmeticException e) { return null; }
+            return new OrderCounts(
+                    Map.copyOf(items),
+                    p.orderCounts.itemIds,
+                    p.orderCounts.maxStacks,
+                    Map.copyOf(shulkers),
+                    Map.copyOf(filledKeys),
+                    Map.copyOf(filledIds));
+        } catch (IOException | ArithmeticException e) {
+            return null;
+        }
     }
 
     /**
@@ -850,7 +961,8 @@ public final class IndexStore {
 
     /** sanitized server + "__" + sanitized stash + "-" + 8 hex of sha1(server \0 stash), so sanitizing can't make two stashes collide. */
     static String fileName(String server, String stash) {
-        String hash = sha1Hex((server + "\0" + stash).getBytes(StandardCharsets.UTF_8)).substring(0, 8);
+        String hash = sha1Hex((server + "\0" + stash).getBytes(StandardCharsets.UTF_8))
+                .substring(0, 8);
         return sanitize(server) + "__" + sanitize(stash) + "-" + hash + ".json";
     }
 

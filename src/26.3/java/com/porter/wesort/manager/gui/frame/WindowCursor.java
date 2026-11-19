@@ -8,13 +8,16 @@ public final class WindowCursor {
     private WindowCursor() {}
 
     public static void set(CursorShape shape) {
-        Input.setCursorStyle(switch (shape) {
-            case HORIZONTAL -> CursorTypes.RESIZE_EW;
-            case VERTICAL -> CursorTypes.RESIZE_NS;
-            case DIAGONAL_NWSE, DIAGONAL_NESW -> CursorTypes.CROSSHAIR;
-            case DEFAULT -> CursorTypes.ARROW;
-        });
+        Input.setCursorStyle(
+                switch (shape) {
+                    case HORIZONTAL -> CursorTypes.RESIZE_EW;
+                    case VERTICAL -> CursorTypes.RESIZE_NS;
+                    case DIAGONAL_NWSE, DIAGONAL_NESW -> CursorTypes.CROSSHAIR;
+                    case DEFAULT -> CursorTypes.ARROW;
+                });
     }
 
-    public static void reset() { set(CursorShape.DEFAULT); }
+    public static void reset() {
+        set(CursorShape.DEFAULT);
+    }
 }

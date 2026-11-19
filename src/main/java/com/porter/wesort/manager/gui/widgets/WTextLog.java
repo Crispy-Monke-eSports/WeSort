@@ -1,19 +1,16 @@
 package com.porter.wesort.manager.gui.widgets;
 
+import java.util.ArrayList;
+import java.util.List;
 import meteordevelopment.meteorclient.gui.renderer.GuiRenderer;
 import meteordevelopment.meteorclient.gui.widgets.WWidget;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 
-import java.util.ArrayList;
-import java.util.List;
-
 public final class WTextLog extends WWidget {
     /** One logical line and its colour. */
-    public record Line(String text, Color color) {
-    }
+    public record Line(String text, Color color) {}
 
-    private record Row(String text, Color color) {
-    }
+    private record Row(String text, Color color) {}
 
     private static final Color BACK = new Color(20, 20, 24, 235);
     private static final int ROWS = 12;

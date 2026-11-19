@@ -4,7 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URISyntaxException;
@@ -32,11 +31,9 @@ final class CreativeTabs {
     static final CreativeTabs NONE = new CreativeTabs(List.of());
 
     /** One version's table: item id -> [tab, order]. */
-    record Table(String version, int[] parts, Map<String, Entry> items) {
-    }
+    record Table(String version, int[] parts, Map<String, Entry> items) {}
 
-    record Entry(String tab, int order) {
-    }
+    record Entry(String tab, int order) {}
 
     private final List<Table> tables; // newest first
 
@@ -56,7 +53,8 @@ final class CreativeTabs {
     static CreativeTabs bundled() {
         List<Table> out = new ArrayList<>();
         try {
-            URL source = CreativeTabs.class.getProtectionDomain().getCodeSource().getLocation();
+            URL source =
+                    CreativeTabs.class.getProtectionDomain().getCodeSource().getLocation();
             Path where = source == null ? null : Path.of(source.toURI());
             if (where != null && Files.isRegularFile(where)) {
                 try (JarFile jar = new JarFile(where.toFile())) {
@@ -64,7 +62,10 @@ final class CreativeTabs {
                     while (entries.hasMoreElements()) {
                         JarEntry e = entries.nextElement();
                         String name = e.getName();
-                        if (e.isDirectory() || !name.startsWith(DIR + "/") || !name.endsWith(".json") || name.indexOf('/', DIR.length() + 1) >= 0) continue;
+                        if (e.isDirectory()
+                                || !name.startsWith(DIR + "/")
+                                || !name.endsWith(".json")
+                                || name.indexOf('/', DIR.length() + 1) >= 0) continue;
                         try (InputStream in = jar.getInputStream(e)) {
                             add(out, name, new String(in.readAllBytes(), StandardCharsets.UTF_8));
                         }
@@ -114,7 +115,8 @@ final class CreativeTabs {
     static Table parse(String text) {
         JsonObject root = JsonParser.parseString(text).getAsJsonObject();
         JsonElement v = root.get("version");
-        String version = v != null && v.isJsonPrimitive() && v.getAsJsonPrimitive().isString() ? v.getAsString() : null;
+        String version =
+                v != null && v.isJsonPrimitive() && v.getAsJsonPrimitive().isString() ? v.getAsString() : null;
         int[] parts = parts(version);
         if (parts == null || !IconService.DEFAULT_MC.equals(version)) return null;
         Map<String, Entry> items = new HashMap<>();
@@ -123,8 +125,11 @@ final class CreativeTabs {
             for (Map.Entry<String, JsonElement> e : ie.getAsJsonObject().entrySet()) {
                 if (!e.getValue().isJsonArray()) continue;
                 JsonArray a = e.getValue().getAsJsonArray();
-                if (a.size() < 2 || !a.get(0).isJsonPrimitive() || !a.get(0).getAsJsonPrimitive().isString()
-                    || !a.get(1).isJsonPrimitive() || !a.get(1).getAsJsonPrimitive().isNumber()) continue;
+                if (a.size() < 2
+                        || !a.get(0).isJsonPrimitive()
+                        || !a.get(0).getAsJsonPrimitive().isString()
+                        || !a.get(1).isJsonPrimitive()
+                        || !a.get(1).getAsJsonPrimitive().isNumber()) continue;
                 String tab = a.get(0).getAsString();
                 if (tab.isEmpty() || tab.length() > 40 || tab.equals("other")) continue;
                 items.put(e.getKey(), new Entry(tab, a.get(1).getAsInt()));
@@ -178,15 +183,19 @@ final class CreativeTabs {
     int fill(JsonObject index) {
         if (tables.isEmpty() || !index.has("items") || !index.get("items").isJsonArray()) return 0;
         JsonElement mc = index.get("mcVersion");
-        Table t = pick(mc != null && mc.isJsonPrimitive() && mc.getAsJsonPrimitive().isString() ? mc.getAsString() : null);
+        Table t = pick(
+                mc != null && mc.isJsonPrimitive() && mc.getAsJsonPrimitive().isString() ? mc.getAsString() : null);
         if (t == null) return 0;
         int filled = 0;
         for (JsonElement e : index.getAsJsonArray("items")) {
             if (!e.isJsonObject()) continue;
             JsonObject item = e.getAsJsonObject();
             JsonElement tab = item.get("tab");
-            boolean other = tab == null || tab.isJsonNull()
-                || (tab.isJsonPrimitive() && tab.getAsJsonPrimitive().isString() && tab.getAsString().equals("other"));
+            boolean other = tab == null
+                    || tab.isJsonNull()
+                    || (tab.isJsonPrimitive()
+                            && tab.getAsJsonPrimitive().isString()
+                            && tab.getAsString().equals("other"));
             if (!other) continue;
             JsonElement id = item.get("id");
             if (id == null || !id.isJsonPrimitive() || !id.getAsJsonPrimitive().isString()) continue;

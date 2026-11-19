@@ -10,8 +10,7 @@ import meteordevelopment.meteorclient.gui.widgets.input.WTextBox;
  * its cursor and what was typed in it.
  */
 final class TabFocus {
-    private TabFocus() {
-    }
+    private TabFocus() {}
 
     static boolean anyFocused(WWidget w) {
         if (w instanceof WTextBox tb) return tb.isFocused();

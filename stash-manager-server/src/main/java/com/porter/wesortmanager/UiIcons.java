@@ -27,15 +27,33 @@ final class UiIcons {
         m.put("minecraft:chest", "Chest");
         m.put("minecraft:writable_book", "Book and Quill");
         m.put("minecraft:shulker_box", "Shulker Box");
-        for (String c : new String[]{"white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray",
-            "light_gray", "cyan", "purple", "blue", "brown", "green", "red", "black"}) {
+        for (String c : new String[] {
+            "white",
+            "orange",
+            "magenta",
+            "light_blue",
+            "yellow",
+            "lime",
+            "pink",
+            "gray",
+            "light_gray",
+            "cyan",
+            "purple",
+            "blue",
+            "brown",
+            "green",
+            "red",
+            "black"
+        }) {
             StringBuilder name = new StringBuilder();
-            for (String part : c.split("_")) name.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1)).append(' ');
+            for (String part : c.split("_"))
+                name.append(Character.toUpperCase(part.charAt(0)))
+                        .append(part.substring(1))
+                        .append(' ');
             m.put("minecraft:" + c + "_shulker_box", name + "Shulker Box");
         }
         NAMES = Map.copyOf(m);
     }
 
-    private UiIcons() {
-    }
+    private UiIcons() {}
 }

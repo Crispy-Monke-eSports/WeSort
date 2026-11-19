@@ -13,8 +13,7 @@ import net.minecraft.world.inventory.ContainerInput;
 public final class Drops {
     private static final int OUTSIDE_WINDOW = -999;
 
-    private Drops() {
-    }
+    private Drops() {}
 
     /**
      * The packet drops or throws an item: the drop keys, a throw click in a container, a click outside the window with a
@@ -23,7 +22,7 @@ public final class Drops {
     public static boolean isDrop(Packet<?> packet) {
         if (packet instanceof ServerboundPlayerActionPacket action) {
             return action.getAction() == ServerboundPlayerActionPacket.Action.DROP_ITEM
-                || action.getAction() == ServerboundPlayerActionPacket.Action.DROP_ALL_ITEMS;
+                    || action.getAction() == ServerboundPlayerActionPacket.Action.DROP_ALL_ITEMS;
         }
         if (packet instanceof ServerboundContainerClickPacket click) {
             ContainerInput type = click.containerInput();
@@ -38,9 +37,9 @@ public final class Drops {
      */
     public static BlockPos brokenBlock(Packet<?> packet) {
         if (packet instanceof ServerboundPlayerActionPacket action
-            && (action.getAction() == ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK
-            || action.getAction() == ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK
-            || action.getAction() == ServerboundPlayerActionPacket.Action.ABORT_DESTROY_BLOCK)) {
+                && (action.getAction() == ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK
+                        || action.getAction() == ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK
+                        || action.getAction() == ServerboundPlayerActionPacket.Action.ABORT_DESTROY_BLOCK)) {
             return action.getPos();
         }
         return null;

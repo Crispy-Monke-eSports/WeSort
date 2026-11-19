@@ -1,11 +1,10 @@
 package com.porter.wesort.manager.gui.panels;
 
+import java.util.function.BiConsumer;
 import meteordevelopment.meteorclient.gui.GuiTheme;
 import meteordevelopment.meteorclient.gui.widgets.containers.WContainer;
 import meteordevelopment.meteorclient.gui.widgets.input.WTextBox;
 import meteordevelopment.meteorclient.gui.widgets.pressable.WButton;
-
-import java.util.function.BiConsumer;
 
 /**
  * The login form. The password box is emptied the moment the form is submitted, so the password is only ever in the
@@ -20,7 +19,13 @@ public final class LoginPanel extends PasswordPanel {
      * @param serverText what to show as the server (hidden when streaming)
      * @param onLogin    gets the user name and the password
      */
-    public void build(WContainer parent, GuiTheme theme, String serverText, String lastUser, String message, BiConsumer<String, String> onLogin) {
+    public void build(
+            WContainer parent,
+            GuiTheme theme,
+            String serverText,
+            String lastUser,
+            String message,
+            BiConsumer<String, String> onLogin) {
         this.theme = theme;
         this.onLogin = onLogin;
         parent.add(theme.label("Log in to the WeSort Manager", true));

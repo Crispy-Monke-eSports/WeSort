@@ -10,20 +10,25 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class PhysicalOperationsTest {
-    @TempDir Path data;
+    @TempDir
+    Path data;
+
     private final String agent = "00000000-0000-0000-0000-000000000001";
+
     private JsonObject frame(String item) {
         return JsonParser.parseString("{\"menu\":1,\"slots\":[\"" + item + "\",\"\"],\"cursor\":\"\"}")
-            .getAsJsonObject();
+                .getAsJsonObject();
     }
+
     private PhysicalJournal journal() throws Exception {
         var journal = new PhysicalJournal(data.resolve("client"));
-        journal.start(JsonParser
-                .parseString("{\"server\":\"s\",\"stash\":\"a\",\"dimension\":\"minecraft:overworld\",\"agent\":\""
-                    + agent + "\",\"kind\":\"DIRECT\",\"orderId\":\"o-test\"}")
+        journal.start(JsonParser.parseString(
+                        "{\"server\":\"s\",\"stash\":\"a\",\"dimension\":\"minecraft:overworld\",\"agent\":\"" + agent
+                                + "\",\"kind\":\"DIRECT\",\"orderId\":\"o-test\"}")
                 .getAsJsonObject());
         return journal;
     }
+
     private void intent(PhysicalJournal journal) throws Exception {
         var value = new JsonObject();
         value.add("origin", journal.current().getAsJsonObject("context"));
@@ -31,6 +36,7 @@ class PhysicalOperationsTest {
         value.add("expected", frame("after"));
         journal.intent(value);
     }
+
     private JsonObject playerInventory() {
         var snapshot = new com.porter.wesort.data.PhysicalSlots.Snapshot(46, java.util.List.of());
         var inventory = new JsonObject();
@@ -58,11 +64,18 @@ class PhysicalOperationsTest {
         journal.block("Pending native receipt");
         store.accept(agent, journal.current());
         var decision = store.inspect(journal.id(), journal.revision(), journal.checksum(), "owner");
-        journal.verified(frame("after"), true, playerInventory(), java.util.UUID.randomUUID().toString());
+        journal.verified(
+                frame("after"),
+                true,
+                playerInventory(),
+                java.util.UUID.randomUUID().toString());
         journal.complete();
-        assertEquals("NEEDS_RECONCILIATION", store.accept(agent, journal.current()).get("state").getAsString());
+        assertEquals(
+                "NEEDS_RECONCILIATION",
+                store.accept(agent, journal.current()).get("state").getAsString());
         assertNotNull(gate.current("s"));
-        journal.verified(frame("after"), true, playerInventory(), decision.get("id").getAsString());
+        journal.verified(
+                frame("after"), true, playerInventory(), decision.get("id").getAsString());
         journal.complete();
         var receipt = store.accept(agent, journal.current());
         assertEquals("COMPLETED", receipt.get("state").getAsString());
@@ -83,12 +96,14 @@ class PhysicalOperationsTest {
         assertThrows(PhysicalOperations.Conflict.class, () -> store.accept(agent, first));
         assertEquals(0, ledger.revision());
         assertTrue(ledger.sources().isEmpty());
-        assertThrows(IllegalArgumentException.class,
-            () -> store.accept("00000000-0000-0000-0000-000000000002", journal.current()));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> store.accept("00000000-0000-0000-0000-000000000002", journal.current()));
         var corrupt = journal.current();
         corrupt.addProperty("state", "COMPLETED");
         assertThrows(IllegalArgumentException.class, () -> store.accept(agent, corrupt));
     }
+
     @Test
     void managerRestartFencesActiveWorkUntilAnExplicitCurrentInspection() throws Exception {
         var ledger = new StockLedger(data);
@@ -98,23 +113,35 @@ class PhysicalOperationsTest {
         store.accept(agent, journal.current());
         var restarted = new PhysicalOperations(new StockLedger(data));
         String id = journal.current().get("id").getAsString();
-        assertEquals("NEEDS_RECONCILIATION", restarted.accept(agent, journal.current()).get("state").getAsString());
+        assertEquals(
+                "NEEDS_RECONCILIATION",
+                restarted.accept(agent, journal.current()).get("state").getAsString());
         var local = new PhysicalJournal(data.resolve("client"));
         restarted.accept(agent, local.current());
         var review = local.current();
         var request = restarted.inspect(
-            id, review.get("revision").getAsLong(), review.get("checksum").getAsString(), "owner");
-        assertEquals(request.get("id"),
-            restarted.inspect(id, review.get("revision").getAsLong(), review.get("checksum").getAsString(), "owner")
-                .get("id"));
+                id, review.get("revision").getAsLong(), review.get("checksum").getAsString(), "owner");
+        assertEquals(
+                request.get("id"),
+                restarted
+                        .inspect(
+                                id,
+                                review.get("revision").getAsLong(),
+                                review.get("checksum").getAsString(),
+                                "owner")
+                        .get("id"));
         assertNotNull(restarted.decision(agent, id));
         assertNull(restarted.decision("another-agent", id));
-        local.verified(frame("after"), true, playerInventory(), request.get("id").getAsString());
+        local.verified(
+                frame("after"), true, playerInventory(), request.get("id").getAsString());
         local.complete();
-        assertEquals("COMPLETED", restarted.accept(agent, local.current()).get("state").getAsString());
+        assertEquals(
+                "COMPLETED",
+                restarted.accept(agent, local.current()).get("state").getAsString());
         restarted.decisionResult(agent, request.get("id").getAsString(), "COMPLETED", "Fresh exact source matched");
         assertNull(restarted.decision(agent, id));
     }
+
     @Test
     void staleReviewAndUninspectedOfflineResumeAreRejected() throws Exception {
         var ledger = new StockLedger(data);
@@ -125,12 +152,17 @@ class PhysicalOperationsTest {
         store.accept(agent, journal.current());
         var record = journal.current();
         String id = record.get("id").getAsString();
-        assertThrows(PhysicalOperations.Conflict.class,
-            () -> store.inspect(id, 1, record.get("checksum").getAsString(), "owner"));
+        assertThrows(
+                PhysicalOperations.Conflict.class,
+                () -> store.inspect(id, 1, record.get("checksum").getAsString(), "owner"));
         clock.addAndGet(15_000);
-        assertEquals("NEEDS_RECONCILIATION", store.list().get(0).getAsJsonObject().get("managerState").getAsString());
+        assertEquals(
+                "NEEDS_RECONCILIATION",
+                store.list().get(0).getAsJsonObject().get("managerState").getAsString());
         journal.verified(frame("after"), false);
         journal.complete();
-        assertEquals("NEEDS_RECONCILIATION", store.accept(agent, journal.current()).get("state").getAsString());
+        assertEquals(
+                "NEEDS_RECONCILIATION",
+                store.accept(agent, journal.current()).get("state").getAsString());
     }
 }

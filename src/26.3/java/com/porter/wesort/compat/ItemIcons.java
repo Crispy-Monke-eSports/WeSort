@@ -11,8 +11,7 @@ import org.joml.Matrix3x2fStack;
  * Drawing items on the HUD, which differs between Minecraft versions, for Minecraft 26.3.
  */
 public final class ItemIcons {
-    private ItemIcons() {
-    }
+    private ItemIcons() {}
 
     /**
      * Draws an item inside {@code NametagUtils.begin}, the same way Meteor's nametags do. {@code count} is drawn in the
@@ -36,7 +35,13 @@ public final class ItemIcons {
         Matrix3x2fStack pose = graphics.pose();
         pose.pushMatrix();
         pose.scale(scale, scale);
-        graphics.text(font, text, Math.round(rightX / scale) - font.width(text), Math.round(bottomY / scale) - 8, 0xFFFFFFFF, true);
+        graphics.text(
+                font,
+                text,
+                Math.round(rightX / scale) - font.width(text),
+                Math.round(bottomY / scale) - 8,
+                0xFFFFFFFF,
+                true);
         pose.popMatrix();
     }
 }

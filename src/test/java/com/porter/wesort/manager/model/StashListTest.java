@@ -1,13 +1,12 @@
 package com.porter.wesort.manager.model;
 
-import com.google.gson.JsonParser;
-import org.junit.jupiter.api.Test;
-
-import java.util.List;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.google.gson.JsonParser;
+import java.util.List;
+import org.junit.jupiter.api.Test;
 
 class StashListTest {
     private static final String LIST = """
@@ -57,9 +56,12 @@ class StashListTest {
         List<StashRef> list = StashList.parse(JsonParser.parseString(LIST));
         assertEquals("Re-reading containers: 127 / 130", list.get(0).rescanStatus());
         assertEquals("Rescan requested", list.get(1).rescanStatus());
-        StashRef blocked = StashList.parse(JsonParser.parseString("[{\"server\":\"s\",\"stash\":\"a\",\"rescanBlocked\":\"sorter off\"}]")).get(0);
+        StashRef blocked = StashList.parse(
+                        JsonParser.parseString("[{\"server\":\"s\",\"stash\":\"a\",\"rescanBlocked\":\"sorter off\"}]"))
+                .get(0);
         assertEquals("Can't rescan: sorter off", blocked.rescanStatus());
-        StashRef idle = StashList.parse(JsonParser.parseString("[{\"server\":\"s\",\"stash\":\"a\"}]")).get(0);
+        StashRef idle = StashList.parse(JsonParser.parseString("[{\"server\":\"s\",\"stash\":\"a\"}]"))
+                .get(0);
         assertEquals("", idle.rescanStatus());
     }
 

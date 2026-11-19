@@ -1,9 +1,10 @@
 package com.porter.wesortmanager.assets;
 
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -14,36 +15,71 @@ import java.nio.file.Path;
 import java.util.Optional;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import javax.imageio.ImageIO;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Block-entity ("special") item icons. Shulker boxes used to fall back to the wiki pipeline, which could cache
  * mcasset's flat block texture; they must render as the same isometric box as a full block.
  */
 class SpecialModelsTest {
-    static final String[] COLOURS = {"", "white_", "orange_", "magenta_", "light_blue_", "yellow_", "lime_", "pink_",
-        "gray_", "light_gray_", "cyan_", "purple_", "blue_", "brown_", "green_", "red_", "black_"};
+    static final String[] COLOURS = {
+        "",
+        "white_",
+        "orange_",
+        "magenta_",
+        "light_blue_",
+        "yellow_",
+        "lime_",
+        "pink_",
+        "gray_",
+        "light_gray_",
+        "cyan_",
+        "purple_",
+        "blue_",
+        "brown_",
+        "green_",
+        "red_",
+        "black_"
+    };
 
     /** A minimal synthetic model-format fixture: stone and a red shulker box with flat textures. */
     @Test
     void shulkerBoxRendersIsometricFromAMinimalJar(@TempDir Path dir) throws IOException {
         Path jar = dir.resolve("client.jar");
         try (ZipOutputStream z = new ZipOutputStream(Files.newOutputStream(jar))) {
-            put(z, "assets/minecraft/items/stone.json", "{\"model\":{\"type\":\"minecraft:model\",\"model\":\"minecraft:block/stone\"}}");
-            put(z, "assets/minecraft/models/block/stone.json", "{\"parent\":\"block/cube_all\",\"textures\":{\"all\":\"block/stone\"}}");
-            put(z, "assets/minecraft/models/block/cube_all.json", "{\"parent\":\"block/block\",\"elements\":[{\"from\":[0,0,0],\"to\":[16,16,16],"
-                + "\"faces\":{\"down\":{\"texture\":\"#all\"},\"up\":{\"texture\":\"#all\"},\"north\":{\"texture\":\"#all\"},"
-                + "\"south\":{\"texture\":\"#all\"},\"west\":{\"texture\":\"#all\"},\"east\":{\"texture\":\"#all\"}}}]}");
-            put(z, "assets/minecraft/models/block/block.json", "{\"display\":{\"gui\":{\"rotation\":[30,225,0],\"translation\":[0,0,0],\"scale\":[0.625,0.625,0.625]}}}");
-            put(z, "assets/minecraft/items/red_shulker_box.json", "{\"model\":{\"type\":\"minecraft:special\",\"base\":\"minecraft:item/red_shulker_box\","
-                + "\"model\":{\"type\":\"minecraft:shulker_box\",\"texture\":\"minecraft:shulker_red\"}}}");
-            put(z, "assets/minecraft/models/item/red_shulker_box.json", "{\"parent\":\"minecraft:item/template_shulker_box\",\"textures\":{\"particle\":\"minecraft:block/red_shulker_box\"}}");
-            put(z, "assets/minecraft/models/item/template_shulker_box.json", "{\"display\":{\"gui\":{\"rotation\":[30,45,0],\"translation\":[0,0,0],\"scale\":[0.625,0.625,0.625]}}}");
+            put(
+                    z,
+                    "assets/minecraft/items/stone.json",
+                    "{\"model\":{\"type\":\"minecraft:model\",\"model\":\"minecraft:block/stone\"}}");
+            put(
+                    z,
+                    "assets/minecraft/models/block/stone.json",
+                    "{\"parent\":\"block/cube_all\",\"textures\":{\"all\":\"block/stone\"}}");
+            put(
+                    z,
+                    "assets/minecraft/models/block/cube_all.json",
+                    "{\"parent\":\"block/block\",\"elements\":[{\"from\":[0,0,0],\"to\":[16,16,16],"
+                            + "\"faces\":{\"down\":{\"texture\":\"#all\"},\"up\":{\"texture\":\"#all\"},\"north\":{\"texture\":\"#all\"},"
+                            + "\"south\":{\"texture\":\"#all\"},\"west\":{\"texture\":\"#all\"},\"east\":{\"texture\":\"#all\"}}}]}");
+            put(
+                    z,
+                    "assets/minecraft/models/block/block.json",
+                    "{\"display\":{\"gui\":{\"rotation\":[30,225,0],\"translation\":[0,0,0],\"scale\":[0.625,0.625,0.625]}}}");
+            put(
+                    z,
+                    "assets/minecraft/items/red_shulker_box.json",
+                    "{\"model\":{\"type\":\"minecraft:special\",\"base\":\"minecraft:item/red_shulker_box\","
+                            + "\"model\":{\"type\":\"minecraft:shulker_box\",\"texture\":\"minecraft:shulker_red\"}}}");
+            put(
+                    z,
+                    "assets/minecraft/models/item/red_shulker_box.json",
+                    "{\"parent\":\"minecraft:item/template_shulker_box\",\"textures\":{\"particle\":\"minecraft:block/red_shulker_box\"}}");
+            put(
+                    z,
+                    "assets/minecraft/models/item/template_shulker_box.json",
+                    "{\"display\":{\"gui\":{\"rotation\":[30,45,0],\"translation\":[0,0,0],\"scale\":[0.625,0.625,0.625]}}}");
             put(z, "assets/minecraft/textures/block/stone.png", png(16, 16, 0xFF808080));
             put(z, "assets/minecraft/textures/entity/shulker/shulker_red.png", png(64, 64, 0xFFB02E26));
             // the flat 16x16 face the old fallback cached
@@ -62,13 +98,20 @@ class SpecialModelsTest {
 
     @Test
     void unsupportedSpecialTypesFallBack() {
-        assertNull(SpecialModels.build(com.google.gson.JsonParser.parseString("{\"type\":\"minecraft:head\",\"kind\":\"dragon\"}").getAsJsonObject(),
-            t -> Optional.of(new IconRenderer.Tex(1, 1, new int[]{0xFFFFFFFF}))));
-        assertNull(SpecialModels.build(com.google.gson.JsonParser.parseString("{\"type\":\"minecraft:copper_golem_statue\"}").getAsJsonObject(),
-            t -> Optional.of(new IconRenderer.Tex(1, 1, new int[]{0xFFFFFFFF}))));
+        assertNull(SpecialModels.build(
+                com.google.gson.JsonParser.parseString("{\"type\":\"minecraft:head\",\"kind\":\"dragon\"}")
+                        .getAsJsonObject(),
+                t -> Optional.of(new IconRenderer.Tex(1, 1, new int[] {0xFFFFFFFF}))));
+        assertNull(SpecialModels.build(
+                com.google.gson.JsonParser.parseString("{\"type\":\"minecraft:copper_golem_statue\"}")
+                        .getAsJsonObject(),
+                t -> Optional.of(new IconRenderer.Tex(1, 1, new int[] {0xFFFFFFFF}))));
         // a missing texture also means "can't draw"
-        assertNull(SpecialModels.build(com.google.gson.JsonParser.parseString("{\"type\":\"minecraft:shulker_box\",\"texture\":\"minecraft:shulker\"}").getAsJsonObject(),
-            t -> Optional.empty()));
+        assertNull(SpecialModels.build(
+                com.google.gson.JsonParser.parseString(
+                                "{\"type\":\"minecraft:shulker_box\",\"texture\":\"minecraft:shulker\"}")
+                        .getAsJsonObject(),
+                t -> Optional.empty()));
     }
 
     // Real Minecraft 26.3 rendering is covered by scripts/mc26/assets-harness.py.

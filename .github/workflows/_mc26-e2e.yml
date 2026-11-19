@@ -1,0 +1,254 @@
+name: WeSort full Minecraft 26.3 E2E
+on:
+  workflow_call:
+permissions:
+  contents: read
+env:
+  LIBGL_ALWAYS_SOFTWARE: '1'
+  SDL_VIDEO_DRIVER: x11
+  SDL_VIDEO_FORCE_EGL: '1'
+  ALSOFT_DRIVERS: 'null'
+jobs:
+
+  assets:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-mc26
+      - uses: ./.github/actions/load-manager-image
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web-tests/package-lock.json
+      - run: npm ci --prefix web-tests
+      - name: Compare generated assets with actual vanilla Minecraft
+        run: xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/mc26/metadata-harness.py
+      - name: Real scan, Docker icon API, web DOM and in-game UI
+        run: xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/mc26/assets-harness.py --manager-image wesort-manager:ci
+        env:
+          NODE_PATH: '${{ github.workspace }}/web-tests/node_modules'
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: mc26-assets-${{ github.run_id }}
+          path: |
+            build/mc26-e2e-*/evidence/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  client-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-mc26
+
+      - name: Check frozen Meteor against empty dependency cache
+        run: python3 scripts/mc26/frozen-meteor-test.py
+      - name: Start real Minecraft 26.3 client and Stash Window
+        run: xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/mc26/client-runtime.py
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: mc26-client-runtime-${{ github.run_id }}
+          path: |
+            build/evidence/mc26/
+            build/run-26.3/logs/
+            build/run-26.3/crash-reports/
+            build/libs/*.jar
+            build/test-results/
+            build/reports/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  hierarchy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-mc26
+      - uses: ./.github/actions/load-manager-image
+
+      - name: Real shulker hierarchy and lifecycle
+        run: xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/mc26/hierarchy-harness.py --manager-image wesort-manager:ci --reservations --guild --order-lifecycle --approval --remote-settings --scoped-agent
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: mc26-hierarchy-${{ github.run_id }}
+          path: |
+            build/mc26-e2e-*/evidence/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  inventory:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-mc26
+      - uses: ./.github/actions/load-manager-image
+
+      - name: Real inventory, block operations, packet delays, restart
+        run: xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/mc26/inventory-harness.py --manager-image wesort-manager:ci
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: mc26-inventory-${{ github.run_id }}
+          path: |
+            build/mc26-e2e-*/evidence/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  navigation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-mc26
+      - uses: ./.github/actions/load-manager-image
+
+      - name: Real Baritone navigation, timeout, cancel and dimension changes
+        run: xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/mc26/navigation-harness.py --manager-image wesort-manager:ci
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: mc26-navigation-${{ github.run_id }}
+          path: |
+            build/mc26-e2e-*/evidence/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  sorting:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-mc26
+      - uses: ./.github/actions/load-manager-image
+
+      - name: Real sorting, reservations and full storage
+        run: xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/mc26/sorting-harness.py --manager-image wesort-manager:ci
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: mc26-sorting-${{ github.run_id }}
+          path: |
+            build/mc26-e2e-*/evidence/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  physical-stock:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-mc26
+      - uses: ./.github/actions/load-manager-image
+
+      - name: Real observations, expiry and Manager restart
+        run: xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/mc26/stock-harness.py --manager-image wesort-manager:ci
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: mc26-physical-stock-${{ github.run_id }}
+          path: |
+            build/mc26-e2e-*/evidence/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  toolchain:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-mc26
+
+      - name: Start actual Minecraft, Meteor and Baritone
+        run: xvfb-run -a -s '-screen 0 1280x720x24' python3 tools/mc26-toolchain/verify.py
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: mc26-toolchain-${{ github.run_id }}
+          path: |
+            tools/mc26-toolchain/build/evidence/
+            tools/mc26-toolchain/build/probe-run/logs/
+            tools/mc26-toolchain/build/probe-run/crash-reports/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  world:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-mc26
+      - uses: ./.github/actions/load-manager-image
+
+      - name: Real private server, Fabric client and Docker Manager
+        run: xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/mc26/world-harness.py --manager-image wesort-manager:ci
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: mc26-world-${{ github.run_id }}
+          path: |
+            build/mc26-e2e-*/evidence/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  scenario-shards:
+    name: '${{ matrix.suite }} / shard ${{ matrix.shard }}'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        include:
+          - {suite: journal, shard: 1}
+          - {suite: journal, shard: 2}
+          - {suite: journal, shard: 3}
+          - {suite: kits, shard: 1}
+          - {suite: kits, shard: 2}
+          - {suite: kits, shard: 3}
+          - {suite: repack, shard: 1}
+          - {suite: repack, shard: 2}
+          - {suite: repack, shard: 3}
+          - {suite: repack, shard: 4}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-mc26
+      - uses: ./.github/actions/load-manager-image
+      - name: Run every scenario in the shard
+        run: xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/ci/run-e2e-shard.py --suite "${{ matrix.suite }}" --shard "${{ matrix.shard }}" --manager-image wesort-manager:ci
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: mc26-${{ matrix.suite }}-shard-${{ matrix.shard }}-${{ github.run_id }}
+          path: |
+            build/mc26-e2e-*/evidence/
+            build/evidence/ci/
+          retention-days: 7
+          if-no-files-found: ignore

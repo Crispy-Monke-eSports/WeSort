@@ -4,9 +4,8 @@ import com.porter.wesort.manager.local.ContainerKey;
 import com.porter.wesort.manager.local.Where;
 import com.porter.wesort.manager.model.IndexModel;
 import com.porter.wesort.manager.model.StashRef;
-import net.minecraft.world.item.ItemStack;
-
 import java.util.List;
+import net.minecraft.world.item.ItemStack;
 
 /**
  * Where the window's data comes from. The window picks one source for a whole session and never mixes two: the Stash

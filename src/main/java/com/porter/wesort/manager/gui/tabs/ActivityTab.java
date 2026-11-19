@@ -9,6 +9,11 @@ import com.porter.wesort.manager.model.BotList;
 import com.porter.wesort.manager.model.DisplayPolicy;
 import com.porter.wesort.manager.net.ApiError;
 import com.porter.wesort.manager.net.ServerUrl;
+import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import meteordevelopment.meteorclient.gui.GuiTheme;
 import meteordevelopment.meteorclient.gui.widgets.WLabel;
 import meteordevelopment.meteorclient.gui.widgets.containers.WContainer;
@@ -20,12 +25,6 @@ import meteordevelopment.meteorclient.gui.widgets.input.WTextBox;
 import meteordevelopment.meteorclient.gui.widgets.pressable.WCheckbox;
 import meteordevelopment.meteorclient.utils.Utils;
 import meteordevelopment.meteorclient.utils.render.color.Color;
-
-import java.time.ZoneId;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 
 /**
  * The Activity tab: the Activity page of the website for the bot picked in the header. Connection and stats (health and food as
@@ -186,22 +185,33 @@ public final class ActivityTab {
     }
 
     private static String positionText(DisplayPolicy policy, Connection c) {
-        return policy.hideCoords() ? "Hidden (streamer)" : Math.round(c.x()) + ", " + Math.round(c.y()) + ", " + Math.round(c.z());
+        return policy.hideCoords()
+                ? "Hidden (streamer)"
+                : Math.round(c.x()) + ", " + Math.round(c.y()) + ", " + Math.round(c.z());
     }
 
     /** Everything the widgets are built from, so a change rebuilds them. */
     private String signature() {
         DisplayPolicy p = host.policy();
         StringBuilder sb = new StringBuilder();
-        sb.append(p.streamer()).append(bot).append(capableBot() != null).append(host.bots().loaded()).append(message);
+        sb.append(p.streamer())
+                .append(bot)
+                .append(capableBot() != null)
+                .append(host.bots().loaded())
+                .append(message);
         if (data != null) {
-            sb.append(ActivityModel.structureSignature(data, serverNow(), AGE_BUCKET_MS)).append("#").append(ActivityModel.sources(data.events()));
+            sb.append(ActivityModel.structureSignature(data, serverNow(), AGE_BUCKET_MS))
+                    .append("#")
+                    .append(ActivityModel.sources(data.events()));
         }
         return sb.toString();
     }
 
     private String eventsKey() {
-        return data == null ? "" : ActivityModel.eventsSignature(data) + "|" + sourceFilter + "|" + levelFilter + "|" + host.policy().streamer();
+        return data == null
+                ? ""
+                : ActivityModel.eventsSignature(data) + "|" + sourceFilter + "|" + levelFilter + "|"
+                        + host.policy().streamer();
     }
 
     private void fetch(long now) {
@@ -218,8 +228,10 @@ public final class ActivityTab {
                 data = ActivityModel.parse(r.body());
                 if (r.serverTimeMillis() > 0) skew = r.serverTimeMillis() - System.currentTimeMillis();
                 message = "";
-            } else if (r.kind() == ApiError.Kind.NETWORK || r.kind() == ApiError.Kind.SERVER || r.kind() == ApiError.Kind.RATE_LIMIT
-                || r.kind() == ApiError.Kind.NOT_FOUND) {
+            } else if (r.kind() == ApiError.Kind.NETWORK
+                    || r.kind() == ApiError.Kind.SERVER
+                    || r.kind() == ApiError.Kind.RATE_LIMIT
+                    || r.kind() == ApiError.Kind.NOT_FOUND) {
                 nextGet = System.currentTimeMillis() + RETRY_MS;
                 message = host.describe(r, "Could not load the activity.");
             } else {
@@ -242,7 +254,10 @@ public final class ActivityTab {
         modCount = null;
         modPending = false;
         if (!host.auth().can("activity")) {
-            parent.add(theme.label("Your account can not see the bot activity; ask the owner.", theme.scale(520))).expandX().widget().color(WARN);
+            parent.add(theme.label("Your account can not see the bot activity; ask the owner.", theme.scale(520)))
+                    .expandX()
+                    .widget()
+                    .color(WARN);
             builtSignature = signature();
             return;
         }
@@ -250,15 +265,24 @@ public final class ActivityTab {
         if (bot == null) bot = host.bots().selected();
         builtSignature = signature();
         if (bot == null) {
-            parent.add(theme.label(host.bots().loaded() ? "No dashboard bot yet." : "Loading the bots...", theme.scale(520))).expandX().widget().color(DIM);
+            parent.add(theme.label(
+                            host.bots().loaded() ? "No dashboard bot yet." : "Loading the bots...", theme.scale(520)))
+                    .expandX()
+                    .widget()
+                    .color(DIM);
             return;
         }
         if (capableBot() == null) {
-            parent.add(theme.label("This bot does not send its activity (update the WeSort plugin).", theme.scale(520))).expandX().widget().color(WARN);
+            parent.add(theme.label("This bot does not send its activity (update the WeSort plugin).", theme.scale(520)))
+                    .expandX()
+                    .widget()
+                    .color(WARN);
             return;
         }
         if (data == null || !data.hasActivity()) {
-            String m = !message.isEmpty() ? message : data == null ? "Loading the activity..." : "Waiting for the first activity report of the bot...";
+            String m = !message.isEmpty()
+                    ? message
+                    : data == null ? "Loading the activity..." : "Waiting for the first activity report of the bot...";
             parent.add(theme.label(m, theme.scale(520))).expandX().widget().color(message.isEmpty() ? DIM : BAD);
             return;
         }
@@ -278,8 +302,12 @@ public final class ActivityTab {
         WHorizontalList head = parent.add(theme.horizontalList()).expandX().widget();
         Color stateColor = c.state().equals("online") ? GOOD : c.state().equals("offline") ? BAD : WARN;
         head.add(theme.label(ActivityModel.badge(c), true)).widget().color(stateColor);
-        if (!c.server().isEmpty()) head.add(theme.label(policy.hideServer() ? "Hidden (streamer)" : c.server())).widget().color(DIM);
-        updatedLabel = head.add(theme.label(ActivityModel.updated(data.receivedAt(), sn))).widget();
+        if (!c.server().isEmpty())
+            head.add(theme.label(policy.hideServer() ? "Hidden (streamer)" : c.server()))
+                    .widget()
+                    .color(DIM);
+        updatedLabel = head.add(theme.label(ActivityModel.updated(data.receivedAt(), sn)))
+                .widget();
         updatedLabel.color(ActivityModel.stale(data.receivedAt(), sn) ? WARN : DIM);
 
         WTable t = parent.add(theme.table()).expandX().widget();
@@ -290,9 +318,15 @@ public final class ActivityTab {
         if (!Double.isNaN(c.health())) healthBar = bar(t, "Health", c.health(), new Color(220, 60, 60));
         if (!Double.isNaN(c.food())) foodBar = bar(t, "Food", c.food(), new Color(210, 140, 50));
         if (!Double.isNaN(c.ping())) pingLabel = row(t, "Ping", Math.round(c.ping()) + " ms");
-        if (!Double.isNaN(c.uptimeSeconds())) uptimeLabel = row(t, "Uptime", ActivityModel.duration((long) (c.uptimeSeconds() * 1000)));
+        if (!Double.isNaN(c.uptimeSeconds()))
+            uptimeLabel = row(t, "Uptime", ActivityModel.duration((long) (c.uptimeSeconds() * 1000)));
         if (!Double.isNaN(c.spectators())) specLabel = row(t, "Spectators", String.valueOf(Math.round(c.spectators())));
-        row(t, "Controlled by", c.controllingPlayer().isEmpty() ? "nobody" : policy.hideNames() ? "Hidden (streamer)" : c.controllingPlayer());
+        row(
+                t,
+                "Controlled by",
+                c.controllingPlayer().isEmpty()
+                        ? "nobody"
+                        : policy.hideNames() ? "Hidden (streamer)" : c.controllingPlayer());
     }
 
     private WLabel row(WTable t, String name, String value) {
@@ -318,17 +352,28 @@ public final class ActivityTab {
         for (ActivityModel.Task k : data.current()) {
             WVerticalList card = parent.add(theme.verticalList()).expandX().widget();
             WHorizontalList top = card.add(theme.horizontalList()).expandX().widget();
-            top.add(theme.label(k.source().isEmpty() ? "?" : k.source(), true)).widget().color(levelColor(k.level()));
-            if (k.since() > 0) top.add(theme.label("since " + ActivityModel.duration(sn - k.since()))).widget().color(DIM);
-            if (!k.title().isEmpty()) card.add(theme.label(k.title(), theme.scale(520))).expandX();
+            top.add(theme.label(k.source().isEmpty() ? "?" : k.source(), true))
+                    .widget()
+                    .color(levelColor(k.level()));
+            if (k.since() > 0)
+                top.add(theme.label("since " + ActivityModel.duration(sn - k.since())))
+                        .widget()
+                        .color(DIM);
+            if (!k.title().isEmpty())
+                card.add(theme.label(k.title(), theme.scale(520))).expandX();
             if (!k.detail().isEmpty()) {
-                card.add(theme.label(policy.streamer() ? "(hidden)" : k.detail(), theme.scale(520))).expandX().widget().color(DIM);
+                card.add(theme.label(policy.streamer() ? "(hidden)" : k.detail(), theme.scale(520)))
+                        .expandX()
+                        .widget()
+                        .color(DIM);
             }
             if (k.hasProgress()) {
                 WHorizontalList pr = card.add(theme.horizontalList()).widget();
                 long total = Math.max(1, k.total());
                 long done = Math.max(0, Math.min(total, k.done()));
-                pr.add(new WBar(new Color(90, 150, 230), total)).widget().set(done, Math.round(100.0 * done / total) + "%");
+                pr.add(new WBar(new Color(90, 150, 230), total))
+                        .widget()
+                        .set(done, Math.round(100.0 * done / total) + "%");
                 pr.add(theme.label(k.done() + " / " + k.total())).widget().color(DIM);
             }
         }
@@ -345,7 +390,9 @@ public final class ActivityTab {
         sourceLabels[0] = "All sources";
         for (int i = 0; i < sources.size(); i++) sourceLabels[i + 1] = sources.get(i);
         if (!sourceFilter.isEmpty() && !sources.contains(sourceFilter)) sourceFilter = "";
-        WDropdown<String> src = filters.add(theme.dropdown(sourceLabels, sourceFilter.isEmpty() ? sourceLabels[0] : sourceFilter)).widget();
+        WDropdown<String> src = filters.add(
+                        theme.dropdown(sourceLabels, sourceFilter.isEmpty() ? sourceLabels[0] : sourceFilter))
+                .widget();
         src.action = () -> {
             String v = src.get();
             sourceFilter = v.equals(sourceLabels[0]) ? "" : v;
@@ -353,7 +400,8 @@ public final class ActivityTab {
         };
         int li = 0;
         for (int i = 0; i < LEVEL_VALUES.length; i++) if (LEVEL_VALUES[i].equals(levelFilter)) li = i;
-        WDropdown<String> lvl = filters.add(theme.dropdown(LEVEL_LABELS, LEVEL_LABELS[li])).widget();
+        WDropdown<String> lvl =
+                filters.add(theme.dropdown(LEVEL_LABELS, LEVEL_LABELS[li])).widget();
         lvl.action = () -> {
             String v = lvl.get();
             levelFilter = "";
@@ -385,10 +433,15 @@ public final class ActivityTab {
     private void modules(WContainer parent) {
         WHorizontalList head = parent.add(theme.horizontalList()).expandX().widget();
         head.add(theme.label("Modules", true));
-        modCount = head.add(theme.label(data.modulesOn() + " of " + data.modules().size() + " on")).widget();
+        modCount = head.add(
+                        theme.label(data.modulesOn() + " of " + data.modules().size() + " on"))
+                .widget();
         modCount.color(DIM);
         WHorizontalList filter = parent.add(theme.horizontalList()).expandX().widget();
-        WTextBox box = filter.add(theme.textBox(moduleQuery, "Filter modules")).minWidth(theme.scale(220)).expandX().widget();
+        WTextBox box = filter.add(theme.textBox(moduleQuery, "Filter modules"))
+                .minWidth(theme.scale(220))
+                .expandX()
+                .widget();
         box.action = () -> {
             String q = box.get();
             if (q.equals(moduleQuery)) return;
@@ -410,9 +463,13 @@ public final class ActivityTab {
         if (modBox == null || data == null) return;
         modBox.clear();
         boolean hide = host.policy().streamer();
-        Map<String, List<ActivityModel.Module>> groups = ActivityModel.filterModules(data.modules(), moduleQuery, enabledOnly);
+        Map<String, List<ActivityModel.Module>> groups =
+                ActivityModel.filterModules(data.modules(), moduleQuery, enabledOnly);
         if (groups.isEmpty()) {
-            modBox.add(theme.label(data.modules().isEmpty() ? "The bot did not report any modules." : "No modules match.")).widget().color(DIM);
+            modBox.add(theme.label(
+                            data.modules().isEmpty() ? "The bot did not report any modules." : "No modules match."))
+                    .widget()
+                    .color(DIM);
             return;
         }
         var view = modBox.add(theme.view()).expandX().widget();
@@ -425,7 +482,8 @@ public final class ActivityTab {
             int col = 0;
             for (ActivityModel.Module m : g.getValue()) {
                 if (shown++ >= MODULES_SHOWN) break;
-                WLabel l = table.add(theme.label((m.enabled() ? "[on] " : "[off] ") + m.name())).widget();
+                WLabel l = table.add(theme.label((m.enabled() ? "[on] " : "[off] ") + m.name()))
+                        .widget();
                 l.color(m.enabled() ? GOOD : DIM);
                 if (!m.status().isEmpty() && !hide) l.tooltip = m.status();
                 if (++col == 3) {
@@ -434,19 +492,25 @@ public final class ActivityTab {
                 }
             }
         }
-        if (shown >= MODULES_SHOWN) modBox.add(theme.label("Showing the first " + MODULES_SHOWN + " modules. Use the filter for the rest.")).widget().color(DIM);
+        if (shown >= MODULES_SHOWN)
+            modBox.add(theme.label("Showing the first " + MODULES_SHOWN + " modules. Use the filter for the rest."))
+                    .widget()
+                    .color(DIM);
     }
 
     private void plugins(WContainer parent) {
         parent.add(theme.label("Plugins", true));
         if (data.plugins().isEmpty()) {
-            parent.add(theme.label("The bot did not report any plugins.")).widget().color(DIM);
+            parent.add(theme.label("The bot did not report any plugins."))
+                    .widget()
+                    .color(DIM);
             return;
         }
         WTable t = parent.add(theme.table()).expandX().widget();
         for (ActivityModel.Plugin p : data.plugins()) {
             t.add(theme.label(p.name().isEmpty() ? p.id() : p.name()));
-            String meta = (!p.id().isEmpty() && !p.name().isEmpty() ? p.id() + " " : "") + (p.version().isEmpty() ? "" : "v" + p.version());
+            String meta = (!p.id().isEmpty() && !p.name().isEmpty() ? p.id() + " " : "")
+                    + (p.version().isEmpty() ? "" : "v" + p.version());
             t.add(theme.label(meta)).widget().color(DIM);
             t.row();
         }

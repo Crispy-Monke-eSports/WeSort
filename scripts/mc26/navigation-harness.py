@@ -21,6 +21,12 @@ class NavigationHarness(world.Harness):
             'setblock 36 67 3 minecraft:barrel',
             'fill 34 64 -7 38 67 -3 minecraft:glass',
             'fill 35 64 -6 37 66 -4 minecraft:air',
+            'fill 5 64 9 13 66 9 minecraft:smooth_stone',
+            'fill 5 64 11 13 66 11 minecraft:smooth_stone',
+            'setblock 9 64 10 minecraft:stone_pressure_plate[powered=false]',
+            'setblock 1 64 10 minecraft:oak_fence_gate[open=false]',
+            'setblock 2 64 10 minecraft:oak_trapdoor[open=false]',
+            'setblock 3 64 10 minecraft:lever[face=floor,powered=false]',
             'forceload add 1000 -16 1055 15',
         ]: self.rcon.command(command)
         for _ in range(100):
@@ -135,12 +141,42 @@ class NavigationHarness(world.Harness):
         self.command('nav-resume')
         self.ok('real server dimension change stops the old route without automatic continuation')
 
+    def dedicated_guard_cases(self):
+        self.teleport(2.5, 7.5)
+        for x, block in [(1, 'oak_fence_gate[open=false]'), (2, 'oak_trapdoor[open=false]'),
+                         (3, 'lever[powered=false]')]:
+            self.command('world-guard-probe', x=x, y=64, z=10)
+            check = self.rcon.command(f'execute if block {x} 64 10 minecraft:{block} run time query gametime')
+            require('time is ' in check, f'An unauthorized use or break changed {block}')
+        self.ok('dedicated client cancels fence gate, trapdoor and lever use or break; server blockstates match the reference')
+
+        self.teleport(5.5, 10.5)
+        self.start_walk(12, 64, 10)
+        outcome = self.wait_walk(20)
+        require(outcome['navigation'] == 'PAUSED_NAVIGATION_UNSAFE_BLOCK' and outcome['x'] < 8.0,
+                'Navigation crossed a protected pressure plate or missed the guard: ' + outcome['navigation'])
+        check = self.rcon.command('execute if block 9 64 10 minecraft:stone_pressure_plate[powered=false] run time query gametime')
+        require('time is ' in check, 'The server detected an active pressure plate on the refused route')
+        self.command('nav-resume')
+        self.ok('real Baritone route pauses before plate contact and the server pressure plate stays off')
+
+        self.teleport(0.5, 0.5)
+        self.command('unsafe-bot-profile', x=10, y=64, z=0)
+        time.sleep(0.5)
+        outcome = self.state()
+        require(outcome['navigation'] == 'PAUSED_NAVIGATION_OTHER_PROCESS' and not outcome['pathing'],
+                'Dedicated agent let a foreign Baritone goal keep control')
+        require(not outcome['allowBreak'] and not outcome['allowPlace'] and outcome['allowBreakAnyway'] == 0,
+                'Dedicated agent kept unsafe Baritone settings or a breaking exception')
+        self.command('nav-resume')
+        self.ok('dedicated Baritone clears allowBreakAnyway and cancels external goals even between WeSort jobs')
+
     def execute(self):
         try:
             self.start_server(); self.fixture(); before = self.physical_snapshot()
             self.start_manager(); self.start_client()
             index = self.observe(); self.verify_manager_index(index)
-            self.tour(); self.fault_cases()
+            self.tour(); self.fault_cases(); self.dedicated_guard_cases()
             reply = self.rcon.command('execute if blocks -8 63 -8 40 70 12 1000 63 -8 all run time query gametime')
             require('time is ' in reply and before == self.physical_snapshot(), 'Navigation modified the reference warehouse blocks or inventory')
             self.ok('server compares every warehouse block and block entity with an independent pre-navigation clone; inventory totals/components unchanged')

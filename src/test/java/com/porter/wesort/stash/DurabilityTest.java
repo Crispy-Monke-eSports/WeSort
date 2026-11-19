@@ -1,8 +1,8 @@
 package com.porter.wesort.stash;
 
-import org.junit.jupiter.api.Test;
-
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+
+import org.junit.jupiter.api.Test;
 
 /** The index's durability fields: damage and maxDamage, only for a damaged, damageable item (same rule as the plugin's). */
 class DurabilityTest {

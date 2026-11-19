@@ -1,5 +1,7 @@
 package com.porter.wesort.modules;
 
+import static meteordevelopment.meteorclient.MeteorClient.mc;
+
 import com.porter.wesort.WeSortAddon;
 import com.porter.wesort.manager.gui.ItemStacks;
 import com.porter.wesort.manager.gui.StashManagerScreen;
@@ -18,6 +20,8 @@ import com.porter.wesort.manager.model.OrderMode;
 import com.porter.wesort.manager.net.ServerUrl;
 import com.porter.wesort.manager.net.Session;
 import com.porter.wesort.manager.net.SmClient;
+import java.util.HashMap;
+import java.util.Map;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.gui.GuiTheme;
 import meteordevelopment.meteorclient.gui.widgets.WLabel;
@@ -40,11 +44,6 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
 
-import java.util.HashMap;
-import java.util.Map;
-
-import static meteordevelopment.meteorclient.MeteorClient.mc;
-
 /**
  * An in-game window for your stash. By default it works on its own: it remembers the containers you open and lets you
  * search them (local mode, no network). Optionally it can connect to a WeSort Manager server, log in as a website user
@@ -65,7 +64,11 @@ public class StashWindow extends Module {
 
     /** How big the window's pixels are: the Minecraft GUI scale, or a fixed number of screen pixels per GUI pixel. */
     public enum WindowScale {
-        AUTO("Auto", 0), X1("1x", 1), X2("2x", 2), X3("3x", 3), X4("4x", 4);
+        AUTO("Auto", 0),
+        X1("1x", 1),
+        X2("2x", 2),
+        X3("3x", 3),
+        X4("4x", 4);
 
         private final String label;
         private final int unit;
@@ -87,146 +90,147 @@ public class StashWindow extends Module {
     }
 
     private final Setting<Boolean> connect = sgGeneral.add(new BoolSetting.Builder()
-        .name("connect-to-server")
-        .description("Connect to a WeSort Manager server (optional). Off: the window only uses the containers this game has seen, and nothing goes over the network.")
-        .defaultValue(false)
-        .onChanged(on -> syncClient())
-        .build()
-    );
+            .name("connect-to-server")
+            .description(
+                    "Connect to a WeSort Manager server (optional). Off: the window only uses the containers this game has seen, and nothing goes over the network.")
+            .defaultValue(false)
+            .onChanged(on -> syncClient())
+            .build());
 
     private final Setting<String> serverUrl = sgGeneral.add(new StringSetting.Builder()
-        .name("server-url")
-        .description("Address of your WeSort Manager server, like http://192.168.1.20:8765.")
-        .defaultValue("")
-        .visible(() -> connect.get())
-        .build()
-    );
+            .name("server-url")
+            .description("Address of your WeSort Manager server, like http://192.168.1.20:8765.")
+            .defaultValue("")
+            .visible(() -> connect.get())
+            .build());
 
     private final Setting<Boolean> allowInsecure = sgGeneral.add(new BoolSetting.Builder()
-        .name("allow-insecure-http")
-        .description("Allows plain http:// to an address that is not on your own network. Your password and session are then sent unencrypted. Leave off unless you know why you need it.")
-        .defaultValue(false)
-        .visible(() -> connect.get())
-        .build()
-    );
+            .name("allow-insecure-http")
+            .description(
+                    "Allows plain http:// to an address that is not on your own network. Your password and session are then sent unencrypted. Leave off unless you know why you need it.")
+            .defaultValue(false)
+            .visible(() -> connect.get())
+            .build());
 
     private final Setting<Keybind> openKey = sgGeneral.add(new KeybindSetting.Builder()
-        .name("open-window")
-        .description("Opens the Stash Window while this module is on. The .wesort-stash-window command and the button below work any time.")
-        .defaultValue(Keybind.none())
-        .action(this::openFromKey)
-        .build()
-    );
+            .name("open-window")
+            .description(
+                    "Opens the Stash Window while this module is on. The .wesort-stash-window command and the button below work any time.")
+            .defaultValue(Keybind.none())
+            .action(this::openFromKey)
+            .build());
 
     private final Setting<Boolean> streamerDisplay = sgGeneral.add(new BoolSetting.Builder()
-        .name("streamer-display")
-        .description("Hides coordinates, server addresses and player names in the window. Always on if the owner forced streamer mode for your account.")
-        .defaultValue(false)
-        .build()
-    );
+            .name("streamer-display")
+            .description(
+                    "Hides coordinates, server addresses and player names in the window. Always on if the owner forced streamer mode for your account.")
+            .defaultValue(false)
+            .build());
 
     private final Setting<Boolean> localCapture = sgLocal.add(new BoolSetting.Builder()
-        .name("local-capture")
-        .description("Remember the contents of chests, barrels and shulker boxes you open (local mode only).")
-        .defaultValue(true)
-        .build()
-    );
+            .name("local-capture")
+            .description("Remember the contents of chests, barrels and shulker boxes you open (local mode only).")
+            .defaultValue(true)
+            .build());
 
     private final Setting<Integer> localMax = sgLocal.add(new IntSetting.Builder()
-        .name("local-max-containers")
-        .description("The most containers remembered per server; the ones read longest ago are forgotten first.")
-        .defaultValue(LocalStore.DEFAULT_CAP)
-        .range(LocalStore.MIN_CAP, LocalStore.DEFAULT_CAP)
-        .sliderRange(LocalStore.MIN_CAP, LocalStore.DEFAULT_CAP)
-        .build()
-    );
+            .name("local-max-containers")
+            .description("The most containers remembered per server; the ones read longest ago are forgotten first.")
+            .defaultValue(LocalStore.DEFAULT_CAP)
+            .range(LocalStore.MIN_CAP, LocalStore.DEFAULT_CAP)
+            .sliderRange(LocalStore.MIN_CAP, LocalStore.DEFAULT_CAP)
+            .build());
 
     private final SettingGroup sgOrders = settings.createGroup("Local orders");
 
     private final Setting<Integer> orderPlayerRadius = sgOrders.add(new IntSetting.Builder()
-        .name("order-player-radius")
-        .description("An order this client carries out itself stops when another player comes within this many blocks. 0 turns the check off.")
-        .defaultValue(6)
-        .range(0, 64)
-        .sliderRange(0, 32)
-        .build()
-    );
+            .name("order-player-radius")
+            .description(
+                    "An order this client carries out itself stops when another player comes within this many blocks. 0 turns the check off.")
+            .defaultValue(6)
+            .range(0, 64)
+            .sliderRange(0, 32)
+            .build());
 
     private final Setting<Integer> orderHostileRadius = sgOrders.add(new IntSetting.Builder()
-        .name("order-hostile-radius")
-        .description("An order this client carries out itself stops when a hostile mob comes within this many blocks. 0 turns the check off.")
-        .defaultValue(4)
-        .range(0, 64)
-        .sliderRange(0, 32)
-        .build()
-    );
+            .name("order-hostile-radius")
+            .description(
+                    "An order this client carries out itself stops when a hostile mob comes within this many blocks. 0 turns the check off.")
+            .defaultValue(4)
+            .range(0, 64)
+            .sliderRange(0, 32)
+            .build());
 
     private final Setting<Integer> orderTimeout = sgOrders.add(new IntSetting.Builder()
-        .name("order-timeout-minutes")
-        .description("An order this client carries out itself stops when it has taken longer than this.")
-        .defaultValue(30)
-        .range(1, 480)
-        .sliderRange(5, 120)
-        .build()
-    );
+            .name("order-timeout-minutes")
+            .description("An order this client carries out itself stops when it has taken longer than this.")
+            .defaultValue(30)
+            .range(1, 480)
+            .sliderRange(5, 120)
+            .build());
 
     private final Setting<Boolean> orderChat = sgOrders.add(new BoolSetting.Builder()
-        .name("order-messages")
-        .description("Tell you in chat about orders this client carries out itself (the sorter's own order messages, and when one ends or is stopped).")
-        .defaultValue(true)
-        .build()
-    );
+            .name("order-messages")
+            .description(
+                    "Tell you in chat about orders this client carries out itself (the sorter's own order messages, and when one ends or is stopped).")
+            .defaultValue(true)
+            .build());
 
     private final Setting<Integer> orderAbortHealth = sgOrders.add(new IntSetting.Builder()
-        .name("order-abort-health")
-        .description("Stop a local order when your health drops to this or below. 0: off.")
-        .defaultValue(0)
-        .range(0, 20)
-        .sliderRange(0, 20)
-        .build()
-    );
+            .name("order-abort-health")
+            .description("Stop a local order when your health drops to this or below. 0: off.")
+            .defaultValue(0)
+            .range(0, 20)
+            .sliderRange(0, 20)
+            .build());
 
     private final Setting<WindowTheme> windowTheme = sgWindow.add(new EnumSetting.Builder<WindowTheme>()
-        .name("window-theme")
-        .description("The colours of the Stash Window: the website's themes (Classic is the website's default), plus Mac. Also changed by the Theme select in the window's header.")
-        .defaultValue(WindowTheme.DEFAULT)
-        .build()
-    );
+            .name("window-theme")
+            .description(
+                    "The colours of the Stash Window: the website's themes (Classic is the website's default), plus Mac. Also changed by the Theme select in the window's header.")
+            .defaultValue(WindowTheme.DEFAULT)
+            .build());
 
     private final Setting<WindowScale> windowScale = sgWindow.add(new EnumSetting.Builder<WindowScale>()
-        .name("window-scale")
-        .description("Size of the Stash Window: Auto follows Minecraft's GUI scale (Options > Video Settings), the others fix it. Meteor's own GUI scale does not apply to this window.")
-        .defaultValue(WindowScale.AUTO)
-        .build()
-    );
+            .name("window-scale")
+            .description(
+                    "Size of the Stash Window: Auto follows Minecraft's GUI scale (Options > Video Settings), the others fix it. Meteor's own GUI scale does not apply to this window.")
+            .defaultValue(WindowScale.AUTO)
+            .build());
 
     private final Setting<TextScale> windowText = sgWindow.add(new EnumSetting.Builder<TextScale>()
-        .name("window-text-scale")
-        .description("Size of the text in the Stash Window next to its slots. Auto is about the size of the website's text; Normal is the game's own font size.")
-        .defaultValue(TextScale.AUTO)
-        .build()
-    );
+            .name("window-text-scale")
+            .description(
+                    "Size of the text in the Stash Window next to its slots. Auto is about the size of the website's text; Normal is the game's own font size.")
+            .defaultValue(TextScale.AUTO)
+            .build());
 
-    private final LocalOrderStore orderStore = new LocalOrderStore(com.porter.wesort.data.DataDirectory.clientFolder(MeteorClient.FOLDER.toPath(), "local-orders"));
-    private final LocalOrders localOrders = new LocalOrders(orderStore,
-        () -> new LocalOrders.Settings(new LocalSafety.Limits(orderPlayerRadius.get(), orderHostileRadius.get(), orderTimeout.get()), orderChat.get(), orderAbortHealth.get()),
-        new LocalOrders.Chat() {
-            @Override
-            public void info(String text) {
-                if (orderChat.get()) StashWindow.this.info("%s", text);
-            }
+    private final LocalOrderStore orderStore = new LocalOrderStore(
+            com.porter.wesort.data.DataDirectory.clientFolder(MeteorClient.FOLDER.toPath(), "local-orders"));
+    private final LocalOrders localOrders = new LocalOrders(
+            orderStore,
+            () -> new LocalOrders.Settings(
+                    new LocalSafety.Limits(orderPlayerRadius.get(), orderHostileRadius.get(), orderTimeout.get()),
+                    orderChat.get(),
+                    orderAbortHealth.get()),
+            new LocalOrders.Chat() {
+                @Override
+                public void info(String text) {
+                    if (orderChat.get()) StashWindow.this.info("%s", text);
+                }
 
-            @Override
-            public void warn(String text) {
-                // Stops and failures are always said
-                StashWindow.this.warning("%s", text);
-            }
-        });
+                @Override
+                public void warn(String text) {
+                    // Stops and failures are always said
+                    StashWindow.this.warning("%s", text);
+                }
+            });
     private final Map<String, Cart> carts = new HashMap<>();
     private final Map<String, NamesDraft> namesDrafts = new HashMap<>();
     private OrderMode orderMode;
     /** Where the window was left, in GUI pixels; null until it was moved or resized. Saved with the module's data. */
     private WindowGeometry windowGeometry;
+
     private boolean geometryDirty;
 
     // Read from the HTTP threads' callbacks only through the client thread, but cheap to make safe
@@ -241,7 +245,10 @@ public class StashWindow extends Module {
     private final LocalCapture capture = new LocalCapture(hub, () -> localCapture.get() && !connect.get());
 
     public StashWindow() {
-        super(WeSortAddon.CATEGORY, "wesort-stash-window", "A window to browse your stash from in game. Works on its own; a WeSort Manager server is optional.");
+        super(
+                WeSortAddon.CATEGORY,
+                "wesort-stash-window",
+                "A window to browse your stash from in game. Works on its own; a WeSort Manager server is optional.");
     }
 
     /** The module, found the same way for the command and the window. */
@@ -258,7 +265,8 @@ public class StashWindow extends Module {
     public void onDeactivate() {
         MeteorClient.EVENT_BUS.unsubscribe(capture);
         hub.save();
-        // Turning the module off stops an order this client is carrying out (it is parked, like wesort-stash-manager's deactivate)
+        // Turning the module off stops an order this client is carrying out (it is parked, like wesort-stash-manager's
+        // deactivate)
         localOrders.cancel("stopped: wesort-stash-window was turned off");
         orderStore.flush();
     }
@@ -539,7 +547,8 @@ public class StashWindow extends Module {
         open.action = this::openNow;
 
         if (connect.get()) {
-            WButton copy = buttons.add(theme.button("Use wesort-stash-manager's URL")).widget();
+            WButton copy =
+                    buttons.add(theme.button("Use wesort-stash-manager's URL")).widget();
             copy.tooltip = "Copies the server-url of the wesort-stash-manager module into this module.";
             copy.action = () -> {
                 Module manager = Modules.get().get(StashManager.class);
@@ -561,13 +570,17 @@ public class StashWindow extends Module {
 
     /** Never includes the token. */
     private String statusText() {
-        if (!connect.get()) return "Local mode: the window uses the containers this game has seen. No server connection.";
+        if (!connect.get())
+            return "Local mode: the window uses the containers this game has seen. No server connection.";
         String raw = serverUrl.get();
         if (raw == null || raw.isBlank()) return "Connect to server is on, but no server-url is set.";
         ServerUrl url = url();
         if (url == null) return "The server-url is not a valid http:// or https:// address.";
-        if (insecureRefused(url)) return "Plain http to an address outside your network is refused. Use https://, or turn on allow-insecure-http.";
+        if (insecureRefused(url))
+            return "Plain http to an address outside your network is refused. Use https://, or turn on allow-insecure-http.";
         Session s = session();
-        return s == null ? "Not logged in. Open the window to log in." : "Logged in as " + (s.user().isBlank() ? "owner" : s.user()) + ".";
+        return s == null
+                ? "Not logged in. Open the window to log in."
+                : "Logged in as " + (s.user().isBlank() ? "owner" : s.user()) + ".";
     }
 }

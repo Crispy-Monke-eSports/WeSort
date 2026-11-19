@@ -1,15 +1,18 @@
 package com.porter.wesort.manager.gui.frame;
 
-import org.junit.jupiter.api.Test;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+
+import org.junit.jupiter.api.Test;
 
 class WindowGeometryTest {
     @Test
     void roundTrips() {
         for (WindowGeometry g : new WindowGeometry[] {
-            new WindowGeometry(10, 20, 300, 200, false), new WindowGeometry(0, 0, 700, 432, true), new WindowGeometry(-5, -7, 1, 1, false)}) {
+            new WindowGeometry(10, 20, 300, 200, false),
+            new WindowGeometry(0, 0, 700, 432, true),
+            new WindowGeometry(-5, -7, 1, 1, false)
+        }) {
             assertEquals(g, WindowGeometry.decode(g.encode()));
         }
         assertEquals("v1:10,20,300,200,0", new WindowGeometry(10, 20, 300, 200, false).encode());
@@ -18,8 +21,24 @@ class WindowGeometryTest {
 
     @Test
     void malformedInputGivesNull() {
-        for (String bad : new String[] {"", " ", "v1:", "v1:1,2,3,4", "v1:1,2,3,4,0,9", "v2:1,2,3,4,0", "1,2,3,4,0", "v1:a,b,c,d,e", "v1:1,2,0,4,0", "v1:1,2,3,-4,0",
-            "v1:1,2,3,4,2", "v1:NaN,2,3,4,0", "v1:1.5,2,3,4,0", "v1:1,2,999999999,4,0", "v1:99999999999999999999,2,3,4,0", "v1:1,2,3,4,"}) {
+        for (String bad : new String[] {
+            "",
+            " ",
+            "v1:",
+            "v1:1,2,3,4",
+            "v1:1,2,3,4,0,9",
+            "v2:1,2,3,4,0",
+            "1,2,3,4,0",
+            "v1:a,b,c,d,e",
+            "v1:1,2,0,4,0",
+            "v1:1,2,3,-4,0",
+            "v1:1,2,3,4,2",
+            "v1:NaN,2,3,4,0",
+            "v1:1.5,2,3,4,0",
+            "v1:1,2,999999999,4,0",
+            "v1:99999999999999999999,2,3,4,0",
+            "v1:1,2,3,4,"
+        }) {
             assertNull(WindowGeometry.decode(bad), bad);
         }
         assertNull(WindowGeometry.decode(null));

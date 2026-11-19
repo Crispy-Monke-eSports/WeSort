@@ -2,10 +2,10 @@ package com.porter.wesortmanager;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import com.google.gson.JsonNull;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-
+import com.porter.wesort.data.PackageLabel;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
@@ -13,9 +13,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.ArrayList;
-import java.util.HexFormat;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,10 +33,12 @@ final class OrderStore {
     static final int KEEP = 100;
     /** The anvil's limit for a custom name. */
     static final int MAX_NAME = 50;
+
     static final int MAX_PHASE = 100;
     static final int MAX_MESSAGE = 300;
     /** The most shulkers one order may need: one double chest (the addon's Order.MAX_BINS). */
     static final int MAX_SHULKERS = 54;
+
     static final int SHULKER_SLOTS = 27;
     static final Set<String> OPEN = Set.of("pending", "accepted", "in_progress");
     static final Set<String> FINISHED = Set.of("delivered", "packed", "failed", "cancelled", "needs_reconciliation");
@@ -61,7 +63,12 @@ final class OrderStore {
         }
     }
 
-    enum Approval { DIRECT, PENDING, APPROVED, REJECTED }
+    enum Approval {
+        DIRECT,
+        PENDING,
+        APPROVED,
+        REJECTED
+    }
 
     record ApprovalDecision(Order order, boolean changed) {}
 
@@ -87,6 +94,8 @@ final class OrderStore {
         long releasedAt;
         String agent;
         JsonObject names; // normalized (see normalizeNames), or null for no naming
+        JsonObject packageLabel; // normalized (see normalizePackageLabel), or null for the default label
+        int packageTotal; // frozen number of boxes Y, 0 when unknown (legacy orders)
         long createdAt;
         long updatedAt;
         String status;
@@ -101,7 +110,64 @@ final class OrderStore {
         long manifestAcknowledgedAt;
         String placedById; // Users.OWNER_ID or a sub-user's id; null for orders from before accounts (the owner's)
         String placedByName; // the name at the time
-        String retriedAs; // the order this one was placed again as (Retry, or the planner's "order part again"), or null
+        String retriedAs; // the order this one was placed again as (Retry, or the planner's "order part again"), or
+        // null
+        private JsonArray history = new JsonArray();
+
+        void record(String action, String actor, long time) {
+            var event = new JsonObject();
+            event.addProperty("action", action);
+            event.addProperty("actor", actor);
+            event.addProperty("at", time);
+            event.addProperty("state", stage().name());
+            history.add(event);
+        }
+
+        JsonObject snapshot() {
+            var saved = toJson();
+            if (!history.isEmpty()) saved.add("history", history.deepCopy());
+            return saved;
+        }
+
+        JsonObject auditJson() {
+            var shown = new JsonObject();
+            var full = toJson();
+            for (String key : List.of(
+                    "id",
+                    "server",
+                    "stash",
+                    "createdAt",
+                    "updatedAt",
+                    "state",
+                    "purpose",
+                    "requestedBy",
+                    "placedBy",
+                    "recipient",
+                    "comment",
+                    "approvalState",
+                    "decidedBy",
+                    "decidedAt",
+                    "lines",
+                    "retriedAs")) {
+                if (full.has(key)) shown.add(key, full.get(key));
+            }
+            var events = history.deepCopy();
+            for (int i = 0; i < events.size(); i++)
+                events.get(i).getAsJsonObject().addProperty("id", id + ":" + (i + 1));
+            shown.add("events", events);
+            var packageIds = new JsonArray();
+            if (manifest != null) {
+                for (var item : manifest.getAsJsonArray("packages"))
+                    packageIds.add(item.getAsJsonObject().get("packageId"));
+            }
+            shown.add("packageIds", packageIds);
+            if (releasedAt > 0) shown.addProperty("reservationReleasedAt", releasedAt);
+            if (stage() == OrderStage.PICKUP_READY || stage() == OrderStage.DELIVERED) {
+                if (result != null && result.has("lines"))
+                    shown.add("stagedAmounts", result.get("lines").deepCopy());
+            }
+            return shown;
+        }
 
         JsonObject toJson() {
             JsonObject o = new JsonObject();
@@ -144,6 +210,8 @@ final class OrderStore {
             if (agent != null) o.addProperty("agent", agent);
             if (releasedAt > 0) o.addProperty("releasedAt", releasedAt);
             o.add("names", names == null ? null : names.deepCopy());
+            o.add("packageLabel", packageLabel == null ? null : packageLabel.deepCopy());
+            if (packageTotal > 0) o.addProperty("packageTotal", packageTotal);
             o.addProperty("createdAt", createdAt);
             o.addProperty("updatedAt", updatedAt);
             o.addProperty("status", status);
@@ -173,11 +241,15 @@ final class OrderStore {
         static Order fromJson(JsonObject o) {
             Order r = new Order();
             r.id = o.get("id").getAsString();
+            if (o.has("history")) r.history = o.getAsJsonArray("history").deepCopy();
             if (o.has("manifest")) r.manifest = o.getAsJsonObject("manifest").deepCopy();
-            if (o.has("manifestAcknowledgedAt")) r.manifestAcknowledgedAt = o.get("manifestAcknowledgedAt").getAsLong();
-            r.sourceGuards = o.has("sourceGuards") ? o.getAsJsonObject("sourceGuards").deepCopy() : null;
-            if (o.has("allocations")) r.allocations = List.of(Json.GSON.fromJson(
-                o.get("allocations"), PhysicalReservations.Allocation[].class));
+            if (o.has("manifestAcknowledgedAt"))
+                r.manifestAcknowledgedAt = o.get("manifestAcknowledgedAt").getAsLong();
+            r.sourceGuards =
+                    o.has("sourceGuards") ? o.getAsJsonObject("sourceGuards").deepCopy() : null;
+            if (o.has("allocations"))
+                r.allocations =
+                        List.of(Json.GSON.fromJson(o.get("allocations"), PhysicalReservations.Allocation[].class));
             r.claimedAt = o.has("claimedAt") ? o.get("claimedAt").getAsLong() : 0;
             r.agent = str(o, "agent");
             r.releasedAt = o.has("releasedAt") ? o.get("releasedAt").getAsLong() : 0;
@@ -188,13 +260,17 @@ final class OrderStore {
             if (o.has("declaredRecipient")) intent.add("recipient", o.get("declaredRecipient"));
             r.intent = OrderIntent.read(intent);
             r.verifiedRecipient = str(o, "verifiedRecipient");
-            if (o.has("approvalState")) r.approval = Approval.valueOf(o.get("approvalState").getAsString());
+            if (o.has("approvalState"))
+                r.approval = Approval.valueOf(o.get("approvalState").getAsString());
             r.decidedBy = str(o, "decidedBy");
             r.decidedAt = o.has("decidedAt") ? o.get("decidedAt").getAsLong() : 0;
             r.lines = new ArrayList<>();
             for (JsonElement e : o.getAsJsonArray("lines")) {
                 JsonObject l = e.getAsJsonObject();
-                r.lines.add(new Line(l.get("type").getAsString(), l.get("key").getAsString(), l.get("count").getAsLong()));
+                r.lines.add(new Line(
+                        l.get("type").getAsString(),
+                        l.get("key").getAsString(),
+                        l.get("count").getAsLong()));
             }
             // "note" from orders stored before notes were removed is dropped here and never written again.
             try {
@@ -202,6 +278,12 @@ final class OrderStore {
             } catch (OrderException e) {
                 r.names = null;
             }
+            try {
+                r.packageLabel = normalizePackageLabel(o.get("packageLabel"));
+            } catch (OrderException e) {
+                r.packageLabel = null;
+            }
+            r.packageTotal = o.has("packageTotal") ? o.get("packageTotal").getAsInt() : 0;
             r.createdAt = o.get("createdAt").getAsLong();
             r.updatedAt = o.get("updatedAt").getAsLong();
             r.status = o.get("status").getAsString();
@@ -212,9 +294,12 @@ final class OrderStore {
             r.phase = str(o, "phase");
             r.progress = o.has("progress") && o.get("progress").isJsonObject() ? o.getAsJsonObject("progress") : null;
             r.message = str(o, "message");
-            r.cancelRequested = o.has("cancelRequested") && o.get("cancelRequested").getAsBoolean();
-            r.cancelRequestedAt = o.has("cancelRequestedAt") && o.get("cancelRequestedAt").isJsonPrimitive()
-                ? o.get("cancelRequestedAt").getAsLong() : 0;
+            r.cancelRequested =
+                    o.has("cancelRequested") && o.get("cancelRequested").getAsBoolean();
+            r.cancelRequestedAt =
+                    o.has("cancelRequestedAt") && o.get("cancelRequestedAt").isJsonPrimitive()
+                            ? o.get("cancelRequestedAt").getAsLong()
+                            : 0;
             r.result = o.has("result") && o.get("result").isJsonObject() ? o.getAsJsonObject("result") : null;
             r.retriedAs = str(o, "retriedAs");
             if (o.has("placedBy") && o.get("placedBy").isJsonObject()) {
@@ -225,10 +310,19 @@ final class OrderStore {
             return r;
         }
 
-        OrderStage stage() { return stage == null ? OrderStage.legacy(status) : stage; }
+        OrderStage stage() {
+            return stage == null ? OrderStage.legacy(status) : stage;
+        }
+
+        /** The generated W-064 full names for a frozen package total, or null for legacy free-name orders. */
+        JsonArray generatedNames() {
+            if (packageLabel == null || packageTotal <= 0) return null;
+            return PackageLabel.generate(packageLabel, packageTotal);
+        }
 
         void advance(OrderStage next) throws OrderException {
-            if (!stage().allows(next)) throw new OrderException(409, "Order cannot move from " + stage() + " to " + next, -1);
+            if (!stage().allows(next))
+                throw new OrderException(409, "Order cannot move from " + stage() + " to " + next, -1);
             stage = next;
         }
 
@@ -243,6 +337,7 @@ final class OrderStore {
         final String server;
         final String stash;
         final List<Order> orders = new ArrayList<>();
+        final List<Order> archived = new ArrayList<>();
         final Map<String, Receipt> receipts = new LinkedHashMap<>();
 
         Book(String server, String stash) {
@@ -258,6 +353,7 @@ final class OrderStore {
             value.add("order", order.deepCopy());
             return value;
         }
+
         static Receipt read(JsonObject value) {
             return new Receipt(value.get("fingerprint").getAsString(), value.getAsJsonObject("order"));
         }
@@ -309,12 +405,16 @@ final class OrderStore {
         try (DirectoryStream<Path> files = Files.newDirectoryStream(dir, "*.json")) {
             for (Path file : files) {
                 try {
-                    JsonObject root = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8)).getAsJsonObject();
-                    Book b = book(root.get("server").getAsString(), root.get("stash").getAsString());
+                    JsonObject root = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8))
+                            .getAsJsonObject();
+                    Book b = book(
+                            root.get("server").getAsString(), root.get("stash").getAsString());
                     synchronized (b) {
                         if (root.has("receipts")) {
                             for (var entry : root.getAsJsonObject("receipts").entrySet()) {
-                                b.receipts.put(entry.getKey(), Receipt.read(entry.getValue().getAsJsonObject()));
+                                b.receipts.put(
+                                        entry.getKey(),
+                                        Receipt.read(entry.getValue().getAsJsonObject()));
                             }
                         }
                         for (JsonElement e : root.getAsJsonArray("orders")) {
@@ -322,6 +422,11 @@ final class OrderStore {
                             b.orders.add(o);
                             byOrderId.put(o.id, b);
                         }
+                        if (root.has("archived"))
+                            for (var entry : root.getAsJsonArray("archived")) {
+                                b.archived.add(Order.fromJson(entry.getAsJsonObject()));
+                            }
+                        trimArchive(b);
                         b.orders.sort((x, y) -> Long.compare(x.createdAt, y.createdAt));
                     }
                 } catch (RuntimeException e) {
@@ -340,41 +445,101 @@ final class OrderStore {
         root.addProperty("server", b.server);
         root.addProperty("stash", b.stash);
         JsonArray list = new JsonArray();
-        for (Order o : b.orders) list.add(o.toJson());
+        for (Order o : b.orders) list.add(o.snapshot());
         root.add("orders", list);
+        if (!b.archived.isEmpty()) {
+            var archived = new JsonArray();
+            for (Order o : b.archived) archived.add(o.snapshot());
+            root.add("archived", archived);
+        }
         if (!b.receipts.isEmpty()) {
             var receipts = new JsonObject();
             b.receipts.forEach((key, receipt) -> receipts.add(key, receipt.json()));
             root.add("receipts", receipts);
         }
-        AtomicFiles.write(dir.resolve(IndexStore.fileName(b.server, b.stash)), Json.GSON.toJson(root).getBytes(StandardCharsets.UTF_8));
+        AtomicFiles.write(
+                dir.resolve(IndexStore.fileName(b.server, b.stash)),
+                Json.GSON.toJson(root).getBytes(StandardCharsets.UTF_8));
     }
 
     private void update(Book book, Order previous, Order next) throws IOException {
         int position = book.orders.indexOf(previous);
+        var before = book.orders.size() > KEEP ? List.copyOf(book.orders) : null;
+        var archiveBefore = before == null ? null : List.copyOf(book.archived);
         book.orders.set(position, next);
+        var pruned = prune(book);
         try {
             save(book);
         } catch (IOException failure) {
-            book.orders.set(position, previous);
+            if (before != null && !pruned.isEmpty()) {
+                book.orders.clear();
+                book.orders.addAll(before);
+                book.archived.clear();
+                book.archived.addAll(archiveBefore);
+            } else book.orders.set(position, previous);
             throw failure;
         }
-        prune(book);
+        pruned.forEach(order -> byOrderId.remove(order.id, book));
     }
 
-    /** Drops the oldest finished orders beyond KEEP. Open orders are never pruned. */
-    private void prune(Book b) {
+    /** Moves the oldest finished orders beyond KEEP out of the operational order list. */
+    private List<Order> prune(Book b) {
+        if (b.orders.size() <= KEEP) return List.of();
+        var pruned = new ArrayList<Order>();
         int excess = b.orders.size() - KEEP;
         for (int i = 0; i < b.orders.size() && excess > 0; ) {
             Order o = b.orders.get(i);
             if (o.stage().archiveable() && (o.allocations == null || o.claimedAt == 0 || o.releasedAt > 0)) {
                 b.orders.remove(i);
-                byOrderId.remove(o.id, b);
+                b.archived.add(o);
+                pruned.add(o);
                 excess--;
             } else {
                 i++;
             }
         }
+        if (!pruned.isEmpty()) trimArchive(b);
+        return pruned;
+    }
+
+    private static void trimArchive(Book book) {
+        book.archived.sort(java.util.Comparator.comparingLong(order -> order.updatedAt));
+        int excess = book.archived.size() - KEEP;
+        if (excess > 0) book.archived.subList(0, excess).clear();
+    }
+
+    JsonArray auditOrders(Users.Principal who, java.util.function.Predicate<Order> matches, int limit) {
+        synchronized (index) {
+            var rows = new ArrayList<Order>();
+            for (Book book : books.values()) {
+                if (!who.perms().seesStash(book.server, book.stash)) continue;
+                synchronized (book) {
+                    for (var orders : List.of(book.orders, book.archived)) {
+                        for (Order order : orders) if (matches.test(order)) rows.add(order);
+                    }
+                }
+            }
+            rows.sort(java.util.Comparator.<Order>comparingLong(order -> order.updatedAt)
+                    .reversed()
+                    .thenComparing(order -> order.id));
+            var out = new JsonArray();
+            rows.stream().limit(limit).map(Order::auditJson).forEach(out::add);
+            return out;
+        }
+    }
+
+    Map<String, Integer> activeStates(Users.Principal who) {
+        var totals = new java.util.TreeMap<String, Integer>();
+        for (Book book : books.values()) {
+            if (!who.perms().seesStash(book.server, book.stash)) continue;
+            synchronized (book) {
+                for (Order order : book.orders)
+                    if (!order.stage().archiveable()) {
+                        totals.merge(order.stage().name(), 1, Integer::sum);
+                    }
+            }
+        }
+        return totals;
     }
 
     private static Map<String, Long> reserved(Book b) {
@@ -410,8 +575,9 @@ final class OrderStore {
     }
 
     private static boolean holdsPhysical(Order order) {
-        return order.allocations != null && order.releasedAt == 0
-            && (OPEN.contains(order.status) || order.claimedAt > 0);
+        return order.allocations != null
+                && order.releasedAt == 0
+                && (OPEN.contains(order.status) || order.claimedAt > 0);
     }
 
     void releaseFromFreshObservation(String server) throws IOException {
@@ -423,18 +589,20 @@ final class OrderStore {
                 synchronized (book) {
                     var released = new ArrayList<Order>();
                     for (var order : book.orders) {
-                        if (!holdsPhysical(order) || !FINISHED.contains(order.status)
-                            || order.stage() == OrderStage.NEEDS_RECONCILIATION) continue;
+                        if (!holdsPhysical(order)
+                                || !FINISHED.contains(order.status)
+                                || order.stage() == OrderStage.NEEDS_RECONCILIATION) continue;
                         if (observations == null) observations = PhysicalReservations.read(index.stock(), server, null);
                         if (observations.refreshedAfter(order.allocations, order.updatedAt)
-                            && !index.stock().unsettledPhysicalOrder(order.id)) {
+                                && !index.stock().unsettledPhysicalOrder(order.id)) {
                             released.add(order);
                             order.releasedAt = System.currentTimeMillis();
                         }
                     }
                     if (!released.isEmpty()) {
-                        try { save(book); }
-                        catch (IOException failure) {
+                        try {
+                            save(book);
+                        } catch (IOException failure) {
                             released.forEach(order -> order.releasedAt = 0);
                             throw failure;
                         }
@@ -448,9 +616,10 @@ final class OrderStore {
 
     List<Reservation> physicalHolds(String server) {
         var holds = new ArrayList<Reservation>();
-        for (var order : ordersOnServer(server)) if (holdsPhysical(order)) {
-            for (var allocation : order.allocations) holds.add(new Reservation(order.id, allocation));
-        }
+        for (var order : ordersOnServer(server))
+            if (holdsPhysical(order)) {
+                for (var allocation : order.allocations) holds.add(new Reservation(order.id, allocation));
+            }
         return List.copyOf(holds);
     }
 
@@ -462,7 +631,9 @@ final class OrderStore {
 
     AutomationGate.Lease acquireSorting(String server, String agent, String token) throws IOException {
         synchronized (index) {
-            return hasOpenOnServer(server) || !heldRoots(server).isEmpty() ? null : index.automation().acquire(server, agent, token);
+            return hasOpenOnServer(server) || !heldRoots(server).isEmpty()
+                    ? null
+                    : index.automation().acquire(server, agent, token);
         }
     }
 
@@ -479,24 +650,85 @@ final class OrderStore {
     // ---------- browser ----------
 
     /** Validates (against the current index and open orders), merges duplicate lines, stores and returns the order. */
-    Order place(String server, String stash, List<Line> requested, JsonObject names) throws OrderException, IOException {
+    Order place(String server, String stash, List<Line> requested, JsonObject names)
+            throws OrderException, IOException {
         return place(server, stash, requested, names, null, null);
     }
 
     /** The same, recording who placed it (byId null: unknown, counted as the owner's). */
     Order place(String server, String stash, List<Line> requested, JsonObject names, String byId, String byName)
-        throws OrderException, IOException {
+            throws OrderException, IOException {
         return place(server, stash, requested, names, byId, byName, null, OrderIntent.DEFAULT);
     }
 
-    Order place(String server, String stash, List<Line> requested, JsonObject names, String byId,
-                String byName, String organizationId, OrderIntent intent) throws OrderException, IOException {
-        return submit(server, stash, requested, names, byId, byName, organizationId, intent, null, false, ignored -> null).order();
+    Order place(
+            String server,
+            String stash,
+            List<Line> requested,
+            JsonObject names,
+            String byId,
+            String byName,
+            String organizationId,
+            OrderIntent intent)
+            throws OrderException, IOException {
+        return submit(
+                        server,
+                        stash,
+                        requested,
+                        names,
+                        null,
+                        byId,
+                        byName,
+                        organizationId,
+                        intent,
+                        null,
+                        false,
+                        ignored -> null)
+                .order();
     }
 
-    Submission submit(String server, String stash, List<Line> requested, JsonObject names, String byId,
-                      String byName, String organizationId, OrderIntent intent, String idempotencyKey, boolean needsApproval, RecipientResolver recipient)
-        throws OrderException, IOException {
+    Submission submit(
+            String server,
+            String stash,
+            List<Line> requested,
+            JsonObject names,
+            String byId,
+            String byName,
+            String organizationId,
+            OrderIntent intent,
+            String idempotencyKey,
+            boolean needsApproval,
+            RecipientResolver recipient)
+            throws OrderException, IOException {
+        return submit(
+                server,
+                stash,
+                requested,
+                names,
+                null,
+                byId,
+                byName,
+                organizationId,
+                intent,
+                idempotencyKey,
+                needsApproval,
+                recipient);
+    }
+
+    Submission submit(
+            String server,
+            String stash,
+            List<Line> requested,
+            JsonObject names,
+            JsonObject packageLabel,
+            String byId,
+            String byName,
+            String organizationId,
+            OrderIntent intent,
+            String idempotencyKey,
+            boolean needsApproval,
+            RecipientResolver recipient)
+            throws OrderException, IOException {
         synchronized (index) {
             String key = null, fingerprint = null;
             if (idempotencyKey != null) {
@@ -506,21 +738,50 @@ final class OrderStore {
                 body.addProperty("stash", stash);
                 body.add("lines", Json.GSON.toJsonTree(requested));
                 body.add("names", names == null ? JsonNull.INSTANCE : names);
+                body.add("packageLabel", packageLabel == null ? JsonNull.INSTANCE : packageLabel);
                 body.add("intent", Json.GSON.toJsonTree(intent));
                 fingerprint = hash(body);
                 var saved = previouslyReceived(key);
                 if (saved != null) return new Submission(replay(saved, fingerprint), false);
             }
-            return new Submission(placeWithObservationLock(server, stash, requested, names, byId, byName,
-                organizationId, intent, key, fingerprint, null, needsApproval, recipient.resolve(intent)), true);
+            return new Submission(
+                    placeWithObservationLock(
+                            server,
+                            stash,
+                            requested,
+                            names,
+                            packageLabel,
+                            byId,
+                            byName,
+                            organizationId,
+                            intent,
+                            key,
+                            fingerprint,
+                            null,
+                            needsApproval,
+                            recipient.resolve(intent)),
+                    true);
         }
     }
 
-    private Order placeWithObservationLock(String server, String stash, List<Line> requested, JsonObject names,
-                                           String byId, String byName, String organizationId, OrderIntent intent,
-                                           String receiptKey, String fingerprint, Order retryOf, boolean needsApproval, String recipient)
-        throws OrderException, IOException {
-        if (index.automation().current(server) != null) throw new OrderException(409, "Physical sorting active or awaiting reconciliation", -1);
+    private Order placeWithObservationLock(
+            String server,
+            String stash,
+            List<Line> requested,
+            JsonObject names,
+            JsonObject packageLabel,
+            String byId,
+            String byName,
+            String organizationId,
+            OrderIntent intent,
+            String receiptKey,
+            String fingerprint,
+            Order retryOf,
+            boolean needsApproval,
+            String recipient)
+            throws OrderException, IOException {
+        if (index.automation().current(server) != null)
+            throw new OrderException(409, "Physical sorting active or awaiting reconciliation", -1);
         if (requested.isEmpty()) throw new OrderException(400, "an order needs at least one line", -1);
         if (requested.size() > MAX_LINES) throw new OrderException(400, "at most " + MAX_LINES + " lines", -1);
         IndexStore.OrderCounts counts = index.orderCounts(server, stash);
@@ -548,25 +809,34 @@ final class OrderStore {
         var physical = PhysicalReservations.read(index.stock(), server, stash);
         var existing = ordersOnServer(server);
         if (existing.stream().anyMatch(order -> order.allocations != null && isExecuting(order))) {
-            throw new OrderException(409, "Wait for the active physical order to finish before reserving more stock", -1);
+            throw new OrderException(
+                    409, "Wait for the active physical order to finish before reserving more stock", -1);
         }
         var held = heldRoots(server);
-        if (!held.isEmpty() && index.stock().sources().stream().anyMatch(source ->
-            source.server().equals(server) && source.status().equals("SUPERSEDED") &&
-                held.stream().anyMatch(root -> root.source().equals(source.value().get("id").getAsString())))) {
-            throw new OrderException(409, "A reserved physical source changed topology and requires reconciliation", -1);
+        if (!held.isEmpty()
+                && index.stock().sources().stream()
+                        .anyMatch(source -> source.server().equals(server)
+                                && source.status().equals("SUPERSEDED")
+                                && held.stream()
+                                        .anyMatch(root -> root.source()
+                                                .equals(source.value().get("id").getAsString())))) {
+            throw new OrderException(
+                    409, "A reserved physical source changed topology and requires reconciliation", -1);
         }
-        boolean legacyHold = existing.stream()
-            .anyMatch(order -> order.allocations == null && OPEN.contains(order.status));
-        if (physical.hasSnapshots() && legacyHold || !physical.hasSnapshots()
-            && (!held.isEmpty() || merged.values().stream().anyMatch(line -> line.type.equals("shulker")))) {
+        boolean legacyHold =
+                existing.stream().anyMatch(order -> order.allocations == null && OPEN.contains(order.status));
+        if (physical.hasSnapshots() && legacyHold
+                || !physical.hasSnapshots()
+                        && (!held.isEmpty()
+                                || merged.values().stream().anyMatch(line -> line.type.equals("shulker")))) {
             throw new OrderException(409, "Resolve existing reservations before mixing source observation formats", -1);
         }
         var allocations = physical.hasSnapshots() ? physical.allocate(merged.values(), held, firstIndex) : null;
         Book b = book(server, stash);
         synchronized (b) {
             long open = b.orders.stream().filter(o -> OPEN.contains(o.status)).count();
-            if (open >= MAX_OPEN) throw new OrderException(400, "too many open orders for this stash (limit " + MAX_OPEN + ")", -1);
+            if (open >= MAX_OPEN)
+                throw new OrderException(400, "too many open orders for this stash (limit " + MAX_OPEN + ")", -1);
             Map<String, Long> reserved = reserved(b);
             for (Line l : merged.values()) {
                 int at = firstIndex.get(l.ref());
@@ -574,13 +844,17 @@ final class OrderStore {
                 if (total < 0 && allocations == null) throw new OrderException(400, "not in the stash: " + l.key, at);
                 long available = Math.max(0, total - reserved.getOrDefault(l.ref(), 0L));
                 if (allocations == null && l.count > available) {
-                    throw new OrderException(400, "only " + available + " available for " + l.key + " (asked for " + l.count + ")", at);
+                    throw new OrderException(
+                            400, "only " + available + " available for " + l.key + " (asked for " + l.count + ")", at);
                 }
             }
             long shulkers = shulkersNeeded(merged.values(), counts);
             if (shulkers > MAX_SHULKERS) {
-                throw new OrderException(400, "too big: this order needs " + shulkers + " shulkers, and one order can fill at most "
-                    + MAX_SHULKERS + " (one double chest)", -1);
+                throw new OrderException(
+                        400,
+                        "too big: this order needs " + shulkers + " shulkers, and one order can fill at most "
+                                + MAX_SHULKERS + " (one double chest)",
+                        -1);
             }
             long now = System.currentTimeMillis();
             Order o = new Order();
@@ -593,6 +867,8 @@ final class OrderStore {
             o.verifiedRecipient = recipient;
             o.lines = new ArrayList<>(merged.values());
             o.names = names == null ? null : names.deepCopy();
+            o.packageLabel = packageLabel == null ? null : packageLabel.deepCopy();
+            o.packageTotal = (int) shulkers;
             o.allocations = allocations;
             o.sourceGuards = sourceGuards(server, stash);
             o.createdAt = now;
@@ -602,6 +878,10 @@ final class OrderStore {
             o.advance(OrderStage.RESERVED);
             o.placedById = byId;
             o.placedByName = byId == null ? null : byName;
+            o.record(
+                    retryOf == null ? "order.reserve" : "order.retry.reserve",
+                    byId == null ? Users.OWNER_ID : byId,
+                    now);
             b.orders.add(o);
             if (retryOf != null) retryOf.retriedAs = o.id;
             if (receiptKey != null) b.receipts.put(receiptKey, new Receipt(fingerprint, o.toJson()));
@@ -631,7 +911,15 @@ final class OrderStore {
         return retry(id, byId, byName, true, null, GuildProfile.ApprovalPolicy.DIRECT, ignored -> null);
     }
 
-    Order retry(String id, String byId, String byName, boolean mayOrderForGuild, String organizationId, GuildProfile.ApprovalPolicy policy, RecipientResolver recipient) throws OrderException, IOException {
+    Order retry(
+            String id,
+            String byId,
+            String byName,
+            boolean mayOrderForGuild,
+            String organizationId,
+            GuildProfile.ApprovalPolicy policy,
+            RecipientResolver recipient)
+            throws OrderException, IOException {
         synchronized (index) {
             Book book = byOrderId.get(id);
             if (book == null) throw new OrderException(404, "no such order", -1);
@@ -642,7 +930,8 @@ final class OrderStore {
                     throw new OrderException(409, "Only failed or cancelled orders can be retried", -1);
                 }
                 if (!mayOrderForGuild && old.intent.requiresGuildPermission()) {
-                    throw new OrderException(403, "Your role cannot retry an order for the guild or another recipient", -1);
+                    throw new OrderException(
+                            403, "Your role cannot retry an order for the guild or another recipient", -1);
                 }
                 if (old.retriedAs != null) {
                     throw new OrderException(409, "This order was already placed again as " + old.retriedAs, -1);
@@ -650,8 +939,21 @@ final class OrderStore {
                 if (holdsPhysical(old)) {
                     throw new OrderException(409, "Wait for verified release of the previous reservation", -1);
                 }
-                return placeWithObservationLock(book.server, book.stash, old.lines, old.names, byId, byName,
-                    old.organizationId == null ? organizationId : old.organizationId, old.intent, null, null, old, policy.requiresApproval(old.intent), recipient.resolve(old.intent));
+                return placeWithObservationLock(
+                        book.server,
+                        book.stash,
+                        old.lines,
+                        old.names,
+                        old.packageLabel,
+                        byId,
+                        byName,
+                        old.organizationId == null ? organizationId : old.organizationId,
+                        old.intent,
+                        null,
+                        null,
+                        old,
+                        policy.requiresApproval(old.intent),
+                        recipient.resolve(old.intent));
             }
         }
     }
@@ -668,7 +970,11 @@ final class OrderStore {
         if (!e.isJsonObject()) throw new OrderException(400, "names must be an object or null", -1);
         JsonObject o = e.getAsJsonObject();
         JsonElement mode = o.get("mode");
-        String m = mode != null && mode.isJsonPrimitive() && mode.getAsJsonPrimitive().isString() ? mode.getAsString() : null;
+        String m = mode != null
+                        && mode.isJsonPrimitive()
+                        && mode.getAsJsonPrimitive().isString()
+                ? mode.getAsString()
+                : null;
         if ("all".equals(m)) {
             JsonElement n = o.get("name");
             if (n == null || !n.isJsonPrimitive() || !n.getAsJsonPrimitive().isString()) {
@@ -685,7 +991,8 @@ final class OrderStore {
             JsonElement list = o.get("names");
             if (list == null || !list.isJsonArray()) throw new OrderException(400, "names.names must be an array", -1);
             JsonArray a = list.getAsJsonArray();
-            if (a.size() > MAX_SHULKERS) throw new OrderException(400, "names.names has more than " + MAX_SHULKERS + " entries", -1);
+            if (a.size() > MAX_SHULKERS)
+                throw new OrderException(400, "names.names has more than " + MAX_SHULKERS + " entries", -1);
             List<String> names = new ArrayList<>();
             int last = -1;
             for (int i = 0; i < a.size(); i++) {
@@ -712,19 +1019,44 @@ final class OrderStore {
         throw new OrderException(400, "names.mode must be \"all\" or \"each\"", -1);
     }
 
+    /**
+     * Validates and normalizes a W-064 package label: the user-chosen text part of the automatic
+     * {@code "WeSort (X/Y) - <text>"} name. Returns null for an absent label (the caller then uses the
+     * default "Beställning"), otherwise {@code {mode:"all", text}} or {@code {mode:"each", texts:[...]}}.
+     */
+    static JsonObject normalizePackageLabel(JsonElement e) throws OrderException {
+        if (e == null || e.isJsonNull()) return null;
+        if (!e.isJsonObject()) throw new OrderException(400, "packageLabel must be an object or null", -1);
+        try {
+            return PackageLabel.normalize(e.getAsJsonObject());
+        } catch (IllegalArgumentException invalid) {
+            throw new OrderException(400, invalid.getMessage(), -1);
+        }
+    }
+
     /** The trimmed name ("" when blank), or 400 when it is too long or has § or a control character. */
     private static String checkName(String raw, String field) throws OrderException {
         String name = raw.strip();
-        if (name.length() > MAX_NAME) throw new OrderException(400, field + " is longer than " + MAX_NAME + " characters", -1);
+        if (name.length() > MAX_NAME)
+            throw new OrderException(400, field + " is longer than " + MAX_NAME + " characters", -1);
         for (int i = 0; i < name.length(); i++) {
             char c = name.charAt(i);
             if (c == '§') throw new OrderException(400, field + " can't contain §", -1);
-            if (Character.isISOControl(c)) throw new OrderException(400, field + " can't contain control characters", -1);
-            // Invisible or direction-changing characters (bidi overrides, zero-width, line separators) and broken surrogates
+            if (Character.isISOControl(c))
+                throw new OrderException(400, field + " can't contain control characters", -1);
+            // Invisible or direction-changing characters (bidi overrides, zero-width, line separators) and broken
+            // surrogates
             int type = Character.getType(c);
-            if (type == Character.FORMAT || type == Character.LINE_SEPARATOR || type == Character.PARAGRAPH_SEPARATOR
-                || (type == Character.SURROGATE && !(Character.isHighSurrogate(c) && i + 1 < name.length() && Character.isLowSurrogate(name.charAt(i + 1)))
-                    && !(Character.isLowSurrogate(c) && i > 0 && Character.isHighSurrogate(name.charAt(i - 1))))) {
+            if (type == Character.FORMAT
+                    || type == Character.LINE_SEPARATOR
+                    || type == Character.PARAGRAPH_SEPARATOR
+                    || (type == Character.SURROGATE
+                            && !(Character.isHighSurrogate(c)
+                                    && i + 1 < name.length()
+                                    && Character.isLowSurrogate(name.charAt(i + 1)))
+                            && !(Character.isLowSurrogate(c)
+                                    && i > 0
+                                    && Character.isHighSurrogate(name.charAt(i - 1))))) {
                 throw new OrderException(400, field + " can't contain invisible or direction-changing characters", -1);
             }
         }
@@ -767,7 +1099,8 @@ final class OrderStore {
         Map<String, Long> reserved = Map.of();
         if (b != null) {
             synchronized (b) {
-                for (int i = b.orders.size() - 1; i >= 0; i--) list.add(b.orders.get(i).toJson());
+                for (int i = b.orders.size() - 1; i >= 0; i--)
+                    list.add(b.orders.get(i).toJson());
                 reserved = reserved(b);
             }
         }
@@ -795,10 +1128,12 @@ final class OrderStore {
             });
         } else if (counts != null) {
             for (String key : counts.items().keySet()) {
-                items.addProperty(key, Math.max(0, counts.total("item", key) - reserved.getOrDefault("item:" + key, 0L)));
+                items.addProperty(
+                        key, Math.max(0, counts.total("item", key) - reserved.getOrDefault("item:" + key, 0L)));
             }
             for (String key : counts.shulkers().keySet()) {
-                shulkers.addProperty(key, Math.max(0, counts.total("shulker", key) - reserved.getOrDefault("shulker:" + key, 0L)));
+                shulkers.addProperty(
+                        key, Math.max(0, counts.total("shulker", key) - reserved.getOrDefault("shulker:" + key, 0L)));
             }
         }
         available.add("items", items);
@@ -812,22 +1147,31 @@ final class OrderStore {
      * never touched: they hold reservations and the bot may be working on them.
      */
     int clearFinished(String server, String stash) throws IOException {
-        synchronized (index) { return clearFinishedWithObservationLock(server, stash); }
+        synchronized (index) {
+            return clearFinishedWithObservationLock(server, stash);
+        }
     }
 
     private int clearFinishedWithObservationLock(String server, String stash) throws IOException {
         Book b = books.get(new IndexStore.StashKey(server, stash));
         if (b == null) return 0;
         synchronized (b) {
-            var removable = b.orders.stream().filter(o -> o.stage().archiveable() && !holdsPhysical(o)).toList();
+            var removable = b.orders.stream()
+                    .filter(o -> o.stage().archiveable() && !holdsPhysical(o))
+                    .toList();
             if (removable.isEmpty()) return 0;
             var before = List.copyOf(b.orders);
+            var archiveBefore = List.copyOf(b.archived);
             b.orders.removeAll(removable);
+            b.archived.addAll(removable);
+            trimArchive(b);
             try {
                 save(b);
             } catch (IOException failure) {
                 b.orders.clear();
                 b.orders.addAll(before);
+                b.archived.clear();
+                b.archived.addAll(archiveBefore);
                 throw failure;
             }
             removable.forEach(o -> byOrderId.remove(o.id, b));
@@ -847,7 +1191,7 @@ final class OrderStore {
                 if (!before.status.equals("pending") || before.approval != Approval.PENDING) {
                     throw new OrderException(409, "This order is no longer awaiting approval", -1);
                 }
-                Order next = Order.fromJson(before.toJson());
+                Order next = Order.fromJson(before.snapshot());
                 next.approval = decision;
                 next.decidedBy = actor;
                 next.decidedAt = next.updatedAt = System.currentTimeMillis();
@@ -855,6 +1199,7 @@ final class OrderStore {
                     next.advance(OrderStage.CANCELLED);
                     next.status = "cancelled";
                 }
+                next.record(approve ? "order.approve" : "order.reject", actor, next.updatedAt);
                 update(book, before, next);
                 return new ApprovalDecision(next, true);
             }
@@ -863,16 +1208,22 @@ final class OrderStore {
 
     /** pending -> cancelled now; accepted/in_progress -> cancelRequested; finished -> 409. */
     Order cancel(String id) throws OrderException, IOException {
-        synchronized (index) { return cancelWithObservationLock(id); }
+        return cancel(id, Users.OWNER_ID);
     }
 
-    private Order cancelWithObservationLock(String id) throws OrderException, IOException {
+    Order cancel(String id, String actor) throws OrderException, IOException {
+        synchronized (index) {
+            return cancelWithObservationLock(id, actor);
+        }
+    }
+
+    private Order cancelWithObservationLock(String id, String actor) throws OrderException, IOException {
         Book b = byOrderId.get(id);
         if (b == null) throw new OrderException(404, "no such order", -1);
         synchronized (b) {
             Order previous = find(b, id);
             if (previous == null) throw new OrderException(404, "no such order", -1);
-            Order o = Order.fromJson(previous.toJson());
+            Order o = Order.fromJson(previous.snapshot());
             if (FINISHED.contains(o.status)) throw new OrderException(409, "order is already " + o.status, -1);
             if (o.status.equals("pending")) {
                 o.advance(OrderStage.CANCELLED);
@@ -881,8 +1232,9 @@ final class OrderStore {
             } else if (!o.cancelRequested) {
                 o.cancelRequested = true;
                 o.cancelRequestedAt = System.currentTimeMillis();
-            }
+            } else return previous;
             o.updatedAt = System.currentTimeMillis();
+            o.record(o.cancelRequested ? "order.cancel.request" : "order.cancel", actor, o.updatedAt);
             update(b, previous, o);
             return o;
         }
@@ -894,27 +1246,35 @@ final class OrderStore {
      * 409 when no cancel was requested or the order isn't held by the bot.
      */
     Order forceCancel(String id) throws OrderException, IOException {
-        synchronized (index) { return forceCancelWithObservationLock(id); }
+        return forceCancel(id, Users.OWNER_ID);
     }
 
-    private Order forceCancelWithObservationLock(String id) throws OrderException, IOException {
+    Order forceCancel(String id, String actor) throws OrderException, IOException {
+        synchronized (index) {
+            return forceCancelWithObservationLock(id, actor);
+        }
+    }
+
+    private Order forceCancelWithObservationLock(String id, String actor) throws OrderException, IOException {
         Book b = byOrderId.get(id);
         if (b == null) throw new OrderException(404, "no such order", -1);
         synchronized (b) {
             Order previous = find(b, id);
             if (previous == null) throw new OrderException(404, "no such order", -1);
-            Order o = Order.fromJson(previous.toJson());
+            Order o = Order.fromJson(previous.snapshot());
             if (FINISHED.contains(o.status)) throw new OrderException(409, "order is already " + o.status, -1);
             if (o.allocations != null) {
                 throw new OrderException(409, "The assigned agent must finish or reconcile its physical work", -1);
             }
             if (!o.cancelRequested || o.status.equals("pending")) {
-                throw new OrderException(409, "request a cancel first; force cancel is for orders the bot hasn't confirmed", -1);
+                throw new OrderException(
+                        409, "request a cancel first; force cancel is for orders the bot hasn't confirmed", -1);
             }
             o.advance(OrderStage.CANCELLED);
             o.status = "cancelled";
             o.message = "cancelled from the website (bot didn't confirm)";
             o.updatedAt = System.currentTimeMillis();
+            o.record("order.force-cancel", actor, o.updatedAt);
             update(b, previous, o);
             return o;
         }
@@ -967,7 +1327,9 @@ final class OrderStore {
                     if (!OPEN.contains(o.status)) continue;
                     open++;
                     String placedBy = o.placedById == null ? Users.OWNER_ID : o.placedById;
-                    if (active == null && !o.status.equals("pending") && (requester == null || requester.equals(placedBy))) {
+                    if (active == null
+                            && !o.status.equals("pending")
+                            && (requester == null || requester.equals(placedBy))) {
                         active = new JsonObject();
                         active.addProperty("id", o.id);
                         active.addProperty("status", o.status);
@@ -999,7 +1361,8 @@ final class OrderStore {
             synchronized (b) {
                 for (Order o : b.orders) {
                     if (o.status.equals("pending") && o.approval != Approval.PENDING) pending++;
-                    else if (o.cancelRequested && (o.status.equals("accepted") || o.status.equals("in_progress"))) cancel.add(o.id);
+                    else if (o.cancelRequested && (o.status.equals("accepted") || o.status.equals("in_progress")))
+                        cancel.add(o.id);
                 }
             }
         }
@@ -1010,19 +1373,25 @@ final class OrderStore {
 
     private JsonObject sourceGuards(String server, String stash) throws IOException {
         var out = new JsonObject();
-        for (var source : index.stock().sources()) if (source.server().equals(server) && source.stash().equals(stash)
-            && source.status().equals("FRESH") && source.value().has("slotFingerprint"))
-            out.add(source.value().get("id").getAsString(), source.value().get("slotFingerprint"));
+        for (var source : index.stock().sources())
+            if (source.server().equals(server)
+                    && source.stash().equals(stash)
+                    && source.status().equals("FRESH")
+                    && source.value().has("slotFingerprint"))
+                out.add(source.value().get("id").getAsString(), source.value().get("slotFingerprint"));
         return out.isEmpty() ? null : out;
     }
+
     private boolean matchesSources(Order order) throws IOException {
         if (order.allocations != null) {
-            return PhysicalReservations.read(index.stock(), order.server, order.stash).matches(order.allocations);
+            return PhysicalReservations.read(index.stock(), order.server, order.stash)
+                    .matches(order.allocations);
         }
         if (order.sourceGuards == null) return true; // Earlier protocol orders retain their existing aggregate checks.
         var now = sourceGuards(order.server, order.stash);
         if (now == null) return false;
-        for (var expected : order.sourceGuards.entrySet()) if (!expected.getValue().equals(now.get(expected.getKey()))) return false;
+        for (var expected : order.sourceGuards.entrySet())
+            if (!expected.getValue().equals(now.get(expected.getKey()))) return false;
         return true;
     }
 
@@ -1030,8 +1399,15 @@ final class OrderStore {
         return order.status.equals("accepted") || order.status.equals("in_progress");
     }
 
+    boolean hasActiveWork(String server, String agent) {
+        return agent != null
+                && ordersOnServer(server).stream().anyMatch(order -> agent.equals(order.agent) && isExecuting(order));
+    }
+
     Order claim(String server, String stash) throws IOException {
-        synchronized (index) { return claimWithObservationLock(server, stash, "local"); }
+        synchronized (index) {
+            return claimWithObservationLock(server, stash, "local");
+        }
     }
 
     JsonObject claimPayload(String server, String stash, String agent) throws IOException {
@@ -1056,8 +1432,12 @@ final class OrderStore {
     private Order claimWithObservationLock(String server, String stash, String agent) throws IOException {
         var counts = index.orderCounts(server, stash);
         if (counts == null || index.automation().current(server) != null) return null;
-        var running = ordersOnServer(server).stream().filter(order -> order.allocations != null && isExecuting(order)).findFirst();
-        if (running.isPresent() && (!stash.equals(running.get().stash) || !java.util.Objects.equals(agent, running.get().agent))) return null;
+        if (agent != null && !"local".equals(agent) && KitJobs.hasActiveWork(index.stock(), server, agent)) return null;
+        for (var running : ordersOnServer(server)) {
+            if (!isExecuting(running)) continue;
+            boolean sameAgent = agent != null && agent.equals(running.agent);
+            if ((running.allocations != null || sameAgent) && (!sameAgent || !stash.equals(running.stash))) return null;
+        }
         Book b = books.get(new IndexStore.StashKey(server, stash));
         if (b == null) return null;
         synchronized (b) {
@@ -1065,13 +1445,17 @@ final class OrderStore {
                 if (isExecuting(order)) return orderSourcesReady(order, counts, agent) ? order : null;
             }
             for (Order order : b.orders) {
-                if (!order.status.equals("pending") || order.approval == Approval.PENDING || !orderSourcesReady(order, counts, agent)) continue;
+                if (!order.status.equals("pending")
+                        || order.approval == Approval.PENDING
+                        || !orderSourcesReady(order, counts, agent)) continue;
                 long before = order.updatedAt;
                 if (!order.stage().allows(OrderStage.PACKING)) continue;
                 order.stage = OrderStage.PACKING;
                 order.status = "accepted";
                 order.claimedAt = order.updatedAt = System.currentTimeMillis();
-                order.agent = order.allocations == null ? null : agent;
+                // Legacy aggregate claims may omit identity. An authenticated agent keeps one claim across its stashes.
+                order.agent = order.allocations == null && "local".equals(agent) ? null : agent;
+                order.record("order.claim", agent, order.claimedAt);
                 try {
                     save(b);
                 } catch (IOException failure) {
@@ -1080,6 +1464,7 @@ final class OrderStore {
                     order.claimedAt = 0;
                     order.updatedAt = before;
                     order.agent = null;
+                    order.history.remove(order.history.size() - 1);
                     throw failure;
                 }
                 return order;
@@ -1089,25 +1474,42 @@ final class OrderStore {
     }
 
     private boolean orderSourcesReady(Order order, IndexStore.OrderCounts counts, String agent) throws IOException {
+        if (order.agent != null && !order.agent.equals(agent)) return false;
         if (order.allocations == null) {
-            return matchesSources(order) && order.lines.stream().allMatch(line -> counts.total(line.type, line.key) >= line.count);
+            return matchesSources(order)
+                    && order.lines.stream().allMatch(line -> counts.total(line.type, line.key) >= line.count);
         }
         return agent != null && matchesSources(order);
     }
 
     /** A status report from the bot. Fields are validated by the route; the move is checked here. */
     Order status(String id, String status, String phase, JsonObject progress, String message, JsonObject result)
-        throws OrderException, IOException {
+            throws OrderException, IOException {
         return status(id, status, phase, progress, message, result, "local");
     }
 
-    Order status(String id, String status, String phase, JsonObject progress, String message, JsonObject result, String agent)
-        throws OrderException, IOException {
+    Order status(
+            String id,
+            String status,
+            String phase,
+            JsonObject progress,
+            String message,
+            JsonObject result,
+            String agent)
+            throws OrderException, IOException {
         return status(id, status, phase, progress, message, result, agent, null);
     }
 
-    Order status(String id, String status, String phase, JsonObject progress, String message, JsonObject result,
-                 String agent, String reportId) throws OrderException, IOException {
+    Order status(
+            String id,
+            String status,
+            String phase,
+            JsonObject progress,
+            String message,
+            JsonObject result,
+            String agent,
+            String reportId)
+            throws OrderException, IOException {
         synchronized (index) {
             var report = new JsonObject();
             report.addProperty("status", status);
@@ -1116,25 +1518,33 @@ final class OrderStore {
             report.addProperty("message", message);
             report.add("result", result == null ? JsonNull.INSTANCE : result);
             String fingerprint = hash(report);
-            String key = receiptKey("report:" + id, agent,
-                reportId == null ? "content:" + fingerprint : "id:" + reportId);
+            String key =
+                    receiptKey("report:" + id, agent, reportId == null ? "content:" + fingerprint : "id:" + reportId);
             var saved = previouslyReceived(key);
             if (saved != null) return replay(saved, fingerprint);
             return statusWithObservationLock(id, status, phase, progress, message, result, agent, key, fingerprint);
         }
     }
 
-    private Order statusWithObservationLock(String id, String status, String phase, JsonObject progress, String message,
-                                             JsonObject result, String agent, String key, String fingerprint)
-        throws OrderException, IOException {
+    private Order statusWithObservationLock(
+            String id,
+            String status,
+            String phase,
+            JsonObject progress,
+            String message,
+            JsonObject result,
+            String agent,
+            String key,
+            String fingerprint)
+            throws OrderException, IOException {
         Book b = byOrderId.get(id);
         if (b == null) throw new OrderException(404, "no such order", -1);
         synchronized (b) {
             Order previous = find(b, id);
             if (previous == null) throw new OrderException(404, "no such order", -1);
-            Order o = Order.fromJson(previous.toJson());
+            Order o = Order.fromJson(previous.snapshot());
             if (o.agent != null && !o.agent.equals(agent)) {
-                throw new OrderException(403, "Physical order belongs to another agent", -1);
+                throw new OrderException(403, "Order belongs to another agent", -1);
             }
             if (!allowed(o.status, status)) {
                 throw new OrderException(409, "can't go from " + o.status + " to " + status, -1);
@@ -1152,6 +1562,7 @@ final class OrderStore {
             if (next == OrderStage.NEEDS_RECONCILIATION) o.result = null;
             else if (result != null) o.result = result;
             o.updatedAt = System.currentTimeMillis();
+            if (next != previous.stage()) o.record("order.transition", agent, o.updatedAt);
             b.receipts.put(key, new Receipt(fingerprint, o.toJson()));
             try {
                 update(b, previous, o);
@@ -1169,12 +1580,16 @@ final class OrderStore {
             return OrderStage.NEEDS_RECONCILIATION;
         }
         if (status.equals("delivered")) {
-            int packages = result != null && result.has("shulkers") ? result.get("shulkers").getAsInt() : 0;
+            int packages = result != null && result.has("shulkers")
+                    ? result.get("shulkers").getAsInt()
+                    : 0;
             if (order.agent != null && packages > 0 && packages <= MAX_SHULKERS) {
-                order.manifest = index.stock().stagingManifest(order.server, order.stash, order.id, order.agent, packages);
+                order.manifest =
+                        index.stock().stagingManifest(order.server, order.stash, order.id, order.agent, packages);
             }
             return order.manifest != null && allLinesStaged(order.lines, result)
-                ? OrderStage.PICKUP_READY : OrderStage.NEEDS_RECONCILIATION;
+                    ? OrderStage.PICKUP_READY
+                    : OrderStage.NEEDS_RECONCILIATION;
         }
         return status.equals("cancelled") ? OrderStage.CANCELLED : OrderStage.FAILED;
     }
@@ -1199,33 +1614,40 @@ final class OrderStore {
                 if (manifest == null) continue;
                 var hint = new JsonObject();
                 hint.addProperty("orderId", order.id);
-                hint.addProperty("packageCount", manifest.getAsJsonArray("packages").size());
+                hint.addProperty(
+                        "packageCount", manifest.getAsJsonArray("packages").size());
                 return hint;
             }
             return null;
         }
     }
 
-    ManifestReceipt acknowledgeManifest(String id, BotHub.ManifestScope scope, String hash) throws IOException, OrderException {
+    ManifestReceipt acknowledgeManifest(String id, BotHub.ManifestScope scope, String hash)
+            throws IOException, OrderException {
         var book = byOrderId.get(id);
         if (book == null) throw new OrderException(404, "No manifest in this scope", -1);
         synchronized (book) {
             var order = find(book, id);
             var manifest = scopedManifest(order, scope);
             if (manifest == null) throw new OrderException(404, "No manifest in this scope", -1);
-            if (!hash.equals(manifest.get("hash").getAsString())) throw new OrderException(409, "Manifest hash differs", -1);
+            if (!hash.equals(manifest.get("hash").getAsString()))
+                throw new OrderException(409, "Manifest hash differs", -1);
             if (order.manifestAcknowledgedAt > 0) return new ManifestReceipt(order.manifestAcknowledgedAt, false);
-            var updated = Order.fromJson(order.toJson());
+            var updated = Order.fromJson(order.snapshot());
             updated.manifestAcknowledgedAt = System.currentTimeMillis();
+            updated.record("order.manifest.confirm", scope.agent(), updated.manifestAcknowledgedAt);
             update(book, order, updated);
             return new ManifestReceipt(updated.manifestAcknowledgedAt, true);
         }
     }
 
     private static JsonObject scopedManifest(Order order, BotHub.ManifestScope scope) {
-        if (order == null || order.stage() != OrderStage.PICKUP_READY || order.manifest == null
-            || !scope.server().equals(order.server) || !scope.stash().equals(order.stash)
-            || !scope.agent().equals(order.agent)) return null;
+        if (order == null
+                || order.stage() != OrderStage.PICKUP_READY
+                || order.manifest == null
+                || !scope.server().equals(order.server)
+                || !scope.stash().equals(order.stash)
+                || !scope.agent().equals(order.agent)) return null;
         return PackageManifest.forAgent(order.manifest, scope.dimension());
     }
 
@@ -1247,7 +1669,8 @@ final class OrderStore {
      * can't be changed by the bot.
      */
     static boolean allowed(String from, String to) {
-        if (from.equals("accepted")) return to.equals("accepted") || to.equals("in_progress") || REPORTED_TERMINAL.contains(to);
+        if (from.equals("accepted"))
+            return to.equals("accepted") || to.equals("in_progress") || REPORTED_TERMINAL.contains(to);
         if (from.equals("in_progress")) return to.equals("in_progress") || REPORTED_TERMINAL.contains(to);
         return false;
     }

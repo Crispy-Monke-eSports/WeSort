@@ -4,7 +4,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -18,10 +17,10 @@ final class Http {
     static final long MAX_BODY = 8L * 1024 * 1024;
     /** bot/* (dashboard) bodies: the proxy config's schema and values are a few hundred KiB at most. */
     static final long MAX_BOT_BODY = 1024L * 1024;
+
     static final String JSON_TYPE = "application/json; charset=utf-8";
 
-    private Http() {
-    }
+    private Http() {}
 
     /** Thrown by readBody when the body is over the limit. */
     static final class TooLarge extends IOException {
@@ -31,8 +30,10 @@ final class Http {
     }
 
     static void securityHeaders(Headers h) {
-        h.set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; font-src 'self'; script-src 'self'; "
-            + "base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+        h.set(
+                "Content-Security-Policy",
+                "default-src 'self'; img-src 'self' data:; style-src 'self'; font-src 'self'; script-src 'self'; "
+                        + "base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
         h.set("X-Content-Type-Options", "nosniff");
         h.set("Referrer-Policy", "no-referrer");
         h.set("X-Frame-Options", "DENY");
@@ -43,8 +44,9 @@ final class Http {
      * the JDK server keeps those in the HttpContext, so they are shared by every request at once. Cleared by the Router
      * when the exchange ends.
      */
-    private static final java.util.concurrent.ConcurrentHashMap<HttpExchange, java.util.concurrent.ConcurrentHashMap<String, Object>> ATTRS =
-        new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.concurrent.ConcurrentHashMap<
+                    HttpExchange, java.util.concurrent.ConcurrentHashMap<String, Object>>
+            ATTRS = new java.util.concurrent.ConcurrentHashMap<>();
 
     static Object attr(HttpExchange ex, String name) {
         java.util.Map<String, Object> m = ATTRS.get(ex);
@@ -52,7 +54,8 @@ final class Http {
     }
 
     static void attr(HttpExchange ex, String name, Object value) {
-        java.util.Map<String, Object> m = ATTRS.computeIfAbsent(ex, k -> new java.util.concurrent.ConcurrentHashMap<>());
+        java.util.Map<String, Object> m =
+                ATTRS.computeIfAbsent(ex, k -> new java.util.concurrent.ConcurrentHashMap<>());
         if (value == null) m.remove(name);
         else m.put(name, value);
     }
@@ -72,6 +75,7 @@ final class Http {
     static final String BODY = "wesortmanager.body";
     /** Exchange attributes for signing the response to a signed request: the key K (byte[]) and the request nonce. */
     static final String SIGN_KEY = "wesortmanager.signKey";
+
     static final String SIGN_NONCE = "wesortmanager.signNonce";
     /** The uncompressed body of the response being sent (byte[]), when it is sent gzip-compressed. */
     private static final String PLAIN_BODY = "wesortmanager.plainBody";
@@ -94,7 +98,8 @@ final class Http {
         return data;
     }
 
-    static void send(HttpExchange ex, int status, String contentType, byte[] body, String cacheControl) throws IOException {
+    static void send(HttpExchange ex, int status, String contentType, byte[] body, String cacheControl)
+            throws IOException {
         Headers h = ex.getResponseHeaders();
         if (contentType != null) h.set("Content-Type", contentType);
         if (cacheControl != null) h.set("Cache-Control", cacheControl);
@@ -109,7 +114,9 @@ final class Http {
             byte[] plain = Http.attr(ex, PLAIN_BODY) instanceof byte[] p ? p : body;
             boolean empty = "HEAD".equals(ex.getRequestMethod()) || status == 304 || status == 204 || body == null;
             long ts = System.currentTimeMillis();
-            h.set(Signer.RESPONSE_HEADER, "v1 " + ts + " " + Signer.responseSig(k, nonce, status, ts, empty ? new byte[0] : plain));
+            h.set(
+                    Signer.RESPONSE_HEADER,
+                    "v1 " + ts + " " + Signer.responseSig(k, nonce, status, ts, empty ? new byte[0] : plain));
         }
         boolean noBody = "HEAD".equals(ex.getRequestMethod()) || status == 304 || body == null || body.length == 0;
         if (noBody) {
@@ -136,7 +143,8 @@ final class Http {
      * or null to compress here; pass the plain body itself as gzipped to never compress.
      * Adds "Vary: Accept-Encoding". Returns true when the gzip variant was sent.
      */
-    static boolean sendJson(HttpExchange ex, int status, byte[] body, byte[] gzipped, String cacheControl) throws IOException {
+    static boolean sendJson(HttpExchange ex, int status, byte[] body, byte[] gzipped, String cacheControl)
+            throws IOException {
         ex.getResponseHeaders().set("Vary", "Accept-Encoding");
         if (gzipped != body && acceptsGzip(ex)) {
             ex.getResponseHeaders().set("Content-Encoding", "gzip");

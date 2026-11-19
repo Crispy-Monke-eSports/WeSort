@@ -1,7 +1,5 @@
 package com.porter.wesortmanager;
 
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
@@ -11,6 +9,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.LongSupplier;
 import java.util.regex.Pattern;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 /**
  * Signed bot requests and responses (PROTOCOL.md, "Signed requests (HMAC), replacing the Bearer key on the wire").
@@ -60,7 +60,8 @@ final class Signer {
 
     static String sha256Hex(byte[] data) {
         try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(data == null ? new byte[0] : data));
+            return HexFormat.of()
+                    .formatHex(MessageDigest.getInstance("SHA-256").digest(data == null ? new byte[0] : data));
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException(e);
         }
@@ -83,8 +84,12 @@ final class Signer {
         static Auth parse(String header) {
             if (header == null) return null;
             String[] p = header.trim().split(" ");
-            if (p.length != 5 || !p[0].equals("v1") || !BOT.matcher(p[1]).matches() || !NONCE.matcher(p[3]).matches()
-                || !SIG.matcher(p[4]).matches() || !p[2].matches("^\\d{1,15}$")) return null;
+            if (p.length != 5
+                    || !p[0].equals("v1")
+                    || !BOT.matcher(p[1]).matches()
+                    || !NONCE.matcher(p[3]).matches()
+                    || !SIG.matcher(p[4]).matches()
+                    || !p[2].matches("^\\d{1,15}$")) return null;
             return new Auth(p[1], Long.parseLong(p[2]), p[3], p[4]);
         }
     }
@@ -105,7 +110,8 @@ final class Signer {
         int match = -1;
         for (int i = 0; i < keys.length; i++) {
             if (keys[i] == null) continue;
-            byte[] expected = requestSig(keys[i], method, pathWithQuery, a.ts(), a.nonce(), body).getBytes(StandardCharsets.US_ASCII);
+            byte[] expected = requestSig(keys[i], method, pathWithQuery, a.ts(), a.nonce(), body)
+                    .getBytes(StandardCharsets.US_ASCII);
             if (MessageDigest.isEqual(given, expected) && match < 0) match = i; // constant time per key
         }
         if (match < 0) return -1;

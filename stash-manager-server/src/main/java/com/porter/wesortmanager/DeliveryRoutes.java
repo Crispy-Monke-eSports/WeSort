@@ -3,7 +3,6 @@ package com.porter.wesortmanager;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.sun.net.httpserver.HttpExchange;
-
 import java.io.IOException;
 import java.util.Map;
 
@@ -26,7 +25,7 @@ final class DeliveryRoutes {
 
     void register(Router router) {
         router.exact(Router.POST, "/api/v1/delivery", Router.Guard.ADDON_KEY, this::post)
-            .exact(Router.GET, "/api/v1/delivery", Router.Guard.SESSION, Router.Perm.VIEW, this::get);
+                .exact(Router.GET, "/api/v1/delivery", Router.Guard.SESSION, Router.Perm.VIEW, this::get);
     }
 
     private void post(HttpExchange ex) throws IOException {
@@ -46,7 +45,8 @@ final class DeliveryRoutes {
         String server = s.json().get("server").getAsString();
         String stash = s.json().get("stash").getAsString();
         JsonElement player = s.json().get("player");
-        String owner = owners.check(server, stash, player == null || player.isJsonNull() ? null : player.getAsString(), true);
+        String owner =
+                owners.check(server, stash, player == null || player.isJsonNull() ? null : player.getAsString(), true);
         if (owner != null) {
             AddonRoutes.conflict(ex, owner);
             return;
@@ -68,6 +68,9 @@ final class DeliveryRoutes {
         DeliveryContents.Snapshot s = contents.get(server, stash);
         // null: the bot hasn't reported (an older bot, no delivery container, or not yet since the server started).
         boolean positions = Router.user(ex).perms().positions();
-        Http.json(ex, 200, s == null || !positions ? JsonNull.INSTANCE : Redact.on(ex) ? Redact.delivery(s.json()) : s.json());
+        Http.json(
+                ex,
+                200,
+                s == null || !positions ? JsonNull.INSTANCE : Redact.on(ex) ? Redact.delivery(s.json()) : s.json());
     }
 }

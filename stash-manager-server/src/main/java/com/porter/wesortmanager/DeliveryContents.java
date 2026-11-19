@@ -5,7 +5,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
-
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -30,8 +29,15 @@ final class DeliveryContents {
     static final Pattern ID = Pattern.compile("^[a-z0-9_.-]{1,32}:[a-z0-9_./-]{1,96}$");
 
     /** One stored report: the cleaned JSON (as the page gets it), its hash, and the summary numbers. */
-    record Snapshot(JsonObject json, String hash, long readAt, long receivedAt, int chests, int usedSlots, int freeSlots,
-                    int unknownChests) {
+    record Snapshot(
+            JsonObject json,
+            String hash,
+            long readAt,
+            long receivedAt,
+            int chests,
+            int usedSlots,
+            int freeSlots,
+            int unknownChests) {
         JsonObject summary() {
             JsonObject o = new JsonObject();
             o.addProperty("readAt", readAt);
@@ -93,7 +99,8 @@ final class DeliveryContents {
 
     /** Checks a POST /api/v1/delivery body and returns it cleaned (only the known fields), or throws with the reason. */
     Snapshot parse(JsonObject o) {
-        if (!(o.get("version") instanceof JsonPrimitive v) || !v.isNumber() || v.getAsDouble() != 1) throw bad("version must be 1");
+        if (!(o.get("version") instanceof JsonPrimitive v) || !v.isNumber() || v.getAsDouble() != 1)
+            throw bad("version must be 1");
         String server = text(o, "server", MAX_FIELD, true);
         String stash = text(o, "stash", MAX_FIELD, true);
         String player = text(o, "player", MAX_FIELD, false);
@@ -116,7 +123,8 @@ final class DeliveryContents {
             if (!ns.add(n)) throw bad("chest n " + n + " appears twice");
             long size = whole(c.get("size"), "chest size", 27, 54);
             if (size != 27 && size != 54) throw bad("chest size must be 27 or 54");
-            if (!(c.get("full") instanceof JsonPrimitive fp) || !fp.isBoolean()) throw bad("chest full must be true or false");
+            if (!(c.get("full") instanceof JsonPrimitive fp) || !fp.isBoolean())
+                throw bad("chest full must be true or false");
             long chestRead = whole(c.get("readAt"), "chest readAt", 0, Long.MAX_VALUE);
             JsonObject out = new JsonObject();
             out.addProperty("n", n);
@@ -165,12 +173,19 @@ final class DeliveryContents {
         JsonObject o = new JsonObject();
         o.addProperty("slot", slot);
         o.addProperty("id", id(in.get("id"), "item id"));
-        String name = in.has("name") && !in.get("name").isJsonNull() ? text(in, "name", Integer.MAX_VALUE, false) : null;
+        String name =
+                in.has("name") && !in.get("name").isJsonNull() ? text(in, "name", Integer.MAX_VALUE, false) : null;
         if (name != null) o.addProperty("name", Http.truncate(stripControls(name), MAX_NAME));
         o.addProperty("count", whole(in.get("count"), "item count", 1, MAX_COUNT));
-        o.addProperty("maxStack", in.has("maxStack") && !in.get("maxStack").isJsonNull() ? whole(in.get("maxStack"), "item maxStack", 1, 99) : 64);
-        if (in.has("damage") && !in.get("damage").isJsonNull()) o.addProperty("damage", whole(in.get("damage"), "item damage", 0, 1_000_000));
-        if (in.has("maxDamage") && !in.get("maxDamage").isJsonNull()) o.addProperty("maxDamage", whole(in.get("maxDamage"), "item maxDamage", 0, 1_000_000));
+        o.addProperty(
+                "maxStack",
+                in.has("maxStack") && !in.get("maxStack").isJsonNull()
+                        ? whole(in.get("maxStack"), "item maxStack", 1, 99)
+                        : 64);
+        if (in.has("damage") && !in.get("damage").isJsonNull())
+            o.addProperty("damage", whole(in.get("damage"), "item damage", 0, 1_000_000));
+        if (in.has("maxDamage") && !in.get("maxDamage").isJsonNull())
+            o.addProperty("maxDamage", whole(in.get("maxDamage"), "item maxDamage", 0, 1_000_000));
         JsonElement sh = in.get("shulker");
         boolean shulker = false;
         if (sh != null && !sh.isJsonNull()) {
@@ -184,7 +199,8 @@ final class DeliveryContents {
                 // The bot may leave contents out to fit the size limit: then they are unknown (absent).
                 if (!ce.isJsonArray()) throw bad("item contents must be a list");
                 JsonArray list = ce.getAsJsonArray();
-                if (list.size() > MAX_CONTENTS) throw bad("item contents can have at most " + MAX_CONTENTS + " entries");
+                if (list.size() > MAX_CONTENTS)
+                    throw bad("item contents can have at most " + MAX_CONTENTS + " entries");
                 JsonArray out = new JsonArray();
                 for (JsonElement ent : list) {
                     if (!ent.isJsonObject()) throw bad("every contents entry must be an object");
@@ -228,7 +244,8 @@ final class DeliveryContents {
             throw bad(what + " must be a whole number");
         }
         if (d.stripTrailingZeros().scale() > 0) throw bad(what + " must be a whole number");
-        if (d.compareTo(BigDecimal.valueOf(min)) < 0 || d.compareTo(BigDecimal.valueOf(max)) > 0) throw bad(what + " is out of range");
+        if (d.compareTo(BigDecimal.valueOf(min)) < 0 || d.compareTo(BigDecimal.valueOf(max)) > 0)
+            throw bad(what + " is out of range");
         return d.longValueExact();
     }
 

@@ -3,7 +3,6 @@ package com.porter.wesortmanager.assets;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -29,12 +28,11 @@ final class ModelRasterizer {
         LIGHT1 = guiLight(-0.2, 1.0, 0.7);
     }
 
-    private ModelRasterizer() {
-    }
+    private ModelRasterizer() {}
 
     /** Lighting.ITEMS_3D: rotateYXZ(1.0821041, 3.2375858, 0).rotateYXZ(-0.3926991, 2.3561945, 0) applied to the light. */
     private static double[] guiLight(double x, double y, double z) {
-        double[] v = normalize(new double[]{x, y, z});
+        double[] v = normalize(new double[] {x, y, z});
         v = rotX(2.3561945, v);
         v = rotY(-0.3926991, v);
         v = rotX(3.2375858, v);
@@ -43,8 +41,8 @@ final class ModelRasterizer {
     }
 
     /** Renders a model to size*size ARGB pixels, or null if nothing can be drawn. */
-    static int[] render(IconRenderer.Model m, int[] tints, Function<String, Optional<IconRenderer.Tex>> textures,
-                        int size) {
+    static int[] render(
+            IconRenderer.Model m, int[] tints, Function<String, Optional<IconRenderer.Tex>> textures, int size) {
         if (m.generated()) return flat(m, tints, textures, size);
         if (m.elements() == null || m.elements().isEmpty()) return null;
         return elements(m, tints, textures, size);
@@ -52,8 +50,8 @@ final class ModelRasterizer {
 
     // ------------------------------------------------------------------ item/generated
 
-    private static int[] flat(IconRenderer.Model m, int[] tints, Function<String, Optional<IconRenderer.Tex>> textures,
-                              int size) {
+    private static int[] flat(
+            IconRenderer.Model m, int[] tints, Function<String, Optional<IconRenderer.Tex>> textures, int size) {
         int[] out = new int[size * size];
         int drawn = 0;
         for (int layer = 0; layer < 16; layer++) {
@@ -94,9 +92,10 @@ final class ModelRasterizer {
         double depth;
     }
 
-    private static int[] elements(IconRenderer.Model m, int[] tints, Function<String, Optional<IconRenderer.Tex>> textures,
-                                  int size) {
-        double[][] rot = mul(mul(rotXm(Math.toRadians(m.guiRotation()[0])), rotYm(Math.toRadians(m.guiRotation()[1]))),
+    private static int[] elements(
+            IconRenderer.Model m, int[] tints, Function<String, Optional<IconRenderer.Tex>> textures, int size) {
+        double[][] rot = mul(
+                mul(rotXm(Math.toRadians(m.guiRotation()[0])), rotYm(Math.toRadians(m.guiRotation()[1]))),
                 rotZm(Math.toRadians(m.guiRotation()[2])));
         float[] sc = m.guiScale(), tr = m.guiTranslation();
         List<Face> faces = new ArrayList<>();
@@ -121,21 +120,33 @@ final class ModelRasterizer {
                     double[] p = er.apply(corners[i]);
                     double[] q = {(p[0] / 16 - 0.5) * sc[0], (p[1] / 16 - 0.5) * sc[1], (p[2] / 16 - 0.5) * sc[2]};
                     q = mul(rot, q);
-                    v[i] = new double[]{q[0] + tr[0] / 16.0, q[1] + tr[1] / 16.0, q[2] + tr[2] / 16.0};
+                    v[i] = new double[] {q[0] + tr[0] / 16.0, q[1] + tr[1] / 16.0, q[2] + tr[2] / 16.0};
                 }
                 double[] a = sub(v[1], v[0]), b = sub(v[2], v[0]);
                 double[] n = cross(b, a); // outward normal in view space
                 double len = Math.sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
                 if (len < 1e-12) continue;
-                n[0] /= len; n[1] /= len; n[2] /= len;
+                n[0] /= len;
+                n[1] /= len;
+                n[2] /= len;
                 if (n[2] <= 1e-6) continue; // back face: vanilla item render types cull (leaves, glass too)
                 Face face = new Face();
-                face.px = (v[0][0] + 0.5) * size; face.py = (0.5 - v[0][1]) * size; face.pz = v[0][2];
-                face.ax = a[0] * size; face.ay = -a[1] * size; face.az = a[2];
-                face.bx = b[0] * size; face.by = -b[1] * size; face.bz = b[2];
+                face.px = (v[0][0] + 0.5) * size;
+                face.py = (0.5 - v[0][1]) * size;
+                face.pz = v[0][2];
+                face.ax = a[0] * size;
+                face.ay = -a[1] * size;
+                face.az = a[2];
+                face.bx = b[0] * size;
+                face.by = -b[1] * size;
+                face.bz = b[2];
                 float[] uv = uv(f.getAsJsonArray("uv"), dir, from, to);
-                face.u0 = uv[0]; face.v0 = uv[1]; face.u1 = uv[2]; face.v1 = uv[3];
-                face.rotation = f.has("rotation") ? Math.floorMod(f.get("rotation").getAsInt() / 90, 4) : 0;
+                face.u0 = uv[0];
+                face.v0 = uv[1];
+                face.u1 = uv[2];
+                face.v1 = uv[3];
+                face.rotation =
+                        f.has("rotation") ? Math.floorMod(f.get("rotation").getAsInt() / 90, 4) : 0;
                 face.tex = tex.get();
                 int ti = f.has("tintindex") ? f.get("tintindex").getAsInt() : -1;
                 face.tint = ti >= 0 && ti < tints.length ? tints[ti] : 0xFFFFFFFF;
@@ -154,9 +165,13 @@ final class ModelRasterizer {
      * Renders {@link SpecialModels} quads (block space 0..1) with a base model's display.gui transform and
      * light setting. Returns null if nothing can be drawn.
      */
-    static int[] quads(List<SpecialModels.Quad> quads, IconRenderer.Model base,
-                       Function<String, Optional<IconRenderer.Tex>> textures, int size) {
-        double[][] rot = mul(mul(rotXm(Math.toRadians(base.guiRotation()[0])), rotYm(Math.toRadians(base.guiRotation()[1]))),
+    static int[] quads(
+            List<SpecialModels.Quad> quads,
+            IconRenderer.Model base,
+            Function<String, Optional<IconRenderer.Tex>> textures,
+            int size) {
+        double[][] rot = mul(
+                mul(rotXm(Math.toRadians(base.guiRotation()[0])), rotYm(Math.toRadians(base.guiRotation()[1]))),
                 rotZm(Math.toRadians(base.guiRotation()[2])));
         float[] sc = base.guiScale(), tr = base.guiTranslation();
         List<Face> faces = new ArrayList<>();
@@ -164,18 +179,28 @@ final class ModelRasterizer {
             Optional<IconRenderer.Tex> tex = textures.apply(q.texture());
             if (tex.isEmpty()) continue;
             double[] p0 = view(rot, sc, tr, q.p());
-            double[] a = mul(rot, new double[]{q.a()[0] * sc[0], q.a()[1] * sc[1], q.a()[2] * sc[2]});
-            double[] b = mul(rot, new double[]{q.b()[0] * sc[0], q.b()[1] * sc[1], q.b()[2] * sc[2]});
-            if (Math.abs(cross(a, b)[0]) + Math.abs(cross(a, b)[1]) + Math.abs(cross(a, b)[2]) < 1e-12) continue; // degenerate
+            double[] a = mul(rot, new double[] {q.a()[0] * sc[0], q.a()[1] * sc[1], q.a()[2] * sc[2]});
+            double[] b = mul(rot, new double[] {q.b()[0] * sc[0], q.b()[1] * sc[1], q.b()[2] * sc[2]});
+            if (Math.abs(cross(a, b)[0]) + Math.abs(cross(a, b)[1]) + Math.abs(cross(a, b)[2]) < 1e-12)
+                continue; // degenerate
             // Normals transform with the inverse scale; a negative scale component flips them like the geometry.
-            double[] n = mul(rot, new double[]{q.n()[0] / nz(sc[0]), q.n()[1] / nz(sc[1]), q.n()[2] / nz(sc[2])});
+            double[] n = mul(rot, new double[] {q.n()[0] / nz(sc[0]), q.n()[1] / nz(sc[1]), q.n()[2] / nz(sc[2])});
             n = normalize(n);
             if (n[2] <= 1e-6) continue; // facing away from the viewer
             Face face = new Face();
-            face.px = (p0[0] + 0.5) * size; face.py = (0.5 - p0[1]) * size; face.pz = p0[2];
-            face.ax = a[0] * size; face.ay = -a[1] * size; face.az = a[2];
-            face.bx = b[0] * size; face.by = -b[1] * size; face.bz = b[2];
-            face.u0 = q.u0(); face.v0 = q.v0(); face.u1 = q.u1(); face.v1 = q.v1();
+            face.px = (p0[0] + 0.5) * size;
+            face.py = (0.5 - p0[1]) * size;
+            face.pz = p0[2];
+            face.ax = a[0] * size;
+            face.ay = -a[1] * size;
+            face.az = a[2];
+            face.bx = b[0] * size;
+            face.by = -b[1] * size;
+            face.bz = b[2];
+            face.u0 = q.u0();
+            face.v0 = q.v0();
+            face.u1 = q.u1();
+            face.v1 = q.v1();
             face.rotation = 0;
             face.tex = tex.get();
             face.tint = q.tint();
@@ -189,8 +214,8 @@ final class ModelRasterizer {
 
     /** Block-space point (0..1) -> centred, display-scaled, rotated and translated view space. */
     private static double[] view(double[][] rot, float[] sc, float[] tr, double[] p) {
-        double[] q = mul(rot, new double[]{(p[0] - 0.5) * sc[0], (p[1] - 0.5) * sc[1], (p[2] - 0.5) * sc[2]});
-        return new double[]{q[0] + tr[0] / 16.0, q[1] + tr[1] / 16.0, q[2] + tr[2] / 16.0};
+        double[] q = mul(rot, new double[] {(p[0] - 0.5) * sc[0], (p[1] - 0.5) * sc[1], (p[2] - 0.5) * sc[2]});
+        return new double[] {q[0] + tr[0] / 16.0, q[1] + tr[1] / 16.0, q[2] + tr[2] / 16.0};
     }
 
     private static double nz(float s) {
@@ -236,10 +261,22 @@ final class ModelRasterizer {
                 if (z < zbuf[i] - 1e-5f) continue;
                 double ss, tt;
                 switch (f.rotation) { // texture rotated clockwise by 90 * rotation degrees
-                    case 1 -> { ss = t; tt = 1 - s; }
-                    case 2 -> { ss = 1 - s; tt = 1 - t; }
-                    case 3 -> { ss = 1 - t; tt = s; }
-                    default -> { ss = s; tt = t; }
+                    case 1 -> {
+                        ss = t;
+                        tt = 1 - s;
+                    }
+                    case 2 -> {
+                        ss = 1 - s;
+                        tt = 1 - t;
+                    }
+                    case 3 -> {
+                        ss = 1 - t;
+                        tt = s;
+                    }
+                    default -> {
+                        ss = s;
+                        tt = t;
+                    }
                 }
                 double u = f.u0 + ss * (f.u1 - f.u0), v = f.v0 + tt * (f.v1 - f.v0);
                 int tx = clamp((int) Math.floor(u * tex.w() / 16.0), tex.w());
@@ -282,27 +319,32 @@ final class ModelRasterizer {
     /** Corners P00, P10, P01 of a face: s runs along texture u, t along texture v, as seen from outside. */
     private static double[][] corners(String dir, float[] f, float[] t) {
         return switch (dir) {
-            case "north" -> new double[][]{{t[0], t[1], f[2]}, {f[0], t[1], f[2]}, {t[0], f[1], f[2]}};
-            case "south" -> new double[][]{{f[0], t[1], t[2]}, {t[0], t[1], t[2]}, {f[0], f[1], t[2]}};
-            case "west" -> new double[][]{{f[0], t[1], f[2]}, {f[0], t[1], t[2]}, {f[0], f[1], f[2]}};
-            case "east" -> new double[][]{{t[0], t[1], t[2]}, {t[0], t[1], f[2]}, {t[0], f[1], t[2]}};
-            case "up" -> new double[][]{{f[0], t[1], f[2]}, {t[0], t[1], f[2]}, {f[0], t[1], t[2]}};
-            default -> new double[][]{{f[0], f[1], t[2]}, {t[0], f[1], t[2]}, {f[0], f[1], f[2]}}; // down
+            case "north" -> new double[][] {{t[0], t[1], f[2]}, {f[0], t[1], f[2]}, {t[0], f[1], f[2]}};
+            case "south" -> new double[][] {{f[0], t[1], t[2]}, {t[0], t[1], t[2]}, {f[0], f[1], t[2]}};
+            case "west" -> new double[][] {{f[0], t[1], f[2]}, {f[0], t[1], t[2]}, {f[0], f[1], f[2]}};
+            case "east" -> new double[][] {{t[0], t[1], t[2]}, {t[0], t[1], f[2]}, {t[0], f[1], t[2]}};
+            case "up" -> new double[][] {{f[0], t[1], f[2]}, {t[0], t[1], f[2]}, {f[0], t[1], t[2]}};
+            default -> new double[][] {{f[0], f[1], t[2]}, {t[0], f[1], t[2]}, {f[0], f[1], f[2]}}; // down
         };
     }
 
     /** Explicit uv, or vanilla's default uv derived from the element bounds. */
     private static float[] uv(JsonArray arr, String dir, float[] f, float[] t) {
         if (arr != null && arr.size() >= 4) {
-            return new float[]{arr.get(0).getAsFloat(), arr.get(1).getAsFloat(), arr.get(2).getAsFloat(), arr.get(3).getAsFloat()};
+            return new float[] {
+                arr.get(0).getAsFloat(),
+                arr.get(1).getAsFloat(),
+                arr.get(2).getAsFloat(),
+                arr.get(3).getAsFloat()
+            };
         }
         return switch (dir) {
-            case "down" -> new float[]{f[0], 16 - t[2], t[0], 16 - f[2]};
-            case "up" -> new float[]{f[0], f[2], t[0], t[2]};
-            case "north" -> new float[]{16 - t[0], 16 - t[1], 16 - f[0], 16 - f[1]};
-            case "south" -> new float[]{f[0], 16 - t[1], t[0], 16 - f[1]};
-            case "west" -> new float[]{f[2], 16 - t[1], t[2], 16 - f[1]};
-            default -> new float[]{16 - t[2], 16 - t[1], 16 - f[2], 16 - f[1]}; // east
+            case "down" -> new float[] {f[0], 16 - t[2], t[0], 16 - f[2]};
+            case "up" -> new float[] {f[0], f[2], t[0], t[2]};
+            case "north" -> new float[] {16 - t[0], 16 - t[1], 16 - f[0], 16 - f[1]};
+            case "south" -> new float[] {f[0], 16 - t[1], t[0], 16 - f[1]};
+            case "west" -> new float[] {f[2], 16 - t[1], t[2], 16 - f[1]};
+            default -> new float[] {16 - t[2], 16 - t[1], 16 - f[2], 16 - f[1]}; // east
         };
     }
 
@@ -315,8 +357,8 @@ final class ModelRasterizer {
             double angle = r.get("angle").getAsDouble();
             if (angle == 0) return NONE;
             double rad = Math.toRadians(angle);
-            float[] o = r.has("origin") ? vec3(r.getAsJsonArray("origin")) : new float[]{8, 8, 8};
-            if (o == null) o = new float[]{8, 8, 8};
+            float[] o = r.has("origin") ? vec3(r.getAsJsonArray("origin")) : new float[] {8, 8, 8};
+            if (o == null) o = new float[] {8, 8, 8};
             String axis = r.get("axis").getAsString();
             double[][] m = switch (axis) {
                 case "x" -> rotXm(rad);
@@ -326,17 +368,24 @@ final class ModelRasterizer {
             double[] scale = {1, 1, 1};
             if (r.has("rescale") && r.get("rescale").getAsBoolean()) {
                 double s = 1.0 / Math.cos(rad);
-                if (axis.equals("x")) { scale[1] = s; scale[2] = s; }
-                else if (axis.equals("z")) { scale[0] = s; scale[1] = s; }
-                else { scale[0] = s; scale[2] = s; }
+                if (axis.equals("x")) {
+                    scale[1] = s;
+                    scale[2] = s;
+                } else if (axis.equals("z")) {
+                    scale[0] = s;
+                    scale[1] = s;
+                } else {
+                    scale[0] = s;
+                    scale[2] = s;
+                }
             }
-            return new ElementRotation(m, new double[]{o[0], o[1], o[2]}, scale);
+            return new ElementRotation(m, new double[] {o[0], o[1], o[2]}, scale);
         }
 
         double[] apply(double[] p) {
             if (m == null) return p;
-            double[] d = mul(m, new double[]{p[0] - origin[0], p[1] - origin[1], p[2] - origin[2]});
-            return new double[]{d[0] * scale[0] + origin[0], d[1] * scale[1] + origin[1], d[2] * scale[2] + origin[2]};
+            double[] d = mul(m, new double[] {p[0] - origin[0], p[1] - origin[1], p[2] - origin[2]});
+            return new double[] {d[0] * scale[0] + origin[0], d[1] * scale[1] + origin[1], d[2] * scale[2] + origin[2]};
         }
     }
 
@@ -378,22 +427,24 @@ final class ModelRasterizer {
 
     private static float[] vec3(JsonArray a) {
         if (a == null || a.size() < 3) return null;
-        return new float[]{a.get(0).getAsFloat(), a.get(1).getAsFloat(), a.get(2).getAsFloat()};
+        return new float[] {
+            a.get(0).getAsFloat(), a.get(1).getAsFloat(), a.get(2).getAsFloat()
+        };
     }
 
     private static double[][] rotXm(double a) {
         double c = Math.cos(a), s = Math.sin(a);
-        return new double[][]{{1, 0, 0}, {0, c, -s}, {0, s, c}};
+        return new double[][] {{1, 0, 0}, {0, c, -s}, {0, s, c}};
     }
 
     private static double[][] rotYm(double a) {
         double c = Math.cos(a), s = Math.sin(a);
-        return new double[][]{{c, 0, s}, {0, 1, 0}, {-s, 0, c}};
+        return new double[][] {{c, 0, s}, {0, 1, 0}, {-s, 0, c}};
     }
 
     private static double[][] rotZm(double a) {
         double c = Math.cos(a), s = Math.sin(a);
-        return new double[][]{{c, -s, 0}, {s, c, 0}, {0, 0, 1}};
+        return new double[][] {{c, -s, 0}, {s, c, 0}, {0, 0, 1}};
     }
 
     private static double[] rotX(double a, double[] v) {
@@ -407,28 +458,28 @@ final class ModelRasterizer {
     private static double[][] mul(double[][] a, double[][] b) {
         double[][] r = new double[3][3];
         for (int i = 0; i < 3; i++)
-            for (int j = 0; j < 3; j++)
-                r[i][j] = a[i][0] * b[0][j] + a[i][1] * b[1][j] + a[i][2] * b[2][j];
+            for (int j = 0; j < 3; j++) r[i][j] = a[i][0] * b[0][j] + a[i][1] * b[1][j] + a[i][2] * b[2][j];
         return r;
     }
 
     private static double[] mul(double[][] m, double[] v) {
-        return new double[]{
-                m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2],
-                m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2],
-                m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2]};
+        return new double[] {
+            m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2],
+            m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2],
+            m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2]
+        };
     }
 
     private static double[] sub(double[] a, double[] b) {
-        return new double[]{a[0] - b[0], a[1] - b[1], a[2] - b[2]};
+        return new double[] {a[0] - b[0], a[1] - b[1], a[2] - b[2]};
     }
 
     private static double[] cross(double[] a, double[] b) {
-        return new double[]{a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]};
+        return new double[] {a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]};
     }
 
     private static double[] normalize(double[] v) {
         double l = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
-        return new double[]{v[0] / l, v[1] / l, v[2] / l};
+        return new double[] {v[0] / l, v[1] / l, v[2] / l};
     }
 }

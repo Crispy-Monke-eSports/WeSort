@@ -11,7 +11,7 @@ package com.porter.wesort.utils;
  * A delay of 0 changes nothing.
  */
 public final class ContainerPacing {
-    private ContainerPacing() { }
+    private ContainerPacing() {}
 
     /** True while the open click has to wait: fewer than {@code containerDelay} ticks since the last close. */
     public static boolean openHeld(int now, int lastClose, int containerDelay) {

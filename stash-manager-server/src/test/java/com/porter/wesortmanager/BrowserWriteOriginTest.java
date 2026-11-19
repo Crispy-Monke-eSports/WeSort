@@ -1,20 +1,20 @@
 package com.porter.wesortmanager;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.sun.net.httpserver.Headers;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-
-import java.nio.file.Files;
-import java.nio.file.Path;
-
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** The browser-write Origin check, including https origins through a reverse proxy named in allowedHosts. */
 class BrowserWriteOriginTest {
     @TempDir
     Path dir;
+
     AccessControl access;
 
     @BeforeEach

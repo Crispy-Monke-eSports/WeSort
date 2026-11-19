@@ -541,7 +541,7 @@ input.central-search {
 .slot.unavailable img { opacity: 0.35; }
 .slot.empty-slot { cursor: default; }
 
-/* ---------- windows: shulker preview and chooser ---------- */
+/* ---------- windows (buy dialog) ---------- */
 
 .window {
   max-width: calc(100vw - 24px);
@@ -553,18 +553,27 @@ input.central-search {
 }
 .window-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .window-title { color: var(--text); font-size: 15px; overflow-wrap: anywhere; }
-.window-info { color: var(--text); margin: 0; font-size: 13px; }
-.window-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.buy-head { display: flex; align-items: center; gap: 12px; }
+.buy-name { color: var(--text); font-size: 16px; font-weight: 700; overflow-wrap: anywhere; }
+.buy-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+/* ---------- shop: checkout steps ---------- */
+
+.cart-steps { display: flex; gap: 6px; list-style: none; margin: 0 0 8px; padding: 0; }
+.step-pill[aria-current="step"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.step-pill:disabled { opacity: 0.55; }
+.cart-step { display: flex; flex-direction: column; gap: 8px; }
+.review-lines { margin: 0; padding-left: 22px; color: var(--text); }
+.review-meta { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 8px 0 0; color: var(--text); }
+.review-meta dt { color: var(--muted); }
+.review-meta dd { margin: 0; overflow-wrap: anywhere; }
 
 .shulker-grid {
   display: grid;
   grid-template-columns: repeat(9, var(--slot-size));
   grid-auto-rows: var(--slot-size);
   width: max-content;
-}
-.chooser-window .chooser-grid {
-  justify-content: start;
-  max-width: calc(9 * var(--slot-size));
 }
 
 .qty-input { width: 96px; }
@@ -778,18 +787,13 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
   white-space: nowrap;
 }
 
-/* ---------- orders: cart with the delivery chest ---------- */
+/* ---------- shop: cart ---------- */
 
 .cart { transition: background-color 0.1s; }
 .cart.drop-zone { outline: 2px dashed var(--muted); outline-offset: -6px; }
 .cart.drop-over { outline: 2px solid var(--accent); }
 .cart-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .cart-count { color: var(--text); font-size: 13px; }
-.cart-cols { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
-.chest-col { display: flex; flex-direction: column; gap: 8px; width: max-content; max-width: 100%; }
-.chest-col > .note { max-width: calc(9 * var(--slot-size) + 20px); }
-.lines-col { display: flex; flex-direction: column; gap: 8px; flex: 1 1 240px; min-width: 240px; max-width: 340px; }
-.lines-col .cart-lines { max-height: 360px; }
 .cart-line .qty-input { width: 80px; }
 
 /* A container GUI: a card holding a 9-wide grid of slots. */
@@ -1734,13 +1738,10 @@ html.streamer .sv-hidden { display: inline; color: var(--muted); font-style: ita
   .toolbar { flex-direction: column; }
   .toolbar .mc-select { width: 100%; }
   /* 9-wide container grids: slots shrink to fit the screen. */
-  .chest-grid, .bin-grid, .shulker-grid, .chooser-grid {
+  .chest-grid, .bin-grid, .shulker-grid {
     --slot-size: min(36px, calc((100vw - 96px) / 9));
     --icon-size: calc(var(--slot-size) - 4px);
   }
-  .cart-cols { flex-direction: column; align-items: stretch; }
-  .chest-col { width: 100%; }
-  .lines-col { min-width: 0; max-width: none; flex: 1 1 auto; }
 
   /* ----- 6. activity ----- */
   .act-head { gap: 6px 10px; }

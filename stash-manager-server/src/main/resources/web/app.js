@@ -81,6 +81,15 @@
     cartPlace: $("cart-place"),
     cartClear: $("cart-clear"),
     cartStatus: $("cart-status"),
+    orderStatus: $("order-status"),
+    cartContinue: $("cart-continue"),
+    cartBack2: $("cart-back-2"),
+    cartToReview: $("cart-to-review"),
+    cartBack3: $("cart-back-3"),
+    cartStep1: $("cart-step-1"),
+    cartStep2: $("cart-step-2"),
+    cartStep3: $("cart-step-3"),
+    orderReview: $("order-review"),
     cartOffline: $("cart-offline"),
     orderList: $("order-list"),
     toast: $("toast"),
@@ -1497,9 +1506,8 @@
     var sorter = sorters[el.sort.value] || sorters.count;
     var source = state.items;
     var shown;
-    // A shulker-box item stays in the list (as the anchor for its filled groups) when only a group matches.
     shown = source.filter(function (e) {
-      return matches(e, query) || (e.filledGroups && e.filledGroups.some(function (g) { return matches(g, query); }));
+      return !isShulkerBoxId(e.item.id) && matches(e, query);
     });
     shown.sort(sorter);
     shown = withFilledGroups(shown, query);
@@ -1531,11 +1539,11 @@
     state.searchTimer = window.setTimeout(renderNow, delay || 0);
   }
 
-  /** How many slots the stash has without a search (filled shulker groups count as their own slots). */
+  /** How many slots the stash has without a search (boxes are internal: never listed). */
   function tabSlotCount() {
     var n = 0;
     state.items.forEach(function (e) {
-      n += e.filledGroups ? (e.emptyCount > 0 ? 1 : 0) + e.filledGroups.length : 1;
+      if (!isShulkerBoxId(e.item.id)) n++;
     });
     return n;
   }
@@ -2004,7 +2012,6 @@
     });
     state.shulkerByKey = next;
     state.shulkers = out;
-    state.hasShulkerData = Array.isArray(index.shulkers);
     updateEmptyCounts();
     // Boxed contents changed too: refresh the aggregated counts on the item slots.
     state.items.forEach(function (e) {
@@ -2035,21 +2042,14 @@
   }
 
   /**
-   * The creative tabs and Search: each shulker-box item with filled groups becomes its empty boxes (if any are
-   * left, and it matches the search) followed by its filled groups that match, most first. Groups are found by
-   * their own name and contents too, so searching "diamond" shows the shulkers full of diamonds.
+   * The creative tabs and Search: shulker boxes are internal packing, so neither the boxes nor
+   * their filled groups are listed. Their contents are already aggregated into their items' counts.
    */
   function withFilledGroups(sorted, query) {
     var out = [];
     sorted.forEach(function (e) {
-      if (!e.filledGroups) {
-        out.push(e);
-        return;
-      }
-      if (e.emptyCount > 0 && matches(e, query)) out.push(e);
-      e.filledGroups.filter(function (g) { return matches(g, query); })
-        .sort(sorters.count)
-        .forEach(function (g) { out.push(g); });
+      if (isShulkerBoxId(e.item.id)) return;
+      if (matches(e, query)) out.push(e);
     });
     return out;
   }
@@ -2065,9 +2065,11 @@
   function boxedContents(key) {
     var n = 0;
     state.shulkers.forEach(function (e) {
+      var perBox = 0;
       (e.item.contents || []).forEach(function (c) {
-        if (c && c.key === key) n += Math.max(0, c.count);
+        if (c && c.key === key) perBox += Math.max(0, c.count);
       });
+      n += perBox * Math.max(0, e.item.count);
     });
     return n;
   }
@@ -2110,7 +2112,7 @@
     return { took: took, remainder: remainder };
   }
 
-  // ---------- windows (shulker preview, chooser) ----------
+  // ---------- windows (buy dialog) ----------
 
   var currentWindow = null;
 
@@ -2155,117 +2157,14 @@
     return win;
   }
 
-  function contentEntry(c) {
-    var base = itemByKey(c.key);
-    var item = base ? Object.assign({}, base, { count: c.count }) : {
-      key: c.key, id: c.key.split("#")[0], name: c.key, englishName: c.key, count: c.count,
-      maxStack: 64, details: [], enchanted: false, tab: "other", tabOrder: 1000000
-    };
-    return createEntry(item, state.mc);
-  }
-
-  /** The shulker-box preview: the 9x3 grid with contents at their slots, plus "Add to order". */
-  function openShulkerPreview(group) {
-    var body = document.createElement("div");
-    var grid = document.createElement("div");
-    grid.className = "shulker-grid";
-    var bySlot = {};
-    group.contents.forEach(function (c) { bySlot[c.slot] = c; });
-    for (var i = 0; i < 27; i++) {
-      if (bySlot[i]) {
-        grid.appendChild(contentEntry(bySlot[i]).slot);
-      } else {
-        var empty = document.createElement("div");
-        empty.className = "slot empty-slot";
-        grid.appendChild(empty);
-      }
-    }
-    body.appendChild(grid);
-
-    var info = document.createElement("div");
-    info.className = "window-info";
-    info.textContent = group.count === 1 ? "1 shulker like this" : grouped(group.count) + " identical shulkers like this";
-    body.appendChild(info);
-
-    var avail = availableLeft("shulker", group.key);
-    var row = document.createElement("div");
-    row.className = "window-actions";
-    var input = document.createElement("input");
-    input.type = "number";
-    input.className = "mc-input qty-input";
-    input.min = "1";
-    input.max = String(Math.max(1, avail));
-    input.value = "1";
-    var add = document.createElement("button");
-    add.type = "button";
-    add.className = "mc-button";
-    add.textContent = "Add to order";
-    var msg = document.createElement("span");
-    msg.className = "note";
-    if (!can("order")) {
-      add.hidden = true;
-      input.hidden = true;
-    } else if (avail < 1) {
-      add.disabled = true;
-      input.disabled = true;
-      msg.textContent = "None left to order (reserved or already in the cart).";
-    } else {
-      msg.textContent = grouped(avail) + " available";
-    }
-    add.addEventListener("click", function () {
-      var n = clampInt(input.value, 1, availableLeft("shulker", group.key));
-      if (n < 1) return;
-      if (!addToCart("shulker", group.key, n)) return;
-      toast("Added " + n + " × " + group.name + " (packed) to the cart");
-      closeWindow();
-    });
-    row.appendChild(input);
-    row.appendChild(add);
-    row.appendChild(msg);
-    body.appendChild(row);
-    openWindow(group.name, body, "shulker-window");
-  }
-
-  /** Right-click on an aggregated shulker-box item: choose one of its filled groups. */
-  function openShulkerChooser(item) {
-    var groups = filledGroupsFor(item);
-    var body = document.createElement("div");
-    if (!groups.length) {
-      var p = document.createElement("p");
-      p.className = "window-info";
-      p.textContent = state.hasShulkerData
-        ? "All empty. None of these shulkers hold items."
-        : "This index has no shulker contents. Update the WeSort addon to see what is inside.";
-      body.appendChild(p);
-      openWindow(item.name, body, "chooser-window");
-      return;
-    }
-    var hint = document.createElement("div");
-    hint.className = "window-info";
-    hint.textContent = "Filled ones (" + grouped(groups.reduce(function (n, e) { return n + e.item.count; }, 0)) +
-      " of " + grouped(item.count) + "). Click one to look inside.";
-    body.appendChild(hint);
-    var grid = document.createElement("div");
-    grid.className = "item-grid chooser-grid";
-    groups.forEach(function (g) {
-      var e = createEntry(g.item, state.mc);
-      e.onActivate = function () { openShulkerPreview(g.item); };
-      grid.appendChild(e.slot);
-    });
-    body.appendChild(grid);
-    openWindow(item.name, body, "chooser-window");
-  }
-
   /** What right-click on a slot does (touch: what a tap on a main-grid slot does). */
   function slotContextAction(entry) {
     if (entry.onContext) entry.onContext();
     else if (entry.onActivate) entry.onActivate();
-    else if (entry.item.isShulker) openShulkerPreview(entry.item);
-    else if (isShulkerBoxId(entry.item.id)) openShulkerChooser(entry.item);
   }
 
   // Touch equivalents for the main item grid (mouse behaviour is unchanged):
-  // tap = right-click (look inside a shulker), long-press = shift-click (add a stack to the cart).
+  // tap opens the buy dialog, long-press = shift-click (add a stack to the cart).
   var LONG_PRESS_MS = 500;
   var LONG_PRESS_SLOP = 10;
   var touchPress = { pointer: "mouse", timer: 0, x: 0, y: 0, firedUntil: 0 };
@@ -2309,7 +2208,7 @@
       hideTooltip(); // the browser's compatibility mouseover showed it again
     } else if (touchPress.pointer !== "mouse" && !e.shiftKey && !entry.onActivate) {
       e.preventDefault();
-      slotContextAction(entry);
+      openBuyDialog(entry);
     }
   }
   el.grid.addEventListener("pointermove", function (e) {
@@ -2319,7 +2218,7 @@
   el.gridWrap.addEventListener("scroll", cancelLongPress, { passive: true });
   window.addEventListener("scroll", cancelLongPress, { passive: true });
 
-  // Right-click opens shulker windows; the browser menu is suppressed only on slots.
+  // Right-click: the browser menu is suppressed on slots; the plan's slots act on it.
   document.addEventListener("contextmenu", function (e) {
     var slot = e.target.closest ? e.target.closest(".slot") : null;
     var entry = slot ? slotEntry.get(slot) : null;
@@ -2330,13 +2229,20 @@
     slotContextAction(entry);
   });
 
-  // Left click: windows' clickable slots, and shift-click to add a stack to the cart.
+  // Left click: windows' and the plan's clickable slots, the shelf (buy dialog),
+  // and shift-click to add a stack to the cart.
   document.addEventListener("click", function (e) {
     var slot = e.target.closest ? e.target.closest(".slot") : null;
     var entry = slot ? slotEntry.get(slot) : null;
     if (!entry || e.defaultPrevented) return; // handled by the item grid's touch handler
     if (entry.onActivate) {
       entry.onActivate();
+      return;
+    }
+    if (!e.shiftKey && e.button === 0 && !drag.suppressClick
+        && touchPress.pointer === "mouse" && el.grid.contains(slot)) {
+      e.preventDefault();
+      openBuyDialog(entry);
       return;
     }
     if (e.shiftKey && el.grid.contains(slot)) {
@@ -3409,9 +3315,90 @@
     $("order-quota-override-row").hidden = !can("ordersAll");
     el.cartPlace.disabled = !cart.lines.length || !state.items.length || !units;
     el.cartClear.disabled = !cart.lines.length;
+    el.cartContinue.disabled = !cart.lines.length;
     var s = currentStash();
     el.cartOffline.hidden = !(s && !s.online);
+    if (!cart.lines.length && cartStep !== 1) showCartStep(1);
+    else if (cartStep === 3) renderReview();
   }
+
+  /** Checkout wizard: 1 cart, 2 delivery details, 3 review. Packing stays fully automatic. */
+  var cartStep = 1;
+
+  function showCartStep(n) {
+    if ((n === 2 || n === 3) && !cart.lines.length) {
+      toast("The cart is empty.");
+      return;
+    }
+    cartStep = n;
+    el.cartStep1.hidden = n !== 1;
+    el.cartStep2.hidden = n !== 2;
+    el.cartStep3.hidden = n !== 3;
+    Array.prototype.forEach.call(document.querySelectorAll("#cart-steps .step-pill"), function (b) {
+      var s = Number(b.dataset.step);
+      if (s === n) b.setAttribute("aria-current", "step");
+      else b.removeAttribute("aria-current");
+      b.disabled = s > 1 && !cart.lines.length;
+    });
+    if (n === 3) renderReview();
+    if (n === 1) hideTooltip();
+  }
+
+  function namesModeText() {
+    if (names.mode === "all") return "Same name for all" + (names.all ? ": " + names.all : "");
+    if (names.mode === "each") {
+      var named = names.each.filter(function (x) { return x; }).length;
+      return "Name each shulker" + (named ? " (" + named + " named)" : "");
+    }
+    return "No names";
+  }
+
+  /** Final check before placing: lines, totals and who/what/where. */
+  function renderReview() {
+    var frag = document.createDocumentFragment();
+    var list = document.createElement("ul");
+    list.className = "review-lines";
+    cart.lines.forEach(function (l) {
+      var item = lineItem(l.type, l.key);
+      var li = document.createElement("li");
+      li.textContent = grouped(l.count) + " × " + (item ? displayName(l.type, item) : l.key);
+      list.appendChild(li);
+    });
+    frag.appendChild(list);
+    var totals = document.createElement("div");
+    totals.className = "note";
+    totals.textContent = el.cartTotals.textContent;
+    frag.appendChild(totals);
+    var meta = document.createElement("dl");
+    meta.className = "review-meta";
+    function row(term, text) {
+      if (!text) return;
+      var dt = document.createElement("dt");
+      dt.textContent = term;
+      var dd = document.createElement("dd");
+      dd.textContent = text;
+      meta.appendChild(dt);
+      meta.appendChild(dd);
+    }
+    row("Order for", can("guildOrders") ? $("order-purpose").selectedOptions[0].textContent : "Myself");
+    if (can("guildOrders")) row("Recipient", $("order-recipient").value.trim());
+    row("Comment", $("order-comment").value.trim());
+    row("Shulker names", namesModeText());
+    if (can("ordersAll") && $("order-quota-override").checked) row("Quota", "Override (audited)");
+    var s = currentStash();
+    if (s && !s.online) row("Delivery", "Bot offline — starts when it reconnects");
+    frag.appendChild(meta);
+    el.orderReview.replaceChildren(frag);
+  }
+
+  el.cartContinue.addEventListener("click", function () { showCartStep(2); });
+  el.cartBack2.addEventListener("click", function () { showCartStep(1); });
+  el.cartToReview.addEventListener("click", function () { showCartStep(3); });
+  el.cartBack3.addEventListener("click", function () { showCartStep(2); });
+  document.querySelector("#cart-steps").addEventListener("click", function (e) {
+    var b = e.target.closest ? e.target.closest(".step-pill") : null;
+    if (b) showCartStep(Number(b.dataset.step));
+  });
 
   el.cartClear.addEventListener("click", function () {
     if (!cart.lines.length || !window.confirm("Remove everything from the cart?")) return;
@@ -3439,8 +3426,8 @@
     var s = currentStash();
     if (!s || !cart.lines.length) return;
     el.cartPlace.disabled = true;
-    el.cartStatus.textContent = "Placing the order...";
-    el.cartStatus.classList.remove("warn");
+    el.orderStatus.textContent = "Placing the order...";
+    el.orderStatus.classList.remove("warn");
     var draft = { server: s.server, stash: s.stash, names: namesBody(), lines: cart.lines.slice(),
       purpose: can("guildOrders") ? $("order-purpose").value : "SELF", comment: $("order-comment").value,
       quotaOverride: can("ordersAll") && $("order-quota-override").checked };
@@ -3460,15 +3447,15 @@
       $("order-recipient").value = "";
       $("order-comment").value = "";
       $("order-quota-override").checked = false;
-      el.cartStatus.textContent = s.online ? "Order placed." : "Order placed. It will start when the bot reconnects.";
+      el.orderStatus.textContent = s.online ? "Order placed." : "Order placed. It will start when the bot reconnects.";
       toast("Order placed");
       renderCart();
       scheduleOrdersPoll(0);
     }, function (e) {
       var body = e && e.body;
       cart.badLine = body && typeof body.line === "number" ? body.line : -1;
-      el.cartStatus.textContent = body && body.error ? body.error : "Could not place the order" + (e && e.status ? " (HTTP " + e.status + ")" : "") + ".";
-      el.cartStatus.classList.add("warn");
+      el.orderStatus.textContent = body && body.error ? body.error : "Could not place the order" + (e && e.status ? " (HTTP " + e.status + ")" : "") + ".";
+      el.orderStatus.classList.add("warn");
       renderCart();
       scheduleOrdersPoll(0);
     });
@@ -3573,14 +3560,117 @@
     if (drag.pe) endDrag();
   });
 
-  el.grid.addEventListener("dblclick", function (e) {
-    var pe = pickEntryFrom(e.target);
-    if (!pe) return;
-    e.preventDefault();
-    var sel = window.getSelection && window.getSelection();
-    if (sel && sel.removeAllRanges) sel.removeAllRanges();
-    quickAdd(pe.pick.item);
-  });
+  /**
+   * Buy dialog for one shelf item: a bigger icon, what is available (loose plus boxed), an amount
+   * field with quick amounts, and add-to-cart. Packing into boxes happens automatically afterwards.
+   */
+  function openBuyDialog(entry) {
+    if (!can("order")) {
+      toast("Your account can't place orders.");
+      return;
+    }
+    var item = entry.item;
+    var group = item.isShulker ? item : null;
+    var boxItem = !group && isShulkerBoxId(item.id);
+    var type = group ? "shulker" : "item";
+    var left = availableLeft(type, item.key);
+    var body = document.createElement("div");
+    var head = document.createElement("div");
+    head.className = "buy-head";
+    head.appendChild(iconWithContents(item.id, group ? group.contents : null, 64));
+    var name = document.createElement("div");
+    name.className = "buy-name";
+    name.textContent = displayName(type, item);
+    head.appendChild(name);
+    body.appendChild(head);
+    var info = document.createElement("div");
+    info.className = "note";
+    if (group) {
+      info.textContent = grouped(left) + " available, as packed";
+    } else if (boxItem) {
+      info.textContent = grouped(left) + " empty available";
+    } else {
+      var boxed = boxedContents(item.key);
+      info.textContent = grouped(left + boxed) + " available (" + grouped(left) + " loose" +
+        (boxed > 0 ? " + " + grouped(boxed) + " in full shulkers, taken as-is" : "") + ")";
+    }
+    body.appendChild(info);
+    var row = document.createElement("div");
+    row.className = "buy-row";
+    var input = document.createElement("input");
+    input.type = "number";
+    input.className = "mc-input qty-input";
+    input.min = "1";
+    var max = orderableMax(type, item.key, 0);
+    input.max = String(Math.max(1, max));
+    // A useful default: a stack of what is loose, or the whole box when nothing is loose.
+    var loose = availableLeft(type, item.key);
+    var unit = type === "shulker" ? 1 : item.maxStack || 64;
+    input.value = String(loose > 0 ? Math.min(unit, loose) : Math.max(1, max));
+    input.setAttribute("aria-label", "Amount");
+    row.appendChild(input);
+    var readout = document.createElement("div");
+    readout.className = "note";
+    row.appendChild(readout);
+    var add = document.createElement("button");
+    add.type = "button";
+    add.className = "mc-button";
+    add.textContent = "Add to cart";
+    function update() {
+      var n = clampInt(input.value, 1, Math.max(1, max));
+      readout.textContent = packReadout(n, item.maxStack || 64, type);
+      add.disabled = n < 1 || (type === "item" && !splittable(item.key) ? n > left : n > max);
+    }
+    // packReadout counts shulkers for an item amount; reuse it for the dialog readout.
+    function packReadout(n, maxStack, kind) {
+      if (kind === "shulker") return n ? "= " + plural(String(n), "packed shulker") : "";
+      return "= " + plural(String(n), "item") + " · ≈ " + plural(approx(n / (maxStack * 27)), "shulker");
+    }
+    var quick = function (label, fn) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "mc-button small";
+      b.textContent = label;
+      b.addEventListener("click", function () {
+        input.value = String(clampInt(fn(clampInt(input.value, 1, Math.max(1, max))), 1, Math.max(1, max)));
+        update();
+      });
+      row.appendChild(b);
+    };
+    quick("+1", function (n) { return n + 1; });
+    if (type === "shulker") {
+      quick("+5", function (n) { return n + 5; });
+    } else {
+      quick("+1 stack", function (n) { return n + (item.maxStack || 64); });
+      quick("Max", function () { return Math.max(1, max); });
+    }
+    row.appendChild(add);
+    if (left < 1 && (type !== "item" || !splittable(item.key) || orderableMax(type, item.key, 0) < 1)) {
+      input.disabled = true;
+      add.disabled = true;
+      var none = document.createElement("div");
+      none.className = "note warn";
+      none.textContent = "None left to order.";
+      row.appendChild(none);
+    }
+    body.appendChild(row);
+    add.addEventListener("click", function () {
+      var n = clampInt(input.value, 1, Math.max(1, max));
+      if (n < 1) return;
+      if (addToCart(type, item.key, n)) {
+        clearStatus();
+        toast("Added " + grouped(n) + " × " + displayName(type, item) + " to the cart");
+        closeWindow();
+      }
+    });
+    input.addEventListener("input", update);
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") add.click();
+    });
+    update();
+    hideTooltip();
+    openWindow(displayName(type, item), body, "buy-window");
+  }
 
   // ---------- orders: list ----------
 

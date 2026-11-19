@@ -107,8 +107,8 @@
         </select>
       </div>
       <div class="summary" id="summary"></div>
-      <div class="hint only-desktop order-hint">Double-click or Shift-click an item to add a stack to the cart. Right-click a shulker box to look inside.</div>
-      <div class="hint only-mobile order-hint">Tap an item's + to add a stack to the cart, or long-press it. Tap a shulker box to look inside.</div>
+      <div class="hint only-desktop order-hint">Click an item to choose an amount, or Shift-click / drag it for a quick stack.</div>
+      <div class="hint only-mobile order-hint">Tap an item to choose an amount, its + for a quick stack, or long-press it.</div>
 
       <section class="inset bot-strip" id="bot-strip">
           <div class="bot-line" id="delivery-status"></div>
@@ -119,53 +119,65 @@
             <div class="section-title">Cart</div>
             <div class="cart-count" id="cart-count"></div>
           </div>
-          <div class="cart-cols">
-            <div class="chest-col">
-              <div class="gui-box">
-                <div class="gui-title">Delivery chest <span class="gui-sub">(planned layout)</span></div>
-                <div class="chest-grid" id="chest-grid"></div>
-                <div class="delivery-fit" id="delivery-fit" role="status" hidden></div>
-                <div class="delivery-warn" id="delivery-warn" role="status" hidden></div>
-              </div>
-              <div class="gui-box">
-                <div class="gui-title" id="bin-title">Shulker Box</div>
-                <div class="shulker-grid bin-grid" id="bin-grid"></div>
-              </div>
-              <div class="note">Click a shulker in the chest to look inside. Right-click a stack to remove it. The bot may deliver less if it can't reach everything.</div>
+          <ol class="cart-steps" id="cart-steps">
+            <li><button type="button" class="step-pill" data-step="1" aria-current="step">1 · Cart</button></li>
+            <li><button type="button" class="step-pill" data-step="2">2 · Delivery</button></li>
+            <li><button type="button" class="step-pill" data-step="3">3 · Review</button></li>
+          </ol>
+          <div class="cart-step" id="cart-step-1">
+            <div class="cart-lines" id="cart-lines"></div>
+            <div class="cart-totals" id="cart-totals"></div>
+            <div class="cart-actions">
+              <button type="button" class="mc-button danger" id="cart-clear">Clear cart</button>
+              <button type="button" class="mc-button" id="cart-continue">Continue to delivery</button>
             </div>
-            <div class="lines-col">
-              <div class="cart-lines" id="cart-lines"></div>
-              <div class="cart-totals" id="cart-totals"></div>
-              <fieldset class="names-box" id="names-box">
-                <legend class="names-legend">Shulker names</legend>
-                <div class="seg" role="group" aria-label="Shulker names" id="names-seg">
-                  <button type="button" class="mc-button small seg-btn" data-mode="none" aria-pressed="true">No names</button>
-                  <button type="button" class="mc-button small seg-btn" data-mode="all" aria-pressed="false">Same name for all</button>
-                  <button type="button" class="mc-button small seg-btn" data-mode="each" aria-pressed="false">Name each shulker</button>
-                </div>
-                <input id="names-all" class="mc-input" type="text" maxlength="50" placeholder="Name for every shulker" aria-label="Name for every shulker" autocomplete="off" spellcheck="false" hidden>
-                <div class="names-each" id="names-each" hidden>
-                  <div class="names-rows" id="names-rows"></div>
-                  <div class="note">The bot plans again from what it can reach, so it may deliver fewer shulkers; names go in this order.</div>
-                </div>
-                <div class="names-warn" id="names-warn" role="status" hidden></div>
-                <div class="note" id="craft-info" role="status" hidden></div>
-              </fieldset>
-              <label id="order-purpose-row" hidden>Order for
-                <select id="order-purpose"><option value="SELF">Myself</option><option value="GUILD">The guild</option></select>
-              </label>
-              <label id="order-recipient-row" hidden>Confirmed Minecraft recipient (optional)
-                <input id="order-recipient" maxlength="16" autocomplete="off">
-              </label>
-              <label>Comment (optional) <textarea id="order-comment" maxlength="500" rows="2"></textarea></label>
-              <label id="order-quota-override-row" hidden><input type="checkbox" id="order-quota-override"> Override withdrawal quota (audited, approvers only)</label>
-              <div class="cart-actions">
-                <button type="button" class="mc-button" id="cart-place">Place order</button>
-                <button type="button" class="mc-button danger" id="cart-clear">Clear cart</button>
+            <div class="note" id="cart-status"></div>
+            <div class="note warn" id="cart-offline" hidden>Bot offline. The order will start when it reconnects.</div>
+          </div>
+          <div class="cart-step" id="cart-step-2" hidden>
+            <fieldset class="names-box" id="names-box">
+              <legend class="names-legend">Shulker names</legend>
+              <div class="seg" role="group" aria-label="Shulker names" id="names-seg">
+                <button type="button" class="mc-button small seg-btn" data-mode="none" aria-pressed="true">No names</button>
+                <button type="button" class="mc-button small seg-btn" data-mode="all" aria-pressed="false">Same name for all</button>
+                <button type="button" class="mc-button small seg-btn" data-mode="each" aria-pressed="false">Name each shulker</button>
               </div>
-              <div class="note" id="cart-status"></div>
-              <div class="note warn" id="cart-offline" hidden>Bot offline. The order will start when it reconnects.</div>
+              <input id="names-all" class="mc-input" type="text" maxlength="50" placeholder="Name for every shulker" aria-label="Name for every shulker" autocomplete="off" spellcheck="false" hidden>
+              <div class="names-each" id="names-each" hidden>
+                <div class="names-rows" id="names-rows"></div>
+                <div class="note">The bot plans again from what it can reach, so it may deliver fewer shulkers; names go in this order.</div>
+              </div>
+              <div class="names-warn" id="names-warn" role="status" hidden></div>
+              <div class="note" id="craft-info" role="status" hidden></div>
+            </fieldset>
+            <label id="order-purpose-row" hidden>Order for
+              <select id="order-purpose"><option value="SELF">Myself</option><option value="GUILD">The guild</option></select>
+            </label>
+            <label id="order-recipient-row" hidden>Confirmed Minecraft recipient (optional)
+              <input id="order-recipient" maxlength="16" autocomplete="off">
+            </label>
+            <label>Comment (optional) <textarea id="order-comment" maxlength="500" rows="2"></textarea></label>
+            <label id="order-quota-override-row" hidden><input type="checkbox" id="order-quota-override"> Override withdrawal quota (audited, approvers only)</label>
+            <div class="cart-actions">
+              <button type="button" class="mc-button" id="cart-back-2">Back</button>
+              <button type="button" class="mc-button" id="cart-to-review">Continue to review</button>
             </div>
+          </div>
+          <div class="cart-step" id="cart-step-3" hidden>
+            <div id="order-review"></div>
+            <div class="note">Packing into shulker boxes is automatic. The bot may deliver less if it can't reach everything.</div>
+            <div hidden>
+              <div class="chest-grid" id="chest-grid"></div>
+              <div class="delivery-fit" id="delivery-fit" role="status" hidden></div>
+              <div class="delivery-warn" id="delivery-warn" role="status" hidden></div>
+              <div class="gui-title" id="bin-title">Shulker Box</div>
+              <div class="shulker-grid bin-grid" id="bin-grid"></div>
+            </div>
+            <div class="cart-actions">
+              <button type="button" class="mc-button" id="cart-back-3">Back</button>
+              <button type="button" class="mc-button" id="cart-place">Place order</button>
+            </div>
+            <div class="note" id="order-status"></div>
           </div>
         </section>
         <section class="inset order-list">

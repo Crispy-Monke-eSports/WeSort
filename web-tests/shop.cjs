@@ -9,7 +9,7 @@ const code = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
 const settle = () => new Promise(resolve => setTimeout(resolve, 30));
 const rest = async (n = 6) => { for (let i = 0; i < n; i++) await settle(); };
 
-// One box of 27 stacks of 64 diamonds, like a full shulker in a real index.
+// One box of 27 stacks of 64 diamonds, plus two more of the same kind.
 const boxContents = [];
 for (let slot = 0; slot < 27; slot++) boxContents.push({slot, key: 'minecraft:diamond', count: 64});
 
@@ -35,7 +35,9 @@ async function scenario() {
     if (u.pathname === '/api/v1/index') body = {mcVersion: '26.3',
       items: [{key: 'minecraft:diamond', id: 'minecraft:diamond', name: 'Diamond', count: 64, maxStack: 64}],
       shulkers: [{key: 'diamond-box', id: 'minecraft:shulker_box', itemKey: 'minecraft:diamond',
-        count: 1, contents: boxContents}]};
+        count: 1, contents: boxContents},
+        {key: 'diamond-box-2', id: 'minecraft:shulker_box', itemKey: 'minecraft:diamond',
+          count: 2, contents: boxContents}]};
     if (u.pathname === '/api/v1/orders' && (opts.method || 'GET') === 'GET')
       body = {orders: [], available: {items: {'minecraft:diamond': 64}, shulkers: {}}};
     if (u.pathname === '/api/v1/orders' && opts.method === 'POST') { placed.push(JSON.parse(opts.body)); body = {}; }
@@ -49,15 +51,17 @@ async function scenario() {
     w.eval(code);
     await rest();
     const doc = w.document;
-    // One Shop page: shelf, cart and history together, no picker, no separate orders view.
+    // One Shop page: shelf, cart, delivery and review steps, no picker, no box rows.
     assert(doc.querySelector('#dash-nav [data-page="shop"]'), 'shop nav');
     assert.equal(doc.querySelector('#dash-nav [data-page="orders"]'), null);
     assert.equal(doc.querySelector('#dash-nav [data-page="stash"]'), null);
     assert.equal(doc.querySelector('#order-picker'), null);
     assert.equal(doc.querySelector('#picker-body'), null);
-    // The shelf aggregates loose (64) and boxed (1728) diamonds.
+    assert(doc.querySelector('#cart-step-1') && doc.querySelector('#cart-step-2') && doc.querySelector('#cart-step-3'), 'wizard steps');
+    assert.equal(doc.querySelectorAll('#item-grid .slot').length > 0, true);
+    // The shelf aggregates loose (64) and boxed (3 x 1728) diamonds.
     const slot = [...doc.querySelectorAll('#item-grid .slot')]
-      .find(s => s.textContent.includes('1.8k'));
+      .find(s => s.textContent.includes('5.2k'));
     assert(slot, 'aggregated diamond count, got: ' + doc.querySelector('#item-grid').textContent.slice(0, 120));
     // One stack into the cart from the shelf.
     [...doc.querySelectorAll('#item-grid button')].find(b => (b.getAttribute('aria-label') || '').includes('Diamond')).click();
@@ -70,7 +74,7 @@ async function scenario() {
     input.value = '100';
     input.dispatchEvent(new w.Event('change', {bubbles: true}));
     await rest();
-    assert.match(doc.querySelector('#cart-status').textContent, /Only 64 .* loose available.*1,728 in full shulkers/);
+    assert.match(doc.querySelector('#cart-status').textContent, /Only 64 .* loose available.*5,184 in full shulkers/);
     lines = [...doc.querySelectorAll('#cart-lines .cart-line')];
     assert.equal(lines.length, 1);
     assert.equal(lines[0].querySelector('input').value, '64');
@@ -82,7 +86,15 @@ async function scenario() {
     assert.equal(lines.length, 2);
     const text = lines.map(l => l.textContent).join(' | ');
     assert.match(text, /packed/);
-    // Placing sends the split lines; the offline queue is the server's job (covered in Java tests).
+    // Placing walks the wizard: cart -> delivery -> review -> place order.
+    doc.querySelector('#cart-continue').click();
+    await rest();
+    assert.equal(doc.querySelector('#cart-step-1').hidden, true);
+    assert.equal(doc.querySelector('#cart-step-2').hidden, false);
+    doc.querySelector('#cart-to-review').click();
+    await rest();
+    assert.equal(doc.querySelector('#cart-step-3').hidden, false);
+    assert.match(doc.querySelector('#order-review').textContent, /Diamond/);
     doc.querySelector('#cart-place').click();
     await rest();
     assert.equal(placed.length, 1);

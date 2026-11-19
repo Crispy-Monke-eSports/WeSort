@@ -1,0 +1,21 @@
+name: Load exact Manager CI image
+description: Load the source-revision-bound Docker image made by the verification job
+runs:
+  using: composite
+  steps:
+    - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+      with:
+        name: manager-ci-image-${{ github.run_id }}
+        path: '${{ runner.temp }}/manager-ci-image'
+    - name: Import and verify image identity
+      shell: bash
+      run: |
+        set -euo pipefail
+        zstd -dc "$RUNNER_TEMP/manager-ci-image/manager.tar.zst" | docker load
+        expected="$(cat "$RUNNER_TEMP/manager-ci-image/image-id.txt")"
+        actual="$(docker image inspect wesort-manager:ci --format '{{.Id}}')"
+        if [[ "$actual" != "$expected" ]]; then
+          echo "::error::Imported Manager image does not match the tested image"
+          exit 1
+        fi
+        test "$(docker image inspect wesort-manager:ci --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$GITHUB_SHA"

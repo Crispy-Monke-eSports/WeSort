@@ -1,0 +1,44 @@
+name: WeSort CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '29 3 * * *'
+  workflow_call:
+permissions:
+  contents: read
+
+# Distinct event groups and PR numbers; release workflows use their own group.
+concurrency:
+  group: wesort-ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+
+jobs:
+  verify:
+    name: Compile, unit and Docker smoke
+    uses: ./.github/workflows/_verify.yml
+    permissions:
+      contents: read
+  e2e:
+    name: Full Minecraft 26.3 E2E
+    needs: verify
+    uses: ./.github/workflows/_mc26-e2e.yml
+    permissions:
+      contents: read
+  status:
+    name: ci-required
+    if: always()
+    needs: [verify, e2e]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require verification and every E2E check
+        env:
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          E2E_RESULT: ${{ needs.e2e.result }}
+        shell: bash
+        run: |
+          echo "Verification: $VERIFY_RESULT; full E2E: $E2E_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          [[ "$VERIFY_RESULT" == success && "$E2E_RESULT" == success ]]

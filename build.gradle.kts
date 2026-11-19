@@ -168,7 +168,8 @@ spotless {
             "src/26.3/java/**/*.java",
             "src/test/java/**/*.java",
             "common/src/main/java/**/*.java",
-            "common/src/test/java/**/*.java"
+            "common/src/test/java/**/*.java",
+            "tools/mc26-toolchain/src/**/*.java"
         )
         palantirJavaFormat("2.103.0")
         trimTrailingWhitespace()

@@ -71,7 +71,7 @@ Den verifierar tre identiska shulkers i två barrels, glesa 27-slot-data,
 nested bundle, exakt swordmetadata, totalsummor, oförändrat server-NBT efter
 läsning och en verklig innehållsförändring följd av ny avläsning. Äldre fångad
 observation ska avvisas med 409. Lokala resultat redovisas separat från
-commitbunden CI i workflow `mc26-hierarchy.yml`.
+commitbunden CI i workflow `ci.yml` → `_mc26-e2e.yml` (hierarchy job).
 
 Repack, exakt fysisk kitpackning, återställningsjournal och global atomisk
 slotreservation verifieras i W-021–W-024. Inga Qwerte-data används.

@@ -29,6 +29,8 @@ jobs:
           distribution: temurin
           java-version: '25.0.5+8'
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v4
+        with:
+          cache-read-only: true
       - name: Require formatted Minecraft, shared and toolchain Java
         run: ./gradlew --no-daemon spotlessCheck
       - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v4

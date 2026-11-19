@@ -59,7 +59,7 @@ sourceSets {
 }
 
 // The production /tmp is noexec. Extract only the supported Linux amd64 native library at image build time.
-val sqliteNative by tasks.registering(Copy::class) {
+val sqliteNative = tasks.register<Copy>("sqliteNative") {
     from(configurations.runtimeClasspath.map { cp -> cp.filter { it.name.startsWith("sqlite-jdbc-") }.map { zipTree(it) } })
     include("org/sqlite/native/Linux/x86_64/libsqlitejdbc.so")
     eachFile { path = name }

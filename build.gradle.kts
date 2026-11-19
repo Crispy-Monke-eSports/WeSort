@@ -17,15 +17,15 @@ val target = Properties().apply {
 fun target(key: String) = target.getProperty(key)
 
 base {
-    archivesName = properties["archives_base_name"] as String
+    archivesName = providers.gradleProperty("archives_base_name").get()
     version = "${libs.versions.mod.version.get()}+$mc"
-    group = properties["maven_group"] as String
+    group = providers.gradleProperty("maven_group").get()
 }
 
 // Translate named API changes once; keep algorithms shared with the mapped baselines.
 // The generated sources are inspectable under build/generated/sources/mc26.
 val portedSources = layout.buildDirectory.dir("generated/sources/mc26")
-val port26Sources by tasks.registering {
+val port26Sources = tasks.register("port26Sources") {
     inputs.dir("src/main/java")
     inputs.file("src/26.3/renames.tsv")
     outputs.dir(portedSources)
@@ -147,11 +147,11 @@ tasks {
 loom {
     runs {
         named("client") {
-            runDir(providers.gradleProperty("gameDir").orElse("build/run-26.3").get())
-            vmArg("-Dwesort.runtime.probe=" + providers.gradleProperty("runtimeProbe").orElse("false").get())
-            vmArg("-Dwesort.e2e=" + providers.gradleProperty("worldTest").orElse("false").get())
-            providers.gradleProperty("testServer").orNull?.let { programArgs("--quickPlayMultiplayer", it) }
-            if (providers.gradleProperty("worldTest").orNull == "true") programArgs("--username", "WeSortE2E")
+            runDirectory.set(file(providers.gradleProperty("gameDir").orElse("build/run-26.3").get()))
+            jvmArguments.add("-Dwesort.runtime.probe=" + providers.gradleProperty("runtimeProbe").orElse("false").get())
+            jvmArguments.add("-Dwesort.e2e=" + providers.gradleProperty("worldTest").orElse("false").get())
+            providers.gradleProperty("testServer").orNull?.let { programArguments.addAll("--quickPlayMultiplayer", it) }
+            if (providers.gradleProperty("worldTest").orNull == "true") programArguments.addAll("--username", "WeSortE2E")
         }
     }
 }

@@ -112,7 +112,8 @@ public final class Order {
             List<Line> lines,
             Names names,
             Map<String, Set<Integer>> protectedRoots,
-            Map<String, Set<Integer>> allocatedRoots, boolean requiredPackageLabels) {
+            Map<String, Set<Integer>> allocatedRoots,
+            boolean requiredPackageLabels) {
         this.id = id;
         this.lines = lines;
         this.names = names;
@@ -178,21 +179,25 @@ public final class Order {
 
     /** Fail closed for an incomplete or tampered Manager-owned package-label plan. */
     private static boolean validatePackageLabels(JsonObject order, Names names) {
-        if (!order.has("names") || !order.get("names").isJsonObject()
-            || !order.getAsJsonObject("names").has("packageLabel")) return false;
+        if (!order.has("names")
+                || !order.get("names").isJsonObject()
+                || !order.getAsJsonObject("names").has("packageLabel")) return false;
         try {
             JsonObject meta = order.getAsJsonObject("names").getAsJsonObject("packageLabel");
-            if (meta == null || !meta.has("version")
-                || meta.get("version").getAsBigDecimal().intValueExact() != 1)
+            if (meta == null
+                    || !meta.has("version")
+                    || meta.get("version").getAsBigDecimal().intValueExact() != 1)
                 throw new IllegalArgumentException("Unsupported package-label policy");
             int total = meta.get("total").getAsBigDecimal().intValueExact();
-            if (total < 1 || total > MAX_BINS || names == null
-                || !Names.EACH.equals(names.mode()) || names.each().size() != total)
+            if (total < 1
+                    || total > MAX_BINS
+                    || names == null
+                    || !Names.EACH.equals(names.mode())
+                    || names.each().size() != total)
                 throw new IllegalArgumentException("Missing locked package labels");
             for (int i = 0; i < total; i++) {
                 String label = names.nameFor(i);
-                if (label == null || !valid(label)
-                    || !label.startsWith("WeSort (" + (i + 1) + "/" + total + ") - "))
+                if (label == null || !valid(label) || !label.startsWith("WeSort (" + (i + 1) + "/" + total + ") - "))
                     throw new IllegalArgumentException("Invalid generated package label " + (i + 1));
             }
             return true;

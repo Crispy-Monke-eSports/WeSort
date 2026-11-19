@@ -5,7 +5,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import com.sun.net.httpserver.HttpExchange;
-
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -87,14 +86,24 @@ final class OrderRoutes {
     void register(Router router) {
         // claim is registered before the id patterns; the patterns only match o-<12 hex>.
         router.exact(Router.POST, "/api/v1/orders/claim", Router.Guard.ADDON_KEY, this::claim)
-            .exact(Router.POST, "/api/v1/orders", Router.Guard.BROWSER_WRITE, Router.Perm.ORDER, this::place)
-            .exact(Router.POST, "/api/v1/orders/clear", Router.Guard.BROWSER_WRITE, Router.Perm.ORDERS_ALL, this::clear)
-            .exact(Router.GET, "/api/v1/orders", Router.Guard.SESSION, Router.Perm.VIEW, this::list)
-            .pattern(Router.POST, APPROVAL, Router.Guard.BROWSER_WRITE, Router.Perm.ORDERS_ALL, this::review)
-            .pattern(Router.POST, CANCEL, Router.Guard.BROWSER_WRITE, Router.Perm.ORDER_OWN_OR_ALL, this::cancel)
-            .pattern(Router.POST, FORCE_CANCEL, Router.Guard.BROWSER_WRITE, Router.Perm.ORDER_OWN_OR_ALL, this::forceCancel)
-            .pattern(Router.POST, RETRY, Router.Guard.BROWSER_WRITE, Router.Perm.ORDER_OWN_OR_ALL, this::retry)
-            .pattern(Router.POST, STATUS, Router.Guard.ADDON_KEY, this::status);
+                .exact(Router.POST, "/api/v1/orders", Router.Guard.BROWSER_WRITE, Router.Perm.ORDER, this::place)
+                .exact(
+                        Router.POST,
+                        "/api/v1/orders/clear",
+                        Router.Guard.BROWSER_WRITE,
+                        Router.Perm.ORDERS_ALL,
+                        this::clear)
+                .exact(Router.GET, "/api/v1/orders", Router.Guard.SESSION, Router.Perm.VIEW, this::list)
+                .pattern(Router.POST, APPROVAL, Router.Guard.BROWSER_WRITE, Router.Perm.ORDERS_ALL, this::review)
+                .pattern(Router.POST, CANCEL, Router.Guard.BROWSER_WRITE, Router.Perm.ORDER_OWN_OR_ALL, this::cancel)
+                .pattern(
+                        Router.POST,
+                        FORCE_CANCEL,
+                        Router.Guard.BROWSER_WRITE,
+                        Router.Perm.ORDER_OWN_OR_ALL,
+                        this::forceCancel)
+                .pattern(Router.POST, RETRY, Router.Guard.BROWSER_WRITE, Router.Perm.ORDER_OWN_OR_ALL, this::retry)
+                .pattern(Router.POST, STATUS, Router.Guard.ADDON_KEY, this::status);
     }
 
     // ---------- browser ----------
@@ -155,7 +164,8 @@ final class OrderRoutes {
                 String key = AddonRoutes.string(l, "key");
                 long count = positiveInt(l.get("count"));
                 if (!"item".equals(type) && !"shulker".equals(type)) problem = "type must be item or shulker";
-                else if (key == null || key.isEmpty() || key.length() > MAX_KEY) problem = "key must be a non-empty string";
+                else if (key == null || key.isEmpty() || key.length() > MAX_KEY)
+                    problem = "key must be a non-empty string";
                 else if (count < 1) problem = "count must be a whole number from 1 to " + Integer.MAX_VALUE;
                 else line = new OrderStore.Line(type, key, count);
             }
@@ -167,11 +177,21 @@ final class OrderRoutes {
         }
         try {
             var profile = guild.profile();
-            var submission = orders.submit(server, stash, lines, names, who.id(), who.name(),
-                profile.id().toString(), intent, idempotencyKey(ex), profile.approvalPolicy().requiresApproval(intent),
-                draft -> resolveRecipient(who, draft));
+            var submission = orders.submit(
+                    server,
+                    stash,
+                    lines,
+                    names,
+                    who.id(),
+                    who.name(),
+                    profile.id().toString(),
+                    intent,
+                    idempotencyKey(ex),
+                    profile.approvalPolicy().requiresApproval(intent),
+                    draft -> resolveRecipient(who, draft));
             OrderStore.Order order = submission.order();
-            if (submission.created()) audit.add(who, "order.place", order.id + " " + intent.purpose().name(), AuthRoutes.address(ex));
+            if (submission.created())
+                audit.add(who, "order.place", order.id + " " + intent.purpose().name(), AuthRoutes.address(ex));
             JsonObject out = Http.ok();
             out.add("order", shown(ex, order.toJson()));
             Http.json(ex, 200, out);
@@ -214,7 +234,8 @@ final class OrderRoutes {
         var visible = new JsonArray();
         for (var value : list.getAsJsonArray("orders")) {
             var order = value.getAsJsonObject();
-            if (viewer.perms().ordersAll() || viewer.id().equals(order.get("requestedBy").getAsString())) {
+            if (viewer.perms().ordersAll()
+                    || viewer.id().equals(order.get("requestedBy").getAsString())) {
                 visible.add(shown(ex, order));
             }
         }
@@ -225,11 +246,14 @@ final class OrderRoutes {
     /** An order as this user may see it (forced streamer mode: other users' names and position-like text hidden). */
     private static JsonObject shown(HttpExchange ex, JsonObject order) {
         if (order.remove("manifest") instanceof JsonObject manifest) {
-            order.addProperty("packageCount", manifest.getAsJsonArray("packages").size());
+            order.addProperty(
+                    "packageCount", manifest.getAsJsonArray("packages").size());
         }
         Users.Principal viewer = Router.user(ex);
         if (viewer != null && !viewer.perms().positions()) Redact.orderLocations(order);
-        if (viewer == null || !viewer.perms().ordersAll() && !viewer.id().equals(order.get("requestedBy").getAsString())) {
+        if (viewer == null
+                || !viewer.perms().ordersAll()
+                        && !viewer.id().equals(order.get("requestedBy").getAsString())) {
             order.remove("recipient");
             order.remove("declaredRecipient");
             order.remove("verifiedRecipient");
@@ -245,17 +269,23 @@ final class OrderRoutes {
             return intent.purpose() == OrderIntent.Purpose.SELF ? users.activeMinecraftAccount(requester.id()) : null;
         }
         String verified = users.approvedRecipient(intent.recipient());
-        if (verified == null) throw new OrderStore.OrderException(400, "The recipient has no active, Owner-verified Minecraft account", -1);
+        if (verified == null)
+            throw new OrderStore.OrderException(
+                    400, "The recipient has no active, Owner-verified Minecraft account", -1);
         return verified;
     }
 
     private void review(HttpExchange ex) throws IOException {
         Matcher path = APPROVAL.matcher(ex.getRequestURI().getRawPath());
-        if (!path.matches()) { Http.error(ex, 404, "not found"); return; }
+        if (!path.matches()) {
+            Http.error(ex, 404, "not found");
+            return;
+        }
         String id = path.group(1);
         if (!mayChange(ex, id)) return;
         var body = AddonRoutes.readJson(ex);
-        String decision = body != null && body.isJsonObject() ? AddonRoutes.string(body.getAsJsonObject(), "decision") : null;
+        String decision =
+                body != null && body.isJsonObject() ? AddonRoutes.string(body.getAsJsonObject(), "decision") : null;
         if (!"approve".equals(decision) && !"reject".equals(decision)) {
             Http.error(ex, 400, "Decision must be approve or reject");
             return;
@@ -305,8 +335,14 @@ final class OrderRoutes {
                 return;
             }
             var profile = guild.profile();
-            OrderStore.Order order = orders.retry(m.group(1), who.id(), who.name(), who.perms().guildOrders(),
-                profile.id().toString(), profile.approvalPolicy(), draft -> resolveRecipient(who, draft));
+            OrderStore.Order order = orders.retry(
+                    m.group(1),
+                    who.id(),
+                    who.name(),
+                    who.perms().guildOrders(),
+                    profile.id().toString(),
+                    profile.approvalPolicy(),
+                    draft -> resolveRecipient(who, draft));
             audit.add(who, "order.retry", m.group(1) + " as " + order.id, AuthRoutes.address(ex));
             JsonObject out = Http.ok();
             out.add("order", shown(ex, order.toJson()));
@@ -388,7 +424,10 @@ final class OrderRoutes {
             }
         }
         String status = AddonRoutes.string(o, "status");
-        if (status == null || !(status.equals("accepted") || status.equals("in_progress") || OrderStore.REPORTED_TERMINAL.contains(status))) {
+        if (status == null
+                || !(status.equals("accepted")
+                        || status.equals("in_progress")
+                        || OrderStore.REPORTED_TERMINAL.contains(status))) {
             Http.error(ex, 400, "Invalid agent order status");
             return;
         }
@@ -406,8 +445,8 @@ final class OrderRoutes {
             return;
         }
         try {
-            OrderStore.Order order = orders.status(m.group(1), status, phase, progress, message, result,
-                AddonRoutes.string(o, "agent"), reportId(o));
+            OrderStore.Order order = orders.status(
+                    m.group(1), status, phase, progress, message, result, AddonRoutes.string(o, "agent"), reportId(o));
             JsonObject out = Http.ok();
             out.add("order", shown(ex, order.toJson()));
             Http.json(ex, 200, out);
@@ -463,7 +502,10 @@ final class OrderRoutes {
 
     /** A non-negative whole number up to 2^31-1, or -1. */
     private static long nonNegativeInt(JsonElement e) {
-        if (e != null && e.isJsonPrimitive() && ((JsonPrimitive) e).isNumber() && e.getAsBigDecimal().signum() == 0) return 0;
+        if (e != null
+                && e.isJsonPrimitive()
+                && ((JsonPrimitive) e).isNumber()
+                && e.getAsBigDecimal().signum() == 0) return 0;
         return positiveInt(e);
     }
 
@@ -482,7 +524,8 @@ final class OrderRoutes {
         JsonObject p = e.getAsJsonObject();
         long done = nonNegativeInt(p.get("done"));
         long total = nonNegativeInt(p.get("total"));
-        if (done < 0 || total < 0) throw new IllegalArgumentException("progress.done and progress.total must be whole numbers >= 0");
+        if (done < 0 || total < 0)
+            throw new IllegalArgumentException("progress.done and progress.total must be whole numbers >= 0");
         JsonObject out = new JsonObject();
         out.addProperty("done", done);
         out.addProperty("total", total);

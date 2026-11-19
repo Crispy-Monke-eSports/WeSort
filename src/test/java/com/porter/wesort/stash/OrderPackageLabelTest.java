@@ -1,10 +1,10 @@
 package com.porter.wesort.stash;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.junit.jupiter.api.Test;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 /** Agent-side fail-closed contract for Manager-owned shulker labels (W-064). */
 class OrderPackageLabelTest {
@@ -16,7 +16,8 @@ class OrderPackageLabelTest {
             """.formatted(labels)).getAsJsonObject();
     }
 
-    @Test void requiredLabelsAreNotLegacyOptionalNames() {
+    @Test
+    void requiredLabelsAreNotLegacyOptionalNames() {
         var value = order("""
             {"mode":"each","names":["WeSort (1/2) - A","WeSort (2/2) - B"],
              "packageLabel":{"version":1,"text":"A","texts":["A","B"],"total":2}}
@@ -31,35 +32,31 @@ class OrderPackageLabelTest {
         assertEquals("Legacy", historical.names.nameFor(0));
     }
 
-    @Test void missingOrSpoofedNumberCannotSilentlyBecomeDeliverable() {
-        for (String invalid : new String[]{
-            """
+    @Test
+    void missingOrSpoofedNumberCannotSilentlyBecomeDeliverable() {
+        for (String invalid : new String[] {"""
               {"mode":"each","names":["WeSort (2/2) - A","WeSort (1/2) - B"],
                "packageLabel":{"version":1,"total":2}}
-            """,
-            """
+            """, """
               {"mode":"each","names":["WeSort (1/2) - A"],
                "packageLabel":{"version":1,"total":2}}
-            """,
-            """
+            """, """
               {"mode":"each","names":["WeSort (1/2) - A",""],
                "packageLabel":{"version":1,"total":2}}
-            """,
-            """
+            """, """
               {"mode":"all","name":"A","packageLabel":{"version":1,"total":1}}
-            """,
-            """
+            """, """
               {"mode":"each","names":["WeSort (1/55) - A"],
                "packageLabel":{"version":1,"total":55}}
-            """,
-            """
+            """, """
               {"mode":"each","names":["WeSort (1/1) - A"],
                "packageLabel":{"version":2,"total":1}}
-            """
-        }) assertThrows(IllegalArgumentException.class, () -> Order.parse(order(invalid)), invalid);
+            """})
+            assertThrows(IllegalArgumentException.class, () -> Order.parse(order(invalid)), invalid);
     }
 
-    @Test void metadataCannotBeUsedToBypassRequiredNameOnAgent() {
+    @Test
+    void metadataCannotBeUsedToBypassRequiredNameOnAgent() {
         var empty = order("""
             {"mode":"each","names":[],
              "packageLabel":{"version":1,"total":1}}

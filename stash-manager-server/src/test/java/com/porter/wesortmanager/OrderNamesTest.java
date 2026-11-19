@@ -1,17 +1,5 @@
 package com.porter.wesortmanager;
 
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -19,10 +7,22 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
 /** Order names (normalising and validation), notes removed, and retrying failed or cancelled orders. */
 class OrderNamesTest {
     @TempDir
     Path data;
+
     IndexStore index;
     OrderStore orders;
 
@@ -42,8 +42,11 @@ class OrderNamesTest {
     void setUp() throws Exception {
         index = new IndexStore(data, CreativeTabs.NONE);
         index.load();
-        StockFixtures.put(index, json("{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"items\":["
-            + "{\"key\":\"minecraft:diamond\",\"id\":\"minecraft:diamond\",\"count\":1000,\"maxStack\":64}]}"));
+        StockFixtures.put(
+                index,
+                json(
+                        "{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"items\":["
+                                + "{\"key\":\"minecraft:diamond\",\"id\":\"minecraft:diamond\",\"count\":1000,\"maxStack\":64}]}"));
         orders = new OrderStore(data, index);
         orders.load();
     }
@@ -61,11 +64,21 @@ class OrderNamesTest {
         assertNull(names("{\"mode\":\"each\",\"names\":[]}"));
         assertNull(names("{\"mode\":\"each\",\"names\":[\"\",\"  \",null]}"));
         // Trimmed, blanks kept as "" for their index, trailing blanks dropped.
-        assertEquals(json("{\"mode\":\"each\",\"names\":[\"\",\"B\"]}"), names("{\"mode\":\"each\",\"names\":[\" \",\" B \",\"\",\"  \"]}"));
+        assertEquals(
+                json("{\"mode\":\"each\",\"names\":[\"\",\"B\"]}"),
+                names("{\"mode\":\"each\",\"names\":[\" \",\" B \",\"\",\"  \"]}"));
 
         String fifty = "x".repeat(50);
-        assertEquals(fifty, names("{\"mode\":\"all\",\"name\":\"" + fifty + "\"}").get("name").getAsString());
-        assertEquals(fifty, names("{\"mode\":\"all\",\"name\":\"  " + fifty + "  \"}").get("name").getAsString());
+        assertEquals(
+                fifty,
+                names("{\"mode\":\"all\",\"name\":\"" + fifty + "\"}")
+                        .get("name")
+                        .getAsString());
+        assertEquals(
+                fifty,
+                names("{\"mode\":\"all\",\"name\":\"  " + fifty + "  \"}")
+                        .get("name")
+                        .getAsString());
         assertEquals(400, status("{\"mode\":\"all\",\"name\":\"" + fifty + "y\"}"));
         assertEquals(400, status("{\"mode\":\"each\",\"names\":[\"" + fifty + "y\"]}"));
 
@@ -73,12 +86,17 @@ class OrderNamesTest {
         assertEquals(400, status("{\"mode\":\"all\",\"name\":\"a\\u0007b\"}"));
         assertEquals(400, status("{\"mode\":\"each\",\"names\":[\"ok\",\"a\\nb\"]}"));
         assertEquals(400, status("{\"mode\":\"all\",\"name\":\"a\\u007fb\"}"));
-        // Invisible or direction-changing characters and broken surrogates are refused; a real emoji (a surrogate pair) is fine
+        // Invisible or direction-changing characters and broken surrogates are refused; a real emoji (a surrogate pair)
+        // is fine
         assertEquals(400, status("{\"mode\":\"all\",\"name\":\"a\\u202eb\"}"));
         assertEquals(400, status("{\"mode\":\"all\",\"name\":\"a\\u200bb\"}"));
         assertEquals(400, status("{\"mode\":\"all\",\"name\":\"a\\u2028b\"}"));
         assertEquals(400, status("{\"mode\":\"all\",\"name\":\"a\\ud83db\"}"));
-        assertEquals("a😀b", names("{\"mode\":\"all\",\"name\":\"a\\ud83d\\ude00b\"}").get("name").getAsString());
+        assertEquals(
+                "a😀b",
+                names("{\"mode\":\"all\",\"name\":\"a\\ud83d\\ude00b\"}")
+                        .get("name")
+                        .getAsString());
 
         assertEquals(400, status("\"all\""));
         assertEquals(400, status("[]"));
@@ -92,7 +110,8 @@ class OrderNamesTest {
         assertEquals(400, status("{\"mode\":\"each\",\"names\":[[\"a\"]]}"));
 
         StringBuilder list54 = new StringBuilder("{\"mode\":\"each\",\"names\":[");
-        for (int i = 0; i < 54; i++) list54.append(i == 0 ? "" : ",").append("\"n").append(i).append('"');
+        for (int i = 0; i < 54; i++)
+            list54.append(i == 0 ? "" : ",").append("\"n").append(i).append('"');
         assertEquals(54, names(list54 + "]}").getAsJsonArray("names").size());
         assertEquals(400, status(list54 + ",\"n54\"]}"));
     }
@@ -128,7 +147,8 @@ class OrderNamesTest {
 
         OrderStore reloaded = new OrderStore(data, index);
         reloaded.load();
-        JsonObject listed = reloaded.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
+        JsonObject listed =
+                reloaded.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
         assertFalse(listed.has("note"));
         assertTrue(listed.get("names").isJsonNull());
         assertFalse(reloaded.claim("s", "a").toJson().has("note"));
@@ -214,109 +234,152 @@ class OrderNamesTest {
         assertEquals(409, assertThrows(OrderStore.OrderException.class, () -> reloaded.retry(failed.id)).status);
         assertEquals("pending", reloaded.statusOf(failed.id));
     }
+
     private static JsonObject labelRequest(String text) throws Exception {
         JsonObject request = json("{\"mode\":\"packageLabel\",\"version\":1}");
         request.addProperty("text", text);
         return OrderStore.normalizeNames(request);
     }
 
-    @Test void newApiDoesNotAcceptFreeFormOrOmittedPackageLabels() throws Exception {
+    @Test
+    void newApiDoesNotAcceptFreeFormOrOmittedPackageLabels() throws Exception {
         var automatic = OrderStore.normalizeNewOrderNames(null);
-        assertEquals(json("{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"Beställning\"}"),
-            automatic);
+        assertEquals(json("{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"Beställning\"}"), automatic);
         assertEquals(automatic, OrderStore.normalizeNewOrderNames(JsonParser.parseString("null")));
         for (String bypass : List.of(
-            "{\"mode\":\"all\",\"name\":\"Forged full name\"}",
-            "{\"mode\":\"each\",\"names\":[\"Forged full name\"]}",
-            "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"ok\",\"total\":99}")) {
-            assertEquals(400, assertThrows(OrderStore.OrderException.class, () ->
-                OrderStore.normalizeNewOrderNames(JsonParser.parseString(bypass))).status);
+                "{\"mode\":\"all\",\"name\":\"Forged full name\"}",
+                "{\"mode\":\"each\",\"names\":[\"Forged full name\"]}",
+                "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"ok\",\"total\":99}")) {
+            assertEquals(
+                    400,
+                    assertThrows(
+                                    OrderStore.OrderException.class,
+                                    () -> OrderStore.normalizeNewOrderNames(JsonParser.parseString(bypass)))
+                            .status);
         }
-        assertEquals("Beställning", OrderStore.normalizeNewOrderNames(JsonParser.parseString(
-            "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\" \"}"))
-                .get("text").getAsString());
+        assertEquals(
+                "Beställning",
+                OrderStore.normalizeNewOrderNames(
+                                JsonParser.parseString("{\"mode\":\"packageLabel\",\"version\":1,\"text\":\" \"}"))
+                        .get("text")
+                        .getAsString());
     }
 
-    @Test void exactPrefixNumbersAndUTF16BudgetAcrossOneTo54Boxes() throws Exception {
+    @Test
+    void exactPrefixNumbersAndUTF16BudgetAcrossOneTo54Boxes() throws Exception {
         for (int total : List.of(1, 4, 12, 54)) {
             JsonObject pinned = OrderStore.lockPackageLabel(labelRequest("Byggmaterial"), total);
             var names = pinned.getAsJsonArray("names");
             assertEquals(total, names.size());
             assertEquals("WeSort (1/" + total + ") - Byggmaterial", names.get(0).getAsString());
-            assertEquals("WeSort (" + total + "/" + total + ") - Byggmaterial", names.get(total - 1).getAsString());
-            assertEquals(total, pinned.getAsJsonObject("packageLabel").get("total").getAsInt());
+            assertEquals(
+                    "WeSort (" + total + "/" + total + ") - Byggmaterial",
+                    names.get(total - 1).getAsString());
+            assertEquals(
+                    total, pinned.getAsJsonObject("packageLabel").get("total").getAsInt());
         }
-        assertEquals(400, assertThrows(OrderStore.OrderException.class,
-            () -> OrderStore.lockPackageLabel(labelRequest("Test"), 55)).status);
+        assertEquals(
+                400,
+                assertThrows(
+                                OrderStore.OrderException.class,
+                                () -> OrderStore.lockPackageLabel(labelRequest("Test"), 55))
+                        .status);
         String longSuffix = "a".repeat(33);
         var pinned = OrderStore.lockPackageLabel(labelRequest(longSuffix), 54);
         assertEquals(50, pinned.getAsJsonArray("names").get(53).getAsString().length());
-        assertEquals(400, assertThrows(OrderStore.OrderException.class,
-            () -> labelRequest("a".repeat(34))).status);
-        assertEquals(400, assertThrows(OrderStore.OrderException.class,
-            () -> labelRequest("a".repeat(32) + "😀")).status); // 34 UTF-16 units
-        assertEquals("WeSort (1/1) - Beställning",
-            OrderStore.lockPackageLabel(labelRequest("   "), 1).getAsJsonArray("names").get(0).getAsString());
+        assertEquals(400, assertThrows(OrderStore.OrderException.class, () -> labelRequest("a".repeat(34))).status);
+        assertEquals(
+                400,
+                assertThrows(OrderStore.OrderException.class, () -> labelRequest("a".repeat(32) + "😀"))
+                        .status); // 34 UTF-16 units
+        assertEquals(
+                "WeSort (1/1) - Beställning",
+                OrderStore.lockPackageLabel(labelRequest("   "), 1)
+                        .getAsJsonArray("names")
+                        .get(0)
+                        .getAsString());
     }
 
-    @Test void packageLabelRejectsForgedTotalsControlsAndMalformedAdvancedText() throws Exception {
+    @Test
+    void packageLabelRejectsForgedTotalsControlsAndMalformedAdvancedText() throws Exception {
         for (String payload : List.of(
-            "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"ok\",\"total\":4}",
-            "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"ok\",\"names\":[]}",
-            "{\"mode\":\"packageLabel\",\"version\":2,\"text\":\"ok\"}",
-            "{\"mode\":\"packageLabel\",\"version\":1.5,\"text\":\"ok\"}",
-            "{\"mode\":\"packageLabel\",\"version\":1,\"texts\":[1]}",
-            "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"a\\u202eb\"}",
-            "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"a\\u200bb\"}",
-            "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"a§b\"}",
-            "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"a\\u0000b\"}")) {
+                "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"ok\",\"total\":4}",
+                "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"ok\",\"names\":[]}",
+                "{\"mode\":\"packageLabel\",\"version\":2,\"text\":\"ok\"}",
+                "{\"mode\":\"packageLabel\",\"version\":1.5,\"text\":\"ok\"}",
+                "{\"mode\":\"packageLabel\",\"version\":1,\"texts\":[1]}",
+                "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"a\\u202eb\"}",
+                "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"a\\u200bb\"}",
+                "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"a§b\"}",
+                "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"a\\u0000b\"}")) {
             assertEquals(400, status(payload), payload);
         }
-        JsonObject request = names("{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"Standard\",\"texts\":[\"A\",\" \",\"C\"]}");
+        JsonObject request =
+                names("{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"Standard\",\"texts\":[\"A\",\" \",\"C\"]}");
         var list = OrderStore.lockPackageLabel(request, 3).getAsJsonArray("names");
         assertEquals("WeSort (1/3) - A", list.get(0).getAsString());
         assertEquals("WeSort (2/3) - Standard", list.get(1).getAsString());
         assertEquals("WeSort (3/3) - C", list.get(2).getAsString());
-        assertEquals(400, assertThrows(OrderStore.OrderException.class,
-            () -> OrderStore.lockPackageLabel(request, 4)).status);
-        assertEquals("WeSort (1/1) - <img src=x onerror=alert(1)>",
-            OrderStore.lockPackageLabel(labelRequest("<img src=x onerror=alert(1)>"), 1)
-                .getAsJsonArray("names").get(0).getAsString());
+        assertEquals(
+                400,
+                assertThrows(OrderStore.OrderException.class, () -> OrderStore.lockPackageLabel(request, 4)).status);
+        assertEquals(
+                "WeSort (1/1) - <img src=x onerror=alert(1)>",
+                OrderStore.lockPackageLabel(labelRequest("<img src=x onerror=alert(1)>"), 1)
+                        .getAsJsonArray("names")
+                        .get(0)
+                        .getAsString());
     }
 
-    @Test void modifiedStoredLabelRequiresReconciliationAndRetainsItsReservation() throws Exception {
+    @Test
+    void modifiedStoredLabelRequiresReconciliationAndRetainsItsReservation() throws Exception {
         var placed = orders.place("s", "a", diamonds(64), labelRequest("Original"));
         Path file = data.resolve("orders").resolve(IndexStore.fileName("s", "a"));
         JsonObject saved = json(Files.readString(file, StandardCharsets.UTF_8));
         JsonObject persisted = saved.getAsJsonArray("orders").get(0).getAsJsonObject();
-        persisted.getAsJsonObject("names").getAsJsonArray("names").set(0,
-            new com.google.gson.JsonPrimitive("WeSort (1/1) - Forged"));
+        persisted
+                .getAsJsonObject("names")
+                .getAsJsonArray("names")
+                .set(0, new com.google.gson.JsonPrimitive("WeSort (1/1) - Forged"));
         Files.writeString(file, saved.toString(), StandardCharsets.UTF_8);
         OrderStore restarted = new OrderStore(data, index);
         restarted.load();
-        JsonObject quarantined = restarted.listJson("s", "a").getAsJsonArray("orders")
-            .get(0).getAsJsonObject();
+        JsonObject quarantined =
+                restarted.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
         assertEquals(placed.id, quarantined.get("id").getAsString());
         assertEquals("needs_reconciliation", quarantined.get("status").getAsString());
         assertEquals("NEEDS_RECONCILIATION", quarantined.get("state").getAsString());
         assertTrue(quarantined.get("message").getAsString().contains("integrity"));
-        assertEquals("WeSort (1/1) - Forged", quarantined.getAsJsonObject("names")
-            .getAsJsonArray("names").get(0).getAsString(),
-            "Original tampering evidence must not be discarded or silently re-generated");
+        assertEquals(
+                "WeSort (1/1) - Forged",
+                quarantined
+                        .getAsJsonObject("names")
+                        .getAsJsonArray("names")
+                        .get(0)
+                        .getAsString(),
+                "Original tampering evidence must not be discarded or silently re-generated");
         assertEquals(64L, restarted.reservedFor("s", "a").get("item:minecraft:diamond"));
         assertNull(restarted.claim("s", "a"), "No physical operation may resume from a falsified manifest");
     }
 
-    @Test void serverOwnedPackagePlanSurvivesRestartRetryAndCannotBeRenumbered() throws Exception {
+    @Test
+    void serverOwnedPackagePlanSurvivesRestartRetryAndCannotBeRenumbered() throws Exception {
         JsonObject request = labelRequest(" Projekt A ");
         var first = orders.place("s", "a", diamonds(64), request);
         var frozen = first.toJson().getAsJsonObject("names");
-        assertEquals("WeSort (1/1) - Projekt A", frozen.getAsJsonArray("names").get(0).getAsString());
+        assertEquals(
+                "WeSort (1/1) - Projekt A",
+                frozen.getAsJsonArray("names").get(0).getAsString());
         assertEquals(1, frozen.getAsJsonObject("packageLabel").get("total").getAsInt());
         var reloaded = new OrderStore(data, index);
         reloaded.load();
-        assertEquals(frozen, reloaded.listJson("s", "a").getAsJsonArray("orders")
-            .get(0).getAsJsonObject().getAsJsonObject("names"));
+        assertEquals(
+                frozen,
+                reloaded.listJson("s", "a")
+                        .getAsJsonArray("orders")
+                        .get(0)
+                        .getAsJsonObject()
+                        .getAsJsonObject("names"));
         reloaded.cancel(first.id);
         var retried = reloaded.retry(first.id);
         assertEquals(frozen, retried.toJson().getAsJsonObject("names"));
@@ -325,5 +388,4 @@ class OrderNamesTest {
         var old = orders.place("s", "a", diamonds(1), names("{\"mode\":\"all\",\"name\":\"Legacy\"}"));
         assertEquals("Legacy", old.names.get("name").getAsString());
     }
-
 }

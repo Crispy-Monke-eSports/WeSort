@@ -3,8 +3,8 @@ package com.porter.wesortmanager;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.porter.wesort.data.ContainerIdentity;
 import com.porter.wesort.data.CanonicalJson;
+import com.porter.wesort.data.ContainerIdentity;
 import java.util.HashSet;
 import java.util.List;
 
@@ -18,12 +18,18 @@ final class PackageManifest {
         var destinations = new HashSet<String>();
         var operations = new HashSet<String>();
         for (var transfer : proofs) {
-            if (transfer == null || !destinations.add(transfer.getAsJsonObject("staging").toString())) return null;
+            if (transfer == null
+                    || !destinations.add(transfer.getAsJsonObject("staging").toString())) return null;
             String operation = transfer.get("operationId").getAsString();
             if (!operations.add(operation)) return null;
             var entry = transfer.deepCopy();
             String identity = order + "/" + operation;
-            entry.addProperty("packageId", java.util.UUID.nameUUIDFromBytes(identity.getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString());
+            entry.addProperty(
+                    "packageId",
+                    java.util
+                            .UUID
+                            .nameUUIDFromBytes(identity.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                            .toString());
             packages.add(entry);
         }
         var manifest = new JsonObject();
@@ -63,13 +69,14 @@ final class PackageManifest {
             if (intent == null || frame == null) return null;
             var origin = intent.getAsJsonObject("origin");
             if (!origin.get("server").equals(context.get("server"))
-                || !origin.get("dimension").equals(context.get("dimension"))
-                || !origin.get("player").equals(context.get("agent"))) return null;
+                    || !origin.get("dimension").equals(context.get("dimension"))
+                    || !origin.get("player").equals(context.get("agent"))) return null;
             var location = origin.getAsJsonArray("source");
             if (location.size() != 3) return null;
             for (var position : location) position.getAsBigDecimal().intValueExact();
             var before = intent.getAsJsonObject("before");
-            if (!"empty".equals(before.get("cursor").getAsString()) || !"empty".equals(frame.get("cursor").getAsString())) return null;
+            if (!"empty".equals(before.get("cursor").getAsString())
+                    || !"empty".equals(frame.get("cursor").getAsString())) return null;
             var beforeSlots = before.getAsJsonArray("slots");
             var afterSlots = frame.getAsJsonArray("slots");
             int containerSlots = beforeSlots.size() - 36;
@@ -116,18 +123,25 @@ final class PackageManifest {
     static boolean requiredLabelsVerified(JsonObject manifest, JsonObject names) {
         try {
             if (manifest == null || names == null || !names.has("packageLabel")) return false;
-            int total = names.getAsJsonObject("packageLabel").get("total").getAsBigDecimal().intValueExact();
+            int total = names.getAsJsonObject("packageLabel")
+                    .get("total")
+                    .getAsBigDecimal()
+                    .intValueExact();
             JsonArray expected = names.getAsJsonArray("names");
             JsonArray packages = manifest.getAsJsonArray("packages");
-            if (total < 1 || total > OrderStore.MAX_SHULKERS
-                || expected.size() != total || packages.size() != total) return false;
+            if (total < 1 || total > OrderStore.MAX_SHULKERS || expected.size() != total || packages.size() != total)
+                return false;
             for (int i = 0; i < total; i++) {
                 JsonObject proof = packages.get(i).getAsJsonObject();
-                if (!proof.has("verifiedName") || !proof.get("verifiedName").getAsString().equals(expected.get(i).getAsString()))
-                    return false;
+                if (!proof.has("verifiedName")
+                        || !proof.get("verifiedName")
+                                .getAsString()
+                                .equals(expected.get(i).getAsString())) return false;
             }
             return true;
-        } catch (RuntimeException malformed) { return false; }
+        } catch (RuntimeException malformed) {
+            return false;
+        }
     }
 
     /**
@@ -137,7 +151,8 @@ final class PackageManifest {
      */
     static String nativeVerifiedName(String serializedStack) {
         try {
-            JsonObject item = JsonParser.parseString(serializedStack).getAsJsonObject().getAsJsonObject("value");
+            JsonObject item =
+                    JsonParser.parseString(serializedStack).getAsJsonObject().getAsJsonObject("value");
             JsonObject components = item.getAsJsonObject("components");
             if (components == null || components.get("type").getAsInt() != 10) return null;
             JsonObject values = components.getAsJsonObject("value");
@@ -158,27 +173,33 @@ final class PackageManifest {
             JsonObject json;
             if (value.startsWith("\"")) {
                 JsonElement plain = JsonParser.parseString(value);
-                return plain.isJsonPrimitive() && plain.getAsJsonPrimitive().isString()
-                    ? plain.getAsString() : null;
+                return plain.isJsonPrimitive() && plain.getAsJsonPrimitive().isString() ? plain.getAsString() : null;
             }
             json = JsonParser.parseString(value).getAsJsonObject();
-            return json.size() == 1 && json.has("text")
-                && json.get("text").isJsonPrimitive() && json.get("text").getAsJsonPrimitive().isString()
-                ? json.get("text").getAsString() : null;
-        } catch (RuntimeException malformed) { return null; }
+            return json.size() == 1
+                            && json.has("text")
+                            && json.get("text").isJsonPrimitive()
+                            && json.get("text").getAsJsonPrimitive().isString()
+                    ? json.get("text").getAsString()
+                    : null;
+        } catch (RuntimeException malformed) {
+            return null;
+        }
     }
 
     private static String decodeSnbtString(String snbt) {
         if (snbt == null || snbt.length() < 2) return null;
         char quote = snbt.charAt(0);
-        if ((quote != '\'' && quote != '"') || snbt.charAt(snbt.length() - 1) != quote)
-            return null;
+        if ((quote != '\'' && quote != '"') || snbt.charAt(snbt.length() - 1) != quote) return null;
         if (quote == '"') {
             try {
                 JsonElement decoded = JsonParser.parseString(snbt);
                 return decoded.isJsonPrimitive() && decoded.getAsJsonPrimitive().isString()
-                    ? decoded.getAsString() : null;
-            } catch (RuntimeException malformed) { return null; }
+                        ? decoded.getAsString()
+                        : null;
+            } catch (RuntimeException malformed) {
+                return null;
+            }
         }
         StringBuilder out = new StringBuilder();
         for (int i = 1; i < snbt.length() - 1; i++) {
@@ -197,7 +218,11 @@ final class PackageManifest {
     private static boolean oneShulker(String fingerprint) {
         var item = JsonParser.parseString(fingerprint).getAsJsonObject().getAsJsonObject("value");
         String count = item.getAsJsonObject("count").get("value").getAsString();
-        String id = JsonParser.parseString(item.getAsJsonObject("id").get("value").getAsString()).getAsString();
-        return "1".equals(count) && id.matches("minecraft:(?:(?:white|orange|magenta|light_blue|yellow|lime|pink|gray|light_gray|cyan|purple|blue|brown|green|red|black)_)?shulker_box");
+        String id = JsonParser.parseString(
+                        item.getAsJsonObject("id").get("value").getAsString())
+                .getAsString();
+        return "1".equals(count)
+                && id.matches(
+                        "minecraft:(?:(?:white|orange|magenta|light_blue|yellow|lime|pink|gray|light_gray|cyan|purple|blue|brown|green|red|black)_)?shulker_box");
     }
 }

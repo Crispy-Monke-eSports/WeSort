@@ -1,16 +1,18 @@
 package com.porter.wesortmanager;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.google.gson.*;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** Server-side proof that an unrenamed staged box can never reach PICKUP_READY. */
 class RequiredPackageLabelReceiptTest {
-    @TempDir Path data;
+    @TempDir
+    Path data;
 
     private OrderStore.Order staged(String physicallyObservedName) throws Exception {
         var ledger = new StockLedger(data);
@@ -25,8 +27,7 @@ class RequiredPackageLabelReceiptTest {
         var requested = OrderStore.normalizeNewOrderNames(JsonParser.parseString("""
             {"mode":"packageLabel","version":1,"text":"Projekt A"}
             """));
-        var order = orders.place("s", "a",
-            List.of(new OrderStore.Line("item", "minecraft:diamond", 64)), requested);
+        var order = orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 64)), requested);
         String agent = UUID.randomUUID().toString();
         assertNotNull(orders.claimPayload("s", "a", agent));
 
@@ -86,7 +87,8 @@ class RequiredPackageLabelReceiptTest {
         return orders.status(order.id, "delivered", null, null, null, result, agent, "physical-staging");
     }
 
-    @Test void missingAnvilReadbackKeepsOrderFenced() throws Exception {
+    @Test
+    void missingAnvilReadbackKeepsOrderFenced() throws Exception {
         var result = staged(null);
         assertEquals(OrderStage.NEEDS_RECONCILIATION, result.stage());
         assertEquals("needs_reconciliation", result.status);
@@ -94,18 +96,26 @@ class RequiredPackageLabelReceiptTest {
         assertFalse(PackageManifest.requiredLabelsVerified(result.manifest, result.names));
     }
 
-    @Test void wrongPhysicalNameCannotBeReportedAsPickupReady() throws Exception {
+    @Test
+    void wrongPhysicalNameCannotBeReportedAsPickupReady() throws Exception {
         var result = staged("WeSort (1/1) - Fel projekt");
         assertEquals(OrderStage.NEEDS_RECONCILIATION, result.stage());
         assertFalse(PackageManifest.requiredLabelsVerified(result.manifest, result.names));
     }
 
-    @Test void exactlyVerifiedStagedLabelMayReachPickupReady() throws Exception {
+    @Test
+    void exactlyVerifiedStagedLabelMayReachPickupReady() throws Exception {
         var result = staged("WeSort (1/1) - Projekt A");
         assertEquals(OrderStage.PICKUP_READY, result.stage());
         assertEquals("packed", result.status);
         assertTrue(PackageManifest.requiredLabelsVerified(result.manifest, result.names));
-        assertEquals("WeSort (1/1) - Projekt A", result.manifest.getAsJsonArray("packages")
-            .get(0).getAsJsonObject().get("verifiedName").getAsString());
+        assertEquals(
+                "WeSort (1/1) - Projekt A",
+                result.manifest
+                        .getAsJsonArray("packages")
+                        .get(0)
+                        .getAsJsonObject()
+                        .get("verifiedName")
+                        .getAsString());
     }
 }

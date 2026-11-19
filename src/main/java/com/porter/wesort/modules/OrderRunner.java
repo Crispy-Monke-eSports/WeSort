@@ -417,7 +417,8 @@ final class OrderRunner {
         String why = checkEmpties(plan.subList(start, plan.size()));
         if (why != null) return why;
         // A server-owned label plan may not silently omit planned boxes.
-        if (o.requiredPackageLabels && (o.names == null || plan.size() != o.names.each().size()))
+        if (o.requiredPackageLabels
+                && (o.names == null || plan.size() != o.names.each().size()))
             return "Authoritative package count differs from the locked label plan; physical reconciliation required";
 
         // The names follow the plan by position; a resume keeps the names it saved
@@ -1094,7 +1095,8 @@ final class OrderRunner {
                 // missing anvil, a retry or an ambiguous rename response.
                 if (order.requiredPackageLabels
                         && (!u.named || !isOurName(u, mc.player.getInventory().getItem(slot)))) {
-                    finish(State.Failed,
+                    finish(
+                            State.Failed,
                             "Required package label has no verified inventory readback (box " + (index + 1) + ")");
                     return new Idle();
                 }

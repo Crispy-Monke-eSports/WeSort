@@ -941,6 +941,7 @@ function CartPanel(props: {
 }) {
   const { lines, badLine, step, setStep } = props;
   const groups = groupLines(lines);
+  const singleServer = new Set(groups.map((g) => g.server)).size <= 1;
   const names = (key: string) => {
     for (const s of props.slices) {
       const it = s.items.find((x) => x.key === key);
@@ -982,7 +983,7 @@ function CartPanel(props: {
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[13px] font-semibold" title={l.type === "shulker" ? `Packed: ${l.key}` : names(l.key)}>{l.type === "shulker" ? `Packed: ${l.key}` : (names(l.key))}</span>
-                        <span className="block truncate text-[11px] text-muted-foreground" title={`${l.type === "shulker" ? "whole shulker box" : "loose items"} · ${l.server} / ${l.stash}`}>{l.type === "shulker" ? "whole box" : "loose"} · {l.stash}</span>
+                        <span className="block truncate text-[11px] text-muted-foreground" title={`${l.type === "shulker" ? "whole shulker box" : "loose items"} · ${l.server} / ${l.stash}`}>{l.type === "shulker" ? "whole box" : "loose"} · {singleServer ? l.stash : `${l.server} / ${l.stash}`}</span>
                       </span>
                       <QtyInput small value={l.count} min={1} onChange={(n) => props.onSetQty(i, n)} />
                       <button type="button" aria-label={`Remove ${l.key}`} className="rounded-md px-1.5 py-1 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => props.onRemove(i)}>✕</button>

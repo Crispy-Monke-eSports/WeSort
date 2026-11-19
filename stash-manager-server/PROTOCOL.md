@@ -185,12 +185,11 @@ restart. The hint uses the same scope checks as the manifest endpoint.
 The local Manager CLI issues a credential in the form
 `<minecraft UUID>.<secret>`. The addon uses the UUID as the identifier
 in `X-SM-Auth` and derives the signing key from the secret. A request
-signed this way must match the credential's player, server, authorized stash and
+signed this way must match the credential's player, server, stash and
 agent or dashboard identity as required by the route. Agent credentials
 use the same HMAC request, response and replay checks as the v1 protocol.
 
-The host can rotate a credential for the same Minecraft account and server,
-including replacing the full list of authorized stashes,
+The host can rotate a credential with a new issue of the same binding,
 revoke it, and make scoped credentials mandatory. In that mode the
 legacy identifier `-` and legacy Bearer credentials are denied. The
 credential registry, scoped-only mode and revocations persist in the
@@ -208,157 +207,17 @@ stale selection receives 409. With `markUuid=false` the receipt is
 This records the choice. Anvil execution and registration require a
 separate verified physical operation.
 
-## W-063 physical box UUID identity
 
-A shulker box whose anvil `CUSTOM_NAME` is exactly `WeSort-<canonical
-UUID v4>` (43 characters) carries a visible inventory identity. The
-Manager derives `hasUUID`/`boxUUID` from the actual server-observed
-component patch; it never trusts a client-declared boolean. A syntactically
-valid UUID is only `REGISTERED` after the Manager registers it with a
-unique, physical provenance; otherwise it is `UNREGISTERED`, `INVALID`
-(name present but not the `WeSort-` format), `DUPLICATE` (same UUID already
-active elsewhere or reused from history) or `UNKNOWN` (no name). An order
-box is deregistered after a server-confirmed rename and its UUID moves to
-append-only history, never to be reused.
+### W-064: server-owned shulker package label policy, version 1
 
-Owner `GET /api/v1/stock/source` exposes `boxIdentities` (path,
-`hasUUID`, `boxUUID`, `identityStatus`) for each root-level shulker box in
-a fresh source. Owner `GET /api/v1/stock/boxes` returns the active registry
-and history. Registration is idempotent and atomic inside the physical
-observation transaction; two identical nameless boxes stay position- and
-fingerprint-identified and are never assigned the same UUID.
+New Manager-web orders submit a **suffix-only** `names` object:
+```json
+{"mode":"packageLabel","version":1,"text":"Byggmaterial"}
+```
+Advanced per-box text uses `"texts":["A","B","C"]` (1–54 entries); an empty entry falls back to `text` or `Beställning`. Client-supplied `total`, `packageTotal`, `names`, and other unrecognized policy fields are rejected. The server trims Unicode edge whitespace, enforces a maximum **33 UTF-16 units** per suffix, and rejects `§`, control characters, bidi/invisible formatting characters and isolated UTF-16 surrogates. The global limit remains **54 boxes** and names remain at most **50 UTF-16 units**.
 
-Owner `POST /api/v1/boxes/jobs` starts a `REGISTER_BOX` or `RETURN_INTAKE`
-job for a verified, unprotected, still-unreserved root shulker slot
-(`server`, `stash`, `source`, `path`, `kind`). The Manager mints a fresh
-UUID v4 and stores it as a `PLANNED` job; only one open box job is allowed
-per server. `GET /api/v1/boxes/jobs` lists them. The signed agent endpoint
-`POST /api/v1/boxes/agent` claims the job (`claim`) and advances it with
-`renamed`, `complete` or `uncertain`. `renamed` moves the job to
-`VERIFYING`; `complete` only succeeds after a fresh observation has
-re-registered the issued UUID at the exact source and path (the anvil
-rename itself is a verified physical operation passing W-061's guard). A
-Manager restart or expired lease fences an in-flight job to
-`NEEDS_RECONCILIATION`; it is never silently reassigned.
+The Manager calculates the authoritative box total from the validated order lines and current stack sizes, freezes it at reservation, and builds `WeSort (X/Y) - <suffix>` (1-based X) for every box. Its persisted `names` payload uses the existing agent-compatible `{"mode":"each","names":[...]}`, with added `packageLabel:{version:1,text:"...",total:Y,texts?:[...]}` metadata. The loader rechecks generated names against stored policy instead of silently renumbering. Existing previously stored `all`/`each` orders remain readable; the legacy API request modes are retained temporarily for compatibility, not for new Manager-web submissions.
 
-## W-064 user-chosen order box labels
+**Required-label staging gate:** For version-1 package labels, the Fabric agent must see the exact expected name in its inventory after rename; missing XP/anvil, ambiguous receipt or a failed name causes a fail-closed order, never an unnamed staging transfer. Independently, the Manager extracts each visible custom name from the **verified native NBT post-transfer frame** of a completed `STAGE_PACKAGE` physical operation. It compares the complete exact names against the locked `names[]` and total before allowing `PICKUP_READY`. A missing, wrong, reordered or incomplete name/receipt produces `NEEDS_RECONCILIATION` and retains its reservations; no mere agent status report can bypass this check. The verified `customName` is stored as `verifiedName` in the signed/hashed package manifest alongside the `packageId` and physical fingerprint. Older historical orders without `packageLabel` keep their preexisting staging behavior.
 
-The user chooses the text part of an order's shulker-box names; the Manager
-always generates the prefix `WeSort (X/Y) - `, where `X` is the 1-based box
-number and `Y` the frozen package total (`shulkersNeeded`, never above 54).
-The anvil limit is 50 UTF-16 code units and the longest prefix
-`WeSort (54/54) - ` is 17, so the user text is capped at 33 code units.
-`POST /api/v1/orders` accepts an optional `packageLabel` of
-`{"text":"..."}` (common suffix, the normal flow) or
-`{"texts":["...", ...]}` (a suffix per box). The Manager trims, defaults
-empty to `Beställning`, rejects `§`, control characters, bidi/invisible
-format characters and broken surrogates, and stores the label plus the
-frozen `packageTotal` on the order. Full names are generated on the server
-(`Order.generatedNames()`), never from free client formatting; the client
-cannot replace the prefix or renumber boxes. Legacy orders using
-`names.all|each` remain readable unchanged. The anvil rename becomes a
-precondition for `PICKUP_READY` in the new flow; a failed rename never
-delivers an unmarked box.
-
-## W-062 opt-in per-server transport profile
-
-`/tpa` and `/home` are two independent, default-OFF capabilities per
-verified Minecraft server profile, never generic Minecraft or Baritone
-features. Owner `GET /api/v1/transport` lists the profiles; Owner
-`POST /api/v1/transport` updates one server's `allowTpa`, `allowHome`,
-`tpaVerified` and `homeVerified` with an `expectedRevision` (409 on a stale
-revision). A fresh profile and a clean install have both flags off.
-"Configured" (`allowTpa`/`allowHome`) is kept separate from "verified
-supported" (`tpaVerified`/`homeVerified`), so no support is ever advertised
-without actual server testing. The only transport operations are the typed
-`TPA_REQUEST(target)`, `HOME_GO(home)` and `TPA_ACCEPT(requestId)` in
-`TransportCommands`; there is no arbitrary `/command`, forwarded player
-message or unsanitized field, and a command transmission is never itself
-proof of arrival — the agent acknowledges arrival only from the actual
-server-delivered position and dimension.
-
-## W-059 optional withdrawal quotas
-
-Quotas are disabled by default and never create private inventories; they
-only limit how much of the shared guild stock one member may withdraw.
-Owner `GET /api/v1/quotas` returns the policy (enabled flag, revision and
-rules of `subject`/`key`/`max`/`windowSeconds`); Owner `POST /api/v1/quotas`
-updates it with an `expectedRevision` (409 on a stale revision). A rule's
-subject is a member id, a role, or `*`; its key is a line reference
-(`item:<key>`, `shulker:<key>`, or `*`), with member-over-role-over-`*`
-precedence. `GET /api/v1/quotas/me` shows a member's own consumed and
-reserved totals. Reservation is idempotent by order id, and `reserved`/
-`consumed` are separate from physical inventory reservations; a cancel or a
-verified delivery affects the quota exactly once, across restarts.
-
-## W-029 package custody
-
-Each physical package has a Manager-owned `packageId` (never a Minecraft
-UUID and never the visible `WeSort (X/Y) - text` label) and an append-only
-custody chain: `STAGED → PICKUP_VERIFIED → IN_TRANSIT → DEPOSIT_VERIFIED`
-or `PLAYER_HANDOFF_PENDING`, plus `NEEDS_RECONCILIATION`. Owner
-`GET /api/v1/custody` lists packages (optionally by `order`). The signed
-agent endpoint `POST /api/v1/custody/agent` stages or advances a package
-(`stage` or a state name). Custody is mutually exclusive: after an agent
-picks a package up, only that agent — or an explicit reconciliation — may
-advance it, so two couriers can never claim the same package and a package
-is never booked in two places. A reboot or a replayed receipt does not
-change custody.
-
-## W-037 delivery points
-
-A delivery point is a chest or a player/project meeting place at
-`server` + `dimension` + `x`/`y`/`z`, with an access class (`MEMBER`,
-`PROJECT`, `INTERNAL`) and a status (`PENDING`, `VERIFIED`, `PAUSED`).
-`POST /api/v1/delivery-points` (Owner) creates, updates (`action` +
-`id` + `expectedRevision`) or pauses a point; updates are optimistic
-(409 on a stale revision) and every mutation appends a history event.
-Owner `GET /api/v1/delivery-points` lists every point with coordinates
-and history. Member `GET /api/v1/delivery-points/selectable` returns
-only verified `MEMBER` (their own) and `PROJECT` points, redacted —
-coordinates and dimension are removed and a secret `INTERNAL` stash
-never appears. Selecting a point never changes who owns the rest of
-the stock.
-
-## W-038 physical deposition
-
-A package is deposited as either a `DELIVERY` to a recipient outside
-the stock (a withdrawal) or a `TRANSFER` to an internal guild stash (a
-relocation that does not change the guild total); the kind is explicit.
-`POST /api/v1/deposits/agent` (signed) begins, confirms or reconciles a
-deposit keyed by `packageId`; `begin` is idempotent per package + order
-+ kind + destination. `DELIVERED` is reached only with a server-
-confirmed, non-empty chest content `snapshot`, so a double report or
-reconnect never double-delivers: replaying a confirmation returns the
-same record. An uncertain outcome goes to `NEEDS_RECONCILIATION`, and a
-second agent cannot complete another agent's deposit. Owner
-`GET /api/v1/deposits` lists the ledger (optionally by `order`).
-
-## W-034 job scheduler
-
-Jobs carry a category `SCAN → SORT → PACK → PICKUP → DELIVER` (plus the
-`RECONCILE` override) and a work-unit `chain`; a step is only claimable
-once its predecessor for the same chain is COMPLETED, so a lone agent
-chains every step without a handover. `POST /api/v1/jobs/agent` (signed)
-allocates work atomically: a claim returns the highest-priority eligible
-job with a lease token and deadline, no agent ever holds two physical
-transactions, and two agents can never claim the same job. `renew`
-extends the lease; a lapsed lease moves the job to
-`NEEDS_RECONCILIATION`, and it is only reassignable after the Owner
-reconciles it back to `QUEUED` (`POST /api/v1/jobs`, `reconcile`), so a
-blind restart of an uncertain physical step is impossible. `pause`,
-`resume` and `revoke` round out the controls. Owner `GET /api/v1/jobs`
-shows the queue ordered by state, priority and age.
-
-## W-039 player handoff
-
-A package handed to a player at a registered meeting place is tracked
-separately from a chest deposit. `POST /api/v1/handoffs/agent` (signed)
-reports `arrive`, `no-show` or `drop`; a drop without a verified pickup
-never reaches DELIVERED — it goes to `NEEDS_RECONCILIATION`. DELIVERED
-requires an explicit recipient receipt (`confirm`) from the order
-owner/admin, recorded as `confirmedBy`; a replay is idempotent. A
-no-show is traceable and the stock is not returned until an explicit
-`RETURNED`, so there is no false credit. Only the recorded agent may
-advance the handoff; a second agent cannot take over the cargo. Owner
-`GET /api/v1/handoffs` lists handoffs (optionally by `order`).
+**Scope boundary:** The Manager/UI suffix contract, locked numbering and receipt-level gate are implemented, with synthetic native-NBT journal regression tests. **End-to-end physical anvil operation in actual Minecraft 26.3, XP/anvil recovery, partial shipments, return UUID transitions and 2–5 agent delivery** still require live-server evidence. The UI preview estimates Y from the cart; it does not claim actual delivery or a locked manifest before order acceptance.

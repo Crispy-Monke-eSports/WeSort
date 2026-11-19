@@ -108,11 +108,111 @@ final class PackageManifest {
             proof.add("revision", operation.get("revision"));
             proof.add("checksum", operation.get("checksum"));
             proof.addProperty("stackFingerprint", ContainerIdentity.hash(received));
+            // Derive the displayed item name from the *VERIFIED post-transfer*
+            // inventory frame, never from the claimed order or INTENT payload.
+            String verifiedName = nativeVerifiedName(received);
+            if (verifiedName != null) proof.addProperty("verifiedName", verifiedName);
             proof.add("staging", staging);
             return proof;
         } catch (RuntimeException malformed) {
             return null;
         }
+    }
+
+    /** Mandatory names are checked against each distinct physically staged package. */
+    static boolean requiredLabelsVerified(JsonObject manifest, JsonObject names) {
+        try {
+            if (manifest == null || names == null || !names.has("packageLabel")) return false;
+            int total = names.getAsJsonObject("packageLabel")
+                    .get("total")
+                    .getAsBigDecimal()
+                    .intValueExact();
+            JsonArray expected = names.getAsJsonArray("names");
+            JsonArray packages = manifest.getAsJsonArray("packages");
+            if (total < 1 || total > OrderStore.MAX_SHULKERS || expected.size() != total || packages.size() != total)
+                return false;
+            for (int i = 0; i < total; i++) {
+                JsonObject proof = packages.get(i).getAsJsonObject();
+                if (!proof.has("verifiedName")
+                        || !proof.get("verifiedName")
+                                .getAsString()
+                                .equals(expected.get(i).getAsString())) return false;
+            }
+            return true;
+        } catch (RuntimeException malformed) {
+            return false;
+        }
+    }
+
+    /**
+     * Extract only an unstyled literal name from the server-read ItemStack's
+     * typed 26.3 NBT component patch. A missing, translated, or ambiguous custom
+     * name cannot be counted as a successful rename.
+     */
+    static String nativeVerifiedName(String serializedStack) {
+        try {
+            JsonObject item =
+                    JsonParser.parseString(serializedStack).getAsJsonObject().getAsJsonObject("value");
+            JsonObject components = item.getAsJsonObject("components");
+            if (components == null || components.get("type").getAsInt() != 10) return null;
+            JsonObject values = components.getAsJsonObject("value");
+            if (!values.has("minecraft:custom_name")) return null;
+            JsonObject name = values.getAsJsonObject("minecraft:custom_name");
+            int type = name.get("type").getAsBigDecimal().intValueExact();
+            if (type == 10) {
+                JsonObject structure = name.getAsJsonObject("value");
+                if (structure.size() != 1 || !structure.has("text")) return null;
+                JsonObject literal = structure.getAsJsonObject("text");
+                if (literal.get("type").getAsInt() != 8) return null;
+                return decodeSnbtString(literal.get("value").getAsString());
+            }
+            if (type != 8) return null;
+            String value = decodeSnbtString(name.get("value").getAsString());
+            if (value == null) return null;
+            if (!value.startsWith("{") && !value.startsWith("\"")) return value;
+            JsonObject json;
+            if (value.startsWith("\"")) {
+                JsonElement plain = JsonParser.parseString(value);
+                return plain.isJsonPrimitive() && plain.getAsJsonPrimitive().isString() ? plain.getAsString() : null;
+            }
+            json = JsonParser.parseString(value).getAsJsonObject();
+            return json.size() == 1
+                            && json.has("text")
+                            && json.get("text").isJsonPrimitive()
+                            && json.get("text").getAsJsonPrimitive().isString()
+                    ? json.get("text").getAsString()
+                    : null;
+        } catch (RuntimeException malformed) {
+            return null;
+        }
+    }
+
+    private static String decodeSnbtString(String snbt) {
+        if (snbt == null || snbt.length() < 2) return null;
+        char quote = snbt.charAt(0);
+        if ((quote != '\'' && quote != '"') || snbt.charAt(snbt.length() - 1) != quote) return null;
+        if (quote == '"') {
+            try {
+                JsonElement decoded = JsonParser.parseString(snbt);
+                return decoded.isJsonPrimitive() && decoded.getAsJsonPrimitive().isString()
+                        ? decoded.getAsString()
+                        : null;
+            } catch (RuntimeException malformed) {
+                return null;
+            }
+        }
+        StringBuilder out = new StringBuilder();
+        for (int i = 1; i < snbt.length() - 1; i++) {
+            char c = snbt.charAt(i);
+            if (c == '\'') return null;
+            if (c == '\\') {
+                if (++i >= snbt.length() - 1) return null;
+                char escaped = snbt.charAt(i);
+                if (escaped != '\\' && escaped != '\'' && escaped != '"') return null;
+                out.append(escaped);
+            } else out.append(c);
+        }
+        return out.toString();
     }
 
     private static boolean oneShulker(String fingerprint) {

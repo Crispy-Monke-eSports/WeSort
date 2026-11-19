@@ -137,14 +137,7 @@ final class OrderRoutes {
         }
         JsonObject names;
         try {
-            names = OrderStore.normalizeNames(o.get("names"));
-        } catch (OrderStore.OrderException e) {
-            lineError(ex, e.status, e.getMessage(), -1);
-            return;
-        }
-        JsonObject packageLabel;
-        try {
-            packageLabel = OrderStore.normalizePackageLabel(o.get("packageLabel"));
+            names = OrderStore.normalizeNewOrderNames(o.get("names"));
         } catch (OrderStore.OrderException e) {
             lineError(ex, e.status, e.getMessage(), -1);
             return;
@@ -189,7 +182,6 @@ final class OrderRoutes {
                     stash,
                     lines,
                     names,
-                    packageLabel,
                     who.id(),
                     who.name(),
                     profile.id().toString(),
@@ -318,7 +310,7 @@ final class OrderRoutes {
         }
         if (!mayChange(ex, m.group(1))) return;
         try {
-            OrderStore.Order order = orders.cancel(m.group(1), Router.user(ex).id());
+            OrderStore.Order order = orders.cancel(m.group(1));
             audit.add(Router.user(ex), "order.cancel", order.id, AuthRoutes.address(ex));
             JsonObject out = Http.ok();
             out.add("order", shown(ex, order.toJson()));
@@ -370,8 +362,7 @@ final class OrderRoutes {
         }
         if (!mayChange(ex, m.group(1))) return;
         try {
-            OrderStore.Order order =
-                    orders.forceCancel(m.group(1), Router.user(ex).id());
+            OrderStore.Order order = orders.forceCancel(m.group(1));
             audit.add(Router.user(ex), "order.force-cancel", order.id, AuthRoutes.address(ex));
             JsonObject out = Http.ok();
             out.add("order", shown(ex, order.toJson()));

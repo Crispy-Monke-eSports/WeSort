@@ -93,11 +93,6 @@ async function scenario(loggedIn) {
         {id:'c:return', slotSchema:1, slotCount:27, server:'test', stash:'fixture', dimension:'minecraft:overworld',
           parts:[[3,64,2]], state:'FRESH', sourceRevision:12, verifiedAt:1000}]};
     if (u.pathname === '/api/v1/stock/source') body = {state: 'STALE_AGE', snapshot: {positions: [{path:'0/26',id:'minecraft:diamond_sword',count:1,copies:1,kind:'ITEM',components:'<img src=x onerror=alert(1)>'}]}};
-    if (u.pathname === '/api/v1/operations') body = {agents: {ONLINE: 1, OFFLINE: 2}, stock: {FRESH: 3},
-      orders: {RESERVED: 1}, alerts: [{code:'STALE', count: 4}]};
-    if (u.pathname === '/api/v1/audit/orders') body = {orders: [{id: 'o-0123456789ab', purpose: 'GUILD', state: 'RESERVED',
-      stash: 'fixture', requestedBy: 'owner', createdAt: 1000, comment: '<img src=secret>', packageIds: [],
-      lines: [{key: 'minecraft:diamond', count: 64}], events: [{at: 1000, actor: 'owner', action: 'order.reserve', state: 'RESERVED'}]}]};
     if (u.pathname === '/api/v1/stock/source' && u.searchParams.get('id') === 'c:return') {
       const slot = {path:'0', id:'minecraft:shulker_box', kind:'SHULKER', count:1, copies:1, present:true, revision:9, components:'{}'};
       body = {id:'c:return', state:'FRESH', snapshot:{positions:[slot]}, slots:[slot], returnIntake:[]};
@@ -111,6 +106,8 @@ async function scenario(loggedIn) {
     if (u.pathname === '/api/v1/orders') body = {orders: [{
       id:'guild-order', status:'pending', state:'RESERVED', purpose:'GUILD', approvalState:'PENDING',
       recipient:'FixtureRecipient', deliveryMode:'PLAYER', comment:'Projekt Å <img src=x onerror=alert(1)>',
+      names:{mode:'each', names:['WeSort (1/2) - <img src=x>', 'WeSort (2/2) - <img src=x>'],
+        packageLabel:{version:1,text:'<img src=x>',total:2}},
       lines:[{type:'item', key:'minecraft:diamond', count:2}]
     }]};
     if (u.pathname === '/api/v1/orders/guild-order/approval') orderReviews.push(JSON.parse(opts.body));
@@ -166,6 +163,27 @@ async function scenario(loggedIn) {
       assert.equal(w.document.querySelector(`#page-${name}`), null);
     }
     if (loggedIn) {
+      const suffixInput = w.document.getElementById('names-all');
+      const labelPreview = w.document.getElementById('names-preview');
+      assert.equal(suffixInput.maxLength, 33, 'Minecraft anvil prefix leaves 33 UTF-16 units');
+      assert.equal(w.document.querySelector('#names-seg [data-mode="none"]'), null,
+        'New customer orders cannot opt out of WeSort package labels');
+      assert.equal(w.document.querySelector('#names-seg [data-mode="all"]').getAttribute('aria-pressed'), 'true');
+      const malicious = '<img src=x onerror=alert(1)>';
+      suffixInput.value = malicious;
+      suffixInput.dispatchEvent(new w.Event('input', {bubbles:true}));
+      assert.match(labelPreview.textContent, /WeSort \(1\/Y\) - <img src=x onerror=alert\(1\)>/);
+      assert.equal(labelPreview.querySelector('img'), null, 'Suffix preview must use textContent, not innerHTML');
+      suffixInput.value = 'a'.repeat(32) + '😀'; // 34 UTF-16 units, despite 33 code points
+      suffixInput.dispatchEvent(new w.Event('input', {bubbles:true}));
+      assert.match(w.document.getElementById('names-warn').textContent, /maximum 33 UTF-16/);
+      suffixInput.value = 'Byggmaterial';
+      suffixInput.dispatchEvent(new w.Event('input', {bubbles:true}));
+      assert.match(labelPreview.textContent, /WeSort \(1\/Y\) - Byggmaterial/);
+      w.document.querySelector('#names-seg [data-mode="each"]').click();
+      assert.equal(w.document.getElementById('names-each').hidden, false);
+      w.document.querySelector('#names-seg [data-mode="all"]').click();
+      assert.equal(suffixInput.hidden, false);
       for (const name of ['orders', 'bots', 'activity', 'settings', 'stash']) {
         const button = w.document.querySelector(`#dash-nav [data-page="${name}"]`);
         assert(button, name);
@@ -177,22 +195,14 @@ async function scenario(loggedIn) {
       }
       assert(requests.includes('/api/v1/bots'));
       assert(requests.includes('/api/v1/stock'));
-      assert.match(w.document.querySelector('#operational-counts').textContent, /1 online.*2 offline.*3 fresh sources/);
-      assert.match(w.document.querySelector('#operational-alerts').textContent, /4.*Sources need a rescan/);
-      const orderAudit = w.document.querySelector('#order-audit');
-      orderAudit.open = true; orderAudit.dispatchEvent(new w.Event('toggle'));
-      await settle();
-      const auditFilter = w.document.querySelector('#order-audit-search [name="item"]');
-      auditFilter.value = 'diamond';
-      auditFilter.form.dispatchEvent(new w.Event('submit', { cancelable: true }));
-      await settle();
-      assert(requests.some(x => x.startsWith('/api/v1/audit/orders?item=diamond')));
-      const orderTrace = w.document.querySelector('#order-audit-results');
-      assert.match(orderTrace.textContent, /GUILD.*<img src=secret>.*64 × minecraft:diamond.*order.reserve/);
-      assert.equal(orderTrace.querySelector('img'), null);
       const review = w.document.querySelector('#order-list .order-card');
       assert.match(review.textContent, /Awaiting approval.*Confirmed recipient · FixtureRecipient.*Projekt Å <img/);
       assert.equal(review.querySelector('img'), null, 'Order comments must remain plain text');
+      assert.match(review.querySelector('.order-names summary').textContent,
+        /Planned WeSort labels \(2 box\(es\); physical rename not yet confirmed\)/);
+      assert.match(review.querySelector('.order-names').textContent, /WeSort \(1\/2\) - <img src=x>/);
+      assert.equal(review.querySelector('.order-names img'), null,
+        'Generated package label text must not be interpreted as markup');
       Array.from(review.querySelectorAll('button')).find(button => button.textContent === 'Approve').click();
       await settle();
       assert.deepEqual(orderReviews, [{decision:'approve'}]);

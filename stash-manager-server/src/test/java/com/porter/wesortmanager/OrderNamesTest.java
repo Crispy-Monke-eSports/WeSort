@@ -235,62 +235,157 @@ class OrderNamesTest {
         assertEquals("pending", reloaded.statusOf(failed.id));
     }
 
+    private static JsonObject labelRequest(String text) throws Exception {
+        JsonObject request = json("{\"mode\":\"packageLabel\",\"version\":1}");
+        request.addProperty("text", text);
+        return OrderStore.normalizeNames(request);
+    }
+
     @Test
-    void packageLabelIsNormalisedStoredAndGeneratesNames() throws Exception {
-        assertNull(OrderStore.normalizePackageLabel(null));
-        assertNull(OrderStore.normalizePackageLabel(JsonParser.parseString("null")));
+    void newApiDoesNotAcceptFreeFormOrOmittedPackageLabels() throws Exception {
+        var automatic = OrderStore.normalizeNewOrderNames(null);
+        assertEquals(json("{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"Beställning\"}"), automatic);
+        assertEquals(automatic, OrderStore.normalizeNewOrderNames(JsonParser.parseString("null")));
+        for (String bypass : List.of(
+                "{\"mode\":\"all\",\"name\":\"Forged full name\"}",
+                "{\"mode\":\"each\",\"names\":[\"Forged full name\"]}",
+                "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"ok\",\"total\":99}")) {
+            assertEquals(
+                    400,
+                    assertThrows(
+                                    OrderStore.OrderException.class,
+                                    () -> OrderStore.normalizeNewOrderNames(JsonParser.parseString(bypass)))
+                            .status);
+        }
         assertEquals(
-                json("{\"mode\":\"all\",\"text\":\"Byggmaterial\"}"),
-                OrderStore.normalizePackageLabel(JsonParser.parseString("{\"text\":\"  Byggmaterial  \"}")));
-        assertEquals(
-                json("{\"mode\":\"all\",\"text\":\"Beställning\"}"),
-                OrderStore.normalizePackageLabel(JsonParser.parseString("{\"text\":\"\"}")));
-        assertEquals(
-                "a".repeat(33),
-                OrderStore.normalizePackageLabel(JsonParser.parseString("{\"text\":\"" + "a".repeat(33) + "\"}"))
+                "Beställning",
+                OrderStore.normalizeNewOrderNames(
+                                JsonParser.parseString("{\"mode\":\"packageLabel\",\"version\":1,\"text\":\" \"}"))
                         .get("text")
                         .getAsString());
+    }
+
+    @Test
+    void exactPrefixNumbersAndUTF16BudgetAcrossOneTo54Boxes() throws Exception {
+        for (int total : List.of(1, 4, 12, 54)) {
+            JsonObject pinned = OrderStore.lockPackageLabel(labelRequest("Byggmaterial"), total);
+            var names = pinned.getAsJsonArray("names");
+            assertEquals(total, names.size());
+            assertEquals("WeSort (1/" + total + ") - Byggmaterial", names.get(0).getAsString());
+            assertEquals(
+                    "WeSort (" + total + "/" + total + ") - Byggmaterial",
+                    names.get(total - 1).getAsString());
+            assertEquals(
+                    total, pinned.getAsJsonObject("packageLabel").get("total").getAsInt());
+        }
         assertEquals(
                 400,
                 assertThrows(
                                 OrderStore.OrderException.class,
-                                () -> OrderStore.normalizePackageLabel(
-                                        JsonParser.parseString("{\"text\":\"" + "a".repeat(34) + "\"}")))
+                                () -> OrderStore.lockPackageLabel(labelRequest("Test"), 55))
                         .status);
+        String longSuffix = "a".repeat(33);
+        var pinned = OrderStore.lockPackageLabel(labelRequest(longSuffix), 54);
+        assertEquals(50, pinned.getAsJsonArray("names").get(53).getAsString().length());
+        assertEquals(400, assertThrows(OrderStore.OrderException.class, () -> labelRequest("a".repeat(34))).status);
         assertEquals(
                 400,
-                assertThrows(
-                                OrderStore.OrderException.class,
-                                () -> OrderStore.normalizePackageLabel(JsonParser.parseString("{\"text\":\"a§b\"}")))
-                        .status);
+                assertThrows(OrderStore.OrderException.class, () -> labelRequest("a".repeat(32) + "😀"))
+                        .status); // 34 UTF-16 units
+        assertEquals(
+                "WeSort (1/1) - Beställning",
+                OrderStore.lockPackageLabel(labelRequest("   "), 1)
+                        .getAsJsonArray("names")
+                        .get(0)
+                        .getAsString());
+    }
 
-        var label = OrderStore.normalizePackageLabel(JsonParser.parseString("{\"text\":\"Projekt A\"}"));
-        OrderStore.Order o = orders.submit(
-                        "s",
-                        "a",
-                        diamonds(16),
-                        null,
-                        label,
-                        null,
-                        null,
-                        null,
-                        OrderIntent.DEFAULT,
-                        null,
-                        false,
-                        ignored -> null)
-                .order();
-        assertEquals(label, o.toJson().getAsJsonObject("packageLabel"));
-        assertEquals(1, o.toJson().get("packageTotal").getAsInt());
-        assertEquals("WeSort (1/1) - Projekt A", o.generatedNames().get(0).getAsString());
+    @Test
+    void packageLabelRejectsForgedTotalsControlsAndMalformedAdvancedText() throws Exception {
+        for (String payload : List.of(
+                "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"ok\",\"total\":4}",
+                "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"ok\",\"names\":[]}",
+                "{\"mode\":\"packageLabel\",\"version\":2,\"text\":\"ok\"}",
+                "{\"mode\":\"packageLabel\",\"version\":1.5,\"text\":\"ok\"}",
+                "{\"mode\":\"packageLabel\",\"version\":1,\"texts\":[1]}",
+                "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"a\\u202eb\"}",
+                "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"a\\u200bb\"}",
+                "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"a§b\"}",
+                "{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"a\\u0000b\"}")) {
+            assertEquals(400, status(payload), payload);
+        }
+        JsonObject request =
+                names("{\"mode\":\"packageLabel\",\"version\":1,\"text\":\"Standard\",\"texts\":[\"A\",\" \",\"C\"]}");
+        var list = OrderStore.lockPackageLabel(request, 3).getAsJsonArray("names");
+        assertEquals("WeSort (1/3) - A", list.get(0).getAsString());
+        assertEquals("WeSort (2/3) - Standard", list.get(1).getAsString());
+        assertEquals("WeSort (3/3) - C", list.get(2).getAsString());
+        assertEquals(
+                400,
+                assertThrows(OrderStore.OrderException.class, () -> OrderStore.lockPackageLabel(request, 4)).status);
+        assertEquals(
+                "WeSort (1/1) - <img src=x onerror=alert(1)>",
+                OrderStore.lockPackageLabel(labelRequest("<img src=x onerror=alert(1)>"), 1)
+                        .getAsJsonArray("names")
+                        .get(0)
+                        .getAsString());
+    }
 
-        // Survives a restart.
-        OrderStore reloaded = new OrderStore(data, index);
+    @Test
+    void modifiedStoredLabelRequiresReconciliationAndRetainsItsReservation() throws Exception {
+        var placed = orders.place("s", "a", diamonds(64), labelRequest("Original"));
+        Path file = data.resolve("orders").resolve(IndexStore.fileName("s", "a"));
+        JsonObject saved = json(Files.readString(file, StandardCharsets.UTF_8));
+        JsonObject persisted = saved.getAsJsonArray("orders").get(0).getAsJsonObject();
+        persisted
+                .getAsJsonObject("names")
+                .getAsJsonArray("names")
+                .set(0, new com.google.gson.JsonPrimitive("WeSort (1/1) - Forged"));
+        Files.writeString(file, saved.toString(), StandardCharsets.UTF_8);
+        OrderStore restarted = new OrderStore(data, index);
+        restarted.load();
+        JsonObject quarantined =
+                restarted.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
+        assertEquals(placed.id, quarantined.get("id").getAsString());
+        assertEquals("needs_reconciliation", quarantined.get("status").getAsString());
+        assertEquals("NEEDS_RECONCILIATION", quarantined.get("state").getAsString());
+        assertTrue(quarantined.get("message").getAsString().contains("integrity"));
+        assertEquals(
+                "WeSort (1/1) - Forged",
+                quarantined
+                        .getAsJsonObject("names")
+                        .getAsJsonArray("names")
+                        .get(0)
+                        .getAsString(),
+                "Original tampering evidence must not be discarded or silently re-generated");
+        assertEquals(64L, restarted.reservedFor("s", "a").get("item:minecraft:diamond"));
+        assertNull(restarted.claim("s", "a"), "No physical operation may resume from a falsified manifest");
+    }
+
+    @Test
+    void serverOwnedPackagePlanSurvivesRestartRetryAndCannotBeRenumbered() throws Exception {
+        JsonObject request = labelRequest(" Projekt A ");
+        var first = orders.place("s", "a", diamonds(64), request);
+        var frozen = first.toJson().getAsJsonObject("names");
+        assertEquals(
+                "WeSort (1/1) - Projekt A",
+                frozen.getAsJsonArray("names").get(0).getAsString());
+        assertEquals(1, frozen.getAsJsonObject("packageLabel").get("total").getAsInt());
+        var reloaded = new OrderStore(data, index);
         reloaded.load();
-        var persisted =
-                reloaded.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
         assertEquals(
-                "Projekt A",
-                persisted.getAsJsonObject("packageLabel").get("text").getAsString());
-        assertEquals(1, persisted.get("packageTotal").getAsInt());
+                frozen,
+                reloaded.listJson("s", "a")
+                        .getAsJsonArray("orders")
+                        .get(0)
+                        .getAsJsonObject()
+                        .getAsJsonObject("names"));
+        reloaded.cancel(first.id);
+        var retried = reloaded.retry(first.id);
+        assertEquals(frozen, retried.toJson().getAsJsonObject("names"));
+        assertNotEquals(first.id, retried.id);
+        // Older stored orders and their free-text names remain readable, never silently renamed.
+        var old = orders.place("s", "a", diamonds(1), names("{\"mode\":\"all\",\"name\":\"Legacy\"}"));
+        assertEquals("Legacy", old.names.get("name").getAsString());
     }
 }

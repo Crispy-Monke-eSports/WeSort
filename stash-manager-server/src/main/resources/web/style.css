@@ -309,8 +309,9 @@ html[data-theme="classic"] .auth-screen {
   gap: 8px;
 }
 
-/* The single central search box above guild stock and stash contents. */
-.central-search {
+/* The single central search box above guild stock and stash contents. More
+   specific than .mc-input on purpose, so size and flex always win. */
+input.central-search {
   width: 100%;
   flex: 0 0 auto;
   font-size: 16px;

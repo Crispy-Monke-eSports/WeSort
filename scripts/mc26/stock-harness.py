@@ -109,11 +109,22 @@ class StockHarness(world.Harness):
             initial = self.observe(); self.server_name = initial['server']
             (self.evidence / 'initial-client-index.json').write_text(json.dumps(initial, indent=2) + '\n')
             self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key)
-            stock = self.wait(lambda s: self.amount(s, 'minecraft:diamond', 'available') == 1344 and all(row['state'] == 'FRESH' for row in s['sources']), 'Actual Fabric observations did not become fresh stock')
+            # The dedicated Manager profile must refuse trapped-chest activation: it
+            # would emit a redstone signal. All 32 diamonds in that physical source
+            # remain unknown/unavailable, rather than being falsely orderable.
+            def safe_initial_stock(s):
+                trapped = self.source(s, 30)
+                safe = [row for row in s['sources'] if row is not trapped]
+                return (trapped is not None and trapped['state'] == 'UNREACHABLE'
+                    and len(s['sources']) == 14 and len(safe) == 13
+                    and all(row['state'] == 'FRESH' for row in safe)
+                    and self.amount(s, 'minecraft:diamond', 'available') == 1312
+                    and self.amount(s, 'minecraft:diamond', 'unknown') == 32)
+            stock = self.wait(safe_initial_stock, 'Dedicated profile did not publish fresh safe stock and block trapped-chest access')
             self.pause()
-            require(all(source['state'] == 'FRESH' for source in stock['sources']), 'A cached prediction was counted as initial fresh stock')
+            require(safe_initial_stock(stock), 'Sensitive or cached physical inventory was counted as orderable')
             (self.evidence / 'initial-stock.json').write_text(json.dumps(stock, indent=2) + '\n')
-            self.ok('real signed Fabric observations reach SQLite/Docker Manager with fresh observed/available stock and per-container revisions')
+            self.ok('13 fresh safe sources are available; dedicated profile keeps trapped-chest inventory unknown')
 
             # A real, fully acknowledged movement invalidates the engine's old witness even when returned immediately.
             old_engine = self.command('engine-index')['state']['engineIndex']

@@ -128,6 +128,9 @@ final class KitBuilder {
     private int baseSlot = -1;
     private boolean needBase;
     private boolean pendingBase;
+    // Canceled walks may end Fetch before any inventory mutation; retry only
+    // after a confirmed no-transfer, within a strict budget.
+    private int baseFetchRetries;
     private boolean hadBase;
     private final Set<Integer> shulkersBefore = new HashSet<>();
     // The base shulker asked for last, and bases that could not be taken, so they are not asked for again
@@ -201,6 +204,7 @@ final class KitBuilder {
         baseSlot = -1;
         needBase = false;
         pendingBase = false;
+        baseFetchRetries = 0;
         hadBase = false;
         shulkersBefore.clear();
         stalls = 0;
@@ -660,10 +664,30 @@ final class KitBuilder {
             }
             if (baseSlot == -1) {
                 if (lastBase != null) {
-                    badBases.add(lastBase);
                     ItemStack was = lastBase.slot < lastBase.box.contents.length
                             ? lastBase.box.contents[lastBase.slot]
                             : ItemStack.EMPTY;
+                    // A yielding/cancelled walk may have completed no Fetch at
+                    // all. If the item is still in the source and the readback
+                    // barrier is clear, safely retry the same source at most
+                    // four times. Outstanding physical mutations are never
+                    // replayed or considered complete.
+                    if (baseFetchRetries < 4
+                            && com.porter.wesort.compat.InventorySync.ready()
+                            && baseLike(was)
+                            && com.porter.wesort.compat.ObservationRuntime.current(lastBase.box)
+                            && owner.mayTakeFrom(lastBase.box, lastBase.slot)
+                            && owner.freeCarryCount() >= 2) {
+                        baseFetchRetries++;
+                        pendingBase = true;
+                        WeSortAddon.LOG.info(
+                                "orders: base shulker not transferred; retry source {} slot {} ({}/4)",
+                                lastBase.box.pos.toShortString(),
+                                lastBase.slot,
+                                baseFetchRetries);
+                        return new Fetch(lastBase.box, lastBase.slot);
+                    }
+                    badBases.add(lastBase);
                     WeSortAddon.LOG.info(
                             "orders: couldn't take the base shulker from slot {} of the container at {} (it holds {} now), free carry slots={}, carry slots={}",
                             lastBase.slot,
@@ -674,6 +698,7 @@ final class KitBuilder {
                 }
                 return new Abort("couldn't take a shulker out of the stash");
             }
+            baseFetchRetries = 0;
 
             ItemStack s = mc.player.getInventory().getItem(baseSlot);
             if (!baseLike(s)) {

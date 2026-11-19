@@ -190,7 +190,8 @@ class KitHarness(repack.RepackHarness):
             self.command('sort-stop');after=self.snapshots();
             if getattr(self,'interrupted_standing',None) and 'standing' not in after:
                 pos=' '.join(map(str,self.interrupted_standing))
-                if 'Test passed' in self.rcon.command(f'execute if block {pos} minecraft:shulker_box'):after['standing']=self.rcon.command(f'data get block {pos} Items')
+                observed=self.standing_snapshot(pos)
+                if observed is not None:after['standing']=observed
             (self.evidence/'server-after.json').write_text(json.dumps(after,indent=2)+'\n')
             require(self.totals(before)==self.totals(after),'Kit pipeline changed exact recursive server item/component totals')
             require(before['18']==after['18'],'Protected finished kit was consumed or changed')

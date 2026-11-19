@@ -436,12 +436,17 @@ public final class InventorySync {
             } else if (!reopenRequested && openRecoverySource()) reopenRequested = true;
         }
         if (gate.failed()) return;
+        // An ordered server ACK can arrive before the visible world state update.
+        // The physical journal stays fenced until BOTH observations are verified.
+        confirmAckedBlocks();
         for (var block : blocks.values())
             if (!recoveringWorld && System.nanoTime() >= block.deadline) {
-                gate.fail("Block acknowledgement timed out; do not replay the placement or break");
+                gate.fail(
+                        "Server block acknowledgement/state verification timed out; do not replay the placement or break");
                 reportFailure();
                 return;
             }
+        complete();
         gate.expire(System.nanoTime());
         if (gate.failed()) {
             reportFailure();
@@ -577,6 +582,18 @@ public final class InventorySync {
         }
     }
 
+    /** Keep a block mutation pending until ordered server ACK and exact visible state agree. */
+    private static void confirmAckedBlocks() {
+        if (mc.level == null) return;
+        for (var block : List.copyOf(blocks.values())) {
+            if (block.sequence <= lastBlockAck
+                    && mc.level.isLoaded(block.pos)
+                    && blockId(block.pos).equals(block.block)) {
+                blocks.remove(block.sequence);
+            }
+        }
+    }
+
     public static void blockAck(int sequence) {
         lastBlockAck = Math.max(lastBlockAck, sequence);
         if (readOpen != null && sequence >= readOpen.sequence) {
@@ -598,15 +615,9 @@ public final class InventorySync {
             }
         }
         if (gate.failed()) return;
-        for (var block : List.copyOf(blocks.values()))
-            if (block.sequence <= sequence) {
-                if (!mc.level.isLoaded(block.pos) || !blockId(block.pos).equals(block.block)) {
-                    gate.fail("Server rejected or changed the predicted block operation");
-                    reportFailure();
-                    return;
-                }
-                blocks.remove(block.sequence);
-            }
+        // Do not mistake a delayed client world update for rejection. A bounded
+        // deadline in tick() still fails closed if state never matches the ACK.
+        confirmAckedBlocks();
         complete();
     }
 

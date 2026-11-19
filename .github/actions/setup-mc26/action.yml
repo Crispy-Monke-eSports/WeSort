@@ -18,5 +18,18 @@ runs:
     - name: Install software display dependencies
       shell: bash
       run: |
+        # The ubuntu-24.04 image usually already provides these. Skip the
+        # ~13 MB archive update and ~30 MB mesa upgrade when nothing is
+        # missing; only truly absent packages are installed, never upgraded.
+        missing=()
+        for pkg in xvfb libgl1-mesa-dri libglx-mesa0 libgl1 libegl1 libegl-mesa0 mesa-vulkan-drivers libvulkan1 libopenal1; do
+          if ! dpkg -s "$pkg" >/dev/null 2>&1; then
+            missing+=("$pkg")
+          fi
+        done
+        if [ "${#missing[@]}" -eq 0 ]; then
+          echo "Display dependencies already installed; skipping apt."
+          exit 0
+        fi
         sudo apt-get update
-        sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 libgl1 libegl1 libegl-mesa0 mesa-vulkan-drivers libvulkan1 libopenal1
+        sudo apt-get install -y --no-upgrade "${missing[@]}"

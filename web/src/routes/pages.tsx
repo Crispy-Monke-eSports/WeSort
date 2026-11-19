@@ -8,12 +8,16 @@ export function LoginPage() {
   const auth = useAuth();
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState("");
+
+  const setupNeeded = (auth.data as any)?.setupNeeded === true;
+  const minLength = (auth.data as any)?.minLength ?? 12;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
+    setBusy("login");
     setError("");
     try {
       await api("/api/v1/auth/login", { method: "POST", body: name ? { name, password } : { password } });
@@ -22,7 +26,22 @@ export function LoginPage() {
     } catch (err: any) {
       setError(err?.message ?? "Login failed.");
     } finally {
-      setBusy(false);
+      setBusy("");
+    }
+  }
+
+  async function submitSetup(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy("setup");
+    setError("");
+    try {
+      await api("/api/v1/auth/setup", { method: "POST", body: { code, password } });
+      await auth.refetch();
+      window.location.assign("/shop");
+    } catch (err: any) {
+      setError(err?.message ?? "Setup failed. Request a code with the local bootstrap command.");
+    } finally {
+      setBusy("");
     }
   }
 
@@ -30,13 +49,23 @@ export function LoginPage() {
     <Card className="mx-auto max-w-md" >
       <div id="auth-screen">
       <img src="/wesort-lockup.svg" alt="WeSort" className="auth-logo mb-2 h-10" />
-      <h1 className="mb-2 text-xl font-semibold">Log in</h1>
+      <h1 className="mb-2 text-xl font-semibold">{setupNeeded ? "First-run setup" : "Log in"}</h1>
+      {setupNeeded ? (
+      <form onSubmit={submitSetup} className="flex flex-col gap-2">
+        <p className="text-sm opacity-80">No owner password is set yet. Enter the setup code from the local bootstrap command and choose a password (min {minLength} chars).</p>
+        <label>Setup code <Input id="auth-code" value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" required /></label>
+        <label>Owner password <Input id="auth-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" required /></label>
+        {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
+        <Button id="auth-submit" type="submit" disabled={busy !== ""}>{busy === "setup" ? "Setting up…" : "Create owner"}</Button>
+      </form>
+      ) : (
       <form onSubmit={submit} className="flex flex-col gap-2">
         <label>Account name (blank for owner) <Input id="auth-username" value={name} onChange={(e) => setName(e.target.value)} autoComplete="username" /></label>
         <label>Password <Input id="auth-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required /></label>
         {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
-        <Button id="auth-submit" type="submit" disabled={busy}>{busy ? "Logging in…" : "Log in"}</Button>
+        <Button id="auth-submit" type="submit" disabled={busy !== ""}>{busy === "login" ? "Logging in…" : "Log in"}</Button>
       </form>
+      )}
       <Disclaimer id="minecraft-disclaimer-login" />
       </div>
     </Card>

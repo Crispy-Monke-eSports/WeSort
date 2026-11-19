@@ -9,7 +9,7 @@ COPY stash-manager-server/build.gradle.kts stash-manager-server/settings.gradle.
 COPY common/ common/
 COPY stash-manager-server/src/ stash-manager-server/src/
 COPY LICENSE ./
-RUN --mount=type=cache,target=/root/.gradle ./gradlew --no-daemon --init-script gradle/ci-maven-central-mirror.init.gradle -p stash-manager-server clean build
+RUN --mount=type=cache,target=/root/.gradle ./gradlew --no-daemon --init-script /workspace/gradle/ci-maven-central-mirror.init.gradle -p stash-manager-server clean build
 
 # Java 21.0.13+9 runtime; tested independently from the frozen build JDK.
 FROM eclipse-temurin:21-jre-jammy@sha256:dff6eb46527bd293a3c06bbbe9e64e8c9f91f01905b5abbdad31761c03059d2c AS runtime

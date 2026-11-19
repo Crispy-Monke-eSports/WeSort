@@ -27,6 +27,10 @@ final class UiIcons {
         m.put("minecraft:chest", "Chest");
         m.put("minecraft:writable_book", "Book and Quill");
         m.put("minecraft:shulker_box", "Shulker Box");
+        // Navigation icons (same row as the tabs): always allowed, no published index needed.
+        m.put("minecraft:player_head", "Player Head");
+        m.put("minecraft:clock", "Clock");
+        m.put("minecraft:crafting_table", "Crafting Table");
         for (String c : new String[] {
             "white",
             "orange",

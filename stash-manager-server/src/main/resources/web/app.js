@@ -67,8 +67,6 @@
     sort: $("sort"),
     summary: $("summary"),
     tooltip: $("tooltip"),
-    tabs: $("tabs"),
-    tabsRight: $("tabs-right"),
     panelLabel: $("panel-label"),
     viewItems: $("view-items"),
     viewOrders: $("view-orders"),
@@ -128,8 +126,8 @@
     sudoBox: $("sudo-box"),
     sudoText: $("sudo-text"),
     sudoLock: $("sudo-lock"),
+    app: $("app"),
     inventory: $("inventory"),
-    tabsWrap: $("tabs-wrap"),
     pageBots: $("page-bots"),
     pageSettings: $("page-settings"),
     dashNav: $("dash-nav"),
@@ -201,10 +199,8 @@
     items: [],            // entries in index order: { item, slot, img, countEl, glint, hay, ns, ... }
     byKey: new Map(),     // item key -> entry, kept across index refreshes
     shown: [],            // entries currently in the grid, in display order
-    shulkers: [],         // shulker group entries (the Shulkers tab), same shape as item entries
-    tab: "all",           // selected tab id
-    sortAll: "count",     // sort used in the Search/All and Shulkers tabs
-    sortTab: "creative",  // sort used inside creative tabs
+    shulkers: [],         // filled shulker kinds, same shape as item entries
+    sortAll: "count",     // grid sort order
     mc: DEFAULT_MC,       // the loaded index's Minecraft version (for icon URLs)
     hovered: null,        // entry under the cursor
     mouse: { x: 0, y: 0, over: false },
@@ -407,6 +403,9 @@
     auth.blocked = true;
     auth.mode = mode;
     hideTooltip();
+    // The shell stays hidden until the auth state is known, so the normal
+    // panel never flashes before the login screen.
+    el.app.hidden = false;
     if (typeof closeWindow === "function") closeWindow();
     if (link.open) closeLink();
     el.authScreen.hidden = false;
@@ -450,6 +449,7 @@
     var first = !auth.started;
     auth.blocked = false;
     auth.started = true;
+    el.app.hidden = false;
     el.authScreen.hidden = true;
     el.authPassword.value = "";
     el.authNext.value = "";
@@ -458,7 +458,7 @@
     applyPerms(false);
     loadGuildProfile();
     if (first) {
-      renderTabs();
+      decorateNavIcons();
       showPage(dash.page);
     } else {
       retryIcons();
@@ -470,8 +470,7 @@
 
   /** Icons that failed while logged out are asked for again. */
   function retryIcons() {
-    tabsShown = ""; // rebuild the tab buttons, whose icons may have failed too
-    renderTabs();
+    decorateNavIcons();
     var all = [];
     state.byKey.forEach(function (e) { all.push(e); });
     if (state.shulkerByKey) state.shulkerByKey.forEach(function (e) { all.push(e); });
@@ -761,7 +760,7 @@
         button.textContent = label;
         button.addEventListener("click", function () {
           selectStash(key);
-          selectTab("all");
+          showView(false);
           el.search.value = "=" + (item.key || item.id);
           queueRender(0);
           el.search.focus();
@@ -926,7 +925,6 @@
         state.loadedWant = want;
         updateItems(index);
         if (!sameStash) onStashChanged();
-        renderTabs();
         renderNow();
         updateHeader();
         refreshOrdersView();
@@ -1292,7 +1290,6 @@
     state.shown = [];
     state.shulkers = [];
     state.shulkerByKey = new Map();
-    renderTabs();
     el.grid.replaceChildren();
     hideTooltip();
     updateSummary(0, 0);
@@ -1663,22 +1660,15 @@
     window.clearTimeout(state.searchTimer);
     state.searchTimer = 0;
     var query = parseQuery(el.search.value);
-    var sortName = el.sort.value;
-    if (state.tab === "shulkers" && sortName === "creative") sortName = "count";
-    var sorter = sorters[sortName] || sorters.count;
-    var source = tabEntries(state.tab);
+    var sorter = sorters[el.sort.value] || sorters.count;
+    var source = state.items;
     var shown;
-    if (state.tab === "shulkers") {
-      shown = source.filter(function (e) { return matches(e, query); });
-      shown.sort(sorter);
-    } else {
-      // A shulker-box item stays in the list (as the anchor for its filled groups) when only a group matches.
-      shown = source.filter(function (e) {
-        return matches(e, query) || (e.filledGroups && e.filledGroups.some(function (g) { return matches(g, query); }));
-      });
-      shown.sort(sorter);
-      shown = withFilledGroups(shown, query);
-    }
+    // A shulker-box item stays in the list (as the anchor for its filled groups) when only a group matches.
+    shown = source.filter(function (e) {
+      return matches(e, query) || (e.filledGroups && e.filledGroups.some(function (g) { return matches(g, query); }));
+    });
+    shown.sort(sorter);
+    shown = withFilledGroups(shown, query);
     var total = 0;
     for (var i = 0; i < shown.length; i++) total += slotCount(shown[i]);
 
@@ -1707,12 +1697,10 @@
     state.searchTimer = window.setTimeout(renderNow, delay || 0);
   }
 
-  /** How many slots the current tab has without a search (filled shulker groups count as their own slots). */
+  /** How many slots the stash has without a search (filled shulker groups count as their own slots). */
   function tabSlotCount() {
-    var source = tabEntries(state.tab);
-    if (state.tab === "shulkers") return source.length;
     var n = 0;
-    source.forEach(function (e) {
+    state.items.forEach(function (e) {
       n += e.filledGroups ? (e.emptyCount > 0 ? 1 : 0) + e.filledGroups.length : 1;
     });
     return n;
@@ -1724,9 +1712,8 @@
       el.summary.textContent = "";
       return;
     }
-    var what = state.tab === "shulkers" ? " filled shulker kinds \u00b7 total " : " slots \u00b7 total ";
-    el.summary.textContent = "Showing " + grouped(shownCount) + " of " + grouped(all) + what +
-      grouped(shownTotal || 0) + (state.tab === "shulkers" ? " shulkers" : " items");
+    el.summary.textContent = "Showing " + grouped(shownCount) + " of " + grouped(all) +
+      " slots · total " + grouped(shownTotal || 0) + " items";
   }
 
   // ---------- tooltip ----------
@@ -2058,47 +2045,15 @@
     { id: "op_blocks", name: "Operator Utilities", icon: "minecraft:command_block" },
     { id: "other", name: "Other", icon: "minecraft:chest" }
   ];
-  var TAB_ALL = { id: "all", name: "Search", icon: "minecraft:compass" };
-  var TAB_SHULKERS = { id: "shulkers", name: "Shulkers", icon: "minecraft:shulker_box" };
-  var TAB_ORDERS = { id: "orders", name: "Orders", icon: "minecraft:writable_book" };
   var TAB_INDEX = {};
   CREATIVE_TABS.forEach(function (t, i) { TAB_INDEX[t.id] = i; });
-
-  var tabsShown = "";
-
-  function isCreativeTab(id) {
-    return TAB_INDEX.hasOwnProperty(id);
-  }
 
   function isShulkerBoxId(id) {
     return /^minecraft:([a-z_]+_)?shulker_box$/.test(id);
   }
 
   function tabInfo(id) {
-    if (id === "all") return TAB_ALL;
-    if (id === "shulkers") return TAB_SHULKERS;
-    if (id === "orders") return TAB_ORDERS;
-    return CREATIVE_TABS[TAB_INDEX[id]] || TAB_ALL;
-  }
-
-  /** The tabs to show: Search, the creative tabs that have items, Shulkers (if any are filled), then Orders. */
-  function visibleTabs() {
-    var present = {};
-    for (var i = 0; i < state.items.length; i++) present[state.items[i].item.tab] = true;
-    var out = [TAB_ALL];
-    CREATIVE_TABS.forEach(function (t) {
-      if (present[t.id]) out.push(t);
-    });
-    if (state.shulkers.length) out.push(TAB_SHULKERS);
-    out.push(TAB_ORDERS);
-    return out;
-  }
-
-  /** The entries a tab shows (before search). */
-  function tabEntries(id) {
-    if (id === "shulkers") return state.shulkers;
-    if (id === "all" || id === "orders") return state.items;
-    return state.items.filter(function (e) { return e.item.tab === id; });
+    return CREATIVE_TABS[TAB_INDEX[id]] || CREATIVE_TABS[0];
   }
 
   /** A small icon <img> for tabs, buttons and cart lines, with the same 503 retry as the grid. */
@@ -2124,53 +2079,35 @@
     return img;
   }
 
-  function renderTabs() {
-    var tabs = visibleTabs();
-    var ids = tabs.map(function (t) { return t.id; });
-    if (ids.indexOf(state.tab) < 0) state.tab = "all";
-    var signature = ids.join(",") + "|" + state.mc;
-    if (signature !== tabsShown) {
-      tabsShown = signature;
-      var left = document.createDocumentFragment();
-      var right = document.createDocumentFragment();
-      tabs.forEach(function (t) {
-        var b = document.createElement("button");
-        b.type = "button";
-        b.className = "tab" + (t.id === "orders" ? " tab-orders" : "");
-        b.setAttribute("role", "tab");
-        b.dataset.tab = t.id;
-        b.title = t.name;
-        b.setAttribute("aria-label", t.name);
-        b.appendChild(iconImg(t.icon, 32));
-        b.addEventListener("click", function () { selectTab(t.id); });
-        (t.id === "orders" ? right : left).appendChild(b);
-      });
-      el.tabs.replaceChildren(left);
-      el.tabsRight.replaceChildren(right);
-    }
-    var buttons = document.querySelectorAll(".tab");
-    for (var i = 0; i < buttons.length; i++) {
-      var on = buttons[i].dataset.tab === state.tab;
-      buttons[i].classList.toggle("selected", on);
-      buttons[i].setAttribute("aria-selected", on ? "true" : "false");
-    }
-    el.panelLabel.textContent = state.tab === "all" ? "Search Items" : tabInfo(state.tab).name;
+  /** One Minecraft item icon per Pages nav entry, matching the tab style (icon + label). */
+  var NAV_ICONS = {
+    stash: "minecraft:chest",
+    orders: "minecraft:writable_book",
+    bots: "minecraft:player_head",
+    activity: "minecraft:clock",
+    settings: "minecraft:crafting_table"
+  };
+
+  function decorateNavIcons() {
+    Object.keys(NAV_ICONS).forEach(function (page) {
+      var btn = document.querySelector('.nav-btn[data-page="' + page + '"]');
+      if (!btn) return;
+      var old = btn.querySelector("img.icon");
+      if (old) old.remove();
+      var icon = iconImg(NAV_ICONS[page], 20);
+      icon.setAttribute("aria-hidden", "true");
+      btn.insertBefore(icon, btn.firstChild);
+    });
   }
 
-  function selectTab(id) {
-    if (id === "orders" || dash.page === "orders") {
-      dash.page = id === "orders" ? "orders" : "stash";
-      var navs = el.dashNav.querySelectorAll(".nav-btn");
-      for (var n = 0; n < navs.length; n++) navs[n].classList.toggle("selected", navs[n].dataset.page === dash.page);
-    }
-    if (id === state.tab) return;
-    state.tab = id;
+  /** Switch the inventory main between search results and the order view. The single Pages nav
+      calls this; there are no tab buttons anymore. */
+  function showView(orders) {
     hideTooltip();
-    var orders = id === "orders";
     el.viewItems.hidden = orders;
     el.viewOrders.hidden = !orders;
+    el.panelLabel.textContent = "Search Items";
     if (!orders) {
-      el.sort.value = isCreativeTab(id) ? state.sortTab : state.sortAll;
       el.gridWrap.scrollTop = 0;
       renderNow();
     } else {
@@ -2178,21 +2115,7 @@
       renderCart();
       scheduleOrdersPoll(0);
     }
-    renderTabs();
   }
-
-  // Left/right arrows switch tabs when no text field has focus and no window is open.
-  document.addEventListener("keydown", function (e) {
-    if ((e.key !== "ArrowLeft" && e.key !== "ArrowRight") || e.altKey || e.ctrlKey || e.metaKey) return;
-    var a = document.activeElement;
-    if (a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.tagName === "SELECT")) return;
-    if (currentWindow || link.open || !state.items.length || (dash.page !== "stash" && dash.page !== "orders")) return;
-    var ids = visibleTabs().map(function (t) { return t.id; });
-    var i = ids.indexOf(state.tab);
-    var next = ids[(i + (e.key === "ArrowRight" ? 1 : ids.length - 1)) % ids.length];
-    e.preventDefault();
-    selectTab(next);
-  });
 
   // ---------- shulker groups ----------
 
@@ -2836,7 +2759,7 @@
     plan.fullCount = -1;
     resetNames();
     el.cartStatus.textContent = "";
-    if (state.tab === "orders") {
+    if (dash.page === "orders") {
       renderPicker();
       renderCart();
     }
@@ -2845,9 +2768,9 @@
     scheduleOrdersPoll(0);
   }
 
-  /** Re-renders the parts of the Orders tab that depend on the index (after every index refresh). */
+  /** Re-renders the parts of the Orders view that depend on the index (after every index refresh). */
   function refreshOrdersView() {
-    if (state.tab !== "orders") return;
+    if (dash.page !== "orders") return;
     if (!el.pickerBody.contains(document.activeElement) && !drag.pe) renderPicker();
     else updatePickerCounts();
     renderCart();
@@ -3103,7 +3026,7 @@
         dlv.key = key;
         dlv.hash = null;
         dlv.data = null;
-        if (state.tab === "orders") renderCart();
+        if (dash.page === "orders") renderCart();
       }
       return;
     }
@@ -3115,7 +3038,7 @@
       dlv.key = key;
       dlv.hash = hash;
       dlv.data = d && typeof d === "object" && Array.isArray(d.chests) ? d : null;
-      if (state.tab === "orders") renderCart();
+      if (dash.page === "orders") renderCart();
     }, function () {});
   }
 
@@ -3759,7 +3682,7 @@
   }
 
   function pickerTypes() {
-    var out = visibleTabs().filter(function (t) { return isCreativeTab(t.id); });
+    var out = CREATIVE_TABS.slice();
     if (state.shulkers.length) out.push({ id: "packed", name: "Shulker boxes (packed)", icon: "minecraft:shulker_box" });
     return out;
   }
@@ -3886,7 +3809,7 @@
     wrap.appendChild(search);
 
     var packed = picker.type === "packed";
-    var source = packed ? state.shulkers : tabEntries(picker.type);
+    var source = packed ? state.shulkers : state.items.filter(function (e) { return e.item.tab === picker.type; });
     var query = parseQuery(picker.search);
     var list = source.filter(function (e) { return matches(e, query); }).slice();
     list.sort(packed ? sorters.count : sorters.creative);
@@ -4043,7 +3966,7 @@
 
   function pollOrders() {
     var s = currentStash();
-    var next = state.tab === "orders" && !document.hidden ? 3000 : 15000;
+    var next = dash.page === "orders" && !document.hidden ? 3000 : 15000;
     if (!s || orders.loading || auth.blocked) {
       scheduleOrdersPoll(next);
       return;
@@ -4059,7 +3982,7 @@
         orders.available = available;
         renderOrderList();
         // Only redraw the cart and picker when availability changed, and never under the user's cursor/focus.
-        if (state.tab === "orders" && changed) {
+        if (dash.page === "orders" && changed) {
           if (!el.cartLines.contains(document.activeElement)) renderCart();
           updatePickerCounts();
         }
@@ -4068,7 +3991,7 @@
       })
       .then(function () {
         orders.loading = false;
-        scheduleOrdersPoll(state.tab === "orders" && !document.hidden ? 3000 : 15000);
+        scheduleOrdersPoll(dash.page === "orders" && !document.hidden ? 3000 : 15000);
       });
   }
 
@@ -4119,7 +4042,7 @@
   /** Step 4 (W-031/W-059): show the member's own remaining withdrawal quotas, if any are configured. */
   function loadQuotaUsage() {
     var holder = $("quota-usage");
-    if (!holder || state.tab !== "orders") return;
+    if (!holder || dash.page !== "orders") return;
     var now = Date.now();
     if (now - quotaUsageAt < 30000) return;
     quotaUsageAt = now;
@@ -4379,7 +4302,7 @@
   }
 
   document.addEventListener("visibilitychange", function () {
-    if (!document.hidden && state.tab === "orders") scheduleOrdersPoll(0);
+    if (!document.hidden && dash.page === "orders") scheduleOrdersPoll(0);
   });
 
   // ---------- dashboard: pages, bot picker ----------
@@ -4435,15 +4358,13 @@
     var inventory = page === "stash" || page === "orders";
     dash.page = page;
     el.inventory.hidden = !inventory;
-    el.tabsWrap.hidden = !inventory;
     el.pageBots.hidden = page !== "bots";
     el.pageSettings.hidden = page !== "settings";
     el.pageActivity.hidden = page !== "activity";
     var navs = el.dashNav.querySelectorAll(".nav-btn");
     for (var i = 0; i < navs.length; i++) navs[i].classList.toggle("selected", navs[i].dataset.page === page);
     hideTooltip();
-    if (page === "orders") selectTab("orders");
-    else if (page === "stash" && state.tab === "orders") selectTab("all");
+    showView(page === "orders");
     if (page === "bots") renderDashBots();
     window.clearTimeout(dash.cTimer);
     settingsForm.stop();
@@ -7382,8 +7303,7 @@
   $("stock-search").addEventListener("input", renderGuildBalances);
   el.search.addEventListener("input", function () { queueRender(SEARCH_DEBOUNCE_MS); });
   el.sort.addEventListener("change", function () {
-    if (isCreativeTab(state.tab)) state.sortTab = el.sort.value;
-    else state.sortAll = el.sort.value;
+    state.sortAll = el.sort.value;
     queueRender(0);
   });
   el.search.addEventListener("keydown", function (e) {
@@ -7405,5 +7325,5 @@
   // The owner may change this user's permissions (or disable the account) at any time.
   window.setInterval(function () { if (!auth.blocked) refreshSudo(); }, 30000);
   el.sort.value = state.sortAll;
-  checkAuth(); // renders the tabs once logged in (their icons need the session)
+  checkAuth(); // renders the nav once logged in
 })();

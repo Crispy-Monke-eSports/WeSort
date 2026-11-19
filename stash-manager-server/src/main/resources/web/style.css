@@ -83,7 +83,6 @@ html[data-theme="classic"] .auth-screen {
 .header .account { order: 12; }
 .header .info-row { order: 20; flex: 1 1 100%; }
 .header .conflict-warn { order: 21; flex: 1 1 100%; }
-.header .dash-nav { order: 22; flex: 1 1 100%; }
 
 .title {
   margin: 0;
@@ -519,48 +518,7 @@ html[data-theme="classic"] .auth-screen {
 }
 .setting-status.ok:empty { background: none; padding: 0; }
 
-/* ---------- creative-inventory tabs ---------- */
-
-.tabs-wrap {
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
-  /* The tabs overlap the panel's top border so the selected one joins the panel, as in the creative menu. */
-  margin-bottom: -12px;
-  padding: 0 8px;
-  position: relative;
-  z-index: 2;
-}
-.tabs { display: flex; gap: 2px; flex-wrap: wrap; align-items: flex-end; }
-.tabs-right { margin-left: auto; }
-
-.tab {
-  width: 52px;
-  height: 52px;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  /* Unselected: an inner tile, sitting lower, behind the panel edge. */
-  background: var(--surface-2);
-  border: var(--border-w) solid var(--border);
-  border-bottom: none;
-  border-radius: var(--radius) var(--radius) 0 0;
-  margin-top: 6px;
-  cursor: pointer;
-}
-.tab .icon { width: 32px; height: 32px; image-rendering: pixelated; pointer-events: none; }
-.tab:hover { border-color: var(--accent); }
-.tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; }
-.tab.selected {
-  background: var(--surface);
-  height: 58px;
-  margin-top: 0;
-  position: relative;
-  z-index: 3;
-}
-.tab-orders { background: color-mix(in srgb, var(--accent) 25%, var(--surface-2)); }
-.tab-orders.selected { background: var(--surface); }
+/* ---------- inventory views (orders vs. search) ---------- */
 
 .view { display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; min-height: 0; }
 .view[hidden] { display: none; }
@@ -1030,6 +988,15 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
   border-color: transparent;
   border-radius: var(--pill);
   box-shadow: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.dash-nav .nav-btn img.icon {
+  width: 20px;
+  height: 20px;
+  image-rendering: pixelated;
+  pointer-events: none;
 }
 .dash-nav .nav-btn:hover { border-color: var(--nav-text); }
 .dash-nav .nav-btn:focus-visible { outline: 2px solid var(--nav-active); outline-offset: 1px; }
@@ -1039,7 +1006,7 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
   border-color: var(--nav-active);
   font-weight: 700;
 }
-.tabs-wrap[hidden], .inventory[hidden], .dash-page[hidden] { display: none; }
+.inventory[hidden], .dash-page[hidden] { display: none; }
 .dash-page { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
 .dash-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .dash-actions { display: flex; align-items: center; gap: 8px; }
@@ -1535,7 +1502,7 @@ html.streamer .sv-hidden { display: inline; color: var(--muted); font-style: ita
     gap: 10px;
     padding: 0 0 calc(var(--bnav-h) + env(safe-area-inset-bottom) + 16px);
   }
-  .status-chips, .conflict-warn, .info-row, .tabs-wrap, .inventory, .dash-page {
+  .status-chips, .conflict-warn, .info-row, .inventory, .dash-page {
     margin-left: calc(8px + env(safe-area-inset-left));
     margin-right: calc(8px + env(safe-area-inset-right));
   }
@@ -1734,7 +1701,6 @@ html.streamer .sv-hidden { display: inline; color: var(--muted); font-style: ita
   .inventory, .dash-page, .grid-wrap, .view-orders, .proxy-page, .proxy-side, .proxy-body { overflow: visible; }
   .inventory, .dash-page, .grid-wrap { flex: none; min-height: 0; }
   .proxy-cols { flex: none; }
-  .tabs-wrap { padding: 0 2px; }
 
   /* ----- 8. stash tab ----- */
   #item-grid { grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); grid-auto-rows: auto; }

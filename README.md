@@ -101,6 +101,29 @@ för att inte blockera CI innan en separat formatmigrering har genomförts.
 Kör inte `spotlessApply` över hela projektet i en vanlig funktions-PR
 utan att granska diffen först.
 
+### Automatisk formatering i GitHub Actions
+
+Workflowen [`autofix.ci`](.github/workflows/autofix.yml) kör
+`spotlessApply` följt av `spotlessCheck` för båda Gradle-byggena.
+Den inkluderar även Java-verktyget under `tools/mc26-toolchain/src/` via
+rotprojektet. Genererad kod lämnas orörd.
+
+- **Pull requests mot `main`:** [autofix.ci](https://autofix.ci/) får
+  formatteringsdiffen och skapar en rättningscommit i PR-grenen.
+  Formatkontrollen blir röd på den ursprungliga committen och går igen
+  på rättningscommitten. Workflowens PR-jobb har endast läsrättigheter.
+- **`main`:** vid varje push (eller manuell `workflow_dispatch`) formateras
+  Java-koden. Eventuella avvikelser skapar automatiskt en separat commit
+  direkt på `main` via GitHub Actions `GITHUB_TOKEN`, utan force-push.
+  Jobbet har skrivrättigheter endast på `main`.
+
+Observera att commit skapad via `GITHUB_TOKEN` normalt inte utlöser nya
+`push`-workflows. Därför kör arbetsflödet `spotlessCheck` **innan**
+det committar ändringarna. Om `main` skyddas med branch rules som nekar
+GitHub Actions att pusha kommer auto-commit att misslyckas tills rätt
+behörighet ges. Fullständig massformatering kan inträffa första gången
+workflowen körs efter merge.
+
 ## Avgränsning och fortsatt arbete
 
 Guildidentitet, SELF/GUILD-order, reservationer, kvoter (av som standard),

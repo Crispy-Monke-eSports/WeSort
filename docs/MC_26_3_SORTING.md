@@ -72,7 +72,7 @@ kontrollerar namngivet skadat enchanted gear, slang, potions, delvis/full
 mottagare, misc och osignerad overflow, excluded och skyddad kitbox, Tiers,
 helt fullt lager samt samverkan med signerad Manager-reservation.
 
-CI kör samma skript i `mc26-sorting.yml`. Lokala rapporter under
+CI kör samma skript i `ci.yml` → `_mc26-e2e.yml` (sorting job). Lokala rapporter under
 `docs/verification` och hosted CI-resultat är separata bevis. Inga befintliga
 användarvärldar eller Qwerte-data används.
 

@@ -309,6 +309,15 @@ html[data-theme="classic"] .auth-screen {
   gap: 8px;
 }
 
+/* The single central search box above guild stock and stash contents. */
+.central-search {
+  width: 100%;
+  flex: 0 0 auto;
+  font-size: 16px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+
 /* Inputs and selects: inner tiles. */
 .mc-input, .mc-select {
   font-family: var(--font);

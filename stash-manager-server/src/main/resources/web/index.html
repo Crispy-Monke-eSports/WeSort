@@ -91,6 +91,7 @@
 
     <main class="panel inventory" id="inventory">
       <div class="panel-label" id="panel-label">Search</div>
+      <input id="search" class="mc-input central-search" type="search" aria-label="Search guild stock and stash" placeholder="Search guild stock and stash (e.g. diamond sword, @minecraft)" autocomplete="off" spellcheck="false">
 
       <div class="view view-items" id="view-items">
         <details class="guild-stock" id="guild-stock" open>
@@ -98,7 +99,6 @@
           <p id="guild-description-view" hidden></p>
           <p id="stock-status" role="status">Loading verified stock…</p>
           <p>Available counts exclude reserved and unverified items.</p>
-          <input id="stock-search" class="mc-input" type="search" aria-label="Search guild stock" placeholder="Search guild stock" autocomplete="off" spellcheck="false">
           <table><thead><tr><th>Server</th><th>Item</th><th>Observed</th><th>Reserved</th><th>Available</th><th>Unknown</th></tr></thead><tbody id="stock-balances"></tbody></table>
           <details id="stock-per-stash"><summary>Stock per stash</summary><table><thead><tr><th>Stash</th><th>Item</th><th>Observed</th><th>Reserved</th><th>Available</th><th>Unknown</th></tr></thead><tbody id="stock-stashes"></tbody></table></details>
           <details id="stock-source-details"><summary>Physical sources</summary><ul id="stock-sources"></ul></details>
@@ -110,7 +110,6 @@
           </div>
         </div>
         <div class="toolbar">
-          <input id="search" class="mc-input" type="search" aria-label="Search selected stash" placeholder="Search stash (e.g. diamond sword, @minecraft)" autocomplete="off" spellcheck="false">
           <select id="sort" class="mc-select" aria-label="Sort">
             <option value="creative">Creative order</option>
             <option value="count">Count</option>

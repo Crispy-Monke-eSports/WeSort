@@ -731,7 +731,7 @@
       status.textContent = "Stock unavailable. Availability cannot be confirmed.";
       return;
     }
-    var query = parseQuery($("stock-search").value);
+    var query = parseQuery(el.search.value);
     function matchesStock(item) {
       var id = str(item.id);
       return matches({ item: item, ns: id.split(":")[0], hay: [item.name, id, item.key].join("\n").toLowerCase() }, query);
@@ -7300,8 +7300,7 @@
 
   // ---------- controls ----------
 
-  $("stock-search").addEventListener("input", renderGuildBalances);
-  el.search.addEventListener("input", function () { queueRender(SEARCH_DEBOUNCE_MS); });
+  el.search.addEventListener("input", function () { queueRender(SEARCH_DEBOUNCE_MS); renderGuildBalances(); });
   el.sort.addEventListener("change", function () {
     state.sortAll = el.sort.value;
     queueRender(0);

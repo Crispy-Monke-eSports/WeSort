@@ -6,7 +6,6 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import com.sun.net.httpserver.HttpExchange;
-
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -43,8 +42,8 @@ final class DashboardRoutes {
     void register(Router router) {
         // Every bot route needs the Bots view; settings, proxy and console levels are checked below.
         router.exact(Router.GET, "/api/v1/bots", Router.Guard.SESSION, Router.Perm.ACTIVITY, this::list)
-            .pattern(Router.GET, BOT, Router.Guard.SESSION, Router.Perm.ACTIVITY, this::get)
-            .pattern(Router.POST, BOT, Router.Guard.BROWSER_WRITE, Router.Perm.ACTIVITY, this::post);
+                .pattern(Router.GET, BOT, Router.Guard.SESSION, Router.Perm.ACTIVITY, this::get)
+                .pattern(Router.POST, BOT, Router.Guard.BROWSER_WRITE, Router.Perm.ACTIVITY, this::post);
     }
 
     // ---------- list ----------
@@ -86,7 +85,9 @@ final class DashboardRoutes {
             }
             // Its stashes: the ones this player owns or last used.
             JsonArray mine = new JsonArray();
-            String player = o.has("player") && !o.get("player").isJsonNull() ? o.get("player").getAsString() : null;
+            String player = o.has("player") && !o.get("player").isJsonNull()
+                    ? o.get("player").getAsString()
+                    : null;
             if (player != null) {
                 for (JsonElement e : stashes) {
                     JsonObject s = e.getAsJsonObject();
@@ -94,8 +95,11 @@ final class DashboardRoutes {
                     String stash = s.get("stash").getAsString();
                     if (active != null && !server.equals(active.server())) continue;
                     String owner = owners.owner(server, stash);
-                    String used = s.has("player") && !s.get("player").isJsonNull() ? s.get("player").getAsString() : null;
-                    if (player.equalsIgnoreCase(owner != null ? owner : used == null ? "" : used) && perms.seesStash(server, stash)) {
+                    String used = s.has("player") && !s.get("player").isJsonNull()
+                            ? s.get("player").getAsString()
+                            : null;
+                    if (player.equalsIgnoreCase(owner != null ? owner : used == null ? "" : used)
+                            && perms.seesStash(server, stash)) {
                         JsonObject ref = new JsonObject();
                         ref.addProperty("server", server);
                         ref.addProperty("stash", stash);
@@ -139,8 +143,14 @@ final class DashboardRoutes {
         // Forced streamer mode: only the (redacted) activity. Settings values, job results and the console can hold
         // positions and names.
         if (!m.group(2).equals("activity")) {
-            if (Redact.on(ex)) { streamerForbid(ex); return; }
-            if (!perms(ex).positions()) { Router.forbid(ex, "read agent settings and job details", "positions"); return; }
+            if (Redact.on(ex)) {
+                streamerForbid(ex);
+                return;
+            }
+            if (!perms(ex).positions()) {
+                Router.forbid(ex, "read agent settings and job details", "positions");
+                return;
+            }
         }
         BotHub.Bot b = bot(ex, m);
         if (b == null) return;
@@ -149,11 +159,19 @@ final class DashboardRoutes {
             case "activity" -> {
                 // Read-only status: a login is enough (no sudo).
                 hub.watchActivity(b);
-                Http.json(ex, 200, Redact.on(ex) || !perms(ex).positions() ? Redact.activity(hub.activityJson(b)) : hub.activityJson(b));
+                Http.json(
+                        ex,
+                        200,
+                        Redact.on(ex) || !perms(ex).positions()
+                                ? Redact.activity(hub.activityJson(b))
+                                : hub.activityJson(b));
             }
             case "settings" -> {
                 String scope = q.getOrDefault("scope", "plugin");
-                if (!scope.equals("plugin")) { Http.error(ex, 404, "scope not found"); return; }
+                if (!scope.equals("plugin")) {
+                    Http.error(ex, 404, "scope not found");
+                    return;
+                }
                 getSettings(ex, b, scope);
             }
             case "jobs" -> {
@@ -222,7 +240,10 @@ final class DashboardRoutes {
             streamerForbid(ex);
             return;
         }
-        if (!perms(ex).positions()) { Router.forbid(ex, "change agent settings", "positions"); return; }
+        if (!perms(ex).positions()) {
+            Router.forbid(ex, "change agent settings", "positions");
+            return;
+        }
 
         BotHub.Bot b = bot(ex, m);
         if (b == null) return;
@@ -233,7 +254,6 @@ final class DashboardRoutes {
         }
         JsonObject o = json.getAsJsonObject();
         if (m.group(2).equals("settings")) postSettings(ex, b, o);
-
     }
 
     private static void pathError(HttpExchange ex, int status, String message, String path) throws IOException {
@@ -271,8 +291,10 @@ final class DashboardRoutes {
             Http.error(ex, 409, "no settings from this bot yet");
             return;
         }
-        if (!o.has("changes") || !o.get("changes").isJsonArray() || o.getAsJsonArray("changes").isEmpty()
-            || o.getAsJsonArray("changes").size() > MAX_CHANGES) {
+        if (!o.has("changes")
+                || !o.get("changes").isJsonArray()
+                || o.getAsJsonArray("changes").isEmpty()
+                || o.getAsJsonArray("changes").size() > MAX_CHANGES) {
             Http.error(ex, 400, "changes must be a list of 1-" + MAX_CHANGES + " {path, value, expect}");
             return;
         }
@@ -314,7 +336,8 @@ final class DashboardRoutes {
         }
         List<String> ids = hub.queueSets(b, scope, changes);
         StringBuilder paths = new StringBuilder();
-        for (JsonObject c : changes) paths.append(paths.isEmpty() ? "" : ", ").append(c.get("path").getAsString());
+        for (JsonObject c : changes)
+            paths.append(paths.isEmpty() ? "" : ", ").append(c.get("path").getAsString());
         audit.add(Router.user(ex), "settings.change", b.botId + " " + scope + ": " + paths, AuthRoutes.address(ex));
         JsonObject out = Http.ok();
         JsonArray jobs = new JsonArray();
@@ -341,7 +364,9 @@ final class DashboardRoutes {
         if (value == null || value.isJsonNull()) return flag(node, "nullable") ? null : "a value is required";
         switch (type == null ? "" : type) {
             case "bool" -> {
-                return value.isJsonPrimitive() && value.getAsJsonPrimitive().isBoolean() ? null : "must be true or false";
+                return value.isJsonPrimitive() && value.getAsJsonPrimitive().isBoolean()
+                        ? null
+                        : "must be true or false";
             }
             case "int", "long", "double" -> {
                 if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()) return "must be a number";
@@ -352,13 +377,19 @@ final class DashboardRoutes {
                     return "must be a number";
                 }
                 if (!type.equals("double") && d.stripTrailingZeros().scale() > 0) return "must be a whole number";
-                BigDecimal lo = type.equals("int") ? BigDecimal.valueOf(Integer.MIN_VALUE) : type.equals("long") ? BigDecimal.valueOf(Long.MIN_VALUE) : null;
-                BigDecimal hi = type.equals("int") ? BigDecimal.valueOf(Integer.MAX_VALUE) : type.equals("long") ? BigDecimal.valueOf(Long.MAX_VALUE) : null;
+                BigDecimal lo = type.equals("int")
+                        ? BigDecimal.valueOf(Integer.MIN_VALUE)
+                        : type.equals("long") ? BigDecimal.valueOf(Long.MIN_VALUE) : null;
+                BigDecimal hi = type.equals("int")
+                        ? BigDecimal.valueOf(Integer.MAX_VALUE)
+                        : type.equals("long") ? BigDecimal.valueOf(Long.MAX_VALUE) : null;
                 if (node.has("min")) lo = node.get("min").getAsBigDecimal();
                 if (node.has("max")) hi = node.get("max").getAsBigDecimal();
                 if (type.equals("double") && !Double.isFinite(d.doubleValue())) return "must be a finite number";
-                if (lo != null && d.compareTo(lo) < 0) return "must be at least " + lo.stripTrailingZeros().toPlainString();
-                if (hi != null && d.compareTo(hi) > 0) return "must be at most " + hi.stripTrailingZeros().toPlainString();
+                if (lo != null && d.compareTo(lo) < 0)
+                    return "must be at least " + lo.stripTrailingZeros().toPlainString();
+                if (hi != null && d.compareTo(hi) > 0)
+                    return "must be at most " + hi.stripTrailingZeros().toPlainString();
                 return null;
             }
             case "string" -> {
@@ -366,9 +397,11 @@ final class DashboardRoutes {
                 return value.getAsString().length() > MAX_STRING ? "at most " + MAX_STRING + " characters" : null;
             }
             case "enum" -> {
-                if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) return "must be one of the choices";
+                if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString())
+                    return "must be one of the choices";
                 if (node.has("options")) {
-                    for (JsonElement opt : node.getAsJsonArray("options")) if (opt.getAsString().equals(value.getAsString())) return null;
+                    for (JsonElement opt : node.getAsJsonArray("options"))
+                        if (opt.getAsString().equals(value.getAsString())) return null;
                 }
                 return "must be one of the choices";
             }
@@ -377,8 +410,10 @@ final class DashboardRoutes {
                 JsonArray list = value.getAsJsonArray();
                 if (list.size() > MAX_LIST) return "at most " + MAX_LIST + " entries";
                 for (JsonElement item : list) {
-                    if (!item.isJsonPrimitive() || !item.getAsJsonPrimitive().isString()) return "must be a list of text";
-                    if (item.getAsString().length() > MAX_STRING) return "entries can have at most " + MAX_STRING + " characters";
+                    if (!item.isJsonPrimitive() || !item.getAsJsonPrimitive().isString())
+                        return "must be a list of text";
+                    if (item.getAsString().length() > MAX_STRING)
+                        return "entries can have at most " + MAX_STRING + " characters";
                 }
                 return null;
             }
@@ -392,6 +427,4 @@ final class DashboardRoutes {
         JsonElement e = node.get(f);
         return e instanceof JsonPrimitive p && p.isBoolean() && p.getAsBoolean();
     }
-
-
 }

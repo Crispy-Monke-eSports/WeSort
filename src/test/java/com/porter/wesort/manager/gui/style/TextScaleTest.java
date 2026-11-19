@@ -1,9 +1,9 @@
 package com.porter.wesort.manager.gui.style;
 
-import org.junit.jupiter.api.Test;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import org.junit.jupiter.api.Test;
 
 class TextScaleTest {
     @Test
@@ -32,7 +32,8 @@ class TextScaleTest {
     void textIsNeverSmallerThanOnePixelPerFontPixel() {
         assertEquals(1.0, TextScale.physical(1, 0.6), 1e-9);
         assertEquals(1.0, TextScale.physical(0, 0.6), 1e-9);
-        for (int u = 1; u <= 8; u++) for (TextScale s : TextScale.values()) assertTrue(TextScale.physical(u, s.factor()) >= 1);
+        for (int u = 1; u <= 8; u++)
+            for (TextScale s : TextScale.values()) assertTrue(TextScale.physical(u, s.factor()) >= 1);
     }
 
     @Test

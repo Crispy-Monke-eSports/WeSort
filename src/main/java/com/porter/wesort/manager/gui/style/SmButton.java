@@ -38,7 +38,8 @@ public class SmButton extends WMeteorButton {
         double u = t.unit();
         boolean hot = (mouseOver || pressed) && !t.hoverBlocked();
         int fill = danger ? p.errBg() : primary ? p.accent() : p.surface2();
-        if (hot) fill = Palette.mix(fill, primary ? p.onAccent() : danger ? p.errFg() : p.text(), pressed ? 0.22 : 0.12);
+        if (hot)
+            fill = Palette.mix(fill, primary ? p.onAccent() : danger ? p.errFg() : p.text(), pressed ? 0.22 : 0.12);
         int border = primary ? Palette.mix(p.accent(), p.border(), 0.4) : p.border();
         double bw = p.borderWidth * u;
         double radius = pill && p.radius > 0 ? height / 2 : p.radius * u;

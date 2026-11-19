@@ -22,10 +22,25 @@ import org.junit.jupiter.api.Test;
 class TableFinderTest {
     private static TableFinder.World world(Set<Pos> tables, Pos found, boolean stock, Material craft) {
         return new TableFinder.World() {
-            @Override public boolean isTable(Pos p) { return tables.contains(p); }
-            @Override public Pos search() { return found; }
-            @Override public boolean stockHasTable() { return stock; }
-            @Override public Material craftMaterial() { return craft; }
+            @Override
+            public boolean isTable(Pos p) {
+                return tables.contains(p);
+            }
+
+            @Override
+            public Pos search() {
+                return found;
+            }
+
+            @Override
+            public boolean stockHasTable() {
+                return stock;
+            }
+
+            @Override
+            public Material craftMaterial() {
+                return craft;
+            }
         };
     }
 
@@ -82,11 +97,18 @@ class TableFinderTest {
             assertEquals(Material.PLANKS, TableFinder.material(r, Map.of("minecraft:cherry_planks", 4L), Set.of()), v);
             assertEquals(Material.NONE, TableFinder.material(r, Map.of("minecraft:cherry_planks", 3L), Set.of()), v);
             assertEquals(Material.LOGS, TableFinder.material(r, Map.of("minecraft:spruce_log", 1L), Set.of()), v);
-            assertEquals(Material.LOGS, TableFinder.material(r, Map.of("minecraft:stripped_crimson_stem", 1L), Set.of()), v);
-            assertEquals(Material.PLANKS, TableFinder.material(r, Map.of("minecraft:oak_planks", 5L, "minecraft:oak_log", 3L), Set.of()), v);
+            assertEquals(
+                    Material.LOGS, TableFinder.material(r, Map.of("minecraft:stripped_crimson_stem", 1L), Set.of()), v);
+            assertEquals(
+                    Material.PLANKS,
+                    TableFinder.material(r, Map.of("minecraft:oak_planks", 5L, "minecraft:oak_log", 3L), Set.of()),
+                    v);
             assertEquals(Material.NONE, TableFinder.material(r, Map.of("minecraft:cobblestone", 64L), Set.of()), v);
             // Items on the never-use list are left alone
-            assertEquals(Material.NONE, TableFinder.material(r, Map.of("minecraft:oak_log", 4L), Set.of("minecraft:oak_log")), v);
+            assertEquals(
+                    Material.NONE,
+                    TableFinder.material(r, Map.of("minecraft:oak_log", 4L), Set.of("minecraft:oak_log")),
+                    v);
             assertEquals(Material.NONE, TableFinder.material(null, Map.of("minecraft:oak_planks", 4L), Set.of()), v);
         }
     }
@@ -105,7 +127,8 @@ class TableFinderTest {
     @Test
     void searchesAgainWhenTheRememberedTableIsGone() {
         Pos old = new Pos(1, 64, 1), fresh = new Pos(5, 64, 5);
-        Decision d = TableFinder.decide(new Memory(old, Source.FOUND), world(Set.of(fresh), fresh, false, Material.NONE));
+        Decision d =
+                TableFinder.decide(new Memory(old, Source.FOUND), world(Set.of(fresh), fresh, false, Material.NONE));
         assertTrue(d.forget());
         assertEquals(Step.FOUND, d.step());
         assertEquals(fresh, d.pos());
@@ -120,42 +143,67 @@ class TableFinderTest {
     @Test
     void aSetTableKeepsPriorityAndIsUsedAsIs() {
         Pos set = new Pos(1, 64, 1), other = new Pos(2, 64, 2);
-        Decision d = TableFinder.decide(new Memory(set, Source.SET), world(Set.of(set, other), other, true, Material.PLANKS));
+        Decision d = TableFinder.decide(
+                new Memory(set, Source.SET), world(Set.of(set, other), other, true, Material.PLANKS));
         assertEquals(Step.USE, d.step());
         assertEquals(set, d.pos());
         assertEquals(Source.SET, d.source());
         assertFalse(d.forget());
         // A remembered one keeps how it got there
-        assertEquals(Source.CRAFTED, TableFinder.decide(new Memory(set, Source.CRAFTED), world(Set.of(set), null, false, Material.NONE)).source());
+        assertEquals(
+                Source.CRAFTED,
+                TableFinder.decide(new Memory(set, Source.CRAFTED), world(Set.of(set), null, false, Material.NONE))
+                        .source());
     }
 
     @Test
     void aShortLivedMemoDoesNotPlanAgainWithinItsTime() {
         TableFinder.Memo<String> m = new TableFinder.Memo<>();
         AtomicInteger calls = new AtomicInteger();
-        assertEquals("a", m.get(0, 3_000, () -> { calls.incrementAndGet(); return "a"; }));
-        assertEquals("a", m.get(2_999, 3_000, () -> { calls.incrementAndGet(); return "b"; }));
-        assertEquals("b", m.get(3_000, 3_000, () -> { calls.incrementAndGet(); return "b"; }));
+        assertEquals("a", m.get(0, 3_000, () -> {
+            calls.incrementAndGet();
+            return "a";
+        }));
+        assertEquals("a", m.get(2_999, 3_000, () -> {
+            calls.incrementAndGet();
+            return "b";
+        }));
+        assertEquals("b", m.get(3_000, 3_000, () -> {
+            calls.incrementAndGet();
+            return "b";
+        }));
         m.reset();
-        assertEquals("c", m.get(3_001, 3_000, () -> { calls.incrementAndGet(); return "c"; }));
+        assertEquals("c", m.get(3_001, 3_000, () -> {
+            calls.incrementAndGet();
+            return "c";
+        }));
         assertEquals(3, calls.get());
     }
 
     @Test
     void theSearchIsBoundedAndThrottled() {
-        assertArrayEquals(new int[] { -10, 10 }, TableFinder.span(-10, 10, 0));
+        assertArrayEquals(new int[] {-10, 10}, TableFinder.span(-10, 10, 0));
         int[] wide = TableFinder.span(-500, 500, 100);
         assertEquals(TableFinder.SEARCH_SPAN, wide[1] - wide[0] + 1);
         assertTrue(wide[0] <= 100 && wide[1] >= 100);
         int[] edge = TableFinder.span(0, 1000, 0);
-        assertArrayEquals(new int[] { 0, 127 }, edge);
+        assertArrayEquals(new int[] {0, 127}, edge);
 
         TableFinder.Throttle t = new TableFinder.Throttle();
         AtomicInteger calls = new AtomicInteger();
-        assertNull(t.get(1_000, () -> { calls.incrementAndGet(); return null; }));
-        assertNull(t.get(5_000, () -> { calls.incrementAndGet(); return new Pos(1, 1, 1); }));
+        assertNull(t.get(1_000, () -> {
+            calls.incrementAndGet();
+            return null;
+        }));
+        assertNull(t.get(5_000, () -> {
+            calls.incrementAndGet();
+            return new Pos(1, 1, 1);
+        }));
         assertEquals(1, calls.get());
-        assertEquals(new Pos(1, 1, 1), t.get(11_000, () -> { calls.incrementAndGet(); return new Pos(1, 1, 1); }));
+        assertEquals(new Pos(1, 1, 1), t.get(11_000, () -> {
+            calls.incrementAndGet();
+            return new Pos(1, 1, 1);
+        }));
         assertEquals(2, calls.get());
     }
 }

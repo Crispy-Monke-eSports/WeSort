@@ -6,8 +6,7 @@ package com.porter.wesort.manager.gui.layout;
 public final class GridLayout {
     public static final int SLOT = 18;
 
-    private GridLayout() {
-    }
+    private GridLayout() {}
 
     /** How many whole slots fit across {@code width} with {@code pad} on both sides; at least 1. */
     public static int cols(int width, int pad) {

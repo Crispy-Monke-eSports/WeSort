@@ -1,7 +1,6 @@
 package com.porter.wesort.data;
 
 import com.google.gson.JsonObject;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -15,8 +14,10 @@ public record QuotaRule(String subject, String key, long max, long windowSeconds
     public static final String EVERYONE = "*";
 
     public QuotaRule {
-        if (subject == null || subject.isBlank() || subject.length() > 64) throw new IllegalArgumentException("A quota subject is required");
-        if (key == null || key.isBlank() || key.length() > 512) throw new IllegalArgumentException("A quota key is required");
+        if (subject == null || subject.isBlank() || subject.length() > 64)
+            throw new IllegalArgumentException("A quota subject is required");
+        if (key == null || key.isBlank() || key.length() > 512)
+            throw new IllegalArgumentException("A quota key is required");
         if (max < 1) throw new IllegalArgumentException("A quota max must be at least 1");
         if (windowSeconds < 1) throw new IllegalArgumentException("A quota window must be positive");
     }
@@ -40,7 +41,10 @@ public record QuotaRule(String subject, String key, long max, long windowSeconds
             else if (roles != null && roles.contains(rule.subject())) rank = 1;
             else if (rule.subject().equals(EVERYONE)) rank = 0;
             else continue;
-            if (rank > bestRank) { best = rule; bestRank = rank; }
+            if (rank > bestRank) {
+                best = rule;
+                bestRank = rank;
+            }
         }
         return best;
     }
@@ -49,8 +53,11 @@ public record QuotaRule(String subject, String key, long max, long windowSeconds
         var rules = new ArrayList<QuotaRule>();
         for (var entry : policy.getAsJsonArray("rules")) {
             var rule = entry.getAsJsonObject();
-            rules.add(new QuotaRule(rule.get("subject").getAsString(), rule.get("key").getAsString(),
-                rule.get("max").getAsLong(), rule.get("windowSeconds").getAsLong()));
+            rules.add(new QuotaRule(
+                    rule.get("subject").getAsString(),
+                    rule.get("key").getAsString(),
+                    rule.get("max").getAsLong(),
+                    rule.get("windowSeconds").getAsLong()));
         }
         return rules;
     }

@@ -5,6 +5,9 @@ import com.porter.wesort.compat.ItemIcons;
 import com.porter.wesort.stash.Categories;
 import com.porter.wesort.stash.Stash;
 import com.porter.wesort.stash.Stash.Box;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import meteordevelopment.meteorclient.events.game.GameLeftEvent;
 import meteordevelopment.meteorclient.events.render.Render2DEvent;
 import meteordevelopment.meteorclient.events.render.Render3DEvent;
@@ -21,10 +24,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3d;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-
 /**
  * Shows what each container in the saved stash mostly holds, as an item icon floating on the container. Uses the stash
  * wesort-stash-sorter scanned and keeps up to date, so it needs no scanning of its own.
@@ -33,60 +32,55 @@ public class StashOverlay extends Module {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
     private final Setting<Double> size = sgGeneral.add(new DoubleSetting.Builder()
-        .name("size")
-        .description("How big the icons are, at 6 blocks away.")
-        .defaultValue(3)
-        .min(0.5)
-        .sliderRange(1, 6)
-        .build()
-    );
+            .name("size")
+            .description("How big the icons are, at 6 blocks away.")
+            .defaultValue(3)
+            .min(0.5)
+            .sliderRange(1, 6)
+            .build());
 
     private final Setting<Double> maxScale = sgGeneral.add(new DoubleSetting.Builder()
-        .name("max-grow")
-        .description("How much bigger icons can grow as you get close.")
-        .defaultValue(2.5)
-        .min(1)
-        .sliderRange(1, 5)
-        .build()
-    );
+            .name("max-grow")
+            .description("How much bigger icons can grow as you get close.")
+            .defaultValue(2.5)
+            .min(1)
+            .sliderRange(1, 5)
+            .build());
 
     private final Setting<Double> minScale = sgGeneral.add(new DoubleSetting.Builder()
-        .name("min-shrink")
-        .description("How small icons can shrink far away, so distant containers stay readable.")
-        .defaultValue(0.35)
-        .range(0.05, 1)
-        .sliderRange(0.05, 1)
-        .build()
-    );
+            .name("min-shrink")
+            .description("How small icons can shrink far away, so distant containers stay readable.")
+            .defaultValue(0.35)
+            .range(0.05, 1)
+            .sliderRange(0.05, 1)
+            .build());
 
     private final Setting<Double> height = sgGeneral.add(new DoubleSetting.Builder()
-        .name("height")
-        .description("Where on the container the icon sits: 0 is the bottom, 0.5 the middle, 1 the top.")
-        .defaultValue(0.5)
-        .sliderRange(0, 1.5)
-        .build()
-    );
+            .name("height")
+            .description("Where on the container the icon sits: 0 is the bottom, 0.5 the middle, 1 the top.")
+            .defaultValue(0.5)
+            .sliderRange(0, 1.5)
+            .build());
 
     private final Setting<Boolean> shulkerContents = sgGeneral.add(new BoolSetting.Builder()
-        .name("shulker-contents")
-        .description("For a container mostly full of shulkers, show what the shulkers mostly hold, with a small shulker in the corner.")
-        .defaultValue(true)
-        .build()
-    );
+            .name("shulker-contents")
+            .description(
+                    "For a container mostly full of shulkers, show what the shulkers mostly hold, with a small shulker in the corner.")
+            .defaultValue(true)
+            .build());
 
     private final Setting<Boolean> showCount = sgGeneral.add(new BoolSetting.Builder()
-        .name("show-count")
-        .description("Show how many of the item the container holds, counting inside shulkers when showing their contents.")
-        .defaultValue(false)
-        .build()
-    );
+            .name("show-count")
+            .description(
+                    "Show how many of the item the container holds, counting inside shulkers when showing their contents.")
+            .defaultValue(false)
+            .build());
 
     private final Setting<Boolean> hideExcluded = sgGeneral.add(new BoolSetting.Builder()
-        .name("hide-excluded")
-        .description("No icons on containers excluded from sorting.")
-        .defaultValue(false)
-        .build()
-    );
+            .name("hide-excluded")
+            .description("No icons on containers excluded from sorting.")
+            .defaultValue(false)
+            .build());
 
     /**
      * What to draw on one container.
@@ -101,7 +95,10 @@ public class StashOverlay extends Module {
     private int refresh;
 
     public StashOverlay() {
-        super(WeSortAddon.CATEGORY, "wesort-stash-overlay", "Shows what's in each container of a saved stash as an icon on the container. Uses the stash saved by wesort-stash-sorter.");
+        super(
+                WeSortAddon.CATEGORY,
+                "wesort-stash-overlay",
+                "Shows what's in each container of a saved stash as an icon on the container. Uses the stash saved by wesort-stash-sorter.");
     }
 
     @Override
@@ -110,7 +107,8 @@ public class StashOverlay extends Module {
         icons.clear();
 
         if (stash() == null) {
-            warning("No saved stash here yet. Scan one with wesort-stash-sorter first; this uses the stash named in its settings.");
+            warning(
+                    "No saved stash here yet. Scan one with wesort-stash-sorter first; this uses the stash named in its settings.");
         }
     }
 
@@ -166,7 +164,8 @@ public class StashOverlay extends Module {
         }
 
         String count = null;
-        if (showCount.get()) count = compact(shulker != null ? countInShulkers(box.contents, item) : count(box.contents, item));
+        if (showCount.get())
+            count = compact(shulker != null ? countInShulkers(box.contents, item) : count(box.contents, item));
 
         // The middle of the container, a double chest's two halves together
         double x = 0, y = 0, z = 0;
@@ -233,7 +232,8 @@ public class StashOverlay extends Module {
         List<Icon> visible = new ArrayList<>();
         for (Icon icon : icons) {
             BlockPos pos = BlockPos.containing(icon.at);
-            int chunkDistance = Math.max(Math.abs((pos.getX() >> 4) - playerChunkX), Math.abs((pos.getZ() >> 4) - playerChunkZ));
+            int chunkDistance =
+                    Math.max(Math.abs((pos.getX() >> 4) - playerChunkX), Math.abs((pos.getZ() >> 4) - playerChunkZ));
             if (chunkDistance > renderDistance || !mc.level.isLoaded(pos)) continue;
             visible.add(icon);
         }

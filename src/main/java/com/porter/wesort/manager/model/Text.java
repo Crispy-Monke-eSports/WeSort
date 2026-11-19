@@ -7,8 +7,7 @@ import java.util.Locale;
  * Nothing here touches Minecraft.
  */
 public final class Text {
-    private Text() {
-    }
+    private Text() {}
 
     /**
      * Makes a string safe to draw: no section signs (the game's formatting code, which it renders even in a literal
@@ -44,7 +43,8 @@ public final class Text {
 
     private static boolean hidden(int cp) {
         if ((cp >= 0x202a && cp <= 0x202e) || (cp >= 0x2066 && cp <= 0x2069)) return true;
-        // The zero width joiner stays: emoji sequences and some scripts need it. Variation selectors are not format characters.
+        // The zero width joiner stays: emoji sequences and some scripts need it. Variation selectors are not format
+        // characters.
         if (cp == 0x200d) return false;
         int type = Character.getType(cp);
         return type == Character.FORMAT || type == Character.PRIVATE_USE || type == Character.SURROGATE;

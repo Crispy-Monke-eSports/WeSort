@@ -22,6 +22,7 @@ final class LoginLimiter {
     static final int FAILURES_BEFORE_LOCK = 5;
     /** Failures from one address across every account (within the lock windows) before the address itself locks. */
     static final int ADDRESS_FAILURES = 10;
+
     static final long FIRST_LOCK_MS = 60_000;
     static final long MAX_LOCK_MS = 15 * 60_000;
     static final int GLOBAL_FAILURES = 20;
@@ -92,12 +93,14 @@ final class LoginLimiter {
             e.nextLockMs = Math.min(e.nextLockMs * 2, MAX_LOCK_MS);
             e.failures = 0;
         }
-        while (!recentFailures.isEmpty() && now - recentFailures.peekFirst() >= GLOBAL_WINDOW_MS) recentFailures.pollFirst();
+        while (!recentFailures.isEmpty() && now - recentFailures.peekFirst() >= GLOBAL_WINDOW_MS)
+            recentFailures.pollFirst();
         recentFailures.addLast(now);
         if (recentFailures.size() >= GLOBAL_FAILURES) {
             globalLockedUntil = now + nextGlobalLockMs;
-            System.err.println(java.time.Instant.now() + " Website login paused for " + nextGlobalLockMs / 60_000
-                + " min after " + GLOBAL_FAILURES + " wrong passwords in 10 min (the server PC itself can still log in).");
+            System.err.println(
+                    java.time.Instant.now() + " Website login paused for " + nextGlobalLockMs / 60_000 + " min after "
+                            + GLOBAL_FAILURES + " wrong passwords in 10 min (the server PC itself can still log in).");
             nextGlobalLockMs = Math.min(nextGlobalLockMs * 2, MAX_GLOBAL_LOCK_MS);
             recentFailures.clear();
         }

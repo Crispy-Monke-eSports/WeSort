@@ -1,9 +1,8 @@
 package com.porter.wesortmanager;
 
 import com.google.gson.JsonObject;
-import com.sun.net.httpserver.HttpExchange;
 import com.porter.wesort.data.Deposit;
-
+import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.util.List;
 
@@ -23,7 +22,10 @@ final class DepositRoutes {
     }
 
     private void list(HttpExchange ex) throws IOException {
-        if (Redact.forced(Router.user(ex))) { Http.error(ex, 404, "not found"); return; }
+        if (Redact.forced(Router.user(ex))) {
+            Http.error(ex, 404, "not found");
+            return;
+        }
         var out = new JsonObject();
         out.add("deposits", deposits.list(Http.query(ex).get("order")));
         Http.json(ex, 200, out);
@@ -31,13 +33,20 @@ final class DepositRoutes {
 
     private void agent(HttpExchange ex) throws IOException {
         var raw = AddonRoutes.readJson(ex);
-        if (raw == null || !raw.isJsonObject()) { Http.error(ex, 400, "Expected a deposit request"); return; }
+        if (raw == null || !raw.isJsonObject()) {
+            Http.error(ex, 400, "Expected a deposit request");
+            return;
+        }
         var body = raw.getAsJsonObject();
         String action = AddonRoutes.string(body, "action");
         String packageId = AddonRoutes.string(body, "packageId");
         String agent = AddonRoutes.string(body, "agent");
-        if (action == null || packageId == null || agent == null || !List.of("begin", "confirm", "reconcile").contains(action)) {
-            Http.error(ex, 400, "action (begin, confirm, reconcile), packageId and agent are required"); return;
+        if (action == null
+                || packageId == null
+                || agent == null
+                || !List.of("begin", "confirm", "reconcile").contains(action)) {
+            Http.error(ex, 400, "action (begin, confirm, reconcile), packageId and agent are required");
+            return;
         }
         try {
             Deposit result;
@@ -46,13 +55,22 @@ final class DepositRoutes {
                     String orderId = AddonRoutes.string(body, "orderId");
                     String destination = AddonRoutes.string(body, "destination");
                     Deposit.Kind kind;
-                    try { kind = Deposit.Kind.valueOf(AddonRoutes.string(body, "kind")); }
-                    catch (RuntimeException e) { Http.error(ex, 400, "kind must be DELIVERY or TRANSFER"); return; }
-                    if (orderId == null || destination == null) { Http.error(ex, 400, "orderId and destination are required"); return; }
+                    try {
+                        kind = Deposit.Kind.valueOf(AddonRoutes.string(body, "kind"));
+                    } catch (RuntimeException e) {
+                        Http.error(ex, 400, "kind must be DELIVERY or TRANSFER");
+                        return;
+                    }
+                    if (orderId == null || destination == null) {
+                        Http.error(ex, 400, "orderId and destination are required");
+                        return;
+                    }
                     result = deposits.begin(packageId, orderId, kind, destination, agent);
                 }
                 case "confirm" -> {
-                    var snapshot = body.has("snapshot") && body.get("snapshot").isJsonObject() ? body.getAsJsonObject("snapshot") : null;
+                    var snapshot = body.has("snapshot") && body.get("snapshot").isJsonObject()
+                            ? body.getAsJsonObject("snapshot")
+                            : null;
                     result = deposits.confirm(packageId, agent, snapshot);
                 }
                 default -> result = deposits.reconcile(packageId, agent, AddonRoutes.string(body, "reason"));

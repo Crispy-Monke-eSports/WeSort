@@ -5,7 +5,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import com.sun.net.httpserver.HttpExchange;
-
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
@@ -28,7 +27,13 @@ final class AddonRoutes {
         this(store, link, icons, orders, owners, new DeliveryContents());
     }
 
-    AddonRoutes(IndexStore store, LinkState link, IconService icons, OrderStore orders, Owners owners, DeliveryContents delivery) {
+    AddonRoutes(
+            IndexStore store,
+            LinkState link,
+            IconService icons,
+            OrderStore orders,
+            Owners owners,
+            DeliveryContents delivery) {
         this.delivery = delivery;
         this.orders = orders;
         this.owners = owners;
@@ -39,42 +44,69 @@ final class AddonRoutes {
 
     void register(Router router) {
         router.exact(Router.POST, "/api/v1/index", Router.Guard.ADDON_KEY, this::postIndex)
-            .exact(Router.POST, "/api/v1/heartbeat", Router.Guard.ADDON_KEY, this::heartbeat)
-            .exact(Router.POST, "/api/v1/automation", Router.Guard.ADDON_KEY, this::automation);
+                .exact(Router.POST, "/api/v1/heartbeat", Router.Guard.ADDON_KEY, this::heartbeat)
+                .exact(Router.POST, "/api/v1/automation", Router.Guard.ADDON_KEY, this::automation);
     }
 
     private void automation(HttpExchange ex) throws IOException {
         JsonElement json = readJson(ex);
-        if (json == null || !json.isJsonObject()) { Http.error(ex, 400, "Expected automation request"); return; }
+        if (json == null || !json.isJsonObject()) {
+            Http.error(ex, 400, "Expected automation request");
+            return;
+        }
         var body = json.getAsJsonObject();
-        String server = string(body, "server"), agent = string(body, "agent"), token = string(body, "token"), action = string(body, "action");
-        if (server == null || server.isBlank() || server.length() > 256 || agent == null || !agent.matches("[0-9a-f-]{36}")
-            || !java.util.Set.of("acquire", "release", "uncertain").contains(action == null ? "" : action)) {
-            Http.error(ex, 400, "Invalid automation request"); return;
+        String server = string(body, "server"),
+                agent = string(body, "agent"),
+                token = string(body, "token"),
+                action = string(body, "action");
+        if (server == null
+                || server.isBlank()
+                || server.length() > 256
+                || agent == null
+                || !agent.matches("[0-9a-f-]{36}")
+                || !java.util.Set.of("acquire", "release", "uncertain").contains(action == null ? "" : action)) {
+            Http.error(ex, 400, "Invalid automation request");
+            return;
         }
         synchronized (store) {
             var gate = store.automation();
             if (!action.equals("acquire")) {
                 boolean released = gate.finish(server, agent, token, action.equals("release"));
-                Http.json(ex, released ? 200 : 409, released ? Http.ok() : error("Automation requires reconciliation")); return;
+                Http.json(ex, released ? 200 : 409, released ? Http.ok() : error("Automation requires reconciliation"));
+                return;
             }
-            if (orders.hasOpenOnServer(server)) { Http.json(ex, 409, error("Reserved stock: sorting paused")); return; }
+            if (orders.hasOpenOnServer(server)) {
+                Http.json(ex, 409, error("Reserved stock: sorting paused"));
+                return;
+            }
             var lease = orders.acquireSorting(server, agent, token);
-            if (lease == null) { Http.json(ex, 409, error("Another physical operation is active or uncertain")); return; }
-            var out = Http.ok(); out.addProperty("token", lease.token()); out.addProperty("ttlMillis", AutomationGate.TTL);
+            if (lease == null) {
+                Http.json(ex, 409, error("Another physical operation is active or uncertain"));
+                return;
+            }
+            var out = Http.ok();
+            out.addProperty("token", lease.token());
+            out.addProperty("ttlMillis", AutomationGate.TTL);
             Http.json(ex, 200, out);
         }
     }
-    private static JsonObject error(String message) { var out = new JsonObject(); out.addProperty("error", message); return out; }
+
+    private static JsonObject error(String message) {
+        var out = new JsonObject();
+        out.addProperty("error", message);
+        return out;
+    }
 
     /** Strict UTF-8 JSON body, or null when it doesn't parse. */
     static JsonElement readJson(HttpExchange ex) throws IOException {
         byte[] body = Http.readBody(ex, Http.MAX_BODY);
         try {
-            String text = StandardCharsets.UTF_8.newDecoder()
-                .onMalformedInput(CodingErrorAction.REPORT)
-                .onUnmappableCharacter(CodingErrorAction.REPORT)
-                .decode(ByteBuffer.wrap(body)).toString();
+            String text = StandardCharsets.UTF_8
+                    .newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(body))
+                    .toString();
             return JsonParser.parseString(text);
         } catch (CharacterCodingException | JsonParseException | StackOverflowError e) {
             return null;
@@ -108,11 +140,15 @@ final class AddonRoutes {
                 orders.releaseFromFreshObservation(server);
             }
         } catch (StockLedger.Conflict e) {
-            JsonObject out = new JsonObject(); out.addProperty("error", e.getMessage());
-            out.addProperty("stockEpoch", e.epoch); out.addProperty("stockRevision", e.revision);
-            Http.json(ex, 409, out); return;
+            JsonObject out = new JsonObject();
+            out.addProperty("error", e.getMessage());
+            out.addProperty("stockEpoch", e.epoch);
+            out.addProperty("stockRevision", e.revision);
+            Http.json(ex, 409, out);
+            return;
         } catch (RuntimeException e) {
-            Http.error(ex, 400, "Invalid physical observation"); return;
+            Http.error(ex, 400, "Invalid physical observation");
+            return;
         } catch (IndexStore.FullException e) {
             Http.error(ex, 400, e.getMessage());
             return;
@@ -121,7 +157,10 @@ final class AddonRoutes {
         // Start fetching icons for new item ids now, so they are usually cached before the page asks.
         icons.prefetch(store.iconIds(server, stash));
         JsonObject reply = Http.ok();
-        if (index.has("physicalSources")) { reply.addProperty("stockEpoch", store.stock().epoch()); reply.addProperty("stockRevision", store.stock().revision()); }
+        if (index.has("physicalSources")) {
+            reply.addProperty("stockEpoch", store.stock().epoch());
+            reply.addProperty("stockRevision", store.stock().revision());
+        }
         Http.json(ex, 200, reply);
     }
 
@@ -145,8 +184,10 @@ final class AddonRoutes {
         // PROTOCOL.md, "Additions: delivery storage contents": absent = an older bot, null = no delivery container.
         boolean hasDeliveryHash = o.has("deliveryHash");
         String deliveryHash = string(o, "deliveryHash");
-        if (hasDeliveryHash && !o.get("deliveryHash").isJsonNull()
-            && (deliveryHash == null || !DeliveryContents.HASH.matcher(deliveryHash).matches())) {
+        if (hasDeliveryHash
+                && !o.get("deliveryHash").isJsonNull()
+                && (deliveryHash == null
+                        || !DeliveryContents.HASH.matcher(deliveryHash).matches())) {
             Http.error(ex, 400, "deliveryHash must be 40 lowercase hex digits (sha1) or null");
             return;
         }
@@ -162,7 +203,8 @@ final class AddonRoutes {
             Http.error(ex, 400, e.getMessage());
             return;
         }
-        String owner = owners.check(server, stash, string(o, "player"), true, Http.attr(ex, Router.SCOPED_AGENT) == null);
+        String owner =
+                owners.check(server, stash, string(o, "player"), true, Http.attr(ex, Router.SCOPED_AGENT) == null);
         if (owner != null) {
             conflict(ex, owner);
             return;
@@ -194,11 +236,13 @@ final class AddonRoutes {
         boolean hasDelivery = o.has("delivery");
         IndexStore.Delivery delivery = null;
         if (hasDelivery && !o.get("delivery").isJsonNull()) {
-            if (!o.get("delivery").isJsonObject()) throw new IllegalArgumentException("delivery must be {x, y, z, dimension} or null");
+            if (!o.get("delivery").isJsonObject())
+                throw new IllegalArgumentException("delivery must be {x, y, z, dimension} or null");
             JsonObject d = o.getAsJsonObject("delivery");
             Integer x = wholeInt(d.get("x")), y = wholeInt(d.get("y")), z = wholeInt(d.get("z"));
             String dim = string(d, "dimension");
-            if (x == null || y == null || z == null) throw new IllegalArgumentException("delivery.x, y and z must be whole numbers");
+            if (x == null || y == null || z == null)
+                throw new IllegalArgumentException("delivery.x, y and z must be whole numbers");
             if (dim == null) throw new IllegalArgumentException("delivery.dimension must be a string");
             delivery = new IndexStore.Delivery(x, y, z, Http.truncate(dim, MAX_STATUS));
         }
@@ -230,16 +274,20 @@ final class AddonRoutes {
         boolean hasNaming = o.has("naming");
         IndexStore.Naming naming = null;
         if (hasNaming && !o.get("naming").isJsonNull()) {
-            if (!o.get("naming").isJsonObject()) throw new IllegalArgumentException("naming must be {anvil, xpLevels} or null");
+            if (!o.get("naming").isJsonObject())
+                throw new IllegalArgumentException("naming must be {anvil, xpLevels} or null");
             JsonObject n = o.getAsJsonObject("naming");
             JsonElement anvil = n.get("anvil");
-            if (anvil == null || !anvil.isJsonPrimitive() || !anvil.getAsJsonPrimitive().isBoolean()) {
+            if (anvil == null
+                    || !anvil.isJsonPrimitive()
+                    || !anvil.getAsJsonPrimitive().isBoolean()) {
                 throw new IllegalArgumentException("naming.anvil must be true or false");
             }
             int xp = -1;
             if (n.has("xpLevels") && !n.get("xpLevels").isJsonNull()) {
                 Integer x = wholeInt(n.get("xpLevels"));
-                if (x == null || x < -1) throw new IllegalArgumentException("naming.xpLevels must be a whole number >= -1");
+                if (x == null || x < -1)
+                    throw new IllegalArgumentException("naming.xpLevels must be a whole number >= -1");
                 xp = x;
             }
             String anvilSource = null; // absent or null: an older bot that doesn't report it
@@ -247,7 +295,8 @@ final class AddonRoutes {
                 JsonElement src = n.get("anvilSource");
                 anvilSource = src.isJsonPrimitive() && src.getAsJsonPrimitive().isString() ? src.getAsString() : null;
                 if (anvilSource == null || !IndexStore.Naming.ANVIL_SOURCES.contains(anvilSource)) {
-                    throw new IllegalArgumentException("naming.anvilSource must be \"set\", \"found\", \"placed\" or \"none\"");
+                    throw new IllegalArgumentException(
+                            "naming.anvilSource must be \"set\", \"found\", \"placed\" or \"none\"");
                 }
             }
             naming = new IndexStore.Naming(anvil.getAsBoolean(), xp, anvilSource);
@@ -255,13 +304,18 @@ final class AddonRoutes {
         boolean hasCrafting = o.has("crafting");
         IndexStore.Crafting crafting = null;
         if (hasCrafting && !o.get("crafting").isJsonNull()) {
-            if (!o.get("crafting").isJsonObject()) throw new IllegalArgumentException("crafting must be {enabled, table} or null");
+            if (!o.get("crafting").isJsonObject())
+                throw new IllegalArgumentException("crafting must be {enabled, table} or null");
             JsonObject c = o.getAsJsonObject("crafting");
             JsonElement enabled = c.get("enabled"), table = c.get("table");
-            if (enabled == null || !enabled.isJsonPrimitive() || !enabled.getAsJsonPrimitive().isBoolean()) {
+            if (enabled == null
+                    || !enabled.isJsonPrimitive()
+                    || !enabled.getAsJsonPrimitive().isBoolean()) {
                 throw new IllegalArgumentException("crafting.enabled must be true or false");
             }
-            if (table == null || !table.isJsonPrimitive() || !table.getAsJsonPrimitive().isBoolean()) {
+            if (table == null
+                    || !table.isJsonPrimitive()
+                    || !table.getAsJsonPrimitive().isBoolean()) {
                 throw new IllegalArgumentException("crafting.table must be true or false");
             }
             String tableSource = null; // absent or null: an older bot that doesn't report it
@@ -269,7 +323,8 @@ final class AddonRoutes {
                 JsonElement src = c.get("tableSource");
                 tableSource = src.isJsonPrimitive() && src.getAsJsonPrimitive().isString() ? src.getAsString() : null;
                 if (tableSource == null || !IndexStore.Crafting.TABLE_SOURCES.contains(tableSource)) {
-                    throw new IllegalArgumentException("crafting.tableSource must be \"set\", \"found\", \"placed\", \"crafted\" or \"none\"");
+                    throw new IllegalArgumentException(
+                            "crafting.tableSource must be \"set\", \"found\", \"placed\", \"crafted\" or \"none\"");
                 }
             }
             crafting = new IndexStore.Crafting(enabled.getAsBoolean(), table.getAsBoolean(), tableSource);
@@ -278,28 +333,47 @@ final class AddonRoutes {
         IndexStore.DeliveryStorage storage = null;
         if (hasStorage && !o.get("deliveryStorage").isJsonNull()) {
             if (!o.get("deliveryStorage").isJsonObject()) {
-                throw new IllegalArgumentException("deliveryStorage must be {autoExpand, chests, full, canExpand, blocked} or null");
+                throw new IllegalArgumentException(
+                        "deliveryStorage must be {autoExpand, chests, full, canExpand, blocked} or null");
             }
             JsonObject d = o.getAsJsonObject("deliveryStorage");
             JsonElement auto = d.get("autoExpand"), can = d.get("canExpand");
-            if (auto == null || !auto.isJsonPrimitive() || !auto.getAsJsonPrimitive().isBoolean()
-                || can == null || !can.isJsonPrimitive() || !can.getAsJsonPrimitive().isBoolean()) {
+            if (auto == null
+                    || !auto.isJsonPrimitive()
+                    || !auto.getAsJsonPrimitive().isBoolean()
+                    || can == null
+                    || !can.isJsonPrimitive()
+                    || !can.getAsJsonPrimitive().isBoolean()) {
                 throw new IllegalArgumentException("deliveryStorage.autoExpand and canExpand must be true or false");
             }
             Integer chests = wholeInt(d.get("chests")), full = wholeInt(d.get("full"));
             if (chests == null || full == null || chests < 0 || full < 0 || chests > 100_000 || full > chests) {
-                throw new IllegalArgumentException("deliveryStorage.chests and full must be whole numbers, 0 <= full <= chests");
+                throw new IllegalArgumentException(
+                        "deliveryStorage.chests and full must be whole numbers, 0 <= full <= chests");
             }
             String blocked = null;
             if (d.has("blocked") && !d.get("blocked").isJsonNull()) {
                 blocked = string(d, "blocked");
-                if (blocked == null) throw new IllegalArgumentException("deliveryStorage.blocked must be a string or null");
+                if (blocked == null)
+                    throw new IllegalArgumentException("deliveryStorage.blocked must be a string or null");
                 blocked = blocked.isEmpty() ? null : Http.truncate(blocked, MAX_STATUS);
             }
             storage = new IndexStore.DeliveryStorage(auto.getAsBoolean(), chests, full, can.getAsBoolean(), blocked);
         }
-        return new IndexStore.BotStatus(hasDelivery, delivery, hasBlocker, blocker, rescanDone, hasRescanBlocked, rescanBlocked,
-            hasNaming, naming, hasCrafting, crafting, hasStorage, storage);
+        return new IndexStore.BotStatus(
+                hasDelivery,
+                delivery,
+                hasBlocker,
+                blocker,
+                rescanDone,
+                hasRescanBlocked,
+                rescanBlocked,
+                hasNaming,
+                naming,
+                hasCrafting,
+                crafting,
+                hasStorage,
+                storage);
     }
 
     /** A whole number in int range (1.0 is fine, 1.5 isn't), or null. */
@@ -331,7 +405,7 @@ final class AddonRoutes {
 
     /** server/stash/player are shown in the page and used as map keys, so keep them short. */
     private static String checkLengths(JsonObject o) {
-        for (String field : new String[]{"server", "stash", "player", "indexHash"}) {
+        for (String field : new String[] {"server", "stash", "player", "indexHash"}) {
             String v = string(o, field);
             if (v != null && v.length() > MAX_FIELD) return field + " is too long";
         }

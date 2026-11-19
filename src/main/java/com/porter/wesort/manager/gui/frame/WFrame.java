@@ -1,17 +1,16 @@
 package com.porter.wesort.manager.gui.frame;
 
+import static meteordevelopment.meteorclient.utils.Utils.getWindowHeight;
+import static meteordevelopment.meteorclient.utils.Utils.getWindowWidth;
+
 import com.porter.wesort.manager.gui.chrome.WHeaderBar;
 import com.porter.wesort.manager.gui.style.Paint;
 import com.porter.wesort.manager.gui.style.Palette;
 import com.porter.wesort.manager.gui.style.SmGuiTheme;
+import java.util.function.Consumer;
 import meteordevelopment.meteorclient.gui.renderer.GuiRenderer;
 import meteordevelopment.meteorclient.gui.widgets.containers.WContainer;
 import meteordevelopment.meteorclient.gui.widgets.containers.WView;
-
-import java.util.function.Consumer;
-
-import static meteordevelopment.meteorclient.utils.Utils.getWindowHeight;
-import static meteordevelopment.meteorclient.utils.Utils.getWindowWidth;
 
 /**
  * The Stash Window's own window: a panel that can be moved by its header and resized from its edges and corners, with
@@ -29,6 +28,7 @@ import static meteordevelopment.meteorclient.utils.Utils.getWindowWidth;
 public class WFrame extends WContainer {
     /** Space around the page, in Meteor pixels (5 GUI pixels), and around a page drawn on a panel. */
     public static final double PAGE_PAD = 10;
+
     public static final double SURFACE_PAD = 20;
 
     public WOverlayLayer overlay;
@@ -43,6 +43,7 @@ public class WFrame extends WContainer {
 
     /** The room the page's widgets have, in physical pixels; valid after the frame's size is calculated. */
     public double pageW = 1;
+
     public double pageH = 1;
     /** True when the page is drawn on a panel of its own (every page except the stash page, which draws its own). */
     public boolean surfacePage = true;
@@ -125,7 +126,8 @@ public class WFrame extends WContainer {
         WindowGeometry after = FrameMath.move(before, dx, dy, t.screenW(), t.screenH());
         geom = after;
         int u = t.unit();
-        if (after.x() != before.x() || after.y() != before.y()) move((after.x() - before.x()) * u, (after.y() - before.y()) * u);
+        if (after.x() != before.x() || after.y() != before.y())
+            move((after.x() - before.x()) * u, (after.y() - before.y()) * u);
     }
 
     /** Tells the owner a drag, resize or maximize ended. */
@@ -143,6 +145,7 @@ public class WFrame extends WContainer {
 
     /** Set when the window's layout or drawing threw: the window then shows only an error and takes no input. */
     private Throwable failed;
+
     private static java.lang.reflect.Field scissorStack;
 
     /** The renderer's scissor depth (Meteor keeps a stack and doesn't reset it between frames), or -1 if unknown. */
@@ -162,7 +165,8 @@ public class WFrame extends WContainer {
     private void fail(String where, Throwable e) {
         if (failed != null) return;
         failed = e;
-        com.porter.wesort.WeSortAddon.LOG.error("wesort-stash-window: the window's {} failed; it shows an error until it is reopened", where, e);
+        com.porter.wesort.WeSortAddon.LOG.error(
+                "wesort-stash-window: the window's {} failed; it shows an error until it is reopened", where, e);
         // Nothing under the frame gets events or layout any more
         try {
             clear();
@@ -332,7 +336,8 @@ public class WFrame extends WContainer {
             double pw = width - 2 * bw - ringInset - 2 * pad;
             double ph = height - 2 * bw - ringInset - header.height - 2 * pad;
             Paint.panel(renderer, t, px, py, pw, ph, p.radius * u, bw, p.surface(), p.border());
-            if (p.bevel) Paint.bevel(renderer, t, px + bw, py + bw, pw - 2 * bw, ph - 2 * bw, u, 0xFFFFFFFF, 0xFF555555);
+            if (p.bevel)
+                Paint.bevel(renderer, t, px + bw, py + bw, pw - 2 * bw, ph - 2 * bw, u, 0xFFFFFFFF, 0xFF555555);
         }
         header.render(renderer, mouseX, mouseY, delta);
         page.render(renderer, mouseX, mouseY, delta);

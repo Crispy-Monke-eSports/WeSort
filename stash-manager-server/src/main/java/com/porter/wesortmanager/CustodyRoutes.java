@@ -20,7 +20,10 @@ final class CustodyRoutes {
     }
 
     private void list(HttpExchange ex) throws IOException {
-        if (Redact.forced(Router.user(ex))) { Http.error(ex, 404, "not found"); return; }
+        if (Redact.forced(Router.user(ex))) {
+            Http.error(ex, 404, "not found");
+            return;
+        }
         var out = new JsonObject();
         out.add("packages", custody.list(Http.query(ex).get("order")));
         Http.json(ex, 200, out);
@@ -28,24 +31,39 @@ final class CustodyRoutes {
 
     private void agent(HttpExchange ex) throws IOException {
         var raw = AddonRoutes.readJson(ex);
-        if (raw == null || !raw.isJsonObject()) { Http.error(ex, 400, "Expected a custody transition"); return; }
+        if (raw == null || !raw.isJsonObject()) {
+            Http.error(ex, 400, "Expected a custody transition");
+            return;
+        }
         var body = raw.getAsJsonObject();
         String packageId = AddonRoutes.string(body, "packageId");
         String orderId = AddonRoutes.string(body, "orderId");
         String agent = AddonRoutes.string(body, "agent");
         String action = AddonRoutes.string(body, "action");
         if (packageId == null || orderId == null || agent == null || action == null) {
-            Http.error(ex, 400, "packageId, orderId, agent and action are required"); return;
+            Http.error(ex, 400, "packageId, orderId, agent and action are required");
+            return;
         }
         try {
-            var location = body.has("location") && body.get("location").isJsonObject() ? body.getAsJsonObject("location") : null;
-            var evidence = body.has("evidence") && body.get("evidence").isJsonObject() ? body.getAsJsonObject("evidence") : null;
+            var location = body.has("location") && body.get("location").isJsonObject()
+                    ? body.getAsJsonObject("location")
+                    : null;
+            var evidence = body.has("evidence") && body.get("evidence").isJsonObject()
+                    ? body.getAsJsonObject("evidence")
+                    : null;
             PackageCustody.Package result;
             if ("stage".equals(action)) {
-                result = custody.stage(packageId, orderId, AddonRoutes.string(body, "manifest"),
-                    AddonRoutes.string(body, "jobId"), AddonRoutes.string(body, "destination"), AddonRoutes.string(body, "label"), location);
+                result = custody.stage(
+                        packageId,
+                        orderId,
+                        AddonRoutes.string(body, "manifest"),
+                        AddonRoutes.string(body, "jobId"),
+                        AddonRoutes.string(body, "destination"),
+                        AddonRoutes.string(body, "label"),
+                        location);
             } else {
-                result = custody.transition(packageId, orderId, agent, PackageCustody.State.valueOf(action), location, evidence);
+                result = custody.transition(
+                        packageId, orderId, agent, PackageCustody.State.valueOf(action), location, evidence);
             }
             audit.add("agent:" + agent, "Signed WeSort agent", "custody." + action, packageId, AuthRoutes.address(ex));
             Http.json(ex, 200, json(result));

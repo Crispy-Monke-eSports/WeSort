@@ -1,14 +1,13 @@
 package com.porter.wesort.stash;
 
-import com.porter.wesort.stash.DeliveryBook.Pos;
-import org.junit.jupiter.api.Test;
-
-import java.util.List;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.porter.wesort.stash.DeliveryBook.Pos;
+import java.util.List;
+import org.junit.jupiter.api.Test;
 
 /** The order's wait for delivery space: the same words and the same bound as the proxy plugin's. */
 class SpaceWaitTest {
@@ -33,11 +32,14 @@ class SpaceWaitTest {
         SpaceWait w = new SpaceWait();
         DeliveryRoom room = full(1).room(false, null, 5, 0);
         SpaceWait.Decision d = w.step(1000, room, 1, 3);
-        assertEquals("paused: waiting for delivery space: delivery storage full (1 chest), auto expand is off", d.phase());
+        assertEquals(
+                "paused: waiting for delivery space: delivery storage full (1 chest), auto expand is off", d.phase());
         assertFalse(d.timedOut());
 
         DeliveryRoom blocked = full(2).room(true, "stone is in the way above the top chest", 5, 0);
-        assertEquals("paused: waiting for delivery space: delivery storage full: can't place higher: stone is in the way above the top chest", w.step(2000, blocked, 1, 3).phase());
+        assertEquals(
+                "paused: waiting for delivery space: delivery storage full: can't place higher: stone is in the way above the top chest",
+                w.step(2000, blocked, 1, 3).phase());
     }
 
     @Test
@@ -48,7 +50,9 @@ class SpaceWaitTest {
         assertFalse(w.step(1_000_000 + SpaceWait.TIMEOUT_MS, wait, 1, 3).timedOut());
         SpaceWait.Decision end = w.step(1_000_000 + SpaceWait.TIMEOUT_MS + 1, wait, 1, 3);
         assertTrue(end.timedOut());
-        assertEquals("delivery container full (1/3): waited 120 min for space, delivery storage full (1 chest), auto expand is off", end.endMessage());
+        assertEquals(
+                "delivery container full (1/3): waited 120 min for space, delivery storage full (1 chest), auto expand is off",
+                end.endMessage());
 
         // Room, then full again: waits from the new start
         w.step(5_000_000, DeliveryRoom.ROOM, 2, 3);

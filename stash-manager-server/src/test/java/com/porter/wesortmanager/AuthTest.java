@@ -1,18 +1,17 @@
 package com.porter.wesortmanager;
 
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.List;
-import java.util.concurrent.atomic.AtomicLong;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class AuthTest {
     // ---------- password hash ----------
@@ -109,6 +108,8 @@ class AuthTest {
         assertNull(SessionStore.tokenFrom(List.of("other=1")));
         assertNull(SessionStore.tokenFrom(null));
         String cookie = SessionStore.cookie(token);
-        assertTrue(cookie.contains("HttpOnly") && cookie.contains("SameSite=Strict") && cookie.contains("Max-Age=2592000"));
+        assertTrue(cookie.contains("HttpOnly")
+                && cookie.contains("SameSite=Strict")
+                && cookie.contains("Max-Age=2592000"));
     }
 }

@@ -1,12 +1,5 @@
 package com.porter.wesort.stash;
 
-import meteordevelopment.meteorclient.utils.Utils;
-import net.minecraft.client.Minecraft;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.tags.ItemTags;
-import net.minecraft.world.item.ItemStack;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -17,6 +10,12 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
+import meteordevelopment.meteorclient.utils.Utils;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.tags.ItemTags;
+import net.minecraft.world.item.ItemStack;
 
 /**
  * What players mean by the words they put on signs and type into searches. Maps everyday terms ("redstone stuff",
@@ -24,8 +23,7 @@ import java.util.function.Predicate;
  * people actually talk. Works on {@link StackInfo}, which only knows an item by its own name, never the anvil name.
  */
 public final class Categories {
-    private Categories() {
-    }
+    private Categories() {}
 
     /**
      * How well a sign line describes an item. Higher wins: an exact name, then all the words of the line found in the
@@ -138,8 +136,11 @@ public final class Categories {
         Boolean known = WHOLE.get(part.full());
         if (known == null) {
             if (WHOLE.size() > 2048) WHOLE.clear();
-            known = lookup(SHORTHANDS, part.fullKeys()) != null || lookup(CATEGORIES, part.fullKeys()) != null
-                || CATCH_ALL.contains(part.full()) || KEEP_WHOLE.contains(part.fullKeys().getFirst()) || namesAnItem(part.full());
+            known = lookup(SHORTHANDS, part.fullKeys()) != null
+                    || lookup(CATEGORIES, part.fullKeys()) != null
+                    || CATCH_ALL.contains(part.full())
+                    || KEEP_WHOLE.contains(part.fullKeys().getFirst())
+                    || namesAnItem(part.full());
             WHOLE.put(part.full(), known);
         }
         return known;
@@ -193,8 +194,15 @@ public final class Categories {
 
     private static final int CATCH_ALL_SCORE = 1;
 
-    private static final Set<String> KEEP_WHOLE = Set.of("kit", "pvp kit", "kit shulker", "mixed shulker", "whole shulker",
-        "keep whole", "loot shulker", "unsorted shulker");
+    private static final Set<String> KEEP_WHOLE = Set.of(
+            "kit",
+            "pvp kit",
+            "kit shulker",
+            "mixed shulker",
+            "whole shulker",
+            "keep whole",
+            "loot shulker",
+            "unsorted shulker");
 
     /**
      * A sign line asking for mixed shulkers whole, like "kits", instead of having them repacked.
@@ -233,21 +241,65 @@ public final class Categories {
         Integer enchanted = enchantLevelScore(part.full(), described.item);
         if (enchanted != null) return enchanted;
 
-        // An enchantment on its own, like "Mending": the books with it, any level. Gear with it only below the gear categories
+        // An enchantment on its own, like "Mending": the books with it, any level. Gear with it only below the gear
+        // categories
         if (ENCHANT_NAMES.contains(part.full())) return enchantScore(part.full(), described.item);
 
         // As written first ("ender chests"); only without its filler words when that means nothing
         boolean whole = wholeKnown(part);
-        return whole ? score(part.full(), part.fullKeys(), described, false) : score(part.label(), part.labelKeys(), described, true);
+        return whole
+                ? score(part.full(), part.fullKeys(), described, false)
+                : score(part.label(), part.labelKeys(), described, true);
     }
 
-    private static final Set<String> ENCHANT_NAMES = Set.of("protection", "fire protection", "feather falling", "blast protection",
-        "projectile protection", "respiration", "aqua affinity", "thorns", "depth strider", "frost walker", "curse of binding",
-        "binding curse", "soul speed", "swift sneak", "sharpness", "smite", "bane of arthropods", "knockback", "fire aspect",
-        "looting", "sweeping edge", "efficiency", "silk touch", "unbreaking", "fortune", "power", "punch", "flame", "infinity",
-        "luck of the sea", "lure", "loyalty", "impaling", "riptide", "channeling", "multishot", "quick charge", "piercing",
-        "density", "breach", "wind burst", "mending", "curse of vanishing", "vanishing curse", "lunge");
-    private static final java.util.regex.Pattern LEVELLED = java.util.regex.Pattern.compile("^([a-z ]+?) (i{1,3}|iv|v|vi{1,3}|ix|x|\\d{1,2})$");
+    private static final Set<String> ENCHANT_NAMES = Set.of(
+            "protection",
+            "fire protection",
+            "feather falling",
+            "blast protection",
+            "projectile protection",
+            "respiration",
+            "aqua affinity",
+            "thorns",
+            "depth strider",
+            "frost walker",
+            "curse of binding",
+            "binding curse",
+            "soul speed",
+            "swift sneak",
+            "sharpness",
+            "smite",
+            "bane of arthropods",
+            "knockback",
+            "fire aspect",
+            "looting",
+            "sweeping edge",
+            "efficiency",
+            "silk touch",
+            "unbreaking",
+            "fortune",
+            "power",
+            "punch",
+            "flame",
+            "infinity",
+            "luck of the sea",
+            "lure",
+            "loyalty",
+            "impaling",
+            "riptide",
+            "channeling",
+            "multishot",
+            "quick charge",
+            "piercing",
+            "density",
+            "breach",
+            "wind burst",
+            "mending",
+            "curse of vanishing",
+            "vanishing curse",
+            "lunge");
+    private static final java.util.regex.Pattern LEVELLED =
+            java.util.regex.Pattern.compile("^([a-z ]+?) (i{1,3}|iv|v|vi{1,3}|ix|x|\\d{1,2})$");
 
     private record Levelled(String name, int level) {}
 
@@ -259,8 +311,16 @@ public final class Categories {
         if (!m.matches() || !ENCHANT_NAMES.contains(m.group(1))) return null;
 
         int level = switch (m.group(2)) {
-            case "i" -> 1; case "ii" -> 2; case "iii" -> 3; case "iv" -> 4; case "v" -> 5;
-            case "vi" -> 6; case "vii" -> 7; case "viii" -> 8; case "ix" -> 9; case "x" -> 10;
+            case "i" -> 1;
+            case "ii" -> 2;
+            case "iii" -> 3;
+            case "iv" -> 4;
+            case "v" -> 5;
+            case "vi" -> 6;
+            case "vii" -> 7;
+            case "viii" -> 8;
+            case "ix" -> 9;
+            case "x" -> 10;
             default -> Integer.parseInt(m.group(2));
         };
         return level >= 1 && level <= 10 ? new Levelled(m.group(1), level) : null;
@@ -333,14 +393,31 @@ public final class Categories {
 
     // Small capitals that have no compatibility mapping to a plain letter
     private static final Map<Character, Character> SMALL_CAPS = Map.ofEntries(
-        Map.entry('\u1D00', 'a'), Map.entry('\u0299', 'b'), Map.entry('\u1D04', 'c'), Map.entry('\u1D05', 'd'),
-        Map.entry('\u1D07', 'e'), Map.entry('\uA730', 'f'), Map.entry('\u0262', 'g'), Map.entry('\u029C', 'h'),
-        Map.entry('\u026A', 'i'), Map.entry('\u1D0A', 'j'), Map.entry('\u1D0B', 'k'), Map.entry('\u029F', 'l'),
-        Map.entry('\u1D0D', 'm'), Map.entry('\u0274', 'n'), Map.entry('\u1D0F', 'o'), Map.entry('\u1D18', 'p'),
-        Map.entry('\u01EB', 'q'), Map.entry('\u0280', 'r'), Map.entry('\uA731', 's'), Map.entry('\u1D1B', 't'),
-        Map.entry('\u1D1C', 'u'), Map.entry('\u1D20', 'v'), Map.entry('\u1D21', 'w'), Map.entry('\u028F', 'y'),
-        Map.entry('\u1D22', 'z')
-    );
+            Map.entry('\u1D00', 'a'),
+            Map.entry('\u0299', 'b'),
+            Map.entry('\u1D04', 'c'),
+            Map.entry('\u1D05', 'd'),
+            Map.entry('\u1D07', 'e'),
+            Map.entry('\uA730', 'f'),
+            Map.entry('\u0262', 'g'),
+            Map.entry('\u029C', 'h'),
+            Map.entry('\u026A', 'i'),
+            Map.entry('\u1D0A', 'j'),
+            Map.entry('\u1D0B', 'k'),
+            Map.entry('\u029F', 'l'),
+            Map.entry('\u1D0D', 'm'),
+            Map.entry('\u0274', 'n'),
+            Map.entry('\u1D0F', 'o'),
+            Map.entry('\u1D18', 'p'),
+            Map.entry('\u01EB', 'q'),
+            Map.entry('\u0280', 'r'),
+            Map.entry('\uA731', 's'),
+            Map.entry('\u1D1B', 't'),
+            Map.entry('\u1D1C', 'u'),
+            Map.entry('\u1D20', 'v'),
+            Map.entry('\u1D21', 'w'),
+            Map.entry('\u028F', 'y'),
+            Map.entry('\u1D22', 'z'));
     private static final java.util.regex.Pattern MARKS = java.util.regex.Pattern.compile("\\p{M}+");
 
     /**
@@ -365,11 +442,18 @@ public final class Categories {
             Character plain = SMALL_CAPS.get(c);
             out.append(plain != null ? plain : c);
         }
-        return MARKS.matcher(java.text.Normalizer.normalize(out, java.text.Normalizer.Form.NFD)).replaceAll("").toLowerCase(Locale.ROOT);
+        return MARKS.matcher(java.text.Normalizer.normalize(out, java.text.Normalizer.Form.NFD))
+                .replaceAll("")
+                .toLowerCase(Locale.ROOT);
     }
 
     public static String normalize(String text) {
-        return fold(text).replace('_', ' ').replace('-', ' ').replaceAll("[^a-z0-9*& ]", "").replaceAll("\\s+", " ").trim();
+        return fold(text)
+                .replace('_', ' ')
+                .replace('-', ' ')
+                .replaceAll("[^a-z0-9*& ]", "")
+                .replaceAll("\\s+", " ")
+                .trim();
     }
 
     /**
@@ -384,9 +468,32 @@ public final class Categories {
         return parts;
     }
 
-    private static final Set<String> FILLER = Set.of("stuff", "things", "thing", "items", "item", "supplies", "supply",
-        "storage", "the", "of", "for", "my", "all", "some", "assorted", "various", "general", "box", "chest", "barrel",
-        "here", "only", "extra", "spare", "more");
+    private static final Set<String> FILLER = Set.of(
+            "stuff",
+            "things",
+            "thing",
+            "items",
+            "item",
+            "supplies",
+            "supply",
+            "storage",
+            "the",
+            "of",
+            "for",
+            "my",
+            "all",
+            "some",
+            "assorted",
+            "various",
+            "general",
+            "box",
+            "chest",
+            "barrel",
+            "here",
+            "only",
+            "extra",
+            "spare",
+            "more");
 
     private static String stripFiller(String label) {
         StringBuilder out = new StringBuilder();
@@ -400,11 +507,17 @@ public final class Categories {
     }
 
     private static final Map<String, String> SYNONYMS = Map.ofEntries(
-        Map.entry("golden", "gold"), Map.entry("wooden", "wood"), Map.entry("stony", "stone"),
-        Map.entry("leaf", "leave"), Map.entry("diamonds", "diamond"), Map.entry("netherrite", "netherite"),
-        Map.entry("enderpearl", "pearl"), Map.entry("pearls", "pearl"), Map.entry("gapple", "golden apple"),
-        Map.entry("xp", "experience"), Map.entry("exp", "experience")
-    );
+            Map.entry("golden", "gold"),
+            Map.entry("wooden", "wood"),
+            Map.entry("stony", "stone"),
+            Map.entry("leaf", "leave"),
+            Map.entry("diamonds", "diamond"),
+            Map.entry("netherrite", "netherite"),
+            Map.entry("enderpearl", "pearl"),
+            Map.entry("pearls", "pearl"),
+            Map.entry("gapple", "golden apple"),
+            Map.entry("xp", "experience"),
+            Map.entry("exp", "experience"));
 
     private static Set<String> words(String text) {
         Set<String> set = new HashSet<>();
@@ -458,7 +571,8 @@ public final class Categories {
         net.minecraft.world.item.Item best = null;
         for (var entry : tally.entrySet()) {
             int[] t = entry.getValue();
-            if (best == null || t[0] > tally.get(best)[0] || (t[0] == tally.get(best)[0] && t[1] > tally.get(best)[1])) best = entry.getKey();
+            if (best == null || t[0] > tally.get(best)[0] || (t[0] == tally.get(best)[0] && t[1] > tally.get(best)[1]))
+                best = entry.getKey();
         }
         return best == null ? null : sample.get(best);
     }
@@ -480,7 +594,8 @@ public final class Categories {
      * The other way of undoing a plural, only taking the "s" off: "axes" is "ax" by the usual rules, and "axe" this way.
      */
     private static String altWord(String word) {
-        if (word.length() > 3 && word.endsWith("s") && !word.endsWith("ss") && !word.endsWith("us")) return word.substring(0, word.length() - 1);
+        if (word.length() > 3 && word.endsWith("s") && !word.endsWith("ss") && !word.endsWith("us"))
+            return word.substring(0, word.length() - 1);
         return word;
     }
 
@@ -497,8 +612,10 @@ public final class Categories {
         if (word.endsWith("ies") && word.length() > 4) return word.substring(0, word.length() - 3) + "y";
         if (word.endsWith("oes") && word.length() > 4) return word.substring(0, word.length() - 2);
         if (word.endsWith("ves") && word.length() > 4) return word.substring(0, word.length() - 3) + "f";
-        if (word.endsWith("ches") || word.endsWith("shes") || word.endsWith("xes")) return word.substring(0, word.length() - 2);
-        if (word.length() > 3 && word.endsWith("s") && !word.endsWith("ss") && !word.endsWith("us")) return word.substring(0, word.length() - 1);
+        if (word.endsWith("ches") || word.endsWith("shes") || word.endsWith("xes"))
+            return word.substring(0, word.length() - 2);
+        if (word.length() > 3 && word.endsWith("s") && !word.endsWith("ss") && !word.endsWith("us"))
+            return word.substring(0, word.length() - 1);
         return word;
     }
 
@@ -536,21 +653,51 @@ public final class Categories {
     }
 
     static {
-        nick("firework_rocket", "rocket", "firework", "fireworks", "rockets", "elytra rockets", "flight", "boost", "boosts");
+        nick(
+                "firework_rocket",
+                "rocket",
+                "firework",
+                "fireworks",
+                "rockets",
+                "elytra rockets",
+                "flight",
+                "boost",
+                "boosts");
         nick("firework_star", "firework star", "star");
         nick("end_crystal", "crystal", "end crystal", "crystals", "cry", "crys");
         nick("ender_pearl", "pearl", "ep", "epearl", "ender pearl");
         nick("ender_eye", "eye", "eye of ender", "eyes of ender", "ender eye");
         nick("obsidian,crying_obsidian", "obby", "obbie", "obsi", "obs");
         nick("golden_apple", "gap", "gapple", "golden apple", "gold apple", "gaps");
-        nick("enchanted_golden_apple", "egap", "egapple", "god apple", "notch apple", "notch", "enchanted apple", "egaps");
+        nick(
+                "enchanted_golden_apple",
+                "egap",
+                "egapple",
+                "god apple",
+                "notch apple",
+                "notch",
+                "enchanted apple",
+                "egaps");
         nick("totem_of_undying", "totem", "tot", "tots", "totems", "undying");
-        nick("experience_bottle", "xp", "exp", "xp bottle", "exp bottle", "bottle", "experience", "bottle o enchanting", "xp bottles");
+        nick(
+                "experience_bottle",
+                "xp",
+                "exp",
+                "xp bottle",
+                "exp bottle",
+                "bottle",
+                "experience",
+                "bottle o enchanting",
+                "xp bottles");
         nick("respawn_anchor", "anchor", "anchors");
         nick("glowstone", "glowstone", "anchor fuel");
         nick("cooked_beef", "steak", "steaks");
         nick("porkchop,cooked_porkchop", "pork", "porkchop", "chops");
-        nick("cooked_beef,cooked_porkchop,cooked_chicken,cooked_mutton,cooked_rabbit,cooked_cod,cooked_salmon", "cooked", "cooked food", "cooked meat");
+        nick(
+                "cooked_beef,cooked_porkchop,cooked_chicken,cooked_mutton,cooked_rabbit,cooked_cod,cooked_salmon",
+                "cooked",
+                "cooked food",
+                "cooked meat");
         nick("golden_carrot", "gold carrot", "golden carrot", "gcarrot", "gcarrots");
         nick("shulker_shell", "shell", "shulker shell");
         nick("cobblestone,cobbled_deepslate", "cobble", "cobbles");
@@ -581,7 +728,15 @@ public final class Categories {
         nick("beacon", "beacon");
         // Not plain "book": the "book" category takes the book, the written book and the enchanted book alike (at the
         // category's score), while these nicknames are for the enchanted book alone
-        nick("enchanted_book", "ebook", "e book", "enchanted book", "ench book", "enchant book", "enchantment book", "enchanted books");
+        nick(
+                "enchanted_book",
+                "ebook",
+                "e book",
+                "enchanted book",
+                "ench book",
+                "enchant book",
+                "enchantment book",
+                "enchanted books");
         nick("splash_potion", "splash", "splash potion");
         nick("lingering_potion", "lingering", "lingering potion");
         nick("chorus_fruit", "chorus", "chorus fruit");
@@ -591,12 +746,25 @@ public final class Categories {
         nick("gold_ingot", "gold", "gold ingot");
         nick("copper_ingot", "copper", "copper ingot");
 
-        // More slang and shorthand. Each name is the whole text of a sign line (or of one part of "a, b & c"), plural or
+        // More slang and shorthand. Each name is the whole text of a sign line (or of one part of "a, b & c"), plural
+        // or
         // not, and short ones like "ec" or "rs" are only ever that: nothing is matched inside a longer word
         nick("ender_chest", "ec", "ender chests", "echests");
         nick("golden_apple", "normal gapple", "regular gapple", "plain gapple", "gold gapple");
-        nick("enchanted_golden_apple", "enchanted gapple", "enchanted gap", "enchanted golden apple", "enchanted gold apple",
-            "ench gapple", "ench gap", "ench golden apple", "god gapple", "notch gapple", "ngap", "ngapple", "op gapple");
+        nick(
+                "enchanted_golden_apple",
+                "enchanted gapple",
+                "enchanted gap",
+                "enchanted golden apple",
+                "enchanted gold apple",
+                "ench gapple",
+                "ench gap",
+                "ench golden apple",
+                "god gapple",
+                "notch gapple",
+                "ngap",
+                "ngapple",
+                "op gapple");
         nick("ender_pearl", "e pearl", "enderpearl", "ender pearls");
         nick("totem_of_undying", "totem of undying", "totem undying");
         nick("end_crystal", "end crystals", "ecrystal");
@@ -636,8 +804,22 @@ public final class Categories {
         nick("honey_bottle,honey_block,honeycomb", "honey stuff");
     }
 
-    private static final Set<String> CATCH_ALL = Set.of("misc", "miscellaneous", "other", "others", "*", "overflow",
-        "everything", "anything", "random", "rest", "leftover", "leftovers", "unsorted", "mixed", "general");
+    private static final Set<String> CATCH_ALL = Set.of(
+            "misc",
+            "miscellaneous",
+            "other",
+            "others",
+            "*",
+            "overflow",
+            "everything",
+            "anything",
+            "random",
+            "rest",
+            "leftover",
+            "leftovers",
+            "unsorted",
+            "mixed",
+            "general");
 
     private static final Map<String, Predicate<StackInfo>> CATEGORIES = new HashMap<>();
     private static final List<Label> LABELS = new ArrayList<>();
@@ -689,102 +871,470 @@ public final class Categories {
         Predicate<StackInfo> shovel = s -> s.is(ItemTags.SHOVELS);
         Predicate<StackInfo> hoe = s -> s.is(ItemTags.HOES);
         Predicate<StackInfo> sword = s -> s.is(ItemTags.SWORDS);
-        Predicate<StackInfo> tools = pickaxe.or(axe).or(shovel).or(hoe).or(exact("shears", "flint_and_steel", "fishing_rod", "brush"));
-        Predicate<StackInfo> armor = suffix("_helmet", "_chestplate", "_leggings", "_boots").or(exact("elytra", "turtle_helmet", "shield", "wolf_armor"));
-        Predicate<StackInfo> weapons = sword.or(axe).or(exact("bow", "crossbow", "trident", "mace")).or(suffix("arrow"));
+        Predicate<StackInfo> tools =
+                pickaxe.or(axe).or(shovel).or(hoe).or(exact("shears", "flint_and_steel", "fishing_rod", "brush"));
+        Predicate<StackInfo> armor = suffix("_helmet", "_chestplate", "_leggings", "_boots")
+                .or(exact("elytra", "turtle_helmet", "shield", "wolf_armor"));
+        Predicate<StackInfo> weapons =
+                sword.or(axe).or(exact("bow", "crossbow", "trident", "mace")).or(suffix("arrow"));
         Predicate<StackInfo> food = s -> s.food;
         Predicate<StackInfo> ores = ids("_ore", "raw_", "ancient_debris");
         Predicate<StackInfo> ingots = suffix("_ingot", "_nugget").or(exact("netherite_scrap", "copper_ingot"));
-        Predicate<StackInfo> gems = exact("diamond", "emerald", "lapis_lazuli", "amethyst_shard", "quartz", "prismarine_crystals", "echo_shard");
-        Predicate<StackInfo> storageBlocks = exact("iron_block", "gold_block", "diamond_block", "emerald_block", "lapis_block", "redstone_block",
-            "netherite_block", "copper_block", "coal_block", "raw_iron_block", "raw_gold_block", "raw_copper_block", "amethyst_block", "quartz_block");
-        Predicate<StackInfo> valuables = ids("diamond", "netherite", "emerald").or(exact("totem_of_undying", "elytra", "nether_star", "beacon",
-            "enchanted_golden_apple", "dragon_egg", "dragon_head", "trident", "heart_of_the_sea", "shulker_shell", "enchanted_book", "mace",
-            "heavy_core", "conduit", "ancient_debris")).or(shulker);
-        Predicate<StackInfo> redstone = exact("redstone", "repeater", "comparator", "piston", "sticky_piston", "observer", "hopper", "dropper",
-            "dispenser", "lever", "daylight_detector", "target", "tripwire_hook", "redstone_torch", "redstone_lamp", "note_block", "tnt",
-            "slime_block", "honey_block", "crafter", "sculk_sensor", "calibrated_sculk_sensor", "lightning_rod", "trapped_chest", "redstone_block",
-            "jukebox", "bell").or(suffix("_button", "_pressure_plate", "rail", "_door", "_trapdoor", "_fence_gate"));
+        Predicate<StackInfo> gems = exact(
+                "diamond", "emerald", "lapis_lazuli", "amethyst_shard", "quartz", "prismarine_crystals", "echo_shard");
+        Predicate<StackInfo> storageBlocks = exact(
+                "iron_block",
+                "gold_block",
+                "diamond_block",
+                "emerald_block",
+                "lapis_block",
+                "redstone_block",
+                "netherite_block",
+                "copper_block",
+                "coal_block",
+                "raw_iron_block",
+                "raw_gold_block",
+                "raw_copper_block",
+                "amethyst_block",
+                "quartz_block");
+        Predicate<StackInfo> valuables = ids("diamond", "netherite", "emerald")
+                .or(exact(
+                        "totem_of_undying",
+                        "elytra",
+                        "nether_star",
+                        "beacon",
+                        "enchanted_golden_apple",
+                        "dragon_egg",
+                        "dragon_head",
+                        "trident",
+                        "heart_of_the_sea",
+                        "shulker_shell",
+                        "enchanted_book",
+                        "mace",
+                        "heavy_core",
+                        "conduit",
+                        "ancient_debris"))
+                .or(shulker);
+        Predicate<StackInfo> redstone = exact(
+                        "redstone",
+                        "repeater",
+                        "comparator",
+                        "piston",
+                        "sticky_piston",
+                        "observer",
+                        "hopper",
+                        "dropper",
+                        "dispenser",
+                        "lever",
+                        "daylight_detector",
+                        "target",
+                        "tripwire_hook",
+                        "redstone_torch",
+                        "redstone_lamp",
+                        "note_block",
+                        "tnt",
+                        "slime_block",
+                        "honey_block",
+                        "crafter",
+                        "sculk_sensor",
+                        "calibrated_sculk_sensor",
+                        "lightning_rod",
+                        "trapped_chest",
+                        "redstone_block",
+                        "jukebox",
+                        "bell")
+                .or(suffix("_button", "_pressure_plate", "rail", "_door", "_trapdoor", "_fence_gate"));
         Predicate<StackInfo> rails = suffix("rail");
-        Predicate<StackInfo> transport = suffix("_boat", "_raft").or(ids("minecart")).or(rails).or(exact("saddle", "elytra", "firework_rocket",
-            "carrot_on_a_stick", "warped_fungus_on_a_stick", "lead")).or(suffix("_horse_armor"));
-        Predicate<StackInfo> light = ids("torch", "lantern", "froglight", "candle").or(exact("glowstone", "sea_lantern", "shroomlight",
-            "redstone_lamp", "end_rod", "beacon", "jack_o_lantern", "glow_berries", "glow_lichen"));
+        Predicate<StackInfo> transport = suffix("_boat", "_raft")
+                .or(ids("minecart"))
+                .or(rails)
+                .or(exact(
+                        "saddle", "elytra", "firework_rocket", "carrot_on_a_stick", "warped_fungus_on_a_stick", "lead"))
+                .or(suffix("_horse_armor"));
+        Predicate<StackInfo> light = ids("torch", "lantern", "froglight", "candle")
+                .or(exact(
+                        "glowstone",
+                        "sea_lantern",
+                        "shroomlight",
+                        "redstone_lamp",
+                        "end_rod",
+                        "beacon",
+                        "jack_o_lantern",
+                        "glow_berries",
+                        "glow_lichen"));
         Predicate<StackInfo> heads = suffix("_head", "_skull");
-        Predicate<StackInfo> decoration = exact("painting", "item_frame", "glow_item_frame", "flower_pot", "armor_stand", "decorated_pot",
-            "chain", "bell", "lantern", "soul_lantern").or(suffix("_banner", "_carpet", "_candle", "candle", "_bed")).or(heads)
-            .or(ids("pottery_sherd", "banner_pattern"));
+        Predicate<StackInfo> decoration = exact(
+                        "painting",
+                        "item_frame",
+                        "glow_item_frame",
+                        "flower_pot",
+                        "armor_stand",
+                        "decorated_pot",
+                        "chain",
+                        "bell",
+                        "lantern",
+                        "soul_lantern")
+                .or(suffix("_banner", "_carpet", "_candle", "candle", "_bed"))
+                .or(heads)
+                .or(ids("pottery_sherd", "banner_pattern"));
         Predicate<StackInfo> wool = suffix("_wool");
         Predicate<StackInfo> dyes = suffix("_dye");
         Predicate<StackInfo> glass = ids("glass").and(s -> !s.id.equals("glass_bottle"));
         Predicate<StackInfo> concrete = ids("concrete");
         Predicate<StackInfo> terracotta = ids("terracotta");
-        Predicate<StackInfo> colorful = wool.or(dyes).or(concrete).or(terracotta).or(suffix("_stained_glass", "_stained_glass_pane", "_carpet",
-            "_bed", "_banner", "_candle", "_shulker_box"));
+        Predicate<StackInfo> colorful = wool.or(dyes)
+                .or(concrete)
+                .or(terracotta)
+                .or(suffix(
+                        "_stained_glass",
+                        "_stained_glass_pane",
+                        "_carpet",
+                        "_bed",
+                        "_banner",
+                        "_candle",
+                        "_shulker_box"));
         Predicate<StackInfo> logs = s -> s.is(ItemTags.LOGS);
         Predicate<StackInfo> planks = s -> s.is(ItemTags.PLANKS);
-        Predicate<StackInfo> wood = logs.or(planks).or(ids("_wood", "_hyphae", "bamboo_block", "stripped_"))
-            .or(s -> {
-                String id = s.id;
-                return (id.endsWith("_stairs") || id.endsWith("_slab") || id.endsWith("_fence")) && (id.startsWith("oak") || id.startsWith("spruce")
-                    || id.startsWith("birch") || id.startsWith("jungle") || id.startsWith("acacia") || id.startsWith("dark_oak")
-                    || id.startsWith("mangrove") || id.startsWith("cherry") || id.startsWith("pale_oak") || id.startsWith("bamboo")
-                    || id.startsWith("crimson") || id.startsWith("warped"));
-            });
+        Predicate<StackInfo> wood = logs.or(planks)
+                .or(ids("_wood", "_hyphae", "bamboo_block", "stripped_"))
+                .or(s -> {
+                    String id = s.id;
+                    return (id.endsWith("_stairs") || id.endsWith("_slab") || id.endsWith("_fence"))
+                            && (id.startsWith("oak")
+                                    || id.startsWith("spruce")
+                                    || id.startsWith("birch")
+                                    || id.startsWith("jungle")
+                                    || id.startsWith("acacia")
+                                    || id.startsWith("dark_oak")
+                                    || id.startsWith("mangrove")
+                                    || id.startsWith("cherry")
+                                    || id.startsWith("pale_oak")
+                                    || id.startsWith("bamboo")
+                                    || id.startsWith("crimson")
+                                    || id.startsWith("warped"));
+                });
         Predicate<StackInfo> stone = s -> {
             String id = s.id;
-            if (id.contains("redstone") || id.contains("glowstone") || id.contains("lodestone") || id.contains("grindstone") || id.contains("stonecutter")) return false;
-            return s.block && (id.contains("stone") || id.contains("deepslate") || id.contains("andesite")
-                || id.contains("diorite") || id.contains("granite") || id.contains("tuff") || id.contains("calcite") || id.contains("basalt")
-                || id.contains("cobble"));
+            if (id.contains("redstone")
+                    || id.contains("glowstone")
+                    || id.contains("lodestone")
+                    || id.contains("grindstone")
+                    || id.contains("stonecutter")) return false;
+            return s.block
+                    && (id.contains("stone")
+                            || id.contains("deepslate")
+                            || id.contains("andesite")
+                            || id.contains("diorite")
+                            || id.contains("granite")
+                            || id.contains("tuff")
+                            || id.contains("calcite")
+                            || id.contains("basalt")
+                            || id.contains("cobble"));
         };
-        Predicate<StackInfo> dirt = exact("dirt", "coarse_dirt", "rooted_dirt", "grass_block", "podzol", "mycelium", "mud", "muddy_mangrove_roots",
-            "packed_mud", "moss_block", "pale_moss_block", "clay", "farmland", "dirt_path");
-        Predicate<StackInfo> sand = exact("sand", "red_sand", "gravel", "suspicious_sand", "suspicious_gravel").or(ids("sandstone"));
+        Predicate<StackInfo> dirt = exact(
+                "dirt",
+                "coarse_dirt",
+                "rooted_dirt",
+                "grass_block",
+                "podzol",
+                "mycelium",
+                "mud",
+                "muddy_mangrove_roots",
+                "packed_mud",
+                "moss_block",
+                "pale_moss_block",
+                "clay",
+                "farmland",
+                "dirt_path");
+        Predicate<StackInfo> sand = exact("sand", "red_sand", "gravel", "suspicious_sand", "suspicious_gravel")
+                .or(ids("sandstone"));
         Predicate<StackInfo> saplings = ids("sapling", "propagule", "azalea");
-        Predicate<StackInfo> flowers = exact("dandelion", "poppy", "blue_orchid", "allium", "azure_bluet", "oxeye_daisy", "cornflower",
-            "lily_of_the_valley", "wither_rose", "sunflower", "lilac", "rose_bush", "peony", "torchflower", "pitcher_plant", "pink_petals",
-            "spore_blossom", "open_eyeblossom", "closed_eyeblossom", "wildflowers", "cactus_flower").or(suffix("_tulip"));
+        Predicate<StackInfo> flowers = exact(
+                        "dandelion",
+                        "poppy",
+                        "blue_orchid",
+                        "allium",
+                        "azure_bluet",
+                        "oxeye_daisy",
+                        "cornflower",
+                        "lily_of_the_valley",
+                        "wither_rose",
+                        "sunflower",
+                        "lilac",
+                        "rose_bush",
+                        "peony",
+                        "torchflower",
+                        "pitcher_plant",
+                        "pink_petals",
+                        "spore_blossom",
+                        "open_eyeblossom",
+                        "closed_eyeblossom",
+                        "wildflowers",
+                        "cactus_flower")
+                .or(suffix("_tulip"));
         Predicate<StackInfo> seeds = suffix("_seeds").or(exact("pitcher_pod", "torchflower_seeds"));
-        Predicate<StackInfo> crops = exact("wheat", "carrot", "potato", "beetroot", "melon_slice", "melon", "pumpkin", "sugar_cane", "cocoa_beans",
-            "nether_wart", "sweet_berries", "glow_berries", "cactus", "bamboo", "kelp", "hay_block", "chorus_fruit").or(seeds);
-        Predicate<StackInfo> plants = saplings.or(flowers).or(seeds).or(ids("leaves", "vine", "moss", "fern", "grass", "lily_pad", "mushroom",
-            "fungus", "roots", "dripleaf", "sea_pickle", "seagrass", "coral", "bush", "cactus", "sugar_cane", "bamboo", "kelp", "hanging_roots"));
-        Predicate<StackInfo> mobDrops = exact("bone", "bone_meal", "string", "gunpowder", "spider_eye", "rotten_flesh", "ender_pearl", "slime_ball",
-            "blaze_rod", "blaze_powder", "ghast_tear", "phantom_membrane", "feather", "leather", "rabbit_hide", "rabbit_foot", "ink_sac",
-            "glow_ink_sac", "magma_cream", "shulker_shell", "prismarine_shard", "prismarine_crystals", "nautilus_shell", "turtle_scute",
-            "scute", "armadillo_scute", "breeze_rod", "honeycomb", "egg", "wither_skeleton_skull", "nether_star", "dragon_breath");
-        Predicate<StackInfo> brewing = exact("potion", "splash_potion", "lingering_potion", "glass_bottle", "brewing_stand", "blaze_powder",
-            "nether_wart", "fermented_spider_eye", "glistering_melon_slice", "magma_cream", "ghast_tear", "rabbit_foot", "dragon_breath",
-            "phantom_membrane", "sugar", "glowstone_dust", "golden_carrot", "pufferfish", "turtle_helmet", "cauldron", "breeze_rod");
+        Predicate<StackInfo> crops = exact(
+                        "wheat",
+                        "carrot",
+                        "potato",
+                        "beetroot",
+                        "melon_slice",
+                        "melon",
+                        "pumpkin",
+                        "sugar_cane",
+                        "cocoa_beans",
+                        "nether_wart",
+                        "sweet_berries",
+                        "glow_berries",
+                        "cactus",
+                        "bamboo",
+                        "kelp",
+                        "hay_block",
+                        "chorus_fruit")
+                .or(seeds);
+        Predicate<StackInfo> plants = saplings.or(flowers)
+                .or(seeds)
+                .or(ids(
+                        "leaves",
+                        "vine",
+                        "moss",
+                        "fern",
+                        "grass",
+                        "lily_pad",
+                        "mushroom",
+                        "fungus",
+                        "roots",
+                        "dripleaf",
+                        "sea_pickle",
+                        "seagrass",
+                        "coral",
+                        "bush",
+                        "cactus",
+                        "sugar_cane",
+                        "bamboo",
+                        "kelp",
+                        "hanging_roots"));
+        Predicate<StackInfo> mobDrops = exact(
+                "bone",
+                "bone_meal",
+                "string",
+                "gunpowder",
+                "spider_eye",
+                "rotten_flesh",
+                "ender_pearl",
+                "slime_ball",
+                "blaze_rod",
+                "blaze_powder",
+                "ghast_tear",
+                "phantom_membrane",
+                "feather",
+                "leather",
+                "rabbit_hide",
+                "rabbit_foot",
+                "ink_sac",
+                "glow_ink_sac",
+                "magma_cream",
+                "shulker_shell",
+                "prismarine_shard",
+                "prismarine_crystals",
+                "nautilus_shell",
+                "turtle_scute",
+                "scute",
+                "armadillo_scute",
+                "breeze_rod",
+                "honeycomb",
+                "egg",
+                "wither_skeleton_skull",
+                "nether_star",
+                "dragon_breath");
+        Predicate<StackInfo> brewing = exact(
+                "potion",
+                "splash_potion",
+                "lingering_potion",
+                "glass_bottle",
+                "brewing_stand",
+                "blaze_powder",
+                "nether_wart",
+                "fermented_spider_eye",
+                "glistering_melon_slice",
+                "magma_cream",
+                "ghast_tear",
+                "rabbit_foot",
+                "dragon_breath",
+                "phantom_membrane",
+                "sugar",
+                "glowstone_dust",
+                "golden_carrot",
+                "pufferfish",
+                "turtle_helmet",
+                "cauldron",
+                "breeze_rod");
         Predicate<StackInfo> potions = exact("potion", "splash_potion", "lingering_potion", "tipped_arrow");
-        Predicate<StackInfo> books = exact("book", "writable_book", "written_book", "enchanted_book", "bookshelf", "chiseled_bookshelf", "knowledge_book");
+        Predicate<StackInfo> books = exact(
+                "book",
+                "writable_book",
+                "written_book",
+                "enchanted_book",
+                "bookshelf",
+                "chiseled_bookshelf",
+                "knowledge_book");
         Predicate<StackInfo> ebooks = exact("enchanted_book");
-        Predicate<StackInfo> pvp = exact("end_crystal", "obsidian", "crying_obsidian", "respawn_anchor", "glowstone", "totem_of_undying",
-            "golden_apple", "enchanted_golden_apple", "ender_pearl", "experience_bottle", "chorus_fruit", "cobweb", "bow", "crossbow", "mace",
-            "wind_charge").or(sword).or(armor).or(potions).or(suffix("arrow"));
+        Predicate<StackInfo> pvp = exact(
+                        "end_crystal",
+                        "obsidian",
+                        "crying_obsidian",
+                        "respawn_anchor",
+                        "glowstone",
+                        "totem_of_undying",
+                        "golden_apple",
+                        "enchanted_golden_apple",
+                        "ender_pearl",
+                        "experience_bottle",
+                        "chorus_fruit",
+                        "cobweb",
+                        "bow",
+                        "crossbow",
+                        "mace",
+                        "wind_charge")
+                .or(sword)
+                .or(armor)
+                .or(potions)
+                .or(suffix("arrow"));
         Predicate<StackInfo> gapples = exact("golden_apple", "enchanted_golden_apple");
-        Predicate<StackInfo> nether = ids("nether", "crimson", "warped", "blackstone", "basalt", "soul_", "quartz", "glowstone", "magma",
-            "shroomlight", "ancient_debris", "blaze", "ghast", "wither").or(exact("netherrack", "gold_nugget"));
-        Predicate<StackInfo> end = ids("end_stone", "purpur", "chorus", "end_rod", "shulker_shell", "dragon", "ender_eye", "end_crystal").or(exact("elytra"));
-        Predicate<StackInfo> ocean = ids("prismarine", "coral", "kelp", "sponge", "sea_", "nautilus", "turtle", "trident", "conduit",
-            "heart_of_the_sea", "_bucket", "fish", "cod", "salmon", "squid", "seagrass");
-        Predicate<StackInfo> fish = exact("cod", "salmon", "tropical_fish", "pufferfish", "cooked_cod", "cooked_salmon");
-        Predicate<StackInfo> meat = exact("beef", "cooked_beef", "porkchop", "cooked_porkchop", "chicken", "cooked_chicken", "mutton",
-            "cooked_mutton", "rabbit", "cooked_rabbit", "rotten_flesh");
+        Predicate<StackInfo> nether = ids(
+                        "nether",
+                        "crimson",
+                        "warped",
+                        "blackstone",
+                        "basalt",
+                        "soul_",
+                        "quartz",
+                        "glowstone",
+                        "magma",
+                        "shroomlight",
+                        "ancient_debris",
+                        "blaze",
+                        "ghast",
+                        "wither")
+                .or(exact("netherrack", "gold_nugget"));
+        Predicate<StackInfo> end = ids(
+                        "end_stone",
+                        "purpur",
+                        "chorus",
+                        "end_rod",
+                        "shulker_shell",
+                        "dragon",
+                        "ender_eye",
+                        "end_crystal")
+                .or(exact("elytra"));
+        Predicate<StackInfo> ocean = ids(
+                "prismarine",
+                "coral",
+                "kelp",
+                "sponge",
+                "sea_",
+                "nautilus",
+                "turtle",
+                "trident",
+                "conduit",
+                "heart_of_the_sea",
+                "_bucket",
+                "fish",
+                "cod",
+                "salmon",
+                "squid",
+                "seagrass");
+        Predicate<StackInfo> fish =
+                exact("cod", "salmon", "tropical_fish", "pufferfish", "cooked_cod", "cooked_salmon");
+        Predicate<StackInfo> meat = exact(
+                "beef",
+                "cooked_beef",
+                "porkchop",
+                "cooked_porkchop",
+                "chicken",
+                "cooked_chicken",
+                "mutton",
+                "cooked_mutton",
+                "rabbit",
+                "cooked_rabbit",
+                "rotten_flesh");
         Predicate<StackInfo> music = s -> s.music || s.id.startsWith("disc_fragment");
         Predicate<StackInfo> eggs = suffix("_spawn_egg");
-        Predicate<StackInfo> utility = exact("shears", "flint_and_steel", "fishing_rod", "lead", "name_tag", "compass", "recovery_compass",
-            "clock", "spyglass", "bucket", "water_bucket", "lava_bucket", "brush", "map", "filled_map", "saddle").or(suffix("bundle"));
+        Predicate<StackInfo> utility = exact(
+                        "shears",
+                        "flint_and_steel",
+                        "fishing_rod",
+                        "lead",
+                        "name_tag",
+                        "compass",
+                        "recovery_compass",
+                        "clock",
+                        "spyglass",
+                        "bucket",
+                        "water_bucket",
+                        "lava_bucket",
+                        "brush",
+                        "map",
+                        "filled_map",
+                        "saddle")
+                .or(suffix("bundle"));
         Predicate<StackInfo> buckets = suffix("bucket");
-        Predicate<StackInfo> junk = exact("rotten_flesh", "poisonous_potato", "dirt", "cobblestone", "cobbled_deepslate", "netherrack", "gravel",
-            "andesite", "diorite", "granite", "tuff", "spider_eye", "bone", "string", "stick", "wheat_seeds", "flint", "sand", "kelp",
-            "dead_bush", "leather_boots", "leather_helmet", "fishing_rod", "bowl", "lily_pad", "seagrass");
-        Predicate<StackInfo> workstations = exact("crafting_table", "furnace", "blast_furnace", "smoker", "anvil", "chipped_anvil",
-            "damaged_anvil", "enchanting_table", "grindstone", "stonecutter", "smithing_table", "loom", "cartography_table",
-            "fletching_table", "brewing_stand", "cauldron", "composter", "barrel", "lectern", "beehive", "bee_nest", "crafter");
-        Predicate<StackInfo> containers = exact("chest", "trapped_chest", "barrel", "ender_chest", "hopper", "dropper", "dispenser").or(shulker).or(suffix("bundle"));
-        Predicate<StackInfo> building = s -> fullBlock(s) || suffix("_stairs", "_slab", "_wall").test(s);
+        Predicate<StackInfo> junk = exact(
+                "rotten_flesh",
+                "poisonous_potato",
+                "dirt",
+                "cobblestone",
+                "cobbled_deepslate",
+                "netherrack",
+                "gravel",
+                "andesite",
+                "diorite",
+                "granite",
+                "tuff",
+                "spider_eye",
+                "bone",
+                "string",
+                "stick",
+                "wheat_seeds",
+                "flint",
+                "sand",
+                "kelp",
+                "dead_bush",
+                "leather_boots",
+                "leather_helmet",
+                "fishing_rod",
+                "bowl",
+                "lily_pad",
+                "seagrass");
+        Predicate<StackInfo> workstations = exact(
+                "crafting_table",
+                "furnace",
+                "blast_furnace",
+                "smoker",
+                "anvil",
+                "chipped_anvil",
+                "damaged_anvil",
+                "enchanting_table",
+                "grindstone",
+                "stonecutter",
+                "smithing_table",
+                "loom",
+                "cartography_table",
+                "fletching_table",
+                "brewing_stand",
+                "cauldron",
+                "composter",
+                "barrel",
+                "lectern",
+                "beehive",
+                "bee_nest",
+                "crafter");
+        Predicate<StackInfo> containers = exact(
+                        "chest", "trapped_chest", "barrel", "ender_chest", "hopper", "dropper", "dispenser")
+                .or(shulker)
+                .or(suffix("bundle"));
+        Predicate<StackInfo> building =
+                s -> fullBlock(s) || suffix("_stairs", "_slab", "_wall").test(s);
         Predicate<StackInfo> templates = ids("smithing_template", "armor_trim");
         Predicate<StackInfo> stackable64 = s -> s.maxStack == 64;
         Predicate<StackInfo> stackable16 = s -> s.maxStack == 16;
@@ -792,8 +1342,21 @@ public final class Categories {
 
         add(shulker, "shulker", "shulker box", "shulk", "shulkers box", "sb");
         add(suffix("bundle"), "bundle");
-        add(Categories::shulkerWithItems, "full shulker", "filled shulker", "packed shulker", "kit", "loaded shulker", "stocked shulker");
-        add(shulker.and(s -> !shulkerWithItems(s)), "empty shulker", "empty box", "spare shulker", "empty shulk", "empty sb");
+        add(
+                Categories::shulkerWithItems,
+                "full shulker",
+                "filled shulker",
+                "packed shulker",
+                "kit",
+                "loaded shulker",
+                "stocked shulker");
+        add(
+                shulker.and(s -> !shulkerWithItems(s)),
+                "empty shulker",
+                "empty box",
+                "spare shulker",
+                "empty shulk",
+                "empty sb");
         add(food, "food", "eat", "eats", "snack", "grub", "ration", "meal", "edible", "consumable", "nom");
         add(meat, "meat", "raw meat", "cooked meat", "steak", "protein");
         add(fish, "fish", "seafood");
@@ -821,12 +1384,29 @@ public final class Categories {
         add(exact("elytra"), "elytra", "wing", "elytra wing");
         add(suffix("arrow"), "arrow", "ammo", "ammunition");
         add(exact("bow", "crossbow"), "bow", "crossbow", "archery");
-        add(Categories::enchanted, "enchanted", "enchanted gear", "godset", "god set", "maxed", "max", "op gear", "enchants");
+        add(
+                Categories::enchanted,
+                "enchanted",
+                "enchanted gear",
+                "godset",
+                "god set",
+                "maxed",
+                "max",
+                "op gear",
+                "enchants");
         add(ebooks, "enchanted book", "ebook", "e book", "enchantment book", "librarian");
         add(books, "book", "library", "reading", "lore");
         add(potions, "potion", "pot", "splash", "brew");
         add(brewing, "brewing", "alchemy", "brewing ingredient", "potion ingredient");
-        add(exact("experience_bottle"), "experience", "experience bottle", "xp bottle", "exp bottle", "bottle o enchanting", "xp", "exp");
+        add(
+                exact("experience_bottle"),
+                "experience",
+                "experience bottle",
+                "xp bottle",
+                "exp bottle",
+                "bottle o enchanting",
+                "xp",
+                "exp");
         add(pvp, "pvp", "crystal pvp", "cpvp", "crystalpvp", "pvp kit", "pvp gear", "fight", "war", "anarchy kit");
         add(exact("end_crystal"), "crystal", "end crystal", "crystals");
         add(exact("obsidian", "crying_obsidian"), "obsidian", "obby", "obsi");
@@ -837,13 +1417,51 @@ public final class Categories {
         add(ingots, "ingot", "metal", "bar", "nugget", "smelted");
         add(gems, "gem", "jewel", "crystal shard", "precious");
         add(storageBlocks, "storage block", "mineral block", "compressed", "metal block", "resource block");
-        add(valuables, "valuable", "loot", "treasure", "rare", "precious", "expensive", "important", "dupe", "vault", "safe", "goodies", "best");
+        add(
+                valuables,
+                "valuable",
+                "loot",
+                "treasure",
+                "rare",
+                "precious",
+                "expensive",
+                "important",
+                "dupe",
+                "vault",
+                "safe",
+                "goodies",
+                "best");
         add(ids("diamond"), "diamond", "dias", "diamond stuff");
         add(ids("netherite"), "netherite", "nethe", "netherite stuff");
-        add(redstone, "redstone", "redstone component", "circuit", "circuitry", "tech", "technical", "mechanic", "mechanism", "contraption",
-            "automation", "machine", "engineering", "logic", "wiring");
+        add(
+                redstone,
+                "redstone",
+                "redstone component",
+                "circuit",
+                "circuitry",
+                "tech",
+                "technical",
+                "mechanic",
+                "mechanism",
+                "contraption",
+                "automation",
+                "machine",
+                "engineering",
+                "logic",
+                "wiring");
         add(rails, "rail", "railway", "track");
-        add(transport, "transport", "transportation", "travel", "vehicle", "boat", "minecart", "cart", "ride", "mount", "horse");
+        add(
+                transport,
+                "transport",
+                "transportation",
+                "travel",
+                "vehicle",
+                "boat",
+                "minecart",
+                "cart",
+                "ride",
+                "mount",
+                "horse");
         add(exact("firework_rocket", "firework_star"), "firework", "rocket", "fireworks", "elytra fuel", "boost");
         add(light, "light", "lighting", "torch", "lamp", "lantern", "illumination", "glow");
         add(decoration, "decoration", "decor", "deco", "decorative", "furniture", "interior", "aesthetic", "pretty");
@@ -865,7 +1483,17 @@ public final class Categories {
         add(stone, "stone", "rock", "cobble", "cobblestone", "masonry", "brick", "stonework", "deepslate");
         add(dirt, "dirt", "soil", "earth", "mud", "ground");
         add(sand, "sand", "gravel", "desert");
-        add(building, "building", "building block", "build", "builder", "construction", "block", "material", "mat", "bulk");
+        add(
+                building,
+                "building",
+                "building block",
+                "build",
+                "builder",
+                "construction",
+                "block",
+                "material",
+                "mat",
+                "bulk");
         add(suffix("_stairs"), "stair", "step");
         add(suffix("_slab"), "slab", "half slab");
         add(suffix("_wall"), "wall");
@@ -882,7 +1510,12 @@ public final class Categories {
         add(eggs, "spawn egg", "egg", "mob egg");
         add(utility, "utility", "util", "misc tool", "handy");
         add(buckets, "bucket", "pail");
-        add(exact("map", "filled_map", "compass", "recovery_compass", "clock", "spyglass"), "map", "navigation", "exploration", "explorer");
+        add(
+                exact("map", "filled_map", "compass", "recovery_compass", "clock", "spyglass"),
+                "map",
+                "navigation",
+                "exploration",
+                "explorer");
         add(workstations, "workstation", "station", "crafting", "utility block", "job block", "furnace");
         add(containers, "container", "chest", "storage container");
         add(templates, "template", "smithing template", "trim", "armor trim", "upgrade");
@@ -898,7 +1531,8 @@ public final class Categories {
         add(Categories::enchanted, "ench", "enchant", "ench gear", "enchanted armor");
         add(redstone, "rs", "rs stuff");
         add(ids("netherite"), "neth", "nether ite");
-        Predicate<StackInfo> netheriteGear = ids("netherite").and(armor.or(tools).or(weapons));
+        Predicate<StackInfo> netheriteGear =
+                ids("netherite").and(armor.or(tools).or(weapons));
         add(netheriteGear, "netherite gear", "neth gear", "netherite equipment");
         add(ids("netherite").and(armor), "netherite armor", "netherite armour", "neth armor", "neth armour");
 
@@ -978,9 +1612,7 @@ public final class Categories {
      * A name for a new category, with what belongs in it. Registered as a sign word like any other, unless the sorter
      * already knows it as one.
      */
-    public record Label(String text, Predicate<StackInfo> test) {
-    }
-
+    public record Label(String text, Predicate<StackInfo> test) {}
 
     private static void label(String text, Predicate<StackInfo> test) {
         LABELS.add(new Label(text, test));
@@ -1037,7 +1669,9 @@ public final class Categories {
         if (levelledEnchant(part.full()) != null) return true;
         String label = part.label();
         if (label.isEmpty()) return false;
-        if (wholeKnown(part) || CATCH_ALL.contains(label) || KEEP_WHOLE.contains(part.labelKeys().getFirst())) return true;
+        if (wholeKnown(part)
+                || CATCH_ALL.contains(label)
+                || KEEP_WHOLE.contains(part.labelKeys().getFirst())) return true;
         if (nicknames(part) != null || lookup(CATEGORIES, part.labelKeys()) != null) return true;
         for (String word : label.split(" ")) {
             if (lookup(CATEGORIES, List.of(singular(word), altWord(word))) != null) return true;

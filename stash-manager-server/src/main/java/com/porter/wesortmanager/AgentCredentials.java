@@ -24,9 +24,15 @@ final class AgentCredentials {
 
     record Scope(String agent, String player, String server, Set<String> stashes) {
         Scope {
-            if (agent == null || !agent.equals(UUID.fromString(agent).toString()) || player == null
-                || !player.matches("[A-Za-z0-9_]{1,16}") || !valid(server, 256) || stashes == null
-                || stashes.isEmpty() || stashes.size() > IndexStore.MAX_STASHES || !stashes.stream().allMatch(stash -> valid(stash, 256))) {
+            if (agent == null
+                    || !agent.equals(UUID.fromString(agent).toString())
+                    || player == null
+                    || !player.matches("[A-Za-z0-9_]{1,16}")
+                    || !valid(server, 256)
+                    || stashes == null
+                    || stashes.isEmpty()
+                    || stashes.size() > IndexStore.MAX_STASHES
+                    || !stashes.stream().allMatch(stash -> valid(stash, 256))) {
                 throw new IllegalArgumentException("Invalid Minecraft agent scope");
             }
             stashes = Set.copyOf(stashes);
@@ -37,7 +43,10 @@ final class AgentCredentials {
         }
 
         private static boolean valid(String value, int limit) {
-            return value != null && !value.isBlank() && value.length() <= limit && value.chars().noneMatch(Character::isISOControl);
+            return value != null
+                    && !value.isBlank()
+                    && value.length() <= limit
+                    && value.chars().noneMatch(Character::isISOControl);
         }
 
         boolean matchesLocation(String server, String stash) {
@@ -49,13 +58,20 @@ final class AgentCredentials {
         }
 
         String botId() {
-            return UUID.nameUUIDFromBytes((server + "\u0000" + agent).getBytes(StandardCharsets.UTF_8)).toString();
+            return UUID.nameUUIDFromBytes((server + "\u0000" + agent).getBytes(StandardCharsets.UTF_8))
+                    .toString();
         }
     }
 
     record Credential(Scope scope, String signingKey) {
-        byte[] key() { return Base64.getDecoder().decode(signingKey); }
-        @Override public String toString() { return "Agent credential for " + scope.agent(); }
+        byte[] key() {
+            return Base64.getDecoder().decode(signingKey);
+        }
+
+        @Override
+        public String toString() {
+            return "Agent credential for " + scope.agent();
+        }
     }
 
     AgentCredentials(Path data) throws IOException {
@@ -72,7 +88,8 @@ final class AgentCredentials {
                 var scope = readScope(row, version == 1);
                 String key = field(row, "key");
                 if (key != null && Base64.getDecoder().decode(key).length != 32
-                    || loaded.putIfAbsent(scope.agent(), new Credential(scope, key)) != null || loaded.size() > MAX_ENTRIES) {
+                        || loaded.putIfAbsent(scope.agent(), new Credential(scope, key)) != null
+                        || loaded.size() > MAX_ENTRIES) {
                     throw new IllegalArgumentException();
                 }
             }
@@ -83,7 +100,9 @@ final class AgentCredentials {
         }
     }
 
-    synchronized boolean scopedOnly() { return scopedOnly; }
+    synchronized boolean scopedOnly() {
+        return scopedOnly;
+    }
 
     synchronized Credential find(String id) {
         var saved = entries.get(id);
@@ -92,13 +111,18 @@ final class AgentCredentials {
 
     synchronized String issue(Scope scope) throws IOException {
         var existing = entries.get(scope.agent());
-        if (existing != null && !existing.scope().matchesAccount(scope)) throw new IllegalArgumentException("Agent ID is bound to a different account");
-        if (existing == null && entries.size() >= MAX_ENTRIES) throw new IllegalArgumentException("Agent credential registry is full");
-        var active = entries.values().stream().filter(c -> c.signingKey() != null).toList();
+        if (existing != null && !existing.scope().matchesAccount(scope))
+            throw new IllegalArgumentException("Agent ID is bound to a different account");
+        if (existing == null && entries.size() >= MAX_ENTRIES)
+            throw new IllegalArgumentException("Agent credential registry is full");
+        var active =
+                entries.values().stream().filter(c -> c.signingKey() != null).toList();
         if ((existing == null || existing.signingKey() == null) && active.size() >= MAX_ACTIVE_AGENTS) {
             throw new IllegalArgumentException("Only five agent credentials may be active");
         }
-        if (active.stream().anyMatch(c -> !c.scope().agent().equals(scope.agent()) && c.scope().matchesAccount(scope))) {
+        if (active.stream()
+                .anyMatch(c ->
+                        !c.scope().agent().equals(scope.agent()) && c.scope().matchesAccount(scope))) {
             throw new IllegalArgumentException("Minecraft account already has an agent credential on this server");
         }
         var random = new byte[32];
@@ -121,7 +145,8 @@ final class AgentCredentials {
     }
 
     synchronized void requireScoped() throws IOException {
-        if (entries.values().stream().noneMatch(c -> c.signingKey() != null)) throw new IllegalArgumentException("Issue an agent credential first");
+        if (entries.values().stream().noneMatch(c -> c.signingKey() != null))
+            throw new IllegalArgumentException("Issue an agent credential first");
         save(entries, true);
     }
 
@@ -148,15 +173,20 @@ final class AgentCredentials {
     }
 
     static Scope readScope(JsonObject row, boolean singleStash) {
-        if (singleStash) return new Scope(field(row, "agent"), field(row, "player"), field(row, "server"), field(row, "stash"));
+        if (singleStash)
+            return new Scope(field(row, "agent"), field(row, "player"), field(row, "server"), field(row, "stash"));
         var stashes = new java.util.HashSet<String>();
         for (var stash : row.getAsJsonArray("stashes")) {
-            if (!stash.isJsonPrimitive() || !stash.getAsJsonPrimitive().isString() || !stashes.add(stash.getAsString())) {
+            if (!stash.isJsonPrimitive()
+                    || !stash.getAsJsonPrimitive().isString()
+                    || !stashes.add(stash.getAsString())) {
                 throw new IllegalArgumentException("Invalid stash list");
             }
         }
         return new Scope(field(row, "agent"), field(row, "player"), field(row, "server"), stashes);
     }
 
-    private static String field(JsonObject object, String field) { return AddonRoutes.string(object, field); }
+    private static String field(JsonObject object, String field) {
+        return AddonRoutes.string(object, field);
+    }
 }

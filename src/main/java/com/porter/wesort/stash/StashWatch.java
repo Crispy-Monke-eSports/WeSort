@@ -1,18 +1,17 @@
 package com.porter.wesort.stash;
 
-import com.porter.wesort.stash.Stash.Box;
-import net.minecraft.core.BlockPos;
-import net.minecraft.world.level.block.BarrelBlock;
-import net.minecraft.world.level.block.entity.ChestBlockEntity;
+import static meteordevelopment.meteorclient.MeteorClient.mc;
 
+import com.porter.wesort.stash.Stash.Box;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
-
-import static meteordevelopment.meteorclient.MeteorClient.mc;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.block.BarrelBlock;
+import net.minecraft.world.level.block.entity.ChestBlockEntity;
 
 /**
  * Watches the containers of a stash and their signs from the client's own copy of the world, without any packets: when
@@ -32,7 +31,8 @@ public final class StashWatch {
     }
 
     private final Map<Box, Lid> lids = new HashMap<>();
-    // Watching the chests of the delivery storage (excluded from sorting, so the other watch skips them) and nothing else
+    // Watching the chests of the delivery storage (excluded from sorting, so the other watch skips them) and nothing
+    // else
     private final boolean deliveryOnly;
 
     public StashWatch() {
@@ -87,8 +87,7 @@ public final class StashWatch {
                 }
                 // Still shown as open after ten minutes: the close was missed. Forgotten
                 else if (now - lid.openedAt > OPEN_FORGET_TICKS) lids.remove(box);
-            }
-            else if (lid != null) {
+            } else if (lid != null) {
                 if (lid.open) {
                     lid.open = false;
                     lid.closedAt = now;
@@ -113,8 +112,7 @@ public final class StashWatch {
             if (!mc.level.isLoaded(part)) return null;
             if (mc.level.getBlockEntity(part) instanceof ChestBlockEntity chest) {
                 if (chest.getOpenNess(1.0f) > 0) open = true;
-            }
-            else {
+            } else {
                 var state = mc.level.getBlockState(part);
                 if (state.getBlock() instanceof BarrelBlock && state.getValue(BarrelBlock.OPEN)) open = true;
             }
@@ -160,8 +158,7 @@ public final class StashWatch {
                     signDirtyAt.put(box, now);
                     signSeen.put(box, read.labels());
                 }
-            }
-            else if (!read.labels().equals(box.labels)) {
+            } else if (!read.labels().equals(box.labels)) {
                 // A sign that went away is waited on separately, for a minute, before it counts as removed
                 if (read.labels().isEmpty() && signGoneSince.containsKey(box)) continue;
                 signDirtyAt.put(box, now);

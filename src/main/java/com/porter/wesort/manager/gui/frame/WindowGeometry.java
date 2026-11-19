@@ -14,6 +14,7 @@ public record WindowGeometry(int x, int y, int w, int h, boolean maximized) {
     public static final int MIN_H = 230;
     /** The website's .layout max-width of 1400 CSS px, in GUI pixels. */
     public static final int DEFAULT_MAX_W = 700;
+
     private static final String VERSION = "v1:";
     private static final int LIMIT = 100_000;
 
@@ -52,7 +53,13 @@ public record WindowGeometry(int x, int y, int w, int h, boolean maximized) {
             int w = Integer.parseInt(p[2].trim());
             int h = Integer.parseInt(p[3].trim());
             int m = Integer.parseInt(p[4].trim());
-            if (w <= 0 || h <= 0 || w > LIMIT || h > LIMIT || Math.abs(x) > LIMIT || Math.abs(y) > LIMIT || (m != 0 && m != 1)) return null;
+            if (w <= 0
+                    || h <= 0
+                    || w > LIMIT
+                    || h > LIMIT
+                    || Math.abs(x) > LIMIT
+                    || Math.abs(y) > LIMIT
+                    || (m != 0 && m != 1)) return null;
             return new WindowGeometry(x, y, w, h, m == 1);
         } catch (NumberFormatException e) {
             return null;

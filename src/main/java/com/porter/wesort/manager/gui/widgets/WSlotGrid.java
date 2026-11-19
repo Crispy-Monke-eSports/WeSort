@@ -3,13 +3,12 @@ package com.porter.wesort.manager.gui.widgets;
 import com.porter.wesort.manager.gui.style.Paint;
 import com.porter.wesort.manager.gui.style.Palette;
 import com.porter.wesort.manager.gui.style.SmGuiTheme;
-import meteordevelopment.meteorclient.gui.renderer.GuiRenderer;
-import meteordevelopment.meteorclient.gui.widgets.pressable.WPressable;
-import net.minecraft.client.gui.GuiGraphics;
-
 import java.util.List;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
+import meteordevelopment.meteorclient.gui.renderer.GuiRenderer;
+import meteordevelopment.meteorclient.gui.widgets.pressable.WPressable;
+import net.minecraft.client.gui.GuiGraphics;
 
 /**
  * Nine slots per row, a fixed number of them (27 for a shulker box, 54 for a double chest), drawn like the item grid.
@@ -18,7 +17,13 @@ import java.util.function.Supplier;
  */
 public class WSlotGrid extends WPressable {
     /** How a slot is drawn on top of its item. */
-    public enum Mark { NONE, EXISTING, OVERFLOW, OUTSIDE, SELECTED }
+    public enum Mark {
+        NONE,
+        EXISTING,
+        OVERFLOW,
+        OUTSIDE,
+        SELECTED
+    }
 
     private static final int PAD = 2;
     private static final int COLS = 9;
@@ -87,7 +92,14 @@ public class WSlotGrid extends WPressable {
         }
         if (hover >= 0) {
             WItemGrid.Cell cd = cells.get(hover);
-            if (cd != null) SlotArt.card(t, cd.tip(), cd.stack(), x + (PAD + (hover % COLS) * SlotArt.SLOT) * u, y + (PAD + (hover / COLS) * SlotArt.SLOT) * u, SlotArt.SLOT * u);
+            if (cd != null)
+                SlotArt.card(
+                        t,
+                        cd.tip(),
+                        cd.stack(),
+                        x + (PAD + (hover % COLS) * SlotArt.SLOT) * u,
+                        y + (PAD + (hover / COLS) * SlotArt.SLOT) * u,
+                        SlotArt.SLOT * u);
         }
         GuiGraphics g = graphics.get();
         double slot = SlotArt.SLOT * u;
@@ -102,13 +114,13 @@ public class WSlotGrid extends WPressable {
                 case EXISTING -> {
                     // Dimmed and hatched: already in the chest
                     Paint.rect(renderer, t, sx + u, sy + u, slot - 2 * u, slot - 2 * u, DIM);
-                    for (double s = 4 * u; s < slot - 2 * u; s += 6 * u) Paint.rect(renderer, t, sx + u + s, sy + u, u, slot - 2 * u, STRIPE);
+                    for (double s = 4 * u; s < slot - 2 * u; s += 6 * u)
+                        Paint.rect(renderer, t, sx + u + s, sy + u, u, slot - 2 * u, STRIPE);
                 }
                 case OUTSIDE -> Paint.rect(renderer, t, sx + u, sy + u, slot - 2 * u, slot - 2 * u, DIM);
                 case OVERFLOW -> Paint.outline(renderer, t, sx, sy, slot, slot, u, WARN);
                 case SELECTED -> Paint.outline(renderer, t, sx, sy, slot, slot, u, p.accent());
-                default -> {
-                }
+                default -> {}
             }
         }
     }

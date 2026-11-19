@@ -3,7 +3,6 @@ package com.porter.wesortmanager;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
-
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.Map;
@@ -50,7 +49,8 @@ final class OperationsRoutes {
         if (perms.view()) {
             var seen = new HashSet<String>();
             for (var source : index.stock().sources()) {
-                if (!perms.seesStash(source.server(), source.stash()) || !seen.add(source.value().get("id").getAsString())) continue;
+                if (!perms.seesStash(source.server(), source.stash())
+                        || !seen.add(source.value().get("id").getAsString())) continue;
                 String state = source.status();
                 count(stock, state);
                 if (state.startsWith("STALE")) count(alerts, "STALE");
@@ -76,5 +76,7 @@ final class OperationsRoutes {
         Http.json(ex, 200, out);
     }
 
-    private static void count(Map<String, Integer> counts, String key) { counts.merge(key, 1, Integer::sum); }
+    private static void count(Map<String, Integer> counts, String key) {
+        counts.merge(key, 1, Integer::sum);
+    }
 }

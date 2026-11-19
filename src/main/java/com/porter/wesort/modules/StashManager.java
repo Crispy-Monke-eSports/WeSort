@@ -1,42 +1,41 @@
 package com.porter.wesort.modules;
 
-import com.porter.wesort.WeSortAddon;
-import com.porter.wesort.compat.InventorySync;
-import com.porter.wesort.compat.PhysicalJournalRuntime;
-import com.porter.wesort.stash.Stash;
-import com.porter.wesort.stash.StashIndex;
-import meteordevelopment.meteorclient.events.game.GameLeftEvent;
-import meteordevelopment.meteorclient.events.world.TickEvent;
-import meteordevelopment.meteorclient.settings.*;
-import meteordevelopment.meteorclient.systems.modules.Module;
-import meteordevelopment.meteorclient.systems.modules.Modules;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
-import com.porter.wesort.stash.Order;
+import com.porter.wesort.WeSortAddon;
+import com.porter.wesort.compat.InventorySync;
+import com.porter.wesort.compat.PhysicalJournalRuntime;
 import com.porter.wesort.compat.RightClick;
-import meteordevelopment.meteorclient.events.render.Render3DEvent;
-import meteordevelopment.meteorclient.renderer.ShapeMode;
-import meteordevelopment.meteorclient.utils.render.color.SettingColor;
-import meteordevelopment.orbit.EventHandler;
-import net.minecraft.core.BlockPos;
-import net.minecraft.world.item.Item;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.HitResult;
-
-import java.nio.charset.StandardCharsets;
+import com.porter.wesort.stash.Order;
+import com.porter.wesort.stash.Stash;
+import com.porter.wesort.stash.StashIndex;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import meteordevelopment.meteorclient.events.game.GameLeftEvent;
+import meteordevelopment.meteorclient.events.render.Render3DEvent;
+import meteordevelopment.meteorclient.events.world.TickEvent;
+import meteordevelopment.meteorclient.renderer.ShapeMode;
+import meteordevelopment.meteorclient.settings.*;
+import meteordevelopment.meteorclient.systems.modules.Module;
+import meteordevelopment.meteorclient.systems.modules.Modules;
+import meteordevelopment.meteorclient.utils.render.color.SettingColor;
+import meteordevelopment.orbit.EventHandler;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 
 /**
  * Pushes what is in the saved stash (the one wesort-stash-sorter uses) to the WeSort Manager web server on the local network,
@@ -47,264 +46,251 @@ public class StashManager extends Module {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
     private final Setting<String> serverUrl = sgGeneral.add(new StringSetting.Builder()
-        .name("server-url")
-        .description("Address of the WeSort Manager server, http or https, e.g. http://127.0.0.1:8765. Empty: no server, nothing is sent.")
-        .defaultValue("")
-        .build()
-    );
+            .name("server-url")
+            .description(
+                    "Address of the WeSort Manager server, http or https, e.g. http://127.0.0.1:8765. Empty: no server, nothing is sent.")
+            .defaultValue("")
+            .build());
 
     private final Setting<String> apiKey = sgGeneral.add(new StringSetting.Builder()
-        .name("api-key")
-        .description("The agent API key from the Manager host's agent-key command. Keep it private.")
-        .defaultValue("")
-        .build()
-    );
+            .name("api-key")
+            .description("The agent API key from the Manager host's agent-key command. Keep it private.")
+            .defaultValue("")
+            .build());
 
     private final Setting<Integer> scanInterval = sgGeneral.add(new IntSetting.Builder()
-        .name("scan-interval")
-        .description("How often, in seconds, the stash is checked for changes. Only changes are sent.")
-        .defaultValue(10)
-        .min(2)
-        .sliderRange(2, 60)
-        .build()
-    );
+            .name("scan-interval")
+            .description("How often, in seconds, the stash is checked for changes. Only changes are sent.")
+            .defaultValue(10)
+            .min(2)
+            .sliderRange(2, 60)
+            .build());
 
     private final Setting<Boolean> includeExcluded = sgGeneral.add(new BoolSetting.Builder()
-        .name("include-excluded")
-        .description("Also list containers excluded from sorting.")
-        .defaultValue(false)
-        .build()
-    );
+            .name("include-excluded")
+            .description("Also list containers excluded from sorting.")
+            .defaultValue(false)
+            .build());
 
     private final Setting<Boolean> acceptOrders = sgGeneral.add(new BoolSetting.Builder()
-        .name("accept-orders")
-        .description("Let the bot take orders from the web page: it builds shulkers from the stash and delivers them to the delivery container (wesort-stash-sorter pick: Delivery). wesort-stash-sorter does not need to be on: while this module is on it reads containers, takes orders and puts leftovers back by itself, using wesort-stash-sorter's settings (stash-name, area, safe-walk...), and never sorts. Needs a free inventory slot and enough empty shulkers. Loose items an order took out and did not deliver go back to the container they came from, or the nearest one with room when that is not known; shulkers it unpacked go back where they came from. To stop the bot, turn off accept-orders or wesort-stash-manager. Turning wesort-stash-sorter off hands control back to wesort-stash-manager while accept-orders is on.")
-        .defaultValue(false)
-        .build()
-    );
+            .name("accept-orders")
+            .description(
+                    "Let the bot take orders from the web page: it builds shulkers from the stash and delivers them to the delivery container (wesort-stash-sorter pick: Delivery). wesort-stash-sorter does not need to be on: while this module is on it reads containers, takes orders and puts leftovers back by itself, using wesort-stash-sorter's settings (stash-name, area, safe-walk...), and never sorts. Needs a free inventory slot and enough empty shulkers. Loose items an order took out and did not deliver go back to the container they came from, or the nearest one with room when that is not known; shulkers it unpacked go back where they came from. To stop the bot, turn off accept-orders or wesort-stash-manager. Turning wesort-stash-sorter off hands control back to wesort-stash-manager while accept-orders is on.")
+            .defaultValue(false)
+            .build());
 
     private final Setting<Boolean> orderIntakePaused = sgGeneral.add(new BoolSetting.Builder()
-        .name("order-intake-paused")
-        .description("Manager pauses new warehouse orders while the current order finishes.")
-        .defaultValue(false)
-        .visible(() -> false)
-        .build()
-    );
+            .name("order-intake-paused")
+            .description("Manager pauses new warehouse orders while the current order finishes.")
+            .defaultValue(false)
+            .visible(() -> false)
+            .build());
 
     private final Setting<Boolean> useNamedShulkers = sgGeneral.add(new BoolSetting.Builder()
-        .name("use-named-shulkers")
-        .description("Orders may take items out of shulkers that have a custom name. Off: named shulkers are left alone, as the sorter does.")
-        .defaultValue(true)
-        .build()
-    );
+            .name("use-named-shulkers")
+            .description(
+                    "Orders may take items out of shulkers that have a custom name. Off: named shulkers are left alone, as the sorter does.")
+            .defaultValue(true)
+            .build());
 
     private final Setting<Integer> freshMinutes = sgGeneral.add(new IntSetting.Builder()
-        .name("fresh-minutes")
-        .description("A container read within this many minutes is not read again when wesort-stash-sorter or an order starts, unless something marked it changed (another player opened it, a sign changed, items were not where they were saved). 0: read everything again every time. A website rescan always reads everything. wesort-stash-sorter uses this too.")
-        .defaultValue(5)
-        .min(0)
-        .sliderRange(0, 30)
-        .build()
-    );
+            .name("fresh-minutes")
+            .description(
+                    "A container read within this many minutes is not read again when wesort-stash-sorter or an order starts, unless something marked it changed (another player opened it, a sign changed, items were not where they were saved). 0: read everything again every time. A website rescan always reads everything. wesort-stash-sorter uses this too.")
+            .defaultValue(5)
+            .min(0)
+            .sliderRange(0, 30)
+            .build());
 
     private final Setting<Boolean> orderChat = sgGeneral.add(new BoolSetting.Builder()
-        .name("order-messages")
-        .description("Tell you in chat when an order is taken, delivered or fails.")
-        .defaultValue(true)
-        .build()
-    );
+            .name("order-messages")
+            .description("Tell you in chat when an order is taken, delivered or fails.")
+            .defaultValue(true)
+            .build());
 
     private final SettingGroup sgDelivery = settings.createGroup("Delivery");
 
     private final Setting<Boolean> selectDelivery = sgDelivery.add(new BoolSetting.Builder()
-        .name("select-delivery")
-        .description("Turn on, then right-click a container in the stash to make it the delivery container, where finished orders are put. Right-click the current one to clear it. Turns itself off after one click.")
-        .defaultValue(false)
-        .onChanged(on -> {
-            if (on && Modules.get().get(StashSorter.class).currentStash() == null) {
-                warning("No stash is loaded. Scan one with wesort-stash-sorter first; this uses the stash named in its settings.");
-                this.selectDelivery.set(false);
-            }
-            // Only one of the picks at a time
-            else if (on) {
-                if (this.selectAnvil != null && this.selectAnvil.get()) this.selectAnvil.set(false);
-                if (this.selectCraftingTable != null && this.selectCraftingTable.get()) this.selectCraftingTable.set(false);
-            }
-        })
-        .build()
-    );
+            .name("select-delivery")
+            .description(
+                    "Turn on, then right-click a container in the stash to make it the delivery container, where finished orders are put. Right-click the current one to clear it. Turns itself off after one click.")
+            .defaultValue(false)
+            .onChanged(on -> {
+                if (on && Modules.get().get(StashSorter.class).currentStash() == null) {
+                    warning(
+                            "No stash is loaded. Scan one with wesort-stash-sorter first; this uses the stash named in its settings.");
+                    this.selectDelivery.set(false);
+                }
+                // Only one of the picks at a time
+                else if (on) {
+                    if (this.selectAnvil != null && this.selectAnvil.get()) this.selectAnvil.set(false);
+                    if (this.selectCraftingTable != null && this.selectCraftingTable.get())
+                        this.selectCraftingTable.set(false);
+                }
+            })
+            .build());
 
     private final Setting<Boolean> clearDelivery = sgDelivery.add(new BoolSetting.Builder()
-        .name("clear-delivery")
-        .description("Turn on to clear the delivery container. Turns itself off again.")
-        .defaultValue(false)
-        .onChanged(on -> {
-            if (!on) return;
-            this.clearDelivery.set(false);
-            if (Modules.get().get(StashSorter.class).clearDelivery()) info("Delivery container cleared.");
-            else info("There is no delivery container.");
-        })
-        .build()
-    );
+            .name("clear-delivery")
+            .description("Turn on to clear the delivery container. Turns itself off again.")
+            .defaultValue(false)
+            .onChanged(on -> {
+                if (!on) return;
+                this.clearDelivery.set(false);
+                if (Modules.get().get(StashSorter.class).clearDelivery()) info("Delivery container cleared.");
+                else info("There is no delivery container.");
+            })
+            .build());
 
     private final Setting<Boolean> showDelivery = sgDelivery.add(new BoolSetting.Builder()
-        .name("show-delivery")
-        .description("Outline the delivery container while this module is on.")
-        .defaultValue(true)
-        .build()
-    );
+            .name("show-delivery")
+            .description("Outline the delivery container while this module is on.")
+            .defaultValue(true)
+            .build());
 
     private final Setting<SettingColor> deliveryColor = sgDelivery.add(new ColorSetting.Builder()
-        .name("delivery-color")
-        .description("The outline of the delivery container.")
-        .defaultValue(new SettingColor(60, 255, 90, 90))
-        .visible(showDelivery::get)
-        .build()
-    );
+            .name("delivery-color")
+            .description("The outline of the delivery container.")
+            .defaultValue(new SettingColor(60, 255, 90, 90))
+            .visible(showDelivery::get)
+            .build());
 
     private final Setting<Boolean> autoExpandDelivery = sgDelivery.add(new BoolSetting.Builder()
-        .name("auto-expand-delivery")
-        .description("When every chest of the delivery storage is full, put another double chest up one block above the highest one (taken from the stash, or crafted when enable-crafting is on) and keep filling the lowest chest with room. A chest a player emptied is used again. Off: an order waits for space (paused for up to 2 hours, then it ends). It goes up for as long as the new chests could be opened and the bot can reach them: from the floor the first row above the delivery container, higher ones need something to stand on beside the stack. The chests are never sorted into or listed.")
-        .defaultValue(false)
-        .build()
-    );
+            .name("auto-expand-delivery")
+            .description(
+                    "When every chest of the delivery storage is full, put another double chest up one block above the highest one (taken from the stash, or crafted when enable-crafting is on) and keep filling the lowest chest with room. A chest a player emptied is used again. Off: an order waits for space (paused for up to 2 hours, then it ends). It goes up for as long as the new chests could be opened and the bot can reach them: from the floor the first row above the delivery container, higher ones need something to stand on beside the stack. The chests are never sorted into or listed.")
+            .defaultValue(false)
+            .build());
 
     private final SettingGroup sgAnvil = settings.createGroup("Anvil");
 
     private final Setting<Boolean> selectAnvil = sgAnvil.add(new BoolSetting.Builder()
-        .name("select-anvil")
-        .description("Turn on, then right-click an anvil to make it the anvil orders are named at (when an order gives its shulkers names). Right-click the current one to clear it. It may be outside the stash area, and is never sorted or listed. Turns itself off after one click.")
-        .defaultValue(false)
-        .onChanged(on -> {
-            if (on && Modules.get().get(StashSorter.class).currentStash() == null) {
-                warning("No stash is loaded. Scan one with wesort-stash-sorter first; this uses the stash named in its settings.");
-                this.selectAnvil.set(false);
-            }
-            else if (on) {
-                if (this.selectDelivery.get()) this.selectDelivery.set(false);
-                if (this.selectCraftingTable != null && this.selectCraftingTable.get()) this.selectCraftingTable.set(false);
-            }
-        })
-        .build()
-    );
+            .name("select-anvil")
+            .description(
+                    "Turn on, then right-click an anvil to make it the anvil orders are named at (when an order gives its shulkers names). Right-click the current one to clear it. It may be outside the stash area, and is never sorted or listed. Turns itself off after one click.")
+            .defaultValue(false)
+            .onChanged(on -> {
+                if (on && Modules.get().get(StashSorter.class).currentStash() == null) {
+                    warning(
+                            "No stash is loaded. Scan one with wesort-stash-sorter first; this uses the stash named in its settings.");
+                    this.selectAnvil.set(false);
+                } else if (on) {
+                    if (this.selectDelivery.get()) this.selectDelivery.set(false);
+                    if (this.selectCraftingTable != null && this.selectCraftingTable.get())
+                        this.selectCraftingTable.set(false);
+                }
+            })
+            .build());
 
     private final Setting<Boolean> clearAnvil = sgAnvil.add(new BoolSetting.Builder()
-        .name("clear-anvil")
-        .description("Turn on to clear the anvil. Turns itself off again.")
-        .defaultValue(false)
-        .onChanged(on -> {
-            if (!on) return;
-            this.clearAnvil.set(false);
-            if (Modules.get().get(StashSorter.class).clearAnvil()) info("Anvil cleared.");
-            else info("There is no anvil.");
-        })
-        .build()
-    );
+            .name("clear-anvil")
+            .description("Turn on to clear the anvil. Turns itself off again.")
+            .defaultValue(false)
+            .onChanged(on -> {
+                if (!on) return;
+                this.clearAnvil.set(false);
+                if (Modules.get().get(StashSorter.class).clearAnvil()) info("Anvil cleared.");
+                else info("There is no anvil.");
+            })
+            .build());
 
     private final Setting<Boolean> showAnvil = sgAnvil.add(new BoolSetting.Builder()
-        .name("show-anvil")
-        .description("Outline the anvil while this module is on.")
-        .defaultValue(true)
-        .build()
-    );
+            .name("show-anvil")
+            .description("Outline the anvil while this module is on.")
+            .defaultValue(true)
+            .build());
 
     private final Setting<SettingColor> anvilColor = sgAnvil.add(new ColorSetting.Builder()
-        .name("anvil-color")
-        .description("The outline of the anvil.")
-        .defaultValue(new SettingColor(255, 190, 40, 90))
-        .visible(showAnvil::get)
-        .build()
-    );
+            .name("anvil-color")
+            .description("The outline of the anvil.")
+            .defaultValue(new SettingColor(255, 190, 40, 90))
+            .visible(showAnvil::get)
+            .build());
 
     private final SettingGroup sgCrafting = settings.createGroup("Crafting");
 
     private final Setting<Boolean> enableCrafting = sgCrafting.add(new BoolSetting.Builder()
-        .name("enable-crafting")
-        .description("Orders and compaction may craft a plain Shulker Box when no empty one is left: shulker shells and a chest (made of planks, made of logs) are taken from the stash and crafted at the crafting table below. Shulker shells can't be crafted, so they have to be in the stash. Needs a crafting table: the one set below, else one is found in the stash area, taken from the stash and placed, or crafted in the inventory grid from 4 planks (or logs) and placed. Kits never craft.")
-        .defaultValue(false)
-        .build()
-    );
+            .name("enable-crafting")
+            .description(
+                    "Orders and compaction may craft a plain Shulker Box when no empty one is left: shulker shells and a chest (made of planks, made of logs) are taken from the stash and crafted at the crafting table below. Shulker shells can't be crafted, so they have to be in the stash. Needs a crafting table: the one set below, else one is found in the stash area, taken from the stash and placed, or crafted in the inventory grid from 4 planks (or logs) and placed. Kits never craft.")
+            .defaultValue(false)
+            .build());
 
     private final Setting<Integer> craftMaxPerOrder = sgCrafting.add(new IntSetting.Builder()
-        .name("craft-max-per-order")
-        .description("The most Shulker Boxes crafted for one order.")
-        .defaultValue(27)
-        .min(1)
-        .sliderRange(1, 54)
-        .build()
-    );
+            .name("craft-max-per-order")
+            .description("The most Shulker Boxes crafted for one order.")
+            .defaultValue(27)
+            .min(1)
+            .sliderRange(1, 54)
+            .build());
 
     private final Setting<Integer> craftMaxOpsPerTask = sgCrafting.add(new IntSetting.Builder()
-        .name("craft-max-ops-per-task")
-        .description("The most grid fills (ingredients put into the crafting grid) in one trip to the table. A bigger craft is done in several trips.")
-        .defaultValue(128)
-        .min(8)
-        .sliderRange(8, 512)
-        .build()
-    );
+            .name("craft-max-ops-per-task")
+            .description(
+                    "The most grid fills (ingredients put into the crafting grid) in one trip to the table. A bigger craft is done in several trips.")
+            .defaultValue(128)
+            .min(8)
+            .sliderRange(8, 512)
+            .build());
 
     private final Setting<Integer> craftMaxPerHour = sgCrafting.add(new IntSetting.Builder()
-        .name("craft-max-per-hour")
-        .description("The most Shulker Boxes crafted in an hour.")
-        .defaultValue(54)
-        .min(1)
-        .sliderRange(1, 216)
-        .build()
-    );
+            .name("craft-max-per-hour")
+            .description("The most Shulker Boxes crafted in an hour.")
+            .defaultValue(54)
+            .min(1)
+            .sliderRange(1, 216)
+            .build());
 
     private final Setting<List<Item>> craftNeverUse = sgCrafting.add(new ItemListSetting.Builder()
-        .name("craft-never-use")
-        .description("Items crafting never uses as ingredients, whatever the stash holds.")
-        .defaultValue(List.of())
-        .build()
-    );
+            .name("craft-never-use")
+            .description("Items crafting never uses as ingredients, whatever the stash holds.")
+            .defaultValue(List.of())
+            .build());
 
     private final SettingGroup sgCraftingTable = settings.createGroup("Crafting table");
 
     private final Setting<Boolean> selectCraftingTable = sgCraftingTable.add(new BoolSetting.Builder()
-        .name("select-crafting-table")
-        .description("Turn on, then right-click a crafting table to make it the table crafting is done at (without one, the bot finds, places or crafts one itself). Right-click the current one to clear it. It may be outside the stash area, and is never sorted or listed. Turns itself off after one click.")
-        .defaultValue(false)
-        .onChanged(on -> {
-            if (on && Modules.get().get(StashSorter.class).currentStash() == null) {
-                warning("No stash is loaded. Scan one with wesort-stash-sorter first; this uses the stash named in its settings.");
-                this.selectCraftingTable.set(false);
-            }
-            else if (on) {
-                if (this.selectDelivery.get()) this.selectDelivery.set(false);
-                if (this.selectAnvil.get()) this.selectAnvil.set(false);
-            }
-        })
-        .build()
-    );
+            .name("select-crafting-table")
+            .description(
+                    "Turn on, then right-click a crafting table to make it the table crafting is done at (without one, the bot finds, places or crafts one itself). Right-click the current one to clear it. It may be outside the stash area, and is never sorted or listed. Turns itself off after one click.")
+            .defaultValue(false)
+            .onChanged(on -> {
+                if (on && Modules.get().get(StashSorter.class).currentStash() == null) {
+                    warning(
+                            "No stash is loaded. Scan one with wesort-stash-sorter first; this uses the stash named in its settings.");
+                    this.selectCraftingTable.set(false);
+                } else if (on) {
+                    if (this.selectDelivery.get()) this.selectDelivery.set(false);
+                    if (this.selectAnvil.get()) this.selectAnvil.set(false);
+                }
+            })
+            .build());
 
     private final Setting<Boolean> clearCraftingTable = sgCraftingTable.add(new BoolSetting.Builder()
-        .name("clear-crafting-table")
-        .description("Turn on to clear the crafting table. Turns itself off again.")
-        .defaultValue(false)
-        .onChanged(on -> {
-            if (!on) return;
-            this.clearCraftingTable.set(false);
-            if (Modules.get().get(StashSorter.class).clearCraftingTable()) info("Crafting table cleared.");
-            else info("There is no crafting table.");
-        })
-        .build()
-    );
+            .name("clear-crafting-table")
+            .description("Turn on to clear the crafting table. Turns itself off again.")
+            .defaultValue(false)
+            .onChanged(on -> {
+                if (!on) return;
+                this.clearCraftingTable.set(false);
+                if (Modules.get().get(StashSorter.class).clearCraftingTable()) info("Crafting table cleared.");
+                else info("There is no crafting table.");
+            })
+            .build());
 
     private final Setting<Boolean> showCraftingTable = sgCraftingTable.add(new BoolSetting.Builder()
-        .name("show-crafting-table")
-        .description("Outline the crafting table while this module is on. The chat says whether it was set, found, placed or crafted.")
-        .defaultValue(true)
-        .build()
-    );
+            .name("show-crafting-table")
+            .description(
+                    "Outline the crafting table while this module is on. The chat says whether it was set, found, placed or crafted.")
+            .defaultValue(true)
+            .build());
 
     private final Setting<SettingColor> craftingTableColor = sgCraftingTable.add(new ColorSetting.Builder()
-        .name("crafting-table-color")
-        .description("The outline of the crafting table.")
-        .defaultValue(new SettingColor(120, 170, 255, 90))
-        .visible(showCraftingTable::get)
-        .build()
-    );
+            .name("crafting-table-color")
+            .description("The outline of the crafting table.")
+            .defaultValue(new SettingColor(120, 170, 255, 90))
+            .visible(showCraftingTable::get)
+            .build());
 
     private static final long HEARTBEAT_MS = 15_000;
     private static final long CLAIM_MS = 5_000, STATUS_MS = 2_000;
@@ -316,7 +302,8 @@ public class StashManager extends Module {
         t.setDaemon(true);
         return t;
     });
-    private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+    private final HttpClient http =
+            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 
     // Everything below is client thread only
     private StashIndex.Built current;
@@ -357,10 +344,13 @@ public class StashManager extends Module {
     private List<BlockPos> deliveryParts = List.of();
     private BlockPos anvilPart, craftingTablePart;
     private String sentDelivery = "";
-    // The delivery contents report (0.4.0-dev.7): when to build and send it, the last stamp of the delivery chests, the hash of the
+    // The delivery contents report (0.4.0-dev.7): when to build and send it, the last stamp of the delivery chests, the
+    // hash of the
     // last one built (the heartbeat's deliveryHash) and the one built and not yet taken
-    private final com.porter.wesort.stash.DeliveryContents.Sync deliverySync = new com.porter.wesort.stash.DeliveryContents.Sync();
-    private final com.porter.wesort.stash.DeliveryContents.SentLog deliveryLog = new com.porter.wesort.stash.DeliveryContents.SentLog();
+    private final com.porter.wesort.stash.DeliveryContents.Sync deliverySync =
+            new com.porter.wesort.stash.DeliveryContents.Sync();
+    private final com.porter.wesort.stash.DeliveryContents.SentLog deliveryLog =
+            new com.porter.wesort.stash.DeliveryContents.SentLog();
     private long deliveryStamp;
     private String deliveryFor = "", deliveryHash;
     private com.porter.wesort.stash.DeliveryContents.Built deliveryPending;
@@ -372,7 +362,10 @@ public class StashManager extends Module {
     private long lastRescanId = -1, lastRescanAt;
 
     public StashManager() {
-        super(WeSortAddon.CATEGORY, "wesort-stash-manager", "Sends what's in your saved stash to the WeSort Manager web server on your network, which shows it. Uses the stash saved by wesort-stash-sorter. With accept-orders on, or during a website rescan, it moves the bot by itself; to stop that, turn off accept-orders or this module. Turning wesort-stash-sorter off hands control back to this module while accept-orders is on.");
+        super(
+                WeSortAddon.CATEGORY,
+                "wesort-stash-manager",
+                "Sends what's in your saved stash to the WeSort Manager web server on your network, which shows it. Uses the stash saved by wesort-stash-sorter. With accept-orders on, or during a website rescan, it moves the bot by itself; to stop that, turn off accept-orders or this module. Turning wesort-stash-sorter off hands control back to this module while accept-orders is on.");
         RightClick.listen(this::onRightClick);
     }
 
@@ -428,7 +421,9 @@ public class StashManager extends Module {
                 warning("No stash is loaded. Scan one with wesort-stash-sorter first.");
                 this.selectDelivery.set(false);
             }
-            case -3 -> info("That spot is not loaded and more than 128 blocks away, so it is not made the delivery container.");
+            case -3 ->
+                info(
+                        "That spot is not loaded and more than 128 blocks away, so it is not made the delivery container.");
             case -1 -> info("That isn't a chest or barrel.");
             case 0 -> {
                 info("Delivery container cleared.");
@@ -459,7 +454,7 @@ public class StashManager extends Module {
 
     @Override
     public void onActivate() {
-        nextKitCatalogAt=0;
+        nextKitCatalogAt = 0;
         selfCheck();
         reset();
     }
@@ -470,7 +465,9 @@ public class StashManager extends Module {
 
     @Override
     public void onDeactivate() {
-        com.porter.wesort.stash.Kits.revoke();kitUncertain=kitJob!=null;nextKitCatalogAt=0;
+        com.porter.wesort.stash.Kits.revoke();
+        kitUncertain = kitJob != null;
+        nextKitCatalogAt = 0;
         sortingUntil = 0;
         selectDelivery.set(false);
         selectAnvil.set(false);
@@ -541,22 +538,34 @@ public class StashManager extends Module {
         request.add("record", record);
         var result = PhysicalJournalRuntime.inspectionResult();
         if (result != null) request.add("result", result);
-        send(base, "/api/v1/physical/agent", bytes(request), apiKey.get().trim(), (code, body) -> {
-            if (code != 200 || !scope.equals(kitScope()) || mc.player == null || !agent.equals(mc.player.getUUID().toString())) return true;
-            var reply = JsonParser.parseString(body).getAsJsonObject();
-            var receipt = reply.getAsJsonObject("receipt");
-            for (String key : java.util.List.of("id", "revision", "checksum")) {
-                if (!record.get(key).equals(receipt.get(key))) return true;
-            }
-            PhysicalJournalRuntime.mirrored(receipt, reply.has("decision"));
-            if (receipt.has("releasedLease") && receipt.get("releasedLease").getAsString().equals(physicalLeaseFingerprint())) {
-                sortingToken = null;
-                sortingUntil = 0;
-            }
-            if (reply.has("decision")) PhysicalJournalRuntime.inspect(reply.getAsJsonObject("decision"));
-            if (result != null) PhysicalJournalRuntime.acknowledgedInspection(result.get("id").getAsString());
-            return true;
-        }, true);
+        send(
+                base,
+                "/api/v1/physical/agent",
+                bytes(request),
+                apiKey.get().trim(),
+                (code, body) -> {
+                    if (code != 200
+                            || !scope.equals(kitScope())
+                            || mc.player == null
+                            || !agent.equals(mc.player.getUUID().toString())) return true;
+                    var reply = JsonParser.parseString(body).getAsJsonObject();
+                    var receipt = reply.getAsJsonObject("receipt");
+                    for (String key : java.util.List.of("id", "revision", "checksum")) {
+                        if (!record.get(key).equals(receipt.get(key))) return true;
+                    }
+                    PhysicalJournalRuntime.mirrored(receipt, reply.has("decision"));
+                    if (receipt.has("releasedLease")
+                            && receipt.get("releasedLease").getAsString().equals(physicalLeaseFingerprint())) {
+                        sortingToken = null;
+                        sortingUntil = 0;
+                    }
+                    if (reply.has("decision")) PhysicalJournalRuntime.inspect(reply.getAsJsonObject("decision"));
+                    if (result != null)
+                        PhysicalJournalRuntime.acknowledgedInspection(
+                                result.get("id").getAsString());
+                    return true;
+                },
+                true);
         return true;
     }
 
@@ -565,40 +574,71 @@ public class StashManager extends Module {
 
     public boolean sortingAllowed() {
         if (serverUrl.get().isBlank()) return true;
-        return isActive() && mc.player != null && sortingToken != null && sortingScope.equals(sortingScope())
-            && System.nanoTime() < sortingUntil;
+        return isActive()
+                && mc.player != null
+                && sortingToken != null
+                && sortingScope.equals(sortingScope())
+                && System.nanoTime() < sortingUntil;
     }
+
     public String physicalLeaseFingerprint() {
-        return sortingToken == null || !sortingScope.equals(sortingScope()) ? null
-            : com.porter.wesort.data.ContainerIdentity.hash(sortingToken);
+        return sortingToken == null || !sortingScope.equals(sortingScope())
+                ? null
+                : com.porter.wesort.data.ContainerIdentity.hash(sortingToken);
     }
+
     private String sortingScope() {
         return serverUrl.get() + "|" + Stash.currentServer() + "|" + (mc.player == null ? "" : mc.player.getUUID());
     }
+
     private boolean serviceSorting() {
-        if (mc.player == null || mc.level == null || serverUrl.get().isBlank() || apiKey.get().isBlank() || inFlight) return false;
+        if (mc.player == null
+                || mc.level == null
+                || serverUrl.get().isBlank()
+                || apiKey.get().isBlank()
+                || inFlight) return false;
         long now = System.nanoTime();
         if (now < sortingPoll) return false;
-        var sorter = meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashSorter.class);
+        var sorter =
+                meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashSorter.class);
         boolean wants = isActive() && sorter != null && sorter.requiresSortingPermit();
         if (!wants && sortingToken == null) return false;
-        if (!wants && (PhysicalJournalRuntime.awaitingMirror() || !InventorySync.ready() && !InventorySync.failed())) return false;
+        if (!wants && (PhysicalJournalRuntime.awaitingMirror() || !InventorySync.ready() && !InventorySync.failed()))
+            return false;
         if (!wants && PhysicalJournalRuntime.unfinished()) {
             PhysicalJournalRuntime.block("Sorting stopped before physical verification");
         }
-        URI base = parse(serverUrl.get()); if (base == null) return false;
+        URI base = parse(serverUrl.get());
+        if (base == null) return false;
         String scope = sortingScope();
-        if (!scope.equals(sortingScope)) { sortingToken = null; sortingUntil = 0; sortingScope = scope; }
-        JsonObject request = new JsonObject(); request.addProperty("server", Stash.currentServer());
-        request.addProperty("agent", mc.player.getUUID().toString()); request.addProperty("token", sortingToken);
-        boolean uncertain = InventorySync.failed() || PhysicalJournalRuntime.blocked() || kitJob != null && kitUncertain;
+        if (!scope.equals(sortingScope)) {
+            sortingToken = null;
+            sortingUntil = 0;
+            sortingScope = scope;
+        }
+        JsonObject request = new JsonObject();
+        request.addProperty("server", Stash.currentServer());
+        request.addProperty("agent", mc.player.getUUID().toString());
+        request.addProperty("token", sortingToken);
+        boolean uncertain =
+                InventorySync.failed() || PhysicalJournalRuntime.blocked() || kitJob != null && kitUncertain;
         if (uncertain && sortingToken == null) return false;
         request.addProperty("action", uncertain ? "uncertain" : wants ? "acquire" : "release");
         sortingPoll = now + 2_000_000_000L;
         send(base, "/api/v1/automation", bytes(request), apiKey.get().trim(), (code, body) -> {
-            if (code != 200) { sortingUntil = 0; return false; }
-            if (uncertain) { sortingUntil = 0; return true; }
-            if (!wants) { sortingToken = null; sortingUntil = 0; return true; }
+            if (code != 200) {
+                sortingUntil = 0;
+                return false;
+            }
+            if (uncertain) {
+                sortingUntil = 0;
+                return true;
+            }
+            if (!wants) {
+                sortingToken = null;
+                sortingUntil = 0;
+                return true;
+            }
             var reply = JsonParser.parseString(body).getAsJsonObject();
             sortingToken = reply.get("token").getAsString();
             // Measured from request start, not reply receipt. A delayed reply cannot extend a permit.
@@ -615,14 +655,21 @@ public class StashManager extends Module {
 
     @EventHandler
     private void onTick(TickEvent.Post event) {
-        if(kitJob!=null&&System.nanoTime()>=kitUntil&&!kitUncertain)kitUncertain("Manager execution lease expired");
+        if (kitJob != null && System.nanoTime() >= kitUntil && !kitUncertain)
+            kitUncertain("Manager execution lease expired");
         if (servicePhysicalJournal() || serviceSorting()) return;
         // Read-only job coordination continues while physical input awaits verification or is safely paused.
-        if(kitJob!=null&&mc.player!=null&&mc.level!=null&&!inFlight&&!apiKey.get().isBlank()){
-            if(InventorySync.failed() || PhysicalJournalRuntime.blocked())kitUncertain("Inventory needs reconciliation: "+InventorySync.reason());
-            if(com.porter.wesort.compat.NavigationRuntime.paused())kitUncertain("Navigation needs reconciliation: "+com.porter.wesort.compat.NavigationRuntime.status());
-            URI jobBase=parse(serverUrl.get());
-            if(jobBase!=null&&serviceKitCatalog(jobBase,apiKey.get().trim(),System.currentTimeMillis()))return;
+        if (kitJob != null
+                && mc.player != null
+                && mc.level != null
+                && !inFlight
+                && !apiKey.get().isBlank()) {
+            if (InventorySync.failed() || PhysicalJournalRuntime.blocked())
+                kitUncertain("Inventory needs reconciliation: " + InventorySync.reason());
+            if (com.porter.wesort.compat.NavigationRuntime.paused())
+                kitUncertain("Navigation needs reconciliation: " + com.porter.wesort.compat.NavigationRuntime.status());
+            URI jobBase = parse(serverUrl.get());
+            if (jobBase != null && serviceKitCatalog(jobBase, apiKey.get().trim(), System.currentTimeMillis())) return;
         }
         if (com.porter.wesort.compat.NavigationRuntime.paused()) {
             setStatus(com.porter.wesort.compat.NavigationRuntime.status());
@@ -644,7 +691,8 @@ public class StashManager extends Module {
         driveSorter();
         updateOrdersNote();
 
-        // No server set (the default since 0.4.0-dev.8): the addon works without one, so this is a status, not a warning
+        // No server set (the default since 0.4.0-dev.8): the addon works without one, so this is a status, not a
+        // warning
         if (serverUrl.get().isBlank()) {
             setStatus("server URL not set");
             return;
@@ -702,7 +750,10 @@ public class StashManager extends Module {
                 if (com.porter.wesort.compat.ObservationRuntime.reply(code, body)) {
                     StashSorter sorter = Modules.get().get(StashSorter.class);
                     int count = sorter == null ? -1 : sorter.rescan();
-                    rescanning = count >= 0; current = null; scanTicks = 0; needIndex = true;
+                    rescanning = count >= 0;
+                    current = null;
+                    scanTicks = 0;
+                    needIndex = true;
                     return false;
                 }
                 if (code != 200) return false;
@@ -714,16 +765,32 @@ public class StashManager extends Module {
             lastHeartbeat = now;
             String sig = deliverySig();
             long done = rescanDone;
-            send(base, "/api/v1/heartbeat", StashIndex.heartbeat(built, deliveryPos(), orderBlocker(), done, rescanBlocked(), namingInfo(), craftingInfo(), anvilSource(), deliveryStorage(), tableSource(), deliveryHash), key, (code, body) -> {
-                if (code != 200) return false;
-                sentDelivery = sig;
-                if (done >= 0 && rescanDone == done) rescanDone = -1;
-                readRescan(body);
-                needIndex = StashIndex.needsIndex(body);
-                deliverySync.onHeartbeatReply(body);
-                readOrders(body);
-                return true;
-            });
+            send(
+                    base,
+                    "/api/v1/heartbeat",
+                    StashIndex.heartbeat(
+                            built,
+                            deliveryPos(),
+                            orderBlocker(),
+                            done,
+                            rescanBlocked(),
+                            namingInfo(),
+                            craftingInfo(),
+                            anvilSource(),
+                            deliveryStorage(),
+                            tableSource(),
+                            deliveryHash),
+                    key,
+                    (code, body) -> {
+                        if (code != 200) return false;
+                        sentDelivery = sig;
+                        if (done >= 0 && rescanDone == done) rescanDone = -1;
+                        readRescan(body);
+                        needIndex = StashIndex.needsIndex(body);
+                        deliverySync.onHeartbeatReply(body);
+                        readOrders(body);
+                        return true;
+                    });
         } else if (deliveryPending != null && deliverySync.canSend(now)) {
             sendDelivery(base, key, now);
         }
@@ -733,8 +800,10 @@ public class StashManager extends Module {
         if (inFlight || current == null || mc.player == null || mc.level == null) return;
         var sorter = Modules.get().get(StashSorter.class);
         var stash = sorter == null ? null : sorter.currentStash();
-        if (stash == null || !current.server().equals(stash.server) || !current.stash().equals(stash.name)
-            || !current.player().equals(mc.player.getName().getString())) return;
+        if (stash == null
+                || !current.server().equals(stash.server)
+                || !current.stash().equals(stash.name)
+                || !current.player().equals(mc.player.getName().getString())) return;
         String key = apiKey.get().trim();
         URI base = parse(serverUrl.get());
         long now = System.currentTimeMillis();
@@ -743,11 +812,15 @@ public class StashManager extends Module {
 
     private record ControlScope(URI manager, String server, String stash, String dimension, java.util.UUID player) {
         String botId() {
-            return java.util.UUID.nameUUIDFromBytes((server + "\u0000" + player).getBytes(StandardCharsets.UTF_8)).toString();
+            return java.util
+                    .UUID
+                    .nameUUIDFromBytes((server + "\u0000" + player).getBytes(StandardCharsets.UTF_8))
+                    .toString();
         }
     }
 
-    private record PendingManifest(String order, String server, String stash, String dimension, int packages, String hash) {
+    private record PendingManifest(
+            String order, String server, String stash, String dimension, int packages, String hash) {
         boolean matches(ControlScope scope) {
             return server.equals(scope.server()) && stash.equals(scope.stash()) && dimension.equals(scope.dimension());
         }
@@ -758,9 +831,12 @@ public class StashManager extends Module {
     }
 
     private boolean serviceControl(URI base, String key, long now) {
-        var observed = new ControlScope(base, current.server(), current.stash(), StashIndex.dimension(), mc.player.getUUID());
+        var observed =
+                new ControlScope(base, current.server(), current.stash(), StashIndex.dimension(), mc.player.getUUID());
         if (!observed.equals(controlScope)) {
-            if (controlScope == null || !observed.manager().equals(controlScope.manager()) || !observed.botId().equals(controlScope.botId())) {
+            if (controlScope == null
+                    || !observed.manager().equals(controlScope.manager())
+                    || !observed.botId().equals(controlScope.botId())) {
                 controlSession = randomHex(32);
             }
             controlScope = observed;
@@ -785,8 +861,10 @@ public class StashManager extends Module {
             request.add("manifestScope", binding);
             var plugin = new JsonObject();
             plugin.addProperty("id", "wesort");
-            net.fabricmc.loader.api.FabricLoader.getInstance().getModContainer("wesort").ifPresent(mod ->
-                plugin.addProperty("version", mod.getMetadata().getVersion().getFriendlyString()));
+            net.fabricmc.loader.api.FabricLoader.getInstance()
+                    .getModContainer("wesort")
+                    .ifPresent(mod -> plugin.addProperty(
+                            "version", mod.getMetadata().getVersion().getFriendlyString()));
             request.add("plugin", plugin);
             var runtime = new JsonObject();
             runtime.addProperty("mc", "26.3");
@@ -802,33 +880,45 @@ public class StashManager extends Module {
             var scopes = new JsonArray();
             scopes.add("plugin");
             request.add("scopes", scopes);
-            send(base, "/api/v1/bot/hello", bytes(request), key, (code, body) -> {
-                controlRegistered = false;
-                if (code == 200) {
-                    var hello = JsonParser.parseString(body).getAsJsonObject();
-                    String epoch = text(hello, "controlEpoch");
-                    if (hello.get("protocol").getAsInt() == 2 && epoch != null) {
-                        if (!epoch.equals(controlEpoch)) lastControlResult = null;
-                        controlEpoch = epoch;
-                        controlRegistered = true;
-                        sentControlValues = null;
-                    }
-                }
-                if (!controlRegistered) nextControlAt = now + 15_000;
-                return controlRegistered;
-            }, true);
+            send(
+                    base,
+                    "/api/v1/bot/hello",
+                    bytes(request),
+                    key,
+                    (code, body) -> {
+                        controlRegistered = false;
+                        if (code == 200) {
+                            var hello = JsonParser.parseString(body).getAsJsonObject();
+                            String epoch = text(hello, "controlEpoch");
+                            if (hello.get("protocol").getAsInt() == 2 && epoch != null) {
+                                if (!epoch.equals(controlEpoch)) lastControlResult = null;
+                                controlEpoch = epoch;
+                                controlRegistered = true;
+                                sentControlValues = null;
+                            }
+                        }
+                        if (!controlRegistered) nextControlAt = now + 15_000;
+                        return controlRegistered;
+                    },
+                    true);
             return true;
         }
         if (controlResults != null) {
             request.add("results", controlResults);
-            send(base, "/api/v1/bot/results", bytes(request), key, (code, body) -> {
-                if (code == 200) controlResults = null;
-                else if (code == 409) {
-                    controlRegistered = false;
-                    controlResults = null;
-                }
-                return code == 200;
-            }, true);
+            send(
+                    base,
+                    "/api/v1/bot/results",
+                    bytes(request),
+                    key,
+                    (code, body) -> {
+                        if (code == 200) controlResults = null;
+                        else if (code == 409) {
+                            controlRegistered = false;
+                            controlResults = null;
+                        }
+                        return code == 200;
+                    },
+                    true);
             return true;
         }
         var pending = pendingManifest;
@@ -841,41 +931,56 @@ public class StashManager extends Module {
             request.addProperty("orderId", pending.order());
             boolean acknowledging = pending.hash() != null;
             if (acknowledging) request.addProperty("manifestHash", pending.hash());
-            send(base, acknowledging ? "/api/v1/bot/manifest/ack" : "/api/v1/bot/manifest", bytes(request), key, (code, body) -> {
-                if (code == 409) {
-                    controlRegistered = false;
-                    if (acknowledging) pendingManifest = pending.withHash(null);
-                    return false;
-                }
-                if (code != 200 && code != 404) return false;
-                pendingManifest = null;
-                if (code == 404) {
-                    controlRegistered = false;
-                    return false;
-                }
-                var reply = JsonParser.parseString(body).getAsJsonObject();
-                if (!pending.order().equals(text(reply, "orderId"))) return false;
-                if (acknowledging) {
-                    if (!pending.hash().equals(text(reply, "manifestHash")) || reply.get("acknowledgedAt").getAsLong() <= 0) return false;
-                    if (orderChat.get()) info("Manager confirmed the staging manifest for %s (%d shulker packages).", pending.order(), pending.packages());
-                    return true;
-                }
-                var manifest = reply.getAsJsonObject("manifest");
-                var hash = text(manifest, "hash");
-                var packages = manifest.getAsJsonArray("packages");
-                if (manifest.get("version").getAsInt() != 1 || hash == null || !hash.matches("[0-9a-f]{64}")
-                    || packages.size() != pending.packages()) return false;
-                var ids = new HashSet<String>();
-                for (var value : packages) {
-                    var entry = value.getAsJsonObject();
-                    String packageId = text(entry, "packageId");
-                    String fingerprint = text(entry, "stackFingerprint");
-                    if (packageId == null || !packageId.matches("[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}")
-                        || fingerprint == null || !fingerprint.matches("[a-f0-9]{64}") || !ids.add(packageId)) return false;
-                }
-                pendingManifest = pending.withHash(hash);
-                return true;
-            }, true);
+            send(
+                    base,
+                    acknowledging ? "/api/v1/bot/manifest/ack" : "/api/v1/bot/manifest",
+                    bytes(request),
+                    key,
+                    (code, body) -> {
+                        if (code == 409) {
+                            controlRegistered = false;
+                            if (acknowledging) pendingManifest = pending.withHash(null);
+                            return false;
+                        }
+                        if (code != 200 && code != 404) return false;
+                        pendingManifest = null;
+                        if (code == 404) {
+                            controlRegistered = false;
+                            return false;
+                        }
+                        var reply = JsonParser.parseString(body).getAsJsonObject();
+                        if (!pending.order().equals(text(reply, "orderId"))) return false;
+                        if (acknowledging) {
+                            if (!pending.hash().equals(text(reply, "manifestHash"))
+                                    || reply.get("acknowledgedAt").getAsLong() <= 0) return false;
+                            if (orderChat.get())
+                                info(
+                                        "Manager confirmed the staging manifest for %s (%d shulker packages).",
+                                        pending.order(), pending.packages());
+                            return true;
+                        }
+                        var manifest = reply.getAsJsonObject("manifest");
+                        var hash = text(manifest, "hash");
+                        var packages = manifest.getAsJsonArray("packages");
+                        if (manifest.get("version").getAsInt() != 1
+                                || hash == null
+                                || !hash.matches("[0-9a-f]{64}")
+                                || packages.size() != pending.packages()) return false;
+                        var ids = new HashSet<String>();
+                        for (var value : packages) {
+                            var entry = value.getAsJsonObject();
+                            String packageId = text(entry, "packageId");
+                            String fingerprint = text(entry, "stackFingerprint");
+                            if (packageId == null
+                                    || !packageId.matches("[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}")
+                                    || fingerprint == null
+                                    || !fingerprint.matches("[a-f0-9]{64}")
+                                    || !ids.add(packageId)) return false;
+                        }
+                        pendingManifest = pending.withHash(hash);
+                        return true;
+                    },
+                    true);
             return true;
         }
 
@@ -896,45 +1001,65 @@ public class StashManager extends Module {
             request.addProperty("valuesHash", valuesHash);
             request.add("schema", schema);
             request.add("values", values);
-            send(base, "/api/v1/bot/state", bytes(request), key, (code, body) -> {
-                if (code == 200) sentControlValues = valuesHash;
-                else if (code == 409) controlRegistered = false;
-                return code == 200;
-            }, true);
+            send(
+                    base,
+                    "/api/v1/bot/state",
+                    bytes(request),
+                    key,
+                    (code, body) -> {
+                        if (code == 200) sentControlValues = valuesHash;
+                        else if (code == 409) controlRegistered = false;
+                        return code == 200;
+                    },
+                    true);
             return true;
         }
         request.addProperty("controlEpoch", controlEpoch);
         request.add("activity", controlActivity());
-        send(base, "/api/v1/bot/next", bytes(request), key, (code, body) -> {
-            // Replies are dispatched on the client thread after the transport verifies their signature.
-            if (code == 409) {
-                controlRegistered = false;
-                sentControlValues = null;
-            }
-            if (code != 200 || mc.level == null || mc.player == null
-                || !base.equals(parse(serverUrl.get())) || !key.equals(apiKey.get().trim())
-                || !observed.player().equals(mc.player.getUUID())
-                || !observed.server().equals(Stash.currentServer())
-                || current == null || !observed.stash().equals(current.stash())
-                || !observed.dimension().equals(StashIndex.dimension())) return false;
-            var poll = JsonParser.parseString(body).getAsJsonObject();
-            if (poll.has("pendingManifest")) {
-                var hint = poll.getAsJsonObject("pendingManifest");
-                String orderId = text(hint, "orderId");
-                int count = hint.get("packageCount").getAsInt();
-                if (orderId != null && orderId.matches("o-[0-9a-f]{12}") && count > 0 && count <= Order.MAX_BINS) {
-                    pendingManifest = new PendingManifest(orderId, observed.server(), observed.stash(), observed.dimension(), count, null);
-                }
-            }
-            var jobs = poll.getAsJsonArray("jobs");
-            if (jobs.size() != 1 || !jobs.get(0).isJsonObject()) return jobs.isEmpty();
-            var job = jobs.get(0).getAsJsonObject();
-            var result = receiptFor(job, values);
-            if (result == null) return false;
-            controlResults = new JsonArray();
-            controlResults.add(result);
-            return true;
-        }, true);
+        send(
+                base,
+                "/api/v1/bot/next",
+                bytes(request),
+                key,
+                (code, body) -> {
+                    // Replies are dispatched on the client thread after the transport verifies their signature.
+                    if (code == 409) {
+                        controlRegistered = false;
+                        sentControlValues = null;
+                    }
+                    if (code != 200
+                            || mc.level == null
+                            || mc.player == null
+                            || !base.equals(parse(serverUrl.get()))
+                            || !key.equals(apiKey.get().trim())
+                            || !observed.player().equals(mc.player.getUUID())
+                            || !observed.server().equals(Stash.currentServer())
+                            || current == null
+                            || !observed.stash().equals(current.stash())
+                            || !observed.dimension().equals(StashIndex.dimension())) return false;
+                    var poll = JsonParser.parseString(body).getAsJsonObject();
+                    if (poll.has("pendingManifest")) {
+                        var hint = poll.getAsJsonObject("pendingManifest");
+                        String orderId = text(hint, "orderId");
+                        int count = hint.get("packageCount").getAsInt();
+                        if (orderId != null
+                                && orderId.matches("o-[0-9a-f]{12}")
+                                && count > 0
+                                && count <= Order.MAX_BINS) {
+                            pendingManifest = new PendingManifest(
+                                    orderId, observed.server(), observed.stash(), observed.dimension(), count, null);
+                        }
+                    }
+                    var jobs = poll.getAsJsonArray("jobs");
+                    if (jobs.size() != 1 || !jobs.get(0).isJsonObject()) return jobs.isEmpty();
+                    var job = jobs.get(0).getAsJsonObject();
+                    var result = receiptFor(job, values);
+                    if (result == null) return false;
+                    controlResults = new JsonArray();
+                    controlResults.add(result);
+                    return true;
+                },
+                true);
         return true;
     }
 
@@ -950,8 +1075,7 @@ public class StashManager extends Module {
         } else if (needsReconciliation) {
             task = "Needs physical reconciliation";
             incident = "INVENTORY_UNVERIFIED";
-        }
-        else if (com.porter.wesort.compat.NavigationRuntime.paused()) task = "Navigation paused";
+        } else if (com.porter.wesort.compat.NavigationRuntime.paused()) task = "Navigation paused";
         else if (!InventorySync.ready()) task = "Awaiting server inventory";
         else if (kitJob != null) task = kitPacked ? "Verifying kit" : "Packing kit";
         else if (runner != null && runner.running()) task = "Packing " + runner.info();
@@ -959,8 +1083,7 @@ public class StashManager extends Module {
         else if (sorter != null && acceptOrders.get() && "no free inventory slot".equals(sorter.orderBlocker())) {
             task = "No free inventory slot";
             incident = "NO_CAPACITY";
-        }
-        else task = "Monitoring stock";
+        } else task = "Monitoring stock";
         var work = new JsonObject();
         work.addProperty("title", task);
         work.addProperty("level", incident == null ? "info" : "warn");
@@ -989,8 +1112,11 @@ public class StashManager extends Module {
         result.addProperty("id", id);
         String path = text(job, "path");
         JsonElement newValue = job.get("value");
-        if (!"set".equals(text(job, "type")) || !"plugin".equals(text(job, "scope"))
-            || path == null || !published.has(path) || !(newValue instanceof JsonPrimitive value)) {
+        if (!"set".equals(text(job, "type"))
+                || !"plugin".equals(text(job, "scope"))
+                || path == null
+                || !published.has(path)
+                || !(newValue instanceof JsonPrimitive value)) {
             result.addProperty("ok", false);
             result.addProperty("error", "Unsupported setting");
             return result;
@@ -1002,7 +1128,10 @@ public class StashManager extends Module {
             boolean before = orderIntakePaused.get();
             applied = changeBoolean(orderIntakePaused, job.get("expect"), value);
             if (applied && before != value.getAsBoolean()) {
-                info(value.getAsBoolean() ? "Manager paused new warehouse orders." : "Manager resumed new warehouse orders.");
+                info(
+                        value.getAsBoolean()
+                                ? "Manager paused new warehouse orders."
+                                : "Manager resumed new warehouse orders.");
             }
         } else applied = changeBoolean(orderChat, job.get("expect"), value);
         result.addProperty("ok", applied);
@@ -1015,11 +1144,16 @@ public class StashManager extends Module {
         String lease = text(job, "lease");
         var sequence = job.get("sequence");
         var expiresAt = job.get("expiresAt");
-        if (lease == null || !lease.matches("[a-f0-9-]{36}") || !(sequence instanceof JsonPrimitive order) || !order.isNumber()
-            || !(expiresAt instanceof JsonPrimitive deadline) || !deadline.isNumber()
-            || deadline.getAsLong() <= System.currentTimeMillis()) return null;
+        if (lease == null
+                || !lease.matches("[a-f0-9-]{36}")
+                || !(sequence instanceof JsonPrimitive order)
+                || !order.isNumber()
+                || !(expiresAt instanceof JsonPrimitive deadline)
+                || !deadline.isNumber()
+                || deadline.getAsLong() <= System.currentTimeMillis()) return null;
         if (lastControlResult != null) {
-            if (lease.equals(text(lastControlResult, "lease")) && sequence.equals(lastControlResult.get("sequence"))) return lastControlResult;
+            if (lease.equals(text(lastControlResult, "lease")) && sequence.equals(lastControlResult.get("sequence")))
+                return lastControlResult;
             if (order.getAsLong() <= lastControlResult.get("sequence").getAsLong()) return null;
         }
         var result = applyControlSetting(job, values);
@@ -1030,8 +1164,8 @@ public class StashManager extends Module {
         return result;
     }
 
-    private static boolean changeInteger(Setting<Integer> setting, JsonElement expected, JsonPrimitive newValue,
-                                         int minimum, int maximum) {
+    private static boolean changeInteger(
+            Setting<Integer> setting, JsonElement expected, JsonPrimitive newValue, int minimum, int maximum) {
         if (!newValue.isNumber() || !matchesSetting(expected, new JsonPrimitive(setting.get()))) return false;
         try {
             int number = newValue.getAsBigDecimal().intValueExact();
@@ -1046,7 +1180,9 @@ public class StashManager extends Module {
     }
 
     private static boolean changeBoolean(Setting<Boolean> setting, JsonElement expected, JsonPrimitive value) {
-        return value.isBoolean() && matchesSetting(expected, new JsonPrimitive(setting.get())) && setting.set(value.getAsBoolean());
+        return value.isBoolean()
+                && matchesSetting(expected, new JsonPrimitive(setting.get()))
+                && setting.set(value.getAsBoolean());
     }
 
     private static String text(JsonObject body, String field) {
@@ -1090,7 +1226,8 @@ public class StashManager extends Module {
             report = null;
         }
         if (report == null) {
-            // Only a stash with no delivery container at all has nothing to report; one not resolved yet is looked at again
+            // Only a stash with no delivery container at all has nothing to report; one not resolved yet is looked at
+            // again
             if (stash.deliveryPos != null) return;
             deliverySync.none(now);
             deliveryHash = null;
@@ -1107,25 +1244,36 @@ public class StashManager extends Module {
      */
     private void sendDelivery(URI base, String key, long now) {
         com.porter.wesort.stash.DeliveryContents.Built report = deliveryPending;
-        send(base, "/api/v1/delivery", report.json(), key, (code, body) -> {
-            if (code == 200) {
-                deliverySync.sent(report.hash());
-                if (deliveryLog.sent(System.currentTimeMillis())) WeSortAddon.LOG.info("wesort-stash-manager: {}", com.porter.wesort.stash.DeliveryContents.SentLog.line(report.chests()));
-                if (deliveryPending == report) deliveryPending = null;
-                return true;
-            }
-            // Refused for good: that hash is not sent again, even when the server asks, until the contents change
-            if (code == 400 || code == 413) {
-                WeSortAddon.LOG.warn("wesort-stash-manager: the server refused the delivery contents ({}): {}", code, body);
-                deliverySync.rejected(report.hash());
-                deliveryLog.failed();
-                if (deliveryPending == report) deliveryPending = null;
-                return true;
-            }
-            deliverySync.retryLater(System.currentTimeMillis());
-            deliveryLog.failed();
-            return false;
-        }, true);
+        send(
+                base,
+                "/api/v1/delivery",
+                report.json(),
+                key,
+                (code, body) -> {
+                    if (code == 200) {
+                        deliverySync.sent(report.hash());
+                        if (deliveryLog.sent(System.currentTimeMillis()))
+                            WeSortAddon.LOG.info(
+                                    "wesort-stash-manager: {}",
+                                    com.porter.wesort.stash.DeliveryContents.SentLog.line(report.chests()));
+                        if (deliveryPending == report) deliveryPending = null;
+                        return true;
+                    }
+                    // Refused for good: that hash is not sent again, even when the server asks, until the contents
+                    // change
+                    if (code == 400 || code == 413) {
+                        WeSortAddon.LOG.warn(
+                                "wesort-stash-manager: the server refused the delivery contents ({}): {}", code, body);
+                        deliverySync.rejected(report.hash());
+                        deliveryLog.failed();
+                        if (deliveryPending == report) deliveryPending = null;
+                        return true;
+                    }
+                    deliverySync.retryLater(System.currentTimeMillis());
+                    deliveryLog.failed();
+                    return false;
+                },
+                true);
     }
 
     /**
@@ -1150,7 +1298,9 @@ public class StashManager extends Module {
             o.addProperty("message", StashIndex.clamp(why, 300));
             send(base, "/api/v1/orders/" + id + "/status", orderReportBytes(o), key, (code, body) -> {
                 // 409: the server already has it finished; another refusal is not tried again
-                if (code >= 400 && code < 500 && code != 401 && code != 409) WeSortAddon.LOG.warn("wesort-stash-manager: the server refused the status of order {} ({}): {}", id, code, body);
+                if (code >= 400 && code < 500 && code != 401 && code != 409)
+                    WeSortAddon.LOG.warn(
+                            "wesort-stash-manager: the server refused the status of order {} ({}): {}", id, code, body);
                 else if (code != 200 && code != 409) return false;
                 if (rejectedId != null && rejectedId.equals(id)) rejectedId = rejectedWhy = null;
                 if (end.equals("cancelled")) runner.dropSaved(null);
@@ -1167,45 +1317,59 @@ public class StashManager extends Module {
 
         // What the bot is doing, when it changed
         if (report != null) {
-            String sig = report.id() + "|" + report.status() + "|" + report.phase() + "|" + report.done() + "|" + report.message();
+            String sig = report.id() + "|" + report.status() + "|" + report.phase() + "|" + report.done() + "|"
+                    + report.message();
             if (!sig.equals(lastStatusSig) && (report.terminal() || now - lastStatusAt >= STATUS_MS)) {
                 lastStatusAt = now;
                 boolean minimal = report.id().equals(minimalFor);
-                send(base, "/api/v1/orders/" + report.id() + "/status",
-                    orderReportBytes(minimal ? minimalJson(report) : statusJson(report, runner)), key, (code, body) -> {
-                    // A report the server refuses (4xx other than a wrong key or "already finished"): said again in short once,
-                    // then given up on, so the bot is never stuck on one it can't send
-                    if (code >= 400 && code < 500 && code != 401 && code != 409) {
-                        WeSortAddon.LOG.warn("wesort-stash-manager: the server refused the status of order {} ({}): {}", report.id(), code, body);
-                        if (!minimal) {
-                            minimalFor = report.id();
-                            return false;
-                        }
-                        minimalFor = null;
-                        if (report.terminal()) {
-                            runner.ack(report.id());
-                            lastStatusSig = "";
-                        } else lastStatusSig = sig;
-                        return true;
-                    }
-                    // 409: the order is already finished or moved on, nothing more to say about it
-                    if (code != 200 && code != 409) return false;
-                    minimalFor = null;
-                    lastStatusSig = sig;
-                    if (report.terminal()) {
-                        runner.ack(report.id());
-                        lastStatusSig = "";
-                    }
-                    return true;
-                });
+                send(
+                        base,
+                        "/api/v1/orders/" + report.id() + "/status",
+                        orderReportBytes(minimal ? minimalJson(report) : statusJson(report, runner)),
+                        key,
+                        (code, body) -> {
+                            // A report the server refuses (4xx other than a wrong key or "already finished"): said
+                            // again in short once,
+                            // then given up on, so the bot is never stuck on one it can't send
+                            if (code >= 400 && code < 500 && code != 401 && code != 409) {
+                                WeSortAddon.LOG.warn(
+                                        "wesort-stash-manager: the server refused the status of order {} ({}): {}",
+                                        report.id(),
+                                        code,
+                                        body);
+                                if (!minimal) {
+                                    minimalFor = report.id();
+                                    return false;
+                                }
+                                minimalFor = null;
+                                if (report.terminal()) {
+                                    runner.ack(report.id());
+                                    lastStatusSig = "";
+                                } else lastStatusSig = sig;
+                                return true;
+                            }
+                            // 409: the order is already finished or moved on, nothing more to say about it
+                            if (code != 200 && code != 409) return false;
+                            minimalFor = null;
+                            lastStatusSig = sig;
+                            if (report.terminal()) {
+                                runner.ack(report.id());
+                                lastStatusSig = "";
+                            }
+                            return true;
+                        });
                 return true;
             }
             return false;
         }
 
         // Nothing in hand: take the oldest pending order, or the one still held from before a restart
-        if (acceptOrders.get() && !orderIntakePaused.get() && blocker == null && stash != null && now - lastClaim >= CLAIM_MS
-            && (pendingOrders > 0 || runner.resumeId() != null)) {
+        if (acceptOrders.get()
+                && !orderIntakePaused.get()
+                && blocker == null
+                && stash != null
+                && now - lastClaim >= CLAIM_MS
+                && (pendingOrders > 0 || runner.resumeId() != null)) {
             lastClaim = now;
             JsonObject o = new JsonObject();
             o.addProperty("server", server);
@@ -1228,14 +1392,14 @@ public class StashManager extends Module {
     private int[] deliveryPos() {
         StashSorter sorter = Modules.get().get(StashSorter.class);
         Stash.Box d = sorter == null ? null : sorter.orders().deliveryBox();
-        return d == null ? null : new int[] { d.pos.getX(), d.pos.getY(), d.pos.getZ() };
+        return d == null ? null : new int[] {d.pos.getX(), d.pos.getY(), d.pos.getZ()};
     }
 
     /** What the heartbeat says about naming: whether an anvil is ready, and the bot's XP level (-1: unknown). */
     private int[] namingInfo() {
         StashSorter sorter = Modules.get().get(StashSorter.class);
-        if (sorter == null) return new int[] { 0, -1 };
-        return new int[] { sorter.anvilReady() ? 1 : 0, sorter.xpLevels() };
+        if (sorter == null) return new int[] {0, -1};
+        return new int[] {sorter.anvilReady() ? 1 : 0, sorter.xpLevels()};
     }
 
     /** Where the anvil in use came from, for the heartbeat: "set", "found", "placed" or "none". */
@@ -1253,7 +1417,7 @@ public class StashManager extends Module {
     /** What the heartbeat says about crafting: whether it is on, and whether a crafting table is ready. */
     private int[] craftingInfo() {
         StashSorter sorter = Modules.get().get(StashSorter.class);
-        return new int[] { enableCrafting.get() ? 1 : 0, sorter != null && sorter.craftingTableReady() ? 1 : 0 };
+        return new int[] {enableCrafting.get() ? 1 : 0, sorter != null && sorter.craftingTableReady() ? 1 : 0};
     }
 
     /** Why a rescan can't start yet, or null. */
@@ -1266,9 +1430,12 @@ public class StashManager extends Module {
     private void readRescan(String body) {
         try {
             JsonElement e = JsonParser.parseString(body);
-            if (!e.isJsonObject() || !e.getAsJsonObject().has("rescan") || e.getAsJsonObject().get("rescan").isJsonNull()) return;
+            if (!e.isJsonObject()
+                    || !e.getAsJsonObject().has("rescan")
+                    || e.getAsJsonObject().get("rescan").isJsonNull()) return;
             long id = e.getAsJsonObject().get("rescan").getAsLong();
-            // The server sends an id until it has our rescanDone, so one handled and waiting to be acknowledged is not done twice
+            // The server sends an id until it has our rescanDone, so one handled and waiting to be acknowledged is not
+            // done twice
             if (id == rescanDone) return;
             boolean duplicate = id == lastRescanId && System.currentTimeMillis() - lastRescanAt < 120_000;
             rescanDone = id;
@@ -1297,12 +1464,16 @@ public class StashManager extends Module {
     /** What the heartbeat says about delivery; when it changes, another heartbeat goes out at once. */
     private String storageSig() {
         StashIndex.DeliveryStorage d = deliveryStorage();
-        return d == null ? "-" : d.autoExpand() + "/" + d.chests() + "/" + d.full() + "/" + d.canExpand() + "/" + d.blocked();
+        return d == null
+                ? "-"
+                : d.autoExpand() + "/" + d.chests() + "/" + d.full() + "/" + d.canExpand() + "/" + d.blocked();
     }
 
     private String deliverySig() {
         int[] d = deliveryPos();
-        return (d == null ? "none" : d[0] + "," + d[1] + "," + d[2]) + "|" + (namingInfo()[0]) + anvilSource() + "|" + craftingInfo()[0] + craftingInfo()[1] + tableSource() + "|" + orderBlocker() + "|" + rescanDone + "|" + rescanBlocked() + "|" + storageSig();
+        return (d == null ? "none" : d[0] + "," + d[1] + "," + d[2]) + "|" + (namingInfo()[0]) + anvilSource() + "|"
+                + craftingInfo()[0] + craftingInfo()[1] + tableSource() + "|" + orderBlocker() + "|" + rescanDone + "|"
+                + rescanBlocked() + "|" + storageSig();
     }
 
     /** The module is on and taking orders. */
@@ -1337,22 +1508,28 @@ public class StashManager extends Module {
     /** The items crafting never uses, as ids like minecraft:beacon. */
     Set<String> craftNeverUse() {
         Set<String> out = new HashSet<>();
-        for (Item item : craftNeverUse.get()) out.add(net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(item).toString());
+        for (Item item : craftNeverUse.get())
+            out.add(net.minecraft.core.registries.BuiltInRegistries.ITEM
+                    .getKey(item)
+                    .toString());
         return out;
     }
 
     com.porter.wesort.craft.CraftPlanner.Caps craftCaps() {
-        return new com.porter.wesort.craft.CraftPlanner.Caps(craftMaxPerOrder.get(), craftMaxOpsPerTask.get(), craftMaxPerHour.get());
+        return new com.porter.wesort.craft.CraftPlanner.Caps(
+                craftMaxPerOrder.get(), craftMaxOpsPerTask.get(), craftMaxPerHour.get());
     }
 
     /** Starts or stops the sorter's loop for this module: when it takes orders, or containers wait to be read. */
     private void driveSorter() {
         StashSorter sorter = Modules.get().get(StashSorter.class);
         if (sorter == null) return;
-        // The bot walks only when asked: orders are accepted, or a website rescan is under way. Containers a player opened
+        // The bot walks only when asked: orders are accepted, or a website rescan is under way. Containers a player
+        // opened
         // are not read by the bot on their own
         if (rescanning && !sorter.needsReading()) rescanning = false;
-        boolean want = isActive() && sorter.currentStash() != null && (acceptOrders.get() || rescanning || kitJob != null);
+        boolean want =
+                isActive() && sorter.currentStash() != null && (acceptOrders.get() || rescanning || kitJob != null);
         sorter.drive(want);
     }
 
@@ -1384,17 +1561,24 @@ public class StashManager extends Module {
             return;
         }
         String blocker = acceptOrders.get() ? sorter.orderBlocker() : null;
-        if (blocker != null && !blocker.equals("busy") && !blocker.equals("no delivery box")) ordersNote = "(" + blocker + ")";
+        if (blocker != null && !blocker.equals("busy") && !blocker.equals("no delivery box"))
+            ordersNote = "(" + blocker + ")";
         else if (acceptOrders.get() && info != null) ordersNote = "(" + info + ")";
-        else if (sorter.driving() && delivery != null) ordersNote = "(idle, delivery " + delivery.pos.getX() + "," + delivery.pos.getY() + "," + delivery.pos.getZ() + ")";
-        else ordersNote = delivery == null ? "(no delivery box)" : "(delivery " + delivery.pos.getX() + "," + delivery.pos.getY() + "," + delivery.pos.getZ() + ")";
+        else if (sorter.driving() && delivery != null)
+            ordersNote = "(idle, delivery " + delivery.pos.getX() + "," + delivery.pos.getY() + ","
+                    + delivery.pos.getZ() + ")";
+        else
+            ordersNote = delivery == null
+                    ? "(no delivery box)"
+                    : "(delivery " + delivery.pos.getX() + "," + delivery.pos.getY() + "," + delivery.pos.getZ() + ")";
     }
 
     private void takeOrder(StashSorter sorter, OrderRunner runner, String body) {
         Order order = null;
         try {
             JsonElement e = JsonParser.parseString(body);
-            if (e.isJsonObject() && e.getAsJsonObject().has("order")) order = Order.parse(e.getAsJsonObject().getAsJsonObject("order"));
+            if (e.isJsonObject() && e.getAsJsonObject().has("order"))
+                order = Order.parse(e.getAsJsonObject().getAsJsonObject("order"));
         } catch (RuntimeException e) {
             // Treated as no usable order below
         }
@@ -1453,7 +1637,9 @@ public class StashManager extends Module {
                         nextAttemptAt = 0;
                     }
                     // Not held here, but saved from before a restart: say it is cancelled and forget it
-                    if (!sorter.orderCancel(cancelled) && cancelled.equals(sorter.orders().resumeId()) && rejectedId == null) {
+                    if (!sorter.orderCancel(cancelled)
+                            && cancelled.equals(sorter.orders().resumeId())
+                            && rejectedId == null) {
                         rejectedId = cancelled;
                         rejectedWhy = "cancelled";
                         rejectedStatus = "cancelled";
@@ -1501,8 +1687,9 @@ public class StashManager extends Module {
     }
 
     private byte[] orderReportBytes(JsonObject report) {
-        report.addProperty("reportId", com.porter.wesort.data.ContainerIdentity.hash(
-            com.porter.wesort.data.CanonicalJson.stringify(report)));
+        report.addProperty(
+                "reportId",
+                com.porter.wesort.data.ContainerIdentity.hash(com.porter.wesort.data.CanonicalJson.stringify(report)));
         return bytes(report);
     }
 
@@ -1539,7 +1726,8 @@ public class StashManager extends Module {
             if (status.equals("no stash") || status.equals("index error")) status = "idle";
         } catch (Throwable t) {
             current = null;
-            if (!status.equals("index error")) WeSortAddon.LOG.error("wesort-stash-manager: couldn't build the index", t);
+            if (!status.equals("index error"))
+                WeSortAddon.LOG.error("wesort-stash-manager: couldn't build the index", t);
             setStatus("index error");
         }
     }
@@ -1550,7 +1738,9 @@ public class StashManager extends Module {
             while (s.endsWith("/")) s = s.substring(0, s.length() - 1);
             URI uri = URI.create(s);
             String scheme = uri.getScheme();
-            if (uri.getHost() == null || scheme == null || !(scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"))) return null;
+            if (uri.getHost() == null
+                    || scheme == null
+                    || !(scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"))) return null;
             if (uri.getRawQuery() != null || uri.getRawFragment() != null) return null;
             return uri;
         } catch (IllegalArgumentException e) {
@@ -1560,66 +1750,181 @@ public class StashManager extends Module {
 
     /** What to do with the reply, on the client thread. {@code code} is -1 when the server could not be reached. */
     private JsonObject kitJob;
+
     private String kitCatalogNote = "awaiting Manager assignment", kitProblem = "";
     private boolean kitUncertain, kitPacked;
     private long nextKitCatalogAt, kitUntil;
+
     public String kitScope() {
-        if(!isActive()||mc.level==null||serverUrl.get().isBlank()||apiKey.get().isBlank())return "";
-        return serverUrl.get().trim()+"|"+Stash.currentServer()+"|"+com.porter.wesort.data.ContainerIdentity.hash(apiKey.get().trim());
+        if (!isActive()
+                || mc.level == null
+                || serverUrl.get().isBlank()
+                || apiKey.get().isBlank()) return "";
+        return serverUrl.get().trim() + "|" + Stash.currentServer() + "|"
+                + com.porter.wesort.data.ContainerIdentity.hash(apiKey.get().trim());
     }
-    public String kitCatalogStatus() { return kitCatalogNote; }
-    public String kitProblem() { return kitProblem; }
-    public boolean kitIsPacked() { return kitPacked; }
-    public String physicalKitId() { return kitJob == null ? null : kitJob.get("id").getAsString(); }
-    public boolean hasKitJob() { return kitJob!=null; }
-    public boolean kitAllowed() { return kitJob!=null&&!kitUncertain&&System.nanoTime()<kitUntil&&com.porter.wesort.stash.Kits.buildable(com.porter.wesort.stash.Kits.assigned()); }
+
+    public String kitCatalogStatus() {
+        return kitCatalogNote;
+    }
+
+    public String kitProblem() {
+        return kitProblem;
+    }
+
+    public boolean kitIsPacked() {
+        return kitPacked;
+    }
+
+    public String physicalKitId() {
+        return kitJob == null ? null : kitJob.get("id").getAsString();
+    }
+
+    public boolean hasKitJob() {
+        return kitJob != null;
+    }
+
+    public boolean kitAllowed() {
+        return kitJob != null
+                && !kitUncertain
+                && System.nanoTime() < kitUntil
+                && com.porter.wesort.stash.Kits.buildable(com.porter.wesort.stash.Kits.assigned());
+    }
+
     public net.minecraft.core.BlockPos kitWorkspace() {
-        if(!kitAllowed())return null;var work=kitJob.getAsJsonObject("workspace");
-        if(!com.porter.wesort.stash.StashIndex.dimension().equals(work.get("dimension").getAsString()))return null;
-        return new net.minecraft.core.BlockPos(work.get("x").getAsInt(),work.get("y").getAsInt(),work.get("z").getAsInt());
+        if (!kitAllowed()) return null;
+        var work = kitJob.getAsJsonObject("workspace");
+        if (!com.porter.wesort.stash.StashIndex.dimension()
+                .equals(work.get("dimension").getAsString())) return null;
+        return new net.minecraft.core.BlockPos(
+                work.get("x").getAsInt(),
+                work.get("y").getAsInt(),
+                work.get("z").getAsInt());
     }
-    public void kitPacked() { PhysicalJournalRuntime.phase("STORE", new JsonObject()); kitPacked=true;nextKitCatalogAt=0;info("Kit packed exactly; verifying storage at the Manager destination."); }
-    public void kitUncertain(String why) { if(kitJob==null||kitUncertain)return;kitUncertain=true;kitProblem=why;PhysicalJournalRuntime.block("Manager kit needs physical reconciliation");var sorter=Modules.get().get(StashSorter.class);if(sorter!=null)sorter.pauseManagedKit();com.porter.wesort.stash.Kits.revoke();nextKitCatalogAt=0;warning("Kit job paused for reconciliation: %s",why); }
-    private boolean serviceKitCatalog(URI base,String key,long now) {
-        if(kitJob!=null&&System.nanoTime()>=kitUntil&&!kitUncertain)kitUncertain("Manager execution lease expired");
-        if(now<nextKitCatalogAt || kitJob == null && PhysicalJournalRuntime.unfinished())return false;
-        var sorter=Modules.get().get(StashSorter.class);var stash=sorter==null?null:sorter.currentStash();
-        if(stash==null||mc.player==null)return false;
-        String scope=kitScope();var body=new JsonObject();String action="claim";
-        if(kitJob!=null){
-            body.addProperty("id",kitJob.get("id").getAsString());body.addProperty("token",kitJob.get("token").getAsString());
-            action=kitUncertain?"uncertain":kitPacked&&!"VERIFYING".equals(kitJob.get("state").getAsString())?"packed":kitPacked&&sorter.kitStored()?"complete":"renew";
+
+    public void kitPacked() {
+        PhysicalJournalRuntime.phase("STORE", new JsonObject());
+        kitPacked = true;
+        nextKitCatalogAt = 0;
+        info("Kit packed exactly; verifying storage at the Manager destination.");
+    }
+
+    public void kitUncertain(String why) {
+        if (kitJob == null || kitUncertain) return;
+        kitUncertain = true;
+        kitProblem = why;
+        PhysicalJournalRuntime.block("Manager kit needs physical reconciliation");
+        var sorter = Modules.get().get(StashSorter.class);
+        if (sorter != null) sorter.pauseManagedKit();
+        com.porter.wesort.stash.Kits.revoke();
+        nextKitCatalogAt = 0;
+        warning("Kit job paused for reconciliation: %s", why);
+    }
+
+    private boolean serviceKitCatalog(URI base, String key, long now) {
+        if (kitJob != null && System.nanoTime() >= kitUntil && !kitUncertain)
+            kitUncertain("Manager execution lease expired");
+        if (now < nextKitCatalogAt || kitJob == null && PhysicalJournalRuntime.unfinished()) return false;
+        var sorter = Modules.get().get(StashSorter.class);
+        var stash = sorter == null ? null : sorter.currentStash();
+        if (stash == null || mc.player == null) return false;
+        String scope = kitScope();
+        var body = new JsonObject();
+        String action = "claim";
+        if (kitJob != null) {
+            body.addProperty("id", kitJob.get("id").getAsString());
+            body.addProperty("token", kitJob.get("token").getAsString());
+            action = kitUncertain
+                    ? "uncertain"
+                    : kitPacked && !"VERIFYING".equals(kitJob.get("state").getAsString())
+                            ? "packed"
+                            : kitPacked && sorter.kitStored() ? "complete" : "renew";
         }
-        if(kitJob!=null){var supply=sorter.kitReport(kitJob.get("name").getAsString());supply.remove("template");supply.remove("destinations");if(supply.has("possible")&&supply.has("estimateExact"))body.add("supply",supply);}
-        body.addProperty("message",kitProblem);body.addProperty("action",action);body.addProperty("server",Stash.currentServer());body.addProperty("stash",stash.name);body.addProperty("agent",mc.player.getUUID().toString());
-        nextKitCatalogAt=now+2_000;long started=System.nanoTime();
-        send(base,"/api/v1/kits/agent",bytes(body),key,(code,text)->{
-            if(!scope.equals(kitScope())){kitUncertain("Manager link changed");return true;}
-            if(code!=200){kitCatalogNote="Manager kit job unavailable";return true;}
-            try{
-                var response=JsonParser.parseString(text).getAsJsonObject();
-                if(!response.has("job")||response.get("job").isJsonNull())return true;
-                var incoming=response.getAsJsonObject("job");String state=incoming.get("state").getAsString();
-                if(kitJob==null){
-                    var template=com.porter.wesort.data.KitTemplate.read(incoming.getAsJsonObject("template"));
-                    if(!template.fingerprint().equals(incoming.get("fingerprint").getAsString())||!stash.name.equals(incoming.get("stash").getAsString())||!Stash.currentServer().equals(incoming.get("server").getAsString()))throw new IllegalArgumentException("Assignment scope/version mismatch");
-                    kitJob=incoming;kitPacked=false;kitUncertain=false;kitProblem="";
-                    com.porter.wesort.stash.Kits.assign(template,scope,incoming.get("destination").getAsString(),started+5_000_000_000L);
-                    info("Manager assigned kit %s, version %d (%s).",template.name(),incoming.get("revision").getAsLong(),template.fingerprint().substring(0,12));
-                }else{
-                    if(!kitJob.get("id").equals(incoming.get("id"))||!kitJob.get("fingerprint").equals(incoming.get("fingerprint"))||!kitJob.get("revision").equals(incoming.get("revision")))throw new IllegalArgumentException("Pinned kit version changed");
-                    kitJob.addProperty("state",state);
-                }
-                if("COMPLETED".equals(state)){
-                    info("Kit stored and verified by Manager. Job %s completed.",kitJob.get("id").getAsString());
-                    PhysicalJournalRuntime.complete();
-                    kitJob=null;com.porter.wesort.stash.Kits.release();kitCatalogNote="kit storage verified";
-                }else if(!List.of("IN_PROGRESS","VERIFYING").contains(state)){
-                    kitUncertain("Manager state "+state);kitCatalogNote=state;
-                }else if(!kitUncertain){kitUntil=started+5_000_000_000L;com.porter.wesort.stash.Kits.renew(kitUntil);kitCatalogNote=state;}
-            }catch(RuntimeException invalid){kitUncertain("Exact assignment could not be verified by Minecraft 26.3");kitCatalogNote="invalid kit assignment";}
-            return true;
-        },true);
+        if (kitJob != null) {
+            var supply = sorter.kitReport(kitJob.get("name").getAsString());
+            supply.remove("template");
+            supply.remove("destinations");
+            if (supply.has("possible") && supply.has("estimateExact")) body.add("supply", supply);
+        }
+        body.addProperty("message", kitProblem);
+        body.addProperty("action", action);
+        body.addProperty("server", Stash.currentServer());
+        body.addProperty("stash", stash.name);
+        body.addProperty("agent", mc.player.getUUID().toString());
+        nextKitCatalogAt = now + 2_000;
+        long started = System.nanoTime();
+        send(
+                base,
+                "/api/v1/kits/agent",
+                bytes(body),
+                key,
+                (code, text) -> {
+                    if (!scope.equals(kitScope())) {
+                        kitUncertain("Manager link changed");
+                        return true;
+                    }
+                    if (code != 200) {
+                        kitCatalogNote = "Manager kit job unavailable";
+                        return true;
+                    }
+                    try {
+                        var response = JsonParser.parseString(text).getAsJsonObject();
+                        if (!response.has("job") || response.get("job").isJsonNull()) return true;
+                        var incoming = response.getAsJsonObject("job");
+                        String state = incoming.get("state").getAsString();
+                        if (kitJob == null) {
+                            var template =
+                                    com.porter.wesort.data.KitTemplate.read(incoming.getAsJsonObject("template"));
+                            if (!template.fingerprint()
+                                            .equals(incoming.get("fingerprint").getAsString())
+                                    || !stash.name.equals(incoming.get("stash").getAsString())
+                                    || !Stash.currentServer()
+                                            .equals(incoming.get("server").getAsString()))
+                                throw new IllegalArgumentException("Assignment scope/version mismatch");
+                            kitJob = incoming;
+                            kitPacked = false;
+                            kitUncertain = false;
+                            kitProblem = "";
+                            com.porter.wesort.stash.Kits.assign(
+                                    template,
+                                    scope,
+                                    incoming.get("destination").getAsString(),
+                                    started + 5_000_000_000L);
+                            info(
+                                    "Manager assigned kit %s, version %d (%s).",
+                                    template.name(),
+                                    incoming.get("revision").getAsLong(),
+                                    template.fingerprint().substring(0, 12));
+                        } else {
+                            if (!kitJob.get("id").equals(incoming.get("id"))
+                                    || !kitJob.get("fingerprint").equals(incoming.get("fingerprint"))
+                                    || !kitJob.get("revision").equals(incoming.get("revision")))
+                                throw new IllegalArgumentException("Pinned kit version changed");
+                            kitJob.addProperty("state", state);
+                        }
+                        if ("COMPLETED".equals(state)) {
+                            info(
+                                    "Kit stored and verified by Manager. Job %s completed.",
+                                    kitJob.get("id").getAsString());
+                            PhysicalJournalRuntime.complete();
+                            kitJob = null;
+                            com.porter.wesort.stash.Kits.release();
+                            kitCatalogNote = "kit storage verified";
+                        } else if (!List.of("IN_PROGRESS", "VERIFYING").contains(state)) {
+                            kitUncertain("Manager state " + state);
+                            kitCatalogNote = state;
+                        } else if (!kitUncertain) {
+                            kitUntil = started + 5_000_000_000L;
+                            com.porter.wesort.stash.Kits.renew(kitUntil);
+                            kitCatalogNote = state;
+                        }
+                    } catch (RuntimeException invalid) {
+                        kitUncertain("Exact assignment could not be verified by Minecraft 26.3");
+                        kitCatalogNote = "invalid kit assignment";
+                    }
+                    return true;
+                },
+                true);
         return true;
     }
 
@@ -1658,11 +1963,11 @@ public class StashManager extends Module {
         HttpRequest request;
         try {
             request = HttpRequest.newBuilder(uri)
-                .timeout(Duration.ofSeconds(15))
-                .header("X-SM-Auth", "v1 " + credentialId + " " + ts + " " + nonce + " " + sig)
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofByteArray(body))
-                .build();
+                    .timeout(Duration.ofSeconds(15))
+                    .header("X-SM-Auth", "v1 " + credentialId + " " + ts + " " + nonce + " " + sig)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofByteArray(body))
+                    .build();
         } catch (IllegalArgumentException e) {
             if (!isolated) setStatus("bad url");
             return;
@@ -1680,7 +1985,11 @@ public class StashManager extends Module {
                 code = response.statusCode();
                 byte[] bytes = response.body() == null ? new byte[0] : response.body();
                 // The signature covers the body as it is without compression
-                if (response.headers().firstValue("Content-Encoding").map(v -> v.toLowerCase().contains("gzip")).orElse(false) && bytes.length > 0) {
+                if (response.headers()
+                                .firstValue("Content-Encoding")
+                                .map(v -> v.toLowerCase().contains("gzip"))
+                                .orElse(false)
+                        && bytes.length > 0) {
                     try (var in = new java.util.zip.GZIPInputStream(new java.io.ByteArrayInputStream(bytes))) {
                         bytes = in.readAllBytes();
                     } catch (java.io.IOException e) {
@@ -1688,11 +1997,17 @@ public class StashManager extends Module {
                     }
                 }
                 text = new String(bytes, StandardCharsets.UTF_8);
-                // Everything but a refusal before the key was checked (401, 403) or a server error must be signed by the server
+                // Everything but a refusal before the key was checked (401, 403) or a server error must be signed by
+                // the server
                 // for this request. Anything else is not acted on
                 boolean unsignedOk = code == 401 || code == 403 || code >= 500;
                 if (!unsignedOk && !badSignature) {
-                    badSignature = !responseSignatureValid(signingKey, nonce, code, response.headers().firstValue("X-SM-Sig").orElse(""), bytes);
+                    badSignature = !responseSignatureValid(
+                            signingKey,
+                            nonce,
+                            code,
+                            response.headers().firstValue("X-SM-Sig").orElse(""),
+                            bytes);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -1729,7 +2044,8 @@ public class StashManager extends Module {
                     return;
                 }
 
-                // A reply that is not signed by the server for this request is thrown away: no orders, rescans or cancels in it
+                // A reply that is not signed by the server for this request is thrown away: no orders, rescans or
+                // cancels in it
                 if (finalBad) {
                     backoff = backoff == 0 ? BACKOFF_MIN_MS : Math.min(BACKOFF_MAX_MS, backoff * 2);
                     nextAttemptAt = System.currentTimeMillis() + backoff;
@@ -1737,7 +2053,8 @@ public class StashManager extends Module {
                     return;
                 }
 
-                // Another bot owns this stash name (not the 409 of an order that is already finished): stop for a minute, then
+                // Another bot owns this stash name (not the 409 of an order that is already finished): stop for a
+                // minute, then
                 // try again, so a release on the website takes effect
                 String owner = stashOwner(finalCode, finalText);
                 if (owner != null) {
@@ -1748,7 +2065,9 @@ public class StashManager extends Module {
                         warnedOwner = owner;
                         StashSorter sorter = Modules.get().get(StashSorter.class);
                         Stash stash = sorter == null ? null : sorter.currentStash();
-                        warning("Stash name '%s' is already used by %s on this server. Pick another stash name in wesort-stash-sorter's stash-name setting (each bot needs its own).", stash == null ? "?" : stash.name, owner);
+                        warning(
+                                "Stash name '%s' is already used by %s on this server. Pick another stash name in wesort-stash-sorter's stash-name setting (each bot needs its own).",
+                                stash == null ? "?" : stash.name, owner);
                     }
                     setStatus("stash name taken by " + owner);
                     return;
@@ -1809,21 +2128,25 @@ public class StashManager extends Module {
         return hmac(apiKey.getBytes(StandardCharsets.UTF_8), "stash-manager v1".getBytes(StandardCharsets.UTF_8));
     }
 
-    private static String requestSignature(byte[] signingKey, String method, String pathQuery, long ts, String nonce, byte[] body) {
+    private static String requestSignature(
+            byte[] signingKey, String method, String pathQuery, long ts, String nonce, byte[] body) {
         String message = method + "\n" + pathQuery + "\n" + ts + "\n" + nonce + "\n" + sha256Hex(body);
         return hex(hmac(signingKey, message.getBytes(StandardCharsets.UTF_8)));
     }
 
     /** The server's signature on a reply: bound to our nonce, within 60 seconds, compared in constant time. */
-    private static boolean responseSignatureValid(byte[] signingKey, String nonce, int status, String header, byte[] body) {
+    private static boolean responseSignatureValid(
+            byte[] signingKey, String nonce, int status, String header, byte[] body) {
         String[] parts = header.trim().split(" ");
         if (parts.length != 3 || !parts[0].equals("v1")) return false;
         try {
             long ts = Long.parseLong(parts[1]);
             if (Math.abs(System.currentTimeMillis() - ts) > 60_000) return false;
             String message = "resp\n" + nonce + "\n" + status + "\n" + ts + "\n" + sha256Hex(body);
-            byte[] expected = hex(hmac(signingKey, message.getBytes(StandardCharsets.UTF_8))).getBytes(StandardCharsets.UTF_8);
-            return java.security.MessageDigest.isEqual(expected, parts[2].toLowerCase().getBytes(StandardCharsets.UTF_8));
+            byte[] expected = hex(hmac(signingKey, message.getBytes(StandardCharsets.UTF_8)))
+                    .getBytes(StandardCharsets.UTF_8);
+            return java.security.MessageDigest.isEqual(
+                    expected, parts[2].toLowerCase().getBytes(StandardCharsets.UTF_8));
         } catch (NumberFormatException e) {
             return false;
         }
@@ -1831,11 +2154,18 @@ public class StashManager extends Module {
 
     /** The fixed vector of PROTOCOL.md (computed here until the file has it), checked when the module turns on. */
     private static void selfCheck() {
-        String got = requestSignature(signingKey("test-key"), "POST", "/api/v1/heartbeat", 1700000000000L, "00112233445566778899aabbccddeeff",
-            "{\"a\":1}".getBytes(StandardCharsets.UTF_8));
+        String got = requestSignature(
+                signingKey("test-key"),
+                "POST",
+                "/api/v1/heartbeat",
+                1700000000000L,
+                "00112233445566778899aabbccddeeff",
+                "{\"a\":1}".getBytes(StandardCharsets.UTF_8));
         String expected = "7d2f41009d9f0c6c61216ee00811bc643c646652c3d96b36fb89df09bc9356f1";
         if (got.equals(expected)) WeSortAddon.LOG.info("wesort-stash-manager: request signing self-check passed");
-        else WeSortAddon.LOG.error("wesort-stash-manager: request signing self-check FAILED: got {}, expected {}", got, expected);
+        else
+            WeSortAddon.LOG.error(
+                    "wesort-stash-manager: request signing self-check FAILED: got {}, expected {}", got, expected);
     }
 
     /** The owner named in a "stash name in use" refusal, or null if the reply is not one. */
@@ -1846,7 +2176,9 @@ public class StashManager extends Module {
             if (!e.isJsonObject()) return null;
             JsonObject o = e.getAsJsonObject();
             if (!o.has("error") || !"stash name in use".equals(o.get("error").getAsString())) return null;
-            return o.has("owner") && !o.get("owner").isJsonNull() ? o.get("owner").getAsString() : "another player";
+            return o.has("owner") && !o.get("owner").isJsonNull()
+                    ? o.get("owner").getAsString()
+                    : "another player";
         } catch (RuntimeException ex) {
             return null;
         }
@@ -1859,7 +2191,9 @@ public class StashManager extends Module {
         lastLogged = next;
 
         if (next.equals("error 401")) warning("API key rejected by the server. Check the api-key setting.");
-        if (next.equals("server signature invalid")) error("The server's reply was not signed with your API key, so it was ignored. Check the api-key and server-url settings.");
+        if (next.equals("server signature invalid"))
+            error(
+                    "The server's reply was not signed with your API key, so it was ignored. Check the api-key and server-url settings.");
         if (next.equals("online") || next.equals("idle")) WeSortAddon.LOG.info("wesort-stash-manager: {}", next);
         else WeSortAddon.LOG.warn("wesort-stash-manager: {}", next);
     }

@@ -15,8 +15,7 @@ public final class SnapshotSearch {
     /** How often a copy is tried again when the collection changes under it. */
     public static final int ATTEMPTS = 8;
 
-    private SnapshotSearch() {
-    }
+    private SnapshotSearch() {}
 
     /** The first element matching the test, or null when none does (or the collection kept changing). */
     public static <T> T find(Collection<T> source, Predicate<T> test) {

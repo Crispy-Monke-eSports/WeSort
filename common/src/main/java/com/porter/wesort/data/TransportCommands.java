@@ -1,7 +1,6 @@
 package com.porter.wesort.data;
 
 import com.google.gson.JsonObject;
-
 import java.util.UUID;
 
 /**
@@ -11,7 +10,11 @@ import java.util.UUID;
  * after explicit, verified testing of the actual server.
  */
 public final class TransportCommands {
-    public enum Kind { TPA_REQUEST, HOME_GO, TPA_ACCEPT }
+    public enum Kind {
+        TPA_REQUEST,
+        HOME_GO,
+        TPA_ACCEPT
+    }
 
     private TransportCommands() {}
 
@@ -66,19 +69,27 @@ public final class TransportCommands {
 
     private static String string(JsonObject operation, String field) {
         var value = operation.get(field);
-        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) {
-            throw new IllegalArgumentException("A " + operation.get("kind").getAsString() + " operation needs " + field);
+        if (value == null
+                || !value.isJsonPrimitive()
+                || !value.getAsJsonPrimitive().isString()) {
+            throw new IllegalArgumentException(
+                    "A " + operation.get("kind").getAsString() + " operation needs " + field);
         }
         return value.getAsString();
     }
 
     private static String text(String raw, String field, int limit) {
         String value = raw == null ? "" : raw.strip();
-        if (value.isEmpty() || value.length() > limit) throw new IllegalArgumentException(field + " must be 1-" + limit + " characters");
+        if (value.isEmpty() || value.length() > limit)
+            throw new IllegalArgumentException(field + " must be 1-" + limit + " characters");
         for (int i = 0; i < value.length(); i++) {
             char c = value.charAt(i);
-            if (c == '§' || c == ' ' || Character.isISOControl(c) || Character.getType(c) == Character.FORMAT
-                || Character.getType(c) == Character.LINE_SEPARATOR || Character.getType(c) == Character.PARAGRAPH_SEPARATOR) {
+            if (c == '§'
+                    || c == ' '
+                    || Character.isISOControl(c)
+                    || Character.getType(c) == Character.FORMAT
+                    || Character.getType(c) == Character.LINE_SEPARATOR
+                    || Character.getType(c) == Character.PARAGRAPH_SEPARATOR) {
                 throw new IllegalArgumentException(field + " contains a forbidden character");
             }
         }

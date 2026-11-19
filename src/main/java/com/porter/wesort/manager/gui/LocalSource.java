@@ -1,5 +1,7 @@
 package com.porter.wesort.manager.gui;
 
+import static meteordevelopment.meteorclient.MeteorClient.mc;
+
 import com.porter.wesort.manager.local.ContainerKey;
 import com.porter.wesort.manager.local.LocalHub;
 import com.porter.wesort.manager.local.LocalStore;
@@ -8,16 +10,13 @@ import com.porter.wesort.manager.local.Where;
 import com.porter.wesort.manager.model.IndexModel;
 import com.porter.wesort.manager.model.StashRef;
 import com.porter.wesort.stash.StashIndex;
-import net.minecraft.world.item.ItemStack;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeSet;
-
-import static meteordevelopment.meteorclient.MeteorClient.mc;
+import net.minecraft.world.item.ItemStack;
 
 /**
  * What the game has seen on its own: the containers the player opened on the server they are on now (see
@@ -29,6 +28,7 @@ public final class LocalSource implements DataSource {
     public static final String ALL = "*";
     /** Time per frame spent reading stored containers back. */
     private static final long PREPARE_BUDGET_NANOS = 6_000_000L;
+
     private static final long REBUILD_MS = 1000;
 
     private final LocalHub hub;
@@ -108,7 +108,8 @@ public final class LocalSource implements DataSource {
         if (decodeLeft > 0) return "Reading stored containers... " + decodeLeft + " left";
         String warning = hub.warning();
         if (!warning.isEmpty()) return warning;
-        if (s != null && s.size() == 0) return "Nothing stored yet. Open chests, barrels or shulker boxes and they are remembered here.";
+        if (s != null && s.size() == 0)
+            return "Nothing stored yet. Open chests, barrels or shulker boxes and they are remembered here.";
         return "";
     }
 

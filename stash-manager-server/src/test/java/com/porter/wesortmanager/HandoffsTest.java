@@ -1,21 +1,21 @@
 package com.porter.wesortmanager;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.porter.wesort.data.Handoff;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.nio.file.Path;
-import java.util.UUID;
-
-import static org.junit.jupiter.api.Assertions.*;
-
 class HandoffsTest {
-    @TempDir Path data;
+    @TempDir
+    Path data;
 
     private static final String A1 = "11111111-1111-1111-1111-111111111111";
     private static final String A2 = "22222222-2222-2222-2222-222222222222";
 
-    @Test void confirmationIsTheOnlyPathToDeliveredAndReplayIsIdempotent() throws Exception {
+    @Test
+    void confirmationIsTheOnlyPathToDeliveredAndReplayIsIdempotent() throws Exception {
         var handoffs = new Handoffs(data);
         var h = handoffs.schedule("o-1", "alice", "meet-1", A1);
         handoffs.arrive(h.id(), A1);
@@ -31,15 +31,18 @@ class HandoffsTest {
         assertEquals(resolved, handoffs.confirm(h.id(), "owner"));
     }
 
-    @Test void aSecondAgentCannotTakeOverTheCargo() throws Exception {
+    @Test
+    void aSecondAgentCannotTakeOverTheCargo() throws Exception {
         var handoffs = new Handoffs(data);
         var h = handoffs.schedule("o-1", "alice", "meet-1", A1);
         handoffs.arrive(h.id(), A1);
-        assertThrows(Handoffs.Conflict.class, () -> handoffs.noShow(h.id(), A2), "a second agent cannot drive the handoff");
+        assertThrows(
+                Handoffs.Conflict.class, () -> handoffs.noShow(h.id(), A2), "a second agent cannot drive the handoff");
         assertThrows(Handoffs.Conflict.class, () -> handoffs.dropUnverified(h.id(), A2, "x"));
     }
 
-    @Test void noShowDoesNotReturnStockUntilExplicit() throws Exception {
+    @Test
+    void noShowDoesNotReturnStockUntilExplicit() throws Exception {
         var handoffs = new Handoffs(data);
         var h = handoffs.schedule("o-1", "alice", "meet-1", A1);
         handoffs.arrive(h.id(), A1);
@@ -48,7 +51,8 @@ class HandoffsTest {
         assertEquals(Handoff.State.RETURNED, handoffs.returnOrder(h.id(), A1).state());
     }
 
-    @Test void handoffsPersistAcrossRestart() throws Exception {
+    @Test
+    void handoffsPersistAcrossRestart() throws Exception {
         var handoffs = new Handoffs(data);
         var h = handoffs.schedule("o-1", "alice", "meet-1", A1);
         handoffs.arrive(h.id(), A1);

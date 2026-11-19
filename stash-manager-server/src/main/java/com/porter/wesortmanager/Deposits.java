@@ -4,7 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.porter.wesort.data.Deposit;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -23,7 +22,9 @@ import java.util.function.LongSupplier;
  */
 final class Deposits {
     static final class Conflict extends IOException {
-        Conflict(String reason) { super(reason); }
+        Conflict(String reason) {
+            super(reason);
+        }
     }
 
     private static final int SCHEMA = 1;
@@ -33,7 +34,10 @@ final class Deposits {
 
     private record Entry(Deposit deposit, JsonArray events) {}
 
-    Deposits(Path data) throws IOException { this(data, System::currentTimeMillis); }
+    Deposits(Path data) throws IOException {
+        this(data, System::currentTimeMillis);
+    }
+
     Deposits(Path data, LongSupplier clock) throws IOException {
         this.clock = clock;
         this.file = data.resolve("deposits.json");
@@ -45,7 +49,9 @@ final class Deposits {
             for (var entry : root.getAsJsonArray("deposits")) {
                 var o = entry.getAsJsonObject();
                 var deposit = Deposit.read(o);
-                deposits.put(deposit.packageId(), new Entry(deposit, o.getAsJsonArray("events").deepCopy()));
+                deposits.put(
+                        deposit.packageId(),
+                        new Entry(deposit, o.getAsJsonArray("events").deepCopy()));
             }
         } catch (RuntimeException invalid) {
             throw new IOException("Cannot read deposits", invalid);
@@ -53,11 +59,14 @@ final class Deposits {
     }
 
     /** Begins a deposit; idempotent for the same package + order + kind + destination. */
-    synchronized Deposit begin(String packageId, String orderId, Deposit.Kind kind, String destination, String agent) throws IOException {
+    synchronized Deposit begin(String packageId, String orderId, Deposit.Kind kind, String destination, String agent)
+            throws IOException {
         var existing = deposits.get(packageId);
         if (existing != null) {
             var d = existing.deposit();
-            if (!d.orderId().equals(orderId) || d.kind() != kind || !d.destination().equals(destination))
+            if (!d.orderId().equals(orderId)
+                    || d.kind() != kind
+                    || !d.destination().equals(destination))
                 throw new Conflict("Package already has a different deposit");
             return d;
         }
@@ -74,11 +83,15 @@ final class Deposits {
         var entry = require(packageId);
         var d = entry.deposit();
         if (d.state() == Deposit.State.DELIVERED) return d; // idempotent: no double delivery
-        if (snapshot == null || !snapshot.has("chests") || !snapshot.get("chests").isJsonArray()
-            || snapshot.getAsJsonArray("chests").isEmpty())
+        if (snapshot == null
+                || !snapshot.has("chests")
+                || !snapshot.get("chests").isJsonArray()
+                || snapshot.getAsJsonArray("chests").isEmpty())
             throw new Conflict("A confirmed, non-empty chest content snapshot is required before DELIVERED");
-        String snapshotDestination = snapshot.has("destination") && snapshot.get("destination").isJsonPrimitive()
-            ? snapshot.get("destination").getAsString() : null;
+        String snapshotDestination =
+                snapshot.has("destination") && snapshot.get("destination").isJsonPrimitive()
+                        ? snapshot.get("destination").getAsString()
+                        : null;
         if (snapshotDestination == null || !snapshotDestination.equals(d.destination()))
             throw new Conflict("The snapshot must be from the deposit's own destination");
         var confirmed = advance(d, Deposit.State.DELIVERED, agent);
@@ -121,7 +134,11 @@ final class Deposits {
     }
 
     private static Deposit advance(Deposit d, Deposit.State next, String agent) throws Conflict {
-        try { return d.advance(next, agent); } catch (IllegalArgumentException e) { throw new Conflict(e.getMessage()); }
+        try {
+            return d.advance(next, agent);
+        } catch (IllegalArgumentException e) {
+            throw new Conflict(e.getMessage());
+        }
     }
 
     private Entry require(String packageId) throws Conflict {

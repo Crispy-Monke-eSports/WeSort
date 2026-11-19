@@ -11,13 +11,12 @@ import baritone.api.process.IBaritoneProcess;
 import baritone.api.process.ICustomGoalProcess;
 import com.porter.wesort.compat.BaritoneFluids;
 import com.porter.wesort.compat.WorldInteractionGuard;
-import net.minecraft.core.BlockPos;
-import net.minecraft.world.level.block.Block;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.block.Block;
 
 /**
  * Thin wrapper around dekrom's Baritone fork (https://github.com/dekrom/baritone).
@@ -74,8 +73,9 @@ public final class BaritoneHelper {
      */
     public static boolean isActive() {
         IBaritone baritone = baritone();
-        return baritone.getPathingBehavior().isPathing() || baritone.getCustomGoalProcess().isActive()
-            || baritone.getPathingBehavior().getInProgress().isPresent();
+        return baritone.getPathingBehavior().isPathing()
+                || baritone.getCustomGoalProcess().isActive()
+                || baritone.getPathingBehavior().getInProgress().isPresent();
     }
 
     public static boolean isPathing() {
@@ -94,10 +94,13 @@ public final class BaritoneHelper {
         if (!isActive()) return false;
         IBaritone baritone = baritone();
         ICustomGoalProcess custom = baritone.getCustomGoalProcess();
-        IBaritoneProcess inControl = baritone.getPathingControlManager().mostRecentInControl().orElse(null);
+        IBaritoneProcess inControl =
+                baritone.getPathingControlManager().mostRecentInControl().orElse(null);
         // onLostControl cancels asynchronously. A short tail of our own released route is not a foreign user.
         // A replacement goal or another process still wins immediately.
-        if (custom.getGoal() == null && (inControl == null || inControl == custom) && System.nanoTime() < ownReleaseUntil) return false;
+        if (custom.getGoal() == null
+                && (inControl == null || inControl == custom)
+                && System.nanoTime() < ownReleaseUntil) return false;
         if (ours == null || custom.getGoal() != ours) return true;
         return inControl != null && inControl != custom;
     }
@@ -107,7 +110,8 @@ public final class BaritoneHelper {
      */
     public static boolean isMoving() {
         IBaritone baritone = baritone();
-        return baritone.getPathingBehavior().isPathing() || baritone.getCustomGoalProcess().isActive();
+        return baritone.getPathingBehavior().isPathing()
+                || baritone.getCustomGoalProcess().isActive();
     }
 
     /**
@@ -170,7 +174,8 @@ public final class BaritoneHelper {
         confineOne(settings.allowPlace, false);
         if (!safe) return;
 
-        // Safe walk: no parkour, no diagonal drops, no falls beyond a one block step down (that step is a descend, which
+        // Safe walk: no parkour, no diagonal drops, no falls beyond a one block step down (that step is a descend,
+        // which
         // doesn't use the fall height), no jumping at the build limit and no bucket falls
         confineOne(settings.allowParkour, false);
         confineOne(settings.allowParkourAscend, false);
@@ -187,7 +192,7 @@ public final class BaritoneHelper {
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static void confineOne(Settings.Setting setting, Object ours) {
         for (Object[] saved : confined) if (saved[0] == setting) return;
-        confined.add(new Object[] { setting, setting.value, ours });
+        confined.add(new Object[] {setting, setting.value, ours});
         setting.value = ours;
     }
 
@@ -234,7 +239,9 @@ public final class BaritoneHelper {
         public boolean isInGoal(int x, int y, int z) {
             double r = Math.max(1, reach - MARGIN);
             for (BlockPos p : parts) {
-                double dx = x + 0.5 - (p.getX() + 0.5), dy = y + EYES - (p.getY() + 0.5), dz = z + 0.5 - (p.getZ() + 0.5);
+                double dx = x + 0.5 - (p.getX() + 0.5),
+                        dy = y + EYES - (p.getY() + 0.5),
+                        dz = z + 0.5 - (p.getZ() + 0.5);
                 if (dx * dx + dy * dy + dz * dz <= r * r) return true;
             }
             return false;

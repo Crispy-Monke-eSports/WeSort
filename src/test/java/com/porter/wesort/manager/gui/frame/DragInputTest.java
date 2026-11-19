@@ -1,17 +1,16 @@
 package com.porter.wesort.manager.gui.frame;
 
-import com.porter.wesort.manager.gui.frame.FrameMath.Edge;
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.porter.wesort.manager.gui.frame.FrameMath.Edge;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.stream.Stream;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Test;
 
 /**
  * 0.4.0-dev.10.2: the window could not be moved or resized, and the grid's scroll bar could not be dragged. Every drag asked
@@ -28,16 +27,28 @@ class DragInputTest {
         try (Stream<Path> files = Files.walk(GUI)) {
             for (Path f : (Iterable<Path>) files.filter(p -> p.toString().endsWith(".java"))::iterator) {
                 String src = Files.readString(f, StandardCharsets.UTF_8);
-                String code = src.lines().filter(l -> !l.trim().startsWith("*") && !l.trim().startsWith("//") && !l.trim().startsWith("/*")).collect(java.util.stream.Collectors.joining(" "));
-                assertFalse(code.contains("isLeftPressed"), f + " reads MouseHandler.isLeftPressed(), which is never updated while a screen is open");
+                String code = src.lines()
+                        .filter(l -> !l.trim().startsWith("*")
+                                && !l.trim().startsWith("//")
+                                && !l.trim().startsWith("/*"))
+                        .collect(java.util.stream.Collectors.joining(" "));
+                assertFalse(
+                        code.contains("isLeftPressed"),
+                        f + " reads MouseHandler.isLeftPressed(), which is never updated while a screen is open");
             }
         }
     }
 
     @Test
     void everyDragReadsTheButtonFromButtons() throws IOException {
-        for (Path f : new Path[] {GUI.resolve("frame/WDragHandle.java"), GUI.resolve("frame/WResizeGrip.java"), GUI.resolve("widgets/WItemGrid.java")}) {
-            assertTrue(Files.readString(f, StandardCharsets.UTF_8).contains("Buttons.leftDown()"), f + " must follow the button through Buttons");
+        for (Path f : new Path[] {
+            GUI.resolve("frame/WDragHandle.java"),
+            GUI.resolve("frame/WResizeGrip.java"),
+            GUI.resolve("widgets/WItemGrid.java")
+        }) {
+            assertTrue(
+                    Files.readString(f, StandardCharsets.UTF_8).contains("Buttons.leftDown()"),
+                    f + " must follow the button through Buttons");
         }
         String buttons = Files.readString(GUI.resolve("frame/Buttons.java"), StandardCharsets.UTF_8);
         assertTrue(buttons.contains("Input.isButtonPressed"));

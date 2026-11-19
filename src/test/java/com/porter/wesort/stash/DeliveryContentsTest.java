@@ -1,5 +1,10 @@
 package com.porter.wesort.stash;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -7,16 +12,10 @@ import com.porter.wesort.stash.DeliveryBook.Pos;
 import com.porter.wesort.stash.DeliveryContents.Chest;
 import com.porter.wesort.stash.DeliveryContents.Inner;
 import com.porter.wesort.stash.DeliveryContents.Item;
-import org.junit.jupiter.api.Test;
-
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Test;
 
 /** The delivery contents report: its shape, its hash, and when it is sent. */
 class DeliveryContentsTest {
@@ -47,7 +46,8 @@ class DeliveryContentsTest {
     }
 
     private static JsonObject json(DeliveryContents.Built b) {
-        return JsonParser.parseString(new String(b.json(), StandardCharsets.UTF_8)).getAsJsonObject();
+        return JsonParser.parseString(new String(b.json(), StandardCharsets.UTF_8))
+                .getAsJsonObject();
     }
 
     private static DeliveryContents.Built build(List<Chest> chests) {
@@ -72,14 +72,18 @@ class DeliveryContentsTest {
         for (int i = 0; i < 20; i++) chests.add(new Chest(54, i == 1, 100 + i, List.of(stone(0, 1))));
         JsonArray out = json(build(chests)).getAsJsonArray("chests");
         assertEquals(16, out.size());
-        for (int i = 0; i < 16; i++) assertEquals(i, out.get(i).getAsJsonObject().get("n").getAsInt());
+        for (int i = 0; i < 16; i++)
+            assertEquals(i, out.get(i).getAsJsonObject().get("n").getAsInt());
         assertTrue(out.get(1).getAsJsonObject().get("full").getAsBoolean());
         assertFalse(out.get(0).getAsJsonObject().get("full").getAsBoolean());
     }
 
     @Test
     void anUnreadChestHasNoItemsAndReadAtZero() {
-        JsonObject c = json(build(List.of(new Chest(54, true, 0, null)))).getAsJsonArray("chests").get(0).getAsJsonObject();
+        JsonObject c = json(build(List.of(new Chest(54, true, 0, null))))
+                .getAsJsonArray("chests")
+                .get(0)
+                .getAsJsonObject();
         assertEquals(0, c.get("readAt").getAsLong());
         assertTrue(c.get("items").isJsonNull());
         assertEquals(54, c.get("size").getAsInt());
@@ -88,7 +92,11 @@ class DeliveryContentsTest {
     @Test
     void slotsAreCappedToTheSizeAndOnlyUsedOnesListedOnce() {
         List<Item> items = List.of(stone(30, 1), stone(26, 5), stone(26, 9), stone(-1, 3), stone(3, 0), stone(0, 2));
-        JsonArray out = json(build(List.of(new Chest(27, false, 5, items)))).getAsJsonArray("chests").get(0).getAsJsonObject().getAsJsonArray("items");
+        JsonArray out = json(build(List.of(new Chest(27, false, 5, items))))
+                .getAsJsonArray("chests")
+                .get(0)
+                .getAsJsonObject()
+                .getAsJsonArray("items");
         assertEquals(2, out.size());
         assertEquals(0, out.get(0).getAsJsonObject().get("slot").getAsInt());
         assertEquals(26, out.get(1).getAsJsonObject().get("slot").getAsInt());
@@ -101,24 +109,48 @@ class DeliveryContentsTest {
         inside.add(new Inner("minecraft:diamond", 64));
         inside.add(new Inner("minecraft:emerald", 3));
         inside.add(new Inner("minecraft:diamond", 64));
-        assertEquals(List.of(new Inner("minecraft:diamond", 128), new Inner("minecraft:emerald", 3)), DeliveryContents.group(inside));
+        assertEquals(
+                List.of(new Inner("minecraft:diamond", 128), new Inner("minecraft:emerald", 3)),
+                DeliveryContents.group(inside));
 
         List<Inner> many = new ArrayList<>();
         for (int i = 0; i < 40; i++) many.add(new Inner("minecraft:item_" + i, 1));
         assertEquals(27, DeliveryContents.group(many).size());
 
         Item shulker = new Item(4, "minecraft:red_shulker_box", "Gems", 1, 1, inside, 0, 0);
-        JsonObject o = json(build(List.of(new Chest(54, false, 5, List.of(shulker, stone(5, 64)))))).getAsJsonArray("chests").get(0).getAsJsonObject()
-            .getAsJsonArray("items").get(0).getAsJsonObject();
+        JsonObject o = json(build(List.of(new Chest(54, false, 5, List.of(shulker, stone(5, 64))))))
+                .getAsJsonArray("chests")
+                .get(0)
+                .getAsJsonObject()
+                .getAsJsonArray("items")
+                .get(0)
+                .getAsJsonObject();
         assertTrue(o.get("shulker").getAsBoolean());
         assertEquals(2, o.getAsJsonArray("contents").size());
-        assertEquals(128, o.getAsJsonArray("contents").get(0).getAsJsonObject().get("count").getAsInt());
-        assertFalse(json(build(List.of(new Chest(54, false, 5, List.of(stone(5, 64)))))).getAsJsonArray("chests").get(0).getAsJsonObject()
-            .getAsJsonArray("items").get(0).getAsJsonObject().has("shulker"));
+        assertEquals(
+                128,
+                o.getAsJsonArray("contents")
+                        .get(0)
+                        .getAsJsonObject()
+                        .get("count")
+                        .getAsInt());
+        assertFalse(json(build(List.of(new Chest(54, false, 5, List.of(stone(5, 64))))))
+                .getAsJsonArray("chests")
+                .get(0)
+                .getAsJsonObject()
+                .getAsJsonArray("items")
+                .get(0)
+                .getAsJsonObject()
+                .has("shulker"));
         // An empty shulker is still a shulker, with no contents
         Item empty = new Item(0, "minecraft:shulker_box", "Shulker Box", 1, 1, List.of(), 0, 0);
-        JsonObject e = json(build(List.of(new Chest(27, false, 5, List.of(empty))))).getAsJsonArray("chests").get(0).getAsJsonObject()
-            .getAsJsonArray("items").get(0).getAsJsonObject();
+        JsonObject e = json(build(List.of(new Chest(27, false, 5, List.of(empty)))))
+                .getAsJsonArray("chests")
+                .get(0)
+                .getAsJsonObject()
+                .getAsJsonArray("items")
+                .get(0)
+                .getAsJsonObject();
         assertTrue(e.get("shulker").getAsBoolean());
         assertEquals(0, e.getAsJsonArray("contents").size());
     }
@@ -143,19 +175,30 @@ class DeliveryContentsTest {
         DeliveryContents.Built b = build(List.of(new Chest(54, false, 999, items)));
         assertEquals(a.hash(), b.hash());
         assertEquals(40, a.hash().length());
-        assertNotEquals(a.hash(), build(List.of(new Chest(54, false, 100, List.of(stone(0, 11))))).hash());
-        assertNotEquals(a.hash(), build(List.of(new Chest(54, true, 100, items))).hash());
+        assertNotEquals(
+                a.hash(),
+                build(List.of(new Chest(54, false, 100, List.of(stone(0, 11))))).hash());
+        assertNotEquals(
+                a.hash(), build(List.of(new Chest(54, true, 100, items))).hash());
         assertEquals(999, b.readAt());
         assertEquals(999, json(b).get("readAt").getAsLong());
         // Built twice from the same things: the same bytes
-        assertEquals(new String(a.json(), StandardCharsets.UTF_8), new String(build(List.of(new Chest(54, false, 100, items))).json(), StandardCharsets.UTF_8));
+        assertEquals(
+                new String(a.json(), StandardCharsets.UTF_8),
+                new String(build(List.of(new Chest(54, false, 100, items))).json(), StandardCharsets.UTF_8));
     }
 
     @Test
     void noPositionsAreInTheReport() {
-        String text = new String(build(List.of(new Chest(54, false, 5, List.of(stone(0, 1))))).json(), StandardCharsets.UTF_8);
-        for (String key : List.of("\"x\"", "\"y\"", "\"z\"", "\"pos\"", "\"at\"", "\"dimension\"")) assertFalse(text.contains(key), key);
-        JsonObject chest = JsonParser.parseString(text).getAsJsonObject().getAsJsonArray("chests").get(0).getAsJsonObject();
+        String text = new String(
+                build(List.of(new Chest(54, false, 5, List.of(stone(0, 1))))).json(), StandardCharsets.UTF_8);
+        for (String key : List.of("\"x\"", "\"y\"", "\"z\"", "\"pos\"", "\"at\"", "\"dimension\""))
+            assertFalse(text.contains(key), key);
+        JsonObject chest = JsonParser.parseString(text)
+                .getAsJsonObject()
+                .getAsJsonArray("chests")
+                .get(0)
+                .getAsJsonObject();
         assertEquals(java.util.Set.of("n", "size", "full", "readAt", "items"), chest.keySet());
     }
 
@@ -303,11 +346,13 @@ class DeliveryContentsTest {
         DeliveryContents.Built b = build(fullOfShulkers(0));
         assertTrue(b.json().length <= 230_000, "size " + b.json().length);
         JsonArray chests = json(b).getAsJsonArray("chests");
-        JsonObject first = chests.get(0).getAsJsonObject().getAsJsonArray("items").get(0).getAsJsonObject();
+        JsonObject first =
+                chests.get(0).getAsJsonObject().getAsJsonArray("items").get(0).getAsJsonObject();
         assertTrue(first.get("shulker").getAsBoolean());
         assertFalse(first.has("contents"));
         // Every chest keeps its items
-        for (int i = 0; i < 16; i++) assertFalse(chests.get(i).getAsJsonObject().get("items").isJsonNull());
+        for (int i = 0; i < 16; i++)
+            assertFalse(chests.get(i).getAsJsonObject().get("items").isJsonNull());
     }
 
     @Test

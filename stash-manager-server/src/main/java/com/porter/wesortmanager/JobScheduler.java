@@ -4,7 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.porter.wesort.data.Job;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -26,7 +25,9 @@ import java.util.function.LongSupplier;
  */
 final class JobScheduler {
     static final class Conflict extends IOException {
-        Conflict(String reason) { super(reason); }
+        Conflict(String reason) {
+            super(reason);
+        }
     }
 
     static final long TTL = 60_000; // lease time-to-live, millis
@@ -37,7 +38,10 @@ final class JobScheduler {
 
     private record Entry(Job job, long deadline, String token, JsonArray events) {}
 
-    JobScheduler(Path data) throws IOException { this(data, System::currentTimeMillis); }
+    JobScheduler(Path data) throws IOException {
+        this(data, System::currentTimeMillis);
+    }
+
     JobScheduler(Path data, LongSupplier clock) throws IOException {
         this.clock = clock;
         this.file = data.resolve("jobs.json");
@@ -49,16 +53,23 @@ final class JobScheduler {
             for (var entry : root.getAsJsonArray("jobs")) {
                 var o = entry.getAsJsonObject();
                 var job = Job.read(o);
-                jobs.put(job.id(), new Entry(job, o.get("deadline").getAsLong(),
-                    o.has("token") && !o.get("token").isJsonNull() ? o.get("token").getAsString() : null,
-                    o.getAsJsonArray("events").deepCopy()));
+                jobs.put(
+                        job.id(),
+                        new Entry(
+                                job,
+                                o.get("deadline").getAsLong(),
+                                o.has("token") && !o.get("token").isJsonNull()
+                                        ? o.get("token").getAsString()
+                                        : null,
+                                o.getAsJsonArray("events").deepCopy()));
             }
         } catch (RuntimeException invalid) {
             throw new IOException("Cannot read job scheduler", invalid);
         }
     }
 
-    synchronized Job submit(Job.Category category, String chain, String detail, int priority, String by) throws IOException {
+    synchronized Job submit(Job.Category category, String chain, String detail, int priority, String by)
+            throws IOException {
         expire();
         var job = new Job(null, category, chain, detail == null ? "" : detail, null, Job.State.QUEUED, priority, 1);
         var events = new JsonArray();
@@ -81,8 +92,9 @@ final class JobScheduler {
         for (var entry : jobs.values()) {
             var j = entry.job();
             if (j.state() != Job.State.QUEUED || !prerequisitesMet(j)) continue;
-            if (candidate == null || j.priority() > candidate.priority()
-                || (j.priority() == candidate.priority() && j.revision() < candidate.revision())) candidate = j;
+            if (candidate == null
+                    || j.priority() > candidate.priority()
+                    || (j.priority() == candidate.priority() && j.revision() < candidate.revision())) candidate = j;
         }
         var out = new JsonObject();
         if (candidate == null) {
@@ -131,7 +143,8 @@ final class JobScheduler {
         expire();
         var entry = require(jobId);
         var j = entry.job();
-        if (j.state() != Job.State.PAUSED || !j.agent().equals(agent)) throw new Conflict("Job is not paused by this agent");
+        if (j.state() != Job.State.PAUSED || !j.agent().equals(agent))
+            throw new Conflict("Job is not paused by this agent");
         if (!entry.token().equals(token)) throw new Conflict("Lease token mismatch");
         return advanceTo(jobId, entry, j.advance(Job.State.CLAIMED, agent), "resumed", agent);
     }
@@ -145,8 +158,10 @@ final class JobScheduler {
     /** Resolves an uncertain job: back to QUEUED for reassignment, or COMPLETED. */
     synchronized Job reconcile(String jobId, Job.State outcome, String by) throws IOException {
         var entry = require(jobId);
-        if (entry.job().state() != Job.State.NEEDS_RECONCILIATION) throw new Conflict("Only an uncertain job may be reconciled");
-        if (outcome != Job.State.QUEUED && outcome != Job.State.COMPLETED) throw new Conflict("Reconciliation must reassign or complete");
+        if (entry.job().state() != Job.State.NEEDS_RECONCILIATION)
+            throw new Conflict("Only an uncertain job may be reconciled");
+        if (outcome != Job.State.QUEUED && outcome != Job.State.COMPLETED)
+            throw new Conflict("Reconciliation must reassign or complete");
         return advanceTo(jobId, entry, entry.job().advance(outcome, by), "reconciled", by);
     }
 
@@ -160,7 +175,8 @@ final class JobScheduler {
         expire();
         var list = new ArrayList<>(jobs.values());
         list.sort(Comparator.comparingInt((Entry e) -> e.job().state() == Job.State.QUEUED ? 0 : 1)
-            .thenComparingInt((Entry e) -> -e.job().priority()).thenComparingLong(e -> e.job().revision()));
+                .thenComparingInt((Entry e) -> -e.job().priority())
+                .thenComparingLong(e -> e.job().revision()));
         var out = new JsonArray();
         for (var entry : list) {
             var o = entry.job().json();
@@ -185,13 +201,16 @@ final class JobScheduler {
     }
 
     private boolean busy(String agent) {
-        return jobs.values().stream().anyMatch(e -> !e.job().terminal() && agent.equals(e.job().agent()));
+        return jobs.values().stream()
+                .anyMatch(e -> !e.job().terminal() && agent.equals(e.job().agent()));
     }
 
     private boolean prerequisitesMet(Job job) {
         for (var prereq : Job.prerequisites(job.category())) {
-            boolean done = jobs.values().stream().anyMatch(e ->
-                e.job().chain().equals(job.chain()) && e.job().category() == prereq && e.job().state() == Job.State.COMPLETED);
+            boolean done = jobs.values().stream()
+                    .anyMatch(e -> e.job().chain().equals(job.chain())
+                            && e.job().category() == prereq
+                            && e.job().state() == Job.State.COMPLETED);
             if (!done) return false;
         }
         return true;
@@ -207,7 +226,9 @@ final class JobScheduler {
             if (j.held() && e.deadline() > 0 && now >= e.deadline()) {
                 var events = e.events().deepCopy();
                 events.add(event("expired", j.agent()));
-                jobs.put(entry.getKey(), new Entry(j.advance(Job.State.NEEDS_RECONCILIATION, null), 0, e.token(), events));
+                jobs.put(
+                        entry.getKey(),
+                        new Entry(j.advance(Job.State.NEEDS_RECONCILIATION, null), 0, e.token(), events));
                 changed = true;
             }
         }

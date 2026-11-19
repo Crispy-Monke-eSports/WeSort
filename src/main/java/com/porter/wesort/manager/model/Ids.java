@@ -6,8 +6,7 @@ import java.util.regex.Pattern;
 public final class Ids {
     private static final Pattern ID = Pattern.compile("^[A-Za-z0-9_-]{1,64}$");
 
-    private Ids() {
-    }
+    private Ids() {}
 
     public static boolean valid(String id) {
         return id != null && ID.matcher(id).matches();

@@ -1,13 +1,13 @@
 package com.porter.wesort.compat;
 
+import static meteordevelopment.meteorclient.MeteorClient.mc;
+
 import com.porter.wesort.data.BlockSafety;
 import com.porter.wesort.modules.StashManager;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.phys.BlockHitResult;
-
-import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 /** Denies activation and mutation of safety-sensitive blocks in a dedicated agent profile. */
 public final class WorldInteractionGuard {
@@ -34,6 +34,8 @@ public final class WorldInteractionGuard {
     }
 
     static String blockPath(BlockPos position) {
-        return BuiltInRegistries.BLOCK.getKey(mc.level.getBlockState(position).getBlock()).getPath();
+        return BuiltInRegistries.BLOCK
+                .getKey(mc.level.getBlockState(position).getBlock())
+                .getPath();
     }
 }

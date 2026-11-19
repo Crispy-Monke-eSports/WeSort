@@ -4,7 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -23,8 +22,7 @@ final class Owners {
     /** How stale the saved "last seen" of an owner may get before it is written again. */
     private static final long SEEN_WRITE_MS = 60L * 60 * 1000;
 
-    record Conflict(String player, long at) {
-    }
+    record Conflict(String player, long at) {}
 
     private static final class Entry {
         String owner;
@@ -48,12 +46,18 @@ final class Owners {
     synchronized void load() throws IOException {
         if (!Files.exists(file)) return;
         try {
-            JsonArray list = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8)).getAsJsonArray();
+            JsonArray list = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8))
+                    .getAsJsonArray();
             for (JsonElement e : list) {
                 JsonObject o = e.getAsJsonObject();
-                Entry entry = new Entry(o.get("owner").getAsString(), o.has("seen") ? o.get("seen").getAsLong() : 0);
+                Entry entry = new Entry(
+                        o.get("owner").getAsString(),
+                        o.has("seen") ? o.get("seen").getAsLong() : 0);
                 entry.writtenSeen = entry.seen;
-                owners.put(new IndexStore.StashKey(o.get("server").getAsString(), o.get("stash").getAsString()), entry);
+                owners.put(
+                        new IndexStore.StashKey(
+                                o.get("server").getAsString(), o.get("stash").getAsString()),
+                        entry);
             }
         } catch (RuntimeException e) {
             System.err.println("Skipping " + file.getFileName() + ": " + e);
@@ -67,7 +71,8 @@ final class Owners {
             String player = p.getValue().player();
             if (player == null || player.isEmpty() || owners.containsKey(p.getKey())) continue;
             owners.put(p.getKey(), new Entry(player, p.getValue().seen()));
-            System.out.println("  Stash '" + p.getKey().stash() + "' @ " + p.getKey().server() + " belongs to " + player + ".");
+            System.out.println(
+                    "  Stash '" + p.getKey().stash() + "' @ " + p.getKey().server() + " belongs to " + player + ".");
             changed = true;
         }
         if (changed) save();
@@ -100,8 +105,8 @@ final class Owners {
             return null;
         }
         if (take && automaticTakeover && now - e.seen >= TAKEOVER_MS) {
-            System.out.println(Instant.now() + " Stash '" + stash + "' @ " + server + ": " + player + " took it over from "
-                + e.owner + " (not seen since " + Instant.ofEpochMilli(e.seen) + ").");
+            System.out.println(Instant.now() + " Stash '" + stash + "' @ " + server + ": " + player
+                    + " took it over from " + e.owner + " (not seen since " + Instant.ofEpochMilli(e.seen) + ").");
             e.owner = player;
             e.seen = now;
             conflicts.remove(key);

@@ -1,17 +1,18 @@
 package com.porter.wesortmanager;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.google.gson.JsonObject;
 import com.porter.wesort.data.Job;
+import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.nio.file.Path;
-import java.util.concurrent.atomic.AtomicLong;
-
-import static org.junit.jupiter.api.Assertions.*;
-
 class JobSchedulerTest {
-    @TempDir Path data;
+    @TempDir
+    Path data;
+
     private final AtomicLong clock = new AtomicLong(0);
 
     private static final String A1 = "11111111-1111-1111-1111-111111111111";
@@ -29,7 +30,8 @@ class JobSchedulerTest {
         return claim.get("token").getAsString();
     }
 
-    @Test void claimIsAtomicAndAnAgentHoldsAtMostOneJob() throws Exception {
+    @Test
+    void claimIsAtomicAndAnAgentHoldsAtMostOneJob() throws Exception {
         var s = scheduler();
         s.submit(Job.Category.SCAN, "o-1", "", 0, "owner");
         var first = s.claim(A1);
@@ -43,7 +45,8 @@ class JobSchedulerTest {
         assertNotEquals(id(first), id(second), "two agents never claim the same job");
     }
 
-    @Test void priorityOrdersTheQueue() throws Exception {
+    @Test
+    void priorityOrdersTheQueue() throws Exception {
         var s = scheduler();
         var low = s.submit(Job.Category.SCAN, "o-1", "", 0, "owner");
         var high = s.submit(Job.Category.SCAN, "o-2", "", 5, "owner");
@@ -53,7 +56,8 @@ class JobSchedulerTest {
         assertEquals(low.id(), id(s.claim(A1)), "the lower priority job follows");
     }
 
-    @Test void aStepIsOnlyClaimableAfterItsPredecessorCompletes() throws Exception {
+    @Test
+    void aStepIsOnlyClaimableAfterItsPredecessorCompletes() throws Exception {
         var s = scheduler();
         var scan = s.submit(Job.Category.SCAN, "o-1", "", 0, "owner");
         var sort = s.submit(Job.Category.SORT, "o-1", "", 0, "owner");
@@ -74,13 +78,17 @@ class JobSchedulerTest {
         assertEquals(pickup.id(), id(s.claim(A1)), "PICKUP is eligible once PACK is complete");
     }
 
-    @Test void aLapsedLeaseNeedsReconciliationBeforeReassignment() throws Exception {
+    @Test
+    void aLapsedLeaseNeedsReconciliationBeforeReassignment() throws Exception {
         var s = scheduler();
         var job = s.submit(Job.Category.SCAN, "o-1", "", 0, "owner");
         var claimed = s.claim(A1);
         String token = token(claimed);
         clock.set(JobScheduler.TTL); // the lease lapses
-        assertThrows(JobScheduler.Conflict.class, () -> s.complete(job.id(), A1, token), "a lapsed lease cannot be completed");
+        assertThrows(
+                JobScheduler.Conflict.class,
+                () -> s.complete(job.id(), A1, token),
+                "a lapsed lease cannot be completed");
         assertEquals(Job.State.NEEDS_RECONCILIATION, s.get(job.id()).state());
         assertTrue(s.claim(A2).get("job").isJsonNull(), "an uncertain job is never blindly reassigned");
 
@@ -90,7 +98,8 @@ class JobSchedulerTest {
         assertEquals(A2, s.get(job.id()).agent());
     }
 
-    @Test void renewExtendsTheLease() throws Exception {
+    @Test
+    void renewExtendsTheLease() throws Exception {
         var s = scheduler();
         var job = s.submit(Job.Category.SCAN, "o-1", "", 0, "owner");
         var claimed = s.claim(A1);
@@ -101,7 +110,8 @@ class JobSchedulerTest {
         assertEquals(Job.State.COMPLETED, s.complete(job.id(), A1, token).state());
     }
 
-    @Test void pauseResumeAndRevoke() throws Exception {
+    @Test
+    void pauseResumeAndRevoke() throws Exception {
         var s = scheduler();
         var job = s.submit(Job.Category.SCAN, "o-1", "", 0, "owner");
         var claimed = s.claim(A1);
@@ -111,9 +121,12 @@ class JobSchedulerTest {
         assertEquals(Job.State.REVOKED, s.revoke(job.id(), "owner").state());
     }
 
-    @Test void aLoneAgentChainsEveryStepWithoutAHandover() throws Exception {
+    @Test
+    void aLoneAgentChainsEveryStepWithoutAHandover() throws Exception {
         var s = scheduler();
-        Job.Category[] chain = {Job.Category.SCAN, Job.Category.SORT, Job.Category.PACK, Job.Category.PICKUP, Job.Category.DELIVER};
+        Job.Category[] chain = {
+            Job.Category.SCAN, Job.Category.SORT, Job.Category.PACK, Job.Category.PICKUP, Job.Category.DELIVER
+        };
         for (Job.Category c : chain) s.submit(c, "o-1", "", 0, "owner");
         for (Job.Category c : chain) {
             var claimed = s.claim(A1);
@@ -126,7 +139,8 @@ class JobSchedulerTest {
         assertTrue(s.claim(A1).get("job").isJsonNull(), "everything is done");
     }
 
-    @Test void theQueuePersistsAcrossRestart() throws Exception {
+    @Test
+    void theQueuePersistsAcrossRestart() throws Exception {
         var s = scheduler();
         var job = s.submit(Job.Category.SCAN, "o-1", "", 3, "owner");
         var claimed = s.claim(A1);

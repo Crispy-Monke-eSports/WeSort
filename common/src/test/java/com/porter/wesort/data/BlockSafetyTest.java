@@ -1,9 +1,12 @@
 package com.porter.wesort.data;
-import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.*;
 
+import org.junit.jupiter.api.Test;
+
 class BlockSafetyTest {
-    @Test void doorsTrapdoorsGatesAndButtonsAreSensitive() {
+    @Test
+    void doorsTrapdoorsGatesAndButtonsAreSensitive() {
         assertTrue(BlockSafety.safetySensitive("oak_door"));
         assertTrue(BlockSafety.safetySensitive("iron_door"));
         assertTrue(BlockSafety.safetySensitive("oak_trapdoor"));
@@ -12,7 +15,8 @@ class BlockSafetyTest {
         assertTrue(BlockSafety.safetySensitive("oak_button"));
     }
 
-    @Test void passiveTriggersAreSensitive() {
+    @Test
+    void passiveTriggersAreSensitive() {
         assertTrue(BlockSafety.passiveTrigger("stone_pressure_plate"));
         assertTrue(BlockSafety.passiveTrigger("tripwire"));
         assertTrue(BlockSafety.passiveTrigger("detector_rail"));
@@ -21,7 +25,8 @@ class BlockSafetyTest {
         assertFalse(BlockSafety.passiveTrigger("stone"));
     }
 
-    @Test void redstoneAndPortalDevicesAreSensitive() {
+    @Test
+    void redstoneAndPortalDevicesAreSensitive() {
         assertTrue(BlockSafety.safetySensitive("lever"));
         assertTrue(BlockSafety.safetySensitive("redstone_wire"));
         assertTrue(BlockSafety.safetySensitive("piston"));
@@ -34,7 +39,8 @@ class BlockSafetyTest {
         assertTrue(BlockSafety.safetySensitive("end_portal"));
     }
 
-    @Test void ordinaryStorageAndBuildingBlocksAreAllowed() {
+    @Test
+    void ordinaryStorageAndBuildingBlocksAreAllowed() {
         assertFalse(BlockSafety.safetySensitive("chest"));
         assertFalse(BlockSafety.safetySensitive("barrel"));
         assertFalse(BlockSafety.safetySensitive("shulker_box"));

@@ -3,7 +3,6 @@ package com.porter.wesortmanager;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -18,11 +17,19 @@ import java.util.Map;
  * gives optimistic concurrency for Owner updates.
  */
 final class TransportProfiles {
-    record Profile(String server, boolean allowTpa, boolean allowHome, boolean tpaVerified, boolean homeVerified, long revision) {
+    record Profile(
+            String server,
+            boolean allowTpa,
+            boolean allowHome,
+            boolean tpaVerified,
+            boolean homeVerified,
+            long revision) {
         Profile {
-            if (server == null || server.isBlank() || server.length() > 256) throw new IllegalArgumentException("A server profile needs a server");
+            if (server == null || server.isBlank() || server.length() > 256)
+                throw new IllegalArgumentException("A server profile needs a server");
             if (revision < 1) throw new IllegalArgumentException("Invalid transport profile revision");
         }
+
         JsonObject json() {
             var out = new JsonObject();
             out.addProperty("server", server);
@@ -33,25 +40,44 @@ final class TransportProfiles {
             out.addProperty("revision", revision);
             return out;
         }
+
         static Profile read(JsonObject o) {
-            return new Profile(o.get("server").getAsString(), o.get("allowTpa").getAsBoolean(), o.get("allowHome").getAsBoolean(),
-                o.get("tpaVerified").getAsBoolean(), o.get("homeVerified").getAsBoolean(), o.get("revision").getAsLong());
+            return new Profile(
+                    o.get("server").getAsString(),
+                    o.get("allowTpa").getAsBoolean(),
+                    o.get("allowHome").getAsBoolean(),
+                    o.get("tpaVerified").getAsBoolean(),
+                    o.get("homeVerified").getAsBoolean(),
+                    o.get("revision").getAsLong());
         }
-        static Profile initial(String server) { return new Profile(server, false, false, false, false, 1); }
+
+        static Profile initial(String server) {
+            return new Profile(server, false, false, false, false, 1);
+        }
+
         Profile updated(JsonObject request) {
-            return new Profile(server, flag(request, "allowTpa", allowTpa), flag(request, "allowHome", allowHome),
-                flag(request, "tpaVerified", tpaVerified), flag(request, "homeVerified", homeVerified), Math.addExact(revision, 1));
+            return new Profile(
+                    server,
+                    flag(request, "allowTpa", allowTpa),
+                    flag(request, "allowHome", allowHome),
+                    flag(request, "tpaVerified", tpaVerified),
+                    flag(request, "homeVerified", homeVerified),
+                    Math.addExact(revision, 1));
         }
+
         private static boolean flag(JsonObject o, String field, boolean current) {
             var value = o.get(field);
             if (value == null) return current;
-            if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isBoolean()) throw new IllegalArgumentException(field + " must be a boolean");
+            if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isBoolean())
+                throw new IllegalArgumentException(field + " must be a boolean");
             return value.getAsBoolean();
         }
     }
 
     static final class Conflict extends IOException {
-        Conflict() { super("Transport profile revision changed; reload before updating"); }
+        Conflict() {
+            super("Transport profile revision changed; reload before updating");
+        }
     }
 
     private static final int SCHEMA = 1;
@@ -65,15 +91,17 @@ final class TransportProfiles {
         try {
             var root = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
             if (root.get("schema").getAsBigDecimal().intValueExact() != SCHEMA) throw new IllegalArgumentException();
-            for (var entry : root.getAsJsonArray("profiles")) profiles.put(entry.getAsJsonObject().get("server").getAsString(),
-                Profile.read(entry.getAsJsonObject()));
+            for (var entry : root.getAsJsonArray("profiles"))
+                profiles.put(
+                        entry.getAsJsonObject().get("server").getAsString(), Profile.read(entry.getAsJsonObject()));
         } catch (RuntimeException invalid) {
             throw new IOException("Cannot read transport profiles", invalid);
         }
     }
 
     synchronized Profile get(String server) {
-        if (server == null || server.isBlank() || server.length() > 256) throw new IllegalArgumentException("A server is required");
+        if (server == null || server.isBlank() || server.length() > 256)
+            throw new IllegalArgumentException("A server is required");
         return profiles.getOrDefault(server, Profile.initial(server));
     }
 

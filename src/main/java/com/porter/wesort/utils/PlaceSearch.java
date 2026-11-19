@@ -57,10 +57,13 @@ public final class PlaceSearch {
     /** The spot found, or null and why there is none. */
     public record Result(Found found, String why) {}
 
-    public static final String ALL_BLOCKED = "all blocked", OUTSIDE = "outside the perimeter", UNREACHABLE = "unreachable",
-        GUARDED = "next to the delivery container, anvil or crafting table", FAILED = "placing there failed before";
+    public static final String ALL_BLOCKED = "all blocked",
+            OUTSIDE = "outside the perimeter",
+            UNREACHABLE = "unreachable",
+            GUARDED = "next to the delivery container, anvil or crafting table",
+            FAILED = "placing there failed before";
 
-    private static final int[][] DIRS = { { 0, -1 }, { 1, 0 }, { 0, 1 }, { -1, 0 } };
+    private static final int[][] DIRS = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}};
 
     public static Result search(Pos feet, View v, Set<Pos> skip) {
         // Walkable cells by steps from the bot
@@ -74,7 +77,8 @@ public final class PlaceSearch {
             for (int[] d : DIRS) {
                 for (int dy = -1; dy <= 1; dy++) {
                     Pos next = new Pos(at.x() + d[0], at.y() + dy, at.z() + d[1]);
-                    if (steps.containsKey(next) || !within(feet, next) || !v.standable(next.x(), next.y(), next.z())) continue;
+                    if (steps.containsKey(next) || !within(feet, next) || !v.standable(next.x(), next.y(), next.z()))
+                        continue;
                     // A step up needs head room above where the bot is; a step down head room above the next cell
                     if (dy > 0 && !v.open(at.x(), at.y() + 2, at.z())) continue;
                     if (dy < 0 && !v.open(next.x(), next.y() + 2, next.z())) continue;
@@ -111,7 +115,8 @@ public final class PlaceSearch {
             for (int dz = -RADIUS; dz <= RADIUS; dz++) {
                 for (int dy = -HEIGHT; dy <= HEIGHT; dy++) {
                     Pos spot = feet.offset(dx, dy, dz);
-                    if (within(feet, spot) && reject(spot, feet, v, skip) == null) why.merge(UNREACHABLE, 1, Integer::sum);
+                    if (within(feet, spot) && reject(spot, feet, v, skip) == null)
+                        why.merge(UNREACHABLE, 1, Integer::sum);
                 }
             }
         }
@@ -121,12 +126,18 @@ public final class PlaceSearch {
     }
 
     private static int rank(String why) {
-        return why.equals(UNREACHABLE) ? 0 : why.equals(OUTSIDE) ? 1 : why.equals(GUARDED) ? 2 : why.equals(FAILED) ? 3 : why.equals(ALL_BLOCKED) ? 5 : 4;
+        return why.equals(UNREACHABLE)
+                ? 0
+                : why.equals(OUTSIDE)
+                        ? 1
+                        : why.equals(GUARDED) ? 2 : why.equals(FAILED) ? 3 : why.equals(ALL_BLOCKED) ? 5 : 4;
     }
 
     private static String reject(Pos spot, Pos feet, View v, Set<Pos> skip) {
         if (!within(feet, spot) || spot.equals(feet)) return ALL_BLOCKED;
-        if (!v.open(spot.x(), spot.y(), spot.z()) || !v.floor(spot.x(), spot.y() - 1, spot.z()) || v.floor(spot.x(), spot.y() + 1, spot.z())) return ALL_BLOCKED;
+        if (!v.open(spot.x(), spot.y(), spot.z())
+                || !v.floor(spot.x(), spot.y() - 1, spot.z())
+                || v.floor(spot.x(), spot.y() + 1, spot.z())) return ALL_BLOCKED;
         if (skip.contains(spot)) return FAILED;
         if (!v.inArea(spot)) return OUTSIDE;
         if (v.guarded(spot)) return GUARDED;

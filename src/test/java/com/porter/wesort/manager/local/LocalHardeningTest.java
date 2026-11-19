@@ -1,25 +1,24 @@
 package com.porter.wesort.manager.local;
 
-import com.porter.wesort.manager.local.LocalStore.Entry;
-import com.porter.wesort.manager.local.LocalStore.Slot;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.Tag;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-
-import java.io.IOException;
-import java.io.OutputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.List;
-import java.util.zip.GZIPOutputStream;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.porter.wesort.manager.local.LocalStore.Entry;
+import com.porter.wesort.manager.local.LocalStore.Slot;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.zip.GZIPOutputStream;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** Size limits, newer files, save backoff, world identity, click matching and file names. */
 class LocalHardeningTest {
@@ -29,8 +28,13 @@ class LocalHardeningTest {
     private static Entry entry(int x) {
         CompoundTag item = new CompoundTag();
         item.putString("id", "minecraft:stone");
-        return new Entry(new ContainerKey("srv", "minecraft:overworld", x, 64, 0), List.of(new int[] { x, 64, 0 }), "minecraft:chest", 27, 1L,
-            List.of(new Slot(0, (Tag) item)));
+        return new Entry(
+                new ContainerKey("srv", "minecraft:overworld", x, 64, 0),
+                List.of(new int[] {x, 64, 0}),
+                "minecraft:chest",
+                27,
+                1L,
+                List.of(new Slot(0, (Tag) item)));
     }
 
     // ---- file size limits ----
@@ -49,7 +53,10 @@ class LocalHardeningTest {
         assertEquals(LocalFile.Status.TOO_BIG, loaded.status());
         assertTrue(Files.exists(file), "kept where it is");
         try (var files = Files.list(dir)) {
-            assertEquals(0, files.filter(f -> f.getFileName().toString().contains(".bad-")).count());
+            assertEquals(
+                    0,
+                    files.filter(f -> f.getFileName().toString().contains(".bad-"))
+                            .count());
         }
     }
 
@@ -58,7 +65,8 @@ class LocalHardeningTest {
         // the write limit is on the uncompressed size and the read limit is that plus a margin
         assertTrue(LocalFile.MAX_UNCOMPRESSED + LocalFile.READ_MARGIN > LocalFile.MAX_UNCOMPRESSED);
         Path file = dir.resolve("ok.nbt");
-        assertEquals(LocalFile.WriteStatus.OK, LocalFile.write(file, LocalFile.toTag("srv", List.of(entry(1), entry(2)))));
+        assertEquals(
+                LocalFile.WriteStatus.OK, LocalFile.write(file, LocalFile.toTag("srv", List.of(entry(1), entry(2)))));
         LocalFile.Loaded loaded = LocalFile.read(file, "srv", 100);
         assertEquals(LocalFile.Status.OK, loaded.status());
         assertEquals(2, loaded.entries().size());

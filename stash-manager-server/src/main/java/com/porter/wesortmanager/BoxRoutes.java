@@ -32,7 +32,10 @@ final class BoxRoutes {
     }
 
     private void jobList(HttpExchange ex) throws IOException {
-        if (Redact.forced(Router.user(ex))) { Http.error(ex, 404, "not found"); return; }
+        if (Redact.forced(Router.user(ex))) {
+            Http.error(ex, 404, "not found");
+            return;
+        }
         var out = new JsonObject();
         out.add("jobs", jobs().list(Http.query(ex).getOrDefault("server", "")));
         Http.json(ex, 200, out);
@@ -40,21 +43,32 @@ final class BoxRoutes {
 
     private void jobCreate(HttpExchange ex) throws IOException {
         var raw = AddonRoutes.readJson(ex);
-        if (raw == null || !raw.isJsonObject()) { Http.error(ex, 400, "Expected a box registration request"); return; }
+        if (raw == null || !raw.isJsonObject()) {
+            Http.error(ex, 400, "Expected a box registration request");
+            return;
+        }
         try {
             var job = jobs().create(Router.user(ex).id(), raw.getAsJsonObject());
             audit.add(Router.user(ex), "box.job.create", job.get("id").getAsString(), AuthRoutes.address(ex));
             Http.json(ex, 200, job);
-        } catch (RuntimeException invalid) { Http.error(ex, 400, invalid.getMessage()); }
+        } catch (RuntimeException invalid) {
+            Http.error(ex, 400, invalid.getMessage());
+        }
     }
 
     private void agent(HttpExchange ex) throws IOException {
         var raw = AddonRoutes.readJson(ex);
-        if (raw == null || !raw.isJsonObject()) { Http.error(ex, 400, "Expected a box job request"); return; }
+        if (raw == null || !raw.isJsonObject()) {
+            Http.error(ex, 400, "Expected a box job request");
+            return;
+        }
         var body = raw.getAsJsonObject();
         String action = AddonRoutes.string(body, "action");
-        if (action == null || !List.of("claim", "renew", "renamed", "complete", "uncertain").contains(action)) {
-            Http.error(ex, 400, "Agent box action required"); return;
+        if (action == null
+                || !List.of("claim", "renew", "renamed", "complete", "uncertain")
+                        .contains(action)) {
+            Http.error(ex, 400, "Agent box action required");
+            return;
         }
         try {
             String agentId = AddonRoutes.string(body, "agent");
@@ -64,17 +78,34 @@ final class BoxRoutes {
                 String stash = AddonRoutes.string(body, "stash");
                 synchronized (index) {
                     String owner = owners.check(server, stash, AddonRoutes.string(body, "player"), false);
-                    if (owner != null) { AddonRoutes.conflict(ex, owner); return; }
-                    job = KitJobs.hasActiveWork(index.stock(), server, agentId) ? null : jobs().claim(server, stash, agentId);
+                    if (owner != null) {
+                        AddonRoutes.conflict(ex, owner);
+                        return;
+                    }
+                    job = KitJobs.hasActiveWork(index.stock(), server, agentId)
+                            ? null
+                            : jobs().claim(server, stash, agentId);
                 }
             } else {
-                job = jobs().advance(AddonRoutes.string(body, "id"), agentId, AddonRoutes.string(body, "token"), action,
-                    AddonRoutes.string(body, "message"));
+                job = jobs().advance(
+                                AddonRoutes.string(body, "id"),
+                                agentId,
+                                AddonRoutes.string(body, "token"),
+                                action,
+                                AddonRoutes.string(body, "message"));
             }
             var out = new JsonObject();
             out.add("job", job == null ? JsonNull.INSTANCE : job);
-            if (job != null && !"renew".equals(action)) audit.add("agent:" + agentId, "Signed WeSort agent", "box.job." + action, job.get("id").getAsString(), AuthRoutes.address(ex));
+            if (job != null && !"renew".equals(action))
+                audit.add(
+                        "agent:" + agentId,
+                        "Signed WeSort agent",
+                        "box.job." + action,
+                        job.get("id").getAsString(),
+                        AuthRoutes.address(ex));
             Http.json(ex, 200, out);
-        } catch (RuntimeException invalid) { Http.error(ex, 400, invalid.getMessage()); }
+        } catch (RuntimeException invalid) {
+            Http.error(ex, 400, invalid.getMessage());
+        }
     }
 }

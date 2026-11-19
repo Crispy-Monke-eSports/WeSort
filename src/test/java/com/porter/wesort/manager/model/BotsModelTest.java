@@ -1,13 +1,12 @@
 package com.porter.wesort.manager.model;
 
-import com.google.gson.JsonParser;
-import org.junit.jupiter.api.Test;
-
-import java.util.List;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.google.gson.JsonParser;
+import java.util.List;
+import org.junit.jupiter.api.Test;
 
 class BotsModelTest {
     private static StashRef stash(String json) {
@@ -15,7 +14,9 @@ class BotsModelTest {
     }
 
     private static AuthState auth(String perms, boolean owner) {
-        return AuthState.parse(JsonParser.parseString("{\"loggedIn\":true,\"user\":{\"id\":\"u1\",\"name\":\"bob\",\"owner\":" + owner + ",\"perms\":" + perms + "}}"));
+        return AuthState.parse(
+                JsonParser.parseString("{\"loggedIn\":true,\"user\":{\"id\":\"u1\",\"name\":\"bob\",\"owner\":" + owner
+                        + ",\"perms\":" + perms + "}}"));
     }
 
     private static BotList.Bot bot(String caps) {
@@ -29,9 +30,10 @@ class BotsModelTest {
 
     @Test
     void stashFieldsOfTheBotOverviewAreRead() {
-        StashRef s = stash("{\"server\":\"s\",\"stash\":\"base\",\"owner\":\"Ann\",\"delivery\":{\"x\":10,\"y\":64,\"z\":-5},"
-            + "\"orders\":{\"open\":3,\"active\":{\"id\":\"o7\",\"status\":\"in_progress\",\"phase\":\"\"}},"
-            + "\"conflict\":{\"player\":\"Bob\",\"at\":1000}}");
+        StashRef s = stash(
+                "{\"server\":\"s\",\"stash\":\"base\",\"owner\":\"Ann\",\"delivery\":{\"x\":10,\"y\":64,\"z\":-5},"
+                        + "\"orders\":{\"open\":3,\"active\":{\"id\":\"o7\",\"status\":\"in_progress\",\"phase\":\"\"}},"
+                        + "\"conflict\":{\"player\":\"Bob\",\"at\":1000}}");
         assertEquals(3, s.bot().openOrders());
         assertEquals("Order o7: In progress", s.bot().activeOrder());
         assertEquals("10, 64, -5", BotsModel.delivery(s));
@@ -51,14 +53,24 @@ class BotsModelTest {
 
     @Test
     void doingFollowsTheWebsitesOrder() {
-        assertEquals(new BotsModel.Doing("Order o1: Walking", false),
-            BotsModel.doing(stash("{\"server\":\"s\",\"stash\":\"a\",\"orderBlocker\":\"no shulkers\",\"orders\":{\"open\":1,\"active\":{\"id\":\"o1\",\"status\":\"accepted\",\"phase\":\"Walking\"}}}")));
-        assertEquals(new BotsModel.Doing("Can't take orders: no shulkers", true),
-            BotsModel.doing(stash("{\"server\":\"s\",\"stash\":\"a\",\"orderBlocker\":\"no shulkers\",\"rescanPending\":3}")));
-        assertEquals(new BotsModel.Doing("Rescan requested", false), BotsModel.doing(stash("{\"server\":\"s\",\"stash\":\"a\",\"rescanPending\":3}")));
-        assertEquals(new BotsModel.Doing("Can't rescan: busy", true), BotsModel.doing(stash("{\"server\":\"s\",\"stash\":\"a\",\"rescanBlocked\":\"busy\"}")));
-        assertEquals(new BotsModel.Doing("Re-reading containers: 8 / 10", false),
-            BotsModel.doing(stash("{\"server\":\"s\",\"stash\":\"a\",\"containers\":{\"total\":10,\"stale\":2}}")));
+        assertEquals(
+                new BotsModel.Doing("Order o1: Walking", false),
+                BotsModel.doing(
+                        stash(
+                                "{\"server\":\"s\",\"stash\":\"a\",\"orderBlocker\":\"no shulkers\",\"orders\":{\"open\":1,\"active\":{\"id\":\"o1\",\"status\":\"accepted\",\"phase\":\"Walking\"}}}")));
+        assertEquals(
+                new BotsModel.Doing("Can't take orders: no shulkers", true),
+                BotsModel.doing(stash(
+                        "{\"server\":\"s\",\"stash\":\"a\",\"orderBlocker\":\"no shulkers\",\"rescanPending\":3}")));
+        assertEquals(
+                new BotsModel.Doing("Rescan requested", false),
+                BotsModel.doing(stash("{\"server\":\"s\",\"stash\":\"a\",\"rescanPending\":3}")));
+        assertEquals(
+                new BotsModel.Doing("Can't rescan: busy", true),
+                BotsModel.doing(stash("{\"server\":\"s\",\"stash\":\"a\",\"rescanBlocked\":\"busy\"}")));
+        assertEquals(
+                new BotsModel.Doing("Re-reading containers: 8 / 10", false),
+                BotsModel.doing(stash("{\"server\":\"s\",\"stash\":\"a\",\"containers\":{\"total\":10,\"stale\":2}}")));
     }
 
     @Test
@@ -88,12 +100,18 @@ class BotsModelTest {
 
     @Test
     void streamerModeLeavesOutOwnerStashServerAndOtherPlayer() {
-        StashRef s = stash("{\"server\":\"play.example.org\",\"stash\":\"basestash\",\"owner\":\"AnnOwner\",\"conflict\":{\"player\":\"BobRival\",\"at\":1000}}");
+        StashRef s = stash(
+                "{\"server\":\"play.example.org\",\"stash\":\"basestash\",\"owner\":\"AnnOwner\",\"conflict\":{\"player\":\"BobRival\",\"at\":1000}}");
         String warning = BotsModel.releaseWarning(s, true);
         String conflict = BotsModel.conflict(s, 2000, true);
         String notice = BotsModel.releasedNotice(s, true);
-        for (String text : new String[]{warning, conflict, notice, BotsModel.stashName(s, true)}) {
-            assertFalse(text.contains("AnnOwner") || text.contains("basestash") || text.contains("BobRival") || text.contains("example"), text);
+        for (String text : new String[] {warning, conflict, notice, BotsModel.stashName(s, true)}) {
+            assertFalse(
+                    text.contains("AnnOwner")
+                            || text.contains("basestash")
+                            || text.contains("BobRival")
+                            || text.contains("example"),
+                    text);
         }
         assertTrue(warning.contains("this bot"));
         assertFalse(conflict.isEmpty());
@@ -124,9 +142,13 @@ class BotsModelTest {
 
     @Test
     void metaLineIsTheWebsitesLine() {
-        BotList.Bot b = BotList.parse(JsonParser.parseString("[{\"botId\":\"ct1\",\"plugin\":{\"id\":\"qs\",\"version\":\"1.2\"},\"runtime\":{\"version\":\"0.9\",\"mc\":\"1.21.4\"}}]")).find("ct1");
+        BotList.Bot b = BotList.parse(
+                        JsonParser.parseString(
+                                "[{\"botId\":\"ct1\",\"plugin\":{\"id\":\"qs\",\"version\":\"1.2\"},\"runtime\":{\"version\":\"0.9\",\"mc\":\"1.21.4\"}}]"))
+                .find("ct1");
         assertEquals("Plugin qs 1.2 · runtime 0.9 (MC 1.21.4) · id ct1", BotsModel.meta(b));
-        BotList.Bot bare = BotList.parse(JsonParser.parseString("[{\"botId\":\"ct2\"}]")).find("ct2");
+        BotList.Bot bare =
+                BotList.parse(JsonParser.parseString("[{\"botId\":\"ct2\"}]")).find("ct2");
         assertEquals("Plugin ? · runtime ? · id ct2", BotsModel.meta(bare));
     }
 }

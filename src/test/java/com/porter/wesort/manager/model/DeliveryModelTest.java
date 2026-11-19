@@ -1,18 +1,17 @@
 package com.porter.wesort.manager.model;
 
-import com.google.gson.JsonParser;
-import com.porter.wesort.manager.model.CartPlan.Kind;
-import com.porter.wesort.manager.model.CartPlan.Unit;
-import org.junit.jupiter.api.Test;
-
-import java.util.ArrayList;
-import java.util.List;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.google.gson.JsonParser;
+import com.porter.wesort.manager.model.CartPlan.Kind;
+import com.porter.wesort.manager.model.CartPlan.Unit;
+import java.util.ArrayList;
+import java.util.List;
+import org.junit.jupiter.api.Test;
 
 class DeliveryModelTest {
     private static final long NOW = 1_767_225_600_000L;
@@ -50,7 +49,8 @@ class DeliveryModelTest {
         assertEquals(2, c.items().size());
         assertTrue(c.items().get(0).shulker());
         assertEquals(1728, c.items().get(0).contents().get(0).count());
-        DeliveryModel evil = parse("{\"chests\":[{\"n\":0,\"size\":27,\"items\":[{\"slot\":1,\"id\":\"minecraft:stone\",\"name\":\"\\u00a7cRed\\u0007\",\"count\":1}]}]}");
+        DeliveryModel evil = parse(
+                "{\"chests\":[{\"n\":0,\"size\":27,\"items\":[{\"slot\":1,\"id\":\"minecraft:stone\",\"name\":\"\\u00a7cRed\\u0007\",\"count\":1}]}]}");
         assertEquals("cRed", evil.chests().get(0).items().get(0).name());
     }
 
@@ -58,7 +58,8 @@ class DeliveryModelTest {
     void junkIsEmptyAndBadChestsAreSkipped() {
         assertTrue(DeliveryModel.parse(JsonParser.parseString("null")).isEmpty());
         assertTrue(parse("{\"chests\":\"x\"}").isEmpty());
-        DeliveryModel m = parse("{\"chests\":[{\"n\":0,\"size\":30,\"items\":[]},{\"n\":1,\"size\":27,\"items\":[{\"slot\":27,\"id\":\"a:b\"},{\"slot\":2,\"id\":\"a:b\"},{\"slot\":2,\"id\":\"a:c\"}]}]}");
+        DeliveryModel m = parse(
+                "{\"chests\":[{\"n\":0,\"size\":30,\"items\":[]},{\"n\":1,\"size\":27,\"items\":[{\"slot\":27,\"id\":\"a:b\"},{\"slot\":2,\"id\":\"a:b\"},{\"slot\":2,\"id\":\"a:c\"}]}]}");
         assertEquals(1, m.chests().size());
         assertEquals(1, m.chests().get(0).items().size());
     }
@@ -116,24 +117,38 @@ class DeliveryModelTest {
     void fitTextForSeveralChestsAndUnseenOnes() {
         DeliveryModel m = parse(TWO_CHESTS);
         DeliveryModel.Fit fit = m.fit(0, m.layout(units(0)), false, NOW);
-        assertEquals("2 delivery chests: 1 of 27 slots used, 26 free (1 not seen yet); the first (filled first) has 26 of 27 free (as of 1 min ago).", fit.text());
+        assertEquals(
+                "2 delivery chests: 1 of 27 slots used, 26 free (1 not seen yet); the first (filled first) has 26 of 27 free (as of 1 min ago).",
+                fit.text());
         DeliveryModel unseen = parse("{\"chests\":[{\"n\":0,\"size\":54,\"items\":null}]}");
-        assertEquals("Delivery chest: not seen yet; this order needs 4.", unseen.fit(4, unseen.layout(units(4)), false, NOW).text());
-        DeliveryModel none = parse("{\"chests\":[{\"n\":0,\"size\":54,\"items\":null},{\"n\":1,\"size\":54,\"items\":null}]}");
-        assertTrue(none.fit(0, none.layout(units(0)), false, NOW).text().startsWith("2 delivery chests: none seen yet; the first is not seen yet"));
+        assertEquals(
+                "Delivery chest: not seen yet; this order needs 4.",
+                unseen.fit(4, unseen.layout(units(4)), false, NOW).text());
+        DeliveryModel none =
+                parse("{\"chests\":[{\"n\":0,\"size\":54,\"items\":null},{\"n\":1,\"size\":54,\"items\":null}]}");
+        assertTrue(none.fit(0, none.layout(units(0)), false, NOW)
+                .text()
+                .startsWith("2 delivery chests: none seen yet; the first is not seen yet"));
     }
 
     @Test
     void warnsWhenTheOrderWontFitAndSaysWhatTheBotDoes() {
         // 27-slot chest with 26 free, but the other chest was not seen: no "won't fit" claim, only the overflow note
         DeliveryModel unseenSecond = parse(TWO_CHESTS);
-        assertEquals("Not all of it fits in the first chest: the rest goes into the next one.", unseenSecond.fit(28, unseenSecond.layout(units(28)), true, NOW).warning());
+        assertEquals(
+                "Not all of it fits in the first chest: the rest goes into the next one.",
+                unseenSecond.fit(28, unseenSecond.layout(units(28)), true, NOW).warning());
 
-        DeliveryModel full = parse("{\"readAt\":1,\"chests\":[{\"n\":0,\"size\":27,\"items\":[{\"slot\":0,\"id\":\"a:b\",\"count\":1}]}]}");
+        DeliveryModel full = parse(
+                "{\"readAt\":1,\"chests\":[{\"n\":0,\"size\":27,\"items\":[{\"slot\":0,\"id\":\"a:b\",\"count\":1}]}]}");
         DeliveryModel.Fit expand = full.fit(30, full.layout(units(30)), true, NOW);
-        assertEquals("This order needs 30 slots but only 26 are free: the bot will put up more chests (if it can).", expand.warning());
+        assertEquals(
+                "This order needs 30 slots but only 26 are free: the bot will put up more chests (if it can).",
+                expand.warning());
         DeliveryModel.Fit pause = full.fit(30, full.layout(units(30)), false, NOW);
-        assertEquals("This order needs 30 slots but only 26 are free: the order will pause until a chest is emptied.", pause.warning());
+        assertEquals(
+                "This order needs 30 slots but only 26 are free: the order will pause until a chest is emptied.",
+                pause.warning());
     }
 
     @Test

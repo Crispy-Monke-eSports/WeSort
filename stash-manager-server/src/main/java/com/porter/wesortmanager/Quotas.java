@@ -4,7 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.porter.wesort.data.QuotaRule;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -26,7 +25,8 @@ import java.util.function.LongSupplier;
 final class Quotas {
     record Line(String ref, long count) {
         Line {
-            if (ref == null || ref.isBlank() || ref.length() > 512) throw new IllegalArgumentException("A quota line needs a reference");
+            if (ref == null || ref.isBlank() || ref.length() > 512)
+                throw new IllegalArgumentException("A quota line needs a reference");
             if (count < 1) throw new IllegalArgumentException("A quota line count must be positive");
         }
     }
@@ -34,11 +34,18 @@ final class Quotas {
     static final class Exceeded extends Exception {
         final String ref;
         final long limit;
-        Exceeded(String ref, long limit) { super("Withdrawal exceeds the " + limit + " quota for " + ref); this.ref = ref; this.limit = limit; }
+
+        Exceeded(String ref, long limit) {
+            super("Withdrawal exceeds the " + limit + " quota for " + ref);
+            this.ref = ref;
+            this.limit = limit;
+        }
     }
 
     static final class Conflict extends IOException {
-        Conflict() { super("Quota policy revision changed; reload before updating"); }
+        Conflict() {
+            super("Quota policy revision changed; reload before updating");
+        }
     }
 
     private static final int SCHEMA = 1;
@@ -47,14 +54,20 @@ final class Quotas {
     private boolean enabled;
     private long revision = 1;
     private List<QuotaRule> rules = new ArrayList<>();
-    private final Map<String, Map<String, Map<Long, Usage>>> usage = new HashMap<>(); // member -> key -> windowStart -> usage
+    private final Map<String, Map<String, Map<Long, Usage>>> usage =
+            new HashMap<>(); // member -> key -> windowStart -> usage
     private final Map<String, Reservation> reservations = new LinkedHashMap<>();
 
     private record Usage(long consumed, long reserved) {}
+
     private record ReservedLine(String ref, long count, long windowStart) {}
+
     private record Reservation(String member, List<ReservedLine> lines, String state) {}
 
-    Quotas(Path data) throws IOException { this(data, System::currentTimeMillis); }
+    Quotas(Path data) throws IOException {
+        this(data, System::currentTimeMillis);
+    }
+
     Quotas(Path data, LongSupplier clock) throws IOException {
         this.clock = clock;
         this.file = data.resolve("quotas.json");
@@ -66,27 +79,42 @@ final class Quotas {
             enabled = root.get("enabled").getAsBoolean();
             revision = root.get("revision").getAsLong();
             rules = QuotaRule.read(root);
-            if (root.has("usage")) for (var memberEntry : root.getAsJsonObject("usage").entrySet()) {
-                var perKey = new HashMap<String, Map<Long, Usage>>();
-                for (var keyEntry : memberEntry.getValue().getAsJsonObject().entrySet()) {
-                    var perWindow = new HashMap<Long, Usage>();
-                    for (var windowEntry : keyEntry.getValue().getAsJsonObject().entrySet()) {
-                        var u = windowEntry.getValue().getAsJsonObject();
-                        perWindow.put(Long.parseLong(windowEntry.getKey()), new Usage(u.get("consumed").getAsLong(), u.get("reserved").getAsLong()));
+            if (root.has("usage"))
+                for (var memberEntry : root.getAsJsonObject("usage").entrySet()) {
+                    var perKey = new HashMap<String, Map<Long, Usage>>();
+                    for (var keyEntry : memberEntry.getValue().getAsJsonObject().entrySet()) {
+                        var perWindow = new HashMap<Long, Usage>();
+                        for (var windowEntry :
+                                keyEntry.getValue().getAsJsonObject().entrySet()) {
+                            var u = windowEntry.getValue().getAsJsonObject();
+                            perWindow.put(
+                                    Long.parseLong(windowEntry.getKey()),
+                                    new Usage(
+                                            u.get("consumed").getAsLong(),
+                                            u.get("reserved").getAsLong()));
+                        }
+                        perKey.put(keyEntry.getKey(), perWindow);
                     }
-                    perKey.put(keyEntry.getKey(), perWindow);
+                    usage.put(memberEntry.getKey(), perKey);
                 }
-                usage.put(memberEntry.getKey(), perKey);
-            }
-            if (root.has("reservations")) for (var entry : root.getAsJsonObject("reservations").entrySet()) {
-                var r = entry.getValue().getAsJsonObject();
-                var lines = new ArrayList<ReservedLine>();
-                for (var line : r.getAsJsonArray("lines")) {
-                    var l = line.getAsJsonObject();
-                    lines.add(new ReservedLine(l.get("ref").getAsString(), l.get("count").getAsLong(), l.get("windowStart").getAsLong()));
+            if (root.has("reservations"))
+                for (var entry : root.getAsJsonObject("reservations").entrySet()) {
+                    var r = entry.getValue().getAsJsonObject();
+                    var lines = new ArrayList<ReservedLine>();
+                    for (var line : r.getAsJsonArray("lines")) {
+                        var l = line.getAsJsonObject();
+                        lines.add(new ReservedLine(
+                                l.get("ref").getAsString(),
+                                l.get("count").getAsLong(),
+                                l.get("windowStart").getAsLong()));
+                    }
+                    reservations.put(
+                            entry.getKey(),
+                            new Reservation(
+                                    r.get("member").getAsString(),
+                                    lines,
+                                    r.get("state").getAsString()));
                 }
-                reservations.put(entry.getKey(), new Reservation(r.get("member").getAsString(), lines, r.get("state").getAsString()));
-            }
         } catch (RuntimeException invalid) {
             throw new IOException("Cannot read quotas", invalid);
         }
@@ -105,7 +133,8 @@ final class Quotas {
     synchronized JsonObject update(JsonObject request, long expectedRevision) throws IOException {
         if (revision != expectedRevision) throw new Conflict();
         if (request.has("enabled")) {
-            if (!request.get("enabled").isJsonPrimitive() || !request.get("enabled").getAsJsonPrimitive().isBoolean())
+            if (!request.get("enabled").isJsonPrimitive()
+                    || !request.get("enabled").getAsJsonPrimitive().isBoolean())
                 throw new IllegalArgumentException("enabled must be a boolean");
             enabled = request.get("enabled").getAsBoolean();
         }
@@ -119,7 +148,8 @@ final class Quotas {
     }
 
     /** Reserves quota for an order; a no-op when quotas are disabled or the order id is already reserved. */
-    synchronized void checkAndReserve(String member, List<String> roles, List<Line> lines, String orderId) throws Exceeded, IOException {
+    synchronized void checkAndReserve(String member, List<String> roles, List<Line> lines, String orderId)
+            throws Exceeded, IOException {
         if (!enabled) return;
         if (reservations.containsKey(orderId)) return;
         long now = clock.getAsLong();
@@ -140,7 +170,8 @@ final class Quotas {
     synchronized void release(String orderId) throws IOException {
         var reservation = reservations.get(orderId);
         if (reservation == null || !reservation.state().equals("RESERVED")) return;
-        for (ReservedLine line : reservation.lines()) addUsage(reservation.member(), line.ref(), line.windowStart(), -line.count(), true);
+        for (ReservedLine line : reservation.lines())
+            addUsage(reservation.member(), line.ref(), line.windowStart(), -line.count(), true);
         reservations.put(orderId, new Reservation(reservation.member(), reservation.lines(), "RELEASED"));
         save();
     }
@@ -162,14 +193,18 @@ final class Quotas {
         out.addProperty("member", member);
         var perKey = new JsonObject();
         var map = usage.get(member);
-        if (map != null) for (var entry : map.entrySet()) {
-            long consumed = 0, reserved = 0;
-            for (var window : entry.getValue().values()) { consumed += window.consumed(); reserved += window.reserved(); }
-            var row = new JsonObject();
-            row.addProperty("consumed", consumed);
-            row.addProperty("reserved", reserved);
-            perKey.add(entry.getKey(), row);
-        }
+        if (map != null)
+            for (var entry : map.entrySet()) {
+                long consumed = 0, reserved = 0;
+                for (var window : entry.getValue().values()) {
+                    consumed += window.consumed();
+                    reserved += window.reserved();
+                }
+                var row = new JsonObject();
+                row.addProperty("consumed", consumed);
+                row.addProperty("reserved", reserved);
+                perKey.add(entry.getKey(), row);
+            }
         out.add("usage", perKey);
         return out;
     }

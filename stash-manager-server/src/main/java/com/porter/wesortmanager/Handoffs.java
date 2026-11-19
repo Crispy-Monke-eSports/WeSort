@@ -4,7 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.porter.wesort.data.Handoff;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -22,7 +21,9 @@ import java.util.function.LongSupplier;
  */
 final class Handoffs {
     static final class Conflict extends IOException {
-        Conflict(String reason) { super(reason); }
+        Conflict(String reason) {
+            super(reason);
+        }
     }
 
     private static final int SCHEMA = 1;
@@ -32,7 +33,10 @@ final class Handoffs {
 
     private record Entry(Handoff handoff, JsonArray events) {}
 
-    Handoffs(Path data) throws IOException { this(data, System::currentTimeMillis); }
+    Handoffs(Path data) throws IOException {
+        this(data, System::currentTimeMillis);
+    }
+
     Handoffs(Path data, LongSupplier clock) throws IOException {
         this.clock = clock;
         this.file = data.resolve("handoffs.json");
@@ -44,14 +48,17 @@ final class Handoffs {
             for (var entry : root.getAsJsonArray("handoffs")) {
                 var o = entry.getAsJsonObject();
                 var handoff = Handoff.read(o);
-                handoffs.put(handoff.id(), new Entry(handoff, o.getAsJsonArray("events").deepCopy()));
+                handoffs.put(
+                        handoff.id(),
+                        new Entry(handoff, o.getAsJsonArray("events").deepCopy()));
             }
         } catch (RuntimeException invalid) {
             throw new IOException("Cannot read handoffs", invalid);
         }
     }
 
-    synchronized Handoff schedule(String orderId, String recipient, String meetingPoint, String agent) throws IOException {
+    synchronized Handoff schedule(String orderId, String recipient, String meetingPoint, String agent)
+            throws IOException {
         var handoff = Handoff.schedule(orderId, recipient, meetingPoint, agent);
         var events = new JsonArray();
         events.add(event("SCHEDULED", agent));
@@ -62,7 +69,12 @@ final class Handoffs {
 
     synchronized Handoff arrive(String id, String agent) throws IOException {
         var entry = byAgent(id, agent);
-        return advanceTo(id, entry, entry.handoff().advance(Handoff.State.AWAITING_RECIPIENT, agent), "AWAITING_RECIPIENT", agent);
+        return advanceTo(
+                id,
+                entry,
+                entry.handoff().advance(Handoff.State.AWAITING_RECIPIENT, agent),
+                "AWAITING_RECIPIENT",
+                agent);
     }
 
     /** The explicit recipient receipt; only the order owner/admin may call this (enforced at the route). */
@@ -80,21 +92,38 @@ final class Handoffs {
     /** A drop happened but no verified pickup: never DELIVERED, always uncertain. */
     synchronized Handoff dropUnverified(String id, String agent, String reason) throws IOException {
         var entry = byAgent(id, agent);
-        return advanceTo(id, entry, entry.handoff().advance(Handoff.State.NEEDS_RECONCILIATION, agent), "DROP_UNVERIFIED", agent);
+        return advanceTo(
+                id,
+                entry,
+                entry.handoff().advance(Handoff.State.NEEDS_RECONCILIATION, agent),
+                "DROP_UNVERIFIED",
+                agent);
     }
 
     /** Resolves an uncertain handoff: DELIVERED (with a receipt) or RETURNED. */
     synchronized Handoff resolve(String id, Handoff.State outcome, String actor) throws IOException {
         var entry = require(id);
-        if (entry.handoff().state() != Handoff.State.NEEDS_RECONCILIATION) throw new Conflict("Only an uncertain handoff may be resolved");
-        if (outcome != Handoff.State.DELIVERED && outcome != Handoff.State.RETURNED) throw new Conflict("Resolution must be delivered or returned");
-        return advanceTo(id, entry, entry.handoff().advance(outcome, actor), outcome == Handoff.State.DELIVERED ? "DELIVERED" : "RETURNED", actor);
+        if (entry.handoff().state() != Handoff.State.NEEDS_RECONCILIATION)
+            throw new Conflict("Only an uncertain handoff may be resolved");
+        if (outcome != Handoff.State.DELIVERED && outcome != Handoff.State.RETURNED)
+            throw new Conflict("Resolution must be delivered or returned");
+        return advanceTo(
+                id,
+                entry,
+                entry.handoff().advance(outcome, actor),
+                outcome == Handoff.State.DELIVERED ? "DELIVERED" : "RETURNED",
+                actor);
     }
 
     /** A no-show customer may be retried (back to awaiting) or returned to stock. */
     synchronized Handoff retry(String id, String agent) throws IOException {
         var entry = byAgent(id, agent);
-        return advanceTo(id, entry, entry.handoff().advance(Handoff.State.AWAITING_RECIPIENT, agent), "AWAITING_RECIPIENT", agent);
+        return advanceTo(
+                id,
+                entry,
+                entry.handoff().advance(Handoff.State.AWAITING_RECIPIENT, agent),
+                "AWAITING_RECIPIENT",
+                agent);
     }
 
     synchronized Handoff returnOrder(String id, String agent) throws IOException {

@@ -6,7 +6,6 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -40,43 +39,109 @@ final class Users {
     /** In "list" mode a whole command may only use these (plain ASCII words, names, numbers, coordinates). */
 
     /** A stash a scoped user may see and use. */
-    record StashRef(String server, String stash) {
-    }
+    record StashRef(String server, String stash) {}
 
-    record Perms(boolean view, boolean order, boolean ordersAll, boolean activity, boolean settings,
-                 boolean rescan, boolean link, boolean streamer, List<StashRef> stashes, List<String> bots,
-                 boolean guildOrders, boolean positions) {
+    record Perms(
+            boolean view,
+            boolean order,
+            boolean ordersAll,
+            boolean activity,
+            boolean settings,
+            boolean rescan,
+            boolean link,
+            boolean streamer,
+            List<StashRef> stashes,
+            List<String> bots,
+            boolean guildOrders,
+            boolean positions) {
         static final Perms NONE = of(false, false, false, false, false, false, false, null, null);
-        static final Perms ALL = of(true, true, true, true, true, true, true, null, null).withGuildOrders(true);
+        static final Perms ALL =
+                of(true, true, true, true, true, true, true, null, null).withGuildOrders(true);
 
-        static Perms of(boolean view, boolean order, boolean ordersAll, boolean activity, boolean settings,
-                        boolean rescan, boolean link, List<StashRef> stashes, List<String> bots) {
+        static Perms of(
+                boolean view,
+                boolean order,
+                boolean ordersAll,
+                boolean activity,
+                boolean settings,
+                boolean rescan,
+                boolean link,
+                List<StashRef> stashes,
+                List<String> bots) {
             return of(view, order, ordersAll, activity, settings, rescan, link, false, stashes, bots);
         }
 
-        static Perms of(boolean view, boolean order, boolean ordersAll, boolean activity, boolean settings,
-                        boolean rescan, boolean link, boolean streamer, List<StashRef> stashes, List<String> bots) {
-            return new Perms(view || order || ordersAll, order, ordersAll, activity || settings, settings,
-                rescan, link, streamer, stashes == null ? null : List.copyOf(stashes), bots == null ? null : List.copyOf(bots),
-                false, settings);
+        static Perms of(
+                boolean view,
+                boolean order,
+                boolean ordersAll,
+                boolean activity,
+                boolean settings,
+                boolean rescan,
+                boolean link,
+                boolean streamer,
+                List<StashRef> stashes,
+                List<String> bots) {
+            return new Perms(
+                    view || order || ordersAll,
+                    order,
+                    ordersAll,
+                    activity || settings,
+                    settings,
+                    rescan,
+                    link,
+                    streamer,
+                    stashes == null ? null : List.copyOf(stashes),
+                    bots == null ? null : List.copyOf(bots),
+                    false,
+                    settings);
         }
 
         Perms withStreamer(boolean on) {
-            return new Perms(view, order, ordersAll, activity, settings, rescan, link, on, stashes, bots, guildOrders, positions);
+            return new Perms(
+                    view,
+                    order,
+                    ordersAll,
+                    activity,
+                    settings,
+                    rescan,
+                    link,
+                    on,
+                    stashes,
+                    bots,
+                    guildOrders,
+                    positions);
         }
 
         Perms withGuildOrders(boolean allowed) {
-            return new Perms(view, order, ordersAll, activity, settings, rescan, link, streamer, stashes, bots, allowed, positions);
+            return new Perms(
+                    view, order, ordersAll, activity, settings, rescan, link, streamer, stashes, bots, allowed,
+                    positions);
         }
 
         Perms withPositions(boolean allowed) {
-            return new Perms(view, order, ordersAll, activity, settings, rescan, link, streamer, stashes, bots, guildOrders, allowed);
+            return new Perms(
+                    view,
+                    order,
+                    ordersAll,
+                    activity,
+                    settings,
+                    rescan,
+                    link,
+                    streamer,
+                    stashes,
+                    bots,
+                    guildOrders,
+                    allowed);
         }
 
         boolean seesStash(String server, String stash) {
             return stashes == null || stashes.stream().anyMatch(r -> r.server.equals(server) && r.stash.equals(stash));
         }
-        boolean seesBot(String botId) { return bots == null || bots.contains(botId); }
+
+        boolean seesBot(String botId) {
+            return bots == null || bots.contains(botId);
+        }
 
         JsonObject toJson() {
             JsonObject o = new JsonObject();
@@ -118,13 +183,20 @@ final class Users {
             List<StashRef> stashes = null;
             JsonElement se = o.get("stashes");
             if (se != null && !se.isJsonNull()) {
-                if (!se.isJsonArray()) throw new IllegalArgumentException("stashes must be null or a list of {server, stash}");
+                if (!se.isJsonArray())
+                    throw new IllegalArgumentException("stashes must be null or a list of {server, stash}");
                 stashes = new ArrayList<>();
                 for (JsonElement item : se.getAsJsonArray()) {
-                    if (!item.isJsonObject()) throw new IllegalArgumentException("stashes must be null or a list of {server, stash}");
+                    if (!item.isJsonObject())
+                        throw new IllegalArgumentException("stashes must be null or a list of {server, stash}");
                     String server = AddonRoutes.string(item.getAsJsonObject(), "server");
                     String stash = AddonRoutes.string(item.getAsJsonObject(), "stash");
-                    if (server == null || stash == null || server.isEmpty() || stash.isEmpty() || server.length() > 256 || stash.length() > 256) {
+                    if (server == null
+                            || stash == null
+                            || server.isEmpty()
+                            || stash.isEmpty()
+                            || server.length() > 256
+                            || stash.length() > 256) {
                         throw new IllegalArgumentException("every stash needs a server and a stash");
                     }
                     StashRef r = new StashRef(server, stash);
@@ -138,30 +210,40 @@ final class Users {
                 if (!be.isJsonArray()) throw new IllegalArgumentException("bots must be null or a list of bot ids");
                 bots = new ArrayList<>();
                 for (JsonElement item : be.getAsJsonArray()) {
-                    if (!(item instanceof JsonPrimitive p) || !p.isString() || !p.getAsString().matches("[A-Za-z0-9_-]{1,64}")) {
+                    if (!(item instanceof JsonPrimitive p)
+                            || !p.isString()
+                            || !p.getAsString().matches("[A-Za-z0-9_-]{1,64}")) {
                         throw new IllegalArgumentException("bots must be null or a list of bot ids");
                     }
                     if (!bots.contains(p.getAsString())) bots.add(p.getAsString());
                 }
                 if (bots.size() > MAX_SCOPE) throw new IllegalArgumentException("at most " + MAX_SCOPE + " bots");
             }
-            var perms = of(bool(o, "view"), bool(o, "order"), bool(o, "ordersAll"), bool(o, "activity"), bool(o, "settings"),
-                bool(o, "rescan"), bool(o, "link"), bool(o, "streamer"), stashes, bots).withGuildOrders(bool(o, "guildOrders"));
+            var perms = of(
+                            bool(o, "view"),
+                            bool(o, "order"),
+                            bool(o, "ordersAll"),
+                            bool(o, "activity"),
+                            bool(o, "settings"),
+                            bool(o, "rescan"),
+                            bool(o, "link"),
+                            bool(o, "streamer"),
+                            stashes,
+                            bots)
+                    .withGuildOrders(bool(o, "guildOrders"));
             return o.has("positions") ? perms.withPositions(bool(o, "positions")) : perms;
         }
 
         private static boolean bool(JsonObject o, String key) {
             JsonElement e = o.get(key);
             if (e == null || e.isJsonNull()) return false;
-            if (!(e instanceof JsonPrimitive p) || !p.isBoolean()) throw new IllegalArgumentException(key + " must be true or false");
+            if (!(e instanceof JsonPrimitive p) || !p.isBoolean())
+                throw new IllegalArgumentException(key + " must be true or false");
             return p.getAsBoolean();
         }
-
     }
 
     /** Lowercase, trimmed, inner whitespace collapsed. */
-
-
     static final Map<String, Perms> PRESETS;
 
     static {
@@ -169,14 +251,25 @@ final class Users {
         p.put("viewer", Perms.of(true, false, false, false, false, false, false, null, null));
         p.put("orderer", Perms.of(true, true, false, false, false, false, false, null, null));
         p.put("member", p.get("orderer"));
-        p.put("officer", Perms.of(true, true, true, true, false, false, false, null, null).withGuildOrders(true));
+        p.put(
+                "officer",
+                Perms.of(true, true, true, true, false, false, false, null, null)
+                        .withGuildOrders(true));
         p.put("operator", Perms.of(true, true, true, true, true, true, false, null, null));
         PRESETS = java.util.Collections.unmodifiableMap(p);
     }
 
     /** A sub-user as stored. Immutable: changes replace it. */
-    record User(String id, String name, String hash, Perms perms, boolean disabled, boolean mustChange, long createdAt,
-                long lastLoginAt, long passwordChangedAt) {
+    record User(
+            String id,
+            String name,
+            String hash,
+            Perms perms,
+            boolean disabled,
+            boolean mustChange,
+            long createdAt,
+            long lastLoginAt,
+            long passwordChangedAt) {
         /** Never the hash. */
         @Override
         public String toString() {
@@ -241,9 +334,11 @@ final class Users {
         AtomicFiles.ownerOnly(file);
         JsonObject root;
         try {
-            root = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8)).getAsJsonObject();
+            root = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8))
+                    .getAsJsonObject();
         } catch (RuntimeException e) {
-            throw new IOException(file.getFileName() + " is not valid JSON (" + e.getMessage() + "); fix or delete it", e);
+            throw new IOException(
+                    file.getFileName() + " is not valid JSON (" + e.getMessage() + "); fix or delete it", e);
         }
         try {
             String on = root.has("ownerName") ? root.get("ownerName").getAsString() : DEFAULT_OWNER_NAME;
@@ -253,35 +348,53 @@ final class Users {
                 JsonObject o = e.getAsJsonObject();
                 String id = o.get("id").getAsString();
                 String name = o.get("name").getAsString();
-                if (!ID.matcher(id).matches() || users.containsKey(id) || !NAME.matcher(name).matches() || byNameLocked(name) != null
-                    || sameName(name, ownerName)) {
+                if (!ID.matcher(id).matches()
+                        || users.containsKey(id)
+                        || !NAME.matcher(name).matches()
+                        || byNameLocked(name) != null
+                        || sameName(name, ownerName)) {
                     System.err.println(file.getFileName() + ": skipping a user with a bad or duplicate id or name");
                     continue;
                 }
                 String hash = o.get("hash").getAsString();
-                if (!Auth.wellFormed(hash)) System.err.println(file.getFileName() + ": " + name + " has a broken password hash and can't log in");
+                if (!Auth.wellFormed(hash))
+                    System.err.println(
+                            file.getFileName() + ": " + name + " has a broken password hash and can't log in");
                 Perms perms;
                 try {
                     perms = Perms.parse(o.get("perms"));
                 } catch (IllegalArgumentException ex) {
-                    System.err.println(file.getFileName() + ": " + name + " has broken permissions (" + ex.getMessage() + "); they are all off");
+                    System.err.println(file.getFileName() + ": " + name + " has broken permissions (" + ex.getMessage()
+                            + "); they are all off");
                     perms = Perms.NONE;
                 }
-                users.put(id, new User(id, name, hash, perms, o.has("disabled") && o.get("disabled").getAsBoolean(),
-                    o.has("mustChange") && o.get("mustChange").getAsBoolean(), longOf(o, "createdAt"), longOf(o, "lastLoginAt"),
-                    longOf(o, "passwordChangedAt")));
+                users.put(
+                        id,
+                        new User(
+                                id,
+                                name,
+                                hash,
+                                perms,
+                                o.has("disabled") && o.get("disabled").getAsBoolean(),
+                                o.has("mustChange") && o.get("mustChange").getAsBoolean(),
+                                longOf(o, "createdAt"),
+                                longOf(o, "lastLoginAt"),
+                                longOf(o, "passwordChangedAt")));
             }
             if (root.has("minecraftAccounts")) {
                 for (var entry : root.getAsJsonObject("minecraftAccounts").entrySet()) {
                     String account = entry.getValue().getAsString();
-                    if (!account.matches("[A-Za-z0-9_]{1,16}") || minecraftAccounts.values().stream().anyMatch(account::equalsIgnoreCase)) {
+                    if (!account.matches("[A-Za-z0-9_]{1,16}")
+                            || minecraftAccounts.values().stream().anyMatch(account::equalsIgnoreCase)) {
                         throw new IllegalArgumentException("Invalid or duplicate Minecraft account mapping");
                     }
-                    if (OWNER_ID.equals(entry.getKey()) || users.containsKey(entry.getKey())) minecraftAccounts.put(entry.getKey(), account);
+                    if (OWNER_ID.equals(entry.getKey()) || users.containsKey(entry.getKey()))
+                        minecraftAccounts.put(entry.getKey(), account);
                 }
             }
         } catch (RuntimeException e) {
-            throw new IOException(file.getFileName() + " has an unexpected layout (" + e.getMessage() + "); fix or delete it", e);
+            throw new IOException(
+                    file.getFileName() + " has an unexpected layout (" + e.getMessage() + "); fix or delete it", e);
         }
     }
 
@@ -375,8 +488,11 @@ final class Users {
 
     /** Names compare ignoring ASCII case only (no Unicode folding: the Kelvin sign is not a k). */
     static boolean sameName(String a, String b) {
-        return a != null && b != null && NAME.matcher(a).matches() && NAME.matcher(b).matches()
-            && a.toLowerCase(Locale.ROOT).equals(b.toLowerCase(Locale.ROOT));
+        return a != null
+                && b != null
+                && NAME.matcher(a).matches()
+                && NAME.matcher(b).matches()
+                && a.toLowerCase(Locale.ROOT).equals(b.toLowerCase(Locale.ROOT));
     }
 
     private User byNameLocked(String name) {
@@ -421,7 +537,8 @@ final class Users {
         return n;
     }
 
-    synchronized User create(String name, String hash, Perms perms, boolean mustChange) throws UserException, IOException {
+    synchronized User create(String name, String hash, Perms perms, boolean mustChange)
+            throws UserException, IOException {
         if (users.size() >= MAX_USERS) throw new UserException(400, "at most " + MAX_USERS + " users");
         String n = checkName(name, null);
         String id;
@@ -441,8 +558,16 @@ final class Users {
     synchronized User update(String id, String name, Perms perms, Boolean disabled) throws UserException, IOException {
         User u = need(id);
         String n = name == null ? u.name : checkName(name, id);
-        User next = new User(u.id, n, u.hash, perms == null ? u.perms : perms, disabled == null ? u.disabled : disabled,
-            u.mustChange, u.createdAt, u.lastLoginAt, u.passwordChangedAt);
+        User next = new User(
+                u.id,
+                n,
+                u.hash,
+                perms == null ? u.perms : perms,
+                disabled == null ? u.disabled : disabled,
+                u.mustChange,
+                u.createdAt,
+                u.lastLoginAt,
+                u.passwordChangedAt);
         users.put(id, next);
         saveOrUndo(() -> users.put(id, u));
         return next;
@@ -450,7 +575,18 @@ final class Users {
 
     synchronized void setPassword(String id, String hash, boolean mustChange) throws UserException, IOException {
         User u = need(id);
-        users.put(id, new User(u.id, u.name, hash, u.perms, u.disabled, mustChange, u.createdAt, u.lastLoginAt, clock.getAsLong()));
+        users.put(
+                id,
+                new User(
+                        u.id,
+                        u.name,
+                        hash,
+                        u.perms,
+                        u.disabled,
+                        mustChange,
+                        u.createdAt,
+                        u.lastLoginAt,
+                        clock.getAsLong()));
         saveOrUndo(() -> users.put(id, u));
     }
 
@@ -482,7 +618,18 @@ final class Users {
     synchronized void noteLogin(String id) {
         User u = users.get(id);
         if (u == null) return;
-        users.put(id, new User(u.id, u.name, u.hash, u.perms, u.disabled, u.mustChange, u.createdAt, clock.getAsLong(), u.passwordChangedAt));
+        users.put(
+                id,
+                new User(
+                        u.id,
+                        u.name,
+                        u.hash,
+                        u.perms,
+                        u.disabled,
+                        u.mustChange,
+                        u.createdAt,
+                        clock.getAsLong(),
+                        u.passwordChangedAt));
         try {
             save();
         } catch (IOException e) {

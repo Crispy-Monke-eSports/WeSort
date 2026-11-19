@@ -19,12 +19,14 @@ public final class ChangePasswordPanel extends PasswordPanel {
     private int minLength;
     private Handler handler;
 
-    public void build(WContainer parent, GuiTheme theme, int minLength, String message, Handler handler, Runnable onLogout) {
+    public void build(
+            WContainer parent, GuiTheme theme, int minLength, String message, Handler handler, Runnable onLogout) {
         this.theme = theme;
         this.minLength = minLength;
         this.handler = handler;
         parent.add(theme.label("Choose a new password", true));
-        parent.add(theme.label("Your account must change its password before anything else works.", theme.scale(420))).expandX();
+        parent.add(theme.label("Your account must change its password before anything else works.", theme.scale(420)))
+                .expandX();
         current = secret(parent, "The password you were given");
         next = secret(parent, "New password (at least " + minLength + " characters)");
         again = secret(parent, "New password again");

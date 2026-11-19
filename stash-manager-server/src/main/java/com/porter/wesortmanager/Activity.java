@@ -4,7 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
-
 import java.util.Set;
 
 /**
@@ -25,8 +24,7 @@ final class Activity {
     static final long MAX_PAST_MS = 24L * 60 * 60 * 1000;
     static final long MAX_FUTURE_MS = 5L * 60 * 1000;
 
-    private Activity() {
-    }
+    private Activity() {}
 
     /** A plausible time: within 1 day before and 5 minutes after the server received it. */
     static boolean sane(Double at, long now) {
@@ -35,7 +33,9 @@ final class Activity {
 
     private static String str(JsonObject o, String f) {
         JsonElement e = o.get(f);
-        return e != null && e.isJsonPrimitive() && e.getAsJsonPrimitive().isString() ? Http.truncate(e.getAsString(), MAX_STRING) : null;
+        return e != null && e.isJsonPrimitive() && e.getAsJsonPrimitive().isString()
+                ? Http.truncate(e.getAsString(), MAX_STRING)
+                : null;
     }
 
     private static Double num(JsonObject o, String f) {
@@ -52,7 +52,10 @@ final class Activity {
 
     private static void copyNum(JsonObject in, JsonObject out, String f) {
         Double d = num(in, f);
-        if (d != null) out.add(f, d == Math.rint(d) && Math.abs(d) < 9e15 ? new JsonPrimitive(d.longValue()) : new JsonPrimitive(d));
+        if (d != null)
+            out.add(
+                    f,
+                    d == Math.rint(d) && Math.abs(d) < 9e15 ? new JsonPrimitive(d.longValue()) : new JsonPrimitive(d));
     }
 
     private static String oneOf(JsonObject in, String f, Set<String> allowed, String fallback) {
@@ -73,7 +76,8 @@ final class Activity {
         Double at = num(in, "at");
         out.addProperty("at", sane(at, now) ? at.longValue() : now);
         String incident = str(in, "incident");
-        if (incident != null && Set.of("DEATH", "INVENTORY_UNVERIFIED", "NO_CAPACITY").contains(incident)) {
+        if (incident != null
+                && Set.of("DEATH", "INVENTORY_UNVERIFIED", "NO_CAPACITY").contains(incident)) {
             out.addProperty("incident", incident);
         }
 
@@ -81,8 +85,10 @@ final class Activity {
             JsonObject c = in.getAsJsonObject("connection");
             JsonObject co = new JsonObject();
             co.addProperty("state", oneOf(c, "state", STATES, "offline"));
-            for (String f : new String[]{"server", "queueEta", "dimension", "controllingPlayer"}) copyStr(c, co, f);
-            for (String f : new String[]{"queuePosition", "x", "y", "z", "health", "food", "ping", "uptimeSeconds", "spectators"}) copyNum(c, co, f);
+            for (String f : new String[] {"server", "queueEta", "dimension", "controllingPlayer"}) copyStr(c, co, f);
+            for (String f : new String[] {
+                "queuePosition", "x", "y", "z", "health", "food", "ping", "uptimeSeconds", "spectators"
+            }) copyNum(c, co, f);
             out.add("connection", co);
         }
 
@@ -122,7 +128,12 @@ final class Activity {
             mo.addProperty("name", name);
             copyStr(m, mo, "plugin");
             JsonElement en = m.get("enabled");
-            mo.addProperty("enabled", en != null && en.isJsonPrimitive() && en.getAsJsonPrimitive().isBoolean() && en.getAsBoolean());
+            mo.addProperty(
+                    "enabled",
+                    en != null
+                            && en.isJsonPrimitive()
+                            && en.getAsJsonPrimitive().isBoolean()
+                            && en.getAsBoolean());
             copyStr(m, mo, "status");
             modules.add(mo);
         }
@@ -177,9 +188,11 @@ final class Activity {
         JsonObject c = a.has("connection") ? a.getAsJsonObject("connection") : null;
         if (c == null) return null;
         String state = c.get("state").getAsString();
-        if (state.equals("queue") && c.has("queuePosition")) return "In queue #" + c.get("queuePosition").getAsLong();
+        if (state.equals("queue") && c.has("queuePosition"))
+            return "In queue #" + c.get("queuePosition").getAsLong();
         return switch (state) {
-            case "online" -> "Online" + (c.has("server") ? " on " + c.get("server").getAsString() : "") + ", idle";
+            case "online" ->
+                "Online" + (c.has("server") ? " on " + c.get("server").getAsString() : "") + ", idle";
             case "connecting" -> "Connecting";
             default -> "Offline";
         };

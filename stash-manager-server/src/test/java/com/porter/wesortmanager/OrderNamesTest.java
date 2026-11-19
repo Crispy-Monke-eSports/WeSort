@@ -1,17 +1,5 @@
 package com.porter.wesortmanager;
 
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -19,10 +7,22 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
 /** Order names (normalising and validation), notes removed, and retrying failed or cancelled orders. */
 class OrderNamesTest {
     @TempDir
     Path data;
+
     IndexStore index;
     OrderStore orders;
 
@@ -42,8 +42,11 @@ class OrderNamesTest {
     void setUp() throws Exception {
         index = new IndexStore(data, CreativeTabs.NONE);
         index.load();
-        StockFixtures.put(index, json("{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"items\":["
-            + "{\"key\":\"minecraft:diamond\",\"id\":\"minecraft:diamond\",\"count\":1000,\"maxStack\":64}]}"));
+        StockFixtures.put(
+                index,
+                json(
+                        "{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"items\":["
+                                + "{\"key\":\"minecraft:diamond\",\"id\":\"minecraft:diamond\",\"count\":1000,\"maxStack\":64}]}"));
         orders = new OrderStore(data, index);
         orders.load();
     }
@@ -61,11 +64,21 @@ class OrderNamesTest {
         assertNull(names("{\"mode\":\"each\",\"names\":[]}"));
         assertNull(names("{\"mode\":\"each\",\"names\":[\"\",\"  \",null]}"));
         // Trimmed, blanks kept as "" for their index, trailing blanks dropped.
-        assertEquals(json("{\"mode\":\"each\",\"names\":[\"\",\"B\"]}"), names("{\"mode\":\"each\",\"names\":[\" \",\" B \",\"\",\"  \"]}"));
+        assertEquals(
+                json("{\"mode\":\"each\",\"names\":[\"\",\"B\"]}"),
+                names("{\"mode\":\"each\",\"names\":[\" \",\" B \",\"\",\"  \"]}"));
 
         String fifty = "x".repeat(50);
-        assertEquals(fifty, names("{\"mode\":\"all\",\"name\":\"" + fifty + "\"}").get("name").getAsString());
-        assertEquals(fifty, names("{\"mode\":\"all\",\"name\":\"  " + fifty + "  \"}").get("name").getAsString());
+        assertEquals(
+                fifty,
+                names("{\"mode\":\"all\",\"name\":\"" + fifty + "\"}")
+                        .get("name")
+                        .getAsString());
+        assertEquals(
+                fifty,
+                names("{\"mode\":\"all\",\"name\":\"  " + fifty + "  \"}")
+                        .get("name")
+                        .getAsString());
         assertEquals(400, status("{\"mode\":\"all\",\"name\":\"" + fifty + "y\"}"));
         assertEquals(400, status("{\"mode\":\"each\",\"names\":[\"" + fifty + "y\"]}"));
 
@@ -73,12 +86,17 @@ class OrderNamesTest {
         assertEquals(400, status("{\"mode\":\"all\",\"name\":\"a\\u0007b\"}"));
         assertEquals(400, status("{\"mode\":\"each\",\"names\":[\"ok\",\"a\\nb\"]}"));
         assertEquals(400, status("{\"mode\":\"all\",\"name\":\"a\\u007fb\"}"));
-        // Invisible or direction-changing characters and broken surrogates are refused; a real emoji (a surrogate pair) is fine
+        // Invisible or direction-changing characters and broken surrogates are refused; a real emoji (a surrogate pair)
+        // is fine
         assertEquals(400, status("{\"mode\":\"all\",\"name\":\"a\\u202eb\"}"));
         assertEquals(400, status("{\"mode\":\"all\",\"name\":\"a\\u200bb\"}"));
         assertEquals(400, status("{\"mode\":\"all\",\"name\":\"a\\u2028b\"}"));
         assertEquals(400, status("{\"mode\":\"all\",\"name\":\"a\\ud83db\"}"));
-        assertEquals("a😀b", names("{\"mode\":\"all\",\"name\":\"a\\ud83d\\ude00b\"}").get("name").getAsString());
+        assertEquals(
+                "a😀b",
+                names("{\"mode\":\"all\",\"name\":\"a\\ud83d\\ude00b\"}")
+                        .get("name")
+                        .getAsString());
 
         assertEquals(400, status("\"all\""));
         assertEquals(400, status("[]"));
@@ -92,7 +110,8 @@ class OrderNamesTest {
         assertEquals(400, status("{\"mode\":\"each\",\"names\":[[\"a\"]]}"));
 
         StringBuilder list54 = new StringBuilder("{\"mode\":\"each\",\"names\":[");
-        for (int i = 0; i < 54; i++) list54.append(i == 0 ? "" : ",").append("\"n").append(i).append('"');
+        for (int i = 0; i < 54; i++)
+            list54.append(i == 0 ? "" : ",").append("\"n").append(i).append('"');
         assertEquals(54, names(list54 + "]}").getAsJsonArray("names").size());
         assertEquals(400, status(list54 + ",\"n54\"]}"));
     }
@@ -128,7 +147,8 @@ class OrderNamesTest {
 
         OrderStore reloaded = new OrderStore(data, index);
         reloaded.load();
-        JsonObject listed = reloaded.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
+        JsonObject listed =
+                reloaded.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
         assertFalse(listed.has("note"));
         assertTrue(listed.get("names").isJsonNull());
         assertFalse(reloaded.claim("s", "a").toJson().has("note"));
@@ -219,20 +239,46 @@ class OrderNamesTest {
     void packageLabelIsNormalisedStoredAndGeneratesNames() throws Exception {
         assertNull(OrderStore.normalizePackageLabel(null));
         assertNull(OrderStore.normalizePackageLabel(JsonParser.parseString("null")));
-        assertEquals(json("{\"mode\":\"all\",\"text\":\"Byggmaterial\"}"),
-            OrderStore.normalizePackageLabel(JsonParser.parseString("{\"text\":\"  Byggmaterial  \"}")));
-        assertEquals(json("{\"mode\":\"all\",\"text\":\"Beställning\"}"),
-            OrderStore.normalizePackageLabel(JsonParser.parseString("{\"text\":\"\"}")));
-        assertEquals("a".repeat(33), OrderStore.normalizePackageLabel(
-            JsonParser.parseString("{\"text\":\"" + "a".repeat(33) + "\"}")).get("text").getAsString());
-        assertEquals(400, assertThrows(OrderStore.OrderException.class, () -> OrderStore.normalizePackageLabel(
-            JsonParser.parseString("{\"text\":\"" + "a".repeat(34) + "\"}"))).status);
-        assertEquals(400, assertThrows(OrderStore.OrderException.class, () -> OrderStore.normalizePackageLabel(
-            JsonParser.parseString("{\"text\":\"a§b\"}"))).status);
+        assertEquals(
+                json("{\"mode\":\"all\",\"text\":\"Byggmaterial\"}"),
+                OrderStore.normalizePackageLabel(JsonParser.parseString("{\"text\":\"  Byggmaterial  \"}")));
+        assertEquals(
+                json("{\"mode\":\"all\",\"text\":\"Beställning\"}"),
+                OrderStore.normalizePackageLabel(JsonParser.parseString("{\"text\":\"\"}")));
+        assertEquals(
+                "a".repeat(33),
+                OrderStore.normalizePackageLabel(JsonParser.parseString("{\"text\":\"" + "a".repeat(33) + "\"}"))
+                        .get("text")
+                        .getAsString());
+        assertEquals(
+                400,
+                assertThrows(
+                                OrderStore.OrderException.class,
+                                () -> OrderStore.normalizePackageLabel(
+                                        JsonParser.parseString("{\"text\":\"" + "a".repeat(34) + "\"}")))
+                        .status);
+        assertEquals(
+                400,
+                assertThrows(
+                                OrderStore.OrderException.class,
+                                () -> OrderStore.normalizePackageLabel(JsonParser.parseString("{\"text\":\"a§b\"}")))
+                        .status);
 
         var label = OrderStore.normalizePackageLabel(JsonParser.parseString("{\"text\":\"Projekt A\"}"));
-        OrderStore.Order o = orders.submit("s", "a", diamonds(16), null, label, null, null, null,
-            OrderIntent.DEFAULT, null, false, ignored -> null).order();
+        OrderStore.Order o = orders.submit(
+                        "s",
+                        "a",
+                        diamonds(16),
+                        null,
+                        label,
+                        null,
+                        null,
+                        null,
+                        OrderIntent.DEFAULT,
+                        null,
+                        false,
+                        ignored -> null)
+                .order();
         assertEquals(label, o.toJson().getAsJsonObject("packageLabel"));
         assertEquals(1, o.toJson().get("packageTotal").getAsInt());
         assertEquals("WeSort (1/1) - Projekt A", o.generatedNames().get(0).getAsString());
@@ -240,8 +286,11 @@ class OrderNamesTest {
         // Survives a restart.
         OrderStore reloaded = new OrderStore(data, index);
         reloaded.load();
-        var persisted = reloaded.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
-        assertEquals("Projekt A", persisted.getAsJsonObject("packageLabel").get("text").getAsString());
+        var persisted =
+                reloaded.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
+        assertEquals(
+                "Projekt A",
+                persisted.getAsJsonObject("packageLabel").get("text").getAsString());
         assertEquals(1, persisted.get("packageTotal").getAsInt());
     }
 }

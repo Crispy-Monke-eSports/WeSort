@@ -4,7 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.porter.wesort.data.DeliveryPoint;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -22,7 +21,9 @@ import java.util.function.LongSupplier;
  */
 final class DeliveryPoints {
     static final class Conflict extends IOException {
-        Conflict() { super("Delivery point revision changed; reload before updating"); }
+        Conflict() {
+            super("Delivery point revision changed; reload before updating");
+        }
     }
 
     private static final int SCHEMA = 1;
@@ -32,7 +33,10 @@ final class DeliveryPoints {
 
     private record Entry(DeliveryPoint point, JsonArray history) {}
 
-    DeliveryPoints(Path data) throws IOException { this(data, System::currentTimeMillis); }
+    DeliveryPoints(Path data) throws IOException {
+        this(data, System::currentTimeMillis);
+    }
+
     DeliveryPoints(Path data, LongSupplier clock) throws IOException {
         this.clock = clock;
         this.file = data.resolve("delivery-points.json");
@@ -44,7 +48,8 @@ final class DeliveryPoints {
             for (var entry : root.getAsJsonArray("points")) {
                 var o = entry.getAsJsonObject();
                 var point = DeliveryPoint.read(o);
-                points.put(point.id(), new Entry(point, o.getAsJsonArray("history").deepCopy()));
+                points.put(
+                        point.id(), new Entry(point, o.getAsJsonArray("history").deepCopy()));
             }
         } catch (RuntimeException invalid) {
             throw new IOException("Cannot read delivery points", invalid);
@@ -59,7 +64,8 @@ final class DeliveryPoints {
     }
 
     /** An optimistic update: present fields replace the current value, the revision increments. */
-    synchronized DeliveryPoint update(String id, JsonObject request, long expectedRevision, String by) throws IOException {
+    synchronized DeliveryPoint update(String id, JsonObject request, long expectedRevision, String by)
+            throws IOException {
         var entry = require(id);
         if (entry.point().revision() != expectedRevision) throw new Conflict();
         var point = entry.point().updated(request);
@@ -75,8 +81,18 @@ final class DeliveryPoints {
         var entry = require(id);
         var point = entry.point();
         if (point.revision() != expectedRevision) throw new Conflict();
-        var paused = new DeliveryPoint(point.id(), point.server(), point.dimension(), point.x(), point.y(), point.z(),
-            point.type(), point.access(), point.member(), DeliveryPoint.Status.PAUSED, Math.addExact(point.revision(), 1));
+        var paused = new DeliveryPoint(
+                point.id(),
+                point.server(),
+                point.dimension(),
+                point.x(),
+                point.y(),
+                point.z(),
+                point.type(),
+                point.access(),
+                point.member(),
+                DeliveryPoint.Status.PAUSED,
+                Math.addExact(point.revision(), 1));
         var history = entry.history().deepCopy();
         history.add(event("paused", by));
         points.put(id, new Entry(paused, history));
@@ -116,10 +132,14 @@ final class DeliveryPoints {
             var point = entry.point();
             if (point.status() != DeliveryPoint.Status.VERIFIED) continue;
             if (server != null && !point.server().equals(server)) continue; // cross-server selection is refused
-            if (p.owner()) { out.add(point.json()); continue; }
+            if (p.owner()) {
+                out.add(point.json());
+                continue;
+            }
             if (point.access() == DeliveryPoint.Access.INTERNAL) continue;
             if (point.access() == DeliveryPoint.Access.MEMBER
-                && !point.member().equals(p.id()) && !point.member().equalsIgnoreCase(p.name())) continue;
+                    && !point.member().equals(p.id())
+                    && !point.member().equalsIgnoreCase(p.name())) continue;
             out.add(point.jsonRedacted());
         }
         return out;

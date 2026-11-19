@@ -1,7 +1,6 @@
 package com.porter.wesort.data;
 
 import com.google.gson.JsonObject;
-
 import java.util.UUID;
 
 /**
@@ -12,15 +11,26 @@ import java.util.UUID;
  * second delivery, and an uncertain outcome goes to {@code NEEDS_RECONCILIATION}. Mutually exclusive custody means a
  * second agent cannot complete another agent's deposit without an explicit reconciliation.
  */
-public record Deposit(String packageId, String orderId, Kind kind, String destination, String agent, State state, long revision) {
-    public enum Kind { DELIVERY, TRANSFER }
-    public enum State { DEPOSITING, DELIVERED, NEEDS_RECONCILIATION }
+public record Deposit(
+        String packageId, String orderId, Kind kind, String destination, String agent, State state, long revision) {
+    public enum Kind {
+        DELIVERY,
+        TRANSFER
+    }
+
+    public enum State {
+        DEPOSITING,
+        DELIVERED,
+        NEEDS_RECONCILIATION
+    }
 
     public Deposit {
         if (packageId == null) throw new IllegalArgumentException("A deposit needs a package");
         UUID.fromString(packageId);
-        if (orderId == null || orderId.isBlank() || orderId.length() > 64) throw new IllegalArgumentException("A deposit needs an order");
-        if (destination == null || destination.isBlank() || destination.length() > 256) throw new IllegalArgumentException("A deposit needs a destination");
+        if (orderId == null || orderId.isBlank() || orderId.length() > 64)
+            throw new IllegalArgumentException("A deposit needs an order");
+        if (destination == null || destination.isBlank() || destination.length() > 256)
+            throw new IllegalArgumentException("A deposit needs a destination");
         if (revision < 1) throw new IllegalArgumentException("Invalid deposit revision");
     }
 
@@ -42,14 +52,25 @@ public record Deposit(String packageId, String orderId, Kind kind, String destin
         if (!allows(next)) throw new IllegalArgumentException("A deposit cannot move from " + state + " to " + next);
         if (next != State.NEEDS_RECONCILIATION && this.agent != null && !this.agent.equals(agent))
             throw new IllegalArgumentException("Another agent holds the deposit; reconciliation is required");
-        return new Deposit(packageId, orderId, kind, destination, agent == null ? this.agent : agent, next, Math.addExact(revision, 1));
+        return new Deposit(
+                packageId,
+                orderId,
+                kind,
+                destination,
+                agent == null ? this.agent : agent,
+                next,
+                Math.addExact(revision, 1));
     }
 
     /** "withdrawal" for a DELIVERY, "relocation" for an internal TRANSFER. */
-    public String netEffect() { return kind == Kind.DELIVERY ? "withdrawal" : "relocation"; }
+    public String netEffect() {
+        return kind == Kind.DELIVERY ? "withdrawal" : "relocation";
+    }
 
     /** A DELIVERY removes stock from the guild total; a TRANSFER only moves it within the network. */
-    public boolean reducesStock() { return kind == Kind.DELIVERY; }
+    public boolean reducesStock() {
+        return kind == Kind.DELIVERY;
+    }
 
     public JsonObject json() {
         var out = new JsonObject();
@@ -65,9 +86,13 @@ public record Deposit(String packageId, String orderId, Kind kind, String destin
     }
 
     public static Deposit read(JsonObject o) {
-        return new Deposit(o.get("packageId").getAsString(), o.get("orderId").getAsString(),
-            Kind.valueOf(o.get("kind").getAsString()), o.get("destination").getAsString(),
-            o.has("agent") && !o.get("agent").isJsonNull() ? o.get("agent").getAsString() : null,
-            State.valueOf(o.get("state").getAsString()), o.get("revision").getAsLong());
+        return new Deposit(
+                o.get("packageId").getAsString(),
+                o.get("orderId").getAsString(),
+                Kind.valueOf(o.get("kind").getAsString()),
+                o.get("destination").getAsString(),
+                o.has("agent") && !o.get("agent").isJsonNull() ? o.get("agent").getAsString() : null,
+                State.valueOf(o.get("state").getAsString()),
+                o.get("revision").getAsLong());
     }
 }

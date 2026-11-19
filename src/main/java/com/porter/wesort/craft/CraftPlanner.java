@@ -68,13 +68,22 @@ public final class CraftPlanner {
      * @param doneOrder how many were already crafted for this order
      * @param doneHour  how many were already crafted in the last hour
      */
-    public static Result plan(Recipes recipes, String item, int want, Map<String, Long> pool, Set<String> never, Caps caps, int doneOrder, int doneHour) {
+    public static Result plan(
+            Recipes recipes,
+            String item,
+            int want,
+            Map<String, Long> pool,
+            Set<String> never,
+            Caps caps,
+            int doneOrder,
+            int doneHour) {
         if (want <= 0) return new Result(null, "nothing to craft");
         long leftOrder = (long) caps.perOrder() - doneOrder, leftHour = (long) caps.perHour() - doneHour;
         if (leftOrder <= 0) return new Result(null, CAP_REACHED + " (0 more this order)");
         if (leftHour <= 0) return new Result(null, CAP_REACHED + " (0 more this hour)");
         int allowed = (int) Math.min((long) want, Math.min(leftOrder, leftHour));
-        String capText = CAP_REACHED + " (" + allowed + " more this " + (leftOrder <= leftHour ? "order" : "hour") + ")";
+        String capText =
+                CAP_REACHED + " (" + allowed + " more this " + (leftOrder <= leftHour ? "order" : "hour") + ")";
 
         Attempt best;
         int lo, hi;
@@ -93,11 +102,12 @@ public final class CraftPlanner {
                 if (a.ok) {
                     best = a;
                     lo = mid;
-                }
-                else hi = mid - 1;
+                } else hi = mid - 1;
             }
         }
-        String limited = best.count >= want ? null : best.count == allowed ? capText : (full.reason == null ? NOT_ENOUGH : full.reason);
+        String limited = best.count >= want
+                ? null
+                : best.count == allowed ? capText : (full.reason == null ? NOT_ENOUGH : full.reason);
         return new Result(new Plan(item, best.count, best.steps, best.take, best.ops, limited), null);
     }
 
@@ -117,7 +127,8 @@ public final class CraftPlanner {
         Map<String, Integer> take = Map.of();
     }
 
-    private static Attempt attempt(Recipes recipes, String item, int count, Map<String, Long> pool, Set<String> never, Caps caps) {
+    private static Attempt attempt(
+            Recipes recipes, String item, int count, Map<String, Long> pool, Set<String> never, Caps caps) {
         Run run = new Run(recipes, pool, never);
         Attempt out = new Attempt();
         out.count = count;
@@ -163,10 +174,22 @@ public final class CraftPlanner {
         }
 
         /** A snapshot of what a try changes. */
-        record Mark(Map<String, Long> stock, Map<String, Long> spare, Map<String, Integer> take, List<Step> steps, int nodes, String reason) {}
+        record Mark(
+                Map<String, Long> stock,
+                Map<String, Long> spare,
+                Map<String, Integer> take,
+                List<Step> steps,
+                int nodes,
+                String reason) {}
 
         Mark mark() {
-            return new Mark(new HashMap<>(stock), new HashMap<>(spare), new LinkedHashMap<>(take), new ArrayList<>(steps), nodes, reason);
+            return new Mark(
+                    new HashMap<>(stock),
+                    new HashMap<>(spare),
+                    new LinkedHashMap<>(take),
+                    new ArrayList<>(steps),
+                    nodes,
+                    reason);
         }
 
         /** Goes back to a snapshot but keeps what was learnt about why it failed. */
@@ -237,7 +260,8 @@ public final class CraftPlanner {
                 path.add(item);
                 int crafts = (int) ((left + r.count() - 1) / r.count());
                 boolean ok = true;
-                // Added up over all cells and crafts, then rounded: every group of cells with the same alternatives is one need
+                // Added up over all cells and crafts, then rounded: every group of cells with the same alternatives is
+                // one need
                 for (Map.Entry<List<String>, Integer> g : r.groups().entrySet()) {
                     if (!satisfy(g.getKey(), (long) g.getValue() * crafts, depth + 1)) {
                         ok = false;
@@ -261,8 +285,7 @@ public final class CraftPlanner {
             if (!steps.isEmpty() && steps.get(steps.size() - 1).recipe() == r) {
                 Step last = steps.remove(steps.size() - 1);
                 steps.add(new Step(r, last.crafts() + crafts));
-            }
-            else steps.add(new Step(r, crafts));
+            } else steps.add(new Step(r, crafts));
         }
 
         long useSpare(String item, long want) {
@@ -292,7 +315,9 @@ public final class CraftPlanner {
             }
             long left = qty;
             ranked.sort((a, b) -> {
-                int c = Long.compare(spare.getOrDefault(b, 0L) + stock.getOrDefault(b, 0L), spare.getOrDefault(a, 0L) + stock.getOrDefault(a, 0L));
+                int c = Long.compare(
+                        spare.getOrDefault(b, 0L) + stock.getOrDefault(b, 0L),
+                        spare.getOrDefault(a, 0L) + stock.getOrDefault(a, 0L));
                 return c != 0 ? c : a.compareTo(b);
             });
             for (String a : ranked) {

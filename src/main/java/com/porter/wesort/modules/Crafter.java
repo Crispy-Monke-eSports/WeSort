@@ -1,5 +1,7 @@
 package com.porter.wesort.modules;
 
+import static meteordevelopment.meteorclient.MeteorClient.mc;
+
 import com.porter.wesort.WeSortAddon;
 import com.porter.wesort.compat.GameVersion;
 import com.porter.wesort.craft.CraftPlanner;
@@ -7,15 +9,6 @@ import com.porter.wesort.craft.Recipes;
 import com.porter.wesort.stash.Kits;
 import com.porter.wesort.stash.Stash;
 import com.porter.wesort.stash.Stash.Box;
-import meteordevelopment.meteorclient.utils.Utils;
-import meteordevelopment.meteorclient.utils.player.InvUtils;
-import net.minecraft.core.component.DataComponents;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.inventory.InventoryMenu;
-import net.minecraft.world.item.ItemStack;
-
 import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -25,8 +18,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
-
-import static meteordevelopment.meteorclient.MeteorClient.mc;
+import meteordevelopment.meteorclient.utils.Utils;
+import meteordevelopment.meteorclient.utils.player.InvUtils;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.InventoryMenu;
+import net.minecraft.world.item.ItemStack;
 
 /**
  * Crafts things out of the stash for the stash sorter (phase 1: plain shulker boxes). A session plans the craft with
@@ -92,9 +91,22 @@ final class Crafter {
     record Outcome(String item, int crafted, String failure) {}
 
     /** The work one session is asked for. {@code pool} is what the crafts may use up (the stash's, less what others need). */
-    record Request(String item, int count, String purpose, boolean reserve, int doneOrder, Supplier<Map<String, Long>> pool,
-                   Supplier<Set<String>> reservedKeys, boolean gatherOnly) {
-        Request(String item, int count, String purpose, boolean reserve, int doneOrder, Supplier<Map<String, Long>> pool) {
+    record Request(
+            String item,
+            int count,
+            String purpose,
+            boolean reserve,
+            int doneOrder,
+            Supplier<Map<String, Long>> pool,
+            Supplier<Set<String>> reservedKeys,
+            boolean gatherOnly) {
+        Request(
+                String item,
+                int count,
+                String purpose,
+                boolean reserve,
+                int doneOrder,
+                Supplier<Map<String, Long>> pool) {
             this(item, count, purpose, reserve, doneOrder, pool, Set::of, false);
         }
     }
@@ -243,7 +255,9 @@ final class Crafter {
             ItemStack s = mc.player.getInventory().getItem(slot);
             if (!s.isEmpty()) owner.held(slot, s);
         }
-        if (!reserved.isEmpty()) owner.say("Keeping " + reserved.size() + " crafted Shulker Box in my inventory, they are put away like anything carried.");
+        if (!reserved.isEmpty())
+            owner.say("Keeping " + reserved.size()
+                    + " crafted Shulker Box in my inventory, they are put away like anything carried.");
         reserved.clear();
     }
 
@@ -293,7 +307,8 @@ final class Crafter {
         if (recipes == null) return new CraftPlanner.Result(null, "no recipe table for this version");
         CraftPlanner.Caps caps = owner.caps();
         // The caps are for shulker boxes: chests for the delivery storage (and the anvil) only keep the grid fill limit
-        if (!item.equals("minecraft:shulker_box")) caps = new CraftPlanner.Caps(Integer.MAX_VALUE, caps.opsPerTask(), Integer.MAX_VALUE);
+        if (!item.equals("minecraft:shulker_box"))
+            caps = new CraftPlanner.Caps(Integer.MAX_VALUE, caps.opsPerTask(), Integer.MAX_VALUE);
         if (ignoreOps) caps = new CraftPlanner.Caps(caps.perOrder(), Integer.MAX_VALUE, caps.perHour());
         return CraftPlanner.plan(recipes, item, count, pool, owner.neverUse(), caps, doneOrder, craftedLastHour());
     }
@@ -323,7 +338,9 @@ final class Crafter {
         active = true;
         startedAt = System.currentTimeMillis();
         snapshotBefore();
-        owner.say(String.format("Crafting %d %s for %s: %s.", plan.count(), CraftPlanner.pretty(r.item()), r.purpose(), describe(plan)));
+        owner.say(String.format(
+                "Crafting %d %s for %s: %s.",
+                plan.count(), CraftPlanner.pretty(r.item()), r.purpose(), describe(plan)));
         return null;
     }
 
@@ -331,7 +348,9 @@ final class Crafter {
         StringBuilder sb = new StringBuilder();
         for (CraftPlanner.Step s : plan.steps()) {
             if (sb.length() > 0) sb.append(", then ");
-            sb.append(s.crafts()).append("x ").append(CraftPlanner.pretty(s.recipe().result()));
+            sb.append(s.crafts())
+                    .append("x ")
+                    .append(CraftPlanner.pretty(s.recipe().result()));
         }
         return sb.toString();
     }
@@ -371,7 +390,8 @@ final class Crafter {
     }
 
     private final Set<Integer> lastHeld = new LinkedHashSet<>();
-    // What each slot held when the session began, to tell a stack the server put back into the inventory from one that was there
+    // What each slot held when the session began, to tell a stack the server put back into the inventory from one that
+    // was there
     private final Map<Integer, String> before = new HashMap<>();
 
     private void snapshotBefore() {
@@ -432,8 +452,16 @@ final class Crafter {
 
     /** A container the stash may take ingredients from: the same sources orders use. */
     boolean source(Box box) {
-        if (box.excluded || box.foreign || box.delivery || box.dropOff || box.unreachable || box.stale || !box.known() || !owner.usable(box)) return false;
-        // Kit chests and chests for whole shulkers are never taken from; use-named-shulkers is only about unpacking named shulkers
+        if (box.excluded
+                || box.foreign
+                || box.delivery
+                || box.dropOff
+                || box.unreachable
+                || box.stale
+                || !box.known()
+                || !owner.usable(box)) return false;
+        // Kit chests and chests for whole shulkers are never taken from; use-named-shulkers is only about unpacking
+        // named shulkers
         return !Kits.isKitBox(box) && !owner.keepWhole(box);
     }
 
@@ -454,9 +482,9 @@ final class Crafter {
                 if (s.isEmpty()) continue;
                 if (Utils.isShulker(s.getItem())) {
                     if (!shulkerOk(s)) continue;
-                    for (ItemStack in : Kits.inside(s)) if (in != null && eligible(in)) out.merge(idOf(in), (long) in.getCount(), Long::sum);
-                }
-                else if (eligible(s)) out.merge(idOf(s), (long) s.getCount(), Long::sum);
+                    for (ItemStack in : Kits.inside(s))
+                        if (in != null && eligible(in)) out.merge(idOf(in), (long) in.getCount(), Long::sum);
+                } else if (eligible(s)) out.merge(idOf(s), (long) s.getCount(), Long::sum);
             }
         }
         return out;
@@ -504,7 +532,9 @@ final class Crafter {
             // The shulker asked for: where it landed
             int landed = -1;
             for (int slot : owner.carry()) {
-                if (!shulkersBefore.contains(slot) && Utils.isShulker(mc.player.getInventory().getItem(slot).getItem())) landed = slot;
+                if (!shulkersBefore.contains(slot)
+                        && Utils.isShulker(
+                                mc.player.getInventory().getItem(slot).getItem())) landed = slot;
             }
             Spot asked = lastFetch;
             lastFetch = null;
@@ -518,7 +548,8 @@ final class Crafter {
 
         if (missing.isEmpty()) return req.gatherOnly() ? new Done() : new Table();
 
-        if (owner.freeCarryCount() < 2) return new Abort("no room to carry what the craft needs (no free inventory slots)");
+        if (owner.freeCarryCount() < 2)
+            return new Abort("no room to carry what the craft needs (no free inventory slots)");
 
         // Loose stacks first, then shulkers; the nearest
         Spot loose = null, packed = null;
@@ -536,8 +567,7 @@ final class Crafter {
                         packedD = d;
                         packed = new Spot(box, i);
                     }
-                }
-                else if (missing.containsKey(idOf(s)) && eligible(s) && d < looseD) {
+                } else if (missing.containsKey(idOf(s)) && eligible(s) && d < looseD) {
                     looseD = d;
                     loose = new Spot(box, i);
                 }
@@ -547,7 +577,8 @@ final class Crafter {
         if (packed != null) {
             lastFetch = packed;
             shulkersBefore.clear();
-            for (int slot : owner.carry()) if (Utils.isShulker(mc.player.getInventory().getItem(slot).getItem())) shulkersBefore.add(slot);
+            for (int slot : owner.carry())
+                if (Utils.isShulker(mc.player.getInventory().getItem(slot).getItem())) shulkersBefore.add(slot);
             return new Fetch(packed.box(), packed.slot());
         }
 
@@ -560,7 +591,8 @@ final class Crafter {
     }
 
     private boolean holdsAny(ItemStack shulker, Map<String, Integer> missing) {
-        for (ItemStack in : Kits.inside(shulker)) if (in != null && !in.isEmpty() && eligible(in) && missing.containsKey(idOf(in))) return true;
+        for (ItemStack in : Kits.inside(shulker))
+            if (in != null && !in.isEmpty() && eligible(in) && missing.containsKey(idOf(in))) return true;
         return false;
     }
 
@@ -583,7 +615,8 @@ final class Crafter {
             if (s.isEmpty() || !eligible(s)) continue;
             Integer deficit = missing.get(idOf(s));
             if (deficit == null) continue;
-            // The smallest stack that covers what is missing, else the biggest; a stack another bin lot needs is the last choice
+            // The smallest stack that covers what is missing, else the biggest; a stack another bin lot needs is the
+            // last choice
             long score = s.getCount() >= deficit ? s.getCount() : 1000 + (64 - s.getCount());
             String key = com.porter.wesort.stash.StashIndex.keyOf(s);
             if (key != null && reserved.contains(key)) score += 100_000;
@@ -643,7 +676,8 @@ final class Crafter {
     void tableEnded(String why) {
         if (!active) return;
         // Only shulker boxes count towards the hourly cap
-        for (; stamped < craftedTarget; stamped++) if (req != null && req.item().equals("minecraft:shulker_box")) stamps.addLast(System.currentTimeMillis());
+        for (; stamped < craftedTarget; stamped++)
+            if (req != null && req.item().equals("minecraft:shulker_box")) stamps.addLast(System.currentTimeMillis());
         adoptStrays();
         syncHeld();
         if (why != null) {
@@ -656,14 +690,16 @@ final class Crafter {
     /** Whether the plan has been carried out in the window. */
     private CraftPlanner.Step currentStep() {
         if (plan == null) return null;
-        while (stepIdx < plan.steps().size() && craftIdx >= plan.steps().get(stepIdx).crafts()) {
+        while (stepIdx < plan.steps().size()
+                && craftIdx >= plan.steps().get(stepIdx).crafts()) {
             stepIdx++;
             craftIdx = 0;
         }
         return stepIdx < plan.steps().size() ? plan.steps().get(stepIdx) : null;
     }
 
-    // The 3x3 table window has the grid in slots 1-9 and the inventory in 10-45; the inventory window the 2x2 grid in 1-4 and the
+    // The 3x3 table window has the grid in slots 1-9 and the inventory in 10-45; the inventory window the 2x2 grid in
+    // 1-4 and the
     // inventory in 9-44 (armor 5-8, off hand 45 are never touched)
     private static boolean small(AbstractContainerMenu menu) {
         return menu instanceof InventoryMenu;
@@ -703,7 +739,8 @@ final class Crafter {
             if (step != null && layout != null && layoutStep == stepIdx) {
                 String id = idOf(cursor);
                 for (int k = 1; k <= gridSlots(small(menu)); k++) {
-                    if (id.equals(layout[gridIndexOf(small(menu), k)]) && menu.getSlot(k).getItem().isEmpty()) {
+                    if (id.equals(layout[gridIndexOf(small(menu), k)])
+                            && menu.getSlot(k).getItem().isEmpty()) {
                         fills++;
                         if (fills > plan.ops() * 2 + 16) return Act.fail(com.porter.wesort.craft.CraftHealth.GRID);
                         return Act.click(k, 1);
@@ -722,7 +759,8 @@ final class Crafter {
 
         boolean small = small(menu);
         if (step == null) {
-            for (int k = 1; k <= gridSlots(small); k++) if (!menu.getSlot(k).getItem().isEmpty()) return Act.click(k, 0);
+            for (int k = 1; k <= gridSlots(small); k++)
+                if (!menu.getSlot(k).getItem().isEmpty()) return Act.click(k, 0);
             return Act.done();
         }
 
@@ -768,7 +806,8 @@ final class Crafter {
         lastTake = false;
         takeTries = 0;
         craftIdx++;
-        if (step.recipe().result().equals(req.item())) craftedTarget += step.recipe().count();
+        if (step.recipe().result().equals(req.item()))
+            craftedTarget += step.recipe().count();
         layout = null;
         return true;
     }
@@ -777,7 +816,8 @@ final class Crafter {
     boolean clean(AbstractContainerMenu menu) {
         if (!menu.getCarried().isEmpty()) return false;
         if (menu.slots.size() != 46) return true;
-        for (int i = 1; i <= gridSlots(small(menu)); i++) if (!menu.getSlot(i).getItem().isEmpty()) return false;
+        for (int i = 1; i <= gridSlots(small(menu)); i++)
+            if (!menu.getSlot(i).getItem().isEmpty()) return false;
         return true;
     }
 
@@ -793,7 +833,8 @@ final class Crafter {
             Act put = putAway(menu, cursor);
             return put.kind() == Act.CLICK ? put : null;
         }
-        for (int i = 1; i <= gridSlots(small(menu)); i++) if (!menu.getSlot(i).getItem().isEmpty()) return Act.click(i, 0);
+        for (int i = 1; i <= gridSlots(small(menu)); i++)
+            if (!menu.getSlot(i).getItem().isEmpty()) return Act.click(i, 0);
         return null;
     }
 
@@ -805,24 +846,33 @@ final class Crafter {
         int spot = -1;
         if (srcSlot >= 0 && inventorySlot(small, srcSlot) && usableSlot(carry, menuToInv(small, srcSlot))) {
             ItemStack there = menu.getSlot(srcSlot).getItem();
-            if (there.isEmpty() || (ItemStack.isSameItemSameComponents(there, cursor) && there.getCount() < there.getMaxStackSize())) spot = srcSlot;
+            if (there.isEmpty()
+                    || (ItemStack.isSameItemSameComponents(there, cursor)
+                            && there.getCount() < there.getMaxStackSize())) spot = srcSlot;
         }
         if (spot < 0) {
             for (int m = first; m <= last && spot < 0; m++) {
                 ItemStack there = menu.getSlot(m).getItem();
-                if (usableSlot(carry, menuToInv(small, m)) && !there.isEmpty() && ItemStack.isSameItemSameComponents(there, cursor) && there.getCount() < there.getMaxStackSize()) spot = m;
+                if (usableSlot(carry, menuToInv(small, m))
+                        && !there.isEmpty()
+                        && ItemStack.isSameItemSameComponents(there, cursor)
+                        && there.getCount() < there.getMaxStackSize()) spot = m;
             }
         }
         if (spot < 0) {
             for (int m = first; m <= last && spot < 0; m++) {
-                if (carry.contains(menuToInv(small, m)) && menu.getSlot(m).getItem().isEmpty()) spot = m;
+                if (carry.contains(menuToInv(small, m))
+                        && menu.getSlot(m).getItem().isEmpty()) spot = m;
             }
         }
         if (spot < 0) return ++homeStuck > 40 ? Act.fail(com.porter.wesort.craft.CraftHealth.NO_ROOM) : Act.waiting();
         int inv = menuToInv(small, spot);
         mine.add(inv);
         // A crafted box of the wanted kind is kept for its use
-        if (req != null && req.reserve() && Utils.isShulker(cursor.getItem()) && idOf(cursor).equals(req.item())) reserved.add(inv);
+        if (req != null
+                && req.reserve()
+                && Utils.isShulker(cursor.getItem())
+                && idOf(cursor).equals(req.item())) reserved.add(inv);
         owner.held(inv, cursor);
         return Act.click(spot, 0);
     }

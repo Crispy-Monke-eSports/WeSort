@@ -4,7 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -30,9 +29,11 @@ final class SessionStore {
     static final long ELEVATED_MS = 15L * 60 * 1000;
     /** lastSeen is written to disk at most this often per session (it only matters for display and pruning). */
     private static final long SEEN_WRITE_MS = 10L * 60 * 1000;
+
     private static final int MAX_SESSIONS = 200;
     /** One account can't hold more, so it can't push everyone else's sessions out of the global cap. */
     static final int MAX_PER_USER = 20;
+
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private static final class Session {
@@ -69,15 +70,22 @@ final class SessionStore {
     synchronized void load() throws IOException {
         if (file == null || !Files.exists(file)) return;
         try {
-            JsonArray list = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8)).getAsJsonArray();
+            JsonArray list = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8))
+                    .getAsJsonArray();
             for (JsonElement e : list) {
                 JsonObject o = e.getAsJsonObject();
                 String hash = o.get("hash").getAsString();
                 if (!hash.matches("[0-9a-f]{64}")) continue;
                 // Sessions from before sub-users have no user: they are the owner's.
                 String user = o.has("user") ? o.get("user").getAsString() : Users.OWNER_ID;
-                Session s = new Session(user, o.get("created").getAsLong(), o.get("expires").getAsLong(), o.get("lastSeen").getAsLong());
-                s.cred = o.has("cred") && o.get("cred").isJsonPrimitive() ? o.get("cred").getAsString() : null;
+                Session s = new Session(
+                        user,
+                        o.get("created").getAsLong(),
+                        o.get("expires").getAsLong(),
+                        o.get("lastSeen").getAsLong());
+                s.cred = o.has("cred") && o.get("cred").isJsonPrimitive()
+                        ? o.get("cred").getAsString()
+                        : null;
                 sessions.put(hash, s);
             }
         } catch (RuntimeException e) {
@@ -213,7 +221,8 @@ final class SessionStore {
 
     /** The password was just typed in this session: dangerous actions are allowed for 15 minutes. */
     synchronized void elevate(String token) {
-        if (token != null && sessions.containsKey(hash(token))) elevatedUntil.put(hash(token), clock.getAsLong() + ELEVATED_MS);
+        if (token != null && sessions.containsKey(hash(token)))
+            elevatedUntil.put(hash(token), clock.getAsLong() + ELEVATED_MS);
     }
 
     /** Ends sudo mode for this session at once ("Lock now"). */
@@ -306,7 +315,8 @@ final class SessionStore {
 
     static String hash(String token) {
         try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8)));
+            return HexFormat.of()
+                    .formatHex(MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }

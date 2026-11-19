@@ -31,7 +31,10 @@ final class GuildRoutes {
     private void change(HttpExchange ex) throws IOException {
         var request = AddonRoutes.readJson(ex);
         if (request == null) return;
-        if (!request.isJsonObject()) { Http.error(ex, 400, "Expected guild profile"); return; }
+        if (!request.isJsonObject()) {
+            Http.error(ex, 400, "Expected guild profile");
+            return;
+        }
         try {
             var body = request.getAsJsonObject();
             if (!body.has("expectedRevision")) throw new IllegalArgumentException();
@@ -39,7 +42,10 @@ final class GuildRoutes {
             GuildProfile updated;
             synchronized (this) {
                 var before = profile();
-                if (before.revision() != observed) { Http.error(ex, 409, "Reload the updated guild profile"); return; }
+                if (before.revision() != observed) {
+                    Http.error(ex, 409, "Reload the updated guild profile");
+                    return;
+                }
                 updated = before.updated(body);
                 updated.save(file);
                 current = updated;

@@ -6,7 +6,6 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.sun.net.httpserver.HttpExchange;
-
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.TreeMap;
@@ -23,12 +22,19 @@ final class Redact {
     static final String HIDDEN = "(hidden)";
     static final String ANOTHER_USER = "another user";
     /** Activity sources shown as they are (the plugin's own subsystems); any other source reads "(hidden)". */
-    static final java.util.Set<String> SOURCES = java.util.Set.of("Stash sorter", "Stash order", "Pathfinder", "Pearl loader",
-        "Queue", "Stash manager", "Dashboard", "Auto eat", "Auto totem", "Delivery");
+    static final java.util.Set<String> SOURCES = java.util.Set.of(
+            "Stash sorter",
+            "Stash order",
+            "Pathfinder",
+            "Pearl loader",
+            "Queue",
+            "Stash manager",
+            "Dashboard",
+            "Auto eat",
+            "Auto totem",
+            "Delivery");
     /** The viewer offset's range per axis, in chunks (uniform in -2^20..2^20). */
-
-    private Redact() {
-    }
+    private Redact() {}
 
     /** Whether this request's user is forced into streamer mode. */
     static boolean on(HttpExchange ex) {
@@ -74,7 +80,8 @@ final class Redact {
     /** "Server 1", "Server 2", ... by sorted server address (of the stashes given: the visible ones). */
     static Map<String, String> serverLabels(Iterable<JsonElement> stashes) {
         TreeMap<String, String> labels = new TreeMap<>();
-        for (JsonElement e : stashes) labels.put(e.getAsJsonObject().get("server").getAsString(), "");
+        for (JsonElement e : stashes)
+            labels.put(e.getAsJsonObject().get("server").getAsString(), "");
         int i = 1;
         for (Map.Entry<String, String> en : labels.entrySet()) en.setValue("Server " + i++);
         return labels;
@@ -108,7 +115,8 @@ final class Redact {
      * English name, details (lore, custom text) are dropped, a shulker shows its item's name.
      */
     static JsonObject index(byte[] json) {
-        JsonObject o = JsonParser.parseString(new String(json, StandardCharsets.UTF_8)).getAsJsonObject();
+        JsonObject o =
+                JsonParser.parseString(new String(json, StandardCharsets.UTF_8)).getAsJsonObject();
         o.remove("player");
         o.remove("dimension");
         o.remove("physicalSources");
@@ -146,7 +154,10 @@ final class Redact {
         o.remove("destination");
         o.remove("comment");
         JsonObject by = obj(o, "placedBy");
-        boolean mine = by != null && by.has("id") && !by.get("id").isJsonNull() && by.get("id").getAsString().equals(selfId);
+        boolean mine = by != null
+                && by.has("id")
+                && !by.get("id").isJsonNull()
+                && by.get("id").getAsString().equals(selfId);
         if (by != null && !mine) by.addProperty("name", ANOTHER_USER);
         if (!mine && o.has("names")) o.add("names", JsonNull.INSTANCE);
     }
@@ -192,7 +203,9 @@ final class Redact {
             JsonObject c = obj(a, "connection");
             if (c != null) {
                 JsonObject rc = new JsonObject();
-                for (String f : new String[]{"state", "queuePosition", "health", "food", "ping", "uptimeSeconds", "spectators"}) {
+                for (String f :
+                        new String[] {"state", "queuePosition", "health", "food", "ping", "uptimeSeconds", "spectators"
+                        }) {
                     if (c.has(f)) rc.add(f, c.get(f));
                 }
                 ra.add("connection", rc);
@@ -203,7 +216,8 @@ final class Redact {
                 for (JsonElement e : ce.getAsJsonArray()) {
                     JsonObject ci = e.getAsJsonObject();
                     JsonObject rc = new JsonObject();
-                    for (String f : new String[]{"kind", "progress", "since", "level"}) if (ci.has(f)) rc.add(f, ci.get(f));
+                    for (String f : new String[] {"kind", "progress", "since", "level"})
+                        if (ci.has(f)) rc.add(f, ci.get(f));
                     rc.addProperty("source", source(ci));
                     rc.addProperty("title", HIDDEN);
                     current.add(rc);
@@ -246,7 +260,8 @@ final class Redact {
         JsonObject l = obj(o, "linked");
         if (l != null) l.add("player", JsonNull.INSTANCE);
         JsonElement b = o.get("bots");
-        if (b != null && b.isJsonArray()) for (JsonElement e : b.getAsJsonArray()) e.getAsJsonObject().add("player", JsonNull.INSTANCE);
+        if (b != null && b.isJsonArray())
+            for (JsonElement e : b.getAsJsonArray()) e.getAsJsonObject().add("player", JsonNull.INSTANCE);
     }
 
     // ---------- delivery contents ----------
@@ -276,5 +291,4 @@ final class Redact {
      * chunks (so tiles stay aligned): origin = the bot's chunk when the stream first sees it, plus a random shift of
      * up to 2^20 chunks per axis. y is kept. The true position can't be worked out from what the stream shows.
      */
-
 }

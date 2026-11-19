@@ -18,6 +18,7 @@ public final class PackageLabel {
     public static final int PREFIX_LENGTH = 17;
     /** User text budget: 50 (anvil) minus the longest prefix. */
     public static final int MAX_TEXT = 33;
+
     public static final int MAX_BOXES = 54;
 
     private PackageLabel() {}
@@ -36,15 +37,24 @@ public final class PackageLabel {
     public static String text(String raw, String field) {
         String value = raw == null ? "" : raw.strip();
         if (value.isEmpty()) return DEFAULT_TEXT;
-        if (value.length() > MAX_TEXT) throw new IllegalArgumentException(field + " is longer than " + MAX_TEXT + " characters");
+        if (value.length() > MAX_TEXT)
+            throw new IllegalArgumentException(field + " is longer than " + MAX_TEXT + " characters");
         for (int i = 0; i < value.length(); i++) {
             char c = value.charAt(i);
             if (c == '§') throw new IllegalArgumentException(field + " can't contain §");
-            if (Character.isISOControl(c)) throw new IllegalArgumentException(field + " can't contain control characters");
+            if (Character.isISOControl(c))
+                throw new IllegalArgumentException(field + " can't contain control characters");
             int type = Character.getType(c);
-            if (type == Character.FORMAT || type == Character.LINE_SEPARATOR || type == Character.PARAGRAPH_SEPARATOR
-                || (type == Character.SURROGATE && !(Character.isHighSurrogate(c) && i + 1 < value.length() && Character.isLowSurrogate(value.charAt(i + 1)))
-                    && !(Character.isLowSurrogate(c) && i > 0 && Character.isHighSurrogate(value.charAt(i - 1))))) {
+            if (type == Character.FORMAT
+                    || type == Character.LINE_SEPARATOR
+                    || type == Character.PARAGRAPH_SEPARATOR
+                    || (type == Character.SURROGATE
+                            && !(Character.isHighSurrogate(c)
+                                    && i + 1 < value.length()
+                                    && Character.isLowSurrogate(value.charAt(i + 1)))
+                            && !(Character.isLowSurrogate(c)
+                                    && i > 0
+                                    && Character.isHighSurrogate(value.charAt(i - 1))))) {
                 throw new IllegalArgumentException(field + " can't contain invisible or direction-changing characters");
             }
         }
@@ -60,7 +70,8 @@ public final class PackageLabel {
     public static JsonObject normalize(JsonObject label) {
         if (label == null) return null;
         if (label.has("text")) {
-            if (!label.get("text").isJsonPrimitive() || !label.get("text").getAsJsonPrimitive().isString())
+            if (!label.get("text").isJsonPrimitive()
+                    || !label.get("text").getAsJsonPrimitive().isString())
                 throw new IllegalArgumentException("packageLabel.text must be a string");
             String t = text(label.get("text").getAsString(), "packageLabel.text");
             var out = new JsonObject();
@@ -69,13 +80,16 @@ public final class PackageLabel {
             return out;
         }
         if (label.has("texts")) {
-            if (!label.get("texts").isJsonArray()) throw new IllegalArgumentException("packageLabel.texts must be an array");
+            if (!label.get("texts").isJsonArray())
+                throw new IllegalArgumentException("packageLabel.texts must be an array");
             var raw = label.getAsJsonArray("texts");
-            if (raw.size() > MAX_BOXES) throw new IllegalArgumentException("packageLabel.texts has more than " + MAX_BOXES + " entries");
+            if (raw.size() > MAX_BOXES)
+                throw new IllegalArgumentException("packageLabel.texts has more than " + MAX_BOXES + " entries");
             int last = -1;
             var texts = new JsonArray();
             for (int i = 0; i < raw.size(); i++) {
-                if (!raw.get(i).isJsonPrimitive() || !raw.get(i).getAsJsonPrimitive().isString())
+                if (!raw.get(i).isJsonPrimitive()
+                        || !raw.get(i).getAsJsonPrimitive().isString())
                     throw new IllegalArgumentException("packageLabel.texts[" + i + "] must be a string");
                 String t = text(raw.get(i).getAsString(), "packageLabel.texts[" + i + "]");
                 texts.add(t);
@@ -99,7 +113,8 @@ public final class PackageLabel {
 
     /** The generated full names for a frozen package total, as the agent's {@code names.each} shape. */
     public static JsonArray generate(JsonObject label, int packageTotal) {
-        if (packageTotal < 1 || packageTotal > MAX_BOXES) throw new IllegalArgumentException("packageTotal out of range");
+        if (packageTotal < 1 || packageTotal > MAX_BOXES)
+            throw new IllegalArgumentException("packageTotal out of range");
         var names = new JsonArray();
         if (label == null || "all".equals(label.get("mode").getAsString())) {
             String text = label == null ? DEFAULT_TEXT : label.get("text").getAsString();

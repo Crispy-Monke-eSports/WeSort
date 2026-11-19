@@ -1,25 +1,24 @@
 package com.porter.wesort.manager.local;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.porter.wesort.manager.local.LocalStore.Entry;
 import com.porter.wesort.manager.local.LocalStore.Slot;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** The local store and its file: round trip, caps, and files that are damaged. */
 class LocalStoreTest {
@@ -35,13 +34,18 @@ class LocalStoreTest {
 
     private static Entry entry(String server, int x, long readAt, int size, Slot... slots) {
         ContainerKey key = new ContainerKey(server, "minecraft:overworld", x, 64, 0);
-        return new Entry(key, List.of(new int[] { x, 64, 0 }), "minecraft:chest", size, readAt, List.of(slots));
+        return new Entry(key, List.of(new int[] {x, 64, 0}), "minecraft:chest", size, readAt, List.of(slots));
     }
 
     @Test
     void roundTripKeepsEverything() {
-        Entry a = new Entry(new ContainerKey("srv", "minecraft:the_nether", 10, 70, -5), List.of(new int[] { 10, 70, -5 }, new int[] { 11, 70, -5 }),
-            "minecraft:trapped_chest", 54, 12345L, List.of(new Slot(0, item("minecraft:stone", 64)), new Slot(53, item("minecraft:apple", 3))));
+        Entry a = new Entry(
+                new ContainerKey("srv", "minecraft:the_nether", 10, 70, -5),
+                List.of(new int[] {10, 70, -5}, new int[] {11, 70, -5}),
+                "minecraft:trapped_chest",
+                54,
+                12345L,
+                List.of(new Slot(0, item("minecraft:stone", 64)), new Slot(53, item("minecraft:apple", 3))));
         Entry b = entry("srv", 1, 99, 27);
         CompoundTag tag = LocalFile.toTag("srv", List.of(a, b));
 
@@ -65,16 +69,21 @@ class LocalStoreTest {
     @Test
     void writeThenReadFromDisk() throws IOException {
         Path file = LocalFile.fileFor(dir.resolve("local-index"), "My.Server:25565");
-        assertTrue(file.getFileName().toString().matches("my\\.server_25565-[0-9a-f]{8}\\.nbt"), file.getFileName().toString());
+        assertTrue(
+                file.getFileName().toString().matches("my\\.server_25565-[0-9a-f]{8}\\.nbt"),
+                file.getFileName().toString());
         Entry a = entry("My.Server:25565", 3, 7, 27, new Slot(2, item("minecraft:diamond", 9)));
         assertEquals(LocalFile.WriteStatus.OK, LocalFile.write(file, LocalFile.toTag("My.Server:25565", List.of(a))));
         assertTrue(Files.exists(file));
-        assertFalse(Files.exists(file.resolveSibling(file.getFileName() + ".tmp")), "the temp file is moved over the target");
+        assertFalse(
+                Files.exists(file.resolveSibling(file.getFileName() + ".tmp")),
+                "the temp file is moved over the target");
 
         LocalFile.Loaded loaded = LocalFile.read(file, "My.Server:25565", 4096);
         assertEquals(LocalFile.Status.OK, loaded.status());
         assertEquals(a.key(), loaded.entries().get(0).key());
-        assertEquals(a.slots().get(0).item(), loaded.entries().get(0).slots().get(0).item());
+        assertEquals(
+                a.slots().get(0).item(), loaded.entries().get(0).slots().get(0).item());
     }
 
     @Test
@@ -93,7 +102,10 @@ class LocalStoreTest {
         assertTrue(loaded.entries().isEmpty());
         assertFalse(Files.exists(file), "moved away so the next save does not read it again");
         try (var files = Files.list(dir)) {
-            assertEquals(1, files.filter(f -> f.getFileName().toString().startsWith("bad.nbt.bad-")).count());
+            assertEquals(
+                    1,
+                    files.filter(f -> f.getFileName().toString().startsWith("bad.nbt.bad-"))
+                            .count());
         }
     }
 
@@ -117,9 +129,9 @@ class LocalStoreTest {
     void malformedContainersAreSkippedTheRestLoad() {
         CompoundTag tag = LocalFile.toTag("s", List.of(entry("s", 1, 1, 27), entry("s", 2, 2, 27)));
         ListTag list = (ListTag) tag.get("containers");
-        list.add(new CompoundTag());              // no fields
+        list.add(new CompoundTag()); // no fields
         CompoundTag oversize = (CompoundTag) list.get(0).copy();
-        oversize.putInt("size", 500);             // too many slots
+        oversize.putInt("size", 500); // too many slots
         list.add(oversize);
         LocalFile.Loaded loaded = LocalFile.fromTag(tag, "s", 4096);
         assertEquals(2, loaded.entries().size());
@@ -172,7 +184,11 @@ class LocalStoreTest {
         store.put(entry("s", 1, 1, 27), 10);
         store.put(entry("s", 1, 2, 27, new Slot(0, item("a:b", 1))), 10);
         assertEquals(1, store.size());
-        assertEquals(1, store.get(new ContainerKey("s", "minecraft:overworld", 1, 64, 0)).slots().size());
+        assertEquals(
+                1,
+                store.get(new ContainerKey("s", "minecraft:overworld", 1, 64, 0))
+                        .slots()
+                        .size());
     }
 
     @Test
@@ -212,7 +228,12 @@ class LocalStoreTest {
         store.put(entry("s", 1, 500, 27, new Slot(0, item("new:one", 1))), 10);
         store.mergeLoaded(List.of(entry("s", 1, 100, 27, new Slot(0, item("old:one", 1)))), 10);
         assertEquals(1, store.size());
-        assertEquals(item("new:one", 1), store.get(new ContainerKey("s", "minecraft:overworld", 1, 64, 0)).slots().get(0).item());
+        assertEquals(
+                item("new:one", 1),
+                store.get(new ContainerKey("s", "minecraft:overworld", 1, 64, 0))
+                        .slots()
+                        .get(0)
+                        .item());
     }
 
     @Test
@@ -238,9 +259,11 @@ class LocalStoreTest {
     @Test
     void theFileSizeCapIsFortyEightMiB() throws IOException {
         Path file = dir.resolve("big.nbt");
-        assertEquals(LocalFile.WriteStatus.OK, LocalFile.write(file, LocalFile.toTag("s", List.of(entry("s", 1, 1, 27)))));
+        assertEquals(
+                LocalFile.WriteStatus.OK, LocalFile.write(file, LocalFile.toTag("s", List.of(entry("s", 1, 1, 27)))));
         long before = Files.size(file);
-        // incompressible payload larger than the cap is too heavy for a unit test, so the cap is checked on its constant
+        // incompressible payload larger than the cap is too heavy for a unit test, so the cap is checked on its
+        // constant
         assertEquals(48L * 1024 * 1024, LocalFile.MAX_FILE_BYTES);
         assertTrue(before < LocalFile.MAX_FILE_BYTES);
     }
@@ -257,7 +280,9 @@ class LocalStoreTest {
         Path fresh = folder.resolve("fresh.nbt");
         assertEquals(LocalFile.WriteStatus.OK, LocalFile.write(fresh, LocalFile.toTag("fresh", List.of())));
         try (var files = Files.list(folder)) {
-            List<String> names = files.map(f -> f.getFileName().toString()).filter(n -> n.endsWith(".nbt")).toList();
+            List<String> names = files.map(f -> f.getFileName().toString())
+                    .filter(n -> n.endsWith(".nbt"))
+                    .toList();
             assertEquals(LocalFile.MAX_FILES, names.size());
             assertTrue(names.contains("fresh.nbt"));
             assertFalse(names.contains("srv0.nbt"), "the oldest went first");

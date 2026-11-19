@@ -1,18 +1,17 @@
 package com.porter.wesortmanager;
 
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-
-import java.net.InetAddress;
-import java.nio.file.Path;
-import java.util.concurrent.atomic.AtomicLong;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.net.InetAddress;
+import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicLong;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** The rate limiter, new-password rules, the setup code and sudo mode. */
 class LoginSecurityTest {
@@ -78,7 +77,9 @@ class LoginSecurityTest {
             now.addAndGet(1000);
         }
         long wait = limiter.tryAcquire("10.9.9.9", false);
-        assertTrue(wait > LoginLimiter.GLOBAL_LOCK_MS - 2000 && wait <= LoginLimiter.GLOBAL_LOCK_MS, "everyone else is paused for 15 minutes: " + wait);
+        assertTrue(
+                wait > LoginLimiter.GLOBAL_LOCK_MS - 2000 && wait <= LoginLimiter.GLOBAL_LOCK_MS,
+                "everyone else is paused for 15 minutes: " + wait);
         assertEquals(0, limiter.tryAcquire("127.0.0.1", true), "the server PC itself is exempt");
 
         now.addAndGet(LoginLimiter.GLOBAL_LOCK_MS);
@@ -150,7 +151,8 @@ class LoginSecurityTest {
         assertTrue(code.matches("[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}"), code);
         assertNotEquals(code, Auth.newSetupCode());
         assertTrue(Auth.codeMatches(code, code));
-        assertTrue(Auth.codeMatches(code.toLowerCase().replace("-", " "), code), "case, spaces and dashes don't matter");
+        assertTrue(
+                Auth.codeMatches(code.toLowerCase().replace("-", " "), code), "case, spaces and dashes don't matter");
         assertTrue(Auth.codeMatches(code.replace("-", ""), code));
         assertFalse(Auth.codeMatches(code.equals("AAAA-AAAA") ? "BBBB-BBBB" : "AAAA-AAAA", code));
         assertFalse(Auth.codeMatches("", code));

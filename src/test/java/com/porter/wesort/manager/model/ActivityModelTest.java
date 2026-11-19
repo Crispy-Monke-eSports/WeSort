@@ -1,26 +1,26 @@
 package com.porter.wesort.manager.model;
 
-import com.google.gson.JsonParser;
-import com.porter.wesort.manager.model.ActivityModel.Data;
-import org.junit.jupiter.api.Test;
-
-import java.time.ZoneId;
-import java.util.List;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.google.gson.JsonParser;
+import com.porter.wesort.manager.model.ActivityModel.Data;
+import java.time.ZoneId;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+
 class ActivityModelTest {
-    static final String BODY = "{\"receivedAt\":1000,\"online\":true,\"activity\":{\"connection\":{\"state\":\"queue\",\"queuePosition\":5,\"queueEta\":\"10m\","
-        + "\"server\":\"2b2t.org\",\"dimension\":\"minecraft:overworld\",\"x\":10.4,\"y\":64,\"z\":-3,\"health\":18,\"food\":20,\"ping\":55,"
-        + "\"uptimeSeconds\":3700,\"spectators\":2,\"controllingPlayer\":\"Steve\"},"
-        + "\"current\":[{\"source\":\"orders\",\"title\":\"Order 7\",\"detail\":\"chest 1\",\"level\":\"warn\",\"since\":500,\"progress\":{\"done\":3,\"total\":12}},"
-        + "{\"source\":\"x\",\"title\":\"t\",\"level\":\"weird\"}],"
-        + "\"modules\":[{\"name\":\"KillAura\",\"plugin\":\"\",\"status\":\"idle\",\"enabled\":true},{\"name\":\"Fly\",\"plugin\":\"extra\",\"status\":\"\",\"enabled\":false}],"
-        + "\"plugins\":[{\"id\":\"qs\",\"name\":\"WeSort\",\"version\":\"1.2\"}]},"
-        + "\"events\":[{\"at\":300,\"source\":\"b\",\"level\":\"error\",\"text\":\"newer\"},{\"at\":100,\"source\":\"a\",\"level\":\"info\",\"text\":\"older\"}]}";
+    static final String BODY =
+            "{\"receivedAt\":1000,\"online\":true,\"activity\":{\"connection\":{\"state\":\"queue\",\"queuePosition\":5,\"queueEta\":\"10m\","
+                    + "\"server\":\"2b2t.org\",\"dimension\":\"minecraft:overworld\",\"x\":10.4,\"y\":64,\"z\":-3,\"health\":18,\"food\":20,\"ping\":55,"
+                    + "\"uptimeSeconds\":3700,\"spectators\":2,\"controllingPlayer\":\"Steve\"},"
+                    + "\"current\":[{\"source\":\"orders\",\"title\":\"Order 7\",\"detail\":\"chest 1\",\"level\":\"warn\",\"since\":500,\"progress\":{\"done\":3,\"total\":12}},"
+                    + "{\"source\":\"x\",\"title\":\"t\",\"level\":\"weird\"}],"
+                    + "\"modules\":[{\"name\":\"KillAura\",\"plugin\":\"\",\"status\":\"idle\",\"enabled\":true},{\"name\":\"Fly\",\"plugin\":\"extra\",\"status\":\"\",\"enabled\":false}],"
+                    + "\"plugins\":[{\"id\":\"qs\",\"name\":\"WeSort\",\"version\":\"1.2\"}]},"
+                    + "\"events\":[{\"at\":300,\"source\":\"b\",\"level\":\"error\",\"text\":\"newer\"},{\"at\":100,\"source\":\"a\",\"level\":\"info\",\"text\":\"older\"}]}";
 
     static Data data() {
         return ActivityModel.parse(JsonParser.parseString(BODY));
@@ -65,7 +65,8 @@ class ActivityModelTest {
         Data d = ActivityModel.parse(JsonParser.parseString("{\"activity\":null,\"events\":\"x\"}"));
         assertFalse(d.hasActivity());
         assertTrue(d.events().isEmpty());
-        Data e = ActivityModel.parse(JsonParser.parseString("{\"activity\":{\"connection\":{\"health\":\"bad\"},\"modules\":[3,{\"name\":5}]}}"));
+        Data e = ActivityModel.parse(JsonParser.parseString(
+                "{\"activity\":{\"connection\":{\"health\":\"bad\"},\"modules\":[3,{\"name\":5}]}}"));
         assertTrue(Double.isNaN(e.connection().health()));
         assertEquals("offline", e.connection().state());
         assertEquals(1, e.modules().size());
@@ -73,7 +74,8 @@ class ActivityModelTest {
 
     @Test
     void textsAreCleaned() {
-        Data d = ActivityModel.parse(JsonParser.parseString("{\"events\":[{\"at\":1,\"source\":\"s\",\"level\":\"info\",\"text\":\"a\u00a7cb\\nc\"}]}"));
+        Data d = ActivityModel.parse(JsonParser.parseString(
+                "{\"events\":[{\"at\":1,\"source\":\"s\",\"level\":\"info\",\"text\":\"a\u00a7cb\\nc\"}]}"));
         assertFalse(d.events().get(0).text().contains("§"));
         assertEquals("acb c".length(), d.events().get(0).text().length());
     }
@@ -101,9 +103,17 @@ class ActivityModelTest {
         assertEquals(2, ActivityModel.filterEvents(d.events(), "", "").size());
         var all = ActivityModel.filterModules(d.modules(), "", false);
         assertEquals(List.of("aquarius", "extra"), List.copyOf(all.keySet()));
-        assertEquals(List.of("aquarius"), List.copyOf(ActivityModel.filterModules(d.modules(), "", true).keySet()));
-        assertEquals(List.of("extra"), List.copyOf(ActivityModel.filterModules(d.modules(), "FLY", false).keySet()));
-        assertEquals(List.of("aquarius"), List.copyOf(ActivityModel.filterModules(d.modules(), "idle", false).keySet()));
+        assertEquals(
+                List.of("aquarius"),
+                List.copyOf(ActivityModel.filterModules(d.modules(), "", true).keySet()));
+        assertEquals(
+                List.of("extra"),
+                List.copyOf(
+                        ActivityModel.filterModules(d.modules(), "FLY", false).keySet()));
+        assertEquals(
+                List.of("aquarius"),
+                List.copyOf(
+                        ActivityModel.filterModules(d.modules(), "idle", false).keySet()));
         assertTrue(ActivityModel.filterModules(d.modules(), "nothing", false).isEmpty());
         assertEquals("Agent modules", ActivityModel.groupTitle(""));
         assertEquals("extra", ActivityModel.groupTitle("extra"));
@@ -119,7 +129,9 @@ class ActivityModelTest {
         assertNotEquals(s, ActivityModel.structureSignature(d, 100_000, 30_000));
         assertEquals(ActivityModel.structureSignature(d, 10_000, 0), ActivityModel.structureSignature(d, 900_000, 0));
         String other = BODY.replace("\"done\":3", "\"done\":4");
-        assertNotEquals(s, ActivityModel.structureSignature(ActivityModel.parse(JsonParser.parseString(other)), 10_000, 30_000));
+        assertNotEquals(
+                s,
+                ActivityModel.structureSignature(ActivityModel.parse(JsonParser.parseString(other)), 10_000, 30_000));
         // events do not touch the structure, but the events signature
         String moreEvents = BODY.replace("\"text\":\"older\"", "\"text\":\"older2\"");
         Data m = ActivityModel.parse(JsonParser.parseString(moreEvents));
@@ -131,14 +143,27 @@ class ActivityModelTest {
     void theSignatureIgnoresTheNumbersThatMoveAllTheTime() {
         String s = ActivityModel.structureSignature(data(), 10_000, 30_000);
         // position, health, food, ping, uptime and spectators change with every report: no rebuild
-        String moved = BODY.replace("\"x\":10.4", "\"x\":99.9").replace("\"y\":64", "\"y\":70").replace("\"z\":-3", "\"z\":8")
-            .replace("\"health\":18", "\"health\":11").replace("\"food\":20", "\"food\":6").replace("\"ping\":55", "\"ping\":120")
-            .replace("\"uptimeSeconds\":3700", "\"uptimeSeconds\":9000").replace("\"spectators\":2", "\"spectators\":5");
+        String moved = BODY.replace("\"x\":10.4", "\"x\":99.9")
+                .replace("\"y\":64", "\"y\":70")
+                .replace("\"z\":-3", "\"z\":8")
+                .replace("\"health\":18", "\"health\":11")
+                .replace("\"food\":20", "\"food\":6")
+                .replace("\"ping\":55", "\"ping\":120")
+                .replace("\"uptimeSeconds\":3700", "\"uptimeSeconds\":9000")
+                .replace("\"spectators\":2", "\"spectators\":5");
         assertNotEquals(BODY, moved);
-        assertEquals(s, ActivityModel.structureSignature(ActivityModel.parse(JsonParser.parseString(moved)), 10_000, 30_000));
-        // what the layout does depend on still counts: the state, the server, the dimension, the controller, a stat appearing
-        for (String[] change : new String[][]{{"\"state\":\"queue\"", "\"state\":\"online\""}, {"2b2t.org", "other.org"},
-            {"minecraft:overworld", "minecraft:the_nether"}, {"Steve", "Alex"}, {"\"ping\":55,", ""}}) {
+        assertEquals(
+                s,
+                ActivityModel.structureSignature(ActivityModel.parse(JsonParser.parseString(moved)), 10_000, 30_000));
+        // what the layout does depend on still counts: the state, the server, the dimension, the controller, a stat
+        // appearing
+        for (String[] change : new String[][] {
+            {"\"state\":\"queue\"", "\"state\":\"online\""},
+            {"2b2t.org", "other.org"},
+            {"minecraft:overworld", "minecraft:the_nether"},
+            {"Steve", "Alex"},
+            {"\"ping\":55,", ""}
+        }) {
             Data other = ActivityModel.parse(JsonParser.parseString(BODY.replace(change[0], change[1])));
             assertNotEquals(s, ActivityModel.structureSignature(other, 10_000, 30_000), change[0]);
         }

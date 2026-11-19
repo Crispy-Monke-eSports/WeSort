@@ -2,7 +2,6 @@ package com.porter.wesortmanager;
 
 import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
-
 import java.io.IOException;
 import java.util.Locale;
 
@@ -21,9 +20,15 @@ final class OrderAuditRoutes {
     }
 
     private void search(HttpExchange ex) throws IOException {
-        if (Redact.on(ex)) { Http.error(ex, 403, "Order audit is hidden in enforced streamer mode"); return; }
+        if (Redact.on(ex)) {
+            Http.error(ex, 403, "Order audit is hidden in enforced streamer mode");
+            return;
+        }
         var viewer = Router.user(ex);
-        if (!viewer.perms().view()) { Router.forbid(ex, "view stashes", "view"); return; }
+        if (!viewer.perms().view()) {
+            Router.forbid(ex, "view stashes", "view");
+            return;
+        }
         var query = Http.query(ex);
         int limit;
         long since;
@@ -42,16 +47,28 @@ final class OrderAuditRoutes {
         String item = query.getOrDefault("item", "").strip();
         String stash = query.getOrDefault("stash", "").strip();
         var out = new JsonObject();
-        var selected = orders.auditOrders(viewer, order -> (id.isEmpty() || order.id.equals(id))
-            && order.createdAt <= until && order.updatedAt >= since
-            && includes(order.stash, stash)
-            && (item.isEmpty() || order.lines.stream().anyMatch(line -> includes(line.key(), item)))
-            && (person.isEmpty() || includes(order.placedById, person) || includes(order.placedByName, person)
-                || includes(order.verifiedRecipient, person) || includes(order.decidedBy, person)), limit);
+        var selected = orders.auditOrders(
+                viewer,
+                order -> (id.isEmpty() || order.id.equals(id))
+                        && order.createdAt <= until
+                        && order.updatedAt >= since
+                        && includes(order.stash, stash)
+                        && (item.isEmpty() || order.lines.stream().anyMatch(line -> includes(line.key(), item)))
+                        && (person.isEmpty()
+                                || includes(order.placedById, person)
+                                || includes(order.placedByName, person)
+                                || includes(order.verifiedRecipient, person)
+                                || includes(order.decidedBy, person)),
+                limit);
         if (!id.isEmpty() && !selected.isEmpty()) {
             var order = selected.get(0).getAsJsonObject();
-            order.add("physicalOperations", stock.stock().orderOperationHistory(id, order.get("server").getAsString(),
-                order.get("stash").getAsString()));
+            order.add(
+                    "physicalOperations",
+                    stock.stock()
+                            .orderOperationHistory(
+                                    id,
+                                    order.get("server").getAsString(),
+                                    order.get("stash").getAsString()));
         }
         out.add("orders", selected);
         Http.json(ex, 200, out);

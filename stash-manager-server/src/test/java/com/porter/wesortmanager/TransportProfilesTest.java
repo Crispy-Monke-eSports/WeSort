@@ -1,15 +1,18 @@
 package com.porter.wesortmanager;
 
-import com.google.gson.JsonObject;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-import java.nio.file.Path;
 import static org.junit.jupiter.api.Assertions.*;
 
-class TransportProfilesTest {
-    @TempDir Path data;
+import com.google.gson.JsonObject;
+import java.nio.file.Path;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
-    @Test void defaultsOffAndUpdatesWithRevision() throws Exception {
+class TransportProfilesTest {
+    @TempDir
+    Path data;
+
+    @Test
+    void defaultsOffAndUpdatesWithRevision() throws Exception {
         var profiles = new TransportProfiles(data);
         var initial = profiles.get("play.example.com");
         assertFalse(initial.allowTpa());
@@ -32,11 +35,16 @@ class TransportProfilesTest {
         assertFalse(profiles.get("play.example.com").allowHome());
     }
 
-    @Test void profilesPersistAndAreIndependentPerServer() throws Exception {
+    @Test
+    void profilesPersistAndAreIndependentPerServer() throws Exception {
         var profiles = new TransportProfiles(data);
-        var a = new JsonObject(); a.addProperty("allowTpa", true); a.addProperty("tpaVerified", true);
+        var a = new JsonObject();
+        a.addProperty("allowTpa", true);
+        a.addProperty("tpaVerified", true);
         profiles.update("a.example.com", a, 1);
-        var b = new JsonObject(); b.addProperty("allowHome", true); b.addProperty("homeVerified", true);
+        var b = new JsonObject();
+        b.addProperty("allowHome", true);
+        b.addProperty("homeVerified", true);
         profiles.update("b.example.com", b, 1);
 
         var reloaded = new TransportProfiles(data);
@@ -47,7 +55,8 @@ class TransportProfilesTest {
         assertEquals(2, reloaded.list().size());
     }
 
-    @Test void unknownServerStartsWithBothOff() throws Exception {
+    @Test
+    void unknownServerStartsWithBothOff() throws Exception {
         var profiles = new TransportProfiles(data);
         var fresh = profiles.get("brand-new.example.com");
         assertFalse(fresh.allowTpa());

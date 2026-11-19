@@ -5,7 +5,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
-
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,15 +17,26 @@ import java.util.Map;
  * the server's, which refuse anything else). Pure.
  */
 public final class SettingsSchema {
-    private SettingsSchema() {
-    }
+    private SettingsSchema() {}
 
     public static final int MAX_LEAVES = 6000;
     private static final int MAX_DEPTH = 14;
 
     /** One setting. {@code min}/{@code max} are NaN when the schema gave none. */
-    public record Node(String path, String type, String label, String help, String reason, String section, double min, double max,
-                       List<String> options, boolean nullable, boolean readOnly, boolean secret, boolean set) {
+    public record Node(
+            String path,
+            String type,
+            String label,
+            String help,
+            String reason,
+            String section,
+            double min,
+            double max,
+            List<String> options,
+            boolean nullable,
+            boolean readOnly,
+            boolean secret,
+            boolean set) {
         public String title() {
             return label.isEmpty() ? path : label;
         }
@@ -42,12 +52,10 @@ public final class SettingsSchema {
     }
 
     /** A setting with where it sits: the section it is listed under and the group titles above it. */
-    public record Leaf(Node node, String section, List<String> trail, String hay) {
-    }
+    public record Leaf(Node node, String section, List<String> trail, String hay) {}
 
     /** A section name and how many settings it holds. */
-    public record Section(String name, int count) {
-    }
+    public record Section(String name, int count) {}
 
     /** What a text field's content means. */
     public record Parsed(boolean ok, JsonElement value, String error) {
@@ -91,7 +99,11 @@ public final class SettingsSchema {
             }
             Node n = node(o, type);
             String section = n.section().isEmpty() ? (top != null ? top : "Other") : n.section();
-            out.add(new Leaf(n, section, trail, (n.path() + "\n" + n.label() + "\n" + n.help() + "\n" + section).toLowerCase(Locale.ROOT)));
+            out.add(new Leaf(
+                    n,
+                    section,
+                    trail,
+                    (n.path() + "\n" + n.label() + "\n" + n.help() + "\n" + section).toLowerCase(Locale.ROOT)));
         }
     }
 
@@ -103,9 +115,20 @@ public final class SettingsSchema {
                 if (x.isJsonPrimitive() && options.size() < 500) options.add(Text.sanitize(x.getAsString(), 100));
             }
         }
-        return new Node(Text.sanitize(Json.str(o, "path"), 200), type, Text.sanitize(Json.str(o, "label"), 100), Text.sanitize(Json.str(o, "help"), 300),
-            Text.sanitize(Json.str(o, "reason"), 100), Text.sanitize(Json.str(o, "section"), 80), number(o, "min"), number(o, "max"), options,
-            Json.bool(o, "nullable"), Json.bool(o, "readOnly"), Json.bool(o, "secret"), Json.bool(o, "set"));
+        return new Node(
+                Text.sanitize(Json.str(o, "path"), 200),
+                type,
+                Text.sanitize(Json.str(o, "label"), 100),
+                Text.sanitize(Json.str(o, "help"), 300),
+                Text.sanitize(Json.str(o, "reason"), 100),
+                Text.sanitize(Json.str(o, "section"), 80),
+                number(o, "min"),
+                number(o, "max"),
+                options,
+                Json.bool(o, "nullable"),
+                Json.bool(o, "readOnly"),
+                Json.bool(o, "secret"),
+                Json.bool(o, "set"));
     }
 
     private static double number(JsonObject o, String key) {
@@ -178,7 +201,8 @@ public final class SettingsSchema {
         } catch (NumberFormatException e) {
             return Parsed.bad("too large");
         }
-        if (n.type().equals("int") && (v < Integer.MIN_VALUE || v > Integer.MAX_VALUE)) return Parsed.bad("too large for a whole number setting");
+        if (n.type().equals("int") && (v < Integer.MIN_VALUE || v > Integer.MAX_VALUE))
+            return Parsed.bad("too large for a whole number setting");
         String range = range(n, v);
         return range.isEmpty() ? Parsed.good(new JsonPrimitive(v)) : Parsed.bad(range);
     }
@@ -208,7 +232,8 @@ public final class SettingsSchema {
                 if (!v.isJsonPrimitive() || !v.getAsJsonPrimitive().isNumber()) return "a whole number";
                 double d = v.getAsDouble();
                 if (d != Math.rint(d) || Double.isInfinite(d)) return "a whole number";
-                if (n.type().equals("int") && (d < Integer.MIN_VALUE || d > Integer.MAX_VALUE)) return "too large for a whole number setting";
+                if (n.type().equals("int") && (d < Integer.MIN_VALUE || d > Integer.MAX_VALUE))
+                    return "too large for a whole number setting";
                 return range(n, d);
             }
             case "double": {

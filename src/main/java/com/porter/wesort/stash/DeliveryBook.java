@@ -23,8 +23,7 @@ public final class DeliveryBook {
     /** A full chest is looked at again this often while an order waits for space (lids out of sight are never seen). */
     public static final long RECHECK_MS = 2 * 60 * 1000L;
 
-    public record Pos(int x, int y, int z) {
-    }
+    public record Pos(int x, int y, int z) {}
 
     /** One chest (a single, or a double with its two halves). Plain fields so the stash file can hold it. */
     public static final class Entry {
@@ -41,8 +40,7 @@ public final class DeliveryBook {
         /** A player has been seen with it open (cleared when they close it). */
         public transient volatile boolean opened;
 
-        public Entry() {
-        }
+        public Entry() {}
 
         public Entry(List<Pos> parts, boolean primary) {
             this.primary = primary;
@@ -56,7 +54,8 @@ public final class DeliveryBook {
         }
 
         public boolean has(Pos p) {
-            for (int i = 0; i + 2 < at.length; i += 3) if (at[i] == p.x() && at[i + 1] == p.y() && at[i + 2] == p.z()) return true;
+            for (int i = 0; i + 2 < at.length; i += 3)
+                if (at[i] == p.x() && at[i + 1] == p.y() && at[i + 2] == p.z()) return true;
             return false;
         }
 
@@ -98,7 +97,8 @@ public final class DeliveryBook {
     }
 
     private static final Comparator<Entry> LOW_FIRST = Comparator.<Entry>comparingInt(Entry::y)
-        .thenComparingInt(e -> e.at.length > 0 ? e.at[0] : 0).thenComparingInt(e -> e.at.length > 2 ? e.at[2] : 0);
+            .thenComparingInt(e -> e.at.length > 0 ? e.at[0] : 0)
+            .thenComparingInt(e -> e.at.length > 2 ? e.at[2] : 0);
 
     /** Lowest first. */
     public List<Entry> sorted() {
@@ -307,7 +307,8 @@ public final class DeliveryBook {
         Entry usable = firstUsable();
         Entry flagged = flagged();
         // A chest a player emptied, lower than the one in use, is looked at first
-        if (flagged != null && (usable == null || LOW_FIRST.compare(flagged, usable) < 0)) return DeliveryRoom.recheck(flagged.first());
+        if (flagged != null && (usable == null || LOW_FIRST.compare(flagged, usable) < 0))
+            return DeliveryRoom.recheck(flagged.first());
         if (usable != null) return DeliveryRoom.ROOM;
         if (autoExpand && expandBlocker == null) return DeliveryRoom.EXPAND;
         if (recheckEvery > 0) {
@@ -319,7 +320,9 @@ public final class DeliveryBook {
 
     /** "delivery storage full, auto expand is off" or "delivery storage full: can't place higher: ...". */
     public static String waitReason(boolean autoExpand, String expandBlocker, int chests) {
-        if (!autoExpand) return "delivery storage full (" + chests + (chests == 1 ? " chest" : " chests") + "), auto expand is off";
-        return "delivery storage full: can't place higher: " + (expandBlocker == null ? "not known yet" : expandBlocker);
+        if (!autoExpand)
+            return "delivery storage full (" + chests + (chests == 1 ? " chest" : " chests") + "), auto expand is off";
+        return "delivery storage full: can't place higher: "
+                + (expandBlocker == null ? "not known yet" : expandBlocker);
     }
 }

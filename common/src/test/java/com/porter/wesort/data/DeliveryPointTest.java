@@ -1,11 +1,11 @@
 package com.porter.wesort.data;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.junit.jupiter.api.Test;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 class DeliveryPointTest {
     private static JsonObject body(Object... kv) {
@@ -21,9 +21,25 @@ class DeliveryPointTest {
         return o;
     }
 
-    @Test void createMakesAFreshPendingPoint() {
-        var o = body("server", "2b2t.org", "dimension", "minecraft:overworld", "x", 10, "y", 64, "z", -20,
-            "type", "CHEST", "access", "MEMBER", "member", "alice");
+    @Test
+    void createMakesAFreshPendingPoint() {
+        var o = body(
+                "server",
+                "2b2t.org",
+                "dimension",
+                "minecraft:overworld",
+                "x",
+                10,
+                "y",
+                64,
+                "z",
+                -20,
+                "type",
+                "CHEST",
+                "access",
+                "MEMBER",
+                "member",
+                "alice");
         var p = DeliveryPoint.create(o);
         assertEquals(DeliveryPoint.Status.PENDING, p.status());
         assertEquals(1, p.revision());
@@ -32,36 +48,162 @@ class DeliveryPointTest {
         assertEquals("alice", p.member());
     }
 
-    @Test void validationRejectsMalformedPoints() {
-        assertThrows(IllegalArgumentException.class, () -> DeliveryPoint.create(body("dimension", "minecraft:overworld", "x", 0, "y", 64, "z", 0, "type", "CHEST", "access", "PROJECT")));
-        assertThrows(IllegalArgumentException.class, () -> DeliveryPoint.create(body("server", "2b2t.org", "dimension", "bad", "x", 0, "y", 64, "z", 0, "type", "CHEST", "access", "PROJECT")));
-        assertThrows(IllegalArgumentException.class, () -> DeliveryPoint.create(body("server", "2b2t.org", "dimension", "minecraft:overworld", "x", 30000001, "y", 64, "z", 0, "type", "CHEST", "access", "PROJECT")));
-        assertThrows(IllegalArgumentException.class, () -> DeliveryPoint.create(body("server", "2b2t.org", "dimension", "minecraft:overworld", "x", 0, "y", 64, "z", 0, "type", "CHEST", "access", "MEMBER")));
-        assertThrows(IllegalArgumentException.class, () -> DeliveryPoint.create(body("server", "2b2t.org", "dimension", "minecraft:overworld", "x", 0, "y", 64, "z", 0, "type", "CHEST", "access", "INTERNAL", "member", "alice")));
+    @Test
+    void validationRejectsMalformedPoints() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> DeliveryPoint.create(body(
+                        "dimension",
+                        "minecraft:overworld",
+                        "x",
+                        0,
+                        "y",
+                        64,
+                        "z",
+                        0,
+                        "type",
+                        "CHEST",
+                        "access",
+                        "PROJECT")));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> DeliveryPoint.create(body(
+                        "server",
+                        "2b2t.org",
+                        "dimension",
+                        "bad",
+                        "x",
+                        0,
+                        "y",
+                        64,
+                        "z",
+                        0,
+                        "type",
+                        "CHEST",
+                        "access",
+                        "PROJECT")));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> DeliveryPoint.create(body(
+                        "server",
+                        "2b2t.org",
+                        "dimension",
+                        "minecraft:overworld",
+                        "x",
+                        30000001,
+                        "y",
+                        64,
+                        "z",
+                        0,
+                        "type",
+                        "CHEST",
+                        "access",
+                        "PROJECT")));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> DeliveryPoint.create(body(
+                        "server",
+                        "2b2t.org",
+                        "dimension",
+                        "minecraft:overworld",
+                        "x",
+                        0,
+                        "y",
+                        64,
+                        "z",
+                        0,
+                        "type",
+                        "CHEST",
+                        "access",
+                        "MEMBER")));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> DeliveryPoint.create(body(
+                        "server",
+                        "2b2t.org",
+                        "dimension",
+                        "minecraft:overworld",
+                        "x",
+                        0,
+                        "y",
+                        64,
+                        "z",
+                        0,
+                        "type",
+                        "CHEST",
+                        "access",
+                        "INTERNAL",
+                        "member",
+                        "alice")));
     }
 
-    @Test void updateMergesAndIncrementsRevision() {
-        var p = DeliveryPoint.create(body("server", "2b2t.org", "dimension", "minecraft:overworld", "x", 10, "y", 64, "z", -20,
-            "type", "CHEST", "access", "PROJECT"));
-        var changed = p.updated(JsonParser.parseString("{\"status\":\"VERIFIED\"}").getAsJsonObject());
+    @Test
+    void updateMergesAndIncrementsRevision() {
+        var p = DeliveryPoint.create(body(
+                "server",
+                "2b2t.org",
+                "dimension",
+                "minecraft:overworld",
+                "x",
+                10,
+                "y",
+                64,
+                "z",
+                -20,
+                "type",
+                "CHEST",
+                "access",
+                "PROJECT"));
+        var changed =
+                p.updated(JsonParser.parseString("{\"status\":\"VERIFIED\"}").getAsJsonObject());
         assertEquals(DeliveryPoint.Status.VERIFIED, changed.status());
         assertEquals(p.id(), changed.id());
         assertEquals(p.server(), changed.server());
         assertEquals(2, changed.revision());
     }
 
-    @Test void redactionDropsCoordinatesAndDimensionButKeepsSelectionFields() {
-        var p = DeliveryPoint.create(body("server", "2b2t.org", "dimension", "minecraft:the_nether", "x", 1234, "y", 64, "z", -5678,
-            "type", "CHEST", "access", "MEMBER", "member", "alice"));
+    @Test
+    void redactionDropsCoordinatesAndDimensionButKeepsSelectionFields() {
+        var p = DeliveryPoint.create(body(
+                "server",
+                "2b2t.org",
+                "dimension",
+                "minecraft:the_nether",
+                "x",
+                1234,
+                "y",
+                64,
+                "z",
+                -5678,
+                "type",
+                "CHEST",
+                "access",
+                "MEMBER",
+                "member",
+                "alice"));
         var r = p.jsonRedacted();
         assertFalse(r.has("x") || r.has("y") || r.has("z") || r.has("dimension"), r.toString());
         assertTrue(r.has("id") && r.has("server") && r.has("type") && r.has("access") && r.has("member"));
         assertTrue(p.json().has("x") && p.json().has("dimension"));
     }
 
-    @Test void readRoundTripsAStoredPoint() {
-        var p = DeliveryPoint.create(body("server", "2b2t.org", "dimension", "minecraft:overworld", "x", 10, "y", 64, "z", -20,
-            "type", "PLAYER_MEETING", "access", "PROJECT"));
+    @Test
+    void readRoundTripsAStoredPoint() {
+        var p = DeliveryPoint.create(body(
+                "server",
+                "2b2t.org",
+                "dimension",
+                "minecraft:overworld",
+                "x",
+                10,
+                "y",
+                64,
+                "z",
+                -20,
+                "type",
+                "PLAYER_MEETING",
+                "access",
+                "PROJECT"));
         var back = DeliveryPoint.read(p.json());
         assertEquals(p, back);
     }

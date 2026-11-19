@@ -2,9 +2,8 @@ package com.porter.wesortmanager;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.sun.net.httpserver.HttpExchange;
 import com.porter.wesort.data.Job;
-
+import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.util.List;
 
@@ -25,7 +24,10 @@ final class JobRoutes {
     }
 
     private void list(HttpExchange ex) throws IOException {
-        if (Redact.forced(Router.user(ex))) { Http.error(ex, 404, "not found"); return; }
+        if (Redact.forced(Router.user(ex))) {
+            Http.error(ex, 404, "not found");
+            return;
+        }
         var out = new JsonObject();
         out.add("jobs", scheduler.queue());
         Http.json(ex, 200, out);
@@ -33,25 +35,52 @@ final class JobRoutes {
 
     private void manage(HttpExchange ex) throws IOException {
         var raw = AddonRoutes.readJson(ex);
-        if (raw == null || !raw.isJsonObject()) { Http.error(ex, 400, "Expected a job management request"); return; }
+        if (raw == null || !raw.isJsonObject()) {
+            Http.error(ex, 400, "Expected a job management request");
+            return;
+        }
         var body = raw.getAsJsonObject();
         String action = AddonRoutes.string(body, "action");
         if (action == null || !List.of("submit", "revoke", "reconcile").contains(action)) {
-            Http.error(ex, 400, "action must be submit, revoke or reconcile"); return;
+            Http.error(ex, 400, "action must be submit, revoke or reconcile");
+            return;
         }
         try {
             JsonElement result;
             switch (action) {
                 case "submit" -> {
                     Job.Category category;
-                    try { category = Job.Category.valueOf(AddonRoutes.string(body, "category")); }
-                    catch (RuntimeException e) { Http.error(ex, 400, "category is required"); return; }
+                    try {
+                        category = Job.Category.valueOf(AddonRoutes.string(body, "category"));
+                    } catch (RuntimeException e) {
+                        Http.error(ex, 400, "category is required");
+                        return;
+                    }
                     String chain = AddonRoutes.string(body, "chain");
-                    if (chain == null) { Http.error(ex, 400, "chain is required"); return; }
-                    result = scheduler.submit(category, chain, AddonRoutes.string(body, "detail"), priority(body), Router.user(ex).id()).json();
+                    if (chain == null) {
+                        Http.error(ex, 400, "chain is required");
+                        return;
+                    }
+                    result = scheduler
+                            .submit(
+                                    category,
+                                    chain,
+                                    AddonRoutes.string(body, "detail"),
+                                    priority(body),
+                                    Router.user(ex).id())
+                            .json();
                 }
-                case "revoke" -> result = scheduler.revoke(requireId(body), Router.user(ex).id()).json();
-                default -> result = scheduler.reconcile(requireId(body), outcome(body), Router.user(ex).id()).json();
+                case "revoke" ->
+                    result = scheduler
+                            .revoke(requireId(body), Router.user(ex).id())
+                            .json();
+                default ->
+                    result = scheduler
+                            .reconcile(
+                                    requireId(body),
+                                    outcome(body),
+                                    Router.user(ex).id())
+                            .json();
             }
             audit.add(Router.user(ex), "job." + action, subject(result), AuthRoutes.address(ex));
             Http.json(ex, 200, result);
@@ -64,25 +93,48 @@ final class JobRoutes {
 
     private void agent(HttpExchange ex) throws IOException {
         var raw = AddonRoutes.readJson(ex);
-        if (raw == null || !raw.isJsonObject()) { Http.error(ex, 400, "Expected a job request"); return; }
+        if (raw == null || !raw.isJsonObject()) {
+            Http.error(ex, 400, "Expected a job request");
+            return;
+        }
         var body = raw.getAsJsonObject();
         String action = AddonRoutes.string(body, "action");
         String agent = AddonRoutes.string(body, "agent");
-        if (action == null || agent == null || !List.of("claim", "renew", "complete", "pause", "resume").contains(action)) {
-            Http.error(ex, 400, "action (claim, renew, complete, pause, resume) and agent are required"); return;
+        if (action == null
+                || agent == null
+                || !List.of("claim", "renew", "complete", "pause", "resume").contains(action)) {
+            Http.error(ex, 400, "action (claim, renew, complete, pause, resume) and agent are required");
+            return;
         }
         try {
             JsonElement result;
             switch (action) {
                 case "claim" -> result = scheduler.claim(agent);
-                case "renew" -> result = scheduler.renew(requireId(body), agent, requireToken(body)).json();
-                case "complete" -> result = scheduler.complete(requireId(body), agent, requireToken(body)).json();
+                case "renew" ->
+                    result = scheduler
+                            .renew(requireId(body), agent, requireToken(body))
+                            .json();
+                case "complete" ->
+                    result = scheduler
+                            .complete(requireId(body), agent, requireToken(body))
+                            .json();
                 case "pause" -> result = scheduler.pause(requireId(body), agent).json();
-                default -> result = scheduler.resume(requireId(body), agent, requireToken(body)).json();
+                default ->
+                    result = scheduler
+                            .resume(requireId(body), agent, requireToken(body))
+                            .json();
             }
-            String id = action.equals("claim") && result.isJsonObject() && result.getAsJsonObject().get("job").isJsonObject()
-                ? result.getAsJsonObject().getAsJsonObject("job").get("id").getAsString() : AddonRoutes.string(body, "id");
-            audit.add("agent:" + agent, "Signed WeSort agent", "job." + action, id == null ? "" : id, AuthRoutes.address(ex));
+            String id = action.equals("claim")
+                            && result.isJsonObject()
+                            && result.getAsJsonObject().get("job").isJsonObject()
+                    ? result.getAsJsonObject().getAsJsonObject("job").get("id").getAsString()
+                    : AddonRoutes.string(body, "id");
+            audit.add(
+                    "agent:" + agent,
+                    "Signed WeSort agent",
+                    "job." + action,
+                    id == null ? "" : id,
+                    AuthRoutes.address(ex));
             Http.json(ex, 200, result);
         } catch (JobScheduler.Conflict conflict) {
             Http.error(ex, 409, conflict.getMessage());
@@ -92,7 +144,9 @@ final class JobRoutes {
     }
 
     private static String subject(JsonElement result) {
-        return result.isJsonObject() && result.getAsJsonObject().has("id") ? result.getAsJsonObject().get("id").getAsString() : "";
+        return result.isJsonObject() && result.getAsJsonObject().has("id")
+                ? result.getAsJsonObject().get("id").getAsString()
+                : "";
     }
 
     private static String requireId(JsonObject body) {

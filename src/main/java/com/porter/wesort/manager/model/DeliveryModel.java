@@ -3,7 +3,6 @@ package com.porter.wesort.manager.model;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -15,13 +14,19 @@ import java.util.List;
 public final class DeliveryModel {
     public static final int GRID = CartPlan.MAX_SHULKERS;
 
-    public record Inner(String id, long count) {
-    }
+    public record Inner(String id, long count) {}
 
     /** One stack in a chest. {@code contents} is null for anything but a shulker, or when it was not reported. */
-    public record Item(int slot, String id, String name, int count, int maxStack, boolean shulker, List<Inner> contents,
-                       int damage, int maxDamage) {
-    }
+    public record Item(
+            int slot,
+            String id,
+            String name,
+            int count,
+            int maxStack,
+            boolean shulker,
+            List<Inner> contents,
+            int damage,
+            int maxDamage) {}
 
     /** {@code items} is null when the chest has not been seen. */
     public record Chest(int n, int size, boolean full, long readAt, List<Item> items) {
@@ -43,8 +48,7 @@ public final class DeliveryModel {
     }
 
     /** The line under the preview and the warning, "" for none. */
-    public record Fit(String text, String warning) {
-    }
+    public record Fit(String text, String warning) {}
 
     public static final long RETRY_MIN_MS = 5_000, RETRY_MAX_MS = 60_000;
 
@@ -86,7 +90,12 @@ public final class DeliveryModel {
                     list.add(item);
                 }
             }
-            chests.add(new Chest((int) Json.num(c, "n", chests.size()), size, Json.bool(c, "full"), Math.max(0, Json.lng(c, "readAt", 0)), list == null ? null : List.copyOf(list)));
+            chests.add(new Chest(
+                    (int) Json.num(c, "n", chests.size()),
+                    size,
+                    Json.bool(c, "full"),
+                    Math.max(0, Json.lng(c, "readAt", 0)),
+                    list == null ? null : List.copyOf(list)));
         }
         return new DeliveryModel(List.copyOf(chests), Math.max(0, Json.lng(o, "readAt", 0)));
     }
@@ -111,8 +120,16 @@ public final class DeliveryModel {
             }
             inside = List.copyOf(inside);
         }
-        return new Item(slot, id, name, (int) Math.max(1, Math.min(100_000, Json.num(o, "count", 1))), (int) Math.max(1, Json.num(o, "maxStack", 64)),
-            shulker, inside, (int) Math.max(0, Json.num(o, "damage", 0)), (int) Math.max(0, Json.num(o, "maxDamage", 0)));
+        return new Item(
+                slot,
+                id,
+                name,
+                (int) Math.max(1, Math.min(100_000, Json.num(o, "count", 1))),
+                (int) Math.max(1, Json.num(o, "maxStack", 64)),
+                shulker,
+                inside,
+                (int) Math.max(0, Json.num(o, "damage", 0)),
+                (int) Math.max(0, Json.num(o, "maxDamage", 0)));
     }
 
     public List<Chest> chests() {
@@ -186,19 +203,24 @@ public final class DeliveryModel {
         String text;
         if (chests.size() == 1) {
             text = c0.seen()
-                ? "Delivery chest: " + c0.items().size() + " of " + c0.size() + " slots used, " + (c0.size() - c0.items().size()) + " free" + needText + asOf + "."
-                : "Delivery chest: not seen yet" + needText + ".";
+                    ? "Delivery chest: " + c0.items().size() + " of " + c0.size() + " slots used, "
+                            + (c0.size() - c0.items().size()) + " free" + needText + asOf + "."
+                    : "Delivery chest: not seen yet" + needText + ".";
         } else {
             String first = c0.seen()
-                ? "the first (filled first) has " + (c0.size() - c0.items().size()) + " of " + c0.size() + " free"
-                : "the first is not seen yet";
-            text = chests.size() + " delivery chests: " + (known > 0 ? used + " of " + total + " slots used, " + free + " free" : "none seen yet")
-                + (unknown > 0 && known > 0 ? " (" + unknown + " not seen yet)" : "") + "; " + first + needText + asOf + ".";
+                    ? "the first (filled first) has " + (c0.size() - c0.items().size()) + " of " + c0.size() + " free"
+                    : "the first is not seen yet";
+            text = chests.size() + " delivery chests: "
+                    + (known > 0 ? used + " of " + total + " slots used, " + free + " free" : "none seen yet")
+                    + (unknown > 0 && known > 0 ? " (" + unknown + " not seen yet)" : "") + "; " + first + needText
+                    + asOf + ".";
         }
         String warning = "";
         if (need > free && unknown == 0) {
             warning = "This order needs " + need + " slots but only " + free + " are free: "
-                + (autoExpand ? "the bot will put up more chests (if it can)." : "the order will pause until a chest is emptied.");
+                    + (autoExpand
+                            ? "the bot will put up more chests (if it can)."
+                            : "the order will pause until a chest is emptied.");
         } else if (layout != null && layout.anyOverflow()) {
             warning = "Not all of it fits in the first chest: the rest goes into the next one.";
         }

@@ -20,7 +20,10 @@ final class TransportRoutes {
     }
 
     private void list(HttpExchange ex) throws IOException {
-        if (Redact.forced(Router.user(ex))) { Http.error(ex, 404, "not found"); return; }
+        if (Redact.forced(Router.user(ex))) {
+            Http.error(ex, 404, "not found");
+            return;
+        }
         var out = new JsonObject();
         out.add("profiles", profiles.list());
         Http.json(ex, 200, out);
@@ -28,15 +31,23 @@ final class TransportRoutes {
 
     private void update(HttpExchange ex) throws IOException {
         var raw = AddonRoutes.readJson(ex);
-        if (raw == null || !raw.isJsonObject()) { Http.error(ex, 400, "Expected a transport profile update"); return; }
+        if (raw == null || !raw.isJsonObject()) {
+            Http.error(ex, 400, "Expected a transport profile update");
+            return;
+        }
         var body = raw.getAsJsonObject();
         String server = AddonRoutes.string(body, "server");
         var expected = body.get("expectedRevision");
-        if (server == null || !(expected != null && expected.isJsonPrimitive() && expected.getAsJsonPrimitive().isNumber())) {
-            Http.error(ex, 400, "server and expectedRevision are required"); return;
+        if (server == null
+                || !(expected != null
+                        && expected.isJsonPrimitive()
+                        && expected.getAsJsonPrimitive().isNumber())) {
+            Http.error(ex, 400, "server and expectedRevision are required");
+            return;
         }
         try {
-            var profile = profiles.update(server, body, expected.getAsBigDecimal().longValueExact());
+            var profile =
+                    profiles.update(server, body, expected.getAsBigDecimal().longValueExact());
             audit.add(Router.user(ex), "transport.update", server, AuthRoutes.address(ex));
             Http.json(ex, 200, profile.json());
         } catch (TransportProfiles.Conflict conflict) {

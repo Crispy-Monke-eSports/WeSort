@@ -16,8 +16,27 @@ jobs:
           distribution: temurin
           java-version: '25.0.5+8'
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c
+      # Maven Central can rate-limit shared GitHub runners (HTTP 429). Retry only
+      # that transient failure, never genuine compile or test errors.
       - name: Build and test Minecraft 26.3 client
-        run: ./gradlew --no-daemon build -Pmc=26.3
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            log="$(mktemp)"
+            if ./gradlew --no-daemon build -Pmc=26.3 2>&1 | tee "$log"; then
+              rm -f "$log"
+              exit 0
+            fi
+            if (( attempt == 3 )) || ! grep -Eq 'Received status code 429|HTTP 429|Too Many Requests' "$log"; then
+              rm -f "$log"
+              exit 1
+            fi
+            rm -f "$log"
+            delay=$((attempt * 20))
+            echo "::warning::Maven rate limit (HTTP 429). Retrying Gradle build in ${delay}s."
+            sleep "$delay"
+          done
       - name: Record tests and build identity
         if: always()
         shell: bash
@@ -57,6 +76,8 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c
+        with:
+          cache-read-only: true
       - name: Build and test Manager
         run: ./gradlew --no-daemon -p stash-manager-server build
       - name: Verify fresh installation, restart and data isolation

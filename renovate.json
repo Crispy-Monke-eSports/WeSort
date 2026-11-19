@@ -1,0 +1,20 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "minimumReleaseAge": "14 days",
+  "minimumReleaseAgeBehaviour": "timestamp-required",
+  "internalChecksFilter": "strict",
+  "automerge": true,
+  "automergeType": "pr",
+  "platformAutomerge": true,
+  "lockFileMaintenance": {
+    "enabled": true,
+    "minimumReleaseAge": null
+  },
+  "vulnerabilityAlerts": {
+    "automerge": true,
+    "minimumReleaseAge": null
+  }
+}

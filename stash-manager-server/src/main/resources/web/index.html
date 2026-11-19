@@ -82,56 +82,37 @@
     </header>
 
     <nav class="dash-nav" id="dash-nav" aria-label="Pages">
-        <button type="button" class="mc-button nav-btn" data-page="stash">Stash</button>
-        <button type="button" class="mc-button nav-btn" data-page="orders">Orders</button>
+        <button type="button" class="mc-button nav-btn" data-page="shop">Shop</button>
         <button type="button" class="mc-button nav-btn" data-page="bots" id="bots-open">Bots</button>
         <button type="button" class="mc-button nav-btn" data-page="activity" id="nav-activity" hidden>Activity</button>
         <button type="button" class="mc-button nav-btn" data-page="settings">Settings</button>
     </nav>
 
     <main class="panel inventory" id="inventory">
-      <div class="panel-label" id="panel-label">Search</div>
-      <input id="search" class="mc-input central-search" type="search" aria-label="Search guild stock and stash" placeholder="Search guild stock and stash (e.g. diamond sword, @minecraft)" autocomplete="off" spellcheck="false">
+      <div class="panel-label" id="panel-label">Shop</div>
+      <input id="search" class="mc-input central-search" type="search" aria-label="Search the stash" placeholder="Search the stash (e.g. diamond sword, @minecraft)" autocomplete="off" spellcheck="false">
 
-      <div class="view view-items" id="view-items">
-        <details class="guild-stock" id="guild-stock" open>
-          <summary id="guild-stock-title">Guild stock</summary>
-          <p id="guild-description-view" hidden></p>
-          <p id="stock-status" role="status">Loading verified stock…</p>
-          <p>Available counts exclude reserved and unverified items.</p>
-          <table><thead><tr><th>Server</th><th>Item</th><th>Observed</th><th>Reserved</th><th>Available</th><th>Unknown</th></tr></thead><tbody id="stock-balances"></tbody></table>
-          <details id="stock-per-stash"><summary>Stock per stash</summary><table><thead><tr><th>Stash</th><th>Item</th><th>Observed</th><th>Reserved</th><th>Available</th><th>Unknown</th></tr></thead><tbody id="stock-stashes"></tbody></table></details>
-          <details id="stock-source-details"><summary>Physical sources</summary><ul id="stock-sources"></ul></details>
-        </details>
-        <div class="grid-wrap" id="grid-wrap">
-          <div class="item-grid" id="item-grid"></div>
-          <div class="empty" id="empty" hidden>
-            <p id="empty-text">No stash index yet. Turn on stash-manager in the addon and set its API key.</p>
-          </div>
+      <div class="grid-wrap" id="grid-wrap">
+        <div class="item-grid" id="item-grid"></div>
+        <div class="empty" id="empty" hidden>
+          <p id="empty-text">No stash index yet. Turn on stash-manager in the addon and set its API key.</p>
         </div>
-        <div class="toolbar">
-          <select id="sort" class="mc-select" aria-label="Sort">
-            <option value="creative">Creative order</option>
-            <option value="count">Count</option>
-            <option value="name">Name A-Z</option>
-            <option value="id">ID</option>
-          </select>
-        </div>
-        <div class="summary" id="summary"></div>
-        <div class="hint only-desktop order-hint">Right-click a shulker box to look inside. Shift-click an item to add a stack to the order cart.</div>
-        <div class="hint only-mobile order-hint">Tap a shulker box to look inside. Long-press an item, or tap its +, to add a stack to the order cart.</div>
       </div>
+      <div class="toolbar">
+        <select id="sort" class="mc-select" aria-label="Sort">
+          <option value="creative">Creative order</option>
+          <option value="count">Count</option>
+          <option value="name">Name A-Z</option>
+          <option value="id">ID</option>
+        </select>
+      </div>
+      <div class="summary" id="summary"></div>
+      <div class="hint only-desktop order-hint">Double-click or Shift-click an item to add a stack to the cart. Right-click a shulker box to look inside.</div>
+      <div class="hint only-mobile order-hint">Tap an item's + to add a stack to the cart, or long-press it. Tap a shulker box to look inside.</div>
 
-      <div class="view view-orders" id="view-orders" hidden>
-        <section class="inset bot-strip" id="bot-strip">
+      <section class="inset bot-strip" id="bot-strip">
           <div class="bot-line" id="delivery-status"></div>
           <div class="bot-line warn" id="order-blocker" hidden></div>
-        </section>
-        <section class="inset order-picker" id="order-picker">
-          <div class="section-title">Order maker</div>
-          <div class="crumbs" id="crumbs"></div>
-          <div class="picker-body" id="picker-body"></div>
-          <div class="hint">Drag an item onto the cart, or double-click it: +1 stack. Hold Shift: +1 shulker of it. Click an item for an exact amount.</div>
         </section>
         <section class="inset cart" id="cart-drop">
           <div class="cart-head">
@@ -209,7 +190,6 @@
           <p id="order-audit-status" role="status"></p>
           <div id="order-audit-results"></div>
         </details>
-      </div>
     </main>
 
     <main class="panel dash-page" id="page-bots" hidden>
@@ -419,8 +399,7 @@
   </div>
 
   <nav class="bottom-nav only-mobile" id="bottom-nav" aria-label="Pages">
-    <button type="button" class="bnav-btn" data-page="stash"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg><span>Stash</span></button>
-    <button type="button" class="bnav-btn" data-page="orders"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 8l9-5 9 5v8l-9 5-9-5zM3 8l9 5 9-5M12 13v8"/></svg><span>Orders</span></button>
+    <button type="button" class="bnav-btn" data-page="shop"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 8l9-5 9 5v8l-9 5-9-5zM3 8l9 5 9-5M12 13v8"/></svg><span>Shop</span></button>
     <button type="button" class="bnav-btn" data-page="bots"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 9h14v10H5zM12 9V5M9 14h.01M15 14h.01M2 13v3M22 13v3"/></svg><span>Bots</span></button>
     <button type="button" class="bnav-btn" data-page="activity"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg><span>Activity</span></button>
     <button type="button" class="bnav-btn" id="bnav-more" aria-haspopup="dialog" aria-expanded="false" aria-controls="more-sheet"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h.01M12 12h.01M19 12h.01"/></svg><span>More</span></button>

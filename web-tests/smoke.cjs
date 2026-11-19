@@ -166,7 +166,7 @@ async function scenario(loggedIn) {
       assert.equal(w.document.querySelector(`#page-${name}`), null);
     }
     if (loggedIn) {
-      for (const name of ['orders', 'bots', 'activity', 'settings', 'stash']) {
+      for (const name of ['shop', 'bots', 'activity', 'settings']) {
         const button = w.document.querySelector(`#dash-nav [data-page="${name}"]`);
         assert(button, name);
         button.click();
@@ -176,7 +176,6 @@ async function scenario(loggedIn) {
         }
       }
       assert(requests.includes('/api/v1/bots'));
-      assert(requests.includes('/api/v1/stock'));
       assert.match(w.document.querySelector('#operational-counts').textContent, /1 online.*2 offline.*3 fresh sources/);
       assert.match(w.document.querySelector('#operational-alerts').textContent, /4.*Sources need a rescan/);
       const orderAudit = w.document.querySelector('#order-audit');
@@ -196,39 +195,16 @@ async function scenario(loggedIn) {
       Array.from(review.querySelectorAll('button')).find(button => button.textContent === 'Approve').click();
       await settle();
       assert.deepEqual(orderReviews, [{decision:'approve'}]);
-      assert.equal(w.document.querySelector('#stock-balances tr').textContent,
-        'test<img src=x onerror=alert(1)>6410540');
-      assert.equal(w.document.querySelector('#stock-stashes tr').textContent, 'fixtureminecraft:diamond6410540');
-      assert.equal(w.document.querySelector('#stock-balances img'), null, 'Stock labels must remain plain text');
-      assert.match(w.document.querySelector('#stock-sources').textContent, /minecraft:overworld.*1, 64, 2.*Observation expired.*revision 11/);
-      const details = w.document.querySelector('#stock-sources details');
-      details.open = true; details.dispatchEvent(new w.Event('toggle')); await settle();
-      assert(requests.some(x => x.startsWith('/api/v1/stock/source?id=')));
-      assert.match(details.textContent, /0\/26minecraft:diamond_sword/);
-      assert.equal(details.querySelector('img'), null, 'Component patches must remain plain text');
-      assert.equal(details.querySelector('button'), null);
-      const returnDetails = w.document.querySelectorAll('#stock-sources details')[1];
-      returnDetails.open = true; returnDetails.dispatchEvent(new w.Event('toggle')); await settle();
-      const [keep, mark] = returnDetails.querySelectorAll('button');
-      keep.click(); await settle();
-      assert.match(returnDetails.querySelector('[role="status"]').textContent, /Return recorded/);
-      mark.click(); await settle();
-      assert.match(returnDetails.querySelector('[role="status"]').textContent, /UUID marking requested/);
-      assert.deepEqual(returnChoices, [false, true].map((markUuid, expectedDecisionRevision) =>
-        ({source:'c:return', path:'0', slotRevision:9, markUuid, expectedDecisionRevision})));
       assert(requests.some(x => x.includes('/settings?scope=plugin')));
       w.document.querySelector('#dash-nav [data-page="settings"]').click(); await settle();
       assert.equal(w.document.querySelector('#kit-admin').hidden, false);
       assert.equal(w.document.querySelector('#guild-admin').hidden, false);
-      assert.match(w.document.querySelector('#guild-stock-title').textContent, /<img src=x> Guild.*Shared stock/);
-      assert.equal(w.document.querySelector('#guild-stock-title img'), null);
       w.document.querySelector('#guild-name').value = 'New guild';
       w.document.querySelector('#guild-approval').value = 'GUILD';
       w.document.querySelector('#guild-form').dispatchEvent(new w.Event('submit', {cancelable: true}));
       await settle();
       assert.deepEqual(guildUpdates, [{name:'New guild', description:'Shared stock', approvalPolicy:'GUILD', expectedRevision:1}]);
       assert.equal(w.document.querySelector('#guild-approval').value, 'GUILD');
-      assert.match(w.document.querySelector('#guild-stock-title').textContent, /New guild/);
       assert.equal(w.document.querySelector('#physical-admin').hidden, false);
       assert.match(w.document.querySelector('#physical-list').textContent, /NEEDS_RECONCILIATION.*BREAK.*Order o-one/);
       assert.equal(w.document.querySelector('#physical-list img'), null);

@@ -2,7 +2,7 @@
   "name": "wesort-web-regression",
   "private": true,
   "scripts": {
-    "test": "node smoke.cjs"
+    "test": "node smoke.cjs && node shop.cjs"
   },
   "devDependencies": {
     "eslint": "9.39.5",

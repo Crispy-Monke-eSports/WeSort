@@ -68,10 +68,6 @@
     summary: $("summary"),
     tooltip: $("tooltip"),
     panelLabel: $("panel-label"),
-    viewItems: $("view-items"),
-    viewOrders: $("view-orders"),
-    crumbs: $("crumbs"),
-    pickerBody: $("picker-body"),
     cartLines: $("cart-lines"),
     cartTotals: $("cart-totals"),
     namesSeg: $("names-seg"),
@@ -175,7 +171,6 @@
     accountName: $("account-name"),
     accountSection: $("account-section"),
     accountWho: $("account-who"),
-    orderPicker: $("order-picker"),
     usersSection: $("users-section"),
     usersBody: $("users-body"),
     audit: $("audit"),
@@ -312,7 +307,7 @@
   /** The dashboard pages this user may open. */
   function pageAllowed(page) {
     if (page === "bots" || page === "activity") return can("activity");
-    return ["stash", "orders", "settings"].indexOf(page) >= 0;
+    return ["shop", "settings"].indexOf(page) >= 0;
   }
 
   /** An order is the user's own when they placed it; an order without placedBy is from before users: the owner's. */
@@ -701,176 +696,14 @@
     });
   }
 
-  var guildStock = null;
-
-  function stockRow(tbody, location, item) {
-    var row = document.createElement("tr");
-    var cell = row.insertCell();
-    if (typeof location === "string") cell.textContent = location;
-    else cell.appendChild(location);
-    var name = streamerOn() ? item.id : item.name || item.id;
-    var variant = str(item.key).split("#")[1];
-    if (variant) name += " · " + variant;
-    [name, item.observed, item.reserved, item.available, item.unknown].forEach(function (value) {
-      row.insertCell().textContent = String(value);
-    });
-    tbody.appendChild(row);
-  }
-
-  function renderGuildBalances() {
-    var data = guildStock;
-    var status = $("stock-status");
-    var balances = $("stock-balances");
-    var stashRows = $("stock-stashes");
-    balances.replaceChildren();
-    stashRows.replaceChildren();
-    var rows = data && Array.isArray(data.items) ? data.items : [];
-    var stashes = data && Array.isArray(data.stashes) ? data.stashes : [];
-    $("stock-per-stash").hidden = !stashes.length;
-    if (!data) {
-      status.textContent = "Stock unavailable. Availability cannot be confirmed.";
-      return;
-    }
-    var query = parseQuery(el.search.value);
-    function matchesStock(item) {
-      var id = str(item.id);
-      return matches({ item: item, ns: id.split(":")[0], hay: [item.name, id, item.key].join("\n").toLowerCase() }, query);
-    }
-    var matching = rows.filter(matchesStock);
-    var message = !rows.length ? "No verified stock observations yet."
-      : !matching.length ? "No matching items."
-      : (matching.length > 200 ? "Showing 200 of " : "") + matching.length + " item variants · revision " + data.stockRevision;
-    if (Array.isArray(data.automation) && data.automation.length) message += " · physical sorting active or awaiting reconciliation. New orders paused.";
-    if (status.textContent !== message) status.textContent = message;
-    matching.slice(0, 200).forEach(function (item) {
-      stockRow(balances, streamerOn() ? "Hidden" : item.serverLabel || item.server, item);
-    });
-    var visibleStashes = new Set(state.stashes.map(stashKey));
-    stashes.forEach(function (stash) {
-      var key = stashKey(stash);
-      (stash.items || []).filter(matchesStock).forEach(function (item) {
-        var label = streamerOn() ? "Hidden" : [stash.stash, stash.serverLabel].filter(Boolean).join(" · ");
-        if (!visibleStashes.has(key) || streamerOn()) {
-          stockRow(stashRows, label, item);
-          return;
-        }
-        var button = document.createElement("button");
-        button.type = "button";
-        button.className = "mc-button small";
-        button.textContent = label;
-        button.addEventListener("click", function () {
-          selectStash(key);
-          showView(false);
-          el.search.value = "=" + (item.key || item.id);
-          queueRender(0);
-          el.search.focus();
-        });
-        stockRow(stashRows, button, item);
-      });
-    });
-  }
-
-  function renderGuildStock(data) {
-    if (auth.blocked || !can("view")) return;
-    guildStock = data;
-    renderGuildBalances();
-    var sources = $("stock-sources");
-    var physical = data && can("positions") && !streamerOn() && Array.isArray(data.sources) ? data.sources : [];
-    $("stock-source-details").hidden = !physical.length;
-    sources.replaceChildren();
-    physical.forEach(function (source) {
-      var row = document.createElement("li");
-      var position = Array.isArray(source.parts) ? " · " + source.parts.map(function (p) { return p.join(", "); }).join(" / ") : "";
-      var observedDate = new Date(Number(source.verifiedAt));
-      var observedLabel = Number(source.verifiedAt) > 0 && Number.isFinite(observedDate.getTime()) ? observedDate.toISOString() : "not verified";
-      var sourceState = ({FRESH: "Fresh", PROTECTED: "Protected stock; automation blocked", STALE_STARTUP: "Rescan required after restart", STALE_AGE: "Observation expired", STALE: "Rescan required", UNREACHABLE: "Cannot reach container", UNKNOWN: "Not read yet", MISSING: "Container missing", WITHDRAWN: "Absent from latest scan; contents unknown", SHARED_SOURCE: source.slotSchema ? "Shared physical source" : "Shared source; ordering paused"})[source.state] || source.state;
-      row.textContent = (source.serverLabel || source.server) + " · " + (Array.isArray(source.stashes) ? source.stashes.join(", ") : source.stash) + " · " + (source.dimension || "") + position + " · " + sourceState +
-        " · revision " + source.sourceRevision + " · last verified " + observedLabel + boxIdentityLabel(source);
-      if (source.id && source.slotSchema) {
-        var details = document.createElement("details");
-        var summary = document.createElement("summary"); summary.textContent = "Inspect last verified slots (" + source.slotCount + ")"; details.appendChild(summary);
-        details.addEventListener("toggle", function () {
-          if (!details.open || details.dataset.loaded) return;
-          details.dataset.loaded = "true";
-          api("/api/v1/stock/source?id=" + encodeURIComponent(source.id)).then(function (data) {
-            var note = document.createElement("p"); note.textContent = "State: " + data.state + ". Slot paths identify locations; fingerprints describe contents. Uncertain contents require a new physical read."; details.appendChild(note);
-            var table = document.createElement("table");
-            var returnSlots = new Map();
-            if (Array.isArray(data.returnIntake)) {
-              (data.slots || []).forEach(function (slot) {
-                if (slot.present && slot.kind === "SHULKER" && slot.count === 1 && !slot.path.includes("/")) returnSlots.set(slot.path, slot);
-              });
-            }
-            ((data.snapshot && data.snapshot.positions) || []).forEach(function (slot) {
-              var line = document.createElement("tr");
-              [slot.path, slot.id, slot.count, slot.copies, slot.kind, slot.components].forEach(function (value) {
-                var cell = document.createElement("td"); cell.textContent = String(value); line.appendChild(cell);
-              });
-              var verified = returnSlots.get(slot.path);
-              if (verified) line.appendChild(returnIntakeControls(data, verified));
-              table.appendChild(line);
-            }); details.appendChild(table);
-          }, function () { details.dataset.loaded = ""; var error = document.createElement("p"); error.textContent = "Snapshot unavailable. Reopen to retry."; details.appendChild(error); });
-        }); row.appendChild(details);
-      }
-      sources.appendChild(row);
-    });
-  }
-
-  // Step 4 (W-030/W-063): box UUID identity per physical source, when the Manager knows any.
-  function boxIdentityLabel(source) {
-    if (!Array.isArray(source.boxIdentities) || !source.boxIdentities.length) return "";
-    var parts = source.boxIdentities.map(function (entry) {
-      if (!entry || typeof entry !== "object") return null;
-      var path = str(entry.path);
-      if (!entry.hasUUID) return (path ? path + ": " : "") + "unlabeled box";
-      var label = (path ? path + ": " : "") + "UUID " + str(entry.boxUUID) + " (" + str(entry.identityStatus) + ")";
-      if (entry.identityStatus === "DUPLICATE" || entry.identityStatus === "INVALID") label += " – needs review";
-      return label;
-    }).filter(Boolean);
-    return parts.length ? " · boxes: " + parts.join("; ") : "";
-  }
-
-  function returnIntakeControls(source, slot) {
-    var cell = document.createElement("td");
-    var status = document.createElement("p");
-    var saved = source.returnIntake.find(function (entry) { return entry.path === slot.path; });
-    status.setAttribute("role", "status");
-    function show(decision) {
-      saved = decision;
-      status.textContent = decision.state === "UUID_REQUESTED" ? "UUID marking requested" : "Return recorded with its current name";
-    }
-    if (saved) show(saved);
-    var buttons = [false, true].map(function (markUuid) {
-      var button = document.createElement("button");
-      button.type = "button";
-      button.className = "mc-button small";
-      button.textContent = markUuid ? "Request UUID marking" : "Record return and keep name";
-      button.addEventListener("click", function () {
-        buttons.forEach(function (control) { control.disabled = true; });
-        api("/api/v1/stock/return-intake", {method: "POST", body: {
-          source: source.id, path: slot.path, slotRevision: slot.revision, markUuid: markUuid,
-          expectedDecisionRevision: saved && saved.decisionRevision || 0
-        }}).then(show, function (error) {
-          status.textContent = error.body && error.body.error || "Could not record the return.";
-        }).finally(function () {
-          buttons.forEach(function (control) { control.disabled = false; });
-        });
-      });
-      cell.appendChild(button);
-      return button;
-    });
-    cell.appendChild(status);
-    return cell;
-  }
+  // ---------- stash index ----------
 
   function poll() {
     if (state.polling || auth.blocked) return;
     state.polling = true;
-    var stock = can("view") ? api("/api/v1/stock").catch(function () { return null; }) : Promise.resolve(null);
     // Without "view" the server refuses the stash list: don't ask, and don't call that "unreachable".
     var stashes = can("view") ? api("/api/v1/stashes") : Promise.resolve([]);
-    var updatedStashes = stashes.then(function (list) {
+    stashes.then(function (list) {
       state.unreachable = false;
       state.stashes = Array.isArray(list) ? list : [];
       state.polledOnce = true;
@@ -886,9 +719,6 @@
         maybeAutoOpenLink();
         deliveryMaybeLoad();
       }
-    });
-    Promise.all([updatedStashes, stock]).then(function (results) {
-      renderGuildStock(results[1]);
     }).finally(function () {
       state.polling = false;
     });
@@ -1408,9 +1238,13 @@
     }
   }
 
-  /** The number a slot shows: for a shulker-box item with filled groups, only the empty ones. */
+  /** The number a slot shows: empty boxes for a shulker-box item, otherwise loose plus boxed. */
   function slotCount(entry) {
-    return typeof entry.emptyCount === "number" ? entry.emptyCount : entry.item.count;
+    if (typeof entry.emptyCount === "number") return entry.emptyCount;
+    if (entry.item && entry.item.key && !isShulkerBoxId(entry.item.id || "")) {
+      return entry.item.count + boxedContents(entry.item.key);
+    }
+    return entry.item.count;
   }
 
   function setCount(entry) {
@@ -1756,10 +1590,12 @@
       frag.appendChild(line("tt-count", "\u00d7" + grouped(it.count) + (it.count === 1 ? " shulker" : " identical shulkers")));
       frag.appendChild(line("tt-hint", "Right-click to look inside"));
     } else {
-      var stacks = approx(it.count / it.maxStack);
-      var shulkers = approx(it.count / (it.maxStack * 27));
-      frag.appendChild(line("tt-count", "Count: " + grouped(it.count) + " (\u2248 " + plural(stacks, "stack") + ", " +
-        plural(shulkers, "shulker") + ")"));
+      var boxed = isShulkerBoxId(it.id) ? 0 : boxedContents(it.key);
+      var total = it.count + boxed;
+      var stacks = approx(total / it.maxStack);
+      var shulkers = approx(total / (it.maxStack * 27));
+      frag.appendChild(line("tt-count", "Count: " + grouped(total) + " (\u2248 " + plural(stacks, "stack") + ", " +
+        plural(shulkers, "shulker") + ")" + (boxed > 0 ? " \u00b7 " + grouped(it.count) + " loose + " + grouped(boxed) + " in shulker boxes" : "")));
       if (typeof entry.emptyCount === "number") {
         frag.appendChild(line("tt-line", grouped(entry.emptyCount) + " empty, " + grouped(it.count - entry.emptyCount) +
           " filled (listed next to it, showing what they hold)"));
@@ -1822,7 +1658,7 @@
     }
   }
 
-  // Delegated on the document so slots in windows and the order picker get tooltips too.
+  // Delegated on the document so slots in windows get tooltips too.
   document.addEventListener("mouseover", function (e) {
     var slot = e.target.closest ? e.target.closest(".slot") : null;
     var entry = slot ? slotEntry.get(slot) : null;
@@ -2052,10 +1888,6 @@
     return /^minecraft:([a-z_]+_)?shulker_box$/.test(id);
   }
 
-  function tabInfo(id) {
-    return CREATIVE_TABS[TAB_INDEX[id]] || CREATIVE_TABS[0];
-  }
-
   /** A small icon <img> for tabs, buttons and cart lines, with the same 503 retry as the grid. */
   function iconImg(id, size) {
     var img = document.createElement("img");
@@ -2079,10 +1911,9 @@
     return img;
   }
 
-  /** One Minecraft item icon per Pages nav entry, matching the tab style (icon + label). */
+  /** One Minecraft item icon per Pages nav entry. */
   var NAV_ICONS = {
-    stash: "minecraft:chest",
-    orders: "minecraft:writable_book",
+    shop: "minecraft:chest",
     bots: "minecraft:player_head",
     activity: "minecraft:clock",
     settings: "minecraft:crafting_table"
@@ -2098,23 +1929,6 @@
       icon.setAttribute("aria-hidden", "true");
       btn.insertBefore(icon, btn.firstChild);
     });
-  }
-
-  /** Switch the inventory main between search results and the order view. The single Pages nav
-      calls this; there are no tab buttons anymore. */
-  function showView(orders) {
-    hideTooltip();
-    el.viewItems.hidden = orders;
-    el.viewOrders.hidden = !orders;
-    el.panelLabel.textContent = "Search Items";
-    if (!orders) {
-      el.gridWrap.scrollTop = 0;
-      renderNow();
-    } else {
-      renderPicker();
-      renderCart();
-      scheduleOrdersPoll(0);
-    }
   }
 
   // ---------- shulker groups ----------
@@ -2192,6 +2006,10 @@
     state.shulkers = out;
     state.hasShulkerData = Array.isArray(index.shulkers);
     updateEmptyCounts();
+    // Boxed contents changed too: refresh the aggregated counts on the item slots.
+    state.items.forEach(function (e) {
+      if (!isShulkerBoxId(e.item.id)) setCount(e);
+    });
   }
 
   /**
@@ -2241,6 +2059,55 @@
       var g = e.item;
       return g.itemKey ? g.itemKey === item.key : g.id === item.id;
     });
+  }
+
+  /** Units of an item key stored inside filled shulker boxes (all groups, per the current index). */
+  function boxedContents(key) {
+    var n = 0;
+    state.shulkers.forEach(function (e) {
+      (e.item.contents || []).forEach(function (c) {
+        if (c && c.key === key) n += Math.max(0, c.count);
+      });
+    });
+    return n;
+  }
+
+  /**
+   * Filled groups holding an item, most per box first. boxes excludes what this cart already takes
+   * as packed, so auto-split never double-books a box.
+   */
+  function boxSources(key) {
+    var out = [];
+    state.shulkers.forEach(function (e) {
+      var perBox = 0;
+      (e.item.contents || []).forEach(function (c) {
+        if (c && c.key === key) perBox += Math.max(0, c.count);
+      });
+      var boxes = Math.max(0, e.item.count - cartCount("shulker", e.item.key));
+      if (perBox > 0 && boxes > 0) out.push({ key: e.item.key, perBox: perBox, boxes: boxes });
+    });
+    out.sort(function (a, b) { return b.perBox - a.perBox; });
+    return out;
+  }
+
+  /**
+   * Covers n units of an item from whole filled shulkers: [{key, count}] plus the remainder for
+   * loose. A box is only taken when it fits entirely inside n, so the cart never over-delivers.
+   */
+  function takeBoxes(key, n) {
+    var took = [];
+    var remainder = n;
+    boxSources(key).forEach(function (s) {
+      while (s.boxes > 0 && s.perBox <= remainder) {
+        remainder -= s.perBox;
+        s.boxes--;
+        var line = null;
+        took.forEach(function (t) { if (t.key === s.key) line = t; });
+        if (line) line.count++;
+        else took.push({ key: s.key, count: 1 });
+      }
+    });
+    return { took: took, remainder: remainder };
   }
 
   // ---------- windows (shulker preview, chooser) ----------
@@ -2463,7 +2330,7 @@
     slotContextAction(entry);
   });
 
-  // Left click: windows' clickable slots, the order picker, and shift-click to add a stack to the cart.
+  // Left click: windows' clickable slots, and shift-click to add a stack to the cart.
   document.addEventListener("click", function (e) {
     var slot = e.target.closest ? e.target.closest(".slot") : null;
     var entry = slot ? slotEntry.get(slot) : null;
@@ -2517,7 +2384,6 @@
     retryErrors: new Map() // order id -> why the last retry was refused
   };
   var cart = { lines: [], badLine: -1 };
-  var picker = { level: "types", type: null, entry: null, search: "", slots: [], qtyHost: null };
 
   function clampInt(v, lo, hi) {
     var n = Math.floor(Number(v));
@@ -2622,6 +2488,19 @@
     return it ? it.maxStack : 64;
   }
 
+  /**
+   * What a cart line can grow to: loose availability plus whole filled shulkers for item lines
+   * (auto-split takes them as packed), loose/packed availability otherwise. exclude backs out the
+   * line being edited, like the old max math.
+   */
+  function orderableMax(type, key, exclude) {
+    var base = Math.max(1, availableTotal(type, key) - (cartCount(type, key) - exclude));
+    if (type !== "item" || !splittable(key)) return base;
+    var boxed = 0;
+    boxSources(key).forEach(function (s) { boxed += s.perBox * s.boxes; });
+    return base + boxed;
+  }
+
   /** Shulkers the lines need, without building the plan (cheap, safe for huge counts). */
   function shulkersNeeded(lines) {
     var units = 0;
@@ -2677,8 +2556,19 @@
   // ---------- orders: cart changes ----------
 
   /**
+   * Whether an item line may auto-split onto whole filled shulkers: never for shulker-box keys
+   * themselves (a box holding boxes must not satisfy a need for empty ones).
+   */
+  function splittable(key) {
+    var it = itemByKey(key);
+    return !!it && !isShulkerBoxId(it.id);
+  }
+
+  /**
    * Adds n of a line, unless the cart would then need more than 54 shulkers (then nothing changes and a
-   * message is shown). Returns whether it was added.
+   * message is shown). Item lines auto-split onto whole filled shulkers first — the user orders
+   * diamonds, the cart takes full boxes as-is plus loose for the rest — so nobody has to think in
+   * boxes. Returns whether it was added.
    */
   function addToCart(type, key, n) {
     var next = cart.lines.map(function (l) { return { type: l.type, key: l.key, count: l.count }; });
@@ -2686,6 +2576,7 @@
     next.forEach(function (l) { if (l.type === type && l.key === key) found = l; });
     if (found) found.count += n;
     else next.push({ type: type, key: key, count: n });
+    if (type === "item" && splittable(key) && !splitItemLine(next, key)) return false;
     var need = shulkersNeeded(next);
     if (need > MAX_SHULKERS) {
       refuse(capMessage(need));
@@ -2697,7 +2588,37 @@
     plan.watchFull = true;
     saveCart();
     renderCart();
-    updatePickerCounts();
+    return true;
+  }
+
+  /**
+   * Moves whole filled shulkers out of an item line (in a working copy of the cart lines): each
+   * taken box becomes a packed line, the rest stays loose. Fails (leaving the lines untouched) when
+   * the loose remainder exceeds loose availability — the backend would refuse it too.
+   */
+  function splitItemLine(next, key) {
+    var looseAvail = availableTotal("item", key);
+    var total = 0;
+    next.forEach(function (l) { if (l.type === "item" && l.key === key) total += l.count; });
+    if (total <= looseAvail) return true;
+    var take = takeBoxes(key, total);
+    if (take.remainder > looseAvail) {
+      var boxed = 0;
+      boxSources(key).forEach(function (s) { boxed += s.perBox * s.boxes; });
+      refuse("Only " + grouped(looseAvail) + " × " + itemName(key) + " loose available" +
+        (boxed > 0 ? " (plus " + grouped(boxed) + " in full shulkers: order at least a full one)" : "") + ".");
+      return false;
+    }
+    var first = -1;
+    for (var i = next.length - 1; i >= 0; i--) {
+      if (next[i].type === "item" && next[i].key === key) {
+        if (first < 0) first = i;
+        else next.splice(i, 1);
+      }
+    }
+    if (take.remainder > 0) next[first] = { type: "item", key: key, count: take.remainder };
+    else next.splice(first, 1);
+    take.took.forEach(function (t) { next.push({ type: "shulker", key: t.key, count: t.count }); });
     return true;
   }
 
@@ -2713,7 +2634,6 @@
     cart.badLine = -1;
     saveCart();
     renderCart();
-    updatePickerCounts();
   }
 
   function refuse(text) {
@@ -2752,15 +2672,11 @@
     orders.list = [];
     orders.available = null;
     orders.token++;
-    picker.level = "types";
-    picker.type = null;
-    picker.entry = null;
     plan.selected = null;
     plan.fullCount = -1;
     resetNames();
     el.cartStatus.textContent = "";
-    if (dash.page === "orders") {
-      renderPicker();
+    if (dash.page === "shop") {
       renderCart();
     }
     renderBotStatus();
@@ -2768,11 +2684,9 @@
     scheduleOrdersPoll(0);
   }
 
-  /** Re-renders the parts of the Orders view that depend on the index (after every index refresh). */
+  /** Re-renders the shop parts that depend on the index (after every index refresh). */
   function refreshOrdersView() {
-    if (dash.page !== "orders") return;
-    if (!el.pickerBody.contains(document.activeElement) && !drag.pe) renderPicker();
-    else updatePickerCounts();
+    if (dash.page !== "shop") return;
     renderCart();
   }
 
@@ -3026,7 +2940,7 @@
         dlv.key = key;
         dlv.hash = null;
         dlv.data = null;
-        if (dash.page === "orders") renderCart();
+        if (dash.page === "shop") renderCart();
       }
       return;
     }
@@ -3038,7 +2952,7 @@
       dlv.key = key;
       dlv.hash = hash;
       dlv.data = d && typeof d === "object" && Array.isArray(d.chests) ? d : null;
-      if (dash.page === "orders") renderCart();
+      if (dash.page === "shop") renderCart();
     }, function () {});
   }
 
@@ -3399,7 +3313,7 @@
     if (!cart.lines.length) {
       var empty = document.createElement("div");
       empty.className = "note";
-      empty.textContent = "The cart is empty. Drag items here, double-click them, or shift-click items in the other tabs.";
+      empty.textContent = "The cart is empty. Drag items here, double-click them, or shift-click them.";
       frag.appendChild(empty);
     }
     cart.lines.forEach(function (l, i) {
@@ -3425,27 +3339,31 @@
       input.type = "number";
       input.className = "mc-input qty-input";
       input.min = "1";
-      var max = Math.max(1, availableTotal(l.type, l.key) - (cartCount(l.type, l.key) - l.count));
+      var max = orderableMax(l.type, l.key, l.count);
       input.max = String(max);
       input.value = String(l.count);
       input.setAttribute("aria-label", "Count");
       input.addEventListener("change", function () {
-        var maxNow = Math.max(1, availableTotal(l.type, l.key) - (cartCount(l.type, l.key) - l.count));
+        var maxNow = orderableMax(l.type, l.key, l.count);
         var n = clampInt(input.value, 1, maxNow);
         var old = l.count;
-        l.count = n;
-        var need = shulkersNeeded(cart.lines);
+        var next = cart.lines.map(function (x) { return { type: x.type, key: x.key, count: x.count }; });
+        next[i].count = n;
+        if (l.type === "item" && splittable(l.key) && !splitItemLine(next, l.key)) {
+          input.value = String(old);
+          return; // splitItemLine already refused with the breakdown
+        }
+        var need = shulkersNeeded(next);
         if (need > MAX_SHULKERS && n > old) {
-          l.count = old;
           input.value = String(old);
           refuse(capMessage(need));
           return;
         }
+        cart.lines = next;
         cart.badLine = -1;
         plan.watchFull = n > old;
         saveCart();
         renderCart();
-        updatePickerCounts();
       });
       row.appendChild(input);
       var rm = document.createElement("button");
@@ -3458,7 +3376,6 @@
         cart.badLine = -1;
         saveCart();
         renderCart();
-        updatePickerCounts();
       });
       row.appendChild(rm);
       frag.appendChild(row);
@@ -3504,7 +3421,6 @@
     clearStatus();
     saveCart();
     renderCart();
-    updatePickerCounts();
   });
 
   var pendingSubmission = null;
@@ -3547,7 +3463,6 @@
       el.cartStatus.textContent = s.online ? "Order placed." : "Order placed. It will start when the bot reconnects.";
       toast("Order placed");
       renderCart();
-      updatePickerCounts();
       scheduleOrdersPoll(0);
     }, function (e) {
       var body = e && e.body;
@@ -3567,12 +3482,15 @@
   var DRAG_THRESHOLD = 5;
 
   function pickEntryFrom(target) {
-    var slot = target && target.closest ? target.closest(".picker-grid .slot") : null;
+    var slot = target && target.closest ? target.closest("#item-grid .slot") : null;
     var pe = slot ? slotEntry.get(slot) : null;
-    return pe && pe.pick ? pe : null;
+    if (!pe || !pe.item) return null;
+    // The shelf slots carry the item itself; the pick shape is what the cart actions take.
+    if (!pe.pick) pe.pick = { type: pe.item.isShulker ? "shulker" : "item", item: pe.item };
+    return pe;
   }
 
-  el.pickerBody.addEventListener("pointerdown", function (e) {
+  el.grid.addEventListener("pointerdown", function (e) {
     if (e.button !== 0 || !e.isPrimary || e.pointerType === "touch") return;
     var pe = pickEntryFrom(e.target);
     if (!pe) return;
@@ -3655,295 +3573,14 @@
     if (drag.pe) endDrag();
   });
 
-  el.pickerBody.addEventListener("dblclick", function (e) {
+  el.grid.addEventListener("dblclick", function (e) {
     var pe = pickEntryFrom(e.target);
     if (!pe) return;
     e.preventDefault();
     var sel = window.getSelection && window.getSelection();
     if (sel && sel.removeAllRanges) sel.removeAllRanges();
-    addStacks(pe.pick.type, pe.pick.item, e.shiftKey);
+    quickAdd(pe.pick.item);
   });
-
-  // ---------- orders: picker pane ----------
-
-  function crumb(text, onClick) {
-    if (!onClick) {
-      var span = document.createElement("span");
-      span.className = "crumb current";
-      span.textContent = text;
-      return span;
-    }
-    var b = document.createElement("button");
-    b.type = "button";
-    b.className = "crumb";
-    b.textContent = text;
-    b.addEventListener("click", onClick);
-    return b;
-  }
-
-  function pickerTypes() {
-    var out = CREATIVE_TABS.slice();
-    if (state.shulkers.length) out.push({ id: "packed", name: "Shulker boxes (packed)", icon: "minecraft:shulker_box" });
-    return out;
-  }
-
-  function renderCrumbs() {
-    var crumbs = document.createDocumentFragment();
-    var toTypes = function () { picker.level = "types"; picker.type = null; picker.entry = null; renderPicker(); };
-    if (picker.level === "types") {
-      crumbs.appendChild(crumb("Item type", null));
-    } else {
-      var type = picker.type === "packed" ? { name: "Shulker boxes (packed)" } : tabInfo(picker.type);
-      crumbs.appendChild(crumb("Item type", toTypes));
-      crumbs.appendChild(document.createTextNode(" › "));
-      if (!picker.entry) {
-        crumbs.appendChild(crumb(type.name, null));
-      } else {
-        crumbs.appendChild(crumb(type.name, function () { selectPick(null); }));
-        crumbs.appendChild(document.createTextNode(" › "));
-        crumbs.appendChild(crumb(displayName(picker.entry.type, picker.entry.item), null));
-      }
-    }
-    el.crumbs.replaceChildren(crumbs);
-  }
-
-  function renderPicker() {
-    var body = document.createDocumentFragment();
-    picker.slots = [];
-    picker.qtyHost = null;
-    if (!state.items.length) {
-      el.crumbs.replaceChildren();
-      var none = document.createElement("div");
-      none.className = "note";
-      none.textContent = "No stash index yet.";
-      el.pickerBody.replaceChildren(none);
-      return;
-    }
-    if (picker.level === "types") {
-      var list = document.createElement("div");
-      list.className = "type-buttons";
-      pickerTypes().forEach(function (t) {
-        var b = document.createElement("button");
-        b.type = "button";
-        b.className = "mc-button type-button";
-        b.appendChild(iconImg(t.icon, 32));
-        var label = document.createElement("span");
-        label.textContent = t.name;
-        b.appendChild(label);
-        b.addEventListener("click", function () {
-          picker.level = "items";
-          picker.type = t.id;
-          picker.entry = null;
-          picker.search = "";
-          renderPicker();
-        });
-        list.appendChild(b);
-      });
-      body.appendChild(list);
-    } else {
-      body.appendChild(pickerItems());
-      var host = document.createElement("div");
-      host.className = "qty-host";
-      picker.qtyHost = host;
-      body.appendChild(host);
-    }
-    renderCrumbs();
-    el.pickerBody.replaceChildren(body);
-    renderQty();
-    if (state.hovered && !state.hovered.slot.isConnected) hideTooltip();
-    var search = el.pickerBody.querySelector(".picker-search");
-    if (search && picker.focusSearch) {
-      search.focus();
-      search.setSelectionRange(search.value.length, search.value.length);
-    }
-    picker.focusSearch = false;
-  }
-
-  /** Selects an item in the grid (or nothing) and shows its quantity panel under the grid; the grid itself stays. */
-  function selectPick(pick) {
-    picker.entry = pick;
-    picker.slots.forEach(function (pe) {
-      pe.slot.classList.toggle("picked", !!pick && pe.pick.type === pick.type && pe.pick.item.key === pick.item.key);
-    });
-    renderCrumbs();
-    renderQty();
-  }
-
-  function renderQty() {
-    if (!picker.qtyHost) return;
-    picker.qtyHost.replaceChildren(picker.entry ? pickerQuantity() : document.createDocumentFragment());
-  }
-
-  /** Writes what is left to order into the picker's slots in place, and refreshes the quantity panel. */
-  function updatePickerCounts() {
-    if (!picker.slots) return;
-    picker.slots.forEach(function (pe) {
-      var left = availableLeft(pe.pick.type, pe.pick.item.key);
-      if (pe.item.count !== left) {
-        pe.item.count = left;
-        setCount(pe);
-      }
-      pe.slot.classList.toggle("unavailable", left < 1);
-    });
-    if (picker.qtyHost && !picker.qtyHost.contains(document.activeElement)) renderQty();
-  }
-
-  /** The items of the chosen type as slots, with a search box. Counts show what is orderable. */
-  function pickerItems() {
-    var wrap = document.createElement("div");
-    wrap.className = "picker-items";
-    var search = document.createElement("input");
-    search.type = "search";
-    search.className = "mc-input picker-search";
-    search.placeholder = "Filter";
-    search.value = picker.search;
-    var searchTimer = 0;
-    search.addEventListener("input", function () {
-      picker.search = search.value;
-      window.clearTimeout(searchTimer);
-      searchTimer = window.setTimeout(function () {
-        picker.focusSearch = true;
-        renderPicker();
-      }, SEARCH_DEBOUNCE_MS);
-    });
-    wrap.appendChild(search);
-
-    var packed = picker.type === "packed";
-    var source = packed ? state.shulkers : state.items.filter(function (e) { return e.item.tab === picker.type; });
-    var query = parseQuery(picker.search);
-    var list = source.filter(function (e) { return matches(e, query); }).slice();
-    list.sort(packed ? sorters.count : sorters.creative);
-    var grid = document.createElement("div");
-    grid.className = "item-grid picker-grid";
-    list.forEach(function (e) {
-      var type = packed ? "shulker" : "item";
-      var left = availableLeft(type, e.item.key);
-      var label = displayName(type, e.item);
-      // Keep the italic "custom name" style only for items that really have a custom name.
-      var shown = Object.assign({}, e.item, {
-        count: left, name: label, englishName: e.item.name === e.item.englishName ? label : e.item.englishName
-      });
-      var pe = createEntry(shown, state.mc);
-      pe.pick = { type: type, item: e.item };
-      if (left < 1) pe.slot.classList.add("unavailable");
-      if (picker.entry && picker.entry.type === type && picker.entry.item.key === e.item.key) pe.slot.classList.add("picked");
-      pe.onActivate = function () {
-        if (drag.suppressClick) return;
-        selectPick({ type: type, item: e.item });
-      };
-      picker.slots.push(pe);
-      grid.appendChild(pe.slot);
-    });
-    if (!list.length) {
-      var none = document.createElement("div");
-      none.className = "note";
-      none.textContent = "Nothing matches.";
-      wrap.appendChild(none);
-    }
-    wrap.appendChild(grid);
-    return wrap;
-  }
-
-  /** "= 3 stacks + 12 · ≈ 0.1 shulker" */
-  function packReadout(n, maxStack, type) {
-    if (type === "shulker") return n ? "= " + plural(String(n), "packed shulker") : "";
-    var stacks = Math.floor(n / maxStack);
-    var rest = n % maxStack;
-    var parts = [];
-    if (stacks) parts.push(plural(String(stacks), "stack"));
-    if (rest || !stacks) parts.push(String(rest));
-    return "= " + parts.join(" + ") + " · ≈ " + plural(approx(n / (maxStack * 27)), "shulker");
-  }
-
-  /** The quantity panel for the selected item, under the grid. */
-  function pickerQuantity() {
-    var type = picker.entry.type;
-    var item = lineItem(type, picker.entry.item.key) || picker.entry.item;
-    var wrap = document.createElement("div");
-    wrap.className = "qty-panel";
-    var head = document.createElement("div");
-    head.className = "qty-head";
-    head.appendChild(iconWithContents(item.id, type === "shulker" ? item.contents : null, 32));
-    var name = document.createElement("div");
-    name.className = "qty-name";
-    name.textContent = displayName(type, item);
-    head.appendChild(name);
-    wrap.appendChild(head);
-
-    var left = availableLeft(type, item.key);
-    var info = document.createElement("div");
-    info.className = "note";
-    var inCart = cartCount(type, item.key);
-    info.textContent = grouped(left) + " available" + (inCart ? " (" + grouped(inCart) + " already in the cart)" : "");
-    wrap.appendChild(info);
-
-    var row = document.createElement("div");
-    row.className = "qty-row";
-    var input = document.createElement("input");
-    input.type = "number";
-    input.className = "mc-input qty-input";
-    input.min = "0";
-    input.max = String(left);
-    input.value = String(Math.min(left, type === "shulker" ? 1 : item.maxStack));
-    row.appendChild(input);
-    var readout = document.createElement("div");
-    readout.className = "qty-readout";
-    var add = document.createElement("button");
-    var update = function () {
-      var n = clampInt(input.value, 0, left);
-      readout.textContent = packReadout(n, item.maxStack, type);
-      add.disabled = n < 1;
-    };
-    var quick = function (label, fn) {
-      var b = document.createElement("button");
-      b.type = "button";
-      b.className = "mc-button small";
-      b.textContent = label;
-      b.addEventListener("click", function () {
-        input.value = String(clampInt(fn(clampInt(input.value, 0, left)), 0, left));
-        update();
-      });
-      row.appendChild(b);
-    };
-    quick("+1", function (n) { return n + 1; });
-    if (type === "shulker") {
-      quick("+5", function (n) { return n + 5; });
-    } else {
-      quick("+1 stack", function (n) { return n + item.maxStack; });
-      quick("+1 shulker", function (n) { return n + item.maxStack * 27; });
-    }
-    quick("Max", function () { return left; });
-    quick("Clear", function () { return 0; });
-    wrap.appendChild(row);
-    wrap.appendChild(readout);
-
-    add.type = "button";
-    add.className = "mc-button";
-    add.textContent = "Add to cart";
-    add.addEventListener("click", function () {
-      var n = clampInt(input.value, 0, availableLeft(type, item.key));
-      if (n < 1) return;
-      if (addToCart(type, item.key, n)) {
-        clearStatus();
-        if (!plan.toasted) toast("Added " + grouped(n) + " × " + displayName(type, item) + " to the cart");
-        renderQty();
-      }
-    });
-    input.addEventListener("input", update);
-    input.addEventListener("keydown", function (e) {
-      if (e.key === "Enter") add.click();
-    });
-    wrap.appendChild(add);
-    if (left < 1) {
-      input.disabled = true;
-      var none = document.createElement("div");
-      none.className = "note warn";
-      none.textContent = "None left: the rest is reserved by open orders or already in the cart.";
-      wrap.appendChild(none);
-    }
-    update();
-    return wrap;
-  }
 
   // ---------- orders: list ----------
 
@@ -3966,7 +3603,7 @@
 
   function pollOrders() {
     var s = currentStash();
-    var next = dash.page === "orders" && !document.hidden ? 3000 : 15000;
+    var next = dash.page === "shop" && !document.hidden ? 3000 : 15000;
     if (!s || orders.loading || auth.blocked) {
       scheduleOrdersPoll(next);
       return;
@@ -3981,17 +3618,16 @@
         var changed = JSON.stringify(available) !== JSON.stringify(orders.available);
         orders.available = available;
         renderOrderList();
-        // Only redraw the cart and picker when availability changed, and never under the user's cursor/focus.
-        if (dash.page === "orders" && changed) {
+        // Only redraw the cart when availability changed, and never under the user's cursor/focus.
+        if (dash.page === "shop" && changed) {
           if (!el.cartLines.contains(document.activeElement)) renderCart();
-          updatePickerCounts();
         }
       }, function () {
         // Keep the last list; the header already shows "Server unreachable" when that is the problem.
       })
       .then(function () {
         orders.loading = false;
-        scheduleOrdersPoll(dash.page === "orders" && !document.hidden ? 3000 : 15000);
+        scheduleOrdersPoll(dash.page === "shop" && !document.hidden ? 3000 : 15000);
       });
   }
 
@@ -4042,7 +3678,7 @@
   /** Step 4 (W-031/W-059): show the member's own remaining withdrawal quotas, if any are configured. */
   function loadQuotaUsage() {
     var holder = $("quota-usage");
-    if (!holder || dash.page !== "orders") return;
+    if (!holder || dash.page !== "shop") return;
     var now = Date.now();
     if (now - quotaUsageAt < 30000) return;
     quotaUsageAt = now;
@@ -4302,11 +3938,11 @@
   }
 
   document.addEventListener("visibilitychange", function () {
-    if (!document.hidden && dash.page === "orders") scheduleOrdersPoll(0);
+    if (!document.hidden && dash.page === "shop") scheduleOrdersPoll(0);
   });
 
-  // ---------- dashboard: pages, bot picker ----------
-  // Stash and Orders are the inventory view with its creative tabs; Bots, Settings and Console are dashboard pages
+    // ---------- dashboard: pages, bot picker ----------
+  // Shop is the inventory view (stash grid, cart, order history); Bots, Activity and Settings are dashboard pages.
 
   var BOT_KEY = "wesort.bot";
   var PAGE_KEY = "wesort.page";
@@ -4354,8 +3990,8 @@
   }
 
   function showPage(page) {
-    if (!pageAllowed(page)) page = "stash";
-    var inventory = page === "stash" || page === "orders";
+    if (!pageAllowed(page)) page = "shop";
+    var inventory = page === "shop";
     dash.page = page;
     el.inventory.hidden = !inventory;
     el.pageBots.hidden = page !== "bots";
@@ -4364,7 +4000,13 @@
     var navs = el.dashNav.querySelectorAll(".nav-btn");
     for (var i = 0; i < navs.length; i++) navs[i].classList.toggle("selected", navs[i].dataset.page === page);
     hideTooltip();
-    showView(page === "orders");
+    if (inventory) {
+      el.gridWrap.scrollTop = 0;
+      renderNow();
+      renderCart();
+      renderOrderList();
+      scheduleOrdersPoll(0);
+    }
     if (page === "bots") renderDashBots();
     window.clearTimeout(dash.cTimer);
     settingsForm.stop();
@@ -4685,10 +4327,6 @@
     if (typeof profile.name !== "string" || !Number.isSafeInteger(profile.revision)) return;
     guildRevision = profile.revision;
     $("guild-heading").textContent = profile.name;
-    $("guild-stock-title").textContent = profile.name + " · Shared stock";
-    var description = $("guild-description-view");
-    description.textContent = profile.description || "";
-    description.hidden = !profile.description;
     $("guild-name").value = profile.name;
     $("guild-description").value = profile.description || "";
     $("guild-approval").value = profile.approvalPolicy || "DIRECT";
@@ -5632,7 +5270,6 @@
     if (!relabel) return;
     updateSelect();
     renderBotSelect();
-    renderGuildStock(guildStock);
   }
 
   el.streamerBtn.addEventListener("click", function () {
@@ -5902,9 +5539,7 @@
     el.accountName.hidden = !name;
     el.accountName.textContent = name ? "Logged in as " + name : "";
     var view = can("view");
-    $("guild-stock").hidden = !view;
     if (pagesChanged && view) {
-      renderGuildStock(null);
       poll();
     }
     var activity = can("activity");
@@ -5919,7 +5554,6 @@
     $("account-link").hidden = !can("link");
     if (!can("link") && link.open) closeLink();
     var order = can("order");
-    el.orderPicker.hidden = !order;
     el.cartDrop.hidden = !order;
     document.documentElement.classList.toggle("no-order", !order);
     el.accountSection.hidden = me.owner;
@@ -5929,7 +5563,7 @@
     updateRescan();
     renderOrderList();
     if (!view) showEmpty();
-    if (!pageAllowed(dash.page)) showPage("stash");
+    if (!pageAllowed(dash.page)) showPage("shop");
     else if (pagesChanged && auth.started) showPage(dash.page);
   }
 
@@ -7292,15 +6926,15 @@
       } catch (e) {
         saved = null;
       }
-      if (dash.page !== "stash") return;
-      if (saved && saved !== "stash" && pageAllowed(saved) && (saved !== "activity" || show)) showPage(saved);
+      if (dash.page !== "shop") return;
+      if (saved && saved !== "shop" && pageAllowed(saved) && (saved !== "activity" || show)) showPage(saved);
       else if (!saved && show) showPage("activity");
     }
   }
 
   // ---------- controls ----------
 
-  el.search.addEventListener("input", function () { queueRender(SEARCH_DEBOUNCE_MS); renderGuildBalances(); });
+  el.search.addEventListener("input", function () { queueRender(SEARCH_DEBOUNCE_MS); });
   el.sort.addEventListener("change", function () {
     state.sortAll = el.sort.value;
     queueRender(0);

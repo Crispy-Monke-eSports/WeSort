@@ -26,13 +26,16 @@ body {
   image-rendering: pixelated;
 }
 
-/* Classic keeps the vanilla dirt background, tinted with its --bg. */
+/* Classic keeps the vanilla dirt background: the real dirt texture from the official
+   client (/dirt.png, with dirt.svg as fallback), only darkened like the game darkens it
+   behind menus, so the pixels stay visible. */
 html[data-theme="classic"] body,
 html[data-theme="classic"] .auth-screen {
   background-image:
-    linear-gradient(color-mix(in srgb, var(--bg) 70%, transparent), color-mix(in srgb, var(--bg) 70%, transparent)),
+    linear-gradient(color-mix(in srgb, black 55%, transparent), color-mix(in srgb, black 55%, transparent)),
+    url("/dirt.png"),
     url("/dirt.svg");
-  background-size: auto, 64px 64px;
+  background-size: auto, 64px 64px, 64px 64px;
 }
 
 .layout {
@@ -566,18 +569,7 @@ input.central-search {
 
 .qty-input { width: 96px; }
 
-/* ---------- orders tab ---------- */
-
-.view-orders {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-rows: auto auto; /* natural heights; the view itself scrolls */
-  gap: 10px;
-  overflow-y: auto;
-  align-content: start;
-}
-.view-orders[hidden] { display: none; }
-.order-list, .bot-strip { grid-column: 1 / -1; }
+/* ---------- shop ---------- */
 
 /* Inner tile (a section inside a panel). */
 .inset {
@@ -593,7 +585,6 @@ input.central-search {
 }
 .section-title { color: var(--text); font-size: 15px; font-weight: 700; }
 
-.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; color: var(--text); }
 .crumb {
   font-family: var(--font);
   font-size: 13px;
@@ -607,27 +598,11 @@ input.central-search {
 .crumb:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .crumb.current { color: var(--text); text-decoration: none; cursor: default; }
 
-.type-buttons { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 6px; }
-.type-button { display: flex; align-items: center; gap: 8px; text-align: left; padding: 4px 8px; }
-.type-button .icon, .cart-line .icon, .qty-head .icon { width: 32px; height: 32px; image-rendering: pixelated; flex: 0 0 auto; }
+.cart-line .icon { width: 32px; height: 32px; image-rendering: pixelated; flex: 0 0 auto; }
 
-.picker-grid {
-  background: var(--surface);
-  border: var(--border-w) solid var(--border);
-  border-radius: var(--radius);
-  padding: 2px;
-  justify-content: start;
-  max-height: 50vh;
-  overflow-y: auto;
-}
-.picker-grid .slot { cursor: pointer; }
-
-.qty-panel { display: flex; flex-direction: column; gap: 8px; }
-.qty-head { display: flex; align-items: center; gap: 10px; }
-.qty-name { color: var(--text); font-size: 15px; overflow-wrap: anywhere; }
-.qty-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.qty-readout { color: var(--text); }
-.qty-panel > .mc-button { align-self: flex-start; }
+/* The shop shelf doubles as the drag source: no text selection, grab cursor. */
+#item-grid { user-select: none; -webkit-user-select: none; }
+#item-grid .slot { cursor: grab; }
 
 .cart-lines { display: flex; flex-direction: column; gap: 4px; max-height: 45vh; overflow-y: auto; }
 .cart-line {
@@ -749,10 +724,6 @@ input.central-search {
 }
 .toast[hidden] { display: none; }
 
-@media (max-width: 1100px) {
-  .view-orders { grid-template-columns: minmax(0, 1fr); }
-}
-
 @media (max-width: 800px) {
   .tab { width: 44px; height: 44px; }
   .tab.selected { height: 50px; }
@@ -760,9 +731,8 @@ input.central-search {
 
 /* .mc-input grows along the toolbar's row; in these column layouts it must keep its height. */
 .inset .mc-input { flex: 0 0 auto; }
-.picker-search { max-width: 320px; }
 
-/* ---------- orders: bot status strip ---------- */
+/* ---------- shop: bot status strip ---------- */
 
 .bot-strip { flex-direction: row; flex-wrap: wrap; gap: 4px 18px; padding: 6px 8px; }
 .bot-line { color: var(--text); font-size: 13px; }
@@ -782,13 +752,8 @@ input.central-search {
 .bot-line.warn { background: var(--warn-bg); color: var(--warn-fg); border-radius: var(--radius); padding: 1px 6px; }
 .bot-line.warn::before { background: var(--warn-fg); border-color: var(--warn-fg); }
 
-/* ---------- orders: picker drag / select ---------- */
+/* ---------- shop: drag from the shelf ---------- */
 
-.picker-grid { user-select: none; -webkit-user-select: none; }
-.picker-grid .slot { cursor: grab; }
-.slot.picked { border-color: #ffffff #373737 #373737 #ffffff; background: #a8a8a8; }
-.qty-host:empty { display: none; }
-.qty-host { border-top: var(--border-w) solid var(--border); padding-top: 8px; }
 body.dragging, body.dragging * { cursor: grabbing !important; }
 
 .drag-ghost {
@@ -1521,7 +1486,7 @@ html.streamer .sv-hidden { display: inline; color: var(--muted); font-style: ita
   /* ----- 1. basics: no iOS zoom on focus, 44px tap targets ----- */
   input:not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: 16px !important; }
   .mc-input, .mc-select { min-height: 44px; }
-  .mc-button, .mc-button.small, .type-button, .section-item { min-height: 44px; }
+  .mc-button, .mc-button.small, .section-item { min-height: 44px; }
   .mc-button.small { padding: 0 12px; min-width: 44px; }
   .crumb { display: inline-flex; align-items: center; min-height: 44px; }
   .chip-x { min-width: 44px; min-height: 44px; }
@@ -1645,7 +1610,6 @@ html.streamer .sv-hidden { display: inline; color: var(--muted); font-style: ita
     font-size: 14px;
   }
   .layout:has(#inventory[hidden]) .info-row,
-  .layout:has(#view-items[hidden]) .info-row,
   .info-row:has(#info-index:empty) { display: none; }
   .index-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
   .index-head .section-title { margin: 0; }
@@ -1708,7 +1672,7 @@ html.streamer .sv-hidden { display: inline; color: var(--muted); font-style: ita
   .toast { bottom: calc(var(--bnav-h) + env(safe-area-inset-bottom) + 12px); }
 
   /* Pages scroll with the document (no inner scroll areas). */
-  .inventory, .dash-page, .grid-wrap, .view-orders, .proxy-page, .proxy-side, .proxy-body { overflow: visible; }
+  .inventory, .dash-page, .grid-wrap, .proxy-page, .proxy-side, .proxy-body { overflow: visible; }
   .inventory, .dash-page, .grid-wrap { flex: none; min-height: 0; }
   .proxy-cols { flex: none; }
 
@@ -1777,7 +1741,6 @@ html.streamer .sv-hidden { display: inline; color: var(--muted); font-style: ita
   .cart-cols { flex-direction: column; align-items: stretch; }
   .chest-col { width: 100%; }
   .lines-col { min-width: 0; max-width: none; flex: 1 1 auto; }
-  .type-buttons { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
 
   /* ----- 6. activity ----- */
   .act-head { gap: 6px 10px; }
@@ -2105,11 +2068,6 @@ html[data-theme="mac"] .conn-online::before {
 @media (max-width: 767px) {
   .title-row .title .brand-logo { width: 45px; }
 }
-
-.guild-stock { padding: 10px; border: 1px solid var(--border, #777); max-height: min(260px, 40vh); overflow: auto; }
-.guild-stock input { width: 100%; }
-.guild-stock table { width: 100%; text-align: left; border-collapse: collapse; }
-.guild-stock th, .guild-stock td { padding: 4px 8px; }
 
 /* Mojang and Microsoft non-affiliation notice on dashboard and login, including mobile. */
 .minecraft-disclaimer {

@@ -1,15 +1,17 @@
 package com.porter.wesort.data;
 
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
+import static org.junit.jupiter.api.Assertions.*;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class DataDirectoryTest {
-    @TempDir Path temp;
+    @TempDir
+    Path temp;
 
     @Test
     void newClientAndManagerIgnoreCorruptReadOnlyLegacySiblings() throws Exception {
@@ -20,13 +22,15 @@ class DataDirectoryTest {
         Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("r--------"));
         Files.setPosixFilePermissions(old, PosixFilePermissions.fromString("r-x------"));
         try {
-            for (String child : new String[]{"stashes", "kits", "local-index", "local-orders"}) {
+            for (String child : new String[] {"stashes", "kits", "local-index", "local-orders"}) {
                 Path path = DataDirectory.clientFolder(meteor, child);
                 assertTrue(path.startsWith(meteor.resolve("wesort")));
                 assertFalse(Files.exists(path), "nothing imported from Qwerte");
             }
             Path manager = DataDirectory.open(temp.resolve("wesort-manager-data"), "manager");
-            try (var paths = Files.list(manager)) { assertEquals(1, paths.count()); }
+            try (var paths = Files.list(manager)) {
+                assertEquals(1, paths.count());
+            }
             assertArrayEquals(corrupt, Files.readAllBytes(file));
             assertEquals(PosixFilePermissions.fromString("r--------"), Files.getPosixFilePermissions(file));
         } finally {
@@ -36,7 +40,7 @@ class DataDirectoryTest {
 
     @Test
     void explicitLegacyPathsAreRefusedBeforeAnyFilesAreChanged() throws Exception {
-        for (String name : new String[]{"qwerte", "Qwerte", "qwerte-addon", "stash-manager-data"}) {
+        for (String name : new String[] {"qwerte", "Qwerte", "qwerte-addon", "stash-manager-data"}) {
             Path old = Files.createDirectory(temp.resolve(name));
             Path file = Files.writeString(old.resolve("config.properties"), "broken secret data");
             assertThrows(IOException.class, () -> DataDirectory.open(old, "manager"));
@@ -92,6 +96,7 @@ class DataDirectoryTest {
     void clientSubfolderCannotEscapeItsNamespace() {
         assertThrows(IllegalArgumentException.class, () -> DataDirectory.clientFolder(temp, "../qwerte"));
     }
+
     @Test
     void healthRootCheckNeverInitializesAMissingInstallation() throws Exception {
         Path missing = temp.resolve("not-started");

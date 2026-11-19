@@ -1,7 +1,6 @@
 package com.porter.wesort.manager.model;
 
 import com.porter.wesort.stash.Order;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -59,7 +58,7 @@ public final class Cart {
 
     public static String capMessage(long needed, long planned) {
         return "That needs " + needed + " shulkers. One order can fill at most " + CartPlan.MAX_SHULKERS
-            + " (one double chest); the cart plans " + Math.min(planned, CartPlan.MAX_SHULKERS) + ".";
+                + " (one double chest); the cart plans " + Math.min(planned, CartPlan.MAX_SHULKERS) + ".";
     }
 
     /** Adds {@code n} of a line unless the cart would then need more than the cap; then nothing changes. */
@@ -72,7 +71,8 @@ public final class Cart {
         if (at >= 0) next.set(at, new Order.Line(type, key, (int) total));
         else next.add(new Order.Line(type, key, (int) total));
         long need = CartPlan.shulkersNeeded(next, index);
-        if (need > CartPlan.MAX_SHULKERS) return Result.refused(capMessage(need, CartPlan.shulkersNeeded(lines, index)));
+        if (need > CartPlan.MAX_SHULKERS)
+            return Result.refused(capMessage(need, CartPlan.shulkersNeeded(lines, index)));
         lines.clear();
         lines.addAll(next);
         return new Result(true, (int) n, "");
@@ -98,7 +98,8 @@ public final class Cart {
         List<Order.Line> next = new ArrayList<>(lines);
         next.set(line, new Order.Line(l.type(), l.key(), (int) n));
         long need = CartPlan.shulkersNeeded(next, index);
-        if (need > CartPlan.MAX_SHULKERS && n > l.count()) return Result.refused(capMessage(need, CartPlan.shulkersNeeded(lines, index)));
+        if (need > CartPlan.MAX_SHULKERS && n > l.count())
+            return Result.refused(capMessage(need, CartPlan.shulkersNeeded(lines, index)));
         lines.clear();
         lines.addAll(next);
         return new Result(true, (int) (n - l.count()), n < wanted ? "Only " + n + " are available." : "");
@@ -118,7 +119,8 @@ public final class Cart {
     }
 
     private static int indexOf(List<Order.Line> list, String type, String key) {
-        for (int i = 0; i < list.size(); i++) if (list.get(i).type().equals(type) && list.get(i).key().equals(key)) return i;
+        for (int i = 0; i < list.size(); i++)
+            if (list.get(i).type().equals(type) && list.get(i).key().equals(key)) return i;
         return -1;
     }
 }

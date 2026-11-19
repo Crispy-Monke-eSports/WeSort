@@ -1,26 +1,44 @@
 package com.porter.wesort.manager.local;
 
-import com.porter.wesort.manager.model.OrderModel.Entry;
-import com.porter.wesort.stash.Order;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.porter.wesort.manager.model.OrderModel.Entry;
+import com.porter.wesort.stash.Order;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
 class LocalOrderStoreTest {
     private static Entry entry(String id, String status, long created) {
-        return new Entry(id, status, "phase", "msg", 2, 5, false, 0, created, created, false, "", "", "",
-            List.of(new Order.Line("item", "minecraft:diamond", 640), new Order.Line("shulker", "s:abc", 2)), "each", "", List.of("A", ""), 3, true);
+        return new Entry(
+                id,
+                status,
+                "phase",
+                "msg",
+                2,
+                5,
+                false,
+                0,
+                created,
+                created,
+                false,
+                "",
+                "",
+                "",
+                List.of(new Order.Line("item", "minecraft:diamond", 640), new Order.Line("shulker", "s:abc", 2)),
+                "each",
+                "",
+                List.of("A", ""),
+                3,
+                true);
     }
 
     @Test
@@ -115,10 +133,13 @@ class LocalOrderStoreTest {
     void theNumberOfOrdersIsBoundedAndOpenOnesAreKept() {
         List<LocalOrderStore.Item> list = new ArrayList<>();
         list.add(new LocalOrderStore.Item("s", entry("open", "in_progress", 1)));
-        for (int i = 0; i < LocalOrderStore.MAX_ORDERS + 20; i++) list.add(new LocalOrderStore.Item("s", entry("L-" + i, "delivered", 10 + i)));
+        for (int i = 0; i < LocalOrderStore.MAX_ORDERS + 20; i++)
+            list.add(new LocalOrderStore.Item("s", entry("L-" + i, "delivered", 10 + i)));
         LocalOrderStore.prune(list);
         assertEquals(LocalOrderStore.MAX_ORDERS, list.size());
-        assertTrue(list.stream().anyMatch(i -> i.entry().id().equals("open")), "an open order is never dropped, however old");
+        assertTrue(
+                list.stream().anyMatch(i -> i.entry().id().equals("open")),
+                "an open order is never dropped, however old");
         assertFalse(list.stream().anyMatch(i -> i.entry().id().equals("L-0")), "the oldest finished one goes first");
         assertTrue(list.stream().anyMatch(i -> i.entry().id().equals("L-" + (LocalOrderStore.MAX_ORDERS + 19))));
     }
@@ -129,8 +150,31 @@ class LocalOrderStoreTest {
         String huge = "m".repeat(300);
         for (int i = 0; i < 100; i++) {
             List<Order.Line> lines = new ArrayList<>();
-            for (int k = 0; k < 200; k++) lines.add(new Order.Line("item", "minecraft:some_long_item_name_" + k + "#" + "f".repeat(8), 1 + k));
-            list.add(new LocalOrderStore.Item("s", new Entry("L-" + i, "delivered", "p", huge, 1, 1, false, 0, i, i, false, "", "", "", lines, "", "", List.of(), 1, true)));
+            for (int k = 0; k < 200; k++)
+                lines.add(new Order.Line("item", "minecraft:some_long_item_name_" + k + "#" + "f".repeat(8), 1 + k));
+            list.add(new LocalOrderStore.Item(
+                    "s",
+                    new Entry(
+                            "L-" + i,
+                            "delivered",
+                            "p",
+                            huge,
+                            1,
+                            1,
+                            false,
+                            0,
+                            i,
+                            i,
+                            false,
+                            "",
+                            "",
+                            "",
+                            lines,
+                            "",
+                            "",
+                            List.of(),
+                            1,
+                            true)));
         }
         String text = LocalOrderStore.encodeCapped(list);
         assertNotNull(text);
@@ -146,8 +190,31 @@ class LocalOrderStoreTest {
         List<LocalOrderStore.Item> list = new ArrayList<>();
         for (int i = 0; i < 100; i++) {
             List<Order.Line> lines = new ArrayList<>();
-            for (int k = 0; k < 200; k++) lines.add(new Order.Line("item", "minecraft:some_long_item_name_" + k + "#" + "f".repeat(40), 1 + k));
-            list.add(new LocalOrderStore.Item("s", new Entry("L-" + i, "in_progress", "p", "", 1, 1, false, 0, i, i, false, "", "", "", lines, "", "", List.of(), 0, false)));
+            for (int k = 0; k < 200; k++)
+                lines.add(new Order.Line("item", "minecraft:some_long_item_name_" + k + "#" + "f".repeat(40), 1 + k));
+            list.add(new LocalOrderStore.Item(
+                    "s",
+                    new Entry(
+                            "L-" + i,
+                            "in_progress",
+                            "p",
+                            "",
+                            1,
+                            1,
+                            false,
+                            0,
+                            i,
+                            i,
+                            false,
+                            "",
+                            "",
+                            "",
+                            lines,
+                            "",
+                            "",
+                            List.of(),
+                            0,
+                            false)));
         }
         assertNull(LocalOrderStore.encodeCapped(list));
     }
@@ -166,7 +233,8 @@ class LocalOrderStoreTest {
 
     @Test
     void junkEntriesAreLeftOut() {
-        List<LocalOrderStore.Item> back = LocalOrderStore.decode("{\"orders\":[1,{\"stash\":\"s\"},{\"stash\":\"s\",\"id\":\"L-1\",\"status\":\"failed\",\"lines\":[{\"type\":\"item\",\"key\":\"a\",\"count\":1}]},{\"id\":\"L-2\",\"lines\":[]}]}");
+        List<LocalOrderStore.Item> back = LocalOrderStore.decode(
+                "{\"orders\":[1,{\"stash\":\"s\"},{\"stash\":\"s\",\"id\":\"L-1\",\"status\":\"failed\",\"lines\":[{\"type\":\"item\",\"key\":\"a\",\"count\":1}]},{\"id\":\"L-2\",\"lines\":[]}]}");
         assertNotNull(back);
         assertEquals(1, back.size());
         assertEquals("L-1", back.get(0).entry().id());
@@ -178,8 +246,12 @@ class LocalOrderStoreTest {
         Path a = LocalOrderStore.fileFor(Path.of("x"), "Play.Example.com");
         Path b = LocalOrderStore.fileFor(Path.of("x"), "play.example.com");
         Path c = LocalOrderStore.fileFor(Path.of("x"), "play-example.com");
-        assertEquals(ContainerKey.fileName("Play.Example.com") + ".json", a.getFileName().toString());
-        assertTrue(a.getFileName().toString().matches(".*-[0-9a-f]{8}\\.json"), a.getFileName().toString());
+        assertEquals(
+                ContainerKey.fileName("Play.Example.com") + ".json",
+                a.getFileName().toString());
+        assertTrue(
+                a.getFileName().toString().matches(".*-[0-9a-f]{8}\\.json"),
+                a.getFileName().toString());
         assertFalse(a.equals(b), "addresses that differ only in case don't share a history");
         assertFalse(b.equals(c));
     }
@@ -187,7 +259,8 @@ class LocalOrderStoreTest {
     @Test
     void aHistoryUnderTheOldNameIsMoved(@TempDir Path dir) throws Exception {
         Path old = LocalOrderStore.legacyFileFor(dir, "srv.example.com");
-        Files.writeString(old, LocalOrderStore.encode(List.of(new LocalOrderStore.Item("stash", entry("L-7", "delivered", 5)))));
+        Files.writeString(
+                old, LocalOrderStore.encode(List.of(new LocalOrderStore.Item("stash", entry("L-7", "delivered", 5)))));
         LocalOrderStore s = new LocalOrderStore(dir);
         s.load("srv.example.com");
         assertEquals(1, s.list("stash").size());
@@ -205,7 +278,10 @@ class LocalOrderStoreTest {
             Thread.sleep(3);
         }
         try (var files = Files.list(dir)) {
-            assertEquals(3, files.filter(f -> f.getFileName().toString().contains(".bad-")).count());
+            assertEquals(
+                    3,
+                    files.filter(f -> f.getFileName().toString().contains(".bad-"))
+                            .count());
         }
     }
 
@@ -221,7 +297,10 @@ class LocalOrderStoreTest {
         assertTrue(s.list("stash").isEmpty(), "the other server has its own history");
         s.put("stash", entry("L-2", "delivered", 2));
         s.load("a.example.com");
-        assertEquals(List.of("L-1"), s.list("stash").stream().map(Entry::id).toList(), "the unsaved history of the first server is still there");
+        assertEquals(
+                List.of("L-1"),
+                s.list("stash").stream().map(Entry::id).toList(),
+                "the unsaved history of the first server is still there");
         s.load("b.example.com");
         assertEquals(List.of("L-2"), s.list("stash").stream().map(Entry::id).toList());
     }

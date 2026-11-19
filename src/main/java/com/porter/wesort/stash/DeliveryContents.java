@@ -2,7 +2,6 @@ package com.porter.wesort.stash;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
@@ -23,7 +22,8 @@ public final class DeliveryContents {
     public record Inner(String id, int count) {}
 
     /** One stack in a chest. {@code inside} is null for anything but a shulker box. */
-    public record Item(int slot, String id, String name, int count, int maxStack, List<Inner> inside, int damage, int maxDamage) {}
+    public record Item(
+            int slot, String id, String name, int count, int maxStack, List<Inner> inside, int damage, int maxDamage) {}
 
     /** One chest as read: {@code size} slots of the container part, {@code items} the non-empty ones (null: never read). */
     public record Chest(int size, boolean full, long readAt, List<Item> items) {}
@@ -31,7 +31,8 @@ public final class DeliveryContents {
     /** The finished report: its JSON body, the hash of the chests (readAt left out) and the newest read. */
     public record Built(String hash, long readAt, byte[] json, int chests) {}
 
-    private static final com.google.gson.Gson WIRE = new com.google.gson.GsonBuilder().serializeNulls().create();
+    private static final com.google.gson.Gson WIRE =
+            new com.google.gson.GsonBuilder().serializeNulls().create();
 
     private DeliveryContents() {}
 
@@ -56,7 +57,8 @@ public final class DeliveryContents {
         }
         Built built = assemble(server, stash, player, base, reads);
         if (built.json().length <= MAX_BYTES) return built;
-        // Too big: the contents of the shulkers go first (shulker:true stays), then the items of the last chests, one chest at a time
+        // Too big: the contents of the shulkers go first (shulker:true stays), then the items of the last chests, one
+        // chest at a time
         for (JsonObject o : base) {
             if (!o.get("items").isJsonArray()) continue;
             for (var item : o.getAsJsonArray("items")) item.getAsJsonObject().remove("contents");
@@ -104,7 +106,12 @@ public final class DeliveryContents {
         List<Item> sorted = new ArrayList<>();
         java.util.Set<Integer> seen = new java.util.HashSet<>();
         for (Item i : items) {
-            if (i == null || i.slot() < 0 || i.slot() >= size || i.count() <= 0 || i.id() == null || !seen.add(i.slot())) continue;
+            if (i == null
+                    || i.slot() < 0
+                    || i.slot() >= size
+                    || i.count() <= 0
+                    || i.id() == null
+                    || !seen.add(i.slot())) continue;
             sorted.add(i);
         }
         sorted.sort(java.util.Comparator.comparingInt(Item::slot));
@@ -168,7 +175,8 @@ public final class DeliveryContents {
 
     private static String sha1(String s) {
         try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-1").digest(s.getBytes(StandardCharsets.UTF_8)));
+            return HexFormat.of()
+                    .formatHex(MessageDigest.getInstance("SHA-1").digest(s.getBytes(StandardCharsets.UTF_8)));
         } catch (java.security.NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }

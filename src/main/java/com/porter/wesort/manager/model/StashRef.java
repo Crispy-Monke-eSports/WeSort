@@ -10,16 +10,55 @@ import com.google.gson.JsonObject;
  * @param rescanPending    -1 when no rescan is waiting for the bot
  * @param containersStale  -1 when the server doesn't say
  */
-public record StashRef(String server, String stash, String serverLabel, String player, String owner, boolean online,
-                       long indexedAt, long lastSeen, long itemTypes, long itemTotal, long rescanPending,
-                       String rescanBlocked, long containersTotal, long containersStale, BotInfo bot) {
+public record StashRef(
+        String server,
+        String stash,
+        String serverLabel,
+        String player,
+        String owner,
+        boolean online,
+        long indexedAt,
+        long lastSeen,
+        long itemTypes,
+        long itemTotal,
+        long rescanPending,
+        String rescanBlocked,
+        long containersTotal,
+        long containersStale,
+        BotInfo bot) {
 
     /** Without bot details (a local pseudo-stash). */
-    public StashRef(String server, String stash, String serverLabel, String player, String owner, boolean online,
-                    long indexedAt, long lastSeen, long itemTypes, long itemTotal, long rescanPending,
-                    String rescanBlocked, long containersTotal, long containersStale) {
-        this(server, stash, serverLabel, player, owner, online, indexedAt, lastSeen, itemTypes, itemTotal, rescanPending,
-            rescanBlocked, containersTotal, containersStale, BotInfo.NONE);
+    public StashRef(
+            String server,
+            String stash,
+            String serverLabel,
+            String player,
+            String owner,
+            boolean online,
+            long indexedAt,
+            long lastSeen,
+            long itemTypes,
+            long itemTotal,
+            long rescanPending,
+            String rescanBlocked,
+            long containersTotal,
+            long containersStale) {
+        this(
+                server,
+                stash,
+                serverLabel,
+                player,
+                owner,
+                online,
+                indexedAt,
+                lastSeen,
+                itemTypes,
+                itemTotal,
+                rescanPending,
+                rescanBlocked,
+                containersTotal,
+                containersStale,
+                BotInfo.NONE);
     }
 
     public static StashRef parse(JsonObject o) {
@@ -27,10 +66,22 @@ public record StashRef(String server, String stash, String serverLabel, String p
         String stash = Json.str(o, "stash");
         if (server.isEmpty() || stash.isEmpty()) return null;
         JsonObject c = Json.obj(o.get("containers"));
-        return new StashRef(server, stash, Json.str(o, "serverLabel"), Json.str(o, "player"), Json.str(o, "owner"),
-            Json.bool(o, "online"), Json.lng(o, "indexedAt", -1), Json.lng(o, "lastSeen", -1), Json.lng(o, "itemTypes", 0),
-            Json.lng(o, "itemTotal", 0), Json.lng(o, "rescanPending", -1), Json.str(o, "rescanBlocked"),
-            c == null ? -1 : Json.lng(c, "total", -1), c == null ? -1 : Json.lng(c, "stale", -1), BotInfo.parse(o));
+        return new StashRef(
+                server,
+                stash,
+                Json.str(o, "serverLabel"),
+                Json.str(o, "player"),
+                Json.str(o, "owner"),
+                Json.bool(o, "online"),
+                Json.lng(o, "indexedAt", -1),
+                Json.lng(o, "lastSeen", -1),
+                Json.lng(o, "itemTypes", 0),
+                Json.lng(o, "itemTotal", 0),
+                Json.lng(o, "rescanPending", -1),
+                Json.str(o, "rescanBlocked"),
+                c == null ? -1 : Json.lng(c, "total", -1),
+                c == null ? -1 : Json.lng(c, "stale", -1),
+                BotInfo.parse(o));
     }
 
     public String key() {
@@ -46,7 +97,8 @@ public record StashRef(String server, String stash, String serverLabel, String p
         if (rescanPending >= 0) return "Rescan requested";
         if (!rescanBlocked.isEmpty()) return "Can't rescan: " + Text.sanitize(rescanBlocked, 80);
         if (containersStale > 0 && containersTotal > 0) {
-            return "Re-reading containers: " + Text.grouped(Math.max(0, containersTotal - containersStale)) + " / " + Text.grouped(containersTotal);
+            return "Re-reading containers: " + Text.grouped(Math.max(0, containersTotal - containersStale)) + " / "
+                    + Text.grouped(containersTotal);
         }
         return "";
     }

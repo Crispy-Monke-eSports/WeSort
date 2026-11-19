@@ -9,6 +9,7 @@ public final class OverlayMask {
     public static final int HOVER = 1;
     /** A Meteor tooltip (from the previous frame: it is drawn after the icons). */
     public static final int TOOLTIP = 2;
+
     private static final int SLOTS = 3;
 
     private final double[][] rects = new double[SLOTS][];

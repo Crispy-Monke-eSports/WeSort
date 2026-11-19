@@ -19,7 +19,10 @@ public final class AnvilFinder {
 
     /** Where the anvil in use came from: set by hand, found placed, or placed from the stash. */
     public enum Source {
-        NONE("none"), SET("set"), FOUND("found"), PLACED("placed");
+        NONE("none"),
+        SET("set"),
+        FOUND("found"),
+        PLACED("placed");
 
         public final String label;
 
@@ -54,7 +57,12 @@ public final class AnvilFinder {
         boolean stockHasAnvil();
     }
 
-    public enum Step { USE, FOUND, PLACE_FROM_STOCK, FAIL }
+    public enum Step {
+        USE,
+        FOUND,
+        PLACE_FROM_STOCK,
+        FAIL
+    }
 
     /**
      * @param forget the remembered position is gone and is to be dropped
@@ -64,7 +72,13 @@ public final class AnvilFinder {
     public static Decision decide(Memory memory, World world) {
         boolean forget = false;
         if (memory != null && memory.pos() != null) {
-            if (world.isAnvil(memory.pos())) return new Decision(Step.USE, memory.pos(), memory.source() == Source.NONE ? Source.SET : memory.source(), null, false);
+            if (world.isAnvil(memory.pos()))
+                return new Decision(
+                        Step.USE,
+                        memory.pos(),
+                        memory.source() == Source.NONE ? Source.SET : memory.source(),
+                        null,
+                        false);
             // The anvil that was set or remembered is gone or broken: forgotten, then looked for again
             forget = true;
         }
@@ -78,7 +92,10 @@ public final class AnvilFinder {
     public static Pos nearest(List<Pos> anvils, Pos from, Predicate<Pos> inArea) {
         List<Pos> ok = new ArrayList<>();
         for (Pos p : anvils) if (inArea.test(p)) ok.add(p);
-        ok.sort(Comparator.comparingDouble(from::distanceSq).thenComparingInt(Pos::x).thenComparingInt(Pos::y).thenComparingInt(Pos::z));
+        ok.sort(Comparator.comparingDouble(from::distanceSq)
+                .thenComparingInt(Pos::x)
+                .thenComparingInt(Pos::y)
+                .thenComparingInt(Pos::z));
         return ok.isEmpty() ? null : ok.get(0);
     }
 }

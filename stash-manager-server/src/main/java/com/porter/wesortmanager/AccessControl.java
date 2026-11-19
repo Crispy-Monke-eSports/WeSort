@@ -2,13 +2,12 @@ package com.porter.wesortmanager;
 
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
-
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -20,7 +19,8 @@ import java.util.regex.Pattern;
 
 /** The access rules from PROTOCOL.md: LAN-only remote addresses, a Host allowlist, and the bearer key. */
 public final class AccessControl {
-    private static final Pattern IPV4 = Pattern.compile("^(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)(\\.(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)){3}$");
+    private static final Pattern IPV4 =
+            Pattern.compile("^(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)(\\.(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)){3}$");
     private static final Pattern IPV6_CHARS = Pattern.compile("^[0-9a-f:.]+(%[0-9a-z]+)?$");
 
     static final String JSON = "application/json";
@@ -29,6 +29,7 @@ public final class AccessControl {
     private final Set<String> allowedHosts = new HashSet<>();
     /** Only the names from allowedHosts= in config.properties (no localhost, machine names or IPs): the HTTPS proxy names. */
     private final Set<String> proxyNames = new HashSet<>();
+
     private final Config config;
 
     public AccessControl(Config config) {
@@ -60,7 +61,8 @@ public final class AccessControl {
 
     /** True when both the socket address and the Host header pass. Never reads X-Forwarded-For. */
     public boolean isAllowed(HttpExchange exchange) {
-        return remoteAllowed(exchange.getRemoteAddress()) && hostAllowed(exchange.getRequestHeaders().getFirst("Host"));
+        return remoteAllowed(exchange.getRemoteAddress())
+                && hostAllowed(exchange.getRequestHeaders().getFirst("Host"));
     }
 
     boolean remoteAllowed(InetSocketAddress remote) {
@@ -127,8 +129,6 @@ public final class AccessControl {
         return browserWriteAllowed(ex.getRequestMethod(), ex.getRequestHeaders());
     }
 
-
-
     boolean browserWriteAllowed(String method, Headers h) {
 
         if (!"POST".equals(method)) return false;
@@ -161,7 +161,9 @@ public final class AccessControl {
 
     private static boolean single(Headers h, String name, String expected) {
         List<String> values = h.get(name);
-        return values != null && values.size() == 1 && expected.equals(values.get(0).trim());
+        return values != null
+                && values.size() == 1
+                && expected.equals(values.get(0).trim());
     }
 
     /**
@@ -197,7 +199,10 @@ public final class AccessControl {
     }
 
     private static boolean isLocalOrIp(String host) {
-        return host.equals("localhost") || host.endsWith(".localhost") || host.startsWith("[") || host.contains(":")
+        return host.equals("localhost")
+                || host.endsWith(".localhost")
+                || host.startsWith("[")
+                || host.contains(":")
                 || IPV4.matcher(host).matches();
     }
 

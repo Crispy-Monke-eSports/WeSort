@@ -23,8 +23,15 @@ final class PhysicalReservations {
         }
     }
 
-    private record Candidate(String source, String path, String item, String shulker, long count,
-                             String fingerprint, long revision, boolean fresh) {
+    private record Candidate(
+            String source,
+            String path,
+            String item,
+            String shulker,
+            long count,
+            String fingerprint,
+            long revision,
+            boolean fresh) {
         String reference() {
             return item.isEmpty() ? "shulker:" + shulker : "item:" + item;
         }
@@ -48,7 +55,8 @@ final class PhysicalReservations {
         var candidates = new ArrayList<Candidate>();
         var sources = new LinkedHashMap<String, StockLedger.Source>();
         for (var source : ledger.sources()) {
-            if (!source.server().equals(server) || stash != null && !source.stash().equals(stash)) continue;
+            if (!source.server().equals(server)
+                    || stash != null && !source.stash().equals(stash)) continue;
             var value = source.value();
             if (!value.has("slotFingerprint")) continue;
             String id = value.get("id").getAsString();
@@ -60,9 +68,17 @@ final class PhysicalReservations {
                 String group = slot.get("group").getAsString();
                 boolean whole = slot.get("kind").getAsString().equals("SHULKER") && !group.isEmpty();
                 if (whole && path.contains("/")) continue;
-                candidates.add(new Candidate(id, path, whole ? "" : slot.get("key").getAsString(), group,
-                    Math.multiplyExact(slot.get("count").getAsLong(), slot.get("copies").getAsLong()),
-                    slot.get("fingerprint").getAsString(), slot.get("revision").getAsLong(), fresh));
+                candidates.add(new Candidate(
+                        id,
+                        path,
+                        whole ? "" : slot.get("key").getAsString(),
+                        group,
+                        Math.multiplyExact(
+                                slot.get("count").getAsLong(),
+                                slot.get("copies").getAsLong()),
+                        slot.get("fingerprint").getAsString(),
+                        slot.get("revision").getAsLong(),
+                        fresh));
             }
         }
         return new PhysicalReservations(List.copyOf(candidates), Map.copyOf(sources));
@@ -72,8 +88,8 @@ final class PhysicalReservations {
         return !sources.isEmpty();
     }
 
-    List<Allocation> allocate(Iterable<OrderStore.Line> requested, Set<Root> reserved,
-                              Map<String, Integer> firstIndex) throws OrderStore.OrderException {
+    List<Allocation> allocate(Iterable<OrderStore.Line> requested, Set<Root> reserved, Map<String, Integer> firstIndex)
+            throws OrderStore.OrderException {
         var selected = new ArrayList<Allocation>();
         var used = new HashMap<Root, List<Allocation>>();
         for (var line : requested) {
@@ -82,25 +98,36 @@ final class PhysicalReservations {
                 if (!candidate.fresh() || !candidate.reference().equals(line.ref())) continue;
                 var allocation = candidate.allocate(line.ref(), Math.min(remaining, candidate.count()));
                 var existing = used.get(allocation.root());
-                if (reserved.contains(allocation.root()) || existing != null && (
-                    allocation.outer() || existing.stream().anyMatch(part -> part.outer() || part.path().equals(allocation.path())))) continue;
+                if (reserved.contains(allocation.root())
+                        || existing != null
+                                && (allocation.outer()
+                                        || existing.stream()
+                                                .anyMatch(part -> part.outer()
+                                                        || part.path().equals(allocation.path())))) continue;
                 selected.add(allocation);
-                used.computeIfAbsent(allocation.root(), ignored -> new ArrayList<>()).add(allocation);
+                used.computeIfAbsent(allocation.root(), ignored -> new ArrayList<>())
+                        .add(allocation);
                 remaining -= allocation.count();
                 if (remaining == 0) break;
             }
             if (remaining != 0) {
-                throw new OrderStore.OrderException(409, "Only " + (line.count() - remaining)
-                    + " verified unreserved units for " + line.key(), firstIndex.get(line.ref()));
+                throw new OrderStore.OrderException(
+                        409,
+                        "Only " + (line.count() - remaining) + " verified unreserved units for " + line.key(),
+                        firstIndex.get(line.ref()));
             }
         }
         return List.copyOf(selected);
     }
 
     boolean matches(List<Allocation> allocations) {
-        return allocations.stream().allMatch(allocation -> candidates.stream().anyMatch(candidate ->
-            candidate.fresh() && candidate.source().equals(allocation.source()) && candidate.path().equals(allocation.path())
-            && candidate.fingerprint().equals(allocation.fingerprint()) && candidate.count() >= allocation.count()));
+        return allocations.stream()
+                .allMatch(allocation -> candidates.stream()
+                        .anyMatch(candidate -> candidate.fresh()
+                                && candidate.source().equals(allocation.source())
+                                && candidate.path().equals(allocation.path())
+                                && candidate.fingerprint().equals(allocation.fingerprint())
+                                && candidate.count() >= allocation.count()));
     }
 
     Map<String, Long> available(Set<Root> held) {
@@ -128,7 +155,9 @@ final class PhysicalReservations {
     boolean refreshedAfter(List<Allocation> allocations, long cutoff) {
         return allocations.stream().map(Allocation::source).distinct().allMatch(id -> {
             var source = sources.get(id);
-            return source != null && source.verifiedAt() > cutoff && source.status().equals("FRESH");
+            return source != null
+                    && source.verifiedAt() > cutoff
+                    && source.status().equals("FRESH");
         });
     }
 }

@@ -14,7 +14,6 @@ import com.porter.wesort.manager.net.ApiError;
 import com.porter.wesort.manager.net.ApiResult;
 import com.porter.wesort.manager.net.SmClient;
 import com.porter.wesort.stash.Order;
-
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -56,6 +55,7 @@ final class ServerOrderBackend implements OrderBackend {
     private long deliveryRetryAt, deliveryBackoff;
     /** Server time minus local time (ms), when known (the website reads it from the Date header). */
     private volatile long clockSkew;
+
     private int token;
 
     ServerOrderBackend(SmClient client, Host host) {
@@ -220,21 +220,30 @@ final class ServerOrderBackend implements OrderBackend {
         Map<String, String> query = new LinkedHashMap<>();
         query.put("server", s.server());
         query.put("stash", s.stash());
-        client.get("/api/v1/orders", query, null, false, SmClient.DEFAULT_TIMEOUT, r -> OrderModel.parse(r.body()), (r, parsed) -> {
-            if (mine != token) return;
-            ordersBusy = false;
-            if (host.closed()) return;
-            if (!r.ok()) {
-                host.failed(r);
-                return;
-            }
-            if (!sameOrders(listing, parsed)) dirty = true;
-            listing = parsed;
-        });
+        client.get(
+                "/api/v1/orders",
+                query,
+                null,
+                false,
+                SmClient.DEFAULT_TIMEOUT,
+                r -> OrderModel.parse(r.body()),
+                (r, parsed) -> {
+                    if (mine != token) return;
+                    ordersBusy = false;
+                    if (host.closed()) return;
+                    if (!r.ok()) {
+                        host.failed(r);
+                        return;
+                    }
+                    if (!sameOrders(listing, parsed)) dirty = true;
+                    listing = parsed;
+                });
     }
 
     private static boolean sameOrders(OrderModel.Listing a, OrderModel.Listing b) {
-        return a.orders().equals(b.orders()) && a.availableItems().equals(b.availableItems()) && a.availableShulkers().equals(b.availableShulkers());
+        return a.orders().equals(b.orders())
+                && a.availableItems().equals(b.availableItems())
+                && a.availableShulkers().equals(b.availableShulkers());
     }
 
     private void pollDelivery(StashRef s, long now) {
@@ -253,22 +262,30 @@ final class ServerOrderBackend implements OrderBackend {
         Map<String, String> query = new LinkedHashMap<>();
         query.put("server", s.server());
         query.put("stash", s.stash());
-        client.get("/api/v1/delivery", query, null, false, SmClient.DEFAULT_TIMEOUT, r -> DeliveryModel.parse(r.body()), (r, parsed) -> {
-            if (mine != token) return;
-            deliveryBusy = false;
-            if (host.closed()) return;
-            if (!r.ok()) {
-                // Not marked as loaded: asked again after 5 s, doubling to 60 s; the preview stays as it is meanwhile
-                deliveryBackoff = DeliveryModel.retryDelay(deliveryBackoff);
-                deliveryRetryAt = System.currentTimeMillis() + deliveryBackoff;
-                return;
-            }
-            deliveryBackoff = 0;
-            deliveryRetryAt = 0;
-            deliveryKey = want;
-            delivery = parsed;
-            dirty = true;
-        });
+        client.get(
+                "/api/v1/delivery",
+                query,
+                null,
+                false,
+                SmClient.DEFAULT_TIMEOUT,
+                r -> DeliveryModel.parse(r.body()),
+                (r, parsed) -> {
+                    if (mine != token) return;
+                    deliveryBusy = false;
+                    if (host.closed()) return;
+                    if (!r.ok()) {
+                        // Not marked as loaded: asked again after 5 s, doubling to 60 s; the preview stays as it is
+                        // meanwhile
+                        deliveryBackoff = DeliveryModel.retryDelay(deliveryBackoff);
+                        deliveryRetryAt = System.currentTimeMillis() + deliveryBackoff;
+                        return;
+                    }
+                    deliveryBackoff = 0;
+                    deliveryRetryAt = 0;
+                    deliveryKey = want;
+                    delivery = parsed;
+                    dirty = true;
+                });
     }
 
     // ---------- writing ----------
@@ -298,11 +315,16 @@ final class ServerOrderBackend implements OrderBackend {
             if (host.closed()) return;
             refreshNow();
             if (r.ok()) {
-                done.accept(new PlaceResult(true, s.online() ? "Order placed." : "Order placed. It will start when the bot reconnects.", -1));
+                done.accept(new PlaceResult(
+                        true,
+                        s.online() ? "Order placed." : "Order placed. It will start when the bot reconnects.",
+                        -1));
                 return;
             }
             int line = -1;
-            if (r.obj().has("line") && r.obj().get("line").isJsonPrimitive() && r.obj().get("line").getAsJsonPrimitive().isNumber()) {
+            if (r.obj().has("line")
+                    && r.obj().get("line").isJsonPrimitive()
+                    && r.obj().get("line").getAsJsonPrimitive().isNumber()) {
                 line = r.obj().get("line").getAsInt();
             }
             done.accept(new PlaceResult(false, failure(r, "Could not place the order"), line));
@@ -340,7 +362,12 @@ final class ServerOrderBackend implements OrderBackend {
     @Override
     public void cancel(OrderModel.Entry e, Consumer<String> done) {
         boolean running = !OrderModel.PENDING.equals(e.status());
-        act(path(e.id(), "cancel"), new JsonObject(), running ? "Cancel requested." : "Order cancelled.", "Could not cancel", done);
+        act(
+                path(e.id(), "cancel"),
+                new JsonObject(),
+                running ? "Cancel requested." : "Order cancelled.",
+                "Could not cancel",
+                done);
     }
 
     @Override
@@ -364,7 +391,9 @@ final class ServerOrderBackend implements OrderBackend {
             if (host.closed()) return;
             refreshNow();
             if (r.ok()) {
-                int n = r.obj().has("removed") && r.obj().get("removed").isJsonPrimitive() ? r.obj().get("removed").getAsInt() : 0;
+                int n = r.obj().has("removed") && r.obj().get("removed").isJsonPrimitive()
+                        ? r.obj().get("removed").getAsInt()
+                        : 0;
                 done.accept("Cleared " + n + (n == 1 ? " order." : " orders."));
             } else {
                 done.accept(failure(r, "Could not clear the history"));

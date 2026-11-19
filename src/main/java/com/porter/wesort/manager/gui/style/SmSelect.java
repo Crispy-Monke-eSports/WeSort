@@ -1,11 +1,10 @@
 package com.porter.wesort.manager.gui.style;
 
 import com.porter.wesort.manager.gui.frame.WOverlayLayer;
-import meteordevelopment.meteorclient.gui.renderer.GuiRenderer;
-import meteordevelopment.meteorclient.gui.widgets.input.WDropdown;
-
 import java.util.ArrayList;
 import java.util.List;
+import meteordevelopment.meteorclient.gui.renderer.GuiRenderer;
+import meteordevelopment.meteorclient.gui.widgets.input.WDropdown;
 
 /**
  * A select like the website's .mc-select. It never opens Meteor's own list: a click opens a solid list on the window's
@@ -28,14 +27,12 @@ public class SmSelect<T> extends WDropdown<T> {
 
     @Override
     protected WDropdownRoot createRootWidget() {
-        return new WDropdownRoot() {
-        };
+        return new WDropdownRoot() {};
     }
 
     @Override
     protected WDropdownValue createValueWidget() {
-        return new WDropdownValue() {
-        };
+        return new WDropdownValue() {};
     }
 
     @Override
@@ -66,7 +63,17 @@ public class SmSelect<T> extends WDropdown<T> {
         boolean hot = (mouseOver || pressed) && !t.hoverBlocked();
         boolean open = t.overlay != null && t.overlay.anchoredAt(x, y);
         int fill = hot ? Palette.mix(p.surface2(), p.text(), 0.10) : p.surface2();
-        Paint.panel(renderer, t, x, y, width, height, p.radius * u, p.borderWidth * u, fill, open || hot ? p.accent() : p.border());
+        Paint.panel(
+                renderer,
+                t,
+                x,
+                y,
+                width,
+                height,
+                p.radius * u,
+                p.borderWidth * u,
+                fill,
+                open || hot ? p.accent() : p.border());
         renderer.text(String.valueOf(get()), x + pad, y + pad, t.color(p.text()), false);
         double s = t.textHeight() * 0.55;
         Paint.chevronDown(renderer, t, x + width - pad - s, y + height / 2 - s / 4, s, p.text());

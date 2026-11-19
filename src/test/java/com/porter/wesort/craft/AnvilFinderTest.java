@@ -19,9 +19,20 @@ class AnvilFinderTest {
     /** A world with these placed anvils, a stash with or without an anvil item. */
     private static AnvilFinder.World world(Set<Pos> anvils, Pos found, boolean stock) {
         return new AnvilFinder.World() {
-            @Override public boolean isAnvil(Pos p) { return anvils.contains(p); }
-            @Override public Pos search() { return found; }
-            @Override public boolean stockHasAnvil() { return stock; }
+            @Override
+            public boolean isAnvil(Pos p) {
+                return anvils.contains(p);
+            }
+
+            @Override
+            public Pos search() {
+                return found;
+            }
+
+            @Override
+            public boolean stockHasAnvil() {
+                return stock;
+            }
         };
     }
 
@@ -58,7 +69,9 @@ class AnvilFinderTest {
         assertEquals(Step.FAIL, d.step());
         assertEquals("no anvils available to rename with", d.failure());
         // The shulker is delivered unnamed, and the order's note says why
-        assertEquals("2 shulker(s) delivered unnamed: no anvils available to rename with", Order.unnamedNote(2, List.of(d.failure())));
+        assertEquals(
+                "2 shulker(s) delivered unnamed: no anvils available to rename with",
+                Order.unnamedNote(2, List.of(d.failure())));
     }
 
     @Test

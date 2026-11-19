@@ -19,14 +19,14 @@ import net.minecraft.world.item.ItemStack;
  * icon, in the same task, so it stays on top of it.
  */
 public final class ItemLayer {
-    private ItemLayer() {
-    }
+    private ItemLayer() {}
 
     /**
      * Draws {@code stack} in a 16 by 16 GUI pixel box at ({@code ix, iy}) physical pixels, with its durability bar, and
      * {@code count} (may be null or empty) small in the box's bottom-right corner.
      */
-    public static void draw(GuiRenderer renderer, GuiTheme theme, GuiGraphics g, ItemStack stack, String count, double ix, double iy) {
+    public static void draw(
+            GuiRenderer renderer, GuiTheme theme, GuiGraphics g, ItemStack stack, String count, double ix, double iy) {
         if (g == null || stack == null || stack.isEmpty()) return;
         int u = SmGuiTheme.unitOf(theme);
         WOverlayLayer overlay = theme instanceof SmGuiTheme t ? t.overlay : null;

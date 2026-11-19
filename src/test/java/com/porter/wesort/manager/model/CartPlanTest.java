@@ -1,16 +1,15 @@
 package com.porter.wesort.manager.model;
 
-import com.porter.wesort.manager.model.CartPlan.Kind;
-import com.porter.wesort.manager.model.CartPlan.Unit;
-import com.porter.wesort.stash.Order;
-import org.junit.jupiter.api.Test;
-
-import java.util.ArrayList;
-import java.util.List;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.porter.wesort.manager.model.CartPlan.Kind;
+import com.porter.wesort.manager.model.CartPlan.Unit;
+import com.porter.wesort.stash.Order;
+import java.util.ArrayList;
+import java.util.List;
+import org.junit.jupiter.api.Test;
 
 class CartPlanTest {
     private static IndexModel index() {
@@ -36,32 +35,53 @@ class CartPlanTest {
     @Test
     void mixedMaxStackSizes() {
         // pearls stack to 16: 100 -> 6 full + 4; swords stack to 1: 3 -> 3 slots; diamonds 64: 100 -> 1 + 36
-        List<Order.Line> lines = List.of(item("minecraft:ender_pearl", 100), item("minecraft:diamond_sword", 3), item("minecraft:diamond", 100));
+        List<Order.Line> lines = List.of(
+                item("minecraft:ender_pearl", 100), item("minecraft:diamond_sword", 3), item("minecraft:diamond", 100));
         assertEquals(7 + 3 + 2, slots(CartPlan.plan(lines, index())));
         assertEquals(1, CartPlan.shulkersNeeded(lines, index()));
     }
 
     @Test
     void sameResultAsOrderPack() {
-        List<Order.Line> lines = List.of(item("minecraft:cobblestone", 64 * 40), item("minecraft:diamond", 64 * 10 + 5),
-            item("minecraft:ender_pearl", 33), item("minecraft:diamond_sword", 12));
+        List<Order.Line> lines = List.of(
+                item("minecraft:cobblestone", 64 * 40),
+                item("minecraft:diamond", 64 * 10 + 5),
+                item("minecraft:ender_pearl", 33),
+                item("minecraft:diamond_sword", 12));
         List<Order.Lot> lots = new ArrayList<>();
-        for (Order.Line l : lines) lots.addAll(Order.expand(l.key(), l.count(), index().item(l.key()).maxStack()));
+        for (Order.Line l : lines)
+            lots.addAll(Order.expand(l.key(), l.count(), index().item(l.key()).maxStack()));
         List<List<Order.Lot>> expected = Order.pack(lots);
         List<Unit> plan = CartPlan.plan(lines, index());
         assertEquals(expected.size(), plan.size());
-        for (int i = 0; i < expected.size(); i++) assertEquals(expected.get(i), plan.get(i).lots());
+        for (int i = 0; i < expected.size(); i++)
+            assertEquals(expected.get(i), plan.get(i).lots());
     }
 
     @Test
     void keysAreGroupedInAscendingOrderAndTheBiggestGroupFirst() {
         // cobblestone has the most loads so it comes first; diamond (3 loads) and apple (1 load) follow
-        List<Unit> plan = CartPlan.plan(List.of(item("minecraft:diamond", 64 * 3), item("minecraft:apple", 4), item("minecraft:cobblestone", 64 * 5)), index());
+        List<Unit> plan = CartPlan.plan(
+                List.of(
+                        item("minecraft:diamond", 64 * 3),
+                        item("minecraft:apple", 4),
+                        item("minecraft:cobblestone", 64 * 5)),
+                index());
         assertEquals(1, plan.size());
         List<String> keys = new ArrayList<>();
         for (Order.Lot l : plan.get(0).lots()) keys.add(l.key());
-        assertEquals(List.of("minecraft:cobblestone", "minecraft:cobblestone", "minecraft:cobblestone", "minecraft:cobblestone", "minecraft:cobblestone",
-            "minecraft:diamond", "minecraft:diamond", "minecraft:diamond", "minecraft:apple"), keys);
+        assertEquals(
+                List.of(
+                        "minecraft:cobblestone",
+                        "minecraft:cobblestone",
+                        "minecraft:cobblestone",
+                        "minecraft:cobblestone",
+                        "minecraft:cobblestone",
+                        "minecraft:diamond",
+                        "minecraft:diamond",
+                        "minecraft:diamond",
+                        "minecraft:apple"),
+                keys);
     }
 
     @Test
@@ -73,9 +93,14 @@ class CartPlanTest {
 
     @Test
     void packedAndEmptyShulkersComeFirstInThatOrder() {
-        List<Order.Line> lines = List.of(item("minecraft:diamond", 64), item("minecraft:red_shulker_box", 2), new Order.Line("shulker", "s:aaaaaaaaaa", 3));
+        List<Order.Line> lines = List.of(
+                item("minecraft:diamond", 64),
+                item("minecraft:red_shulker_box", 2),
+                new Order.Line("shulker", "s:aaaaaaaaaa", 3));
         List<Unit> plan = CartPlan.plan(lines, index());
-        assertEquals(List.of(Kind.SHULKER, Kind.SHULKER, Kind.SHULKER, Kind.EMPTY, Kind.EMPTY, Kind.BIN), plan.stream().map(Unit::kind).toList());
+        assertEquals(
+                List.of(Kind.SHULKER, Kind.SHULKER, Kind.SHULKER, Kind.EMPTY, Kind.EMPTY, Kind.BIN),
+                plan.stream().map(Unit::kind).toList());
         assertEquals(6, CartPlan.shulkersNeeded(lines, index()));
     }
 
@@ -90,12 +115,19 @@ class CartPlanTest {
         List<Order.Line> lines = List.of(item("minecraft:diamond", 64 * 27 * 54 + 1));
         assertEquals(55, CartPlan.shulkersNeeded(lines, index()));
         assertNull(CartPlan.plan(lines, index()));
-        assertTrue(CartPlan.plan(List.of(item("minecraft:diamond", 64 * 27 * 54)), index()).size() == 54);
+        assertTrue(CartPlan.plan(List.of(item("minecraft:diamond", 64 * 27 * 54)), index())
+                        .size()
+                == 54);
     }
 
     @Test
     void hugeCountsDoNotOverflow() {
-        assertTrue(CartPlan.shulkersNeeded(List.of(item("minecraft:diamond", Integer.MAX_VALUE), item("minecraft:red_shulker_box", Integer.MAX_VALUE)), index()) > 54);
+        assertTrue(CartPlan.shulkersNeeded(
+                        List.of(
+                                item("minecraft:diamond", Integer.MAX_VALUE),
+                                item("minecraft:red_shulker_box", Integer.MAX_VALUE)),
+                        index())
+                > 54);
     }
 
     private static int slots(List<Unit> plan) {

@@ -5,7 +5,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import com.sun.net.httpserver.HttpExchange;
-
 import java.io.IOException;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -36,12 +35,17 @@ final class UserRoutes {
 
     void register(Router router) {
         router.exact(Router.GET, "/api/v1/users", Router.Guard.SESSION, Router.Perm.OWNER, this::list)
-            .exact(Router.POST, "/api/v1/users", Router.Guard.BROWSER_WRITE, Router.Perm.OWNER, this::create)
-            .exact(Router.POST, "/api/v1/users/owner", Router.Guard.BROWSER_WRITE, Router.Perm.OWNER, this::renameOwner)
-            .pattern(Router.POST, USER, Router.Guard.BROWSER_WRITE, Router.Perm.OWNER, this::update)
-            .pattern(Router.POST, MINECRAFT, Router.Guard.BROWSER_WRITE, Router.Perm.OWNER, this::minecraftAccount)
-            .pattern(Router.POST, ACTION, Router.Guard.BROWSER_WRITE, Router.Perm.OWNER, this::action)
-            .exact(Router.GET, "/api/v1/audit", Router.Guard.SESSION, Router.Perm.OWNER, this::audit);
+                .exact(Router.POST, "/api/v1/users", Router.Guard.BROWSER_WRITE, Router.Perm.OWNER, this::create)
+                .exact(
+                        Router.POST,
+                        "/api/v1/users/owner",
+                        Router.Guard.BROWSER_WRITE,
+                        Router.Perm.OWNER,
+                        this::renameOwner)
+                .pattern(Router.POST, USER, Router.Guard.BROWSER_WRITE, Router.Perm.OWNER, this::update)
+                .pattern(Router.POST, MINECRAFT, Router.Guard.BROWSER_WRITE, Router.Perm.OWNER, this::minecraftAccount)
+                .pattern(Router.POST, ACTION, Router.Guard.BROWSER_WRITE, Router.Perm.OWNER, this::action)
+                .exact(Router.GET, "/api/v1/audit", Router.Guard.SESSION, Router.Perm.OWNER, this::audit);
     }
 
     private void list(HttpExchange ex) throws IOException {
@@ -86,15 +90,20 @@ final class UserRoutes {
         if (hasPerms && hasPreset) throw new IllegalArgumentException("give perms or preset, not both");
         if (hasPerms) return Users.Perms.parse(pe);
         if (!hasPreset) return null;
-        Users.Perms p = pr instanceof JsonPrimitive prim && prim.isString() ? Users.PRESETS.get(prim.getAsString()) : null;
-        if (p == null) throw new IllegalArgumentException("preset must be one of " + String.join(", ", Users.PRESETS.keySet()));
+        Users.Perms p =
+                pr instanceof JsonPrimitive prim && prim.isString() ? Users.PRESETS.get(prim.getAsString()) : null;
+        if (p == null)
+            throw new IllegalArgumentException("preset must be one of " + String.join(", ", Users.PRESETS.keySet()));
         return p;
     }
 
     /** Whether the body's perms object names "streamer" (true or false) itself. */
     private static boolean explicitStreamer(JsonObject o) {
         JsonElement pe = o.get("perms");
-        return pe != null && pe.isJsonObject() && pe.getAsJsonObject().has("streamer") && !pe.getAsJsonObject().get("streamer").isJsonNull();
+        return pe != null
+                && pe.isJsonObject()
+                && pe.getAsJsonObject().has("streamer")
+                && !pe.getAsJsonObject().get("streamer").isJsonNull();
     }
 
     private static Boolean optBool(JsonObject o, String key) {
@@ -174,9 +183,13 @@ final class UserRoutes {
         Users.User before = users.byId(m.group(1));
         // Force streamer mode is only changed by an explicit "streamer" key: a preset, or perms from an older page
         // without the key, keep the stored flag (nobody gets un-forced by accident).
-        if (perms != null && before != null && !explicitStreamer(o)) perms = perms.withStreamer(before.perms().streamer());
-        if (perms != null && before != null && o.has("perms") && o.get("perms").isJsonObject()
-            && !o.getAsJsonObject("perms").has("guildOrders")) {
+        if (perms != null && before != null && !explicitStreamer(o))
+            perms = perms.withStreamer(before.perms().streamer());
+        if (perms != null
+                && before != null
+                && o.has("perms")
+                && o.get("perms").isJsonObject()
+                && !o.getAsJsonObject("perms").has("guildOrders")) {
             perms = perms.withGuildOrders(before.perms().guildOrders());
         }
         Users.User u;
@@ -197,12 +210,14 @@ final class UserRoutes {
         if (before != null && before.perms().guildOrders() != u.perms().guildOrders()) {
             what.append(u.perms().guildOrders() ? ", guild orders granted" : ", guild orders revoked");
         }
-        if (before != null && !before.name().equals(u.name())) what.append(", renamed from ").append(before.name());
+        if (before != null && !before.name().equals(u.name()))
+            what.append(", renamed from ").append(before.name());
         if (before != null && before.disabled() != u.disabled()) what.append(u.disabled() ? ", disabled" : ", enabled");
         if (before != null && before.perms().streamer() != u.perms().streamer()) {
             what.append(u.perms().streamer() ? ", forced streamer mode ON" : ", forced streamer mode OFF");
         }
-        if (before != null && !before.perms().equals(u.perms())) what.append(", permissions: ").append(describe(u.perms()));
+        if (before != null && !before.perms().equals(u.perms()))
+            what.append(", permissions: ").append(describe(u.perms()));
         audit.add(Router.user(ex), "user.update", what.toString(), AuthRoutes.address(ex));
         JsonObject out = Http.ok();
         out.add("user", u.toJson(sessions.countByUser().getOrDefault(u.id(), 0)));
@@ -212,16 +227,26 @@ final class UserRoutes {
 
     private void minecraftAccount(HttpExchange ex) throws IOException {
         var path = MINECRAFT.matcher(ex.getRequestURI().getRawPath());
-        if (!path.matches()) { Http.error(ex, 404, "not found"); return; }
+        if (!path.matches()) {
+            Http.error(ex, 404, "not found");
+            return;
+        }
         if (!unlocked(ex)) return;
         var body = AuthRoutes.body(ex, MAX_BODY);
         if (body == null) return;
         String account = AddonRoutes.string(body, "account");
-        if (account == null) { Http.error(ex, 400, "Expected a Minecraft account name"); return; }
+        if (account == null) {
+            Http.error(ex, 400, "Expected a Minecraft account name");
+            return;
+        }
         String id = path.group(1);
         try {
             users.linkMinecraftAccount(id, account);
-            audit.add(Router.user(ex), account.isBlank() ? "user.minecraft.unlink" : "user.minecraft.link", id, AuthRoutes.address(ex));
+            audit.add(
+                    Router.user(ex),
+                    account.isBlank() ? "user.minecraft.unlink" : "user.minecraft.link",
+                    id,
+                    AuthRoutes.address(ex));
             var result = Http.ok();
             result.addProperty("minecraftAccount", users.minecraftAccount(id));
             Http.json(ex, 200, result);
@@ -301,7 +326,12 @@ final class UserRoutes {
             saveFailed(ex, e);
             return;
         }
-        audit.add(Users.OWNER_ID, users.ownerName(), "owner.rename", before + " to " + users.ownerName(), AuthRoutes.address(ex));
+        audit.add(
+                Users.OWNER_ID,
+                users.ownerName(),
+                "owner.rename",
+                before + " to " + users.ownerName(),
+                AuthRoutes.address(ex));
         Http.json(ex, 200, Http.ok());
     }
 
@@ -324,7 +354,8 @@ final class UserRoutes {
 
     static String describe(Users.Perms p) {
         StringBuilder sb = new StringBuilder();
-        java.util.function.Consumer<String> add = s -> sb.append(sb.isEmpty() ? "" : ", ").append(s);
+        java.util.function.Consumer<String> add =
+                s -> sb.append(sb.isEmpty() ? "" : ", ").append(s);
         if (p.view()) add.accept("view");
         if (p.order()) add.accept("order");
         if (p.ordersAll()) add.accept("all orders");

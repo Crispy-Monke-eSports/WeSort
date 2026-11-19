@@ -11,20 +11,22 @@ public final class StashLayout {
     public static final int TAB_H = 24;
     /** The selected tab is taller and joins the panel. */
     public static final int TAB_SELECTED_H = 29;
+
     public static final int PANEL_Y = 27;
     /** The panel's side and bottom padding (12 CSS px), and its top padding (16 CSS px). */
     public static final int PAD = 6;
+
     public static final int TOP_PAD = 8;
     /** The gap between the panel's rows (8 CSS px). */
     public static final int ROW_GAP = 4;
     /** The drawer is wide enough for a shulker box's nine-wide slot grid and its scroll bar. */
     public static final int DRAWER_W = 186;
+
     public static final int GRID_MIN_W = GridLayout.SLOT * 9 + 4;
     /** The least height the grid gets. */
     public static final int GRID_MIN_H = GridLayout.SLOT + 4;
 
-    private StashLayout() {
-    }
+    private StashLayout() {}
 
     public record R(int x, int y, int w, int h) {
         public boolean isEmpty() {
@@ -41,8 +43,7 @@ public final class StashLayout {
      * @param totalH the height the page really needs: the room it was given, or more when the grid, toolbar, summary and
      *               hint can't all fit; the outer page scrolls then
      */
-    public record Layout(R tabs, R panel, R label, R grid, R search, R sort, R summary, R hint, R drawer, int totalH) {
-    }
+    public record Layout(R tabs, R panel, R label, R grid, R search, R sort, R summary, R hint, R drawer, int totalH) {}
 
     /**
      * @param textH     height of a line of normal text (the panel's label)

@@ -4,7 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -33,7 +32,9 @@ final class AuditLog {
     synchronized void load() {
         if (file == null || !Files.exists(file)) return;
         try {
-            JsonArray list = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8)).getAsJsonObject().getAsJsonArray("entries");
+            JsonArray list = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8))
+                    .getAsJsonObject()
+                    .getAsJsonArray("entries");
             for (JsonElement e : list) if (e.isJsonObject()) entries.addLast(e.getAsJsonObject());
             while (entries.size() > MAX) entries.pollFirst();
             AtomicFiles.ownerOnly(file);
@@ -70,7 +71,8 @@ final class AuditLog {
     /** The newest entries first, at most limit. */
     synchronized JsonArray newest(int limit) {
         JsonArray out = new JsonArray();
-        for (Iterator<JsonObject> it = entries.descendingIterator(); it.hasNext() && out.size() < limit; ) out.add(it.next().deepCopy());
+        for (Iterator<JsonObject> it = entries.descendingIterator(); it.hasNext() && out.size() < limit; )
+            out.add(it.next().deepCopy());
         return out;
     }
 

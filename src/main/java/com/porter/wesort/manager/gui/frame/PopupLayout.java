@@ -6,8 +6,7 @@ package com.porter.wesort.manager.gui.frame;
 public final class PopupLayout {
     public static final int MAX_ROWS = 12;
 
-    private PopupLayout() {
-    }
+    private PopupLayout() {}
 
     /**
      * @param x       left edge
@@ -27,8 +26,16 @@ public final class PopupLayout {
      * The list for an anchor (the select that was clicked): below it, or above it when there is no room, never wider
      * than the screen, shifted left when it would leave the screen, at most {@link #MAX_ROWS} rows (it scrolls past that).
      */
-    public static Placement place(double ax, double ay, double aw, double ah, double rowW, double rowH, int rows,
-                                  double screenW, double screenH) {
+    public static Placement place(
+            double ax,
+            double ay,
+            double aw,
+            double ah,
+            double rowW,
+            double rowH,
+            int rows,
+            double screenW,
+            double screenH) {
         double w = Math.min(Math.max(aw, rowW), Math.max(1, screenW));
         int want = Math.max(1, Math.min(rows, MAX_ROWS));
         double below = screenH - (ay + ah);

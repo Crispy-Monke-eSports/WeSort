@@ -1,16 +1,17 @@
 package com.porter.wesort.manager.model;
 
-import com.google.gson.JsonParser;
-import org.junit.jupiter.api.Test;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.google.gson.JsonParser;
+import org.junit.jupiter.api.Test;
+
 class BotListTest {
-    static final String BOTS = "[{\"botId\":\"ct1\",\"player\":\"Pl§ayer\",\"online\":true,\"lastSeen\":5,\"plugin\":{\"id\":\"qs\",\"version\":\"1.2\"},"
-        + "\"caps\":[\"settings\",\"viewer\"],\"scopes\":[\"plugin\",\"proxy\",\"Bad Scope\",\"plugin:other\"]},{\"botId\":\"\"},5,{\"botId\":\"ct2\",\"online\":false}]";
+    static final String BOTS =
+            "[{\"botId\":\"ct1\",\"player\":\"Pl§ayer\",\"online\":true,\"lastSeen\":5,\"plugin\":{\"id\":\"qs\",\"version\":\"1.2\"},"
+                    + "\"caps\":[\"settings\",\"viewer\"],\"scopes\":[\"plugin\",\"proxy\",\"Bad Scope\",\"plugin:other\"]},{\"botId\":\"\"},5,{\"botId\":\"ct2\",\"online\":false}]";
 
     @Test
     void parsesAndCleans() {
@@ -30,9 +31,9 @@ class BotListTest {
     @Test
     void parsesTheCardFields() {
         String json = "[{\"botId\":\"ct1\",\"player\":\"Ann\",\"online\":true,\"lastSeen\":9,\"summary\":\"Sorting\","
-            + "\"plugin\":{\"id\":\"qs\",\"version\":\"1.2\"},\"runtime\":{\"version\":\"0.9\",\"mc\":\"1.21.4\"},"
-            + "\"stashes\":[{\"server\":\"s.net\",\"stash\":\"base\"},{\"server\":\"\",\"stash\":\"x\"},7,{\"server\":\"s.net\"}]},"
-            + "{\"botId\":\"ct2\",\"proxy\":5,\"stashes\":\"no\"}]";
+                + "\"plugin\":{\"id\":\"qs\",\"version\":\"1.2\"},\"runtime\":{\"version\":\"0.9\",\"mc\":\"1.21.4\"},"
+                + "\"stashes\":[{\"server\":\"s.net\",\"stash\":\"base\"},{\"server\":\"\",\"stash\":\"x\"},7,{\"server\":\"s.net\"}]},"
+                + "{\"botId\":\"ct2\",\"proxy\":5,\"stashes\":\"no\"}]";
         BotList l = BotList.parse(JsonParser.parseString(json));
         BotList.Bot b = l.find("ct1");
         assertEquals("0.9", b.runtimeVersion());

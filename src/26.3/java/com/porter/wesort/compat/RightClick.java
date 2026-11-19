@@ -1,12 +1,11 @@
 package com.porter.wesort.compat;
 
+import com.mojang.blaze3d.platform.InputConstants;
+import java.util.function.BooleanSupplier;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.meteor.MouseClickEvent;
 import meteordevelopment.meteorclient.utils.misc.input.KeyAction;
 import meteordevelopment.orbit.EventHandler;
-import com.mojang.blaze3d.platform.InputConstants;
-
-import java.util.function.BooleanSupplier;
 
 /**
  * Right mouse button presses, for Minecraft 26.3.

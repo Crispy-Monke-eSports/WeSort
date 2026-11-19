@@ -9,8 +9,7 @@ import net.minecraft.world.level.block.entity.SignBlockEntity;
  * versions.
  */
 public final class SignEditors {
-    private SignEditors() {
-    }
+    private SignEditors() {}
 
     /**
      * The sign this editor is for.

@@ -11,7 +11,9 @@ import java.util.UUID;
 /** The single organisation in this Manager volume. Names, members and Minecraft routing have separate identities. */
 record GuildProfile(UUID id, String name, String description, long revision, ApprovalPolicy approvalPolicy) {
     enum ApprovalPolicy {
-        DIRECT, GUILD, ALL;
+        DIRECT,
+        GUILD,
+        ALL;
 
         boolean requiresApproval(OrderIntent intent) {
             return this == ALL || this == GUILD && intent.purpose() == OrderIntent.Purpose.GUILD;
@@ -36,9 +38,14 @@ record GuildProfile(UUID id, String name, String description, long revision, App
         try {
             var data = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
             if (data.get("schema").getAsBigDecimal().intValueExact() != SCHEMA) throw new IllegalArgumentException();
-            return new GuildProfile(UUID.fromString(data.get("id").getAsString()), string(data, "name"),
-                string(data, "description"), data.get("revision").getAsBigDecimal().longValueExact(),
-                data.has("approvalPolicy") ? ApprovalPolicy.valueOf(string(data, "approvalPolicy")) : ApprovalPolicy.DIRECT);
+            return new GuildProfile(
+                    UUID.fromString(data.get("id").getAsString()),
+                    string(data, "name"),
+                    string(data, "description"),
+                    data.get("revision").getAsBigDecimal().longValueExact(),
+                    data.has("approvalPolicy")
+                            ? ApprovalPolicy.valueOf(string(data, "approvalPolicy"))
+                            : ApprovalPolicy.DIRECT);
         } catch (RuntimeException invalid) {
             throw new IOException("Cannot read the guild profile", invalid);
         }
@@ -60,13 +67,18 @@ record GuildProfile(UUID id, String name, String description, long revision, App
     }
 
     GuildProfile updated(JsonObject request) {
-        var policy = request.has("approvalPolicy") ? ApprovalPolicy.valueOf(string(request, "approvalPolicy")) : approvalPolicy;
-        return new GuildProfile(id, string(request, "name"), string(request, "description"), Math.addExact(revision, 1), policy);
+        var policy = request.has("approvalPolicy")
+                ? ApprovalPolicy.valueOf(string(request, "approvalPolicy"))
+                : approvalPolicy;
+        return new GuildProfile(
+                id, string(request, "name"), string(request, "description"), Math.addExact(revision, 1), policy);
     }
 
     private static String string(JsonObject value, String field) {
         var element = value.get(field);
-        if (element == null || !element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) {
+        if (element == null
+                || !element.isJsonPrimitive()
+                || !element.getAsJsonPrimitive().isString()) {
             throw new IllegalArgumentException("Guild " + field + " must be text");
         }
         return element.getAsString();
@@ -74,11 +86,15 @@ record GuildProfile(UUID id, String name, String description, long revision, App
 
     private static String validateText(String raw, int limit, boolean optional) {
         String value = raw.strip();
-        if (value.length() > limit || !optional && value.isEmpty()
-            || value.codePoints().anyMatch(cp -> Character.getType(cp) == Character.FORMAT
-                || Character.isISOControl(cp) && !(optional && cp == '\n'))) {
-            throw new IllegalArgumentException(optional ? "Guild description must be at most 512 characters"
-                : "Guild name must contain 1–64 printable characters");
+        if (value.length() > limit
+                || !optional && value.isEmpty()
+                || value.codePoints()
+                        .anyMatch(cp -> Character.getType(cp) == Character.FORMAT
+                                || Character.isISOControl(cp) && !(optional && cp == '\n'))) {
+            throw new IllegalArgumentException(
+                    optional
+                            ? "Guild description must be at most 512 characters"
+                            : "Guild name must contain 1–64 printable characters");
         }
         return value;
     }

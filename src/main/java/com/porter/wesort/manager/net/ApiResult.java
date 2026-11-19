@@ -8,7 +8,8 @@ import com.google.gson.JsonObject;
  * One answer from the server. {@code status} is 0 when none arrived. The body is never logged: it can hold names and
  * messages from the server.
  */
-public record ApiResult(int status, JsonElement body, String etag, long retryAfterSec, ApiError.Kind kind, long serverTime) {
+public record ApiResult(
+        int status, JsonElement body, String etag, long retryAfterSec, ApiError.Kind kind, long serverTime) {
     public ApiResult(int status, JsonElement body, String etag, long retryAfterSec, ApiError.Kind kind) {
         this(status, body, etag, retryAfterSec, kind, 0);
     }
@@ -37,7 +38,9 @@ public record ApiResult(int status, JsonElement body, String etag, long retryAft
     /** The server's {@code error} text, or "". */
     public String error() {
         JsonObject o = obj();
-        return o.has("error") && o.get("error").isJsonPrimitive() ? o.get("error").getAsString() : "";
+        return o.has("error") && o.get("error").isJsonPrimitive()
+                ? o.get("error").getAsString()
+                : "";
     }
 
     /** The longest wait shown for a 429 (an hour). */
@@ -52,7 +55,10 @@ public record ApiResult(int status, JsonElement body, String etag, long retryAft
                 double d = o.get("retryAfter").getAsDouble();
                 if (!Double.isNaN(d)) return (long) Math.max(1, Math.min(MAX_WAIT, Math.ceil(d)));
             }
-        } catch (NumberFormatException | ArithmeticException | UnsupportedOperationException | IllegalStateException ignored) {
+        } catch (NumberFormatException
+                | ArithmeticException
+                | UnsupportedOperationException
+                | IllegalStateException ignored) {
             // not a number
         }
         return 60;

@@ -1,5 +1,7 @@
 package com.porter.wesort.manager.gui;
 
+import static meteordevelopment.meteorclient.MeteorClient.mc;
+
 import com.google.gson.JsonObject;
 import com.porter.wesort.manager.gui.chrome.WBotStatus;
 import com.porter.wesort.manager.gui.chrome.WChip;
@@ -12,23 +14,23 @@ import com.porter.wesort.manager.gui.frame.WindowGeometry;
 import com.porter.wesort.manager.gui.panels.ChangePasswordPanel;
 import com.porter.wesort.manager.gui.panels.ConfirmPanel;
 import com.porter.wesort.manager.gui.panels.LoginPanel;
-import com.porter.wesort.manager.gui.tabs.ActivityTab;
-import com.porter.wesort.manager.gui.tabs.BotsTab;
-import com.porter.wesort.manager.gui.tabs.BrowseTab;
-import com.porter.wesort.manager.gui.tabs.ServerTabHost;
-import com.porter.wesort.manager.gui.tabs.SettingsTab;
-import com.porter.wesort.manager.gui.tabs.UsersTab;
 import com.porter.wesort.manager.gui.style.Palette;
 import com.porter.wesort.manager.gui.style.SmButton;
 import com.porter.wesort.manager.gui.style.SmGuiTheme;
 import com.porter.wesort.manager.gui.style.WindowTheme;
+import com.porter.wesort.manager.gui.tabs.ActivityTab;
+import com.porter.wesort.manager.gui.tabs.BotsTab;
+import com.porter.wesort.manager.gui.tabs.BrowseTab;
 import com.porter.wesort.manager.gui.tabs.OrdersTab;
+import com.porter.wesort.manager.gui.tabs.ServerTabHost;
+import com.porter.wesort.manager.gui.tabs.SettingsTab;
+import com.porter.wesort.manager.gui.tabs.UsersTab;
 import com.porter.wesort.manager.model.AuthState;
 import com.porter.wesort.manager.model.BotList;
-import com.porter.wesort.manager.model.HeaderInfo;
-import com.porter.wesort.manager.model.NavPage;
 import com.porter.wesort.manager.model.DisplayPolicy;
+import com.porter.wesort.manager.model.HeaderInfo;
 import com.porter.wesort.manager.model.IndexModel;
+import com.porter.wesort.manager.model.NavPage;
 import com.porter.wesort.manager.model.OrderMode;
 import com.porter.wesort.manager.model.StashList;
 import com.porter.wesort.manager.model.StashRef;
@@ -42,6 +44,12 @@ import com.porter.wesort.manager.net.SmClient;
 import com.porter.wesort.modules.StashWindow;
 import com.porter.wesort.stash.ItemPreviewScreen;
 import com.porter.wesort.stash.Stash;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import meteordevelopment.meteorclient.gui.GuiTheme;
 import meteordevelopment.meteorclient.gui.WidgetScreen;
 import meteordevelopment.meteorclient.gui.utils.Cell;
@@ -52,15 +60,6 @@ import meteordevelopment.meteorclient.gui.widgets.pressable.WButton;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.world.item.ItemStack;
 
-import java.util.ArrayList;
-import java.util.Deque;
-import java.util.concurrent.ConcurrentLinkedDeque;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-
-import static meteordevelopment.meteorclient.MeteorClient.mc;
-
 /**
  * The Stash Window: the WeSort Manager website's stash view inside the game.
  *
@@ -70,7 +69,17 @@ import static meteordevelopment.meteorclient.MeteorClient.mc;
  * this one. Nothing is polled while the window is closed.
  */
 public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
-    private enum View { NO_URL, BAD_URL, INSECURE, CHECKING, ERROR, LOGIN, CHANGE, CONFIRM, MAIN }
+    private enum View {
+        NO_URL,
+        BAD_URL,
+        INSECURE,
+        CHECKING,
+        ERROR,
+        LOGIN,
+        CHANGE,
+        CONFIRM,
+        MAIN
+    }
 
     /**
      * The window's pages, named as the website's navigation names them. Browse and Orders work without a server; the
@@ -78,11 +87,16 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
      * instead of content.
      */
     private enum Tab {
-        BROWSE(NavPage.STASH), ORDERS(NavPage.ORDERS), SETTINGS(NavPage.SETTINGS), USERS(NavPage.USERS),
+        BROWSE(NavPage.STASH),
+        ORDERS(NavPage.ORDERS),
+        SETTINGS(NavPage.SETTINGS),
+        USERS(NavPage.USERS),
         // Server pages with an in-game version (NavPage.inGame), for a window that has a server
-        BOTS(NavPage.BOTS), ACTIVITY(NavPage.ACTIVITY);
+        BOTS(NavPage.BOTS),
+        ACTIVITY(NavPage.ACTIVITY);
         // A page without an in-game version would show a note that points to the website. To add one: flip its
-        // NavPage.inGame, add its tab object (null in local mode), and handle it in tickServerTabs, onSessionLost and buildMain.
+        // NavPage.inGame, add its tab object (null in local mode), and handle it in tickServerTabs, onSessionLost and
+        // buildMain.
 
         private final NavPage page;
         private final String title;
@@ -105,25 +119,29 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
     private static final long STASH_POLL_MS = 10_000;
     private static final long ENTER_GRACE_MS = 400;
     private static final long RESCAN_ARM_MS = 5_000;
-    private static final String NEEDS_SERVER = "Connect a WeSort Manager server to use this: turn on connect-to-server in the wesort-stash-window module settings.";
+    private static final String NEEDS_SERVER =
+            "Connect a WeSort Manager server to use this: turn on connect-to-server in the wesort-stash-window module settings.";
 
     private final StashWindow module;
     private final SmClient client;
     private final ServerSource source = new ServerSource();
     /** True when the window runs without a server (the default): it browses what the game has seen. */
     private final boolean local;
+
     private final LocalSource localSource;
     private final BrowseTab browse;
     private final OrdersTab orders;
     private final LocalOrderBackend localOrders;
     /** Null in local mode. */
     private final SettingsTab settingsTab;
+
     private final BotsTab botsTab;
     private final ActivityTab activityTab;
     private final UsersTab usersTab;
     private final BotDirectory bots;
     /** Null in local mode. */
     private final ServerOrderBackend serverOrders;
+
     private long statusHoldUntil;
     private final Deque<Runnable> later = new ConcurrentLinkedDeque<>();
 
@@ -133,6 +151,7 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
     private WindowTheme lastTheme;
     /** True while the item preview is up on top of this window: the window is not really closed then. */
     private boolean previewing;
+
     private WLabel infoLabel;
     private GuiGraphics graphics;
     private boolean started;
@@ -202,37 +221,39 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
             this.usersTab = new UsersTab(th);
         }
         this.localOrders = new LocalOrderBackend(module.localOrders());
-        this.serverOrders = local ? null : new ServerOrderBackend(client, new ServerOrderBackend.Host() {
-            @Override
-            public StashRef stash() {
-                return selected();
-            }
+        this.serverOrders = local
+                ? null
+                : new ServerOrderBackend(client, new ServerOrderBackend.Host() {
+                    @Override
+                    public StashRef stash() {
+                        return selected();
+                    }
 
-            @Override
-            public IndexModel index() {
-                return source.index;
-            }
+                    @Override
+                    public IndexModel index() {
+                        return source.index;
+                    }
 
-            @Override
-            public AuthState auth() {
-                return auth;
-            }
+                    @Override
+                    public AuthState auth() {
+                        return auth;
+                    }
 
-            @Override
-            public void write(String path, JsonObject body, java.util.function.Consumer<ApiResult> done) {
-                sendWrite(path, body, done);
-            }
+                    @Override
+                    public void write(String path, JsonObject body, java.util.function.Consumer<ApiResult> done) {
+                        sendWrite(path, body, done);
+                    }
 
-            @Override
-            public void failed(ApiResult r) {
-                fail(r);
-            }
+                    @Override
+                    public void failed(ApiResult r) {
+                        fail(r);
+                    }
 
-            @Override
-            public boolean closed() {
-                return closed;
-            }
-        });
+                    @Override
+                    public boolean closed() {
+                        return closed;
+                    }
+                });
         this.orders = new OrdersTab(new OrdersTab.Host() {
             @Override
             public GuiGraphics graphics() {
@@ -327,7 +348,8 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
         SmGuiTheme t = sm();
         WindowGeometry saved = module.windowGeometry();
         WindowGeometry start = saved != null ? saved : WindowGeometry.initial(t.screenW(), t.screenH());
-        frame = add(new WFrame(start, module::setWindowGeometry, () -> later(() -> mc.setScreen(null)))).widget();
+        frame = add(new WFrame(start, module::setWindowGeometry, () -> later(() -> mc.setScreen(null))))
+                .widget();
         bodyCell = frame.page.add(theme.verticalList());
         bodyCell.expandX();
         body = bodyCell.widget();
@@ -350,7 +372,8 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
         previewing = false;
         super.init();
         if (frame != null) {
-            // Back from a preview, or the game window was resized: the theme must point at the overlay again, and a list
+            // Back from a preview, or the game window was resized: the theme must point at the overlay again, and a
+            // list
             // opened before is no longer where its select is
             sm().overlay = frame.overlay;
             frame.overlay.close();
@@ -376,7 +399,8 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
         // The place is remembered when a move, resize or maximize ends; it is written to disk on a real close only
         if (!previewing) module.flushWindowGeometry();
         module.setSessionListener(null);
-        // The item preview opens on top of this window and gives it back (init() reuses the tabs): nothing is dropped for
+        // The item preview opens on top of this window and gives it back (init() reuses the tabs): nothing is dropped
+        // for
         // it, or the tabs would come back empty with their in-flight flags stuck and their answers discarded
         if (loginPanel != null) loginPanel.clearSecrets();
         if (changePanel != null) changePanel.clearSecrets();
@@ -394,7 +418,8 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
     @Override
     protected void onRenderBefore(GuiGraphics context, float delta) {
         graphics = context;
-        // Only what is queued now runs: a task that queues itself again waits for the next frame instead of looping forever
+        // Only what is queued now runs: a task that queues itself again waits for the next frame instead of looping
+        // forever
         for (int n = later.size(); n > 0; n--) {
             Runnable r = later.poll();
             if (r == null) break;
@@ -422,8 +447,7 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
             case BOTS -> botsTab.tick(now);
             case ACTIVITY -> activityTab.tick(now);
             case USERS -> usersTab.tick(now);
-            default -> {
-            }
+            default -> {}
         }
     }
 
@@ -432,7 +456,8 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
         boolean visible = tab == Tab.ORDERS;
         OrderBackend b = currentBackend();
         if (b == null) return;
-        // The server's orders are polled even off the Orders tab (slowly), so right-click in Browse knows what is available;
+        // The server's orders are polled even off the Orders tab (slowly), so right-click in Browse knows what is
+        // available;
         // this client's data is only looked at while the tab is up
         if (b == localOrders && !visible) return;
         if (b == serverOrders && (auth == null || !auth.loggedIn())) return;
@@ -590,7 +615,8 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
         client.get("/api/v1/auth/state", null, r -> {
             authBusy = false;
             if (closed) return;
-            if (r.ok() && r.serverTimeMillis() > 0 && serverOrders != null) serverOrders.setClockSkew(r.serverTimeMillis() - System.currentTimeMillis());
+            if (r.ok() && r.serverTimeMillis() > 0 && serverOrders != null)
+                serverOrders.setClockSkew(r.serverTimeMillis() - System.currentTimeMillis());
             if (r.ok()) applyAuth(AuthState.parse(r.body()));
             else authFailed(r);
         });
@@ -618,8 +644,8 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
             String note = "";
             if (state.setupNeeded()) {
                 note = state.setupAllowed()
-                    ? "The server has no password yet. Open its address on the server PC to set one."
-                    : Text.sanitize(state.message(), 200);
+                        ? "The server has no password yet. Open its address on the server PC to set one."
+                        : Text.sanitize(state.message(), 200);
                 if (note.isEmpty()) note = "The server has no password yet. Set one on the server PC first.";
             }
             showLogin(note);
@@ -642,7 +668,8 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
 
     private String authSignature() {
         if (auth == null) return "";
-        return auth.forcedStreamer() + "|" + auth.can("view") + "|" + auth.can("rescan") + "|" + auth.can("viewer") + "|" + auth.owner() + "|" + auth.can("activity") + "|" + auth.userName();
+        return auth.forcedStreamer() + "|" + auth.can("view") + "|" + auth.can("rescan") + "|" + auth.can("viewer")
+                + "|" + auth.owner() + "|" + auth.can("activity") + "|" + auth.userName();
     }
 
     private void showLogin(String note) {
@@ -692,7 +719,8 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
             if (closed) return;
             if (r.ok()) {
                 if (token == null) {
-                    loginPanel.setNotice("The server did not send a session. Is something between you and the server changing its answers?");
+                    loginPanel.setNotice(
+                            "The server did not send a session. Is something between you and the server changing its answers?");
                     return;
                 }
                 module.setSession(new Session(token, url.origin(), user.trim()));
@@ -794,8 +822,10 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
     void sendWrite(String path, JsonObject body, java.util.function.Consumer<ApiResult> done, boolean tellCancel) {
         client.post(path, body, r -> {
             if (r.kind() == ApiError.Kind.CONFIRM) {
-                askConfirm(confirmWhy(path, body), () -> client.post(path, body, done),
-                    tellCancel ? () -> done.accept(ApiResult.cancelled()) : null);
+                askConfirm(
+                        confirmWhy(path, body),
+                        () -> client.post(path, body, done),
+                        tellCancel ? () -> done.accept(ApiResult.cancelled()) : null);
                 return;
             }
             done.accept(r);
@@ -804,10 +834,15 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
 
     private String confirmWhy(String path, JsonObject body) {
         String base = "This needs your password again. It is not asked for again for 15 minutes.";
-        if (path.endsWith("/console") && body != null && body.has("command") && body.get("command").isJsonPrimitive()) {
+        if (path.endsWith("/console")
+                && body != null
+                && body.has("command")
+                && body.get("command").isJsonPrimitive()) {
             String c = body.get("command").getAsString();
-            String shown = policy().hideChat() ? "(hidden)" : Text.sanitize(c.length() > 80 ? c.substring(0, 80) : c, 80);
-            return "Send the console command '" + shown + "'? It needs your password again. It is not asked for again for 15 minutes.";
+            String shown =
+                    policy().hideChat() ? "(hidden)" : Text.sanitize(c.length() > 80 ? c.substring(0, 80) : c, 80);
+            return "Send the console command '" + shown
+                    + "'? It needs your password again. It is not asked for again for 15 minutes.";
         }
         return base;
     }
@@ -815,7 +850,7 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
     private void logout() {
         quietLogout = true;
         // The request is built with the cookie right now; the session is forgotten at once
-        client.post("/api/v1/auth/logout", new JsonObject(), r -> { });
+        client.post("/api/v1/auth/logout", new JsonObject(), r -> {});
         module.dropSession("logout");
     }
 
@@ -828,25 +863,32 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
         }
         stashBusy = true;
         nextStashPoll = System.currentTimeMillis() + STASH_POLL_MS;
-        client.get("/api/v1/stashes", null, null, false, SmClient.DEFAULT_TIMEOUT, r -> StashList.parse(r.body()), (r, list) -> {
-            stashBusy = false;
-            if (closed) return;
-            if (!r.ok()) {
-                fail(r);
-                return;
-            }
-            setStatus("");
-            source.stashes = list;
-            chooseSelection();
-            String signature = headerSignature();
-            if (!signature.equals(headerSignature)) {
-                headerSignature = signature;
-                if (view == View.MAIN) rebuild();
-            } else {
-                updateRescanLabel();
-            }
-            maybeLoadIndex();
-        });
+        client.get(
+                "/api/v1/stashes",
+                null,
+                null,
+                false,
+                SmClient.DEFAULT_TIMEOUT,
+                r -> StashList.parse(r.body()),
+                (r, list) -> {
+                    stashBusy = false;
+                    if (closed) return;
+                    if (!r.ok()) {
+                        fail(r);
+                        return;
+                    }
+                    setStatus("");
+                    source.stashes = list;
+                    chooseSelection();
+                    String signature = headerSignature();
+                    if (!signature.equals(headerSignature)) {
+                        headerSignature = signature;
+                        if (view == View.MAIN) rebuild();
+                    } else {
+                        updateRescanLabel();
+                    }
+                    maybeLoadIndex();
+                });
     }
 
     private StashRef find(String key) {
@@ -880,7 +922,8 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
                 }
             }
         }
-        if (want == null && !source.stashes.isEmpty()) want = source.stashes.get(0).key();
+        if (want == null && !source.stashes.isEmpty())
+            want = source.stashes.get(0).key();
         if (!java.util.Objects.equals(want, selectedKey)) {
             selectedKey = want;
             module.rememberStash(want);
@@ -917,27 +960,34 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
         query.put("server", s.server());
         query.put("stash", s.stash());
         String etag = s.key().equals(indexEtagKey) ? indexEtag : null;
-        client.get("/api/v1/index", query, etag, true, SmClient.INDEX_TIMEOUT, r -> IndexModel.parse(r.body()), (r, model) -> {
-            if (closed || token != loadToken) return;
-            pendingWant = null;
-            switch (r.kind()) {
-                case OK -> {
-                    source.index = model;
-                    indexEtag = r.etag();
-                    indexEtagKey = s.key();
-                    loadedWant = want;
-                    setStatus("");
-                    browse.dataChanged(false);
-                }
-                case NOT_MODIFIED -> loadedWant = want;
-                case NOT_FOUND -> {
-                    source.index = IndexModel.empty();
-                    loadedWant = want;
-                    browse.dataChanged(false);
-                }
-                default -> fail(r);
-            }
-        });
+        client.get(
+                "/api/v1/index",
+                query,
+                etag,
+                true,
+                SmClient.INDEX_TIMEOUT,
+                r -> IndexModel.parse(r.body()),
+                (r, model) -> {
+                    if (closed || token != loadToken) return;
+                    pendingWant = null;
+                    switch (r.kind()) {
+                        case OK -> {
+                            source.index = model;
+                            indexEtag = r.etag();
+                            indexEtagKey = s.key();
+                            loadedWant = want;
+                            setStatus("");
+                            browse.dataChanged(false);
+                        }
+                        case NOT_MODIFIED -> loadedWant = want;
+                        case NOT_FOUND -> {
+                            source.index = IndexModel.empty();
+                            loadedWant = want;
+                            browse.dataChanged(false);
+                        }
+                        default -> fail(r);
+                    }
+                });
     }
 
     // ---------- rescan ----------
@@ -1043,17 +1093,28 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
         switch (view) {
             case NO_URL -> {
                 body.add(theme.label("No server set", true));
-                body.add(theme.label("Connect to server is on, but the server-url of the wesort-stash-window module is empty. Set it to your WeSort Manager address, "
-                    + "like http://192.168.1.20:8765, or turn connect-to-server off to use the local index.", wrap)).expandX();
+                body.add(theme.label(
+                                "Connect to server is on, but the server-url of the wesort-stash-window module is empty. Set it to your WeSort Manager address, "
+                                        + "like http://192.168.1.20:8765, or turn connect-to-server off to use the local index.",
+                                wrap))
+                        .expandX();
             }
             case INSECURE -> {
                 body.add(theme.label("Plain http is refused", true));
-                body.add(theme.label("This address is not on your own network and is not https, so your password and session would cross the network unencrypted. "
-                    + "Use an https:// address, or turn on allow-insecure-http in the wesort-stash-window module if you accept that.", wrap)).expandX().widget().color(bad());
+                body.add(theme.label(
+                                "This address is not on your own network and is not https, so your password and session would cross the network unencrypted. "
+                                        + "Use an https:// address, or turn on allow-insecure-http in the wesort-stash-window module if you accept that.",
+                                wrap))
+                        .expandX()
+                        .widget()
+                        .color(bad());
             }
             case BAD_URL -> {
                 body.add(theme.label("The server-url is not valid", true));
-                body.add(theme.label("It has to look like http://192.168.1.20:8765 or https://stash.example.com, with nothing after the address.", wrap)).expandX();
+                body.add(theme.label(
+                                "It has to look like http://192.168.1.20:8765 or https://stash.example.com, with nothing after the address.",
+                                wrap))
+                        .expandX();
             }
             case CHECKING -> body.add(theme.label("Connecting..."));
             case ERROR -> {
@@ -1064,30 +1125,47 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
             }
             case LOGIN -> {
                 if (url != null && !url.secure() && !url.localHost()) {
-                    body.add(theme.label("Warning: this address is plain http and not on a local network. Your password and session cross the internet unencrypted.", wrap))
-                        .expandX().widget().color(warn());
+                    body.add(theme.label(
+                                    "Warning: this address is plain http and not on a local network. Your password and session cross the internet unencrypted.",
+                                    wrap))
+                            .expandX()
+                            .widget()
+                            .color(warn());
                 }
                 loginPanel = new LoginPanel();
-                loginPanel.build(body, theme, policy().hideServer() ? "(hidden)" : url.origin(), module.lastUser(), loginNotice, this::submitLogin);
+                loginPanel.build(
+                        body,
+                        theme,
+                        policy().hideServer() ? "(hidden)" : url.origin(),
+                        module.lastUser(),
+                        loginNotice,
+                        this::submitLogin);
                 LoginPanel p = loginPanel;
                 enterAction = () -> enter(p::submit);
             }
             case CHANGE -> {
                 changePanel = new ChangePasswordPanel();
-                changePanel.build(body, theme, auth == null ? 12 : auth.minLength(), "", this::submitChange, this::logout);
+                changePanel.build(
+                        body, theme, auth == null ? 12 : auth.minLength(), "", this::submitChange, this::logout);
                 ChangePasswordPanel p = changePanel;
                 enterAction = () -> enter(p::submit);
             }
             case CONFIRM -> {
                 confirmPanel = new ConfirmPanel();
-                confirmPanel.build(body, theme, confirmWhy, "", this::submitConfirm, () -> later(() -> {
-                    confirmRetry = null;
-                    Runnable cancelled = confirmCancel;
-                    confirmCancel = null;
-                    view = View.MAIN;
-                    rebuild();
-                    if (cancelled != null) cancelled.run();
-                }));
+                confirmPanel.build(
+                        body,
+                        theme,
+                        confirmWhy,
+                        "",
+                        this::submitConfirm,
+                        () -> later(() -> {
+                            confirmRetry = null;
+                            Runnable cancelled = confirmCancel;
+                            confirmCancel = null;
+                            view = View.MAIN;
+                            rebuild();
+                            if (cancelled != null) cancelled.run();
+                        }));
                 ConfirmPanel p = confirmPanel;
                 enterAction = () -> enter(p::submit);
             }
@@ -1129,7 +1207,8 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
 
     // ---------- the header ----------
     // Laid out like the website's: a title row (title, Stash select, bot status, Bot select, Link addon), a second row
-    // (streamer mode, theme, account, log out), the index line with the rescan pill at its right end, and the page buttons.
+    // (streamer mode, theme, account, log out), the index line with the rescan pill at its right end, and the page
+    // buttons.
 
     /** A row of the header with the website's gaps (10 px between rows, 18 px between items), in Meteor pixels. */
     private WFlow flow() {
@@ -1155,7 +1234,8 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
 
     /** The theme select every page's header has. */
     private void themeSelect(WFlow row) {
-        WDropdown<WindowTheme> select = row.add(theme.dropdown(WindowTheme.values(), module.windowTheme())).widget();
+        WDropdown<WindowTheme> select = row.add(theme.dropdown(WindowTheme.values(), module.windowTheme()))
+                .widget();
         select.tooltip = "Change the window's theme";
         select.action = () -> module.setWindowTheme(select.get());
     }
@@ -1187,8 +1267,14 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
         }
 
         WFlow second = flow();
-        WButton streamer = second.add(theme.button(policy.forced() ? "Streamer mode: on (locked)" : "Streamer mode: " + (policy.streamer() ? "on" : "off"))).widget();
-        streamer.tooltip = policy.forced() ? "The owner turned streamer mode on for your account." : "Hides coordinates, server addresses and player names in this window.";
+        WButton streamer = second.add(theme.button(
+                        policy.forced()
+                                ? "Streamer mode: on (locked)"
+                                : "Streamer mode: " + (policy.streamer() ? "on" : "off")))
+                .widget();
+        streamer.tooltip = policy.forced()
+                ? "The owner turned streamer mode on for your account."
+                : "Hides coordinates, server addresses and player names in this window.";
         if (streamer instanceof SmButton b) b.danger = policy.streamer();
         streamer.action = () -> {
             if (policy().forced()) return;
@@ -1203,7 +1289,10 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
             clearButton.action = this::clearClicked;
         } else {
             String who = auth.userName().isBlank() ? "owner" : Text.sanitize(auth.userName(), 40);
-            barLabel(second, policy.hideNames() ? "Logged in" : who + (auth.owner() && !who.equals("owner") ? " (owner)" : ""), false);
+            barLabel(
+                    second,
+                    policy.hideNames() ? "Logged in" : who + (auth.owner() && !who.equals("owner") ? " (owner)" : ""),
+                    false);
             WButton logout = second.add(theme.button("Log out")).widget();
             logout.action = () -> later(this::logout);
         }
@@ -1285,7 +1374,8 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
             labels[i] = (b.online() ? "[on] " : "[off] ") + bots.list().name(b, policy.hideNames());
             if (b.botId().equals(picked)) current = labels[i];
         }
-        WDropdown<String> select = row.add(theme.dropdown(labels, current == null ? labels[0] : current)).widget();
+        WDropdown<String> select = row.add(theme.dropdown(labels, current == null ? labels[0] : current))
+                .widget();
         select.action = () -> {
             String chosen = select.get();
             for (int i = 0; i < labels.length; i++) {
@@ -1308,13 +1398,15 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
     private String infoText() {
         StashRef s = selected();
         if (s == null) return source.stashes.isEmpty() ? "" : "Pick a stash.";
-        return HeaderInfo.indexLine(s, loadedWant != null ? source.index : null, policy().forced(), System.currentTimeMillis());
+        return HeaderInfo.indexLine(
+                s, loadedWant != null ? source.index : null, policy().forced(), System.currentTimeMillis());
     }
 
     private void refreshBotStatus() {
         if (botStatus == null) return;
         StashRef s = selected();
-        botStatus.set(HeaderInfo.botStatus(s, policy().hideNames(), System.currentTimeMillis()), s != null && s.online());
+        botStatus.set(
+                HeaderInfo.botStatus(s, policy().hideNames(), System.currentTimeMillis()), s != null && s.online());
     }
 
     /** Enter pressed in the chat to run the command must not submit an empty form on the new screen. */
@@ -1324,18 +1416,30 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
 
     private void buildMain() {
         if (url != null && !url.secure() && !url.localHost()) {
-            body.add(theme.label("Warning: plain http outside your network (allow-insecure-http is on). Your session is sent unencrypted.", theme.scale(520)))
-                .expandX().widget().color(warn());
+            body.add(theme.label(
+                            "Warning: plain http outside your network (allow-insecure-http is on). Your session is sent unencrypted.",
+                            theme.scale(520)))
+                    .expandX()
+                    .widget()
+                    .color(warn());
         }
 
         if (tab.webOnly()) {
             // No in-game version: say so, and where the page is (the address is hidden while streamer mode is on)
-            body.add(theme.label(tab.page.websiteNote(url == null || policy().hideServer() ? null : url.origin()), Math.max(theme.scale(200), Math.min(theme.scale(520), sm().g(frame.effective().w() - 28))))).expandX();
+            body.add(theme.label(
+                            tab.page.websiteNote(url == null || policy().hideServer() ? null : url.origin()),
+                            Math.max(
+                                    theme.scale(200),
+                                    Math.min(
+                                            theme.scale(520),
+                                            sm().g(frame.effective().w() - 28)))))
+                    .expandX();
             return;
         }
         if (tab == Tab.ORDERS) {
             if (!auth.can("view")) {
-                body.add(theme.label("Your account has no access to stashes. Ask the owner.")).expandX();
+                body.add(theme.label("Your account has no access to stashes. Ask the owner."))
+                        .expandX();
             } else if (currentBackend() == serverOrders && selected() == null) {
                 body.add(theme.label("Pick a stash first.")).expandX();
             } else {
@@ -1364,7 +1468,8 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
             return;
         }
         if (!auth.can("view")) {
-            body.add(theme.label("Your account has no access to stashes. Ask the owner.")).expandX();
+            body.add(theme.label("Your account has no access to stashes. Ask the owner."))
+                    .expandX();
             return;
         }
         browse.build(body, theme);
@@ -1426,7 +1531,10 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
         public void read(String path, Map<String, String> query, java.util.function.Consumer<ApiResult> done) {
             client.get(path, query, r -> {
                 if (r.kind() == ApiError.Kind.CONFIRM) {
-                    askConfirm("This needs your password again. It is not asked for again for 15 minutes.", () -> client.get(path, query, done), () -> done.accept(ApiResult.cancelled()));
+                    askConfirm(
+                            "This needs your password again. It is not asked for again for 15 minutes.",
+                            () -> client.get(path, query, done),
+                            () -> done.accept(ApiResult.cancelled()));
                     return;
                 }
                 done.accept(r);
@@ -1495,8 +1603,6 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
         public String describe(ApiResult r, String fallback) {
             return StashManagerScreen.describe(r, fallback);
         }
-
-
     }
 
     /** Goes to the window's page for {@code page} with {@code botId} picked (a bot card's buttons). Ignored when the account can't see it. */
@@ -1551,7 +1657,14 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
             return;
         }
         if (tab != Tab.BROWSE) {
-            body.add(theme.label(NEEDS_SERVER, Math.max(theme.scale(200), Math.min(theme.scale(520), sm().g(frame.effective().w() - 28))))).expandX();
+            body.add(theme.label(
+                            NEEDS_SERVER,
+                            Math.max(
+                                    theme.scale(200),
+                                    Math.min(
+                                            theme.scale(520),
+                                            sm().g(frame.effective().w() - 28)))))
+                    .expandX();
             return;
         }
         browse.build(body, theme);
@@ -1568,7 +1681,8 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
             labels[i] = LocalSource.label(list.get(i), policy.hideServer());
             if (list.get(i).stash().equals(localSource.selected())) current = labels[i];
         }
-        WDropdown<String> dropdown = row.add(theme.dropdown(labels, current == null ? labels[0] : current)).widget();
+        WDropdown<String> dropdown = row.add(theme.dropdown(labels, current == null ? labels[0] : current))
+                .widget();
         dropdown.action = () -> {
             String picked = dropdown.get();
             for (int i = 0; i < labels.length; i++) {
@@ -1619,7 +1733,8 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
             if (s.key().equals(selectedKey)) current = labels[i];
         }
         dropdownKeys = keys;
-        WDropdown<String> dropdown = row.add(theme.dropdown(labels, current == null ? labels[0] : current)).widget();
+        WDropdown<String> dropdown = row.add(theme.dropdown(labels, current == null ? labels[0] : current))
+                .widget();
         dropdown.action = () -> {
             String picked = dropdown.get();
             for (int i = 0; i < labels.length; i++) {
@@ -1639,12 +1754,17 @@ public class StashManagerScreen extends WidgetScreen implements BrowseTab.Host {
 
     /** Changes when the stash list, its labels or the selection change, so the header is only rebuilt then. */
     private String headerSignature() {
-        StringBuilder sb = new StringBuilder(String.valueOf(selectedKey)).append('|').append(policy().streamer());
+        StringBuilder sb =
+                new StringBuilder(String.valueOf(selectedKey)).append('|').append(policy().streamer());
         for (StashRef s : source.stashes) sb.append('|').append(s.key()).append(s.label(policy().streamer()));
         if (bots != null) {
             // The Bot select and the page buttons depend on the dashboard bots and what the picked one reports
             sb.append("|bots:").append(bots.selected());
-            for (BotList.Bot b : bots.list().bots()) sb.append(b.botId()).append(b.online()).append(b.hasCap("activity")).append(b.player());
+            for (BotList.Bot b : bots.list().bots())
+                sb.append(b.botId())
+                        .append(b.online())
+                        .append(b.hasCap("activity"))
+                        .append(b.player());
             if (auth != null && auth.loggedIn()) sb.append(navTabs());
         }
         return sb.toString();

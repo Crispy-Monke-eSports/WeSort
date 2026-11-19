@@ -2,7 +2,6 @@ package com.porter.wesortmanager;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
-
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -17,6 +16,8 @@ import java.util.regex.Pattern;
 final class Router implements HttpHandler {
     /** Exchange attribute holding the API key generation that an ADDON_KEY request was made with (a Long). */
     static final String KEY_GENERATION = "wesortmanager.keyGeneration";
+
+    static final String SCOPED_AGENT = "wesortmanager.scopedAgent";
     /** Exchange attribute holding the session token of a SESSION / BROWSER_WRITE request (a String). */
     static final String SESSION_TOKEN = "wesortmanager.session";
     /** Exchange attribute holding who a SESSION / BROWSER_WRITE request is from (a Users.Principal). */
@@ -36,7 +37,6 @@ final class Router implements HttpHandler {
         CSRF,
         /** A state-changing request from a logged-in browser: SESSION plus CSRF. */
         BROWSER_WRITE
-
     }
 
     /**
@@ -87,8 +87,15 @@ final class Router implements HttpHandler {
         void handle(HttpExchange ex) throws IOException;
     }
 
-    private record Entry(Set<String> methods, String path, boolean prefix, boolean fallback, Guard guard, Perm perm,
-                         Route route, Pattern pattern) {
+    private record Entry(
+            Set<String> methods,
+            String path,
+            boolean prefix,
+            boolean fallback,
+            Guard guard,
+            Perm perm,
+            Route route,
+            Pattern pattern) {
         boolean matches(String p) {
             if (pattern != null) return pattern.matcher(p).matches();
             return prefix ? p.startsWith(path) : p.equals(path);
@@ -131,8 +138,13 @@ final class Router implements HttpHandler {
     private final AgentCredentials agentCredentials;
     private final OrderStore orderStore;
 
-    Router(AccessControl access, SessionStore sessions, Config config, Users users, AgentCredentials agentCredentials,
-           OrderStore orderStore) {
+    Router(
+            AccessControl access,
+            SessionStore sessions,
+            Config config,
+            Users users,
+            AgentCredentials agentCredentials,
+            OrderStore orderStore) {
         this.access = access;
         this.sessions = sessions;
         this.config = config;
@@ -177,8 +189,7 @@ final class Router implements HttpHandler {
         Http.json(ex, 403, o);
     }
 
-    private record LoggedIn(String token, Users.Principal user) {
-    }
+    private record LoggedIn(String token, Users.Principal user) {}
 
     /**
      * The session token and its user when the request carries a live session (and a password is set), else null.
@@ -200,7 +211,8 @@ final class Router implements HttpHandler {
         if (userId == null) return null;
         Users.Principal p = users.principal(userId);
         String cred = sessions.credOf(token);
-        boolean credOk = cred == null ? p != null && p.owner() : cred.equals(users.credTag(userId, config.dashboardPassword()));
+        boolean credOk =
+                cred == null ? p != null && p.owner() : cred.equals(users.credTag(userId, config.dashboardPassword()));
         if (p == null || !credOk) {
             sessions.remove(token);
             return null;
@@ -211,7 +223,8 @@ final class Router implements HttpHandler {
     private static void checkPerm(Guard guard, Perm perm) {
         boolean loggedIn = guard == Guard.SESSION || guard == Guard.BROWSER_WRITE;
         if (loggedIn != (perm != null)) {
-            throw new IllegalArgumentException("logged-in routes need a permission, other routes none: " + guard + " " + perm);
+            throw new IllegalArgumentException(
+                    "logged-in routes need a permission, other routes none: " + guard + " " + perm);
         }
     }
 
@@ -253,7 +266,7 @@ final class Router implements HttpHandler {
         List<String> out = new ArrayList<>();
         for (Entry e : entries) {
             out.add(new TreeSet<>(e.methods) + " " + (e.pattern != null ? e.pattern.pattern() : e.path) + " " + e.guard
-                + (e.perm == null ? "" : " " + e.perm));
+                    + (e.perm == null ? "" : " " + e.perm));
         }
         return out;
     }
@@ -304,21 +317,22 @@ final class Router implements HttpHandler {
                 }
                 case CSRF -> {
                     if (!access.browserWriteAllowed(ex)) {
-                        Http.error(ex, 403, "browser write refused (needs POST, X-Stash-Manager: 1, JSON, same origin)");
+                        Http.error(
+                                ex, 403, "browser write refused (needs POST, X-Stash-Manager: 1, JSON, same origin)");
                         return;
                     }
                 }
                 case BROWSER_WRITE -> {
                     // CSRF first: a cross-site request learns nothing about the login state.
                     if (!access.browserWriteAllowed(ex)) {
-                        Http.error(ex, 403, "browser write refused (needs POST, X-Stash-Manager: 1, JSON, same origin)");
+                        Http.error(
+                                ex, 403, "browser write refused (needs POST, X-Stash-Manager: 1, JSON, same origin)");
                         return;
                     }
                     if (!loggedIn(ex, match.perm)) return;
                 }
 
-                case OPEN -> {
-                }
+                case OPEN -> {}
             }
             match.route.handle(ex);
         } catch (Http.TooLarge e) {
@@ -326,7 +340,8 @@ final class Router implements HttpHandler {
         } catch (IOException e) {
             // Usually the client went away mid-request or mid-response. Nothing useful to send back.
         } catch (RuntimeException e) {
-            System.err.println("Error handling " + ex.getRequestMethod() + " " + ex.getRequestURI().getRawPath() + ": " + e);
+            System.err.println("Error handling " + ex.getRequestMethod() + " "
+                    + ex.getRequestURI().getRawPath() + ": " + e);
             safeError(ex, 500, "internal error");
         } finally {
             boolean detached = Http.attr(ex, Http.DETACHED) != null; // then another thread closes it
@@ -385,7 +400,10 @@ final class Router implements HttpHandler {
             }
             byte[] body = Http.readBody(ex, dashboard ? Http.MAX_BOT_BODY : Http.MAX_BODY);
             Http.attr(ex, Http.BODY, body);
-            String raw = ex.getRequestURI().getRawPath() + (ex.getRequestURI().getRawQuery() == null ? "" : "?" + ex.getRequestURI().getRawQuery());
+            String raw = ex.getRequestURI().getRawPath()
+                    + (ex.getRequestURI().getRawQuery() == null
+                            ? ""
+                            : "?" + ex.getRequestURI().getRawQuery());
             Config.KeyState current = config.keyState();
             Config.KeyState previous = dashboard ? null : config.previousKey();
             byte[] kCurrent = named ? credential.key() : current.signingKey();
@@ -403,6 +421,7 @@ final class Router implements HttpHandler {
                 Http.error(ex, 403, "Agent scope does not authorize this request");
                 return false;
             }
+            if (named) Http.attr(ex, SCOPED_AGENT, credential.scope());
             return true;
         }
         if (!dashboard && config.allowBearer && !agentCredentials.scopedOnly()) {
@@ -412,9 +431,14 @@ final class Router implements HttpHandler {
                 return true;
             }
         }
-        Http.error(ex, 401, ex.getRequestHeaders().containsKey("Authorization")
-            ? (dashboard || !config.allowBearer ? "Bearer is not accepted: update the bot (requests must be signed)" : "missing or wrong API key")
-            : "missing signature (X-SM-Auth)");
+        Http.error(
+                ex,
+                401,
+                ex.getRequestHeaders().containsKey("Authorization")
+                        ? (dashboard || !config.allowBearer
+                                ? "Bearer is not accepted: update the bot (requests must be signed)"
+                                : "missing or wrong API key")
+                        : "missing signature (X-SM-Auth)");
         return false;
     }
 
@@ -432,30 +456,52 @@ final class Router implements HttpHandler {
         return switch (path) {
             case "/api/v1/index", "/api/v1/heartbeat", "/api/v1/delivery" ->
                 scope.matchesLocation(server, stash) && scope.player().equalsIgnoreCase(player);
-            case "/api/v1/orders/claim", "/api/v1/kits/agent" ->
-                scope.matchesLocation(server, stash) && scope.agent().equals(agent) && scope.player().equalsIgnoreCase(player);
+            case "/api/v1/orders/claim",
+                    "/api/v1/kits/agent",
+                    "/api/v1/boxes/agent",
+                    "/api/v1/custody/agent",
+                    "/api/v1/deposits/agent" ->
+                scope.matchesLocation(server, stash)
+                        && scope.agent().equals(agent)
+                        && scope.player().equalsIgnoreCase(player);
             case "/api/v1/automation" ->
-                scope.server().equals(server) && scope.agent().equals(agent) && scope.player().equalsIgnoreCase(player);
+                scope.server().equals(server)
+                        && scope.agent().equals(agent)
+                        && scope.player().equalsIgnoreCase(player);
+            case "/api/v1/jobs/agent" -> scope.agent().equals(agent);
+            case "/api/v1/handoffs/agent" -> scope.agent().equals(agent);
             case "/api/v1/physical/agent" -> {
                 var record = object(body, "record");
                 var context = record == null ? null : object(record, "context");
-                yield context != null && scope.agent().equals(agent) && scope.agent().equals(AddonRoutes.string(context, "agent"))
-                    && scope.matchesLocation(AddonRoutes.string(context, "server"), AddonRoutes.string(context, "stash"));
+                yield context != null
+                        && scope.agent().equals(agent)
+                        && scope.agent().equals(AddonRoutes.string(context, "agent"))
+                        && scope.matchesLocation(
+                                AddonRoutes.string(context, "server"), AddonRoutes.string(context, "stash"));
             }
             case "/api/v1/bot/hello" -> {
                 var binding = object(body, "manifestScope");
-                yield binding != null && scope.botId().equals(AddonRoutes.string(body, "botId"))
-                    && scope.player().equalsIgnoreCase(player) && scope.agent().equals(AddonRoutes.string(binding, "agent"))
-                    && scope.matchesLocation(AddonRoutes.string(binding, "server"), AddonRoutes.string(binding, "stash"));
+                yield binding != null
+                        && scope.botId().equals(AddonRoutes.string(body, "botId"))
+                        && scope.player().equalsIgnoreCase(player)
+                        && scope.agent().equals(AddonRoutes.string(binding, "agent"))
+                        && scope.matchesLocation(
+                                AddonRoutes.string(binding, "server"), AddonRoutes.string(binding, "stash"));
             }
-            case "/api/v1/bot/state", "/api/v1/bot/next", "/api/v1/bot/results", "/api/v1/bot/activity",
-                 "/api/v1/bot/manifest", "/api/v1/bot/manifest/ack" -> scope.botId().equals(AddonRoutes.string(body, "botId"));
+            case "/api/v1/bot/state",
+                    "/api/v1/bot/next",
+                    "/api/v1/bot/results",
+                    "/api/v1/bot/activity",
+                    "/api/v1/bot/manifest",
+                    "/api/v1/bot/manifest/ack" -> scope.botId().equals(AddonRoutes.string(body, "botId"));
             default -> {
                 var match = SCOPED_ORDER_STATUS.matcher(path);
                 if (!match.matches()) yield false;
                 var where = orderStore.stashOf(match.group(1));
-                yield where != null && scope.matchesLocation(where.server(), where.stash())
-                    && scope.agent().equals(agent) && scope.player().equalsIgnoreCase(player);
+                yield where != null
+                        && scope.matchesLocation(where.server(), where.stash())
+                        && scope.agent().equals(agent)
+                        && scope.player().equalsIgnoreCase(player);
             }
         };
     }

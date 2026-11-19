@@ -45,7 +45,8 @@ public class WHeaderBar extends WVerticalList {
         double u = t.unit();
         Paint.roundRect(renderer, t, x, y, width, height, cornerRadius, p.bar());
         // Square off the bottom corners
-        Paint.rect(renderer, t, x, y + Math.min(height, cornerRadius), width, Math.max(0, height - cornerRadius), p.bar());
+        Paint.rect(
+                renderer, t, x, y + Math.min(height, cornerRadius), width, Math.max(0, height - cornerRadius), p.bar());
         Paint.rect(renderer, t, x, y + height - p.borderWidth * u, width, p.borderWidth * u, p.border());
     }
 }

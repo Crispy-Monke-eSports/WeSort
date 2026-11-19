@@ -8,7 +8,11 @@ public final class CaptureRules {
     private CaptureRules() {}
 
     /** The containers the window remembers. Ender chests are left out (they belong to the player, not the place). */
-    public enum Kind { CHEST, BARREL, SHULKER_BOX }
+    public enum Kind {
+        CHEST,
+        BARREL,
+        SHULKER_BOX
+    }
 
     /** A menu counts as the result of a click only if it appeared within this many ticks of it. */
     public static final int INTERACT_WINDOW = 10;
@@ -29,7 +33,8 @@ public final class CaptureRules {
      * within the window, and has exactly the number of container slots that block should have. This keeps plugin GUIs,
      * NPC menus and a window opened by something else from being taken for the chest that was clicked.
      */
-    public static boolean shouldCapture(boolean newMenu, boolean sameAsAtClick, long ticksSinceClick, int menuSlots, int expectedSize) {
+    public static boolean shouldCapture(
+            boolean newMenu, boolean sameAsAtClick, long ticksSinceClick, int menuSlots, int expectedSize) {
         if (!newMenu || sameAsAtClick) return false;
         if (ticksSinceClick < 0 || ticksSinceClick > INTERACT_WINDOW) return false;
         return menuSlots - PLAYER_SLOTS == expectedSize && expectedSize <= MAX_SLOTS;

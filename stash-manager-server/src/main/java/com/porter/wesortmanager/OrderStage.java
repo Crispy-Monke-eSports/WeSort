@@ -2,8 +2,17 @@ package com.porter.wesortmanager;
 
 /** Physical order progress. A warehouse handoff ends packing and begins package custody. */
 enum OrderStage {
-    CREATED, RESERVED, PACKING, PICKUP_READY, PICKED_UP, IN_TRANSIT, AWAITING_CUSTOMER,
-    DELIVERED, FAILED, NEEDS_RECONCILIATION, CANCELLED;
+    CREATED,
+    RESERVED,
+    PACKING,
+    PICKUP_READY,
+    PICKED_UP,
+    IN_TRANSIT,
+    AWAITING_CUSTOMER,
+    DELIVERED,
+    FAILED,
+    NEEDS_RECONCILIATION,
+    CANCELLED;
 
     boolean allows(OrderStage next) {
         if (this == next) return true;

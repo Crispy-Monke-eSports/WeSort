@@ -3,7 +3,6 @@ package com.porter.wesort.manager.model;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -11,8 +10,7 @@ import java.util.List;
 public final class StashList {
     private static final int MAX = 256;
 
-    private StashList() {
-    }
+    private StashList() {}
 
     /** Never null. Entries without a server and stash name are skipped. */
     public static List<StashRef> parse(JsonElement body) {

@@ -1,7 +1,6 @@
 package com.porter.wesort.manager.model;
 
 import com.porter.wesort.stash.Order;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -11,7 +10,11 @@ import java.util.List;
  * lines, then the loaded bins. Pure.
  */
 public final class CartPlan {
-    public enum Kind { SHULKER, EMPTY, BIN }
+    public enum Kind {
+        SHULKER,
+        EMPTY,
+        BIN
+    }
 
     /** One shulker of the delivery. {@code lots} is only filled for a BIN. */
     public record Unit(Kind kind, String key, List<Order.Lot> lots) {
@@ -24,8 +27,7 @@ public final class CartPlan {
     public static final int MAX_SHULKERS = Order.MAX_BINS;
     public static final int SLOTS = Order.SLOTS;
 
-    private CartPlan() {
-    }
+    private CartPlan() {}
 
     /** An item line whose item is a shulker box means empty shulkers of that kind. */
     public static boolean isEmptyShulkerLine(Order.Line l, IndexModel index) {

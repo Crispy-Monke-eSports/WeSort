@@ -1,8 +1,13 @@
 package com.porter.wesort.manager.local;
 
+import static meteordevelopment.meteorclient.MeteorClient.mc;
+
 import com.porter.wesort.manager.local.CaptureRules.Kind;
 import com.porter.wesort.manager.local.LocalStore.Entry;
 import com.porter.wesort.stash.StashIndex;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.BooleanSupplier;
 import meteordevelopment.meteorclient.events.entity.player.InteractBlockEvent;
 import meteordevelopment.meteorclient.events.game.GameLeftEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
@@ -19,12 +24,6 @@ import net.minecraft.world.level.block.ChestBlock;
 import net.minecraft.world.level.block.DoubleBlockCombiner;
 import net.minecraft.world.level.block.ShulkerBoxBlock;
 import net.minecraft.world.level.block.state.BlockState;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.function.BooleanSupplier;
-
-import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 /**
  * Writes down the contents of the chests, barrels and shulker boxes the player opens, into the {@link LocalHub}. Passive:
@@ -70,10 +69,11 @@ public final class LocalCapture {
     /** The block positions of the container at {@code pos}: two for a double chest. */
     static List<int[]> partsOf(BlockState state, BlockPos pos) {
         List<int[]> parts = new ArrayList<>();
-        parts.add(new int[] { pos.getX(), pos.getY(), pos.getZ() });
-        if (state.getBlock() instanceof ChestBlock && ChestBlock.getBlockType(state) != DoubleBlockCombiner.BlockType.SINGLE) {
+        parts.add(new int[] {pos.getX(), pos.getY(), pos.getZ()});
+        if (state.getBlock() instanceof ChestBlock
+                && ChestBlock.getBlockType(state) != DoubleBlockCombiner.BlockType.SINGLE) {
             BlockPos other = pos.relative(ChestBlock.getConnectedDirection(state));
-            parts.add(new int[] { other.getX(), other.getY(), other.getZ() });
+            parts.add(new int[] {other.getX(), other.getY(), other.getZ()});
         }
         return parts;
     }
@@ -150,7 +150,8 @@ public final class LocalCapture {
         if ((kind == Kind.SHULKER_BOX) != (menu instanceof ShulkerBoxMenu)) return;
         List<int[]> parts = partsOf(state, pos);
         int expected = CaptureRules.expectedSize(kind, parts.size() > 1);
-        if (!CaptureRules.shouldCapture(true, click.menu() == menu, clock - click.tick(), menu.slots.size(), expected)) return;
+        if (!CaptureRules.shouldCapture(true, click.menu() == menu, clock - click.tick(), menu.slots.size(), expected))
+            return;
 
         trackedKey = ContainerKey.of(server, StashIndex.dimension(), parts);
         trackedStore = store;
@@ -212,6 +213,10 @@ public final class LocalCapture {
         if (!BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString().equals(e.block())) return true;
         List<int[]> now = partsOf(state, pos);
         int[] canon = ContainerKey.canonical(now);
-        return now.size() != e.parts().size() || canon == null || canon[0] != pos.getX() || canon[1] != pos.getY() || canon[2] != pos.getZ();
+        return now.size() != e.parts().size()
+                || canon == null
+                || canon[0] != pos.getX()
+                || canon[1] != pos.getY()
+                || canon[2] != pos.getZ();
     }
 }

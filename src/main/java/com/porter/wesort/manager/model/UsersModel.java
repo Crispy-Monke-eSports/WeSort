@@ -3,7 +3,6 @@ package com.porter.wesort.manager.model;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -17,29 +16,37 @@ import java.util.regex.Pattern;
  * The server is the authority; this only saves a round trip and keeps the labels honest. Pure.
  */
 public final class UsersModel {
-    private UsersModel() {
-    }
+    private UsersModel() {}
 
     public static final Pattern NAME = Pattern.compile("^[A-Za-z0-9_.-]{1,32}$");
 
     /** A yes/no permission with its label and help (the website's PERM_SWITCHES). */
-    public record Switch(String key, String label, String help) {
-    }
+    public record Switch(String key, String label, String help) {}
 
     public static final List<Switch> SWITCHES = List.of(
-        new Switch("view", "View stashes", "Stash list, stash index, item icons and the order list."),
-        new Switch("order", "Place orders", "Place orders; cancel, retry or force-cancel their own orders."),
-        new Switch("ordersAll", "Manage all orders", "Cancel, retry or force-cancel anyone's orders; Clear history."),
-        new Switch("activity", "Bots and activity", "Bots tab, Activity, job status and the plugin settings (read only)."),
-        new Switch("settings", "Change plugin settings", "Save the WeSort plugin settings."),
-        new Switch("rescan", "Rescan stashes", "Ask the bot to re-read every container of a stash."),
-        new Switch("link", "Link addon", "The Link addon panel (linked bots in scope) and releasing a stash. The API key itself stays owner-only."),
-        new Switch("streamer", "Force streamer mode", "A restriction: the server never sends this user coordinates, player names, server addresses, chat or the bots' free text. "
-            + "Bot settings are refused. The user can't turn it off."));
+            new Switch("view", "View stashes", "Stash list, stash index, item icons and the order list."),
+            new Switch("order", "Place orders", "Place orders; cancel, retry or force-cancel their own orders."),
+            new Switch(
+                    "ordersAll", "Manage all orders", "Cancel, retry or force-cancel anyone's orders; Clear history."),
+            new Switch(
+                    "activity",
+                    "Bots and activity",
+                    "Bots tab, Activity, job status and the plugin settings (read only)."),
+            new Switch("settings", "Change plugin settings", "Save the WeSort plugin settings."),
+            new Switch("rescan", "Rescan stashes", "Ask the bot to re-read every container of a stash."),
+            new Switch(
+                    "link",
+                    "Link addon",
+                    "The Link addon panel (linked bots in scope) and releasing a stash. The API key itself stays owner-only."),
+            new Switch(
+                    "streamer",
+                    "Force streamer mode",
+                    "A restriction: the server never sends this user coordinates, player names, server addresses, chat or the bots' free text. "
+                            + "Bot settings are refused. The user can't turn it off."));
 
     public static final String IMPLIED_HINT = "Placing or managing orders also turns on View stashes. "
-        + "Changing agent settings also turns on Bots and activity. "
-        + "";
+            + "Changing agent settings also turns on Bots and activity. "
+            + "";
 
     /** A stash a user is limited to. */
     public record StashScope(String server, String stash) {
@@ -76,7 +83,8 @@ public final class UsersModel {
         public boolean equals(Object o) {
             if (!(o instanceof Perms p)) return false;
             return flags.equals(p.flags)
-                && java.util.Objects.equals(stashes, p.stashes) && java.util.Objects.equals(bots, p.bots);
+                    && java.util.Objects.equals(stashes, p.stashes)
+                    && java.util.Objects.equals(bots, p.bots);
         }
 
         @Override
@@ -96,14 +104,16 @@ public final class UsersModel {
             p.stashes = new ArrayList<>();
             for (JsonElement s : stashes) {
                 JsonObject so = Json.obj(s);
-                if (so != null && p.stashes.size() < 500) p.stashes.add(new StashScope(Json.str(so, "server"), Json.str(so, "stash")));
+                if (so != null && p.stashes.size() < 500)
+                    p.stashes.add(new StashScope(Json.str(so, "server"), Json.str(so, "stash")));
             }
         }
         JsonArray bots = Json.arr(o.get("bots"));
         if (bots != null) {
             p.bots = new ArrayList<>();
             for (JsonElement b : bots) {
-                if (b.isJsonPrimitive() && b.getAsJsonPrimitive().isString() && p.bots.size() < 500) p.bots.add(b.getAsString());
+                if (b.isJsonPrimitive() && b.getAsJsonPrimitive().isString() && p.bots.size() < 500)
+                    p.bots.add(b.getAsString());
             }
         }
         return p;
@@ -151,13 +161,17 @@ public final class UsersModel {
 
     /** One allowed-command prefix per entry from text typed as {@code a; b; c}: trimmed, spaces collapsed, no duplicates (ignoring case). */
 
-
-
-
     // ---------- the list ----------
 
-    public record User(String id, String name, boolean disabled, boolean mustChange, Perms perms, long createdAt, long lastLoginAt, int sessions) {
-    }
+    public record User(
+            String id,
+            String name,
+            boolean disabled,
+            boolean mustChange,
+            Perms perms,
+            long createdAt,
+            long lastLoginAt,
+            int sessions) {}
 
     /** {@code presets} are the server's, by id, in its order. {@code lastLoginAt} is -1 for never. */
     public record Data(String ownerName, List<User> users, Map<String, Perms> presets, int maxUsers, int minLength) {
@@ -175,29 +189,46 @@ public final class UsersModel {
             for (JsonElement e : ua) {
                 JsonObject u = Json.obj(e);
                 if (u == null || !Ids.valid(Json.str(u, "id"))) continue;
-                users.add(new User(Json.str(u, "id"), Text.sanitize(Json.str(u, "name"), 40), Json.bool(u, "disabled"), Json.bool(u, "mustChange"),
-                    norm(u.get("perms")), Json.lng(u, "createdAt", 0), u.has("lastLoginAt") && u.get("lastLoginAt").isJsonPrimitive() ? Json.lng(u, "lastLoginAt", -1) : -1,
-                    (int) Json.num(u, "sessions", 0)));
+                users.add(new User(
+                        Json.str(u, "id"),
+                        Text.sanitize(Json.str(u, "name"), 40),
+                        Json.bool(u, "disabled"),
+                        Json.bool(u, "mustChange"),
+                        norm(u.get("perms")),
+                        Json.lng(u, "createdAt", 0),
+                        u.has("lastLoginAt") && u.get("lastLoginAt").isJsonPrimitive()
+                                ? Json.lng(u, "lastLoginAt", -1)
+                                : -1,
+                        (int) Json.num(u, "sessions", 0)));
                 if (users.size() >= 100) break;
             }
         }
         Map<String, Perms> presets = new LinkedHashMap<>();
         JsonObject po = Json.obj(o.get("presets"));
         if (po != null) {
-            for (String id : List.of("viewer", "orderer", "operator")) if (po.has(id)) presets.put(id, norm(po.get(id)));
+            for (String id : List.of("viewer", "orderer", "operator"))
+                if (po.has(id)) presets.put(id, norm(po.get(id)));
             for (Map.Entry<String, JsonElement> e : po.entrySet()) {
-                if (!presets.containsKey(e.getKey()) && presets.size() < 20 && e.getValue().isJsonObject()) presets.put(Text.sanitize(e.getKey(), 24), norm(e.getValue()));
+                if (!presets.containsKey(e.getKey())
+                        && presets.size() < 20
+                        && e.getValue().isJsonObject()) presets.put(Text.sanitize(e.getKey(), 24), norm(e.getValue()));
             }
         }
         int min = (int) Json.num(o, "minLength", 12);
-        return new Data(owner == null ? "owner" : Text.sanitize(Json.str(owner, "name"), 40), users, presets, (int) Json.num(o, "maxUsers", 50), min < 1 ? 12 : min);
+        return new Data(
+                owner == null ? "owner" : Text.sanitize(Json.str(owner, "name"), 40),
+                users,
+                presets,
+                (int) Json.num(o, "maxUsers", 50),
+                min < 1 ? 12 : min);
     }
 
     /** "Viewer", "Orderer", "Operator" or "Custom": the preset whose switches and modes this matches (scopes and the command list don't count). */
     public static String presetLabel(Perms p, Data data) {
         Perms shape = shape(p);
         for (Map.Entry<String, Perms> e : data.presets().entrySet()) {
-            if (shape(e.getValue()).equals(shape)) return presetName(e.getKey()) + (p.flag("streamer") ? " + forced streamer" : "");
+            if (shape(e.getValue()).equals(shape))
+                return presetName(e.getKey()) + (p.flag("streamer") ? " + forced streamer" : "");
         }
         return "Custom";
     }
@@ -215,7 +246,8 @@ public final class UsersModel {
         Perms n = withImplied(p.copy());
         n.stashes = null;
         n.bots = null;
-        // A preset never touches streamer mode (the server keeps the stored value), so it is not compared; the label adds it
+        // A preset never touches streamer mode (the server keeps the stored value), so it is not compared; the label
+        // adds it
         n.flag("streamer", false);
         return n;
     }
@@ -242,9 +274,11 @@ public final class UsersModel {
     public static String checkName(String name, String selfId, Data data) {
         if (!NAME.matcher(name).matches()) return "A username is 1 to 32 letters, digits, _ . or -.";
         String lower = name.toLowerCase(Locale.ROOT);
-        if (!"owner".equals(selfId) && data.ownerName().toLowerCase(Locale.ROOT).equals(lower)) return "That is the owner's name.";
+        if (!"owner".equals(selfId) && data.ownerName().toLowerCase(Locale.ROOT).equals(lower))
+            return "That is the owner's name.";
         for (User u : data.users()) {
-            if (!u.id().equals(selfId) && u.name().toLowerCase(Locale.ROOT).equals(lower)) return "Another user already has that name.";
+            if (!u.id().equals(selfId) && u.name().toLowerCase(Locale.ROOT).equals(lower))
+                return "Another user already has that name.";
         }
         return "";
     }
@@ -272,8 +306,12 @@ public final class UsersModel {
         for (JsonElement e : a) {
             JsonObject x = Json.obj(e);
             if (x == null) continue;
-            out.add(new AuditEntry(Json.lng(x, "at", 0), Text.sanitize(Json.str(x, "user"), 40), Text.sanitize(Json.str(x, "action"), 40),
-                Text.sanitize(Json.str(x, "detail"), 300), Text.sanitize(Json.str(x, "address"), 60)));
+            out.add(new AuditEntry(
+                    Json.lng(x, "at", 0),
+                    Text.sanitize(Json.str(x, "user"), 40),
+                    Text.sanitize(Json.str(x, "action"), 40),
+                    Text.sanitize(Json.str(x, "detail"), 300),
+                    Text.sanitize(Json.str(x, "address"), 60)));
             if (out.size() >= 2000) break;
         }
         return out;

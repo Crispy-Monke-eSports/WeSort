@@ -2,7 +2,6 @@ package com.porter.wesort.manager.gui;
 
 import com.porter.wesort.manager.model.IndexModel;
 import com.porter.wesort.manager.model.StashRef;
-
 import java.util.List;
 
 /** What the WeSort Manager server last told the window. Client thread only. */

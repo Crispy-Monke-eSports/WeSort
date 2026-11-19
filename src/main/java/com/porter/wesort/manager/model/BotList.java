@@ -3,7 +3,6 @@ package com.porter.wesort.manager.model;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -25,8 +24,19 @@ public final class BotList {
      * @param runtimeMc      the Minecraft version the runtime plays, "" when unknown
      * @param stashes      the stashes linked to this bot's player
      */
-    public record Bot(String botId, String player, boolean online, long lastSeen, String summary, String pluginId, String pluginVersion,
-                      Set<String> caps, List<String> scopes, String runtimeVersion, String runtimeMc, List<Link> stashes) {
+    public record Bot(
+            String botId,
+            String player,
+            boolean online,
+            long lastSeen,
+            String summary,
+            String pluginId,
+            String pluginVersion,
+            Set<String> caps,
+            List<String> scopes,
+            String runtimeVersion,
+            String runtimeMc,
+            List<Link> stashes) {
         public boolean hasCap(String cap) {
             return caps.contains(cap);
         }
@@ -84,7 +94,8 @@ public final class BotList {
             JsonArray ca = Json.arr(o.get("caps"));
             if (ca != null) {
                 for (JsonElement c : ca) {
-                    if (c.isJsonPrimitive() && c.getAsJsonPrimitive().isString() && caps.size() < 20) caps.add(Text.sanitize(c.getAsString(), 24));
+                    if (c.isJsonPrimitive() && c.getAsJsonPrimitive().isString() && caps.size() < 20)
+                        caps.add(Text.sanitize(c.getAsString(), 24));
                 }
             }
             JsonObject runtime = Json.obj(o.get("runtime"));
@@ -99,11 +110,19 @@ public final class BotList {
                     if (!server.isEmpty() && !stash.isEmpty()) links.add(new Link(server, stash));
                 }
             }
-            out.add(new Bot(id, Text.sanitize(Json.str(o, "player"), 32), Json.bool(o, "online"), Json.lng(o, "lastSeen", 0),
-                Text.sanitize(Json.str(o, "summary"), 160), plugin == null ? "" : Text.sanitize(Json.str(plugin, "id"), 40),
-                plugin == null ? "" : Text.sanitize(Json.str(plugin, "version"), 24), caps, scopes,
-                runtime == null ? "" : Text.sanitize(Json.str(runtime, "version"), 24), runtime == null ? "" : Text.sanitize(Json.str(runtime, "mc"), 24),
-                List.copyOf(links)));
+            out.add(new Bot(
+                    id,
+                    Text.sanitize(Json.str(o, "player"), 32),
+                    Json.bool(o, "online"),
+                    Json.lng(o, "lastSeen", 0),
+                    Text.sanitize(Json.str(o, "summary"), 160),
+                    plugin == null ? "" : Text.sanitize(Json.str(plugin, "id"), 40),
+                    plugin == null ? "" : Text.sanitize(Json.str(plugin, "version"), 24),
+                    caps,
+                    scopes,
+                    runtime == null ? "" : Text.sanitize(Json.str(runtime, "version"), 24),
+                    runtime == null ? "" : Text.sanitize(Json.str(runtime, "mc"), 24),
+                    List.copyOf(links)));
             if (out.size() >= 64) break;
         }
         return new BotList(out);

@@ -4,8 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-
-import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -40,6 +38,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+import javax.imageio.ImageIO;
 
 /**
  * Item icons, cached on disk as static PNGs under data/icons/<ns>/<path>.png.
@@ -61,7 +60,7 @@ public final class IconService implements AutoCloseable {
 
     private static final String USER_AGENT = "WeSortStashManager/1.0 (local stash viewer)";
     private static final String WIKI_API = "https://minecraft.wiki/api.php?action=query&format=json&formatversion=2"
-        + "&prop=imageinfo&iiprop=url&redirects=1&titles=";
+            + "&prop=imageinfo&iiprop=url&redirects=1&titles=";
     private static final Duration TIMEOUT = Duration.ofSeconds(10);
     private static final long MAX_ICON_BYTES = 2L * 1024 * 1024;
     private static final long MAX_API_BYTES = 2L * 1024 * 1024;
@@ -79,10 +78,13 @@ public final class IconService implements AutoCloseable {
     static final String CACHE_PENDING = "no-store";
 
     /** Icon bytes, status, content type and Cache-Control. status 503 means "being fetched, ask again soon". */
-    public record Icon(int status, byte[] data, String contentType, String cacheControl) {
-    }
+    public record Icon(int status, byte[] data, String contentType, String cacheControl) {}
 
-    private enum Kind { OK, DEFINITE_MISS, TRANSIENT }
+    private enum Kind {
+        OK,
+        DEFINITE_MISS,
+        TRANSIENT
+    }
 
     private record Fetched(Kind kind, byte[] data) {
         static final Fetched DEFINITE = new Fetched(Kind.DEFINITE_MISS, null);
@@ -136,8 +138,8 @@ public final class IconService implements AutoCloseable {
     private final BlockingDeque<Job> queue = new LinkedBlockingDeque<>();
     private final ThreadPoolExecutor downloaders;
     private final Thread resolver;
-    private final RateLimiter apiLimiter = new RateLimiter(10, 1.0);     // ~1 call per 50 ids
-    private final RateLimiter imageLimiter = new RateLimiter(10, 10.0);  // ~10 images a second
+    private final RateLimiter apiLimiter = new RateLimiter(10, 1.0); // ~1 call per 50 ids
+    private final RateLimiter imageLimiter = new RateLimiter(10, 10.0); // ~10 images a second
     private volatile boolean closed;
     // Counters for the log line printed when the queue runs empty.
     private final AtomicInteger statWiki = new AtomicInteger();
@@ -149,23 +151,37 @@ public final class IconService implements AutoCloseable {
     private final Icon placeholderUnknown;
     private final Icon placeholderPending;
 
-    public IconService(Path dataDir, Function<String, IndexStore.IconInfo> known, Predicate<String> knownVersion,
-                       GameIcons game, boolean wikiEnabled) {
+    public IconService(
+            Path dataDir,
+            Function<String, IndexStore.IconInfo> known,
+            Predicate<String> knownVersion,
+            GameIcons game,
+            boolean wikiEnabled) {
         this.knownVersion = knownVersion;
         this.game = game;
         this.wikiEnabled = wikiEnabled;
-        this.prefetchPool = new ThreadPoolExecutor(2, 2, 0, TimeUnit.MILLISECONDS, new java.util.concurrent.LinkedBlockingQueue<>(),
-            r -> daemon(r, "stash-manager-icon-prefetch"));
+        this.prefetchPool = new ThreadPoolExecutor(
+                2,
+                2,
+                0,
+                TimeUnit.MILLISECONDS,
+                new java.util.concurrent.LinkedBlockingQueue<>(),
+                r -> daemon(r, "stash-manager-icon-prefetch"));
         this.dir = dataDir.resolve("icons").toAbsolutePath().normalize();
         this.known = known;
         this.http = HttpClient.newBuilder()
-            .followRedirects(HttpClient.Redirect.NEVER)
-            .connectTimeout(TIMEOUT)
-            .build();
+                .followRedirects(HttpClient.Redirect.NEVER)
+                .connectTimeout(TIMEOUT)
+                .build();
         AtomicInteger n = new AtomicInteger();
         // A priority queue so icons a browser is waiting for are downloaded before prefetch work.
-        this.downloaders = new ThreadPoolExecutor(4, 4, 0, TimeUnit.MILLISECONDS, new PriorityBlockingQueue<>(),
-            r -> daemon(r, "stash-manager-icon-dl-" + n.incrementAndGet()));
+        this.downloaders = new ThreadPoolExecutor(
+                4,
+                4,
+                0,
+                TimeUnit.MILLISECONDS,
+                new PriorityBlockingQueue<>(),
+                r -> daemon(r, "stash-manager-icon-dl-" + n.incrementAndGet()));
         byte[] png = makePlaceholder();
         this.placeholderMiss = new Icon(200, png, "image/png", CACHE_MISS);
         this.placeholderUnknown = new Icon(200, png, "image/png", CACHE_UNKNOWN);
@@ -194,6 +210,7 @@ public final class IconService implements AutoCloseable {
      * </ul>
      */
     static final int CACHE_VERSION = 2;
+
     static final String CACHE_VERSION_FILE = ".cache-version";
 
     /**
@@ -211,13 +228,19 @@ public final class IconService implements AutoCloseable {
         boolean outdated = cacheVersion() < CACHE_VERSION;
         List<Path> stale;
         try (Stream<Path> walk = Files.walk(dir, 2)) {
-            stale = walk.filter(Files::isRegularFile).filter(p -> {
-                if (p.getParent().equals(dir)) return false; // .cache-version and other top-level files
-                if (p.getParent().getFileName().toString().startsWith("game-")) return false; // never wiki icons
-                String name = p.getFileName().toString();
-                if (name.endsWith(".retry") || name.endsWith(".gif") || name.endsWith(".webp") || name.endsWith(".jpg")) return true;
-                return outdated && (name.endsWith(".png") || name.endsWith(".miss"));
-            }).toList();
+            stale = walk.filter(Files::isRegularFile)
+                    .filter(p -> {
+                        if (p.getParent().equals(dir)) return false; // .cache-version and other top-level files
+                        if (p.getParent().getFileName().toString().startsWith("game-"))
+                            return false; // never wiki icons
+                        String name = p.getFileName().toString();
+                        if (name.endsWith(".retry")
+                                || name.endsWith(".gif")
+                                || name.endsWith(".webp")
+                                || name.endsWith(".jpg")) return true;
+                        return outdated && (name.endsWith(".png") || name.endsWith(".miss"));
+                    })
+                    .toList();
         } catch (IOException e) {
             return 0;
         }
@@ -237,7 +260,9 @@ public final class IconService implements AutoCloseable {
 
     private void writeCacheVersion() {
         try {
-            AtomicFiles.write(dir.resolve(CACHE_VERSION_FILE), Integer.toString(CACHE_VERSION).getBytes(StandardCharsets.US_ASCII));
+            AtomicFiles.write(
+                    dir.resolve(CACHE_VERSION_FILE),
+                    Integer.toString(CACHE_VERSION).getBytes(StandardCharsets.US_ASCII));
         } catch (IOException e) {
             System.err.println("Could not write " + dir.resolve(CACHE_VERSION_FILE) + ": " + e.getMessage());
         }
@@ -248,7 +273,8 @@ public final class IconService implements AutoCloseable {
         try {
             Path f = dir.resolve(CACHE_VERSION_FILE);
             if (!Files.isRegularFile(f)) return 1;
-            return Integer.parseInt(Files.readString(f, StandardCharsets.US_ASCII).trim());
+            return Integer.parseInt(
+                    Files.readString(f, StandardCharsets.US_ASCII).trim());
         } catch (IOException | NumberFormatException e) {
             return 1;
         }
@@ -260,7 +286,7 @@ public final class IconService implements AutoCloseable {
      * pipeline does not use mcasset for them.
      */
     private static final Pattern BLOCK_ENTITY_ITEM = Pattern.compile(
-        "^(?:[a-z_]+_)?(?:shulker_box|chest|bed|banner|head|skull|copper_golem_statue)$|^(?:shield|conduit|decorated_pot)$");
+            "^(?:[a-z_]+_)?(?:shulker_box|chest|bed|banner|head|skull|copper_golem_statue)$|^(?:shield|conduit|decorated_pot)$");
 
     static boolean blockEntityItem(String path) {
         return BLOCK_ENTITY_ITEM.matcher(path).matches();
@@ -350,9 +376,10 @@ public final class IconService implements AutoCloseable {
             if (enqueue(new Job(ns + ":" + path, ns, path, nsDir, e.getValue()), false)) queued++;
         }
         if (rendered > 0 || queued > 0) {
-            System.out.printf("Icons for %d item ids: %d rendered from the game now, %d already rendered, %d from the wiki cache, "
-                + "%d queued for the wiki (%.1f s).%n", ids.size(), rendered, alreadyRendered, wikiCached, queued,
-                (System.nanoTime() - start) / 1e9);
+            System.out.printf(
+                    "Icons for %d item ids: %d rendered from the game now, %d already rendered, %d from the wiki cache, "
+                            + "%d queued for the wiki (%.1f s).%n",
+                    ids.size(), rendered, alreadyRendered, wikiCached, queued, (System.nanoTime() - start) / 1e9);
         }
     }
 
@@ -375,9 +402,12 @@ public final class IconService implements AutoCloseable {
 
     /** One summary line once the wiki queue is empty and no prefetch is still adding to it. */
     private synchronized void logWikiSummary() {
-        if (pending.isEmpty() && prefetching.get() == 0 && statWiki.get() + statAssets.get() + statMiss.get() + statRetry.get() > 0) {
-            System.out.println("Icons fetched: " + statWiki.getAndSet(0) + " from the Minecraft Wiki, " + statAssets.getAndSet(0)
-                + " from mcasset.cloud, " + statMiss.getAndSet(0) + " not found, " + statRetry.getAndSet(0) + " to retry later.");
+        if (pending.isEmpty()
+                && prefetching.get() == 0
+                && statWiki.get() + statAssets.get() + statMiss.get() + statRetry.get() > 0) {
+            System.out.println("Icons fetched: " + statWiki.getAndSet(0) + " from the Minecraft Wiki, "
+                    + statAssets.getAndSet(0) + " from mcasset.cloud, " + statMiss.getAndSet(0) + " not found, "
+                    + statRetry.getAndSet(0) + " to retry later.");
         }
     }
 
@@ -403,8 +433,8 @@ public final class IconService implements AutoCloseable {
     private static boolean settled(Path nsDir, String path) {
         try {
             return Files.isRegularFile(nsDir.resolve(path + ".png"))
-                || freshMarker(nsDir.resolve(path + ".miss"), MISS_TTL_MS)
-                || freshMarker(nsDir.resolve(path + ".retry"), RETRY_TTL_MS);
+                    || freshMarker(nsDir.resolve(path + ".miss"), MISS_TTL_MS)
+                    || freshMarker(nsDir.resolve(path + ".retry"), RETRY_TTL_MS);
         } catch (IOException e) {
             return false;
         }
@@ -544,11 +574,14 @@ public final class IconService implements AutoCloseable {
             for (JsonElement p : pages.getAsJsonArray()) {
                 if (!p.isJsonObject()) continue;
                 JsonObject page = p.getAsJsonObject();
-                if (!page.has("title") || !page.has("imageinfo") || !page.get("imageinfo").isJsonArray()) continue;
+                if (!page.has("title")
+                        || !page.has("imageinfo")
+                        || !page.get("imageinfo").isJsonArray()) continue;
                 JsonArray info = page.getAsJsonArray("imageinfo");
                 if (info.isEmpty() || !info.get(0).isJsonObject()) continue;
                 JsonElement url = info.get(0).getAsJsonObject().get("url");
-                if (url != null && url.isJsonPrimitive()) pageUrls.put(page.get("title").getAsString(), url.getAsString());
+                if (url != null && url.isJsonPrimitive())
+                    pageUrls.put(page.get("title").getAsString(), url.getAsString());
             }
         }
         for (String t : titles) {
@@ -566,7 +599,8 @@ public final class IconService implements AutoCloseable {
         for (JsonElement e : list.getAsJsonArray()) {
             if (!e.isJsonObject()) continue;
             JsonObject o = e.getAsJsonObject();
-            if (o.has("from") && o.has("to")) out.put(o.get("from").getAsString(), o.get("to").getAsString());
+            if (o.has("from") && o.has("to"))
+                out.put(o.get("from").getAsString(), o.get("to").getAsString());
         }
         return out;
     }
@@ -725,20 +759,22 @@ public final class IconService implements AutoCloseable {
         try {
             for (int hop = 0; hop <= MAX_REDIRECTS; hop++) {
                 if (!allowedTarget(uri)) {
-                    System.err.println("Icon fetch refused " + uri.getScheme() + "://" + uri.getHost() + uri.getRawPath());
+                    System.err.println(
+                            "Icon fetch refused " + uri.getScheme() + "://" + uri.getHost() + uri.getRawPath());
                     return Response.DEFINITE;
                 }
                 HttpRequest request = HttpRequest.newBuilder(uri)
-                    .timeout(TIMEOUT)
-                    .header("User-Agent", USER_AGENT)
-                    .header("Accept", "image/png,image/gif;q=0.9,application/json;q=0.8,*/*;q=0.1")
-                    .GET()
-                    .build();
+                        .timeout(TIMEOUT)
+                        .header("User-Agent", USER_AGENT)
+                        .header("Accept", "image/png,image/gif;q=0.9,application/json;q=0.8,*/*;q=0.1")
+                        .GET()
+                        .build();
                 HttpResponse<InputStream> response = http.send(request, HttpResponse.BodyHandlers.ofInputStream());
                 try (InputStream in = response.body()) {
                     int status = response.statusCode();
                     if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
-                        String location = response.headers().firstValue("Location").orElse(null);
+                        String location =
+                                response.headers().firstValue("Location").orElse(null);
                         if (location == null) return Response.TRANSIENT;
                         uri = uri.resolve(location.trim());
                         continue;
@@ -746,10 +782,15 @@ public final class IconService implements AutoCloseable {
                     if (status == 404 || status == 410) return Response.DEFINITE;
                     if (status == 429 || status >= 500) return Response.TRANSIENT;
                     if (status != 200) return Response.DEFINITE;
-                    String type = response.headers().firstValue("Content-Type").orElse("").toLowerCase(Locale.ROOT);
+                    String type = response.headers()
+                            .firstValue("Content-Type")
+                            .orElse("")
+                            .toLowerCase(Locale.ROOT);
                     int semi = type.indexOf(';');
                     if (semi >= 0) type = type.substring(0, semi);
-                    long declared = response.headers().firstValueAsLong("Content-Length").orElse(-1);
+                    long declared = response.headers()
+                            .firstValueAsLong("Content-Length")
+                            .orElse(-1);
                     if (declared > maxBytes) return Response.DEFINITE;
                     byte[] data = readCapped(in, maxBytes);
                     if (data == null || data.length == 0) return Response.DEFINITE;

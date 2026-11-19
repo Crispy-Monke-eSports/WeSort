@@ -1,14 +1,13 @@
 package com.porter.wesort.manager.gui.layout;
 
-import com.porter.wesort.manager.gui.layout.StashLayout.Layout;
-import com.porter.wesort.manager.gui.layout.StashLayout.R;
-import org.junit.jupiter.api.Test;
-
-import java.util.List;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.porter.wesort.manager.gui.layout.StashLayout.Layout;
+import com.porter.wesort.manager.gui.layout.StashLayout.R;
+import java.util.List;
+import org.junit.jupiter.api.Test;
 
 class LayoutsTest {
     // ---------- FlowLayout ----------
@@ -62,7 +61,9 @@ class LayoutsTest {
         assertEquals(l.grid().y(), l.drawer().y());
         assertEquals(l.grid().h(), l.drawer().h());
         // the width of the grid does not depend on anything about the details
-        assertEquals(l.grid().w(), StashLayout.compute(620, 360, 9, 8, 15, 70, 1).grid().w());
+        assertEquals(
+                l.grid().w(),
+                StashLayout.compute(620, 360, 9, 8, 15, 70, 1).grid().w());
     }
 
     @Test
@@ -178,7 +179,8 @@ class LayoutsTest {
 
     @Test
     void trianglesFaceTheSameWayAsMeteorsQuads() {
-        // Meteor's quads run top-left, bottom-left, bottom-right: a negative cross product in screen coordinates. The UI
+        // Meteor's quads run top-left, bottom-left, bottom-right: a negative cross product in screen coordinates. The
+        // UI
         // pipeline culls the other winding, so a corner with the wrong one would vanish.
         for (double[] t : RoundRect.corners(0, 0, 100, 60, 12)) {
             double cross = (t[2] - t[0]) * (t[5] - t[1]) - (t[3] - t[1]) * (t[4] - t[0]);

@@ -1,15 +1,14 @@
 package com.porter.wesort.stash;
 
-import com.porter.wesort.stash.DeliveryBook.Pos;
-import org.junit.jupiter.api.Test;
-
-import java.util.List;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.porter.wesort.stash.DeliveryBook.Pos;
+import java.util.List;
+import org.junit.jupiter.api.Test;
 
 /** The delivery storage's bookkeeping: lowest usable first, full and usable again, lids seen, and what to do next. */
 class DeliveryBookTest {
@@ -41,7 +40,9 @@ class DeliveryBookTest {
         DeliveryBook b = stack(2);
         assertEquals(1, b.topRow().size());
         assertEquals(66, b.topRow().get(0).y());
-        assertEquals(List.of(new Pos(10, 66, 20), new Pos(11, 66, 20)), b.topRow().get(0).parts());
+        assertEquals(
+                List.of(new Pos(10, 66, 20), new Pos(11, 66, 20)),
+                b.topRow().get(0).parts());
     }
 
     @Test
@@ -83,14 +84,20 @@ class DeliveryBookTest {
     void roomDecision() {
         DeliveryBook b = stack(1);
         long now = 10_000_000;
-        assertEquals(DeliveryRoom.Kind.ROOM, b.room(false, null, now, DeliveryBook.RECHECK_MS).kind());
+        assertEquals(
+                DeliveryRoom.Kind.ROOM,
+                b.room(false, null, now, DeliveryBook.RECHECK_MS).kind());
 
         b.markFull(b.primary(), now);
-        assertEquals(DeliveryRoom.Kind.ROOM, b.room(false, null, now, DeliveryBook.RECHECK_MS).kind());
+        assertEquals(
+                DeliveryRoom.Kind.ROOM,
+                b.room(false, null, now, DeliveryBook.RECHECK_MS).kind());
         b.markFull(b.sorted().get(1), now);
 
         // All full: expand when on and nothing blocks; else wait with the reason
-        assertEquals(DeliveryRoom.Kind.EXPAND, b.room(true, null, now, DeliveryBook.RECHECK_MS).kind());
+        assertEquals(
+                DeliveryRoom.Kind.EXPAND,
+                b.room(true, null, now, DeliveryBook.RECHECK_MS).kind());
         DeliveryRoom off = b.room(false, null, now, DeliveryBook.RECHECK_MS);
         assertEquals(DeliveryRoom.Kind.WAIT, off.kind());
         assertTrue(off.why().contains("auto expand is off"), off.why());
@@ -110,7 +117,9 @@ class DeliveryBookTest {
         assertEquals(DeliveryRoom.Kind.RECHECK, r.kind());
         assertEquals(A, r.recheck());
         b.markRoom(b.primary(), now);
-        assertEquals(DeliveryRoom.Kind.ROOM, b.room(true, null, now, DeliveryBook.RECHECK_MS).kind());
+        assertEquals(
+                DeliveryRoom.Kind.ROOM,
+                b.room(true, null, now, DeliveryBook.RECHECK_MS).kind());
         assertSame(b.primary(), b.firstUsable());
     }
 
@@ -119,12 +128,17 @@ class DeliveryBookTest {
         DeliveryBook b = stack(0);
         long t0 = 1_000_000;
         b.markFull(b.primary(), t0);
-        assertEquals(DeliveryRoom.Kind.WAIT, b.room(false, null, t0 + 1000, DeliveryBook.RECHECK_MS).kind());
+        assertEquals(
+                DeliveryRoom.Kind.WAIT,
+                b.room(false, null, t0 + 1000, DeliveryBook.RECHECK_MS).kind());
         DeliveryRoom due = b.room(false, null, t0 + DeliveryBook.RECHECK_MS, DeliveryBook.RECHECK_MS);
         assertEquals(DeliveryRoom.Kind.RECHECK, due.kind());
         // Looked at and still full: quiet again for a while
         b.markFull(b.primary(), t0 + DeliveryBook.RECHECK_MS);
-        assertEquals(DeliveryRoom.Kind.WAIT, b.room(false, null, t0 + DeliveryBook.RECHECK_MS + 1, DeliveryBook.RECHECK_MS).kind());
+        assertEquals(
+                DeliveryRoom.Kind.WAIT,
+                b.room(false, null, t0 + DeliveryBook.RECHECK_MS + 1, DeliveryBook.RECHECK_MS)
+                        .kind());
     }
 
     @Test
@@ -169,8 +183,13 @@ class DeliveryBookTest {
         assertEquals(A, first.recheck(), "the lowest first");
         b.markFull(b.primary(), now);
         // The others are not due until the interval has passed since that look
-        assertEquals(DeliveryRoom.Kind.WAIT, b.room(false, null, now + 1000, DeliveryBook.RECHECK_MS).kind());
-        assertEquals(DeliveryRoom.Kind.RECHECK, b.room(false, null, now + DeliveryBook.RECHECK_MS, DeliveryBook.RECHECK_MS).kind());
+        assertEquals(
+                DeliveryRoom.Kind.WAIT,
+                b.room(false, null, now + 1000, DeliveryBook.RECHECK_MS).kind());
+        assertEquals(
+                DeliveryRoom.Kind.RECHECK,
+                b.room(false, null, now + DeliveryBook.RECHECK_MS, DeliveryBook.RECHECK_MS)
+                        .kind());
     }
 
     @Test

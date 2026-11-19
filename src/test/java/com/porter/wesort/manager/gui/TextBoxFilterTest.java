@@ -1,6 +1,6 @@
 package com.porter.wesort.manager.gui;
 
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -11,8 +11,7 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
-
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Test;
 
 /**
  * Meteor's WTextBox calls its CharFilter for every typed character, so a text box made with a null filter can't be
@@ -22,8 +21,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class TextBoxFilterTest {
     // textBox(a, b, c, X.class) with c == null, or textBox(a, b, X.class) with b == null
-    private static final Pattern FOUR = Pattern.compile("textBox\\(([^,;()]|\\([^()]*\\))+,([^,;()]|\\([^()]*\\))+,\\s*null\\s*,[^;]*?\\.class\\)");
-    private static final Pattern THREE = Pattern.compile("textBox\\(([^,;()]|\\([^()]*\\))+,\\s*null\\s*,[^,;]*?\\.class\\)");
+    private static final Pattern FOUR =
+            Pattern.compile("textBox\\(([^,;()]|\\([^()]*\\))+,([^,;()]|\\([^()]*\\))+,\\s*null\\s*,[^;]*?\\.class\\)");
+    private static final Pattern THREE =
+            Pattern.compile("textBox\\(([^,;()]|\\([^()]*\\))+,\\s*null\\s*,[^,;]*?\\.class\\)");
 
     @Test
     void noTextBoxIsCreatedWithANullFilter() throws IOException {
@@ -33,7 +34,7 @@ class TextBoxFilterTest {
         try (Stream<Path> files = Files.walk(root)) {
             for (Path p : (Iterable<Path>) files.filter(f -> f.toString().endsWith(".java"))::iterator) {
                 String src = Files.readString(p, StandardCharsets.UTF_8);
-                for (Pattern pattern : new Pattern[] { FOUR, THREE }) {
+                for (Pattern pattern : new Pattern[] {FOUR, THREE}) {
                     Matcher m = pattern.matcher(src);
                     while (m.find()) bad.add(p + ": " + m.group());
                 }
@@ -44,9 +45,13 @@ class TextBoxFilterTest {
 
     @Test
     void thePatternsCatchTheOldPasswordBox() {
-        assertTrue(FOUR.matcher("theme.textBox(\"\", null, null, MaskedRenderer.class)").find());
-        assertTrue(FOUR.matcher("theme.textBox(text, null, null, MaskedRenderer.class)").find());
-        assertTrue(THREE.matcher("theme.textBox(text, null, MaskedRenderer.class)").find());
-        assertTrue(!FOUR.matcher("theme.textBox(\"\", null, MaskedRenderer.ANY_CHAR, MaskedRenderer.class)").find());
+        assertTrue(FOUR.matcher("theme.textBox(\"\", null, null, MaskedRenderer.class)")
+                .find());
+        assertTrue(FOUR.matcher("theme.textBox(text, null, null, MaskedRenderer.class)")
+                .find());
+        assertTrue(
+                THREE.matcher("theme.textBox(text, null, MaskedRenderer.class)").find());
+        assertTrue(!FOUR.matcher("theme.textBox(\"\", null, MaskedRenderer.ANY_CHAR, MaskedRenderer.class)")
+                .find());
     }
 }

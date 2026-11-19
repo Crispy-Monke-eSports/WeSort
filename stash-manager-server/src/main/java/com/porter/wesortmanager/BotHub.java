@@ -4,7 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
-
 import java.security.SecureRandom;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -28,6 +27,8 @@ final class BotHub {
     static final long WATCH_MS = 10_000;
     static final int EVENTS_KEEP = 500;
     static final int JOBS_KEEP = 500;
+    private static final Set<String> CAPABILITIES =
+            Set.of("settings", "activity", "warehouse-scan", "warehouse-sort", "pack", "stage");
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final Set<String> RECEIPT_FIELDS = Set.of("id", "lease", "sequence", "ok", "value", "error");
 
@@ -35,8 +36,8 @@ final class BotHub {
     static final class Scope {
         String schemaHash;
         String valuesHash;
-        JsonArray schema;              // null until the bot sends one
-        Map<String, JsonObject> nodes;  // leaf and group nodes by path
+        JsonArray schema; // null until the bot sends one
+        Map<String, JsonObject> nodes; // leaf and group nodes by path
         JsonObject values = new JsonObject();
         long receivedAt;
     }
@@ -62,8 +63,6 @@ final class BotHub {
         }
     }
 
-
-
     static final class Bot {
         final String botId;
         String player;
@@ -72,9 +71,11 @@ final class BotHub {
         Set<String> caps = new LinkedHashSet<>();
         /** The scopes the bot says it can show (bot/hello "scopes"); only "plugin" is pushed unasked. */
         Set<String> declaredScopes = new LinkedHashSet<>();
+
         long helloAt;
         /** Bumped by every bot/hello: a long-poll from before it (a restarted bot's dangling request) gives up. */
         long helloGen;
+
         String controlSession;
         String controlEpoch;
         ManifestScope manifestScope;
@@ -87,8 +88,8 @@ final class BotHub {
         long needSentAt;
         long watchActivityUntil;
         Boolean watchingActivitySent;
-        JsonObject activity;     // the latest cleaned snapshot, or null
-        long activityAt;         // when it arrived
+        JsonObject activity; // the latest cleaned snapshot, or null
+        long activityAt; // when it arrived
         final ArrayDeque<JsonObject> events = new ArrayDeque<>(); // newest last
         final java.util.HashSet<String> eventKeys = new java.util.HashSet<>(); // (at, source, text) of those kept
         final Map<String, Scope> scopes = new HashMap<>();
@@ -124,24 +125,45 @@ final class BotHub {
         return hello(botId, player, plugin, runtime, caps, List.of());
     }
 
-    boolean hello(String botId, String player, JsonObject plugin, JsonObject runtime, List<String> caps, List<String> scopes) {
+    boolean hello(
+            String botId,
+            String player,
+            JsonObject plugin,
+            JsonObject runtime,
+            List<String> caps,
+            List<String> scopes) {
         return register(botId, player, plugin, runtime, caps, scopes, null) == 200;
     }
 
-    int register(String botId, String player, JsonObject plugin, JsonObject runtime, List<String> caps,
-                 List<String> scopes, String controlSession) {
+    int register(
+            String botId,
+            String player,
+            JsonObject plugin,
+            JsonObject runtime,
+            List<String> caps,
+            List<String> scopes,
+            String controlSession) {
         return register(botId, player, plugin, runtime, caps, scopes, controlSession, null);
     }
 
     record ManifestScope(String server, String stash, String dimension, String agent, String player) {
         String botId() {
-            return java.util.UUID.nameUUIDFromBytes((server + "\u0000" + agent)
-                .getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
+            return java.util
+                    .UUID
+                    .nameUUIDFromBytes((server + "\u0000" + agent).getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                    .toString();
         }
     }
 
-    int register(String botId, String player, JsonObject plugin, JsonObject runtime, List<String> caps,
-                 List<String> scopes, String controlSession, ManifestScope scope) {
+    int register(
+            String botId,
+            String player,
+            JsonObject plugin,
+            JsonObject runtime,
+            List<String> caps,
+            List<String> scopes,
+            String controlSession,
+            ManifestScope scope) {
         long now = now();
         Bot b;
         synchronized (this) {
@@ -168,8 +190,10 @@ final class BotHub {
             if (player != null && !player.isEmpty()) b.player = player;
             b.plugin = plugin;
             b.runtime = runtime;
-            b.caps = new LinkedHashSet<>(caps.stream().filter(x -> Set.of("settings", "activity").contains(x)).toList());
-            b.declaredScopes = new LinkedHashSet<>(scopes.stream().filter("plugin"::equals).toList());
+            b.caps = new LinkedHashSet<>(
+                    caps.stream().filter(CAPABILITIES::contains).toList());
+            b.declaredScopes =
+                    new LinkedHashSet<>(scopes.stream().filter("plugin"::equals).toList());
             b.helloAt = now;
             b.lastSeen = now;
             b.lastPoll = now;
@@ -184,8 +208,11 @@ final class BotHub {
 
     ManifestScope manifestScope(Bot bot, String session, String epoch) {
         synchronized (bot) {
-            if (session == null || epoch == null || !session.equals(bot.controlSession)
-                || !epoch.equals(bot.controlEpoch) || !online(bot, now())) return null;
+            if (session == null
+                    || epoch == null
+                    || !session.equals(bot.controlSession)
+                    || !epoch.equals(bot.controlEpoch)
+                    || !online(bot, now())) return null;
             return bot.manifestScope;
         }
     }
@@ -219,8 +246,14 @@ final class BotHub {
      * bot/state for one scope. A schema is stored whenever it comes (asked for or not); when the schema hash changed
      * and no schema came, it is asked for. Returns the need list for the reply (possibly empty).
      */
-    JsonArray state(Bot b, String scope, String schemaHash, String valuesHash, JsonArray schema, Map<String, JsonObject> nodes,
-                    JsonObject values) {
+    JsonArray state(
+            Bot b,
+            String scope,
+            String schemaHash,
+            String valuesHash,
+            JsonArray schema,
+            Map<String, JsonObject> nodes,
+            JsonObject values) {
         long now = now();
         synchronized (b) {
             b.lastSeen = now;
@@ -251,8 +284,7 @@ final class BotHub {
     }
 
     /** The outcome of a long-poll: 200 with a body, 204, or 429 (too many waiting). */
-    record Poll(int status, JsonObject body) {
-    }
+    record Poll(int status, JsonObject body) {}
 
     /** bot/next: hands out queued jobs and needs, waiting up to 25 s for something to happen. */
     Poll next(Bot b) throws InterruptedException {
@@ -281,13 +313,18 @@ final class BotHub {
                         expire(b, now);
                         boolean watching = b.watchUntil > now;
                         boolean watchingActivity = b.watchActivityUntil > now;
-                        boolean watchChanged = b.watchingSent == null || b.watchingSent != watching
-                            || b.watchingActivitySent == null || b.watchingActivitySent != watchingActivity
-;
+                        boolean watchChanged = b.watchingSent == null
+                                || b.watchingSent != watching
+                                || b.watchingActivitySent == null
+                                || b.watchingActivitySent != watchingActivity;
                         // A need is repeated at most every 10 s, so a bot that can't answer it doesn't spin.
                         boolean needDue = !b.need.isEmpty() && now - b.needSentAt >= 10_000;
-                        Job leased = controlSession == null ? null : b.jobs.values().stream()
-                            .filter(job -> job.status.equals("sent")).findFirst().orElse(null);
+                        Job leased = controlSession == null
+                                ? null
+                                : b.jobs.values().stream()
+                                        .filter(job -> job.status.equals("sent"))
+                                        .findFirst()
+                                        .orElse(null);
                         if (!b.queue.isEmpty() || leased != null || needDue || watchChanged) {
                             JsonObject out = new JsonObject();
                             JsonArray jobs = new JsonArray();
@@ -297,7 +334,8 @@ final class BotHub {
                                     if (leased != null) {
                                         leased.status = "sent";
                                         leased.sentAt = now;
-                                        leased.lease = java.util.UUID.randomUUID().toString();
+                                        leased.lease =
+                                                java.util.UUID.randomUUID().toString();
                                     }
                                 }
                                 if (leased != null) {
@@ -307,12 +345,13 @@ final class BotHub {
                                     job.addProperty("expiresAt", leased.sentAt + UNKNOWN_SENT_MS);
                                     jobs.add(job);
                                 }
-                            } else while (!b.queue.isEmpty()) {
-                                Job j = b.queue.pollFirst();
-                                j.status = "sent";
-                                j.sentAt = now;
-                                jobs.add(payload(j));
-                            }
+                            } else
+                                while (!b.queue.isEmpty()) {
+                                    Job j = b.queue.pollFirst();
+                                    j.status = "sent";
+                                    j.sentAt = now;
+                                    jobs.add(payload(j));
+                                }
                             out.add("jobs", jobs);
                             JsonArray need = new JsonArray();
                             for (String n : b.need) {
@@ -373,7 +412,11 @@ final class BotHub {
         }
     }
 
-    enum Acknowledgement { APPLIED, REPLAY, REFUSED }
+    enum Acknowledgement {
+        APPLIED,
+        REPLAY,
+        REFUSED
+    }
 
     Acknowledgement acknowledge(Bot b, String controlSession, JsonObject receipt) {
         synchronized (b) {
@@ -384,9 +427,13 @@ final class BotHub {
             Job job = b.jobs.get(id);
             var sequence = receipt.get("sequence");
             var ok = receipt.get("ok");
-            if (job == null || lease == null || !lease.equals(job.lease)
-                || sequence == null || !sequence.equals(new com.google.gson.JsonPrimitive(job.sequence))
-                || !(ok instanceof com.google.gson.JsonPrimitive outcome) || !outcome.isBoolean()) return Acknowledgement.REFUSED;
+            if (job == null
+                    || lease == null
+                    || !lease.equals(job.lease)
+                    || sequence == null
+                    || !sequence.equals(new com.google.gson.JsonPrimitive(job.sequence))
+                    || !(ok instanceof com.google.gson.JsonPrimitive outcome)
+                    || !outcome.isBoolean()) return Acknowledgement.REFUSED;
             if (outcome.getAsBoolean() && !java.util.Objects.equals(job.payload.get("value"), receipt.get("value"))) {
                 return Acknowledgement.REFUSED;
             }
@@ -395,7 +442,8 @@ final class BotHub {
             if (receipt.has("error") && (error == null || error.length() > 1000 || outcome.getAsBoolean())) {
                 return Acknowledgement.REFUSED;
             }
-            if (job.receipt != null) return job.receipt.equals(receipt) ? Acknowledgement.REPLAY : Acknowledgement.REFUSED;
+            if (job.receipt != null)
+                return job.receipt.equals(receipt) ? Acknowledgement.REPLAY : Acknowledgement.REFUSED;
             expire(b, now());
             if (!job.status.equals("sent")) return Acknowledgement.REFUSED;
             job.receipt = receipt.deepCopy();
@@ -407,9 +455,6 @@ final class BotHub {
             return Acknowledgement.APPLIED;
         }
     }
-
-
-
 
     /** Queued jobs nobody took within 10 s expire; sent ones without an answer within 60 s become unknown. */
     private static void expire(Bot b, long now) {
@@ -450,11 +495,6 @@ final class BotHub {
 
     /** The viewer session the bot must use now, or null when nobody is watching. */
 
-
-
-
-
-
     /** bot/activity: stores the snapshot and adds its new events (de-duplicated by at, source and text). */
     void activity(Bot b, JsonObject snapshot, JsonArray events) {
         long now = now();
@@ -464,12 +504,16 @@ final class BotHub {
             b.activityAt = now;
             for (JsonElement e : events) {
                 JsonObject v = e.getAsJsonObject();
-                String key = v.get("at").getAsLong() + "\u0000" + v.get("source").getAsString() + "\u0000" + v.get("text").getAsString();
+                String key =
+                        v.get("at").getAsLong() + "\u0000" + v.get("source").getAsString() + "\u0000"
+                                + v.get("text").getAsString();
                 if (!b.eventKeys.add(key)) continue;
                 b.events.addLast(v);
                 while (b.events.size() > EVENTS_KEEP) {
                     JsonObject old = b.events.pollFirst();
-                    b.eventKeys.remove(old.get("at").getAsLong() + "\u0000" + old.get("source").getAsString() + "\u0000" + old.get("text").getAsString());
+                    b.eventKeys.remove(old.get("at").getAsLong() + "\u0000"
+                            + old.get("source").getAsString() + "\u0000"
+                            + old.get("text").getAsString());
                 }
             }
         }
@@ -541,8 +585,6 @@ final class BotHub {
     }
 
     /** The same, remembering which website user sent it (a "list"-mode user only sees their own). */
-
-
     private static void add(Bot b, Job j) {
         b.queue.addLast(j);
         b.jobs.put(j.id, j);
@@ -578,10 +620,7 @@ final class BotHub {
 
     /** Console entries changed after revision {@code after}, oldest first, plus the newest revision. */
 
-
     /** The same, only the entries sent by onlyBy (null: everyone's). */
-
-
     private static String newId() {
         byte[] bytes = new byte[6];
         RANDOM.nextBytes(bytes);

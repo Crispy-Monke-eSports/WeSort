@@ -68,6 +68,72 @@ bygg/test ensamt verifierar inte fysisk inventory-hantering, Baritone eller
 leverans. Se [26.3-portstatus](docs/MC_26_3_PORT.md),
 [CI](docs/CI.md) och [historisk upstream-baslinje](docs/BASELINE.md).
 
+## Formatering av Java i VS Code
+
+Java-koden använder Spotless 8.11.0 med Palantir Java Format 2.103.0
+(4 mellanslag och normalt 120 teckens radbredd), i linje med
+`.editorconfig`. De delade Java-filerna i `common/` formateras via
+rotprojektet. Kod som genereras under `build/generated/` formateras inte.
+
+Öppna repositoryroten i VS Code och installera de rekommenderade tilläggen
+**Gradle for Java** och **Spotless for Gradle and Maven**. Med de incheckade
+`.vscode/settings.json`-inställningarna formateras Java-kod när du sparar
+(`Ctrl+S`). VS Codes vanliga Java-formatter är avaktiverad vid sparning
+för att undvika motstridiga formatregler.
+
+För manuell formatering eller kontroll (med klientens JDK 25):
+
+```sh
+./gradlew spotlessApply
+./gradlew spotlessCheck
+```
+
+Manager är ett separat Gradle-bygge. Det använder JDK 21:
+
+```sh
+./gradlew -p stash-manager-server spotlessApply
+./gradlew -p stash-manager-server spotlessCheck
+```
+
+**Observera:** `spotlessCheck` kan rapportera befintliga formatavvikelser.
+Spotless är tills vidare frikopplat från Gradles vanliga `check`/`build`
+för att inte blockera CI innan en separat formatmigrering har genomförts.
+Kör inte `spotlessApply` över hela projektet i en vanlig funktions-PR
+utan att granska diffen först.
+
+### Automatisk formatering i GitHub Actions
+
+Workflowen [`autofix.ci`](.github/workflows/autofix.yml) kör
+`spotlessApply` följt av `spotlessCheck` för båda Gradle-byggena.
+Den inkluderar även Java-verktyget under `tools/mc26-toolchain/src/` via
+rotprojektet. Genererad kod lämnas orörd.
+
+- **Pull requests:** [autofix.ci](https://autofix.ci/) får
+  formatteringsdiffen och skapar en rättningscommit i PR-grenen.
+  Formatkontrollen blir röd på den ursprungliga committen och går igen
+  på rättningscommitten. Workflowens PR-jobb har endast läsrättigheter.
+- **`main`:** vid varje push (eller manuell `workflow_dispatch`) formateras
+  Java-koden. Eventuella avvikelser skapar automatiskt en separat commit
+  direkt på `main` via GitHub Actions `GITHUB_TOKEN`, utan force-push.
+  Jobbet har skrivbehörighet endast vid körning på `main`. Efter rättningen
+  startas `ci.yml` genom `workflow_dispatch` så att verifieringen körs på
+  den faktiskt formaterade committen.
+
+En push med `GITHUB_TOKEN` utlöser inte vanliga `push`-workflows. Därför
+använder workflowen ett explicit `workflow_dispatch` efter auto-commit;
+detta kräver `actions: write` i `main`-jobbet. `spotlessCheck` körs också
+**innan** committen skapas. Om `main` skyddas med branch rules som nekar
+GitHub Actions att pusha kommer auto-commit att misslyckas tills rätt
+behörighet ges. Fullständig massformatering kan inträffa första gången
+workflowen körs efter merge.
+
+Den centrala [`ci.yml`](.github/workflows/ci.yml) börjar med jobbet
+**Java formatting gate**. Både compile/unit/Docker och Minecraft E2E har
+beroenden till den kontrollen (`needs`), och `ci-required` kräver att
+formatkontroll, verifiering och E2E samtliga lyckas. Om en PR behöver
+rättas blir den första körningen röd; autofix.ci committar ändringen i
+PR-grenen och nästa körning går vidare först när all Java är formaterad.
+
 ## Avgränsning och fortsatt arbete
 
 Guildidentitet, SELF/GUILD-order, reservationer, kvoter (av som standard),

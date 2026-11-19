@@ -1,6 +1,7 @@
 plugins {
     java
     application
+    id("com.diffplug.spotless") version "8.11.0"
 }
 
 group = "com.porter.wesort"
@@ -58,7 +59,7 @@ sourceSets {
 }
 
 // The production /tmp is noexec. Extract only the supported Linux amd64 native library at image build time.
-val sqliteNative by tasks.registering(Copy::class) {
+val sqliteNative = tasks.register<Copy>("sqliteNative") {
     from(configurations.runtimeClasspath.map { cp -> cp.filter { it.name.startsWith("sqlite-jdbc-") }.map { zipTree(it) } })
     include("org/sqlite/native/Linux/x86_64/libsqlitejdbc.so")
     eachFile { path = name }
@@ -66,3 +67,16 @@ val sqliteNative by tasks.registering(Copy::class) {
     into(layout.buildDirectory.dir("sqlite-native"))
 }
 tasks.build { dependsOn(sqliteNative) }
+
+// The Manager is a separate Gradle build. Shared code under ../common is
+// formatted from the repository root so both builds use a single owner.
+spotless {
+    // Do not introduce a mandatory formatting gate before the baseline is clean.
+    setEnforceCheck(false)
+    java {
+        target("src/main/java/**/*.java", "src/test/java/**/*.java")
+        palantirJavaFormat("2.103.0")
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+}

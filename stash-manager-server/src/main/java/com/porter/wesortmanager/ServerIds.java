@@ -3,7 +3,6 @@ package com.porter.wesortmanager;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -41,7 +40,8 @@ final class ServerIds {
         Path f = dataDir.resolve(FILE);
         try {
             if (Files.exists(f)) {
-                byte[] s = HexFormat.of().parseHex(Files.readString(f, StandardCharsets.UTF_8).trim());
+                byte[] s = HexFormat.of()
+                        .parseHex(Files.readString(f, StandardCharsets.UTF_8).trim());
                 if (s.length >= 16) {
                     AtomicFiles.ownerOnly(f);
                     return s;
@@ -49,7 +49,8 @@ final class ServerIds {
             }
             AtomicFiles.write(f, HexFormat.of().formatHex(fresh).getBytes(StandardCharsets.UTF_8), true);
         } catch (IOException | IllegalArgumentException e) {
-            System.err.println("Could not read or save " + FILE + " (" + e.getMessage() + "); opaque ids change on restart.");
+            System.err.println(
+                    "Could not read or save " + FILE + " (" + e.getMessage() + "); opaque ids change on restart.");
         }
         return fresh;
     }
@@ -100,8 +101,10 @@ final class ServerIds {
             for (Map.Entry<String, JsonElement> en : o.entrySet()) {
                 JsonElement v = en.getValue();
                 boolean text = v.isJsonPrimitive() && v.getAsJsonPrimitive().isString();
-                if (text && en.getKey().equals("server")) en.setValue(new com.google.gson.JsonPrimitive(sid(v.getAsString())));
-                else if (text && en.getKey().equals("botId")) en.setValue(new com.google.gson.JsonPrimitive(bid(v.getAsString())));
+                if (text && en.getKey().equals("server"))
+                    en.setValue(new com.google.gson.JsonPrimitive(sid(v.getAsString())));
+                else if (text && en.getKey().equals("botId"))
+                    en.setValue(new com.google.gson.JsonPrimitive(bid(v.getAsString())));
                 else walk(v);
             }
         }

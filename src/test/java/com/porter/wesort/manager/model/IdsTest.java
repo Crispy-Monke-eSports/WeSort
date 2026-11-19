@@ -1,11 +1,11 @@
 package com.porter.wesort.manager.model;
 
-import com.google.gson.JsonParser;
-import org.junit.jupiter.api.Test;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.google.gson.JsonParser;
+import org.junit.jupiter.api.Test;
 
 class IdsTest {
     @Test
@@ -27,11 +27,13 @@ class IdsTest {
 
     @Test
     void botsAndUsersWithOddIdsAreDropped() {
-        BotList bots = BotList.parse(JsonParser.parseString("[{\"botId\":\"ok1\"},{\"botId\":\"../x\"},{\"botId\":\"a/b\"},{\"botId\":\"good_2\"}]"));
+        BotList bots = BotList.parse(JsonParser.parseString(
+                "[{\"botId\":\"ok1\"},{\"botId\":\"../x\"},{\"botId\":\"a/b\"},{\"botId\":\"good_2\"}]"));
         assertEquals(2, bots.bots().size());
         assertEquals("good_2", bots.bots().get(1).botId());
-        UsersModel.Data d = UsersModel.parse(JsonParser.parseString(
-            "{\"users\":[{\"id\":\"u-1\",\"name\":\"a\"},{\"id\":\"u/1\",\"name\":\"b\"},{\"id\":\"\",\"name\":\"c\"}]}"));
+        UsersModel.Data d = UsersModel.parse(
+                JsonParser.parseString(
+                        "{\"users\":[{\"id\":\"u-1\",\"name\":\"a\"},{\"id\":\"u/1\",\"name\":\"b\"},{\"id\":\"\",\"name\":\"c\"}]}"));
         assertEquals(1, d.users().size());
         assertEquals("u-1", d.users().get(0).id());
     }

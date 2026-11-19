@@ -9,8 +9,7 @@ import java.util.function.ToDoubleFunction;
  * search, so a line of n characters costs about (n / row width) * log n measurements, not n squared. Pure.
  */
 public final class TextWrap {
-    private TextWrap() {
-    }
+    private TextWrap() {}
 
     /**
      * @param limit the widest a row may be

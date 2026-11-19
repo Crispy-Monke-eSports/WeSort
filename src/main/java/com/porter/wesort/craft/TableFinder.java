@@ -39,7 +39,11 @@ public final class TableFinder {
 
     /** Where the table in use came from: set by hand, found placed, placed from the stash, or crafted and placed. */
     public enum Source {
-        NONE("none"), SET("set"), FOUND("found"), PLACED("placed"), CRAFTED("crafted");
+        NONE("none"),
+        SET("set"),
+        FOUND("found"),
+        PLACED("placed"),
+        CRAFTED("crafted");
 
         public final String label;
 
@@ -54,7 +58,11 @@ public final class TableFinder {
     }
 
     /** What a table can be crafted from. */
-    public enum Material { NONE, PLANKS, LOGS }
+    public enum Material {
+        NONE,
+        PLANKS,
+        LOGS
+    }
 
     public record Pos(int x, int y, int z) {
         public double distanceSq(Pos o) {
@@ -80,7 +88,13 @@ public final class TableFinder {
         Material craftMaterial();
     }
 
-    public enum Step { USE, FOUND, PLACE_FROM_STOCK, CRAFT, FAIL }
+    public enum Step {
+        USE,
+        FOUND,
+        PLACE_FROM_STOCK,
+        CRAFT,
+        FAIL
+    }
 
     /**
      * @param forget   the remembered position is gone and is to be dropped
@@ -91,13 +105,21 @@ public final class TableFinder {
     public static Decision decide(Memory memory, World world) {
         boolean forget = false;
         if (memory != null && memory.pos() != null) {
-            if (world.isTable(memory.pos())) return new Decision(Step.USE, memory.pos(), memory.source() == Source.NONE ? Source.SET : memory.source(), null, false, Material.NONE);
+            if (world.isTable(memory.pos()))
+                return new Decision(
+                        Step.USE,
+                        memory.pos(),
+                        memory.source() == Source.NONE ? Source.SET : memory.source(),
+                        null,
+                        false,
+                        Material.NONE);
             // The table that was set or remembered is gone or broken: forgotten, then looked for again
             forget = true;
         }
         Pos found = world.search();
         if (found != null) return new Decision(Step.FOUND, found, Source.FOUND, null, forget, Material.NONE);
-        if (world.stockHasTable()) return new Decision(Step.PLACE_FROM_STOCK, null, Source.PLACED, null, forget, Material.NONE);
+        if (world.stockHasTable())
+            return new Decision(Step.PLACE_FROM_STOCK, null, Source.PLACED, null, forget, Material.NONE);
         Material made = world.craftMaterial();
         if (made != Material.NONE) return new Decision(Step.CRAFT, null, Source.CRAFTED, null, forget, made);
         return new Decision(Step.FAIL, null, Source.NONE, failure(NO_MATERIAL), forget, Material.NONE);
@@ -107,16 +129,19 @@ public final class TableFinder {
     public static Pos nearest(List<Pos> tables, Pos from, Predicate<Pos> usable) {
         List<Pos> ok = new ArrayList<>();
         for (Pos p : tables) if (usable.test(p)) ok.add(p);
-        ok.sort(Comparator.comparingDouble(from::distanceSq).thenComparingInt(Pos::x).thenComparingInt(Pos::y).thenComparingInt(Pos::z));
+        ok.sort(Comparator.comparingDouble(from::distanceSq)
+                .thenComparingInt(Pos::x)
+                .thenComparingInt(Pos::y)
+                .thenComparingInt(Pos::z));
         return ok.isEmpty() ? null : ok.get(0);
     }
 
     /** The part of [lo, hi] searched: all of it when it is at most {@link #SEARCH_SPAN} across, else that many blocks around {@code center}. */
     public static int[] span(int lo, int hi, int center) {
-        if (hi - lo + 1 <= SEARCH_SPAN) return new int[] { lo, hi };
+        if (hi - lo + 1 <= SEARCH_SPAN) return new int[] {lo, hi};
         int from = Math.max(lo, center - SEARCH_SPAN / 2), to = Math.min(hi, from + SEARCH_SPAN - 1);
         from = Math.max(lo, to - SEARCH_SPAN + 1);
-        return new int[] { from, to };
+        return new int[] {from, to};
     }
 
     /**
@@ -128,7 +153,8 @@ public final class TableFinder {
         CraftPlanner.Result r = CraftPlanner.plan(recipes, TABLE_ID, 1, pool, never, CraftPlanner.Caps.NONE, 0, 0);
         if (!r.ok() || r.plan().count() < 1) return Material.NONE;
         // Only recipes that fit the 2x2 grid are used
-        for (CraftPlanner.Step s : r.plan().steps()) if (s.recipe().w() > 2 || s.recipe().h() > 2 || s.recipe().cells().size() > 4) return Material.NONE;
+        for (CraftPlanner.Step s : r.plan().steps())
+            if (s.recipe().w() > 2 || s.recipe().h() > 2 || s.recipe().cells().size() > 4) return Material.NONE;
         return r.plan().steps().size() <= 1 ? Material.PLANKS : Material.LOGS;
     }
 

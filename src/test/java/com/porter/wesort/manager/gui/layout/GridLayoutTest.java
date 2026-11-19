@@ -1,10 +1,10 @@
 package com.porter.wesort.manager.gui.layout;
 
-import org.junit.jupiter.api.Test;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import org.junit.jupiter.api.Test;
 
 class GridLayoutTest {
     @Test
@@ -67,7 +67,9 @@ class GridLayoutTest {
         int s4 = GridLayout.scrollAfterReflow(9, 5, 4, count, 6);
         assertTrue(s4 * 4 <= first9 && first9 < (s4 + 6) * 4, "item " + first9 + " visible at 4 columns, scroll " + s4);
         int s14 = GridLayout.scrollAfterReflow(4, s4, 14, count, 6);
-        assertTrue(s14 * 14 <= first9 && first9 < (s14 + 6) * 14, "item " + first9 + " visible at 14 columns, scroll " + s14);
+        assertTrue(
+                s14 * 14 <= first9 && first9 < (s14 + 6) * 14,
+                "item " + first9 + " visible at 14 columns, scroll " + s14);
         assertEquals(0, GridLayout.scrollAfterReflow(9, 0, 4, count, 6));
         // never beyond the end
         assertEquals(GridLayout.maxScroll(10, 2, 3), GridLayout.scrollAfterReflow(9, 50, 2, 10, 3));
@@ -92,7 +94,8 @@ class GridLayoutTest {
         assertEquals(max, GridLayout.scrollFromPointer(1000, trackY, trackH, thumb, max));
         assertEquals(max, GridLayout.scrollFromPointer(trackY + trackH - thumb / 2, trackY, trackH, thumb, max));
         // the middle of the free travel is the middle scroll
-        assertEquals(8, GridLayout.scrollFromPointer(trackY + thumb / 2 + (trackH - thumb) / 2, trackY, trackH, thumb, max));
+        assertEquals(
+                8, GridLayout.scrollFromPointer(trackY + thumb / 2 + (trackH - thumb) / 2, trackY, trackH, thumb, max));
         // nothing to scroll
         assertEquals(0, GridLayout.scrollFromPointer(150, trackY, trackH, trackH, max));
         assertEquals(0, GridLayout.scrollFromPointer(150, trackY, trackH, thumb, 0));

@@ -1,17 +1,17 @@
 package com.porter.wesortmanager;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.sun.net.httpserver.HttpServer;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -24,13 +24,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.Executors;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Website sub-users through the real routes on a real server (127.0.0.1, a random port, a temp data folder):
@@ -44,6 +43,7 @@ class UsersTest {
 
     @TempDir
     Path data;
+
     HttpServer server;
     String base;
     Users users;
@@ -81,23 +81,40 @@ class UsersTest {
     private void startServer(Config config) throws Exception {
         IndexStore store = new IndexStore(data, CreativeTabs.NONE);
         store.load();
-        StockFixtures.put(store, json("{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"items\":["
-            + "{\"key\":\"minecraft:diamond\",\"id\":\"minecraft:diamond\",\"count\":1000,\"maxStack\":64}]}"));
-        StockFixtures.put(store, json("{\"version\":1,\"server\":\"s\",\"stash\":\"b\",\"items\":["
-            + "{\"key\":\"minecraft:dirt\",\"id\":\"minecraft:dirt\",\"count\":1000,\"maxStack\":64}]}"));
+        StockFixtures.put(
+                store,
+                json(
+                        "{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"items\":["
+                                + "{\"key\":\"minecraft:diamond\",\"id\":\"minecraft:diamond\",\"count\":1000,\"maxStack\":64}]}"));
+        StockFixtures.put(
+                store,
+                json("{\"version\":1,\"server\":\"s\",\"stash\":\"b\",\"items\":["
+                        + "{\"key\":\"minecraft:dirt\",\"id\":\"minecraft:dirt\",\"count\":1000,\"maxStack\":64}]}"));
         orders = new OrderStore(data, store);
         orders.load();
         Owners owners = new Owners(data);
         owners.load();
-        IconService icons = new IconService(data, id -> null, v -> false, new GameIcons(data.resolve("icons"), false, false), false);
+        IconService icons = new IconService(
+                data, id -> null, v -> false, new GameIcons(data.resolve("icons"), false, false), false);
         sessions = new SessionStore(data);
         sessions.load();
         users = new Users(data);
         users.load();
         audit = new AuditLog(data);
         audit.load();
-        WeSortManager.Routes r = WeSortManager.routes(config, store, orders, owners, icons,
-            new LinkState(config.keyState().generation()), List.of(), sessions, users, audit, new BotHub(), new LoginLimiter());
+        WeSortManager.Routes r = WeSortManager.routes(
+                config,
+                store,
+                orders,
+                owners,
+                icons,
+                new LinkState(config.keyState().generation()),
+                List.of(),
+                sessions,
+                users,
+                audit,
+                new BotHub(),
+                new LoginLimiter());
         router = r.router();
         server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 16);
         server.setExecutor(Executors.newFixedThreadPool(4));
@@ -123,7 +140,9 @@ class UsersTest {
         }
 
         String error() {
-            return body != null && body.isJsonObject() && body.getAsJsonObject().has("error") ? body.getAsJsonObject().get("error").getAsString() : null;
+            return body != null && body.isJsonObject() && body.getAsJsonObject().has("error")
+                    ? body.getAsJsonObject().get("error").getAsString()
+                    : null;
         }
     }
 
@@ -139,8 +158,9 @@ class UsersTest {
 
     Res post(String token, String path, String body, String idempotencyKey) throws Exception {
         HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(base + path))
-            .header("X-Stash-Manager", "1").header("Content-Type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(body == null ? "{}" : body));
+                .header("X-Stash-Manager", "1")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body == null ? "{}" : body));
         if (idempotencyKey != null) b.header("Idempotency-Key", idempotencyKey);
         if (token != null) b.header("Cookie", SessionStore.COOKIE + "=" + token);
         return send(b.build());
@@ -158,9 +178,12 @@ class UsersTest {
 
     /** Logs in; returns the session token. */
     String login(String username, String password) throws Exception {
-        Res r = post(null, "/api/v1/auth/login", username == null
-            ? "{\"password\":\"" + password + "\"}"
-            : "{\"username\":\"" + username + "\",\"password\":\"" + password + "\"}");
+        Res r = post(
+                null,
+                "/api/v1/auth/login",
+                username == null
+                        ? "{\"password\":\"" + password + "\"}"
+                        : "{\"username\":\"" + username + "\",\"password\":\"" + password + "\"}");
         assertEquals(200, r.status, "login " + username + ": " + r.raw.body());
         String setCookie = r.raw.headers().firstValue("Set-Cookie").orElseThrow();
         return setCookie.substring(SessionStore.COOKIE.length() + 1, setCookie.indexOf(';'));
@@ -172,14 +195,21 @@ class UsersTest {
 
     /** Creates a sub-user (as the owner, who is Admin unlocked right after login); returns its id. */
     String create(String owner, String name, String perms, boolean mustChange) throws Exception {
-        Res r = post(owner, "/api/v1/users", "{\"name\":\"" + name + "\",\"password\":\"" + TEMP_PW + "\",\"mustChange\":" + mustChange
-            + (perms.startsWith("{") ? ",\"perms\":" + perms : ",\"preset\":\"" + perms + "\"") + "}");
+        Res r = post(
+                owner,
+                "/api/v1/users",
+                "{\"name\":\"" + name + "\",\"password\":\"" + TEMP_PW + "\",\"mustChange\":" + mustChange
+                        + (perms.startsWith("{") ? ",\"perms\":" + perms : ",\"preset\":\"" + perms + "\"") + "}");
         assertEquals(200, r.status, r.raw.body());
         return r.obj().getAsJsonObject("user").get("id").getAsString();
     }
 
     String placeOrder(String token, String stash, String key, int n) throws Exception {
-        Res r = post(token, "/api/v1/orders", "{\"server\":\"s\",\"stash\":\"" + stash + "\",\"lines\":[{\"type\":\"item\",\"key\":\"" + key + "\",\"count\":" + n + "}]}");
+        Res r = post(
+                token,
+                "/api/v1/orders",
+                "{\"server\":\"s\",\"stash\":\"" + stash + "\",\"lines\":[{\"type\":\"item\",\"key\":\"" + key
+                        + "\",\"count\":" + n + "}]}");
         assertEquals(200, r.status, r.raw.body());
         return r.obj().getAsJsonObject("order").get("id").getAsString();
     }
@@ -214,7 +244,9 @@ class UsersTest {
 
         var profile = get(member, "/api/v1/guild").obj();
         assertEquals(profile, get(viewer, "/api/v1/guild").obj());
-        assertEquals(get(member, "/api/v1/stock").obj().get("items"), get(viewer, "/api/v1/stock").obj().get("items"));
+        assertEquals(
+                get(member, "/api/v1/stock").obj().get("items"),
+                get(viewer, "/api/v1/stock").obj().get("items"));
         var request = json("""
             {"server":"s","stash":"a","lines":[{"type":"item","key":"minecraft:diamond","count":2}]}
             """);
@@ -246,7 +278,8 @@ class UsersTest {
         assertEquals("MinecraftUser", guildOrder.get("recipient").getAsString());
         assertEquals("Projekt Å <test>", guildOrder.get("comment").getAsString());
         assertEquals(profile.get("id"), guildOrder.get("organizationId"));
-        assertFalse(get(viewer, "/api/v1/orders?server=s&stash=a").obj().toString().contains("Projekt Å"));
+        assertFalse(
+                get(viewer, "/api/v1/orders?server=s&stash=a").obj().toString().contains("Projekt Å"));
         String own = selfOrder.get("id").getAsString();
         assertTrue(audit.newest(30).toString().contains(own + " SELF"));
         assertFalse(audit.newest(30).toString().contains("Projekt Å"));
@@ -254,19 +287,33 @@ class UsersTest {
         var memberHistory = get(member, "/api/v1/orders?server=s&stash=a").obj().getAsJsonArray("orders");
         assertEquals(1, memberHistory.size());
         assertEquals(own, memberHistory.get(0).getAsJsonObject().get("id").getAsString());
-        assertTrue(get(viewer, "/api/v1/orders?server=s&stash=a").obj().getAsJsonArray("orders").isEmpty());
-        assertEquals(2, get(officer, "/api/v1/orders?server=s&stash=a").obj().getAsJsonArray("orders").size());
+        assertTrue(get(viewer, "/api/v1/orders?server=s&stash=a")
+                .obj()
+                .getAsJsonArray("orders")
+                .isEmpty());
+        assertEquals(
+                2,
+                get(officer, "/api/v1/orders?server=s&stash=a")
+                        .obj()
+                        .getAsJsonArray("orders")
+                        .size());
         assertEquals(200, post(officer, "/api/v1/orders/" + other + "/cancel", "{}").status);
         assertEquals(200, post(owner, "/api/v1/users/" + officerId, "{\"preset\":\"member\"}").status);
         assertEquals(403, post(officer, "/api/v1/orders/" + other + "/retry", "{}").status);
-        assertEquals(1, get(officer, "/api/v1/orders?server=s&stash=a").obj().getAsJsonArray("orders").size());
+        assertEquals(
+                1,
+                get(officer, "/api/v1/orders?server=s&stash=a")
+                        .obj()
+                        .getAsJsonArray("orders")
+                        .size());
         var balances = get(viewer, "/api/v1/stock").obj().get("items");
         assertEquals(200, post(owner, "/api/v1/users/" + memberId, "{\"disabled\":true}").status);
         assertEquals(401, get(member, "/api/v1/orders?server=s&stash=a").status);
         request.addProperty("recipient", "BuilderIGN");
         assertEquals(400, post(owner, "/api/v1/orders", request.toString()).status);
         assertEquals(balances, get(viewer, "/api/v1/stock").obj().get("items"));
-        assertTrue(get(owner, "/api/v1/orders?server=s&stash=a").obj().toString().contains(own));
+        assertTrue(
+                get(owner, "/api/v1/orders?server=s&stash=a").obj().toString().contains(own));
     }
 
     @Test
@@ -293,17 +340,44 @@ class UsersTest {
             id = first.obj().getAsJsonObject("order").get("id").getAsString();
         }
         assertEquals(2, orders.reservedFor("s", "a").get("item:minecraft:diamond"));
-        assertEquals(409, post(owner, "/api/v1/orders", body.replace("\"count\":2", "\"count\":3"), "retry-order-1").status);
-        assertEquals(1, audit.newest(30).asList().stream().filter(row -> "order.place".equals(
-            row.getAsJsonObject().get("action").getAsString())).count());
+        assertEquals(
+                409, post(owner, "/api/v1/orders", body.replace("\"count\":2", "\"count\":3"), "retry-order-1").status);
+        assertEquals(
+                1,
+                audit.newest(30).asList().stream()
+                        .filter(row -> "order.place"
+                                .equals(row.getAsJsonObject().get("action").getAsString()))
+                        .count());
         assertEquals(200, post(owner, "/api/v1/orders/" + id + "/cancel", "{}").status);
-        assertEquals(1, post(owner, "/api/v1/orders/clear", "{\"server\":\"s\",\"stash\":\"a\"}").obj().get("removed").getAsInt());
+        assertEquals(
+                1,
+                post(owner, "/api/v1/orders/clear", "{\"server\":\"s\",\"stash\":\"a\"}")
+                        .obj()
+                        .get("removed")
+                        .getAsInt());
         stop();
         startServer(Config.load(data));
         var replay = post(owner(), "/api/v1/orders", body, "retry-order-1");
         assertEquals(200, replay.status);
         assertEquals(id, replay.obj().getAsJsonObject("order").get("id").getAsString());
         assertTrue(orders.reservedFor("s", "a").isEmpty());
+        var trail = get(owner(), "/api/v1/audit/orders?order=" + id + "&item=diamond&stash=a");
+        assertEquals(200, trail.status);
+        var archived = trail.obj().getAsJsonArray("orders").get(0).getAsJsonObject();
+        var events = archived.getAsJsonArray("events");
+        assertEquals(
+                List.of("order.reserve", "order.cancel"),
+                events.asList().stream()
+                        .map(event -> event.getAsJsonObject().get("action").getAsString())
+                        .toList());
+        assertEquals(id + ":1", events.get(0).getAsJsonObject().get("id").getAsString());
+        assertFalse(archived.has("allocations"));
+        assertEquals(
+                0,
+                get(owner(), "/api/v1/audit/orders?order=" + id + "&since=" + Long.MAX_VALUE)
+                        .obj()
+                        .getAsJsonArray("orders")
+                        .size());
     }
 
     @Test
@@ -313,7 +387,9 @@ class UsersTest {
         create(owner, "Builder", "member", false);
         String member = login("Builder", TEMP_PW);
         String officer = login("Officer", TEMP_PW);
-        assertEquals("DIRECT", get(officer, "/api/v1/guild").obj().get("approvalPolicy").getAsString());
+        assertEquals(
+                "DIRECT",
+                get(officer, "/api/v1/guild").obj().get("approvalPolicy").getAsString());
         var policy = """
             {"name":"Guild","description":"","expectedRevision":1,"approvalPolicy":"ALL"}
             """;
@@ -334,13 +410,42 @@ class UsersTest {
         assertEquals(403, post(member, review, "{\"decision\":\"approve\"}").status);
         var approved = post(officer, review, "{\"decision\":\"approve\"}");
         assertEquals(200, approved.status);
-        assertEquals("APPROVED", approved.obj().getAsJsonObject("order").get("approvalState").getAsString());
-        assertEquals(approved.obj(), post(officer, review, "{\"decision\":\"approve\"}").obj());
+        assertEquals(
+                "APPROVED",
+                approved.obj().getAsJsonObject("order").get("approvalState").getAsString());
+        assertEquals(
+                approved.obj(),
+                post(officer, review, "{\"decision\":\"approve\"}").obj());
         assertEquals(409, post(officer, review, "{\"decision\":\"reject\"}").status);
         assertEquals(id, orders.claim("s", "a").id);
+        var trail = "/api/v1/audit/orders?order=" + id + "&person=Builder";
+        assertEquals(403, get(member, trail).status);
+        var auditOrder =
+                get(officer, trail).obj().getAsJsonArray("orders").get(0).getAsJsonObject();
+        assertEquals(3, auditOrder.getAsJsonArray("events").size());
+        assertEquals(
+                "order.approve",
+                auditOrder
+                        .getAsJsonArray("events")
+                        .get(1)
+                        .getAsJsonObject()
+                        .get("action")
+                        .getAsString());
+        create(
+                owner,
+                "OtherVaultAuditor",
+                "{\"view\":true,\"ordersAll\":true,\"stashes\":[{\"server\":\"s\",\"stash\":\"b\"}]}",
+                false);
+        assertEquals(
+                0,
+                get(login("OtherVaultAuditor", TEMP_PW), trail)
+                        .obj()
+                        .getAsJsonArray("orders")
+                        .size());
         var second = post(member, "/api/v1/orders", draft).obj().getAsJsonObject("order");
         String rejected = second.get("id").getAsString();
-        assertEquals(200, post(officer, "/api/v1/orders/" + rejected + "/approval", "{\"decision\":\"reject\"}").status);
+        assertEquals(
+                200, post(officer, "/api/v1/orders/" + rejected + "/approval", "{\"decision\":\"reject\"}").status);
         assertEquals(2L, orders.reservedFor("s", "a").get("item:minecraft:diamond"));
     }
 
@@ -354,9 +459,11 @@ class UsersTest {
         }
         // Every member can use account controls and read the common guild identity.
         for (String r : routes) {
-            if (r.endsWith(" ANY")) assertTrue(r.contains("/api/v1/auth/") || r.equals("[GET, HEAD] /api/v1/guild SESSION ANY"), r);
+            if (r.endsWith(" ANY"))
+                assertTrue(r.contains("/api/v1/auth/") || r.equals("[GET, HEAD] /api/v1/guild SESSION ANY"), r);
         }
-        assertThrows(IllegalArgumentException.class, () -> router.exact(Router.GET, "/x", Router.Guard.SESSION, ex -> { }));
+        assertThrows(
+                IllegalArgumentException.class, () -> router.exact(Router.GET, "/x", Router.Guard.SESSION, ex -> {}));
         assertTrue(routes.stream().anyMatch(r -> r.contains("/api/v1/users") && r.endsWith(" OWNER")));
     }
 
@@ -371,16 +478,29 @@ class UsersTest {
         Res blocked = get(alice, "/api/v1/stashes");
         assertEquals(403, blocked.status);
         assertTrue(blocked.obj().get("mustChange").getAsBoolean());
-        assertTrue(get(alice, "/api/v1/auth/state").obj().getAsJsonObject("user").get("mustChange").getAsBoolean());
+        assertTrue(get(alice, "/api/v1/auth/state")
+                .obj()
+                .getAsJsonObject("user")
+                .get("mustChange")
+                .getAsBoolean());
 
-        assertEquals(400, post(alice, "/api/v1/auth/password", "{\"current\":\"" + TEMP_PW + "\",\"next\":\"" + TEMP_PW + "\"}").status,
-            "the same password again is refused");
-        assertEquals(401, post(alice, "/api/v1/auth/password", "{\"current\":\"wrong-wrong-wrong\",\"next\":\"" + NEW_PW + "\"}").status);
-        Res changed = post(alice, "/api/v1/auth/password", "{\"current\":\"" + TEMP_PW + "\",\"next\":\"" + NEW_PW + "\"}");
+        assertEquals(
+                400,
+                post(alice, "/api/v1/auth/password", "{\"current\":\"" + TEMP_PW + "\",\"next\":\"" + TEMP_PW + "\"}")
+                        .status,
+                "the same password again is refused");
+        assertEquals(
+                401,
+                post(alice, "/api/v1/auth/password", "{\"current\":\"wrong-wrong-wrong\",\"next\":\"" + NEW_PW + "\"}")
+                        .status);
+        Res changed =
+                post(alice, "/api/v1/auth/password", "{\"current\":\"" + TEMP_PW + "\",\"next\":\"" + NEW_PW + "\"}");
         assertEquals(200, changed.status, changed.raw.body());
         assertEquals(1, changed.obj().get("ended").getAsInt(), "alice's other session ended");
         assertEquals(200, get(alice, "/api/v1/stashes").status);
-        assertEquals(401, post(null, "/api/v1/auth/login", "{\"username\":\"alice\",\"password\":\"" + TEMP_PW + "\"}").status);
+        assertEquals(
+                401,
+                post(null, "/api/v1/auth/login", "{\"username\":\"alice\",\"password\":\"" + TEMP_PW + "\"}").status);
         assertNotNull(login("alice", NEW_PW));
         // The owner's own session was untouched.
         assertEquals(200, get(owner, "/api/v1/users").status);
@@ -402,7 +522,9 @@ class UsersTest {
         assertEquals(403, disabled.status);
         assertEquals("this account is disabled", disabled.error());
         // A wrong password for a disabled account looks like any wrong password.
-        assertEquals(401, post(null, "/api/v1/auth/login", "{\"username\":\"bob\",\"password\":\"whatever-password\"}").status);
+        assertEquals(
+                401,
+                post(null, "/api/v1/auth/login", "{\"username\":\"bob\",\"password\":\"whatever-password\"}").status);
     }
 
     @Test
@@ -416,7 +538,8 @@ class UsersTest {
         assertEquals(200, get(v, "/api/v1/index?server=s&stash=a").status);
         assertEquals(200, get(v, "/api/v1/orders?server=s&stash=a").status);
 
-        String order = "{\"server\":\"s\",\"stash\":\"a\",\"lines\":[{\"type\":\"item\",\"key\":\"minecraft:diamond\",\"count\":1}]}";
+        String order =
+                "{\"server\":\"s\",\"stash\":\"a\",\"lines\":[{\"type\":\"item\",\"key\":\"minecraft:diamond\",\"count\":1}]}";
         Res refused = post(v, "/api/v1/orders", order);
         assertEquals(403, refused.status);
         assertEquals("order", refused.obj().get("permission").getAsString());
@@ -457,7 +580,8 @@ class UsersTest {
                 sawMine = true;
                 assertEquals("carol", o.getAsJsonObject("placedBy").get("name").getAsString());
             }
-            if (o.get("id").getAsString().equals(ownerOrder)) assertEquals("owner", o.getAsJsonObject("placedBy").get("id").getAsString());
+            if (o.get("id").getAsString().equals(ownerOrder))
+                assertEquals("owner", o.getAsJsonObject("placedBy").get("id").getAsString());
         }
         assertTrue(sawMine);
 
@@ -467,11 +591,27 @@ class UsersTest {
         assertEquals(200, post(c, "/api/v1/orders/" + mine + "/cancel", null).status);
         Res retried = post(c, "/api/v1/orders/" + mine + "/retry", null);
         assertEquals(200, retried.status, retried.raw.body());
-        assertEquals("carol", retried.obj().getAsJsonObject("order").getAsJsonObject("placedBy").get("name").getAsString());
+        assertEquals(
+                "carol",
+                retried.obj()
+                        .getAsJsonObject("order")
+                        .getAsJsonObject("placedBy")
+                        .get("name")
+                        .getAsString());
         assertEquals(403, post(c, "/api/v1/orders/clear", "{\"server\":\"s\",\"stash\":\"a\"}").status);
         assertEquals(403, get(c, "/api/v1/bots").status);
         // The owner may change anyone's.
-        assertEquals(200, post(owner, "/api/v1/orders/" + retried.obj().getAsJsonObject("order").get("id").getAsString() + "/cancel", null).status);
+        assertEquals(
+                200,
+                post(
+                                owner,
+                                "/api/v1/orders/"
+                                        + retried.obj()
+                                                .getAsJsonObject("order")
+                                                .get("id")
+                                                .getAsString() + "/cancel",
+                                null)
+                        .status);
     }
 
     @Test
@@ -495,7 +635,11 @@ class UsersTest {
     void aScopedUserSeesOnlyTheirStash() throws Exception {
         String owner = owner();
         String otherOrder = placeOrder(owner, "b", "minecraft:dirt", 10);
-        create(owner, "erin", "{\"view\":true,\"order\":true,\"ordersAll\":true,\"rescan\":true,\"stashes\":[{\"server\":\"s\",\"stash\":\"a\"}]}", false);
+        create(
+                owner,
+                "erin",
+                "{\"view\":true,\"order\":true,\"ordersAll\":true,\"rescan\":true,\"stashes\":[{\"server\":\"s\",\"stash\":\"a\"}]}",
+                false);
         String e = login("erin", TEMP_PW);
 
         JsonArray stashes = get(e, "/api/v1/stashes").body.getAsJsonArray();
@@ -506,16 +650,21 @@ class UsersTest {
         assertEquals(200, get(e, "/api/v1/index?server=s&stash=a").status);
         assertEquals(404, get(e, "/api/v1/index?server=s&stash=b").status);
         assertEquals(404, get(e, "/api/v1/orders?server=s&stash=b").status);
-        assertEquals(404, post(e, "/api/v1/orders", "{\"server\":\"s\",\"stash\":\"b\",\"lines\":[{\"type\":\"item\",\"key\":\"minecraft:dirt\",\"count\":1}]}").status);
-        assertEquals(404, post(e, "/api/v1/orders/" + otherOrder + "/cancel", null).status, "even with ordersAll, out of scope");
+        assertEquals(
+                404,
+                post(
+                                e,
+                                "/api/v1/orders",
+                                "{\"server\":\"s\",\"stash\":\"b\",\"lines\":[{\"type\":\"item\",\"key\":\"minecraft:dirt\",\"count\":1}]}")
+                        .status);
+        assertEquals(
+                404,
+                post(e, "/api/v1/orders/" + otherOrder + "/cancel", null).status,
+                "even with ordersAll, out of scope");
         assertEquals(404, post(e, "/api/v1/orders/clear", "{\"server\":\"s\",\"stash\":\"b\"}").status);
         assertEquals(404, post(e, "/api/v1/rescan", "{\"server\":\"s\",\"stash\":\"b\"}").status);
         assertEquals(200, post(e, "/api/v1/rescan", "{\"server\":\"s\",\"stash\":\"a\"}").status);
     }
-
-
-
-
 
     @Test
     void disablingResettingAndDeletingEndSessionsAtOnce() throws Exception {
@@ -541,7 +690,8 @@ class UsersTest {
         assertEquals(401, get(h, "/api/v1/stashes").status, "re-enabling doesn't bring old sessions back");
 
         h = login("hank", TEMP_PW);
-        Res reset = post(owner, "/api/v1/users/" + id + "/password", "{\"password\":\"" + NEW_PW + "\",\"mustChange\":true}");
+        Res reset = post(
+                owner, "/api/v1/users/" + id + "/password", "{\"password\":\"" + NEW_PW + "\",\"mustChange\":true}");
         assertEquals(200, reset.status);
         assertEquals(1, reset.obj().get("ended").getAsInt());
         assertEquals(401, get(h, "/api/v1/stashes").status);
@@ -556,7 +706,9 @@ class UsersTest {
         assertEquals(200, post(owner, "/api/v1/users/" + id + "/delete", null).status);
         assertEquals(401, post(h, "/api/v1/auth/logout", null).status);
         assertNull(users.byId(id));
-        assertEquals(401, post(null, "/api/v1/auth/login", "{\"username\":\"hank\",\"password\":\"" + NEW_PW + "\"}").status);
+        assertEquals(
+                401,
+                post(null, "/api/v1/auth/login", "{\"username\":\"hank\",\"password\":\"" + NEW_PW + "\"}").status);
         assertEquals(404, post(owner, "/api/v1/users/" + id + "/delete", null).status);
     }
 
@@ -570,9 +722,13 @@ class UsersTest {
         assertEquals(200, get(owner, "/api/v1/users").status, "reading the list needs no unlock");
         assertEquals(200, post(owner, "/api/v1/auth/confirm", "{\"password\":\"" + OWNER_PW + "\"}").status);
 
-        assertEquals(400, post(owner, "/api/v1/users", "{\"name\":\"bad name\",\"password\":\"" + TEMP_PW + "\"}").status);
+        assertEquals(
+                400, post(owner, "/api/v1/users", "{\"name\":\"bad name\",\"password\":\"" + TEMP_PW + "\"}").status);
         assertEquals(400, post(owner, "/api/v1/users", "{\"name\":\"ivy\",\"password\":\"short\"}").status);
-        assertEquals(400, post(owner, "/api/v1/users", "{\"name\":\"ivy\",\"password\":\"" + TEMP_PW + "\",\"preset\":\"god\"}").status);
+        assertEquals(
+                400,
+                post(owner, "/api/v1/users", "{\"name\":\"ivy\",\"password\":\"" + TEMP_PW + "\",\"preset\":\"god\"}")
+                        .status);
         assertEquals(409, post(owner, "/api/v1/users", "{\"name\":\"OWNER\",\"password\":\"" + TEMP_PW + "\"}").status);
         create(owner, "ivy", "viewer", true);
         assertEquals(409, post(owner, "/api/v1/users", "{\"name\":\"IVY\",\"password\":\"" + TEMP_PW + "\"}").status);
@@ -582,7 +738,9 @@ class UsersTest {
         assertEquals(200, post(owner, "/api/v1/users/owner", "{\"name\":\"boss\"}").status);
         assertNotNull(login("boss", OWNER_PW));
         assertNotNull(login(null, OWNER_PW));
-        assertEquals(401, post(null, "/api/v1/auth/login", "{\"username\":\"owner\",\"password\":\"" + OWNER_PW + "\"}").status);
+        assertEquals(
+                401,
+                post(null, "/api/v1/auth/login", "{\"username\":\"owner\",\"password\":\"" + OWNER_PW + "\"}").status);
 
         JsonObject list = get(owner, "/api/v1/users").obj();
         assertEquals("boss", list.getAsJsonObject("owner").get("name").getAsString());
@@ -611,7 +769,8 @@ class UsersTest {
         assertTrue(all.contains("\"user.create\""), all);
         assertTrue(all.contains("\"login.failed\"") && all.contains("nobody"), all);
         assertTrue(all.contains("\"login\""), all);
-        assertEquals("user.create", entries.get(1).getAsJsonObject().get("action").getAsString(), "newest first");
+        assertEquals(
+                "user.create", entries.get(1).getAsJsonObject().get("action").getAsString(), "newest first");
         assertFalse(all.contains(TEMP_PW));
     }
 
@@ -627,10 +786,16 @@ class UsersTest {
         String id = create(owner, "lou", "viewer", false);
         assertEquals(400, post(owner, "/api/v1/users/" + id, "{\"preset\":5}").status);
         assertEquals(400, post(owner, "/api/v1/users/" + id, "{\"preset\":\"god\"}").status);
-        assertEquals(400, post(owner, "/api/v1/users/" + id, "{\"preset\":\"viewer\",\"perms\":{\"view\":true}}").status);
+        assertEquals(
+                400, post(owner, "/api/v1/users/" + id, "{\"preset\":\"viewer\",\"perms\":{\"view\":true}}").status);
         assertEquals(400, post(owner, "/api/v1/users/" + id, "{}").status);
-        assertEquals(400, post(owner, "/api/v1/users/" + id, "{\"preset\":null}").status, "null preset alone: nothing to change");
-        assertEquals(400, post(owner, "/api/v1/users", "{\"name\":\"m\",\"password\":\"" + TEMP_PW + "\",\"preset\":7}").status);
+        assertEquals(
+                400,
+                post(owner, "/api/v1/users/" + id, "{\"preset\":null}").status,
+                "null preset alone: nothing to change");
+        assertEquals(
+                400,
+                post(owner, "/api/v1/users", "{\"name\":\"m\",\"password\":\"" + TEMP_PW + "\",\"preset\":7}").status);
         // perms replaces the whole object, and the implications are applied again.
         assertEquals(200, post(owner, "/api/v1/users/" + id, "{\"perms\":{\"order\":true,\"rescan\":true}}").status);
         assertEquals(200, post(owner, "/api/v1/users/" + id, "{\"perms\":{\"ordersAll\":true}}").status);
@@ -661,11 +826,12 @@ class UsersTest {
         assertEquals(403, post(o, "/api/v1/link/regenerate", null).status);
         assertFalse(get(owner, "/api/v1/link").obj().has("apiKey"));
         assertFalse(post(owner, "/api/v1/link/regenerate", "{}").obj().has("apiKey"));
-        assertEquals(200, post(o, "/api/v1/stashes/release", "{\"server\":\"s\",\"stash\":\"a\"}").status, "release in scope is allowed");
+        assertEquals(
+                200,
+                post(o, "/api/v1/stashes/release", "{\"server\":\"s\",\"stash\":\"a\"}").status,
+                "release in scope is allowed");
         assertEquals(404, post(o, "/api/v1/stashes/release", "{\"server\":\"s\",\"stash\":\"b\"}").status);
     }
-
-
 
     @Test
     void aSessionMadeWithAnOldPasswordEndsEvenIfItWasCreatedAfterTheChange() throws Exception {
@@ -673,17 +839,26 @@ class UsersTest {
         String id = create(owner, "pat", "viewer", false);
         String oldHash = users.byId(id).hash();
         // A login that verified the old password, but only creates its session after the reset went through.
-        assertEquals(200, post(owner, "/api/v1/users/" + id + "/password", "{\"password\":\"" + NEW_PW + "\",\"mustChange\":false}").status);
+        assertEquals(
+                200,
+                post(
+                                owner,
+                                "/api/v1/users/" + id + "/password",
+                                "{\"password\":\"" + NEW_PW + "\",\"mustChange\":false}")
+                        .status);
         String late = sessions.create(id, Auth.tag(oldHash));
         assertEquals(401, get(late, "/api/v1/stashes").status);
         assertFalse(get(late, "/api/v1/auth/state").obj().get("loggedIn").getAsBoolean());
         // The same for the owner: changing the owner password ends a session made with the old one.
-        String ownerLate = sessions.create(Users.OWNER_ID, Auth.tag(Config.load(data).dashboardPassword()));
-        Res changed = post(owner, "/api/v1/auth/password", "{\"current\":\"" + OWNER_PW + "\",\"next\":\"" + NEW_PW + "\"}");
+        String ownerLate =
+                sessions.create(Users.OWNER_ID, Auth.tag(Config.load(data).dashboardPassword()));
+        Res changed =
+                post(owner, "/api/v1/auth/password", "{\"current\":\"" + OWNER_PW + "\",\"next\":\"" + NEW_PW + "\"}");
         assertEquals(200, changed.status, changed.raw.body());
         assertEquals(401, get(ownerLate, "/api/v1/users").status);
         assertEquals(200, get(owner, "/api/v1/users").status, "the session that changed it stays");
-        // A sub-user session without a tag (never made by this server) is refused; untagged owner sessions are old ones.
+        // A sub-user session without a tag (never made by this server) is refused; untagged owner sessions are old
+        // ones.
         String untagged = sessions.create(id);
         assertEquals(401, get(untagged, "/api/v1/stashes").status);
     }
@@ -693,14 +868,13 @@ class UsersTest {
         String owner = owner();
         create(owner, "kai", "viewer", false);
         // U+212A KELVIN SIGN folds to k with equalsIgnoreCase; it must not name "kai" or the owner.
-        assertEquals(401, post(null, "/api/v1/auth/login", "{\"username\":\"\u212Aai\",\"password\":\"" + TEMP_PW + "\"}").status);
+        assertEquals(
+                401,
+                post(null, "/api/v1/auth/login", "{\"username\":\"\u212Aai\",\"password\":\"" + TEMP_PW + "\"}")
+                        .status);
         assertFalse(users.isOwnerName("o\u0175ner"));
         assertNotNull(login("KAI", TEMP_PW));
     }
-
-
-
-
 
     @Test
     void addressFailuresAcrossAccountsLockTheAddressAndASuccessDoesntResetThem() {

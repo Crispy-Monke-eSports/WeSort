@@ -8,8 +8,7 @@ public final class CountLayout {
     /** The widest count Text.compact makes in practice ("999M", "999k"), in font units. */
     public static final int W_MAX = 24;
 
-    private CountLayout() {
-    }
+    private CountLayout() {}
 
     /**
      * The integer scale (physical pixels per font pixel) used for every count at a unit {@code u} (physical pixels per

@@ -36,6 +36,7 @@ public final class Config {
     public final boolean eulaAccepted;
     /** allowBearer=: accept the old Authorization: Bearer header on index/heartbeat/order requests (never on bot/*). */
     public final boolean allowBearer;
+
     public final boolean secureCookies;
     /**
      * trustedProxies=: addresses of reverse proxies / tunnels (e.g. cloudflared) in front of this server. Only for a
@@ -45,6 +46,7 @@ public final class Config {
     public final List<String> trustedProxies;
     /** The key before the last regenerate, accepted for 10 minutes on non-dashboard requests. */
     private volatile KeyState previousKey;
+
     private volatile long previousUntil;
     public static final long PREVIOUS_KEY_MS = 10 * 60_000;
     private final Path file;
@@ -52,8 +54,18 @@ public final class Config {
     /** dashboardPassword=: the website password hash (see Auth), or null before the first-run setup. */
     private volatile String dashboardPassword;
 
-    private Config(Path file, int port, String bind, String apiKey, boolean allowRemote, List<String> allowedHosts,
-                   boolean generatedKey, boolean eulaAccepted, boolean allowBearer, List<String> trustedProxies, boolean secureCookies) {
+    private Config(
+            Path file,
+            int port,
+            String bind,
+            String apiKey,
+            boolean allowRemote,
+            List<String> allowedHosts,
+            boolean generatedKey,
+            boolean eulaAccepted,
+            boolean allowBearer,
+            List<String> trustedProxies,
+            boolean secureCookies) {
         this.secureCookies = secureCookies;
         this.allowBearer = allowBearer;
         this.trustedProxies = List.copyOf(trustedProxies);
@@ -110,7 +122,8 @@ public final class Config {
 
         // Deployment knobs contain no credentials. File values remain the fallback for developer runs.
         for (String[] setting : new String[][] {
-            {"WESORT_ALLOWED_HOSTS", "allowedHosts"}, {"WESORT_TRUSTED_PROXIES", "trustedProxies"},
+            {"WESORT_ALLOWED_HOSTS", "allowedHosts"},
+            {"WESORT_TRUSTED_PROXIES", "trustedProxies"},
             {"WESORT_SECURE_COOKIES", "secureCookies"}
         }) {
             String value = System.getenv(setting[0]);
@@ -120,7 +133,8 @@ public final class Config {
         String bind = props.getProperty("bind", "0.0.0.0").trim();
         if (bind.isEmpty()) bind = "0.0.0.0";
         String apiKey = props.getProperty("apiKey", "").trim();
-        boolean allowRemote = Boolean.parseBoolean(props.getProperty("allowRemote", "false").trim());
+        boolean allowRemote =
+                Boolean.parseBoolean(props.getProperty("allowRemote", "false").trim());
         List<String> allowedHosts = new ArrayList<>();
         for (String host : props.getProperty("allowedHosts", "").split(",")) {
             String h = host.trim().toLowerCase(Locale.ROOT);
@@ -144,24 +158,37 @@ public final class Config {
             if (generated) writeKeyLine(file, apiKey);
             appendMissing(file, props);
         }
-        boolean allowBearer = Boolean.parseBoolean(props.getProperty("allowBearer", "false").trim());
+        boolean allowBearer =
+                Boolean.parseBoolean(props.getProperty("allowBearer", "false").trim());
         List<String> trustedProxies = new ArrayList<>();
         for (String a : props.getProperty("trustedProxies", "").split(",")) {
             String t = a.trim().toLowerCase(Locale.ROOT);
             if (t.isEmpty()) continue;
             if (!AuthRoutes.isIpLiteral(t)) {
-                System.err.println("config.properties: ignoring trustedProxies entry '" + t + "' (an IP address is needed)");
+                System.err.println(
+                        "config.properties: ignoring trustedProxies entry '" + t + "' (an IP address is needed)");
                 continue;
             }
             trustedProxies.add(t);
         }
-        Config config = new Config(file, port, bind, apiKey, allowRemote, allowedHosts, generated, eulaAccepted, allowBearer,
-            trustedProxies, Boolean.parseBoolean(props.getProperty("secureCookies", "false")));
+        Config config = new Config(
+                file,
+                port,
+                bind,
+                apiKey,
+                allowRemote,
+                allowedHosts,
+                generated,
+                eulaAccepted,
+                allowBearer,
+                trustedProxies,
+                Boolean.parseBoolean(props.getProperty("secureCookies", "false")));
         String password = props.getProperty(PASSWORD_KEY, "").trim();
         if (!password.isEmpty()) {
             if (!Auth.wellFormed(password)) {
-                System.err.println("config.properties: dashboardPassword is not a valid password hash, so nobody can log in."
-                    + " Delete that line and restart to set a new password.");
+                System.err.println(
+                        "config.properties: dashboardPassword is not a valid password hash, so nobody can log in."
+                                + " Delete that line and restart to set a new password.");
             }
             config.dashboardPassword = password;
         }
@@ -184,7 +211,8 @@ public final class Config {
             if (port > 0 && port <= 65535) return port;
         } catch (NumberFormatException ignored) {
         }
-        throw new IllegalArgumentException("config.properties: port must be a number from 1 to 65535, got '" + value + "'");
+        throw new IllegalArgumentException(
+                "config.properties: port must be a number from 1 to 65535, got '" + value + "'");
     }
 
     private static String generateKey() {
@@ -207,7 +235,8 @@ public final class Config {
         String text = Files.exists(file) ? Files.readString(file, StandardCharsets.UTF_8) : "";
         StringBuilder out = new StringBuilder();
         boolean replaced = false;
-        for (String line : new java.io.BufferedReader(new StringReader(text)).lines().toList()) {
+        for (String line :
+                new java.io.BufferedReader(new StringReader(text)).lines().toList()) {
             if (pattern.matcher(line).matches()) {
                 if (!replaced) {
                     out.append(name).append('=').append(clean(value)).append('\n');
@@ -254,7 +283,9 @@ public final class Config {
         AtomicFiles.write(file, (text + add).getBytes(StandardCharsets.UTF_8), true);
     }
 
-    private static void writeTemplate(Path file, int port, String bind, String apiKey, boolean allowRemote, String allowedHosts) throws IOException {
+    private static void writeTemplate(
+            Path file, int port, String bind, String apiKey, boolean allowRemote, String allowedHosts)
+            throws IOException {
         String text = ("""
             # WeSort Manager server settings. Restart the server after editing.
 
@@ -276,7 +307,8 @@ public final class Config {
             # Extra host names (comma separated) the browser may use to reach this server,
             # e.g. a DNS name on your LAN. IP addresses, localhost and this machine's name always work.
             allowedHosts=%s
-            """ + "\n" + EULA_BLOCK + "\n" + BEARER_BLOCK + "\n" + PROXY_BLOCK).formatted(port, clean(bind), clean(apiKey), allowRemote, clean(allowedHosts));
+            """ + "\n" + EULA_BLOCK + "\n" + BEARER_BLOCK + "\n" + PROXY_BLOCK)
+                .formatted(port, clean(bind), clean(apiKey), allowRemote, clean(allowedHosts));
         AtomicFiles.write(file, text.getBytes(StandardCharsets.UTF_8), true);
     }
 

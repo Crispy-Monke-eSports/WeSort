@@ -3,7 +3,6 @@ package com.porter.wesort.manager.model;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -21,8 +20,7 @@ import java.util.TreeSet;
  * {@code activity}, newest first). Every text is the bot's, so it is cleaned; a wrong type gives a default. Pure.
  */
 public final class ActivityModel {
-    private ActivityModel() {
-    }
+    private ActivityModel() {}
 
     public static final int MAX_TASKS = 50;
     public static final int MAX_MODULES = 600;
@@ -35,11 +33,38 @@ public final class ActivityModel {
     public static final List<String> LEVELS = List.of("info", "warn", "error");
 
     /** Numbers the bot did not send are NaN (queuePosition: -1). */
-    public record Connection(String state, int queuePosition, String queueEta, String server, String dimension, boolean hasPosition,
-                             double x, double y, double z, double health, double food, double ping, double uptimeSeconds, double spectators,
-                             String controllingPlayer) {
-        public static final Connection NONE = new Connection("offline", -1, "", "", "", false, 0, 0, 0, Double.NaN, Double.NaN, Double.NaN,
-            Double.NaN, Double.NaN, "");
+    public record Connection(
+            String state,
+            int queuePosition,
+            String queueEta,
+            String server,
+            String dimension,
+            boolean hasPosition,
+            double x,
+            double y,
+            double z,
+            double health,
+            double food,
+            double ping,
+            double uptimeSeconds,
+            double spectators,
+            String controllingPlayer) {
+        public static final Connection NONE = new Connection(
+                "offline",
+                -1,
+                "",
+                "",
+                "",
+                false,
+                0,
+                0,
+                0,
+                Double.NaN,
+                Double.NaN,
+                Double.NaN,
+                Double.NaN,
+                Double.NaN,
+                "");
     }
 
     /** {@code total} 0 means the task has no progress. */
@@ -49,19 +74,24 @@ public final class ActivityModel {
         }
     }
 
-    public record Module(String name, String plugin, String status, boolean enabled) {
-    }
+    public record Module(String name, String plugin, String status, boolean enabled) {}
 
-    public record Plugin(String id, String name, String version) {
-    }
+    public record Plugin(String id, String name, String version) {}
 
-    public record Event(long at, String source, String level, String text) {
-    }
+    public record Event(long at, String source, String level, String text) {}
 
     /** {@code hasActivity} is false until the bot's first report. Events are oldest first. */
-    public record Data(boolean online, long receivedAt, boolean hasActivity, Connection connection, List<Task> current, List<Module> modules,
-                       List<Plugin> plugins, List<Event> events) {
-        public static final Data EMPTY = new Data(false, 0, false, Connection.NONE, List.of(), List.of(), List.of(), List.of());
+    public record Data(
+            boolean online,
+            long receivedAt,
+            boolean hasActivity,
+            Connection connection,
+            List<Task> current,
+            List<Module> modules,
+            List<Plugin> plugins,
+            List<Event> events) {
+        public static final Data EMPTY =
+                new Data(false, 0, false, Connection.NONE, List.of(), List.of(), List.of(), List.of());
 
         public int modulesOn() {
             int n = 0;
@@ -91,9 +121,14 @@ public final class ActivityModel {
                     JsonObject o = Json.obj(e);
                     if (o == null || tasks.size() >= MAX_TASKS) continue;
                     JsonObject pr = Json.obj(o.get("progress"));
-                    tasks.add(new Task(Text.sanitize(Json.str(o, "source"), 40), Text.sanitize(Json.str(o, "title"), 200),
-                        Text.sanitize(Json.str(o, "detail"), 300), level(Json.str(o, "level")), Json.lng(o, "since", -1),
-                        pr == null ? 0 : (long) Json.num(pr, "done", 0), pr == null ? 0 : (long) Json.num(pr, "total", 0)));
+                    tasks.add(new Task(
+                            Text.sanitize(Json.str(o, "source"), 40),
+                            Text.sanitize(Json.str(o, "title"), 200),
+                            Text.sanitize(Json.str(o, "detail"), 300),
+                            level(Json.str(o, "level")),
+                            Json.lng(o, "since", -1),
+                            pr == null ? 0 : (long) Json.num(pr, "done", 0),
+                            pr == null ? 0 : (long) Json.num(pr, "total", 0)));
                 }
             }
             JsonArray mods = Json.arr(a.get("modules"));
@@ -101,8 +136,11 @@ public final class ActivityModel {
                 for (JsonElement e : mods) {
                     JsonObject o = Json.obj(e);
                     if (o == null || modules.size() >= MAX_MODULES) continue;
-                    modules.add(new Module(Text.sanitize(Json.str(o, "name"), 80), Text.sanitize(Json.str(o, "plugin"), 60),
-                        Text.sanitize(Json.str(o, "status"), 160), Json.bool(o, "enabled")));
+                    modules.add(new Module(
+                            Text.sanitize(Json.str(o, "name"), 80),
+                            Text.sanitize(Json.str(o, "plugin"), 60),
+                            Text.sanitize(Json.str(o, "status"), 160),
+                            Json.bool(o, "enabled")));
                 }
             }
             JsonArray pl = Json.arr(a.get("plugins"));
@@ -110,8 +148,10 @@ public final class ActivityModel {
                 for (JsonElement e : pl) {
                     JsonObject o = Json.obj(e);
                     if (o == null || plugins.size() >= MAX_PLUGINS) continue;
-                    plugins.add(new Plugin(Text.sanitize(Json.str(o, "id"), 60), Text.sanitize(Json.str(o, "name"), 80),
-                        Text.sanitize(Json.str(o, "version"), 30)));
+                    plugins.add(new Plugin(
+                            Text.sanitize(Json.str(o, "id"), 60),
+                            Text.sanitize(Json.str(o, "name"), 80),
+                            Text.sanitize(Json.str(o, "version"), 30)));
                 }
             }
         }
@@ -121,14 +161,24 @@ public final class ActivityModel {
             for (JsonElement e : ea) {
                 JsonObject o = Json.obj(e);
                 if (o == null || events.size() >= MAX_EVENTS) continue;
-                events.add(new Event(Json.lng(o, "at", 0), Text.sanitize(Json.str(o, "source"), 40), level(Json.str(o, "level")),
-                    Text.sanitize(Json.str(o, "text"), 400)));
+                events.add(new Event(
+                        Json.lng(o, "at", 0),
+                        Text.sanitize(Json.str(o, "source"), 40),
+                        level(Json.str(o, "level")),
+                        Text.sanitize(Json.str(o, "text"), 400)));
             }
         }
         // oldest first: the log shows the newest at the bottom (the website lists newest first, by time)
         events.sort(Comparator.comparingLong(Event::at));
-        return new Data(Json.bool(root, "online"), Json.lng(root, "receivedAt", 0), a != null, conn, List.copyOf(tasks), List.copyOf(modules),
-            List.copyOf(plugins), List.copyOf(events));
+        return new Data(
+                Json.bool(root, "online"),
+                Json.lng(root, "receivedAt", 0),
+                a != null,
+                conn,
+                List.copyOf(tasks),
+                List.copyOf(modules),
+                List.copyOf(plugins),
+                List.copyOf(events));
     }
 
     private static Connection connection(JsonObject c) {
@@ -136,11 +186,22 @@ public final class ActivityModel {
         String state = Text.sanitize(Json.str(c, "state"), 24);
         double qp = Json.num(c, "queuePosition", -1);
         boolean pos = c.has("x") && Double.isFinite(Json.num(c, "x", Double.NaN));
-        return new Connection(state.isEmpty() ? "offline" : state, (int) qp, Text.sanitize(Json.str(c, "queueEta"), 24),
-            Text.sanitize(Json.str(c, "server"), 120), Text.sanitize(Json.str(c, "dimension"), 60), pos,
-            Json.num(c, "x", 0), Json.num(c, "y", 0), Json.num(c, "z", 0), Json.num(c, "health", Double.NaN), Json.num(c, "food", Double.NaN),
-            Json.num(c, "ping", Double.NaN), Json.num(c, "uptimeSeconds", Double.NaN), Json.num(c, "spectators", Double.NaN),
-            Text.sanitize(Json.str(c, "controllingPlayer"), 32));
+        return new Connection(
+                state.isEmpty() ? "offline" : state,
+                (int) qp,
+                Text.sanitize(Json.str(c, "queueEta"), 24),
+                Text.sanitize(Json.str(c, "server"), 120),
+                Text.sanitize(Json.str(c, "dimension"), 60),
+                pos,
+                Json.num(c, "x", 0),
+                Json.num(c, "y", 0),
+                Json.num(c, "z", 0),
+                Json.num(c, "health", Double.NaN),
+                Json.num(c, "food", Double.NaN),
+                Json.num(c, "ping", Double.NaN),
+                Json.num(c, "uptimeSeconds", Double.NaN),
+                Json.num(c, "spectators", Double.NaN),
+                Text.sanitize(Json.str(c, "controllingPlayer"), 32));
     }
 
     // ---------- text ----------
@@ -148,7 +209,8 @@ public final class ActivityModel {
     /** "In queue #5 (ETA 10m)", "Online", "Offline" as the website's badge says it. */
     public static String badge(Connection c) {
         if (c.state().equals("queue")) {
-            return "In queue" + (c.queuePosition() >= 0 ? " #" + c.queuePosition() : "") + (c.queueEta().isEmpty() ? "" : " · ETA " + c.queueEta());
+            return "In queue" + (c.queuePosition() >= 0 ? " #" + c.queuePosition() : "")
+                    + (c.queueEta().isEmpty() ? "" : " · ETA " + c.queueEta());
         }
         return c.state().substring(0, 1).toUpperCase(Locale.ROOT) + c.state().substring(1);
     }
@@ -187,7 +249,8 @@ public final class ActivityModel {
 
     /** "12:03:45" in {@code zone}. */
     public static String clock(long at, ZoneId zone) {
-        return DateTimeFormatter.ofPattern("HH:mm:ss").format(Instant.ofEpochMilli(at).atZone(zone));
+        return DateTimeFormatter.ofPattern("HH:mm:ss")
+                .format(Instant.ofEpochMilli(at).atZone(zone));
     }
 
     // ---------- filters ----------
@@ -216,8 +279,12 @@ public final class ActivityModel {
         Map<String, List<Module>> groups = new LinkedHashMap<>();
         for (Module m : modules) {
             if (enabledOnly && !m.enabled()) continue;
-            if (!q.isEmpty() && !(m.name() + " " + m.plugin() + " " + m.status()).toLowerCase(Locale.ROOT).contains(q)) continue;
-            groups.computeIfAbsent(m.plugin().isEmpty() ? "aquarius" : m.plugin(), k -> new ArrayList<>()).add(m);
+            if (!q.isEmpty()
+                    && !(m.name() + " " + m.plugin() + " " + m.status())
+                            .toLowerCase(Locale.ROOT)
+                            .contains(q)) continue;
+            groups.computeIfAbsent(m.plugin().isEmpty() ? "aquarius" : m.plugin(), k -> new ArrayList<>())
+                    .add(m);
         }
         return groups;
     }
@@ -233,12 +300,28 @@ public final class ActivityModel {
         sb.append(d.online()).append(d.hasActivity());
         sb.append('|').append(connectionSignature(d.connection()));
         for (Task t : d.current()) {
-            sb.append('|').append(t.source()).append('\u0001').append(t.title()).append('\u0001').append(t.detail()).append('\u0001')
-                .append(t.level()).append('\u0001').append(t.done()).append('/').append(t.total());
+            sb.append('|')
+                    .append(t.source())
+                    .append('\u0001')
+                    .append(t.title())
+                    .append('\u0001')
+                    .append(t.detail())
+                    .append('\u0001')
+                    .append(t.level())
+                    .append('\u0001')
+                    .append(t.done())
+                    .append('/')
+                    .append(t.total());
             if (t.since() > 0 && ageBucketMs > 0) sb.append('@').append((serverNow - t.since()) / ageBucketMs);
         }
-        for (Module m : d.modules()) sb.append('|').append(m.name()).append(m.plugin()).append(m.status()).append(m.enabled());
-        for (Plugin p : d.plugins()) sb.append('|').append(p.id()).append(p.name()).append(p.version());
+        for (Module m : d.modules())
+            sb.append('|')
+                    .append(m.name())
+                    .append(m.plugin())
+                    .append(m.status())
+                    .append(m.enabled());
+        for (Plugin p : d.plugins())
+            sb.append('|').append(p.id()).append(p.name()).append(p.version());
         return sb.toString();
     }
 
@@ -247,9 +330,24 @@ public final class ActivityModel {
      * spectators) are left out, except for whether the bot sent them: the tab updates them in place.
      */
     public static String connectionSignature(Connection c) {
-        return c.state() + '' + c.queuePosition() + '' + c.queueEta() + '' + c.server() + '' + c.dimension()
-            + '' + c.hasPosition() + !Double.isNaN(c.health()) + !Double.isNaN(c.food()) + !Double.isNaN(c.ping())
-            + !Double.isNaN(c.uptimeSeconds()) + !Double.isNaN(c.spectators()) + '' + c.controllingPlayer();
+        return c.state()
+                + ''
+                + c.queuePosition()
+                + ''
+                + c.queueEta()
+                + ''
+                + c.server()
+                + ''
+                + c.dimension()
+                + ''
+                + c.hasPosition()
+                + !Double.isNaN(c.health())
+                + !Double.isNaN(c.food())
+                + !Double.isNaN(c.ping())
+                + !Double.isNaN(c.uptimeSeconds())
+                + !Double.isNaN(c.spectators())
+                + ''
+                + c.controllingPlayer();
     }
 
     /** The events as one string (changes when one is added). */
@@ -259,7 +357,13 @@ public final class ActivityModel {
         if (!d.events().isEmpty()) {
             Event last = d.events().get(d.events().size() - 1);
             Event first = d.events().get(0);
-            sb.append(':').append(first.at()).append(first.text()).append(':').append(last.at()).append(last.source()).append(last.text());
+            sb.append(':')
+                    .append(first.at())
+                    .append(first.text())
+                    .append(':')
+                    .append(last.at())
+                    .append(last.source())
+                    .append(last.text());
         }
         return sb.toString();
     }

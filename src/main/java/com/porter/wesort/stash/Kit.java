@@ -1,9 +1,5 @@
 package com.porter.wesort.stash;
 
-import net.minecraft.core.component.DataComponentMap;
-import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -11,6 +7,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import net.minecraft.core.component.DataComponentMap;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 
 /**
  * An exact Manager kit definition, slot for slot, counts included. Items match by everything
@@ -46,6 +45,7 @@ public final class Kit {
     public final String name;
     /** A transient kit made for an order: items match exactly, damage and repair cost included. Not a saved kit. */
     public final boolean orderKit;
+
     private final ItemStack[] layout = new ItemStack[SLOTS];
     private final Key[] keys = new Key[SLOTS];
     private final Map<Key, Need> needs = new LinkedHashMap<>();
@@ -57,8 +57,10 @@ public final class Kit {
     }
 
     public Kit(String name, ItemStack[] stacks, boolean orderKit) {
-        if (stacks.length > SLOTS || !orderKit && stacks.length != SLOTS) throw new IllegalArgumentException("A saved WeSort kit has exactly 27 slots");
-        if (!orderKit && (name == null || name.isBlank() || name.length() > 64)) throw new IllegalArgumentException("Invalid WeSort kit name");
+        if (stacks.length > SLOTS || !orderKit && stacks.length != SLOTS)
+            throw new IllegalArgumentException("A saved WeSort kit has exactly 27 slots");
+        if (!orderKit && (name == null || name.isBlank() || name.length() > 64))
+            throw new IllegalArgumentException("Invalid WeSort kit name");
         this.name = name;
         this.orderKit = orderKit;
 
@@ -66,7 +68,8 @@ public final class Kit {
             ItemStack stack = i < stacks.length && stacks[i] != null ? stacks[i] : ItemStack.EMPTY;
             layout[i] = stack.isEmpty() ? ItemStack.EMPTY : stack.copy();
             if (layout[i].isEmpty()) continue;
-            if (layout[i].getCount() > layout[i].getMaxStackSize()) throw new IllegalArgumentException("Kit slot exceeds its stack limit");
+            if (layout[i].getCount() > layout[i].getMaxStackSize())
+                throw new IllegalArgumentException("Kit slot exceeds its stack limit");
 
             ItemStack here = layout[i];
             Key key = key(here);
@@ -106,12 +109,15 @@ public final class Kit {
 
     /** The key this kit matches a stack by: exact for an order kit, else {@link #keyOf}. */
     public Key key(ItemStack stack) {
-        // An order kit counts by the index key: what the server sends for the same item can differ in components (ViaVersion's
+        // An order kit counts by the index key: what the server sends for the same item can differ in components
+        // (ViaVersion's
         // marker, the way a shulker's items are stored), so raw components are never compared to decide what is wanted.
         // Which exact variant sits in a slot is decided by the stacks really put there (see KitBuilder.fillOneExact)
         if (!orderKit) return keyOf(stack);
         String indexKey = StashIndex.keyOf(stack);
-        return indexKey != null ? new Key(stack.getItem(), DataComponentMap.EMPTY, indexKey) : new Key(stack.getItem(), stack.copyWithCount(1).getComponents(), null);
+        return indexKey != null
+                ? new Key(stack.getItem(), DataComponentMap.EMPTY, indexKey)
+                : new Key(stack.getItem(), stack.copyWithCount(1).getComponents(), null);
     }
 
     /** {@link #totals} by this kit's own keys. */
@@ -231,8 +237,8 @@ public final class Kit {
             ItemStack stack = i < contents.length && contents[i] != null ? contents[i] : ItemStack.EMPTY;
             if (keys[i] == null) {
                 if (!stack.isEmpty()) return false;
-            }
-            else if (stack.isEmpty() || stack.getCount() != layout[i].getCount() || !keys[i].equals(key(stack))) return false;
+            } else if (stack.isEmpty() || stack.getCount() != layout[i].getCount() || !keys[i].equals(key(stack)))
+                return false;
         }
         return true;
     }
@@ -250,6 +256,7 @@ public final class Kit {
     }
 
     public boolean sameName(String other) {
-        return com.porter.wesort.data.KitTemplate.nameKey(name).equals(com.porter.wesort.data.KitTemplate.nameKey(other));
+        return com.porter.wesort.data.KitTemplate.nameKey(name)
+                .equals(com.porter.wesort.data.KitTemplate.nameKey(other));
     }
 }

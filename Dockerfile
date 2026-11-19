@@ -3,11 +3,13 @@ FROM eclipse-temurin:21.0.9_10-jdk-jammy@sha256:41c8a28993a03b5dd042ce1afc7973c9
 WORKDIR /workspace
 COPY gradlew ./
 COPY gradle/wrapper/ gradle/wrapper/
+# Route Gradle's Maven Central resolution through a public mirror during image builds.
+COPY gradle/ci-maven-central-mirror.init.gradle gradle/ci-maven-central-mirror.init.gradle
 COPY stash-manager-server/build.gradle.kts stash-manager-server/settings.gradle.kts stash-manager-server/
 COPY common/ common/
 COPY stash-manager-server/src/ stash-manager-server/src/
 COPY LICENSE ./
-RUN --mount=type=cache,target=/root/.gradle ./gradlew --no-daemon -p stash-manager-server clean build
+RUN --mount=type=cache,target=/root/.gradle ./gradlew --no-daemon --init-script gradle/ci-maven-central-mirror.init.gradle -p stash-manager-server clean build
 
 # Java 21.0.13+9 runtime; tested independently from the frozen build JDK.
 FROM eclipse-temurin:21-jre-jammy@sha256:dff6eb46527bd293a3c06bbbe9e64e8c9f91f01905b5abbdad31761c03059d2c AS runtime

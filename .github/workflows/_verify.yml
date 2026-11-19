@@ -16,6 +16,7 @@ jobs:
           distribution: temurin
           java-version: '25.0.5+8'
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c
+      - uses: ./.github/actions/configure-gradle-mirror
       # Maven Central can rate-limit shared GitHub runners (HTTP 429). Retry only
       # that transient failure, never genuine compile or test errors.
       - name: Build and test Minecraft 26.3 client
@@ -76,8 +77,7 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c
-        with:
-          cache-read-only: true
+      - uses: ./.github/actions/configure-gradle-mirror
       - name: Build and test Manager
         run: ./gradlew --no-daemon -p stash-manager-server build
       - name: Verify fresh installation, restart and data isolation

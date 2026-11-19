@@ -1,0 +1,12 @@
+name: Configure Maven Central mirror for CI
+description: Apply the same public Maven Central mirror to all Gradle invocations in this runner
+runs:
+  using: composite
+  steps:
+    - name: Install CI-only Gradle initialization script
+      shell: bash
+      run: |
+        set -euo pipefail
+        gradle_home="${GRADLE_USER_HOME:-$HOME/.gradle}"
+        mkdir -p "$gradle_home/init.d"
+        cp "$GITHUB_WORKSPACE/gradle/ci-maven-central-mirror.init.gradle" "$gradle_home/init.d/ci-maven-central-mirror.init.gradle"

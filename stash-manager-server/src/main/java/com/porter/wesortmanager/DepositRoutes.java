@@ -9,10 +9,14 @@ import java.util.List;
 /** Owner deposit ledger and the signed agent begin/confirm/reconcile endpoint (W-038). */
 final class DepositRoutes {
     private final Deposits deposits;
+    private final OrderStore orders;
+    private final Quotas quotas;
     private final AuditLog audit;
 
-    DepositRoutes(Deposits deposits, AuditLog audit) {
+    DepositRoutes(Deposits deposits, OrderStore orders, Quotas quotas, AuditLog audit) {
         this.deposits = deposits;
+        this.orders = orders;
+        this.quotas = quotas;
         this.audit = audit;
     }
 
@@ -76,11 +80,44 @@ final class DepositRoutes {
                 default -> result = deposits.reconcile(packageId, agent, AddonRoutes.string(body, "reason"));
             }
             audit.add("agent:" + agent, "Signed WeSort agent", "deposit." + action, packageId, AuthRoutes.address(ex));
+            // Step 4 (W-026/W-059): a server-confirmed chest snapshot settles the linked order and its quota;
+            // an uncertain deposit fences the order for reconciliation without consuming anything.
+            try {
+                if (result.state() == Deposit.State.DELIVERED) {
+                    settleOrder(result.orderId(), OrderStage.DELIVERED, true, agent, AuthRoutes.address(ex));
+                } else if (result.state() == Deposit.State.NEEDS_RECONCILIATION) {
+                    settleOrder(
+                            result.orderId(), OrderStage.NEEDS_RECONCILIATION, false, agent, AuthRoutes.address(ex));
+                }
+            } catch (OrderStore.OrderException conflict) {
+                Http.error(ex, conflict.status, conflict.getMessage());
+                return;
+            }
             Http.json(ex, 200, result.json());
         } catch (Deposits.Conflict conflict) {
             Http.error(ex, 409, conflict.getMessage());
         } catch (RuntimeException invalid) {
             Http.error(ex, 400, "Invalid deposit request");
+        }
+    }
+
+    /**
+     * Step 4 (W-026/W-059): a server-confirmed chest snapshot walks the linked order to DELIVERED and
+     * consumes its quota; an uncertain deposit fences the order without touching the reservation (a
+     * re-driven delivery still consumes exactly once, a terminal cancel releases it). Unknown legacy
+     * orders only affect the deposit.
+     */
+    private void settleOrder(String orderId, OrderStage target, boolean consume, String agent, String address)
+            throws IOException, OrderStore.OrderException {
+        if (orderId == null) return;
+        try {
+            orders.advanceToward(orderId, target, "agent:" + agent);
+            if (consume) {
+                quotas.consume(orderId);
+                audit.add("agent:" + agent, "Signed WeSort agent", "order.quota.consume", orderId, address);
+            }
+        } catch (OrderStore.OrderException unknown) {
+            if (unknown.status != 404) throw unknown;
         }
     }
 }

@@ -7,10 +7,12 @@ import java.io.IOException;
 /** Package custody view (Owner) and signed agent custody transitions (W-029). */
 final class CustodyRoutes {
     private final PackageCustody custody;
+    private final OrderStore orders;
     private final AuditLog audit;
 
-    CustodyRoutes(PackageCustody custody, AuditLog audit) {
+    CustodyRoutes(PackageCustody custody, OrderStore orders, AuditLog audit) {
         this.custody = custody;
+        this.orders = orders;
         this.audit = audit;
     }
 
@@ -66,6 +68,15 @@ final class CustodyRoutes {
                         packageId, orderId, agent, PackageCustody.State.valueOf(action), location, evidence);
             }
             audit.add("agent:" + agent, "Signed WeSort agent", "custody." + action, packageId, AuthRoutes.address(ex));
+            if (result.state() == PackageCustody.State.PICKUP_VERIFIED) {
+                // Step 4 (W-026): a verified courier pickup moves the linked order to PICKED_UP. Best effort:
+                // the custody transition above is the source of truth and already succeeded.
+                try {
+                    orders.advanceToward(orderId, OrderStage.PICKED_UP, "agent:" + agent);
+                } catch (OrderStore.OrderException ignored) {
+                    // Unknown order or not yet staged: the delivery walk completes the stages instead.
+                }
+            }
             Http.json(ex, 200, json(result));
         } catch (PackageCustody.Conflict conflict) {
             Http.error(ex, 409, conflict.getMessage());

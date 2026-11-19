@@ -84,7 +84,14 @@ A replay returns its committed response without advancing the order again.
 `state` is the physical progress of a complete order. The legacy agent
 report `delivered` describes warehouse staging. Manager requires exact
 native staging receipts before exposing `PICKUP_READY`. An uncertain
-report leaves the order in `NEEDS_RECONCILIATION`.
+report leaves the order in `NEEDS_RECONCILIATION`. Verified custody
+pickup, handoff and deposit events then walk the order along
+`PICKUP_READY → PICKED_UP → IN_TRANSIT → AWAITING_CUSTOMER → DELIVERED`,
+recording every step; a return or an uncertain deposit fences it back to
+`NEEDS_RECONCILIATION` without consuming anything. An approver recovers
+a fenced order with `POST /api/v1/orders/{id}/reconcile`
+(`{"outcome":"requeue"}` back to `PICKUP_READY`, or `{"outcome":"fail"}`
+to close it), which is the only way back besides cancellation.
 
 ## W-058 guild order review and destination
 
@@ -290,6 +297,11 @@ precedence. `GET /api/v1/quotas/me` shows a member's own consumed and
 reserved totals. Reservation is idempotent by order id, and `reserved`/
 `consumed` are separate from physical inventory reservations; a cancel or a
 verified delivery affects the quota exactly once, across restarts.
+Enforcement is wired into the order lifecycle: placing an order (SELF and
+GUILD alike) reserves quota and answers 429 when a matching rule is
+exceeded; cancelling or failing releases it; verified delivery consumes
+it. An approver (`ordersAll`) may pass `"quotaOverride": true` when
+placing; the override is audited as `order.quota.override`.
 
 ## W-029 package custody
 

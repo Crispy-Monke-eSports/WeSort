@@ -303,6 +303,19 @@ final class Users {
         }
     }
 
+    /**
+     * Step 4 (W-057/W-059): quota rule subjects for a principal. Mirrors the {@link #PRESETS} role names so
+     * member-specific rules, role rules and {@code *} rules keep working without a stored role field.
+     */
+    static java.util.List<String> roleLabels(Principal who) {
+        if (who.owner()) return java.util.List.of("owner");
+        if (who.perms().settings()) return java.util.List.of("operator");
+        if (who.perms().ordersAll()) return java.util.List.of("officer");
+        if (who.perms().order()) return java.util.List.of("member");
+        if (who.perms().view()) return java.util.List.of("viewer");
+        return java.util.List.of();
+    }
+
     /** A refused change, with the HTTP status to answer. */
     static final class UserException extends Exception {
         final int status;

@@ -768,6 +768,7 @@ class StreamerTest {
                 "[POST] ^/api/v1/orders/(o-[0-9a-f]{12})/approval$ BROWSER_WRITE ORDERS_ALL",
                 "[POST] ^/api/v1/orders/(o-[0-9a-f]{12})/cancel$ BROWSER_WRITE ORDER_OWN_OR_ALL",
                 "[POST] ^/api/v1/orders/(o-[0-9a-f]{12})/force-cancel$ BROWSER_WRITE ORDER_OWN_OR_ALL",
+                "[POST] ^/api/v1/orders/(o-[0-9a-f]{12})/reconcile$ BROWSER_WRITE ORDERS_ALL",
                 "[POST] ^/api/v1/orders/(o-[0-9a-f]{12})/retry$ BROWSER_WRITE ORDER_OWN_OR_ALL");
         java.util.Set<String> noData = java.util.Set.of(
                 "[GET, HEAD] /api/v1/operations SESSION ACTIVITY",

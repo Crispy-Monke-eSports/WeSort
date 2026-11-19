@@ -15,7 +15,8 @@
   <script src="/app.js" defer></script>
 </head>
 <body>
-  <div class="layout">
+  <noscript><p style="padding:2rem;text-align:center">WeSort Manager needs JavaScript.</p></noscript>
+  <div class="layout" id="app" hidden>
     <header class="panel header">
       <div class="title-row">
         <h1 class="title"><img class="brand-logo" src="/wesort-lockup.svg" alt="" aria-hidden="true" width="68" height="61"><span id="guild-heading">WeSort Manager</span></h1>
@@ -77,23 +78,20 @@
         </div>
       </div>
       <div class="conflict-warn" id="conflict-warn" hidden></div>
-      <nav class="dash-nav" id="dash-nav" aria-label="Pages">
+      <p class="minecraft-disclaimer" id="minecraft-disclaimer-dashboard">NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.</p>
+    </header>
+
+    <nav class="dash-nav" id="dash-nav" aria-label="Pages">
         <button type="button" class="mc-button nav-btn" data-page="stash">Stash</button>
         <button type="button" class="mc-button nav-btn" data-page="orders">Orders</button>
         <button type="button" class="mc-button nav-btn" data-page="bots" id="bots-open">Bots</button>
         <button type="button" class="mc-button nav-btn" data-page="activity" id="nav-activity" hidden>Activity</button>
         <button type="button" class="mc-button nav-btn" data-page="settings">Settings</button>
-      </nav>
-      <p class="minecraft-disclaimer" id="minecraft-disclaimer-dashboard">NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.</p>
-    </header>
-
-    <div class="tabs-wrap" id="tabs-wrap">
-      <div class="tabs" id="tabs" role="tablist" aria-label="Creative tabs"></div>
-      <div class="tabs tabs-right" id="tabs-right" role="tablist" aria-label="Orders"></div>
-    </div>
+    </nav>
 
     <main class="panel inventory" id="inventory">
       <div class="panel-label" id="panel-label">Search</div>
+      <input id="search" class="mc-input central-search" type="search" aria-label="Search guild stock and stash" placeholder="Search guild stock and stash (e.g. diamond sword, @minecraft)" autocomplete="off" spellcheck="false">
 
       <div class="view view-items" id="view-items">
         <details class="guild-stock" id="guild-stock" open>
@@ -101,7 +99,6 @@
           <p id="guild-description-view" hidden></p>
           <p id="stock-status" role="status">Loading verified stock…</p>
           <p>Available counts exclude reserved and unverified items.</p>
-          <input id="stock-search" class="mc-input" type="search" aria-label="Search guild stock" placeholder="Search guild stock" autocomplete="off" spellcheck="false">
           <table><thead><tr><th>Server</th><th>Item</th><th>Observed</th><th>Reserved</th><th>Available</th><th>Unknown</th></tr></thead><tbody id="stock-balances"></tbody></table>
           <details id="stock-per-stash"><summary>Stock per stash</summary><table><thead><tr><th>Stash</th><th>Item</th><th>Observed</th><th>Reserved</th><th>Available</th><th>Unknown</th></tr></thead><tbody id="stock-stashes"></tbody></table></details>
           <details id="stock-source-details"><summary>Physical sources</summary><ul id="stock-sources"></ul></details>
@@ -113,7 +110,6 @@
           </div>
         </div>
         <div class="toolbar">
-          <input id="search" class="mc-input" type="search" aria-label="Search selected stash" placeholder="Search stash (e.g. diamond sword, @minecraft)" autocomplete="off" spellcheck="false">
           <select id="sort" class="mc-select" aria-label="Sort">
             <option value="creative">Creative order</option>
             <option value="count">Count</option>
@@ -181,6 +177,7 @@
                 <input id="order-recipient" maxlength="16" autocomplete="off">
               </label>
               <label>Comment (optional) <textarea id="order-comment" maxlength="500" rows="2"></textarea></label>
+              <label id="order-quota-override-row" hidden><input type="checkbox" id="order-quota-override"> Override withdrawal quota (audited, approvers only)</label>
               <div class="cart-actions">
                 <button type="button" class="mc-button" id="cart-place">Place order</button>
                 <button type="button" class="mc-button danger" id="cart-clear">Clear cart</button>
@@ -195,6 +192,7 @@
             <div class="section-title" id="order-history-title">Your orders</div>
             <button type="button" class="mc-button small" id="orders-clear" disabled>Clear history</button>
           </div>
+          <div class="note" id="quota-usage" hidden></div>
           <div id="order-list"></div>
         </section>
         <details class="inset order-list" id="order-audit" hidden>
@@ -361,9 +359,46 @@
           <summary>Audit log</summary>
           <div class="audit-head">
             <span class="note" id="audit-status"></span>
+            <label>Person <input class="mc-input" id="audit-person" type="search" placeholder="member, id or blank for all" autocomplete="off"></label>
             <button type="button" class="mc-button small" id="audit-refresh">Refresh</button>
           </div>
           <div class="audit-list" id="audit-list"></div>
+        </details>
+        <details class="audit" id="quotas">
+          <summary>Withdrawal quotas (optional, off by default)</summary>
+          <div class="audit-head">
+            <span class="note" id="quotas-status"></span>
+            <label><input type="checkbox" id="quotas-enabled"> Enabled</label>
+            <button type="button" class="mc-button small" id="quotas-refresh">Refresh</button>
+            <button type="button" class="mc-button small" id="quotas-save">Save</button>
+          </div>
+          <p class="note">One rule per row: subject (member id, role or *), key (item:&lt;key&gt;, shulker:&lt;key&gt; or *), max count, window seconds. Orders that exceed a matching rule are rejected with HTTP 429 unless an approver overrides (audited).</p>
+          <div id="quotas-rules"></div>
+          <button type="button" class="mc-button small" id="quotas-add">Add rule</button>
+        </details>
+        <details class="audit" id="scheduler-jobs">
+          <summary>Scheduler jobs</summary>
+          <div class="audit-head">
+            <span class="note" id="jobs-status"></span>
+            <button type="button" class="mc-button small" id="jobs-refresh">Refresh</button>
+          </div>
+          <div id="jobs-list"></div>
+          <form id="jobs-submit" class="order-audit-filters">
+            <label>Category
+              <select id="jobs-category" class="mc-select">
+                <option value="SCAN">SCAN</option>
+                <option value="SORT">SORT</option>
+                <option value="PACK">PACK</option>
+                <option value="PICKUP">PICKUP</option>
+                <option value="DELIVER">DELIVER</option>
+                <option value="RECONCILE">RECONCILE</option>
+              </select>
+            </label>
+            <label>Chain<input class="mc-input" id="jobs-chain" type="search"></label>
+            <label>Detail<input class="mc-input" id="jobs-detail" type="search"></label>
+            <label>Priority<input class="mc-input" id="jobs-priority" type="number" value="0"></label>
+            <button class="mc-button small" type="submit">Submit job</button>
+          </form>
         </details>
       </section>
       <div class="dash-head">

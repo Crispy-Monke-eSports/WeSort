@@ -12,11 +12,18 @@ import java.nio.file.StandardOpenOption;
 final class ManagerLock implements AutoCloseable {
     private final FileChannel channel;
     private final FileLock lock;
-    private ManagerLock(FileChannel channel, FileLock lock) { this.channel = channel; this.lock = lock; }
+
+    private ManagerLock(FileChannel channel, FileLock lock) {
+        this.channel = channel;
+        this.lock = lock;
+    }
 
     static ManagerLock acquire(Path data) throws IOException {
-        FileChannel channel = FileChannel.open(data.resolve(".manager.lock"), StandardOpenOption.CREATE,
-            StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS);
+        FileChannel channel = FileChannel.open(
+                data.resolve(".manager.lock"),
+                StandardOpenOption.CREATE,
+                StandardOpenOption.WRITE,
+                LinkOption.NOFOLLOW_LINKS);
         AtomicFiles.ownerOnly(data.resolve(".manager.lock"));
         try {
             FileLock lock = channel.tryLock();
@@ -28,5 +35,12 @@ final class ManagerLock implements AutoCloseable {
         }
     }
 
-    @Override public void close() throws IOException { try { lock.release(); } finally { channel.close(); } }
+    @Override
+    public void close() throws IOException {
+        try {
+            lock.release();
+        } finally {
+            channel.close();
+        }
+    }
 }

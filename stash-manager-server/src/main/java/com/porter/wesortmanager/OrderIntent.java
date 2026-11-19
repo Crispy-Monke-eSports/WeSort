@@ -5,7 +5,10 @@ import com.google.gson.JsonPrimitive;
 
 /** A member's declared intent. Recipient verification and delivery are separate steps. */
 record OrderIntent(Purpose purpose, String recipient, String comment) {
-    enum Purpose { SELF, GUILD }
+    enum Purpose {
+        SELF,
+        GUILD
+    }
 
     static final OrderIntent DEFAULT = new OrderIntent(Purpose.SELF, null, null);
 
@@ -31,7 +34,7 @@ record OrderIntent(Purpose purpose, String recipient, String comment) {
         }
         String value = primitive.getAsString().strip();
         if (value.codePointCount(0, value.length()) > maximum
-            || value.codePoints().anyMatch(cp -> Character.isISOControl(cp) && cp != '\n' && cp != '\t')) {
+                || value.codePoints().anyMatch(cp -> Character.isISOControl(cp) && cp != '\n' && cp != '\t')) {
             throw new IllegalArgumentException(key + " must be at most " + maximum + " characters");
         }
         return value.isEmpty() ? null : value;

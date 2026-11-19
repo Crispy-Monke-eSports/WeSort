@@ -1,17 +1,15 @@
 package com.porter.wesort.manager.gui.style;
 
 import com.porter.wesort.manager.gui.layout.RoundRect;
-import meteordevelopment.meteorclient.gui.renderer.GuiRenderer;
-
 import java.util.List;
+import meteordevelopment.meteorclient.gui.renderer.GuiRenderer;
 
 /**
  * Drawing helpers for the window's chrome: rectangles, rounded panels, borders, Classic's bevel, pills and dots. Every
  * size is in physical pixels (multiply GUI pixels by {@link SmGuiTheme#unit()} first). Colours are ARGB ints.
  */
 public final class Paint {
-    private Paint() {
-    }
+    private Paint() {}
 
     public static void rect(GuiRenderer r, SmGuiTheme t, double x, double y, double w, double h, int argb) {
         if (Palette.alpha(argb) == 0 || w <= 0 || h <= 0) return;
@@ -19,7 +17,8 @@ public final class Paint {
     }
 
     /** A filled rectangle with rounded corners (radius in physical pixels; 0 is a plain rectangle). */
-    public static void roundRect(GuiRenderer r, SmGuiTheme t, double x, double y, double w, double h, double radius, int argb) {
+    public static void roundRect(
+            GuiRenderer r, SmGuiTheme t, double x, double y, double w, double h, double radius, int argb) {
         if (Palette.alpha(argb) == 0 || w <= 0 || h <= 0) return;
         double rad = RoundRect.clampRadius(radius, w, h);
         if (rad < 1) {
@@ -35,7 +34,17 @@ public final class Paint {
     }
 
     /** A rectangle with a border and a fill; the border is drawn as the outer shape and the fill inset by it. */
-    public static void panel(GuiRenderer r, SmGuiTheme t, double x, double y, double w, double h, double radius, double border, int fill, int borderColor) {
+    public static void panel(
+            GuiRenderer r,
+            SmGuiTheme t,
+            double x,
+            double y,
+            double w,
+            double h,
+            double radius,
+            double border,
+            int fill,
+            int borderColor) {
         if (border > 0 && Palette.alpha(borderColor) != 0 && Palette.alpha(fill) < 255) {
             // A see-through fill (Mac's glass) must not sit on a filled border colour: draw the border as a ring
             roundRect(r, t, x + border, y + border, w - 2 * border, h - 2 * border, Math.max(0, radius - border), fill);
@@ -49,7 +58,8 @@ public final class Paint {
     }
 
     /** Only the border line, as four strips (the inside stays as it is). */
-    public static void outline(GuiRenderer r, SmGuiTheme t, double x, double y, double w, double h, double border, int argb) {
+    public static void outline(
+            GuiRenderer r, SmGuiTheme t, double x, double y, double w, double h, double border, int argb) {
         rect(r, t, x, y, w, border, argb);
         rect(r, t, x, y + h - border, w, border, argb);
         rect(r, t, x, y + border, border, h - 2 * border, argb);
@@ -57,7 +67,16 @@ public final class Paint {
     }
 
     /** The vanilla GUI bevel: light on the top and left edges, dark on the bottom and right, inside the rectangle. */
-    public static void bevel(GuiRenderer r, SmGuiTheme t, double x, double y, double w, double h, double thickness, int light, int dark) {
+    public static void bevel(
+            GuiRenderer r,
+            SmGuiTheme t,
+            double x,
+            double y,
+            double w,
+            double h,
+            double thickness,
+            int light,
+            int dark) {
         rect(r, t, x, y, w - thickness, thickness, light);
         rect(r, t, x, y + thickness, thickness, h - thickness, light);
         rect(r, t, x + thickness, y + h - thickness, w - thickness, thickness, dark);

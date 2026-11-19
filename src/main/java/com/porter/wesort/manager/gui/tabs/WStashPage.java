@@ -10,6 +10,7 @@ import com.porter.wesort.manager.gui.style.Palette;
 import com.porter.wesort.manager.gui.style.SmGuiTheme;
 import com.porter.wesort.manager.gui.widgets.TextWrap;
 import com.porter.wesort.manager.gui.widgets.WItemGrid;
+import java.util.List;
 import meteordevelopment.meteorclient.gui.renderer.GuiRenderer;
 import meteordevelopment.meteorclient.gui.widgets.WWidget;
 import meteordevelopment.meteorclient.gui.widgets.containers.WContainer;
@@ -17,8 +18,6 @@ import meteordevelopment.meteorclient.gui.widgets.containers.WView;
 import meteordevelopment.meteorclient.gui.widgets.input.WDropdown;
 import meteordevelopment.meteorclient.gui.widgets.input.WTextBox;
 import meteordevelopment.meteorclient.gui.widgets.pressable.WButton;
-
-import java.util.List;
 
 /**
  * The stash page, laid out like the website's: the creative tabs on top, then the inventory panel with its label, the
@@ -38,6 +37,7 @@ public class WStashPage extends WContainer {
 
     /** The panel's label, a summary (a long and a short form), and the hint under the toolbar. */
     public String label = "";
+
     public String summaryLong = "";
     public String summaryShort = "";
     public String hint = "";
@@ -58,8 +58,14 @@ public class WStashPage extends WContainer {
 
     /** True once every child the layout needs is set (BrowseTab fills them in as it builds the page). */
     private boolean ready() {
-        return tabs != null && grid != null && search != null && sort != null && details != null && drawer != null && closeButton != null
-            && theme instanceof SmGuiTheme;
+        return tabs != null
+                && grid != null
+                && search != null
+                && sort != null
+                && details != null
+                && drawer != null
+                && closeButton != null
+                && theme instanceof SmGuiTheme;
     }
 
     /** Shows or hides the details drawer. */

@@ -1,15 +1,14 @@
 package com.porter.wesort.stash;
 
-import com.porter.wesort.stash.StashSafety.Pt;
-import com.porter.wesort.stash.StashSafety.Spot;
-import org.junit.jupiter.api.Test;
-
-import java.util.ArrayList;
-import java.util.List;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.porter.wesort.stash.StashSafety.Pt;
+import com.porter.wesort.stash.StashSafety.Spot;
+import java.util.ArrayList;
+import java.util.List;
+import org.junit.jupiter.api.Test;
 
 class StashSafetyTest {
     private static final Pt PLAYER = new Pt(0, 0);

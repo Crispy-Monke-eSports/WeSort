@@ -55,7 +55,8 @@ public final class ServerUrl {
     }
 
     private static String build(String scheme, String host, int port) {
-        boolean defaultPort = port == -1 || (scheme.equals("http") && port == 80) || (scheme.equals("https") && port == 443);
+        boolean defaultPort =
+                port == -1 || (scheme.equals("http") && port == 80) || (scheme.equals("https") && port == 443);
         return scheme + "://" + host.toLowerCase(Locale.ROOT) + (defaultPort ? "" : ":" + port);
     }
 
@@ -91,7 +92,11 @@ public final class ServerUrl {
             try {
                 int a = Integer.parseInt(parts[0]);
                 int b = Integer.parseInt(parts[1]);
-                return a == 10 || a == 127 || (a == 192 && b == 168) || (a == 172 && b >= 16 && b <= 31) || (a == 169 && b == 254);
+                return a == 10
+                        || a == 127
+                        || (a == 192 && b == 168)
+                        || (a == 172 && b >= 16 && b <= 31)
+                        || (a == 169 && b == 254);
             } catch (NumberFormatException notAnAddress) {
                 return false;
             }

@@ -1,6 +1,7 @@
 package com.porter.wesort.mixin;
 
 import com.porter.wesort.compat.InventorySync;
+import com.porter.wesort.compat.WorldInteractionGuard;
 import net.minecraft.client.multiplayer.MultiPlayerGameMode;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -16,18 +17,33 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(MultiPlayerGameMode.class)
 public abstract class BlockInputMixin {
     @Inject(method = "useItemOn", at = @At("HEAD"), cancellable = true)
-    private void wesort$beforeBlockUse(LocalPlayer player, InteractionHand hand, BlockHitResult hit, CallbackInfoReturnable<InteractionResult> cir) {
-        if (InventorySync.calledFromWeSort() && !InventorySync.allowInput()) { cir.setReturnValue(InteractionResult.FAIL); return; }
+    private void wesort$beforeBlockUse(
+            LocalPlayer player,
+            InteractionHand hand,
+            BlockHitResult hit,
+            CallbackInfoReturnable<InteractionResult> cir) {
+        if (!WorldInteractionGuard.allowUse(hit) || (InventorySync.calledFromWeSort() && !InventorySync.allowInput())) {
+            cir.setReturnValue(InteractionResult.FAIL);
+            return;
+        }
         InventorySync.beginBlockUse(hit);
     }
 
     @Inject(method = "useItemOn", at = @At("RETURN"))
-    private void wesort$afterBlockUse(LocalPlayer player, InteractionHand hand, BlockHitResult hit, CallbackInfoReturnable<InteractionResult> cir) {
+    private void wesort$afterBlockUse(
+            LocalPlayer player,
+            InteractionHand hand,
+            BlockHitResult hit,
+            CallbackInfoReturnable<InteractionResult> cir) {
         InventorySync.endBlockUse();
     }
 
-    @Inject(method = {"startDestroyBlock", "continueDestroyBlock"}, at = @At("HEAD"), cancellable = true)
+    @Inject(
+            method = {"startDestroyBlock", "continueDestroyBlock"},
+            at = @At("HEAD"),
+            cancellable = true)
     private void wesort$beforeBlockBreak(BlockPos pos, Direction face, CallbackInfoReturnable<Boolean> cir) {
-        if (InventorySync.calledFromWeSort() && !InventorySync.allowInput()) cir.setReturnValue(false);
+        if (!WorldInteractionGuard.allowBreak(pos) || (InventorySync.calledFromWeSort() && !InventorySync.allowInput()))
+            cir.setReturnValue(false);
     }
 }

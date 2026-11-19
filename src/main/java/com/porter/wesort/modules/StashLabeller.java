@@ -1,5 +1,7 @@
 package com.porter.wesort.modules;
 
+import static meteordevelopment.meteorclient.MeteorClient.mc;
+
 import com.porter.wesort.compat.Players;
 import com.porter.wesort.compat.SignEditors;
 import com.porter.wesort.stash.Categories;
@@ -7,6 +9,15 @@ import com.porter.wesort.stash.Containers;
 import com.porter.wesort.stash.StackInfo;
 import com.porter.wesort.stash.Stash;
 import com.porter.wesort.stash.Stash.Box;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import meteordevelopment.meteorclient.events.game.OpenScreenEvent;
 import meteordevelopment.meteorclient.utils.Utils;
 import meteordevelopment.meteorclient.utils.misc.input.Input;
@@ -25,18 +36,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.SignBlockEntity;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
-
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
-import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 /**
  * The librarian. An item no container has a sign for gets a new category on an empty chest next to the signed ones, with
@@ -152,7 +151,16 @@ final class StashLabeller {
     private static final int SIGN_LINE_LENGTH = 15;
     private static final DateTimeFormatter SIGN_DATE = DateTimeFormatter.ofPattern("MM-dd-yyyy");
 
-    private enum Step { Walk, Hold, Aim, Click, Editor, Write, Verify, Reopen }
+    private enum Step {
+        Walk,
+        Hold,
+        Aim,
+        Click,
+        Editor,
+        Write,
+        Verify,
+        Reopen
+    }
 
     private record Plan(String text, Box box, Containers.Face face, String item) {
         Plan(String text, Box box, Containers.Face face) {
@@ -258,8 +266,12 @@ final class StashLabeller {
      * A chest window that is the answer to our own click on the target, soon after it: never one the player opened.
      */
     boolean ownsChest(AbstractContainerMenu menu) {
-        return box != null && (step == Step.Editor || step == Step.Reopen) && clicked && age - clickAge <= 20
-            && menu instanceof ChestMenu && menu.slots.size() - 36 == box.parts.size() * 27;
+        return box != null
+                && (step == Step.Editor || step == Step.Reopen)
+                && clicked
+                && age - clickAge <= 20
+                && menu instanceof ChestMenu
+                && menu.slots.size() - 36 == box.parts.size() * 27;
     }
 
     /**
@@ -301,8 +313,7 @@ final class StashLabeller {
         if (on) {
             sneaking = true;
             key.setDown(true);
-        }
-        else if (sneaking) {
+        } else if (sneaking) {
             sneaking = false;
             key.setDown(Input.isPressed(key));
         }
@@ -338,12 +349,16 @@ final class StashLabeller {
                 BlockPos at = entry.getKey();
                 Containers.Signs signs = Containers.read(stash, old.box());
                 // Gone, or written on by someone: nothing left to do
-                if (!signThere(at) || signs == null || !signs.labels().isEmpty() || !old.box().labels.isEmpty()) {
+                if (!signThere(at)
+                        || signs == null
+                        || !signs.labels().isEmpty()
+                        || !old.box().labels.isEmpty()) {
                     it.remove();
                     continue;
                 }
                 it.remove();
-                owner.say(String.format("Going back to the blank sign at %s to write \"%s\" on it.", at.toShortString(), old.text()));
+                owner.say(String.format(
+                        "Going back to the blank sign at %s to write \"%s\" on it.", at.toShortString(), old.text()));
                 start(old);
                 resume = Step.Hold;
                 reopenAfterHold = true;
@@ -353,7 +368,9 @@ final class StashLabeller {
         if (failures >= MAX_FAILURES) {
             if (!failWarned) {
                 failWarned = true;
-                owner.warn(String.format("Putting up signs failed %d times this run, not labelling any more until sorting is restarted. Stacks with no home go to a misc or unsigned container.", failures));
+                owner.warn(String.format(
+                        "Putting up signs failed %d times this run, not labelling any more until sorting is restarted. Stacks with no home go to a misc or unsigned container.",
+                        failures));
             }
             reserved.clear();
             return false;
@@ -361,7 +378,9 @@ final class StashLabeller {
         if (placed >= MAX_LABELS_PER_RUN) {
             if (!capWarned) {
                 capWarned = true;
-                owner.warn(String.format("Put up %d signs this run, which is the most in one run. Not labelling any more until sorting is restarted.", placed));
+                owner.warn(String.format(
+                        "Put up %d signs this run, which is the most in one run. Not labelling any more until sorting is restarted.",
+                        placed));
             }
             reserved.clear();
             return false;
@@ -375,7 +394,8 @@ final class StashLabeller {
 
         Plan plan = plan();
         if (plan == null) {
-            // Signs fetched for this are kept while there is still homeless things and chests to put them on, and put away
+            // Signs fetched for this are kept while there is still homeless things and chests to put them on, and put
+            // away
             // once, when there is not: otherwise they go back in a container only to be fetched again
             if (!(hadGroups && hadCandidates)) reserved.clear();
             return false;
@@ -384,7 +404,9 @@ final class StashLabeller {
         // Signs fetched from the stash or carried before the sorter's own, which are the last thing to use
         int signSlot = findSignSlot(false);
         if (signSlot == -1) {
-            List<Box> holding = stash.boxes.stream().filter(b -> b.sortable() && !owner.fetchBlocked(b) && !owner.signPending(b) && holdsSigns(b)).toList();
+            List<Box> holding = stash.boxes.stream()
+                    .filter(b -> b.sortable() && !owner.fetchBlocked(b) && !owner.signPending(b) && holdsSigns(b))
+                    .toList();
             Box from = owner.nearest(holding);
             if (from == null || owner.freeCarrySlot() == -1) {
                 if (findSignSlot(true) != -1) {
@@ -394,7 +416,9 @@ final class StashLabeller {
                 if (from != null) return false;
                 if (!noSignsWarned) {
                     noSignsWarned = true;
-                    owner.alert(String.format("No signs to label new categories (\"%s\" and others), so those items go to the catch-all container. Put signs in your inventory or in any container of the stash.", plan.text()));
+                    owner.alert(String.format(
+                            "No signs to label new categories (\"%s\" and others), so those items go to the catch-all container. Put signs in your inventory or in any container of the stash.",
+                            plan.text()));
                 }
                 return false;
             }
@@ -440,7 +464,8 @@ final class StashLabeller {
     private int findSignSlot(boolean own) {
         Set<Integer> keep = owner.keep();
         for (int slot : reserved) if (mc.player.getInventory().getItem(slot).is(ItemTags.SIGNS)) return slot;
-        for (int slot : owner.carry()) if (mc.player.getInventory().getItem(slot).is(ItemTags.SIGNS)) return slot;
+        for (int slot : owner.carry())
+            if (mc.player.getInventory().getItem(slot).is(ItemTags.SIGNS)) return slot;
         // The player's own signs, in any other slot, only as a last resort
         if (!own) return -1;
         for (int slot = 0; slot < 36; slot++) {
@@ -468,11 +493,13 @@ final class StashLabeller {
 
         Map<String, ItemStack> known = knownItems();
         Map<String, Integer> current = new HashMap<>();
-        for (Map.Entry<String, ItemStack> entry : known.entrySet()) current.put(entry.getKey(), signedScore(entry.getValue()));
+        for (Map.Entry<String, ItemStack> entry : known.entrySet())
+            current.put(entry.getKey(), signedScore(entry.getValue()));
         Map<String, String> chosen = new HashMap<>();
 
         List<ItemStack> sources = new ArrayList<>();
-        for (int slot : owner.activeCarried()) sources.add(mc.player.getInventory().getItem(slot));
+        for (int slot : owner.activeCarried())
+            sources.add(mc.player.getInventory().getItem(slot));
         for (Box b : stash.boxes) {
             if (!b.known() || b.unreachable || b.excluded || b.foreign) continue;
             if (!(b.dropOff || b.labels.isEmpty() || owner.isMisc(b))) continue;
@@ -493,8 +520,7 @@ final class StashLabeller {
                 String id = id(subject);
                 if (!chosen.containsKey(id)) chosen.put(id, chooseLabel(subject, known, current));
                 label = chosen.get(id);
-            }
-            else {
+            } else {
                 // A container for it exists, but every one is full: another chest with the same sign
                 if (dests.stream().anyMatch(b -> b.free() > 0 || owner.misplacedCount(b) > 0)) continue;
                 label = signTextOf(dests);
@@ -508,16 +534,24 @@ final class StashLabeller {
         }
 
         StringBuilder text = new StringBuilder();
-        for (var entry : groups.entrySet()) text.append(entry.getKey()).append(" x").append(entry.getValue().stacks).append(", ");
-        summary = groups.isEmpty() ? "Nothing is homeless." : "Homeless: " + text.substring(0, text.length() - 2) + ". "
-            + candidates.size() + " chest(s) to label.";
+        for (var entry : groups.entrySet())
+            text.append(entry.getKey())
+                    .append(" x")
+                    .append(entry.getValue().stacks)
+                    .append(", ");
+        summary = groups.isEmpty()
+                ? "Nothing is homeless."
+                : "Homeless: " + text.substring(0, text.length() - 2) + ". " + candidates.size()
+                        + " chest(s) to label.";
         hadGroups = !groups.isEmpty();
         if (groups.isEmpty()) return null;
 
         String best = null;
         for (var entry : groups.entrySet()) {
-            if (best == null || entry.getValue().stacks > groups.get(best).stacks
-                || (entry.getValue().stacks == groups.get(best).stacks && entry.getKey().compareTo(best) < 0)) {
+            if (best == null
+                    || entry.getValue().stacks > groups.get(best).stacks
+                    || (entry.getValue().stacks == groups.get(best).stacks
+                            && entry.getKey().compareTo(best) < 0)) {
                 best = entry.getKey();
             }
         }
@@ -529,7 +563,9 @@ final class StashLabeller {
             if (!doubles.isEmpty()) options = new ArrayList<>(doubles);
         }
         Box chest = owner.nearest(options);
-        return chest == null ? null : new Plan(best, chest, candidates.get(chest), com.porter.wesort.stash.StackInfo.label(group.sample));
+        return chest == null
+                ? null
+                : new Plan(best, chest, candidates.get(chest), com.porter.wesort.stash.StackInfo.label(group.sample));
     }
 
     private static String id(ItemStack stack) {
@@ -609,7 +645,11 @@ final class StashLabeller {
         int best = Integer.MAX_VALUE;
         for (BlockPos p : a.parts) {
             for (BlockPos q : b.parts) {
-                best = Math.min(best, Math.max(Math.abs(p.getX() - q.getX()), Math.max(Math.abs(p.getY() - q.getY()), Math.abs(p.getZ() - q.getZ()))));
+                best = Math.min(
+                        best,
+                        Math.max(
+                                Math.abs(p.getX() - q.getX()),
+                                Math.max(Math.abs(p.getY() - q.getY()), Math.abs(p.getZ() - q.getZ()))));
             }
         }
         return best;
@@ -694,7 +734,9 @@ final class StashLabeller {
     private String signTextOf(List<Box> boxes) {
         for (Box b : boxes) {
             for (String label : b.labels) {
-                if (label.length() <= SIGN_LINE_LENGTH && !label.matches(".*\\d+[-/.]\\d+[-/.]\\d+.*") && Categories.recognises(label)) return label;
+                if (label.length() <= SIGN_LINE_LENGTH
+                        && !label.matches(".*\\d+[-/.]\\d+[-/.]\\d+.*")
+                        && Categories.recognises(label)) return label;
             }
         }
         return null;
@@ -709,7 +751,7 @@ final class StashLabeller {
     private boolean start(Plan plan) {
         box = plan.box();
         text = plan.text();
-        lines = new String[] { plan.text(), signDate(), "", "" };
+        lines = new String[] {plan.text(), signDate(), "", ""};
         face = plan.face();
         step = Step.Walk;
         resume = null;
@@ -721,8 +763,13 @@ final class StashLabeller {
         editorReady = false;
         editorAt = null;
         BlockPos at = plan.box().pos;
-        owner.step(String.format("labelling: putting up \"%s\" on the chest at %d %d %d; next: %s.", plan.text(), at.getX(), at.getY(), at.getZ(),
-            plan.item().isEmpty() ? "sort what belongs there into it" : "sort " + plan.item() + " into it"));
+        owner.step(String.format(
+                "labelling: putting up \"%s\" on the chest at %d %d %d; next: %s.",
+                plan.text(),
+                at.getX(),
+                at.getY(),
+                at.getZ(),
+                plan.item().isEmpty() ? "sort what belongs there into it" : "sort " + plan.item() + " into it"));
         owner.beginLabel(plan.box());
         return true;
     }
@@ -757,15 +804,19 @@ final class StashLabeller {
             return;
         }
         if (owner.leftArea()) {
-            fail(String.format("Skipping the %s at [%d, %d, %d]: the way there leaves the stash area.", owner.blockName(box), box.pos.getX(), box.pos.getY(), box.pos.getZ()));
+            fail(String.format(
+                    "Skipping the %s at [%d, %d, %d]: the way there leaves the stash area.",
+                    owner.blockName(box), box.pos.getX(), box.pos.getY(), box.pos.getZ()));
             return;
         }
         if (!owner.walk()) {
-            fail("Walking is off and the bot isn't where the sign at " + face.sign().toShortString() + " can be put up from.");
+            fail("Walking is off and the bot isn't where the sign at "
+                    + face.sign().toShortString() + " can be put up from.");
             return;
         }
         if (stepTicks > WALK_TIMEOUT) {
-            fail("Couldn't get to where the sign at " + face.sign().toShortString() + " can be put up from (" + stand.toShortString() + ").");
+            fail("Couldn't get to where the sign at " + face.sign().toShortString() + " can be put up from ("
+                    + stand.toShortString() + ").");
             return;
         }
         if (stepTicks == 1 || (stepTicks % 40 == 0 && !owner.moving())) owner.walkTo(stand);
@@ -791,7 +842,8 @@ final class StashLabeller {
         if (src < 9) hotbar = src;
         else {
             // An empty slot first: nothing of the player's has to move
-            for (int i = 0; i < 9 && hotbar == -1; i++) if (!keep.contains(i) && mc.player.getInventory().getItem(i).isEmpty()) hotbar = i;
+            for (int i = 0; i < 9 && hotbar == -1; i++)
+                if (!keep.contains(i) && mc.player.getInventory().getItem(i).isEmpty()) hotbar = i;
             for (int i = 0; i < 9 && hotbar == -1; i++) if (!keep.contains(i)) hotbar = i;
         }
         if (hotbar == -1) {
@@ -810,8 +862,7 @@ final class StashLabeller {
         if (!swapped) {
             InvUtils.swap(hotbar, true);
             swapped = true;
-        }
-        else InvUtils.swap(hotbar, false);
+        } else InvUtils.swap(hotbar, false);
 
         step = reopenAfterHold ? Step.Reopen : Step.Aim;
         if (reopenAfterHold) {
@@ -827,7 +878,9 @@ final class StashLabeller {
      * A sign is in the main hand, in the slot the hold chose.
      */
     private boolean handReady() {
-        return heldSlot != -1 && Players.selectedSlot() == heldSlot && mc.player.getMainHandItem().is(ItemTags.SIGNS);
+        return heldSlot != -1
+                && Players.selectedSlot() == heldSlot
+                && mc.player.getMainHandItem().is(ItemTags.SIGNS);
     }
 
     /**
@@ -836,22 +889,25 @@ final class StashLabeller {
      */
     void restoreHand() {
         if (!restorePending) return;
-        if (mc.player == null || mc.screen != null || mc.player.containerMenu != mc.player.inventoryMenu
-            || !mc.player.containerMenu.getCarried().isEmpty()) return;
+        if (mc.player == null
+                || mc.screen != null
+                || mc.player.containerMenu != mc.player.inventoryMenu
+                || !mc.player.containerMenu.getCarried().isEmpty()) return;
 
         restorePending = false;
         if (swapped) {
             InvUtils.swapBack();
             swapped = false;
         }
-        // Only if the slots are still as the hold left them: the signs still in the hotbar slot go back and the player's
+        // Only if the slots are still as the hold left them: the signs still in the hotbar slot go back and the
+        // player's
         // item comes out of the carry slot, or, with the signs all used up, the player's item goes back by itself
         if (heldFrom != -1 && heldTo != -1) {
             if (mc.player.getInventory().getItem(heldTo).is(ItemTags.SIGNS)) {
                 InvUtils.move().from(heldTo).to(heldFrom);
-            }
-            else if (mc.player.getInventory().getItem(heldTo).isEmpty() && displacedSlot == heldFrom
-                && !mc.player.getInventory().getItem(heldFrom).isEmpty()) {
+            } else if (mc.player.getInventory().getItem(heldTo).isEmpty()
+                    && displacedSlot == heldFrom
+                    && !mc.player.getInventory().getItem(heldFrom).isEmpty()) {
                 InvUtils.move().from(heldFrom).to(heldTo);
             }
         }
@@ -885,8 +941,7 @@ final class StashLabeller {
             if (clicked) {
                 step = Step.Editor;
                 stepTicks = 0;
-            }
-            else fail("Something is already at " + face.sign().toShortString() + ", where the sign was to go.");
+            } else fail("Something is already at " + face.sign().toShortString() + ", where the sign was to go.");
             return;
         }
         if (clicks >= MAX_CLICKS) {
@@ -909,7 +964,10 @@ final class StashLabeller {
         clickIssued = true;
         Runnable action = () -> {
             // The rotation can finish after we have started to give way, or after the sign went up some other way
-            if (step != Step.Click || !owner.running() || !mc.level.getBlockState(spot).isAir() || !handReady()) {
+            if (step != Step.Click
+                    || !owner.running()
+                    || !mc.level.getBlockState(spot).isAir()
+                    || !handReady()) {
                 clickIssued = false;
                 return;
             }
@@ -985,15 +1043,20 @@ final class StashLabeller {
         BlockPos at = sign.getBlockPos();
         editorAt = at;
         // The sign we meant, one we put up, or a new sign on the target (the click can land a block off)
-        boolean mine = at.equals(face.sign()) || ours.contains(at)
-            || (clicked && Containers.signSpots(box).contains(at) && !preexisting.contains(at));
+        boolean mine = at.equals(face.sign())
+                || ours.contains(at)
+                || (clicked && Containers.signSpots(box).contains(at) && !preexisting.contains(at));
         if (!mine || !signThere(at)) {
-            owner.debug(String.format("A sign editor opened at %s, not on the chest at %s: left alone.", at.toShortString(), box.pos.toShortString()));
+            owner.debug(String.format(
+                    "A sign editor opened at %s, not on the chest at %s: left alone.",
+                    at.toShortString(), box.pos.toShortString()));
             return;
         }
 
         if (!at.equals(face.sign())) {
-            owner.debug(String.format("The sign editor opened at %s, not %s: writing there, it is on the chest at %s.", at.toShortString(), face.sign().toShortString(), box.pos.toShortString()));
+            owner.debug(String.format(
+                    "The sign editor opened at %s, not %s: writing there, it is on the chest at %s.",
+                    at.toShortString(), face.sign().toShortString(), box.pos.toShortString()));
             face = new Containers.Face(at, face.dir(), face.part(), face.stand());
         }
         ours.add(at);
@@ -1024,7 +1087,9 @@ final class StashLabeller {
         if (!reopenRequested) {
             // Never over what someone else is doing: wait for them, and give up if it goes on
             if (!owner.running() || owner.foreign()) {
-                if (stepTicks > WAIT_TICKS) fail("The sign at " + spot.toShortString() + " was put up but another module kept the bot busy, so it couldn't be opened.");
+                if (stepTicks > WAIT_TICKS)
+                    fail("The sign at " + spot.toShortString()
+                            + " was put up but another module kept the bot busy, so it couldn't be opened.");
                 return;
             }
 
@@ -1055,8 +1120,8 @@ final class StashLabeller {
             if (owner.rotate()) Rotations.rotate(Rotations.getYaw(where), Rotations.getPitch(where), action);
             else action.run();
             stepTicks = 0;
-        }
-        else if (stepTicks > WAIT_TICKS) fail("The sign at " + spot.toShortString() + " was put up but its editor never opened.");
+        } else if (stepTicks > WAIT_TICKS)
+            fail("The sign at " + spot.toShortString() + " was put up but its editor never opened.");
     }
 
     /**
@@ -1066,8 +1131,11 @@ final class StashLabeller {
         BlockPos spot = face.sign();
         owner.releaseGoal();
         sneak(false);
-        mc.player.connection.send(new ServerboundSignUpdatePacket(spot, editorFront, lines[0], lines[1], lines[2], lines[3]));
-        owner.debug(String.format("Writing \"%s\" on the sign at %s (%s side).", text, spot.toShortString(), editorFront ? "front" : "back"));
+        mc.player.connection.send(
+                new ServerboundSignUpdatePacket(spot, editorFront, lines[0], lines[1], lines[2], lines[3]));
+        owner.debug(String.format(
+                "Writing \"%s\" on the sign at %s (%s side).",
+                text, spot.toShortString(), editorFront ? "front" : "back"));
         step = Step.Verify;
         stepTicks = 0;
     }
@@ -1089,8 +1157,7 @@ final class StashLabeller {
             owner.labelled(done);
             owner.say(String.format("Labelled the chest at %s as \"%s\".", done.pos.toShortString(), text));
             end();
-        }
-        else if (stepTicks > WAIT_TICKS) {
+        } else if (stepTicks > WAIT_TICKS) {
             if (!reopened) startReopen();
             else fail("The sign at " + face.sign().toShortString() + " never showed what was written on it.");
         }
@@ -1103,10 +1170,15 @@ final class StashLabeller {
         BlockPos spot = face.sign();
         // Only a sign this run put up is written on again, and each at most twice
         boolean blankOurs = ours.contains(spot) && signThere(spot);
-        if (blankOurs && text != null && blankTries.merge(spot, 1, Integer::sum) <= 2) blank.put(spot, new Plan(text, box, face));
+        if (blankOurs && text != null && blankTries.merge(spot, 1, Integer::sum) <= 2)
+            blank.put(spot, new Plan(text, box, face));
         box.labelFailed = true;
-        if (editorAt != null && !editorAt.equals(spot)) why += " (an editor opened at " + editorAt.toShortString() + ")";
-        owner.warn(why + (blankOurs ? " A blank sign is left at " + spot.toShortString() + ", write on it or remove it." : ""));
+        if (editorAt != null && !editorAt.equals(spot))
+            why += " (an editor opened at " + editorAt.toShortString() + ")";
+        owner.warn(why
+                + (blankOurs
+                        ? " A blank sign is left at " + spot.toShortString() + ", write on it or remove it."
+                        : ""));
         failures++;
         lastLabel = owner.clock();
         end();
@@ -1188,7 +1260,13 @@ final class StashLabeller {
         StringBuilder failed = new StringBuilder();
         for (Box b : stash.boxes) {
             if (b.autoLabel != null) auto++;
-            if (b.labelFailed) failed.append(failed.isEmpty() ? "" : ", ").append(b.pos.getX()).append(' ').append(b.pos.getY()).append(' ').append(b.pos.getZ());
+            if (b.labelFailed)
+                failed.append(failed.isEmpty() ? "" : ", ")
+                        .append(b.pos.getX())
+                        .append(' ')
+                        .append(b.pos.getY())
+                        .append(' ')
+                        .append(b.pos.getZ());
         }
         out.add(String.format("Labelled by the sorter: %d, this run: %d/%d.", auto, placed, MAX_LABELS_PER_RUN));
         if (!failed.isEmpty()) out.add("Gave up on: " + failed);

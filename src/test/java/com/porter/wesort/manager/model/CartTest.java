@@ -1,13 +1,12 @@
 package com.porter.wesort.manager.model;
 
-import com.google.gson.JsonParser;
-import com.porter.wesort.stash.Order;
-import org.junit.jupiter.api.Test;
-
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.google.gson.JsonParser;
+import com.porter.wesort.stash.Order;
+import org.junit.jupiter.api.Test;
 
 class CartTest {
     static final String INDEX = """
@@ -29,7 +28,11 @@ class CartTest {
 
     private static final Cart.Availability STOCK = (type, key) -> {
         IndexModel idx = index();
-        if (Order.SHULKER.equals(type)) return idx.shulkers().stream().filter(g -> g.key().equals(key)).mapToLong(IndexModel.Shulker::count).sum();
+        if (Order.SHULKER.equals(type))
+            return idx.shulkers().stream()
+                    .filter(g -> g.key().equals(key))
+                    .mapToLong(IndexModel.Shulker::count)
+                    .sum();
         IndexModel.Item it = idx.item(key);
         if (it == null) return 0;
         return it.isShulkerBox() ? idx.emptyShulkerAvailable(key) : it.count();
@@ -48,9 +51,15 @@ class CartTest {
     @Test
     void addStacksTakesOneStackOrAShulkersWorthClampedToWhatIsLeft() {
         Cart cart = new Cart();
-        assertEquals(16, cart.addStacks("item", "minecraft:ender_pearl", false, index(), STOCK).added());
+        assertEquals(
+                16,
+                cart.addStacks("item", "minecraft:ender_pearl", false, index(), STOCK)
+                        .added());
         // 27 stacks of 16 = 432, only 100 exist, 16 are in the cart
-        assertEquals(84, cart.addStacks("item", "minecraft:ender_pearl", true, index(), STOCK).added());
+        assertEquals(
+                84,
+                cart.addStacks("item", "minecraft:ender_pearl", true, index(), STOCK)
+                        .added());
         assertEquals(100, cart.count("item", "minecraft:ender_pearl"));
         Cart.Result none = cart.addStacks("item", "minecraft:ender_pearl", false, index(), STOCK);
         assertFalse(none.ok());
@@ -60,14 +69,17 @@ class CartTest {
     @Test
     void apackedShulkerIsOneBoxPerAddition() {
         Cart cart = new Cart();
-        assertEquals(1, cart.addStacks("shulker", "s:aaaaaaaaaa", true, index(), STOCK).added());
+        assertEquals(
+                1,
+                cart.addStacks("shulker", "s:aaaaaaaaaa", true, index(), STOCK).added());
         assertEquals(1, cart.count("shulker", "s:aaaaaaaaaa"));
     }
 
     @Test
     void theCartNeverNeedsMoreThanFiftyFourShulkers() {
         Cart cart = new Cart();
-        // 54 shulkers of single swords: 27 * 54 = 1458 slots, but only 30 swords exist; use diamonds: 64 * 27 * 54 = 93312
+        // 54 shulkers of single swords: 27 * 54 = 1458 slots, but only 30 swords exist; use diamonds: 64 * 27 * 54 =
+        // 93312
         assertTrue(cart.add("item", "minecraft:diamond", 64L * 27 * 54, index()).ok());
         assertEquals(54, CartPlan.shulkersNeeded(cart.lines(), index()));
         Cart.Result over = cart.add("item", "minecraft:diamond", 1, index());

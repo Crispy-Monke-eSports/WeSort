@@ -4,12 +4,19 @@ package com.porter.wesort.manager.gui.frame;
  * The arithmetic of moving and resizing the window, in GUI pixels. Pure: no Minecraft or Meteor classes.
  */
 public final class FrameMath {
-    private FrameMath() {
-    }
+    private FrameMath() {}
 
     /** Which edge or corner of the window a point is on. */
     public enum Edge {
-        NONE, LEFT, RIGHT, TOP, BOTTOM, TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT;
+        NONE,
+        LEFT,
+        RIGHT,
+        TOP,
+        BOTTOM,
+        TOP_LEFT,
+        TOP_RIGHT,
+        BOTTOM_LEFT,
+        BOTTOM_RIGHT;
 
         public boolean left() {
             return this == LEFT || this == TOP_LEFT || this == BOTTOM_LEFT;
@@ -30,6 +37,7 @@ public final class FrameMath {
 
     /** The grab ring: this wide on the edges, and this big at the corners. */
     public static final double RING = 3;
+
     public static final double CORNER = 8;
     /** The bottom-right corner is a whole square this big, where the visible grip is drawn. */
     public static final double GRIP = 10;

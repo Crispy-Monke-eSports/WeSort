@@ -1,20 +1,17 @@
 package com.porter.wesort.modules;
 
+import static meteordevelopment.meteorclient.MeteorClient.mc;
+
 import com.porter.wesort.craft.AnvilFinder;
 import com.porter.wesort.craft.CraftPlanner;
 import com.porter.wesort.stash.DeliveryRoom;
 import com.porter.wesort.stash.Kit;
 import com.porter.wesort.stash.Kits;
 import com.porter.wesort.stash.Order;
+import com.porter.wesort.stash.SpaceWait;
 import com.porter.wesort.stash.Stash;
 import com.porter.wesort.stash.Stash.Box;
-import com.porter.wesort.stash.SpaceWait;
 import com.porter.wesort.stash.StashIndex;
-import meteordevelopment.meteorclient.utils.Utils;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.component.DataComponents;
-import net.minecraft.world.item.ItemStack;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -23,8 +20,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
-import static meteordevelopment.meteorclient.MeteorClient.mc;
+import meteordevelopment.meteorclient.utils.Utils;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.item.ItemStack;
 
 /**
  * Carries out an order from the WeSort Manager server for the stash sorter: plans the order into shulkers, builds each
@@ -118,16 +117,33 @@ final class OrderRunner {
     /** Open this delivery chest, found full before and perhaps emptied since, and read what it holds. */
     record Recheck(Box box) implements Intent {}
 
-    enum State { Running, Delivered, Failed, Cancelled }
+    enum State {
+        Running,
+        Delivered,
+        Failed,
+        Cancelled
+    }
 
     /** A snapshot of the order for the server. */
-    record Report(String id, String status, String phase, int done, int total, String message, int shulkers, Map<String, Integer> delivered) {
+    record Report(
+            String id,
+            String status,
+            String phase,
+            int done,
+            int total,
+            String message,
+            int shulkers,
+            Map<String, Integer> delivered) {
         boolean terminal() {
             return !status.equals("in_progress");
         }
     }
 
-    private enum Kind { Shulker, Empty, Bin }
+    private enum Kind {
+        Shulker,
+        Empty,
+        Bin
+    }
 
     private static final class Unit {
         final Kind kind;
@@ -164,7 +180,13 @@ final class OrderRunner {
     }
 
     /** What the stash can give: a sample stack of each wanted key, how many there are, and keys only found filled. */
-    private record Survey(Map<String, ItemStack> samples, Map<String, Long> available, Set<String> filled, Set<String> staleOnly, Map<String, List<Variant>> variants, Map<String, String> why) {}
+    private record Survey(
+            Map<String, ItemStack> samples,
+            Map<String, Long> available,
+            Set<String> filled,
+            Set<String> staleOnly,
+            Map<String, List<Variant>> variants,
+            Map<String, String> why) {}
 
     /** Stacks of one key that are identical in every component, so they can share a slot. */
     private static final class Variant {
@@ -176,13 +198,15 @@ final class OrderRunner {
         }
     }
 
-    private record RawKey(net.minecraft.world.item.Item item, net.minecraft.core.component.DataComponentMap components) {}
+    private record RawKey(
+            net.minecraft.world.item.Item item, net.minecraft.core.component.DataComponentMap components) {}
 
     private static final long PAUSE_TIMEOUT_MS = 10 * 60 * 1000L;
     private static final long REREAD_TIMEOUT_MS = 10 * 60 * 1000L;
     private static final int MAX_FULL_TRIES = 2;
     /** Times one shulker asks the delivery storage to grow before the order waits instead. */
     private static final int MAX_EXPANDS = 6;
+
     private static final int MAX_SPINS = 30;
     private static final long SPIN_HOLD_MS = 60_000L;
     private static final int MAX_STARTS = 8;
@@ -369,7 +393,8 @@ final class OrderRunner {
         if (resumed) {
             for (Stash.ActiveOrder.UnitPlan p : saved.units) {
                 List<Order.Lot> lots = new ArrayList<>();
-                for (int i = 0; i < p.lotKeys.size(); i++) lots.add(new Order.Lot(p.lotKeys.get(i), p.lotCounts.get(i)));
+                for (int i = 0; i < p.lotKeys.size(); i++)
+                    lots.add(new Order.Lot(p.lotKeys.get(i), p.lotCounts.get(i)));
                 Unit restored = new Unit(p.kind == 0 ? Kind.Shulker : p.kind == 1 ? Kind.Empty : Kind.Bin, p.key, lots);
                 restored.nameDone = p.nameDone;
                 restored.named = p.named;
@@ -384,21 +409,21 @@ final class OrderRunner {
             unnamed = saved.unnamed;
             unnamedReasons.addAll(saved.unnamedReasons);
             craftedTotal = saved.crafted;
-        }
-        else {
+        } else {
             String why = planFresh(stash, o, plan, notes);
             if (why != null) return why;
         }
 
         String why = checkEmpties(plan.subList(start, plan.size()));
         if (why != null) return why;
-        // The old free-form model allowed partial/unnamed deliveries. A new versioned
-        // Manager label plan is immutable; without every planned slot, X/Y would lie.
+        // A server-owned label plan may not silently omit planned boxes.
         if (o.requiredPackageLabels && (o.names == null || plan.size() != o.names.each().size()))
             return "Authoritative package count differs from the locked label plan; physical reconciliation required";
 
         // The names follow the plan by position; a resume keeps the names it saved
-        Order.Names names = resumed && !saved.namesMode.isEmpty() ? Order.Names.of(saved.namesMode, saved.namesAll, saved.namesEach) : o.names;
+        Order.Names names = resumed && !saved.namesMode.isEmpty()
+                ? Order.Names.of(saved.namesMode, saved.namesAll, saved.namesEach)
+                : o.names;
         for (int i = 0; i < plan.size(); i++) plan.get(i).name = names == null ? null : names.nameFor(i);
 
         units.clear();
@@ -412,7 +437,7 @@ final class OrderRunner {
         if (!resumed) {
             Stash.ActiveOrder active = new Stash.ActiveOrder();
             active.id = o.id;
-            for (Order.Line l : o.lines) active.lines.add(new String[] { l.type(), l.key(), String.valueOf(l.count()) });
+            for (Order.Line l : o.lines) active.lines.add(new String[] {l.type(), l.key(), String.valueOf(l.count())});
             for (Unit u : plan) {
                 Stash.ActiveOrder.UnitPlan p = new Stash.ActiveOrder.UnitPlan();
                 p.kind = u.kind == Kind.Shulker ? 0 : u.kind == Kind.Empty ? 1 : 2;
@@ -431,7 +456,8 @@ final class OrderRunner {
             stash.activeOrder = active;
             stash.save();
         }
-        say("Taking order " + o.id + ": " + (units.size() - index) + " shulkers to deliver" + (index > 0 ? ", " + index + " already done." : "."));
+        say("Taking order " + o.id + ": " + (units.size() - index) + " shulkers to deliver"
+                + (index > 0 ? ", " + index + " already done." : "."));
         return null;
     }
 
@@ -462,10 +488,15 @@ final class OrderRunner {
             ItemStack sample = survey.samples().get(l.key());
             if (sample == null) {
                 String name = StashIndex.nameOf(l.key());
-                notes.add(survey.filled().contains(l.key()) ? name + ": can't order filled containers/bundles"
-                    : survey.staleOnly().contains(l.key()) ? name + ": only in containers I couldn't read again"
-                    : survey.why().containsKey(l.key()) ? name + ": only " + survey.why().get(l.key())
-                    : name + ": none usable in the stash");
+                notes.add(
+                        survey.filled().contains(l.key())
+                                ? name + ": can't order filled containers/bundles"
+                                : survey.staleOnly().contains(l.key())
+                                        ? name + ": only in containers I couldn't read again"
+                                        : survey.why().containsKey(l.key())
+                                                ? name + ": only "
+                                                        + survey.why().get(l.key())
+                                                : name + ": none usable in the stash");
                 continue;
             }
 
@@ -475,7 +506,8 @@ final class OrderRunner {
                 int take = Math.min(l.count(), have);
                 emptiesByKey.put(l.key(), have - take);
                 for (int i = 0; i < take; i++) emptyUnits.add(new Unit(Kind.Empty, l.key(), List.of()));
-                if (take < l.count()) notes.add(StashIndex.nameOf(l.key()) + ": only " + take + " of " + l.count() + " free");
+                if (take < l.count())
+                    notes.add(StashIndex.nameOf(l.key()) + ": only " + take + " of " + l.count() + " free");
                 continue;
             }
 
@@ -483,21 +515,25 @@ final class OrderRunner {
             left.put(l.key(), left.getOrDefault(l.key(), 0L) - usable);
             if (usable < l.count()) {
                 String reason = survey.why().get(l.key());
-                notes.add(StashIndex.nameOf(l.key()) + ": only " + usable + " of " + l.count() + " usable" + (reason == null ? "" : " (the rest " + reason + ")"));
+                notes.add(StashIndex.nameOf(l.key()) + ": only " + usable + " of " + l.count() + " usable"
+                        + (reason == null ? "" : " (the rest " + reason + ")"));
             }
             if (usable <= 0) continue;
 
             // Stacks that differ in any component (ViaVersion's marker, say) can't share a slot, so each stack of the
             // line is taken from one variant (the smallest that has enough, else the biggest) and may be split over two
             int max = Math.max(1, sample.getMaxStackSize());
-            List<Order.Lot> mine = allocate(l.key(), usable, max, survey.variants().getOrDefault(l.key(), List.of()), used);
+            List<Order.Lot> mine =
+                    allocate(l.key(), usable, max, survey.variants().getOrDefault(l.key(), List.of()), used);
             stacks += mine.size();
-            if (stacks > (long) Order.MAX_BINS * Order.SLOTS) return "too big: that is more than " + Order.MAX_BINS + " shulkers";
+            if (stacks > (long) Order.MAX_BINS * Order.SLOTS)
+                return "too big: that is more than " + Order.MAX_BINS + " shulkers";
             lots.addAll(mine);
         }
 
         List<List<Order.Lot>> bins = Order.pack(lots);
-        if (shulkerUnits.size() + emptyUnits.size() + bins.size() > Order.MAX_BINS) return "too big: that is more than " + Order.MAX_BINS + " shulkers";
+        if (shulkerUnits.size() + emptyUnits.size() + bins.size() > Order.MAX_BINS)
+            return "too big: that is more than " + Order.MAX_BINS + " shulkers";
 
         plan.addAll(shulkerUnits);
         plan.addAll(emptyUnits);
@@ -532,7 +568,8 @@ final class OrderRunner {
             int got = have.getOrDefault(e.getKey(), 0);
             asked += Math.min(e.getValue(), got);
             if (got >= e.getValue()) continue;
-            if (!e.getKey().equals(SHULKER_BOX)) return "need " + e.getValue() + " empty shulkers of one kind, have " + got;
+            if (!e.getKey().equals(SHULKER_BOX))
+                return "need " + e.getValue() + " empty shulkers of one kind, have " + got;
             plainShort += e.getValue() - got;
             if (old == null) old = "need " + e.getValue() + " empty shulkers of one kind, have " + got;
         }
@@ -546,7 +583,11 @@ final class OrderRunner {
         if (blocked != null) return old + "; couldn't craft: " + blocked;
         var result = owner.crafter().preview(SHULKER_BOX, shortfall, craftedTotal, craftPool(remaining), true);
         if (!result.ok()) return old + "; couldn't craft: " + result.refusal();
-        if (result.plan().count() < shortfall) return old + "; couldn't craft enough: " + (result.plan().limited() == null ? CraftPlanner.NOT_ENOUGH : result.plan().limited());
+        if (result.plan().count() < shortfall)
+            return old + "; couldn't craft enough: "
+                    + (result.plan().limited() == null
+                            ? CraftPlanner.NOT_ENOUGH
+                            : result.plan().limited());
         return null;
     }
 
@@ -589,7 +630,8 @@ final class OrderRunner {
     /** The index keys of the lots the units still to do need: stacks of these are the last to be taken for a craft. */
     Set<String> lotKeys() {
         Set<String> keys = new HashSet<>();
-        for (int i = Math.max(0, index); i < units.size(); i++) for (Order.Lot lot : units.get(i).lots) keys.add(lot.key());
+        for (int i = Math.max(0, index); i < units.size(); i++)
+            for (Order.Lot lot : units.get(i).lots) keys.add(lot.key());
         return keys;
     }
 
@@ -638,7 +680,9 @@ final class OrderRunner {
      */
     private Intent craftFor(Unit u, int pending) {
         if (!owner.craftingOn()) return null;
-        String why = craftFailure != null ? craftFailure : u.craftTries >= MAX_CRAFT_TRIES ? "tries used up" : owner.craftBlocker();
+        String why = craftFailure != null
+                ? craftFailure
+                : u.craftTries >= MAX_CRAFT_TRIES ? "tries used up" : owner.craftBlocker();
         if (why != null) {
             skip("no empty shulker; couldn't craft one: " + why);
             return new Idle();
@@ -710,16 +754,17 @@ final class OrderRunner {
                 lastStale = stale;
                 rereadProgressAt = now;
             }
-            if (now - rereadProgressAt > REREAD_TIMEOUT_MS) finish(State.Failed, "the containers could not be read again in time");
+            if (now - rereadProgressAt > REREAD_TIMEOUT_MS)
+                finish(State.Failed, "the containers could not be read again in time");
         }
         if (state == State.Running) {
             if (!owner.gate()) {
                 long now = System.currentTimeMillis();
                 if (pausedSince == 0) pausedSince = now;
-                else if (now - pausedSince > PAUSE_TIMEOUT_MS) finish(State.Failed, "the sorter was stopped or paused for too long");
+                else if (now - pausedSince > PAUSE_TIMEOUT_MS)
+                    finish(State.Failed, "the sorter was stopped or paused for too long");
                 if (cancelRequested && !kits.active()) finish(State.Cancelled, "cancelled");
-            }
-            else pausedSince = 0;
+            } else pausedSince = 0;
         }
         String status = switch (state) {
             case Running -> "in_progress";
@@ -728,7 +773,15 @@ final class OrderRunner {
             case Cancelled -> "cancelled";
         };
         String shown = state == State.Running && owner.rereading() ? "re-reading containers" : phase;
-        return new Report(order.id, status, shown, Math.min(index, units.size()), units.size(), message, shulkersDelivered, new LinkedHashMap<>(delivered));
+        return new Report(
+                order.id,
+                status,
+                shown,
+                Math.min(index, units.size()),
+                units.size(),
+                message,
+                shulkersDelivered,
+                new LinkedHashMap<>(delivered));
     }
 
     /** What the server asked for, per line key. */
@@ -737,7 +790,11 @@ final class OrderRunner {
     }
 
     String info() {
-        return order == null ? null : state == State.Running ? "order " + index + "/" + units.size() : state.name().toLowerCase();
+        return order == null
+                ? null
+                : state == State.Running
+                        ? "order " + index + "/" + units.size()
+                        : state.name().toLowerCase();
     }
 
     // Shulkers that belong to the order
@@ -785,7 +842,9 @@ final class OrderRunner {
     }
 
     private static String keyOf(Unit u, ItemStack stack) {
-        return u.kind == Kind.Shulker ? StashIndex.groupKey(stack) : u.kind == Kind.Empty ? StashIndex.keyOf(stack) : null;
+        return u.kind == Kind.Shulker
+                ? StashIndex.groupKey(stack)
+                : u.kind == Kind.Empty ? StashIndex.keyOf(stack) : null;
     }
 
     /**
@@ -817,7 +876,12 @@ final class OrderRunner {
     private void saveUnit(Unit u) {
         Stash stash = owner.stash();
         int i = units.indexOf(u);
-        if (stash == null || order == null || stash.activeOrder == null || !stash.activeOrder.id.equals(order.id) || i < 0 || i >= stash.activeOrder.units.size()) return;
+        if (stash == null
+                || order == null
+                || stash.activeOrder == null
+                || !stash.activeOrder.id.equals(order.id)
+                || i < 0
+                || i >= stash.activeOrder.units.size()) return;
         Stash.ActiveOrder.UnitPlan p = stash.activeOrder.units.get(i);
         p.nameDone = u.nameDone;
         p.named = u.named;
@@ -836,11 +900,13 @@ final class OrderRunner {
         if (order.protectedRoots.getOrDefault(source, Set.of()).contains(slot)) return false;
         if (order.allocatedRoots.getOrDefault(source, Set.of()).contains(slot) || stack.isEmpty()) return true;
         try {
-            for (var entry : com.porter.wesort.compat.SlotRuntime.snapshot(new ItemStack[]{stack}).located()) {
+            for (var entry : com.porter.wesort.compat.SlotRuntime.snapshot(new ItemStack[] {stack})
+                    .located()) {
                 var item = entry.stack().item();
                 for (var wanted : order.lines) {
                     if (wanted.type().equals(Order.ITEM) && wanted.key().equals(item.key())
-                        || wanted.type().equals(Order.SHULKER) && wanted.key().equals(item.group())) return false;
+                            || wanted.type().equals(Order.SHULKER)
+                                    && wanted.key().equals(item.group())) return false;
                 }
             }
             return true;
@@ -854,8 +920,9 @@ final class OrderRunner {
     }
 
     boolean mayTakeFrom(Box box, int slot) {
-        return !hasPhysicalAllocation() || mayTakeFrom(com.porter.wesort.compat.ObservationRuntime.sourceId(box.parts),
-            slot, box.contents[slot]);
+        return !hasPhysicalAllocation()
+                || mayTakeFrom(
+                        com.porter.wesort.compat.ObservationRuntime.sourceId(box.parts), slot, box.contents[slot]);
     }
 
     /** The id of the order in hand, or null. */
@@ -915,7 +982,8 @@ final class OrderRunner {
     private Box recheckBox(DeliveryRoom room) {
         Stash stash = owner.stash();
         if (stash == null || room.recheck() == null) return null;
-        return stash.boxAt(new BlockPos(room.recheck().x(), room.recheck().y(), room.recheck().z()));
+        return stash.boxAt(new BlockPos(
+                room.recheck().x(), room.recheck().y(), room.recheck().z()));
     }
 
     /** The shulker is no longer carried: the open container is checked for it. */
@@ -924,7 +992,8 @@ final class OrderRunner {
         Unit u = units.get(index);
         if (u.have && countIn(u, contents) > u.base) u.confirmed = true;
         // It reached the container with the name: it was named, whatever was noted about it before
-        if (u.name != null && !u.named) for (ItemStack s : contents) if (matches(u, s) && isOurName(u, s)) u.named = true;
+        if (u.name != null && !u.named)
+            for (ItemStack s : contents) if (matches(u, s) && isOurName(u, s)) u.named = true;
     }
 
     private int countIn(Unit u, ItemStack[] contents) {
@@ -994,7 +1063,9 @@ final class OrderRunner {
 
             Box delivery = deliveryBox();
             if (delivery == null || delivery.unreachable) {
-                finish(shulkersDelivered > 0 ? State.Delivered : State.Failed, delivery == null ? "the delivery container is gone" : "couldn't reach the delivery container");
+                finish(
+                        shulkersDelivered > 0 ? State.Delivered : State.Failed,
+                        delivery == null ? "the delivery container is gone" : "couldn't reach the delivery container");
                 return new Idle();
             }
 
@@ -1010,34 +1081,42 @@ final class OrderRunner {
                 u.confirmed = false;
                 u.verifying = false;
                 // It already shows the name (an earlier try that looked like a failure, a resume): named
-                if (u.name != null && !u.named && isOurName(u, mc.player.getInventory().getItem(slot))) noteNamed(u, mc.player.getInventory().getItem(slot));
+                if (u.name != null
+                        && !u.named
+                        && isOurName(u, mc.player.getInventory().getItem(slot)))
+                    noteNamed(u, mc.player.getInventory().getItem(slot));
                 if (!u.nameDone) {
                     Intent rename = naming(u, slot);
                     if (rename != null) return rename;
                     if (!running()) return new Idle();
                 }
-                // A required label cannot be skipped after missing XP/anvil, restart,
-                // late inventory readback or an ambiguous rename response.
-                if (order.requiredPackageLabels && (!u.named || !isOurName(u, mc.player.getInventory().getItem(slot)))) {
-                    finish(State.Failed, "Required package label has no verified inventory readback (box " + (index + 1) + ")");
+                // Do not deliver an unverified required label after missing XP,
+                // missing anvil, a retry or an ambiguous rename response.
+                if (order.requiredPackageLabels
+                        && (!u.named || !isOurName(u, mc.player.getInventory().getItem(slot)))) {
+                    finish(State.Failed,
+                            "Required package label has no verified inventory readback (box " + (index + 1) + ")");
                     return new Idle();
                 }
                 if (full) {
                     full = false;
                     u.fullTries++;
                 }
-                // The delivery storage: which chest has room, a chest a player may have emptied to look at, another to put up, or wait
+                // The delivery storage: which chest has room, a chest a player may have emptied to look at, another to
+                // put up, or wait
                 DeliveryRoom room = owner.deliveryRoom();
                 if (room.kind() == DeliveryRoom.Kind.RECHECK || room.kind() == DeliveryRoom.Kind.EXPAND) {
                     long at = System.currentTimeMillis();
-                    if (at < spinHoldUntil) room = DeliveryRoom.waitFor("delivery storage full: could not start looking at or building a chest");
+                    if (at < spinHoldUntil)
+                        room = DeliveryRoom.waitFor(
+                                "delivery storage full: could not start looking at or building a chest");
                     else if (++u.spins > MAX_SPINS) {
                         spinHoldUntil = at + SPIN_HOLD_MS;
                         u.spins = 0;
-                        room = DeliveryRoom.waitFor("delivery storage full: could not start looking at or building a chest");
+                        room = DeliveryRoom.waitFor(
+                                "delivery storage full: could not start looking at or building a chest");
                     }
-                }
-                else if (room.kind() == DeliveryRoom.Kind.ROOM) {
+                } else if (room.kind() == DeliveryRoom.Kind.ROOM) {
                     u.expands = 0;
                     u.spins = 0;
                 }
@@ -1065,7 +1144,8 @@ final class OrderRunner {
                     }
                     room = DeliveryRoom.waitFor("delivery storage full: could not put another chest up");
                 }
-                SpaceWait.Decision wait = spaceWait.step(System.currentTimeMillis(), room, shulkersDelivered, units.size());
+                SpaceWait.Decision wait =
+                        spaceWait.step(System.currentTimeMillis(), room, shulkersDelivered, units.size());
                 if (wait != null) {
                     if (wait.timedOut()) {
                         finish(shulkersDelivered > 0 ? State.Delivered : State.Failed, wait.endMessage());
@@ -1075,11 +1155,16 @@ final class OrderRunner {
                     return new Idle();
                 }
                 if (u.fullTries >= MAX_FULL_TRIES + Math.max(0, owner.deliveryChests() - 1)) {
-                    finish(shulkersDelivered > 0 ? State.Delivered : State.Failed, "delivery container full (" + shulkersDelivered + "/" + units.size() + ")");
+                    finish(
+                            shulkersDelivered > 0 ? State.Delivered : State.Failed,
+                            "delivery container full (" + shulkersDelivered + "/" + units.size() + ")");
                     return new Idle();
                 }
                 if (++u.starts > MAX_STARTS) {
-                    finish(shulkersDelivered > 0 ? State.Delivered : State.Failed, "couldn't put the shulker into the delivery container (" + shulkersDelivered + "/" + units.size() + " staged)");
+                    finish(
+                            shulkersDelivered > 0 ? State.Delivered : State.Failed,
+                            "couldn't put the shulker into the delivery container (" + shulkersDelivered + "/"
+                                    + units.size() + " staged)");
                     return new Idle();
                 }
                 phase = "delivering " + (index + 1) + "/" + units.size();
@@ -1098,16 +1183,14 @@ final class OrderRunner {
                         if (!unnamedReasons.contains(reason)) unnamedReasons.add(reason);
                     }
                     advance();
-                }
-                else if (!u.verified) {
+                } else if (!u.verified) {
                     // Not seen in the container yet: look once more, in a freshly opened window, before giving up on it
                     u.verified = true;
                     u.verifying = true;
                     phase = "checking delivery " + (index + 1) + "/" + units.size();
                     Box chest = owner.deliveryChest(true);
                     return new Deliver(chest != null ? chest : delivery);
-                }
-                else {
+                } else {
                     skip("a shulker left my inventory but wasn't seen in the delivery container");
                 }
                 continue;
@@ -1120,7 +1203,9 @@ final class OrderRunner {
                 }
                 if (!kits.active()) {
                     // No empty shulker to build in: one is crafted, when crafting is on
-                    if (owner.craftingOn() && owner.crafter().craftedBase() < 0 && kits.emptyShulkers().isEmpty()) {
+                    if (owner.craftingOn()
+                            && owner.crafter().craftedBase() < 0
+                            && kits.emptyShulkers().isEmpty()) {
                         Intent craft = craftFor(u, pendingEmpties());
                         if (craft instanceof Idle) continue;
                         if (craft != null) return craft;
@@ -1135,8 +1220,7 @@ final class OrderRunner {
                         skip("couldn't start building a shulker (" + u.kit.name + ")");
                         continue;
                     }
-                }
-                else if (kits.kit() != u.kit) {
+                } else if (kits.kit() != u.kit) {
                     // Left over from another unit
                     kits.dropOrderKit();
                     continue;
@@ -1160,7 +1244,8 @@ final class OrderRunner {
                         phase = "re-reading containers";
                         return new Idle();
                     }
-                    // Items missing from where they were saved (the containers were read again since): planned once more from
+                    // Items missing from where they were saved (the containers were read again since): planned once
+                    // more from
                     // what the stash holds now, trimmed to it, before the unit is given up on
                     if (!u.replanned) {
                         u.replanned = true;
@@ -1187,7 +1272,10 @@ final class OrderRunner {
                 if (craft != null) return craft;
             }
             if (fetch == null) {
-                skip(u.kind == Kind.Shulker ? "a packed shulker is no longer in the stash" : "no empty shulker of that kind is left");
+                skip(
+                        u.kind == Kind.Shulker
+                                ? "a packed shulker is no longer in the stash"
+                                : "no empty shulker of that kind is left");
                 continue;
             }
             u.fetches++;
@@ -1212,7 +1300,8 @@ final class OrderRunner {
             return null;
         }
         String why = !Order.valid(u.name) ? "a name that breaks the rules" : null;
-        // No anvil set or remembered, or it is gone: one is found in the area, or taken from the stash and placed (once per
+        // No anvil set or remembered, or it is gone: one is found in the area, or taken from the stash and placed (once
+        // per
         // shulker). When that fails the shulker goes unnamed with the reason, and so do the rest of the order's
         if (why == null && owner.anvilMissing()) {
             if (anvilNone || u.anvilTries >= 1) why = AnvilFinder.NONE;
@@ -1280,7 +1369,8 @@ final class OrderRunner {
     }
 
     /** Slot loads for a line of {@code total} items: one stack at a time, each from the best fitting variant. */
-    private static List<Order.Lot> allocate(String key, long total, int max, List<Variant> variants, Map<Variant, Long> used) {
+    private static List<Order.Lot> allocate(
+            String key, long total, int max, List<Variant> variants, Map<Variant, Long> used) {
         List<Order.Lot> out = new ArrayList<>();
         long remaining = total;
         while (remaining > 0) {
@@ -1306,8 +1396,10 @@ final class OrderRunner {
         for (Order.Lot lot : u.lots) keys.add(lot.key());
         Survey survey = survey(stash, keys);
 
-        // Each slot is filled from one exact variant: the smallest that has enough for the load, else the biggest; a load
-        // that outgrows it carries on in another slot from the next variant. What does not fit in the 27 slots, or is not
+        // Each slot is filled from one exact variant: the smallest that has enough for the load, else the biggest; a
+        // load
+        // that outgrows it carries on in another slot from the next variant. What does not fit in the 27 slots, or is
+        // not
         // there, is left out and reported, not moved to another shulker, so the shulkers keep the plan
         Map<Variant, Long> used = new java.util.IdentityHashMap<>();
         ItemStack[] stacks = new ItemStack[Kit.SLOTS];
@@ -1334,14 +1426,19 @@ final class OrderRunner {
                 want -= take;
             }
         }
-        for (var e : dropped.entrySet()) problems.add(StashIndex.nameOf(e.getKey()) + ": " + e.getValue() + " didn't fit in the shulker (mixed variants)");
+        for (var e : dropped.entrySet())
+            problems.add(StashIndex.nameOf(e.getKey()) + ": " + e.getValue()
+                    + " didn't fit in the shulker (mixed variants)");
         for (var e : missing.entrySet()) {
             String reason = survey.why().get(e.getKey());
-            problems.add(StashIndex.nameOf(e.getKey()) + ": " + e.getValue() + " missing, not enough of any one variant left" + (reason == null ? "" : " (some " + reason + ")"));
+            problems.add(
+                    StashIndex.nameOf(e.getKey()) + ": " + e.getValue() + " missing, not enough of any one variant left"
+                            + (reason == null ? "" : " (some " + reason + ")"));
         }
         if (n == 0) return null;
 
-        // What the kit builder can really take may differ from this survey (it has its own scan of the same stash): a lot it
+        // What the kit builder can really take may differ from this survey (it has its own scan of the same stash): a
+        // lot it
         // cannot supply is dropped, so the lots that can be supplied still pack and ship short, with a note
         Kit probe = new Kit("order " + order.id + " #" + (index + 1), stacks, true);
         Map<Kit.Key, Integer> supply = kits.supply(probe);
@@ -1355,10 +1452,12 @@ final class OrderRunner {
             int have = left.getOrDefault(key, 0);
             int take = Math.min(st.getCount(), have);
             left.put(key, have - take);
-            if (take < st.getCount()) cut.merge(StashIndex.nameOf(StashIndex.keyOf(st)), st.getCount() - take, Integer::sum);
+            if (take < st.getCount())
+                cut.merge(StashIndex.nameOf(StashIndex.keyOf(st)), st.getCount() - take, Integer::sum);
             if (take > 0) trimmed[m++] = st.copyWithCount(take);
         }
-        for (var e : cut.entrySet()) problems.add(e.getKey() + ": " + e.getValue() + " couldn't be taken out of the stash, shipped short");
+        for (var e : cut.entrySet())
+            problems.add(e.getKey() + ": " + e.getValue() + " couldn't be taken out of the stash, shipped short");
         if (m == 0) return null;
         return m == n && cut.isEmpty() ? probe : new Kit(probe.name, trimmed, true);
     }
@@ -1455,7 +1554,8 @@ final class OrderRunner {
 
         boolean named = owner.namedShulkers();
         for (Box box : stash.boxes) {
-            // The same sources the kit builder takes from: kit chests and chests for whole shulkers only when named shulkers
+            // The same sources the kit builder takes from: kit chests and chests for whole shulkers only when named
+            // shulkers
             // may be used (an order asks for the item on purpose)
             String skip = null;
             if (box.foreign) skip = "in a container outside the stash area";
@@ -1478,10 +1578,14 @@ final class OrderRunner {
                 if (s.isEmpty()) continue;
                 count(targetSamples, targetAvailable, targetRaw, filled, wanted, ids, s);
                 if (Utils.isShulker(s.getItem())) {
-                    if (s.has(DataComponents.CUSTOM_NAME) && !named) why(why, wanted, ids, s, "in a named shulker (use-named-shulkers is off)");
-                    else if (Kits.claims(s) || claims(s) || kits.heldKit(s) != null) why(why, wanted, ids, s, "in a shulker claimed by a saved kit");
+                    if (s.has(DataComponents.CUSTOM_NAME) && !named)
+                        why(why, wanted, ids, s, "in a named shulker (use-named-shulkers is off)");
+                    else if (Kits.claims(s) || claims(s) || kits.heldKit(s) != null)
+                        why(why, wanted, ids, s, "in a shulker claimed by a saved kit");
                     else {
-                        for (ItemStack in : Kits.inside(s)) if (in != null && !in.isEmpty()) count(targetSamples, targetAvailable, targetRaw, filled, wanted, ids, in);
+                        for (ItemStack in : Kits.inside(s))
+                            if (in != null && !in.isEmpty())
+                                count(targetSamples, targetAvailable, targetRaw, filled, wanted, ids, in);
                     }
                 }
             }
@@ -1516,10 +1620,21 @@ final class OrderRunner {
     private static final Map<net.minecraft.world.item.Item, String> ITEM_IDS = new HashMap<>();
 
     private static String idOf(ItemStack s) {
-        return ITEM_IDS.computeIfAbsent(s.getItem(), i -> net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(i).toString());
+        return ITEM_IDS.computeIfAbsent(
+                s.getItem(),
+                i -> net.minecraft.core.registries.BuiltInRegistries.ITEM
+                        .getKey(i)
+                        .toString());
     }
 
-    private static void count(Map<String, ItemStack> samples, Map<String, Long> available, Map<String, Map<RawKey, Variant>> raw, Set<String> filled, Set<String> wanted, Set<String> ids, ItemStack s) {
+    private static void count(
+            Map<String, ItemStack> samples,
+            Map<String, Long> available,
+            Map<String, Map<RawKey, Variant>> raw,
+            Set<String> filled,
+            Set<String> wanted,
+            Set<String> ids,
+            ItemStack s) {
         if (!ids.contains(idOf(s))) return;
         String key = StashIndex.keyOf(s);
         if (key == null || !wanted.contains(key)) return;
@@ -1532,7 +1647,8 @@ final class OrderRunner {
         available.merge(key, (long) s.getCount(), Long::sum);
 
         ItemStack one = s.copyWithCount(1);
-        Variant v = raw.computeIfAbsent(key, k -> new HashMap<>()).computeIfAbsent(new RawKey(one.getItem(), one.getComponents()), k -> new Variant(one));
+        Variant v = raw.computeIfAbsent(key, k -> new HashMap<>())
+                .computeIfAbsent(new RawKey(one.getItem(), one.getComponents()), k -> new Variant(one));
         v.count += s.getCount();
     }
 
@@ -1550,13 +1666,23 @@ final class OrderRunner {
         List<String> shortLines = new ArrayList<>();
         for (var e : asked.entrySet()) {
             int got = delivered.getOrDefault(e.getKey(), 0);
-            if (got < e.getValue()) shortLines.add(StashIndex.nameOf(e.getKey().startsWith("s:") ? "minecraft:shulker_box" : e.getKey()) + " " + got + "/" + e.getValue());
+            if (got < e.getValue())
+                shortLines.add(StashIndex.nameOf(e.getKey().startsWith("s:") ? "minecraft:shulker_box" : e.getKey())
+                        + " " + got + "/" + e.getValue());
         }
 
-        String note = shortLines.isEmpty() ? "" : "staged less than requested: " + String.join(", ", shortLines.size() > 6 ? shortLines.subList(0, 6) : shortLines) + (shortLines.size() > 6 ? ", ..." : "");
-        if (!problems.isEmpty()) note += (note.isEmpty() ? "" : "; ") + String.join(", ", problems.size() > 3 ? problems.subList(0, 3) : problems);
+        String note = shortLines.isEmpty()
+                ? ""
+                : "staged less than requested: "
+                        + String.join(", ", shortLines.size() > 6 ? shortLines.subList(0, 6) : shortLines)
+                        + (shortLines.size() > 6 ? ", ..." : "");
+        if (!problems.isEmpty())
+            note += (note.isEmpty() ? "" : "; ")
+                    + String.join(", ", problems.size() > 3 ? problems.subList(0, 3) : problems);
         boolean anything = shulkersDelivered > 0;
-        finish(anything ? State.Delivered : State.Failed, anything ? note : (note.isEmpty() ? "nothing could be staged" : "nothing could be staged: " + note));
+        finish(
+                anything ? State.Delivered : State.Failed,
+                anything ? note : (note.isEmpty() ? "nothing could be staged" : "nothing could be staged: " + note));
     }
 
     private void finish(State end, String text) {
@@ -1567,7 +1693,8 @@ final class OrderRunner {
         owner.crafter().release();
         if (craftedTotal > 0) text = (text.isEmpty() ? "" : text + "; ") + "crafted " + craftedTotal + " Shulker Box";
         String unnamedNote = Order.unnamedNote(unnamed, unnamedReasons);
-        if (!unnamedNote.isEmpty() && !text.contains(unnamedNote)) text = text.isEmpty() ? unnamedNote : text + "; " + unnamedNote;
+        if (!unnamedNote.isEmpty() && !text.contains(unnamedNote))
+            text = text.isEmpty() ? unnamedNote : text + "; " + unnamedNote;
         text = cut(text);
         message = text;
         phase = end == State.Delivered ? "ready for pickup" : end.name().toLowerCase();

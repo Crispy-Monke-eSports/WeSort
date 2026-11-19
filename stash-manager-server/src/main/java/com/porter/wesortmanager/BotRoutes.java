@@ -4,7 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
-
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -23,9 +22,10 @@ final class BotRoutes {
     static final Pattern SCOPE = Pattern.compile("^plugin$");
     /** Setting paths that are treated as secrets whatever the bot says (DASHBOARD-DESIGN.md, "Secrets are never sent"). */
     static final Pattern SECRET_PATH = Pattern.compile(
-        "(?i)token|passw|pass|pwd|secret|api_?key|key|auth|bearer|jwt|session|cookie|credential|cred|private|licen[sc]e|dsn|salt|signature|webhook|topic");
+            "(?i)token|passw|pass|pwd|secret|api_?key|key|auth|bearer|jwt|session|cookie|credential|cred|private|licen[sc]e|dsn|salt|signature|webhook|topic");
     /** A URL with user info ("scheme://user:pass@host"): the value itself is a secret. */
     static final Pattern URL_USERINFO = Pattern.compile("(?i)^[a-z][a-z0-9+.-]*://[^/@\\s]+@");
+
     static final Set<String> TYPES = Set.of("group", "bool", "int", "long", "double", "string", "enum", "stringList");
     private static final int MAX_NODES = 5000;
     private static final int MAX_DEPTH = 12;
@@ -49,13 +49,13 @@ final class BotRoutes {
 
     void register(Router router) {
         router.exact(Router.POST, "/api/v1/bot/hello", Router.Guard.ADDON_KEY, this::hello)
-            .exact(Router.POST, "/api/v1/bot/state", Router.Guard.ADDON_KEY, this::state)
-            .exact(Router.GET, "/api/v1/bot/next", Router.Guard.ADDON_KEY, this::next)
-            .exact(Router.POST, "/api/v1/bot/next", Router.Guard.ADDON_KEY, this::nextNow)
-            .exact(Router.POST, "/api/v1/bot/results", Router.Guard.ADDON_KEY, this::results)
-            .exact(Router.POST, "/api/v1/bot/manifest", Router.Guard.ADDON_KEY, this::manifest)
-            .exact(Router.POST, "/api/v1/bot/manifest/ack", Router.Guard.ADDON_KEY, this::acknowledgeManifest)
-            .exact(Router.POST, "/api/v1/bot/activity", Router.Guard.ADDON_KEY, this::activity);
+                .exact(Router.POST, "/api/v1/bot/state", Router.Guard.ADDON_KEY, this::state)
+                .exact(Router.GET, "/api/v1/bot/next", Router.Guard.ADDON_KEY, this::next)
+                .exact(Router.POST, "/api/v1/bot/next", Router.Guard.ADDON_KEY, this::nextNow)
+                .exact(Router.POST, "/api/v1/bot/results", Router.Guard.ADDON_KEY, this::results)
+                .exact(Router.POST, "/api/v1/bot/manifest", Router.Guard.ADDON_KEY, this::manifest)
+                .exact(Router.POST, "/api/v1/bot/manifest/ack", Router.Guard.ADDON_KEY, this::acknowledgeManifest)
+                .exact(Router.POST, "/api/v1/bot/activity", Router.Guard.ADDON_KEY, this::activity);
     }
 
     private static JsonObject body(HttpExchange ex) throws IOException {
@@ -107,11 +107,13 @@ final class BotRoutes {
                 return;
             }
             for (JsonElement c : o.getAsJsonArray("caps")) {
-                if (!c.isJsonPrimitive() || !c.getAsJsonPrimitive().isString() || c.getAsString().length() > 32) {
+                if (!c.isJsonPrimitive()
+                        || !c.getAsJsonPrimitive().isString()
+                        || c.getAsString().length() > 32) {
                     Http.error(ex, 400, "caps must be an array of strings");
                     return;
                 }
-                if (List.of("settings", "activity").contains(c.getAsString())) caps.add(c.getAsString());
+                caps.add(c.getAsString());
             }
         }
         List<String> scopes = new ArrayList<>();
@@ -121,7 +123,9 @@ final class BotRoutes {
                 return;
             }
             for (JsonElement sc : o.getAsJsonArray("scopes")) {
-                if (!sc.isJsonPrimitive() || !sc.getAsJsonPrimitive().isString() || !SCOPE.matcher(sc.getAsString()).matches()) {
+                if (!sc.isJsonPrimitive()
+                        || !sc.getAsJsonPrimitive().isString()
+                        || !SCOPE.matcher(sc.getAsString()).matches()) {
                     Http.error(ex, 400, "scopes must be plugin");
                     return;
                 }
@@ -143,8 +147,12 @@ final class BotRoutes {
         }
         int status = hub.register(botId, player, plugin, runtime, caps, scopes, controlSession, manifestScope);
         if (status != 200) {
-            Http.error(ex, status, status == 409 ? "Bot already has an active control session"
-                : "Too many bots (limit " + BotHub.MAX_BOTS + ")");
+            Http.error(
+                    ex,
+                    status,
+                    status == 409
+                            ? "Bot already has an active control session"
+                            : "Too many bots (limit " + BotHub.MAX_BOTS + ")");
             return;
         }
         JsonObject out = Http.ok();
@@ -165,9 +173,17 @@ final class BotRoutes {
         String stash = AddonRoutes.string(scope, "stash");
         String dimension = AddonRoutes.string(scope, "dimension");
         String agent = AddonRoutes.string(scope, "agent");
-        if (server == null || server.isBlank() || server.length() > 256 || stash == null || stash.isBlank() || stash.length() > 128
-            || dimension == null || dimension.length() > 128 || !dimension.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")
-            || agent == null || !agent.matches("[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")) return null;
+        if (server == null
+                || server.isBlank()
+                || server.length() > 256
+                || stash == null
+                || stash.isBlank()
+                || stash.length() > 128
+                || dimension == null
+                || dimension.length() > 128
+                || !dimension.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")
+                || agent == null
+                || !agent.matches("[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")) return null;
         return new BotHub.ManifestScope(server, stash, dimension, agent, player);
     }
 
@@ -195,14 +211,17 @@ final class BotRoutes {
     private BotHub.ManifestScope authorizedManifestScope(HttpExchange ex, JsonObject request) throws IOException {
         var bot = known(ex, AddonRoutes.string(request, "botId"));
         if (bot == null) return null;
-        var scope = currentManifestScope(bot, AddonRoutes.string(request, "controlSession"), AddonRoutes.string(request, "controlEpoch"));
+        var scope = currentManifestScope(
+                bot, AddonRoutes.string(request, "controlSession"), AddonRoutes.string(request, "controlEpoch"));
         if (scope == null) Http.error(ex, 404, "No manifest in this scope");
         return scope;
     }
 
     private BotHub.ManifestScope currentManifestScope(BotHub.Bot bot, String session, String epoch) {
         var scope = hub.manifestScope(bot, session, epoch);
-        return scope != null && scope.player().equalsIgnoreCase(owners.owner(scope.server(), scope.stash())) ? scope : null;
+        return scope != null && scope.player().equalsIgnoreCase(owners.owner(scope.server(), scope.stash()))
+                ? scope
+                : null;
     }
 
     private void acknowledgeManifest(HttpExchange ex) throws IOException {
@@ -218,7 +237,8 @@ final class BotRoutes {
         if (scope == null) return;
         try {
             var receipt = orders.acknowledgeManifest(id, scope, hash);
-            if (receipt.changed()) audit.add(scope.agent(), scope.player(), "agent.manifest.confirmed", id, AuthRoutes.address(ex));
+            if (receipt.changed())
+                audit.add(scope.agent(), scope.player(), "agent.manifest.confirmed", id, AuthRoutes.address(ex));
             var out = Http.ok();
             out.addProperty("orderId", id);
             out.addProperty("manifestHash", hash);
@@ -259,11 +279,18 @@ final class BotRoutes {
             Http.error(ex, 400, "scope must be plugin");
             return;
         }
-        if (schemaHash == null || schemaHash.isEmpty() || schemaHash.length() > 128 || valuesHash == null || valuesHash.isEmpty() || valuesHash.length() > 128) {
+        if (schemaHash == null
+                || schemaHash.isEmpty()
+                || schemaHash.length() > 128
+                || valuesHash == null
+                || valuesHash.isEmpty()
+                || valuesHash.length() > 128) {
             Http.error(ex, 400, "schemaHash and valuesHash must be short strings");
             return;
         }
-        if (!o.has("values") || !o.get("values").isJsonObject() || o.getAsJsonObject("values").size() > MAX_VALUES) {
+        if (!o.has("values")
+                || !o.get("values").isJsonObject()
+                || o.getAsJsonObject("values").size() > MAX_VALUES) {
             Http.error(ex, 400, "values must be an object");
             return;
         }
@@ -314,9 +341,15 @@ final class BotRoutes {
             String path = e.getKey();
             JsonObject node = nodes == null ? null : nodes.get(path);
             boolean secret = SECRET_PATH.matcher(path).find()
-                || (node != null && node.has("secret") && node.get("secret").isJsonPrimitive() && node.get("secret").getAsBoolean());
+                    || (node != null
+                            && node.has("secret")
+                            && node.get("secret").isJsonPrimitive()
+                            && node.get("secret").getAsBoolean());
             JsonElement v = e.getValue();
-            if (!secret && v.isJsonPrimitive() && v.getAsJsonPrimitive().isString() && URL_USERINFO.matcher(v.getAsString()).find()) {
+            if (!secret
+                    && v.isJsonPrimitive()
+                    && v.getAsJsonPrimitive().isString()
+                    && URL_USERINFO.matcher(v.getAsString()).find()) {
                 secret = true;
                 if (node != null) {
                     node.addProperty("secret", true);
@@ -341,25 +374,39 @@ final class BotRoutes {
             String type = AddonRoutes.string(n, "type");
             if (path == null || path.isEmpty() || path.length() > MAX_PATH) return "every node needs a path";
             if (type == null || !TYPES.contains(type)) return path + ": unknown type";
-            for (String f : new String[]{"label", "help", "reason", "section"}) {
-                if (n.has(f) && !n.get(f).isJsonNull() && (AddonRoutes.string(n, f) == null || AddonRoutes.string(n, f).length() > MAX_TEXT)) {
+            for (String f : new String[] {"label", "help", "reason", "section"}) {
+                if (n.has(f)
+                        && !n.get(f).isJsonNull()
+                        && (AddonRoutes.string(n, f) == null
+                                || AddonRoutes.string(n, f).length() > MAX_TEXT)) {
                     return path + ": " + f + " must be a short string";
                 }
             }
-            for (String f : new String[]{"min", "max"}) {
-                if (n.has(f) && !(n.get(f).isJsonPrimitive() && n.get(f).getAsJsonPrimitive().isNumber())) return path + ": " + f + " must be a number";
+            for (String f : new String[] {"min", "max"}) {
+                if (n.has(f)
+                        && !(n.get(f).isJsonPrimitive()
+                                && n.get(f).getAsJsonPrimitive().isNumber()))
+                    return path + ": " + f + " must be a number";
             }
-            for (String f : new String[]{"nullable", "readOnly", "secret", "set"}) {
-                if (n.has(f) && !(n.get(f).isJsonPrimitive() && n.get(f).getAsJsonPrimitive().isBoolean())) return path + ": " + f + " must be true or false";
+            for (String f : new String[] {"nullable", "readOnly", "secret", "set"}) {
+                if (n.has(f)
+                        && !(n.get(f).isJsonPrimitive()
+                                && n.get(f).getAsJsonPrimitive().isBoolean()))
+                    return path + ": " + f + " must be true or false";
             }
             if (n.has("options")) {
-                if (!n.get("options").isJsonArray() || n.getAsJsonArray("options").size() > 500) return path + ": options must be a list";
+                if (!n.get("options").isJsonArray()
+                        || n.getAsJsonArray("options").size() > 500) return path + ": options must be a list";
                 for (JsonElement opt : n.getAsJsonArray("options")) {
-                    if (!opt.isJsonPrimitive() || !opt.getAsJsonPrimitive().isString()) return path + ": options must be strings";
+                    if (!opt.isJsonPrimitive() || !opt.getAsJsonPrimitive().isString())
+                        return path + ": options must be strings";
                 }
             }
-            if (!type.equals("group") && SECRET_PATH.matcher(path).find()
-                && !(n.has("secret") && n.get("secret").isJsonPrimitive() && n.get("secret").getAsBoolean())) {
+            if (!type.equals("group")
+                    && SECRET_PATH.matcher(path).find()
+                    && !(n.has("secret")
+                            && n.get("secret").isJsonPrimitive()
+                            && n.get("secret").getAsBoolean())) {
                 // Looks like a secret but the bot didn't say so: shown as one, never editable.
                 n.addProperty("secret", true);
                 n.addProperty("readOnly", true);
@@ -377,18 +424,40 @@ final class BotRoutes {
     }
 
     private void next(HttpExchange ex) throws IOException {
-        next(ex, Http.query(ex).get("botId"), null, null, BotHub.POLL_WAIT_MS);
+        next(ex, Http.query(ex).get("botId"), null, null, BotHub.POLL_WAIT_MS, null);
     }
 
     private void nextNow(HttpExchange ex) throws IOException {
         var request = body(ex);
-        if (request != null) next(ex, AddonRoutes.string(request, "botId"), AddonRoutes.string(request, "controlSession"),
-            AddonRoutes.string(request, "controlEpoch"), 0);
+        if (request != null)
+            next(
+                    ex,
+                    AddonRoutes.string(request, "botId"),
+                    AddonRoutes.string(request, "controlSession"),
+                    AddonRoutes.string(request, "controlEpoch"),
+                    0,
+                    request.get("activity"));
     }
 
-    private void next(HttpExchange ex, String botId, String controlSession, String epoch, long waitMillis) throws IOException {
+    private void next(
+            HttpExchange ex, String botId, String controlSession, String epoch, long waitMillis, JsonElement activity)
+            throws IOException {
         BotHub.Bot b = known(ex, botId);
         if (b == null) return;
+        if (activity != null) {
+            var snapshot = Activity.clean(activity, hub.now());
+            if (snapshot == null) {
+                Http.error(ex, 400, "activity must be an object");
+                return;
+            }
+            synchronized (b) {
+                if (hub.manifestScope(b, controlSession, epoch) == null) {
+                    Http.error(ex, 409, "Control session does not match");
+                    return;
+                }
+                hub.activity(b, snapshot, new JsonArray());
+            }
+        }
         BotHub.Poll p;
         try {
             p = hub.next(b, waitMillis, controlSession);
@@ -423,7 +492,9 @@ final class BotRoutes {
         if (o == null) return;
         BotHub.Bot b = known(ex, AddonRoutes.string(o, "botId"));
         if (b == null) return;
-        if (!o.has("results") || !o.get("results").isJsonArray() || o.getAsJsonArray("results").size() > MAX_RESULTS) {
+        if (!o.has("results")
+                || !o.get("results").isJsonArray()
+                || o.getAsJsonArray("results").size() > MAX_RESULTS) {
             Http.error(ex, 400, "results must be an array (at most " + MAX_RESULTS + ")");
             return;
         }
@@ -445,8 +516,12 @@ final class BotRoutes {
             }
             if (ack == BotHub.Acknowledgement.APPLIED) {
                 boolean applied = receipt.get("ok").getAsBoolean();
-                audit.add(b.botId, b.botId, applied ? "agent.job.applied" : "agent.job.rejected",
-                    receipt.get("id").getAsString(), AuthRoutes.address(ex));
+                audit.add(
+                        b.botId,
+                        b.botId,
+                        applied ? "agent.job.applied" : "agent.job.rejected",
+                        receipt.get("id").getAsString(),
+                        AuthRoutes.address(ex));
             }
             Http.json(ex, 200, Http.ok());
             return;
@@ -504,5 +579,4 @@ final class BotRoutes {
         JsonElement e = o.get(f);
         return e != null && e.isJsonPrimitive() && e.getAsJsonPrimitive().isBoolean() && e.getAsBoolean();
     }
-
 }

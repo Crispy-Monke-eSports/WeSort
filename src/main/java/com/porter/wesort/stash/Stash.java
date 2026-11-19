@@ -1,6 +1,15 @@
 package com.porter.wesort.stash;
 
+import static meteordevelopment.meteorclient.MeteorClient.mc;
+
 import com.porter.wesort.WeSortAddon;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.utils.Utils;
 import net.minecraft.core.BlockPos;
@@ -14,16 +23,6 @@ import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.RegistryOps;
 import net.minecraft.world.item.ItemStack;
-
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Locale;
-
-import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 /**
  * A named stash: its containers, what was in them when last seen, and which ones are excluded from sorting or used as
@@ -40,14 +39,19 @@ public class Stash {
         public boolean dropOff;
         // Where finished orders are delivered. Also excluded, so nothing is ever sorted into or out of it
         public boolean delivery;
-        // A chest the bot put up above the delivery container for the delivery storage (0.4.0-dev.5): also delivery and excluded
+        // A chest the bot put up above the delivery container for the delivery storage (0.4.0-dev.5): also delivery and
+        // excluded
         public boolean deliveryExtra;
         // What excluded was before this became the delivery container, restored when it stops being one
         public boolean wasExcluded, wasDropOff;
-        // When its contents were last read (milliseconds); 0 for stashes saved before this was kept, which counts as old
+        // When its contents were last read (milliseconds); 0 for stashes saved before this was kept, which counts as
+        // old
         public long lastRead;
         // Session-scoped server observations are deliberately never restored as fresh from disk.
-        public String observationSession = "", observationDimension = "", observationFingerprint = "", observationEpoch = "";
+        public String observationSession = "",
+                observationDimension = "",
+                observationFingerprint = "",
+                observationEpoch = "";
         public long observationSequence, observationBaseRevision, observationAt;
         public String observationBlock = "";
         public boolean observationUnreachable;
@@ -169,6 +173,7 @@ public class Stash {
             public final List<Integer> lotCounts = new ArrayList<>();
             /** How naming went: done (named or given up on), named, why not, and the key it has with its name. */
             public boolean nameDone, named;
+
             public String nameFailure = "", namedKey = "";
         }
 
@@ -182,20 +187,24 @@ public class Stash {
         public final List<UnitPlan> units = new ArrayList<>();
         /** The order's shulker names (see {@link Order.Names}): mode "" for none. */
         public String namesMode = "";
+
         public String namesAll = "";
         public final List<String> namesEach = new ArrayList<>();
         /** Shulkers delivered without the name they were meant to get, and why (distinct reasons), for the order's note. */
         public int unnamed;
+
         public final List<String> unnamedReasons = new ArrayList<>();
         /** Shulker boxes crafted for this order so far (the per-order cap and the end message count them). */
         public int crafted;
     }
 
     public ActiveOrder activeOrder;
-    // The delivery storage (0.4.0-dev.5): the delivery container and the chests put up above it, which are full. Positions only
+    // The delivery storage (0.4.0-dev.5): the delivery container and the chests put up above it, which are full.
+    // Positions only
     public final List<DeliveryBook.Entry> deliveryStorage = new ArrayList<>();
     public final List<Orphan> orphans = new ArrayList<>();
-    // The stacks the sorter took out of the stash and carries, by inventory slot, so they are still known as the stash's
+    // The stacks the sorter took out of the stash and carries, by inventory slot, so they are still known as the
+    // stash's
     // after a restart
     public final java.util.Map<Integer, ItemStack> held = new java.util.LinkedHashMap<>();
     public InFlight inFlight;
@@ -206,21 +215,23 @@ public class Stash {
 
     // The perimeter: two corners (inclusive), either may be unset. It only applies once both are
     public BlockPos corner1, corner2;
-
     public static final int MAX_X = 256, MAX_Y = 128, MAX_Z = 256;
 
     public String areaDimension = "";
-    // The delivery container, kept on the stash itself so that no pruning of the box list (a perimeter that leaves it out,
+    // The delivery container, kept on the stash itself so that no pruning of the box list (a perimeter that leaves it
+    // out,
     // say) can lose it. It stays until the user clears it
     public BlockPos deliveryPos;
     // The anvil orders are named at. Not a container: never a box, never indexed. Stays until the user clears it
     public BlockPos anvilPos;
-    // How the anvil came to be remembered: "set" (picked by hand), "found" (placed, found in the area) or "placed" (taken from
+    // How the anvil came to be remembered: "set" (picked by hand), "found" (placed, found in the area) or "placed"
+    // (taken from
     // the stash and placed). "" counts as set
     public String anvilSource = "";
     // The crafting table orders craft at. Not a container: never a box, never indexed. Stays until the user clears it
     public BlockPos craftingTablePos;
-    // How the table came to be remembered: "set" (picked by hand), "found" (placed, found in the area), "placed" (taken from the
+    // How the table came to be remembered: "set" (picked by hand), "found" (placed, found in the area), "placed" (taken
+    // from the
     // stash and placed) or "crafted" (made in the inventory grid and placed). "" counts as set
     public String craftingTableSource = "";
 
@@ -275,15 +286,23 @@ public class Stash {
 
     /** The perimeter applies: both corners are set, and we are in the dimension they were set in. */
     public boolean hasArea() {
-        return corner1 != null && corner2 != null && (areaDimension.isEmpty() || areaDimension.equals(currentDimension()));
+        return corner1 != null
+                && corner2 != null
+                && (areaDimension.isEmpty() || areaDimension.equals(currentDimension()));
     }
 
     public BlockPos areaMin() {
-        return new BlockPos(Math.min(corner1.getX(), corner2.getX()), Math.min(corner1.getY(), corner2.getY()), Math.min(corner1.getZ(), corner2.getZ()));
+        return new BlockPos(
+                Math.min(corner1.getX(), corner2.getX()),
+                Math.min(corner1.getY(), corner2.getY()),
+                Math.min(corner1.getZ(), corner2.getZ()));
     }
 
     public BlockPos areaMax() {
-        return new BlockPos(Math.max(corner1.getX(), corner2.getX()), Math.max(corner1.getY(), corner2.getY()), Math.max(corner1.getZ(), corner2.getZ()));
+        return new BlockPos(
+                Math.max(corner1.getX(), corner2.getX()),
+                Math.max(corner1.getY(), corner2.getY()),
+                Math.max(corner1.getZ(), corner2.getZ()));
     }
 
     /**
@@ -292,8 +311,12 @@ public class Stash {
     public boolean inArea(double x, double y, double z, int margin) {
         if (!hasArea()) return false;
         BlockPos min = areaMin(), max = areaMax();
-        return x >= min.getX() - margin && x < max.getX() + 1 + margin && y >= min.getY() - margin && y < max.getY() + 1 + margin
-            && z >= min.getZ() - margin && z < max.getZ() + 1 + margin;
+        return x >= min.getX() - margin
+                && x < max.getX() + 1 + margin
+                && y >= min.getY() - margin
+                && y < max.getY() + 1 + margin
+                && z >= min.getZ() - margin
+                && z < max.getZ() + 1 + margin;
     }
 
     public boolean inArea(BlockPos pos) {
@@ -303,19 +326,23 @@ public class Stash {
     /** Width, height and depth of the perimeter in blocks. */
     public int[] areaSize() {
         BlockPos min = areaMin(), max = areaMax();
-        return new int[] { max.getX() - min.getX() + 1, max.getY() - min.getY() + 1, max.getZ() - min.getZ() + 1 };
+        return new int[] {max.getX() - min.getX() + 1, max.getY() - min.getY() + 1, max.getZ() - min.getZ() + 1};
     }
 
     /** Whether the two corners would span more than the most allowed. */
     public static boolean tooBig(BlockPos a, BlockPos b) {
-        return Math.abs(a.getX() - b.getX()) + 1 > MAX_X || Math.abs(a.getY() - b.getY()) + 1 > MAX_Y || Math.abs(a.getZ() - b.getZ()) + 1 > MAX_Z;
+        return Math.abs(a.getX() - b.getX()) + 1 > MAX_X
+                || Math.abs(a.getY() - b.getY()) + 1 > MAX_Y
+                || Math.abs(a.getZ() - b.getZ()) + 1 > MAX_Z;
     }
 
     /** "[x1, y1, z1] to [x2, y2, z2] (W x H x D)" for the perimeter. */
     public String areaText() {
         BlockPos min = areaMin(), max = areaMax();
         int[] size = areaSize();
-        return String.format("[%d, %d, %d] to [%d, %d, %d] (%d\u00d7%d\u00d7%d)", min.getX(), min.getY(), min.getZ(), max.getX(), max.getY(), max.getZ(), size[0], size[1], size[2]);
+        return String.format(
+                "[%d, %d, %d] to [%d, %d, %d] (%d\u00d7%d\u00d7%d)",
+                min.getX(), min.getY(), min.getZ(), max.getX(), max.getY(), max.getZ(), size[0], size[1], size[2]);
     }
 
     public Stash(String name, String server) {
@@ -424,7 +451,8 @@ public class Stash {
                 break;
             }
         }
-        if (spot != null) result.spots.set(result.spots.indexOf(spot), new Spot(box, spot.count() + stack.getCount(), inShulker));
+        if (spot != null)
+            result.spots.set(result.spots.indexOf(spot), new Spot(box, spot.count() + stack.getCount(), inShulker));
         else result.spots.add(new Spot(box, stack.getCount(), inShulker));
     }
 
@@ -625,7 +653,8 @@ public class Stash {
         if (anvilPos != null) root.put("anvilPos", positions(List.of(anvilPos)));
         if (anvilPos != null && !anvilSource.isEmpty()) root.putString("anvilSource", anvilSource);
         if (craftingTablePos != null) root.put("craftingTablePos", positions(List.of(craftingTablePos)));
-        if (craftingTablePos != null && !craftingTableSource.isEmpty()) root.putString("craftingTableSource", craftingTableSource);
+        if (craftingTablePos != null && !craftingTableSource.isEmpty())
+            root.putString("craftingTableSource", craftingTableSource);
         if (!dimension.isEmpty()) root.putString("dimension", dimension);
 
         try {
@@ -635,7 +664,11 @@ public class Stash {
             Path temp = target.resolveSibling(target.getFileName() + ".tmp");
             NbtIo.writeCompressed(root, temp);
             try {
-                Files.move(temp, target, java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                Files.move(
+                        temp,
+                        target,
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             } catch (java.nio.file.AtomicMoveNotSupportedException e) {
                 Files.move(temp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             }
@@ -657,14 +690,16 @@ public class Stash {
         tag.putBoolean("confirmed", f.confirmed);
         tag.putString("placedItemId", f.placedItemId);
         tag.putInt("placedStacks", f.placedStacks);
-        if (!f.fillSample.isEmpty()) ItemStack.CODEC.encodeStart(ops, f.fillSample).result().ifPresent(item -> tag.put("fillSample", item));
+        if (!f.fillSample.isEmpty())
+            ItemStack.CODEC.encodeStart(ops, f.fillSample).result().ifPresent(item -> tag.put("fillSample", item));
         tag.putString("cleanMainId", f.cleanMainId);
         if (f.lastGoodStand != null) tag.put("lastGoodStand", positions(List.of(f.lastGoodStand)));
         if (f.target != null) tag.put("target", positions(List.of(f.target)));
         if (f.compact != null) {
             Compact c = f.compact;
             CompoundTag ct = new CompoundTag();
-            if (!c.sample.isEmpty()) ItemStack.CODEC.encodeStart(ops, c.sample).result().ifPresent(item -> ct.put("sample", item));
+            if (!c.sample.isEmpty())
+                ItemStack.CODEC.encodeStart(ops, c.sample).result().ifPresent(item -> ct.put("sample", item));
             ct.putString("name", c.name);
             ct.putBoolean("topUp", c.topUp);
             ct.putInt("startSize", c.startSize);
@@ -744,7 +779,7 @@ public class Stash {
 
         RegistryOps<Tag> ops = mc.level.registryAccess().createSerializationContext(NbtOps.INSTANCE);
         Stash stash = new Stash(name, server);
-        boolean[] errors = { false };
+        boolean[] errors = {false};
 
         try {
             CompoundTag root = NbtIo.readCompressed(path, NbtAccounter.unlimitedHeap());
@@ -788,7 +823,10 @@ public class Stash {
             if (root.get("inFlight") instanceof CompoundTag flight) stash.inFlight = readInFlight(flight, ops);
             if (root.get("deliveryStorage") instanceof ListTag chests) {
                 for (Tag t : chests) {
-                    if (!(t instanceof CompoundTag tag) || !(tag.get("at") instanceof net.minecraft.nbt.IntArrayTag at) || at.getAsIntArray().length < 3 || at.getAsIntArray().length % 3 != 0) continue;
+                    if (!(t instanceof CompoundTag tag)
+                            || !(tag.get("at") instanceof net.minecraft.nbt.IntArrayTag at)
+                            || at.getAsIntArray().length < 3
+                            || at.getAsIntArray().length % 3 != 0) continue;
                     DeliveryBook.Entry e = new DeliveryBook.Entry();
                     e.at = at.getAsIntArray();
                     e.primary = flag(tag, "primary");
@@ -805,7 +843,10 @@ public class Stash {
                 active.shulkersDelivered = number(order.get("shulkers"), active.done);
                 if (order.get("lines") instanceof ListTag orderLines) {
                     for (Tag t : orderLines) {
-                        if (t instanceof CompoundTag line) active.lines.add(new String[] { text(line, "type"), text(line, "key"), String.valueOf(number(line.get("count"), 0)) });
+                        if (t instanceof CompoundTag line)
+                            active.lines.add(new String[] {
+                                text(line, "type"), text(line, "key"), String.valueOf(number(line.get("count"), 0))
+                            });
                     }
                 }
                 if (order.get("units") instanceof ListTag planned) {
@@ -846,7 +887,8 @@ public class Stash {
                 active.done = Math.max(0, Math.min(active.done, active.units.size()));
                 if (order.get("delivered") instanceof ListTag lines) {
                     for (Tag t : lines) {
-                        if (t instanceof CompoundTag line) active.delivered.put(text(line, "key"), number(line.get("count"), 0));
+                        if (t instanceof CompoundTag line)
+                            active.delivered.put(text(line, "key"), number(line.get("count"), 0));
                     }
                 }
                 if (!active.id.isEmpty()) stash.activeOrder = active;
@@ -860,54 +902,58 @@ public class Stash {
             for (Tag t : list) {
                 // One damaged entry must not take the whole stash (and the world join) with it
                 try {
-                CompoundTag tag = (CompoundTag) t;
-                List<BlockPos> parts = readPositions((ListTag) tag.get("parts"));
-                if (parts.isEmpty()) continue;
+                    CompoundTag tag = (CompoundTag) t;
+                    List<BlockPos> parts = readPositions((ListTag) tag.get("parts"));
+                    if (parts.isEmpty()) continue;
 
-                Box box = new Box(parts.getFirst(), parts);
-                box.excluded = flag(tag, "excluded");
-                box.dropOff = flag(tag, "dropOff");
-                box.protectedStorage = flag(tag, "protectedStorage");
-                // Saved before read times existed: no tag, which counts as read long ago
-                box.lastRead = longNumber(tag.get("readAt"));
-                box.stale = true;
-                box.observationSession = text(tag, "observationSession");
-                box.observationDimension = text(tag, "observationDimension");
-                box.observationFingerprint = text(tag, "observationFingerprint");
-                box.observationEpoch = text(tag, "observationEpoch");
-                box.observationBlock = text(tag, "observationBlock");
-                box.observationSequence = longNumber(tag.get("observationSequence"));
-                box.observationBaseRevision = longNumber(tag.get("observationBaseRevision"));
-                box.observationAt = longNumber(tag.get("observationAt"));
-                box.delivery = flag(tag, "delivery");
-                box.deliveryExtra = flag(tag, "deliveryExtra");
-                box.wasExcluded = flag(tag, "wasExcluded");
-                box.wasDropOff = flag(tag, "wasDropOff");
-                box.noCompact = flag(tag, "noCompact");
-                box.autoLabel = string(tag.get("autoLabel"));
-                if (tag.get("autoSignPos") instanceof ListTag sign) {
-                    List<BlockPos> at = readPositions(sign);
-                    if (!at.isEmpty()) box.autoSignPos = at.getFirst();
-                }
+                    Box box = new Box(parts.getFirst(), parts);
+                    box.excluded = flag(tag, "excluded");
+                    box.dropOff = flag(tag, "dropOff");
+                    box.protectedStorage = flag(tag, "protectedStorage");
+                    // Saved before read times existed: no tag, which counts as read long ago
+                    box.lastRead = longNumber(tag.get("readAt"));
+                    box.stale = true;
+                    box.observationSession = text(tag, "observationSession");
+                    box.observationDimension = text(tag, "observationDimension");
+                    box.observationFingerprint = text(tag, "observationFingerprint");
+                    box.observationEpoch = text(tag, "observationEpoch");
+                    box.observationBlock = text(tag, "observationBlock");
+                    box.observationSequence = longNumber(tag.get("observationSequence"));
+                    box.observationBaseRevision = longNumber(tag.get("observationBaseRevision"));
+                    box.observationAt = longNumber(tag.get("observationAt"));
+                    box.delivery = flag(tag, "delivery");
+                    box.deliveryExtra = flag(tag, "deliveryExtra");
+                    box.wasExcluded = flag(tag, "wasExcluded");
+                    box.wasDropOff = flag(tag, "wasDropOff");
+                    box.noCompact = flag(tag, "noCompact");
+                    box.autoLabel = string(tag.get("autoLabel"));
+                    if (tag.get("autoSignPos") instanceof ListTag sign) {
+                        List<BlockPos> at = readPositions(sign);
+                        if (!at.isEmpty()) box.autoSignPos = at.getFirst();
+                    }
 
-                int size = number(tag.get("size"), -1);
-                if (size >= 0) {
-                    box.contents = new ItemStack[size];
-                    java.util.Arrays.fill(box.contents, ItemStack.EMPTY);
+                    int size = number(tag.get("size"), -1);
+                    if (size >= 0) {
+                        box.contents = new ItemStack[size];
+                        java.util.Arrays.fill(box.contents, ItemStack.EMPTY);
 
-                    if (tag.get("items") instanceof ListTag items) {
-                        for (Tag e : items) {
-                            CompoundTag entry = (CompoundTag) e;
-                            int slot = number(entry.get("slot"), -1);
-                            if (slot < 0 || slot >= box.contents.length || entry.get("item") == null) continue;
-                            ItemStack.CODEC.parse(ops, entry.get("item")).result().ifPresent(stack -> box.contents[slot] = stack);
+                        if (tag.get("items") instanceof ListTag items) {
+                            for (Tag e : items) {
+                                CompoundTag entry = (CompoundTag) e;
+                                int slot = number(entry.get("slot"), -1);
+                                if (slot < 0 || slot >= box.contents.length || entry.get("item") == null) continue;
+                                ItemStack.CODEC
+                                        .parse(ops, entry.get("item"))
+                                        .result()
+                                        .ifPresent(stack -> box.contents[slot] = stack);
+                            }
                         }
                     }
-                }
 
-                stash.boxes.add(box);
+                    stash.boxes.add(box);
                 } catch (RuntimeException ex) {
-                    WeSortAddon.LOG.warn("Skipped a container of stash {} that couldn't be read: {}", name, ex.toString());
+                    WeSortAddon.LOG.warn(
+                            "Skipped a container of stash {} that couldn't be read: {}", name, ex.toString());
                     errors[0] = true;
                 }
             }
@@ -918,8 +964,12 @@ public class Stash {
                     if (pos.isEmpty()) continue;
                     String item = string(tag.get("item"));
                     String when = string(tag.get("when"));
-                    stash.orphans.add(new Orphan(pos.getFirst(), item == null ? "items" : item, number(tag.get("stacks"), 0), when == null ? "" : when,
-                        string(tag.get("dimension"))));
+                    stash.orphans.add(new Orphan(
+                            pos.getFirst(),
+                            item == null ? "items" : item,
+                            number(tag.get("stacks"), 0),
+                            when == null ? "" : when,
+                            string(tag.get("dimension"))));
                 }
             }
         } catch (IOException | RuntimeException e) {
@@ -937,23 +987,31 @@ public class Stash {
     /** A long from a number tag; 0 when there is none (a stash saved before the field existed) or it is not a number. */
     private static long longNumber(Tag tag) {
         if (tag == null) return 0L;
-        return NbtOps.INSTANCE.getNumberValue(tag).result().map(Number::longValue).orElse(0L);
+        return NbtOps.INSTANCE
+                .getNumberValue(tag)
+                .result()
+                .map(Number::longValue)
+                .orElse(0L);
     }
 
     /** Copies a stash file that had errors to name.bak-yyyyMMdd-HHmmss, keeping the last three, and says so once. */
     private static boolean backUp(Path path, String why, String infix) {
         try {
-            String stamp = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
+            String stamp = java.time.LocalDateTime.now()
+                    .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
             Path copy = path.resolveSibling(path.getFileName() + infix + stamp);
             Files.copy(path, copy, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 
             String prefix = path.getFileName() + infix;
             try (var files = Files.list(path.getParent())) {
-                var old = files.filter(f -> f.getFileName().toString().startsWith(prefix)).sorted().toList();
+                var old = files.filter(f -> f.getFileName().toString().startsWith(prefix))
+                        .sorted()
+                        .toList();
                 for (int i = 0; i < old.size() - 3; i++) Files.deleteIfExists(old.get(i));
             }
             WeSortAddon.LOG.warn("{}; a backup was saved as {}", why, copy.getFileName());
-            meteordevelopment.meteorclient.utils.player.ChatUtils.warning("%s; a backup was saved as %s", why, copy.getFileName());
+            meteordevelopment.meteorclient.utils.player.ChatUtils.warning(
+                    "%s; a backup was saved as %s", why, copy.getFileName());
             return true;
         } catch (IOException | RuntimeException e) {
             WeSortAddon.LOG.warn("Couldn't back up the stash file {}: {}", path.getFileName(), e.toString());
@@ -970,7 +1028,11 @@ public class Stash {
      */
     private static int number(Tag tag, int fallback) {
         if (tag == null) return fallback;
-        return NbtOps.INSTANCE.getNumberValue(tag).result().map(Number::intValue).orElse(fallback);
+        return NbtOps.INSTANCE
+                .getNumberValue(tag)
+                .result()
+                .map(Number::intValue)
+                .orElse(fallback);
     }
 
     /**

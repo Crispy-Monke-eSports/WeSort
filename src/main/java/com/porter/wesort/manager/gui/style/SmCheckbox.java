@@ -19,6 +19,7 @@ public class SmCheckbox extends WMeteorCheckbox {
         double u = t.unit();
         boolean hot = (pressed || mouseOver) && !t.hoverBlocked();
         int fill = hot ? Palette.mix(p.surface2(), p.text(), 0.10) : p.surface2();
-        Paint.panel(renderer, t, x, y, width, height, p.radius * u, p.borderWidth * u, fill, hot ? p.accent() : p.border());
+        Paint.panel(
+                renderer, t, x, y, width, height, p.radius * u, p.borderWidth * u, fill, hot ? p.accent() : p.border());
     }
 }

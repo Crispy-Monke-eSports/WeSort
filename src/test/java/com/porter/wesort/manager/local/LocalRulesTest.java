@@ -1,15 +1,14 @@
 package com.porter.wesort.manager.local;
 
-import org.junit.jupiter.api.Test;
-
-import java.util.ArrayList;
-import java.util.List;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.ArrayList;
+import java.util.List;
+import org.junit.jupiter.api.Test;
 
 /** Keying, the capture decision and eviction: the pure rules of local mode. */
 class LocalRulesTest {
@@ -17,8 +16,8 @@ class LocalRulesTest {
 
     @Test
     void aDoubleChestHasOneKeyWhicheverHalfIsGiven() {
-        int[] a = { 10, 64, 20 };
-        int[] b = { 11, 64, 20 };
+        int[] a = {10, 64, 20};
+        int[] b = {11, 64, 20};
         ContainerKey fromA = ContainerKey.of("srv", "minecraft:overworld", List.of(a, b));
         ContainerKey fromB = ContainerKey.of("srv", "minecraft:overworld", List.of(b, a));
         assertEquals(fromA, fromB);
@@ -27,17 +26,18 @@ class LocalRulesTest {
 
     @Test
     void theLowestPartIsByXThenYThenZ() {
-        assertEquals(5, ContainerKey.canonical(List.of(new int[] { 6, 0, 0 }, new int[] { 5, 9, 9 }))[0]);
-        assertEquals(1, ContainerKey.canonical(List.of(new int[] { 5, 2, 0 }, new int[] { 5, 1, 9 }))[1]);
-        assertEquals(3, ContainerKey.canonical(List.of(new int[] { 5, 1, 4 }, new int[] { 5, 1, 3 }))[2]);
+        assertEquals(5, ContainerKey.canonical(List.of(new int[] {6, 0, 0}, new int[] {5, 9, 9}))[0]);
+        assertEquals(1, ContainerKey.canonical(List.of(new int[] {5, 2, 0}, new int[] {5, 1, 9}))[1]);
+        assertEquals(3, ContainerKey.canonical(List.of(new int[] {5, 1, 4}, new int[] {5, 1, 3}))[2]);
         assertNull(ContainerKey.canonical(List.of()));
         assertNull(ContainerKey.of("s", "d", List.of()));
     }
 
     @Test
     void sameBlockInAnotherDimensionOrServerIsAnotherKey() {
-        List<int[]> p = List.of(new int[] { 1, 2, 3 });
-        assertNotEquals(ContainerKey.of("s", "minecraft:overworld", p), ContainerKey.of("s", "minecraft:the_nether", p));
+        List<int[]> p = List.of(new int[] {1, 2, 3});
+        assertNotEquals(
+                ContainerKey.of("s", "minecraft:overworld", p), ContainerKey.of("s", "minecraft:the_nether", p));
         assertNotEquals(ContainerKey.of("a", "d", p), ContainerKey.of("b", "d", p));
     }
 
@@ -114,6 +114,8 @@ class LocalRulesTest {
     @Test
     void tiesGoInListOrder() {
         List<Item> items = new ArrayList<>(List.of(new Item("x", 1), new Item("y", 1), new Item("z", 1)));
-        assertEquals(List.of("x"), Evict.oldest(items, 2, Item::age).stream().map(Item::name).toList());
+        assertEquals(
+                List.of("x"),
+                Evict.oldest(items, 2, Item::age).stream().map(Item::name).toList());
     }
 }

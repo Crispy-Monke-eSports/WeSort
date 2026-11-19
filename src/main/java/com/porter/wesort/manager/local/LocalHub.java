@@ -1,5 +1,7 @@
 package com.porter.wesort.manager.local;
 
+import static meteordevelopment.meteorclient.MeteorClient.mc;
+
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -9,15 +11,6 @@ import com.porter.wesort.manager.local.LocalStore.Slot;
 import com.porter.wesort.manager.model.IndexModel;
 import com.porter.wesort.stash.Kits;
 import com.porter.wesort.stash.StashIndex;
-import meteordevelopment.meteorclient.MeteorClient;
-import meteordevelopment.meteorclient.utils.Utils;
-import net.minecraft.core.RegistryAccess;
-import net.minecraft.core.component.DataComponents;
-import net.minecraft.nbt.NbtOps;
-import net.minecraft.nbt.Tag;
-import net.minecraft.resources.RegistryOps;
-import net.minecraft.world.item.ItemStack;
-
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -32,8 +25,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.IntSupplier;
-
-import static meteordevelopment.meteorclient.MeteorClient.mc;
+import meteordevelopment.meteorclient.MeteorClient;
+import meteordevelopment.meteorclient.utils.Utils;
+import net.minecraft.core.RegistryAccess;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.nbt.Tag;
+import net.minecraft.resources.RegistryOps;
+import net.minecraft.world.item.ItemStack;
 
 /**
  * The local index of the server the player is on: owns the {@link LocalStore}, reads and writes its file off the client
@@ -48,6 +47,7 @@ public final class LocalHub {
     private static final int SAVE_DELAY_TICKS = 100;
     /** A change that has waited this long is written even if changes keep coming. */
     private static final int MAX_UNSAVED_TICKS = 1200;
+
     private static final int MAX_DEPTH = 4;
     private static final int WHERE_MAX = 50;
 
@@ -156,19 +156,24 @@ public final class LocalHub {
             switch (loaded.status()) {
                 case UNREADABLE -> {
                     target.blockSaving();
-                    loadWarning = "The local index file can't be read; nothing will be saved for this server until it can.";
+                    loadWarning =
+                            "The local index file can't be read; nothing will be saved for this server until it can.";
                     WeSortAddon.LOG.warn("wesort-stash-window: couldn't read {}", file.getFileName());
                 }
                 case TOO_BIG -> {
                     target.blockSaving();
-                    loadWarning = "The local index file is too big to read; it was left alone and nothing will be saved for this server.";
-                    WeSortAddon.LOG.warn("wesort-stash-window: {} is over the size limit, left alone", file.getFileName());
+                    loadWarning =
+                            "The local index file is too big to read; it was left alone and nothing will be saved for this server.";
+                    WeSortAddon.LOG.warn(
+                            "wesort-stash-window: {} is over the size limit, left alone", file.getFileName());
                 }
                 case NEWER -> {
                     target.blockSaving();
                     entries = loaded.entries();
-                    loadWarning = "The local index was written by a newer version; it is shown but not changed on disk.";
-                    WeSortAddon.LOG.warn("wesort-stash-window: {} is from a newer version, read-only", file.getFileName());
+                    loadWarning =
+                            "The local index was written by a newer version; it is shown but not changed on disk.";
+                    WeSortAddon.LOG.warn(
+                            "wesort-stash-window: {} is from a newer version, read-only", file.getFileName());
                 }
                 case CORRUPT -> {
                     loadWarning = "The saved local index was damaged and was set aside; starting over.";
@@ -176,7 +181,11 @@ public final class LocalHub {
                 }
                 default -> {
                     entries = loaded.entries();
-                    if (loaded.skipped() > 0) WeSortAddon.LOG.warn("wesort-stash-window: {} entries of {} were skipped", loaded.skipped(), file.getFileName());
+                    if (loaded.skipped() > 0)
+                        WeSortAddon.LOG.warn(
+                                "wesort-stash-window: {} entries of {} were skipped",
+                                loaded.skipped(),
+                                file.getFileName());
                 }
             }
         } catch (Throwable t) {
@@ -249,10 +258,15 @@ public final class LocalHub {
                     return;
                 }
                 boolean first = backoff.failed(ticks, count, tooBig);
-                if (tooBig) saveWarning = "The local index is too big to save. Forget some containers; saving resumes when there are fewer.";
+                if (tooBig)
+                    saveWarning =
+                            "The local index is too big to save. Forget some containers; saving resumes when there are fewer.";
                 if (first) {
-                    if (tooBig) WeSortAddon.LOG.warn("wesort-stash-window: the local index is too big to save, not saving until it shrinks");
-                    else WeSortAddon.LOG.warn("wesort-stash-window: couldn't write the local index, trying again later");
+                    if (tooBig)
+                        WeSortAddon.LOG.warn(
+                                "wesort-stash-window: the local index is too big to save, not saving until it shrinks");
+                    else
+                        WeSortAddon.LOG.warn("wesort-stash-window: couldn't write the local index, trying again later");
                 }
             });
         });
@@ -277,12 +291,18 @@ public final class LocalHub {
             } else {
                 // Kept as the item and its count only, so the counts survive a restart
                 net.minecraft.nbt.CompoundTag plain = new net.minecraft.nbt.CompoundTag();
-                plain.putString("id", net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stacks[i].getItem()).toString());
+                plain.putString(
+                        "id",
+                        net.minecraft.core.registries.BuiltInRegistries.ITEM
+                                .getKey(stacks[i].getItem())
+                                .toString());
                 plain.putInt("count", stacks[i].getCount());
                 slots.add(new Slot(slot, plain));
                 if (!encodeWarned) {
                     encodeWarned = true;
-                    WeSortAddon.LOG.warn("wesort-stash-window: an item could not be fully saved to the local index ({}); only its id and count are kept", stacks[i].getItem());
+                    WeSortAddon.LOG.warn(
+                            "wesort-stash-window: an item could not be fully saved to the local index ({}); only its id and count are kept",
+                            stacks[i].getItem());
                 }
             }
         }
@@ -471,7 +491,9 @@ public final class LocalHub {
             if (n <= 0) continue;
             int distance = -1;
             if (mc.player != null && e.key().dimension().equals(dimension)) {
-                double dx = mc.player.getX() - e.key().x(), dy = mc.player.getY() - e.key().y(), dz = mc.player.getZ() - e.key().z();
+                double dx = mc.player.getX() - e.key().x(),
+                        dy = mc.player.getY() - e.key().y(),
+                        dz = mc.player.getZ() - e.key().z();
                 distance = (int) Math.round(Math.sqrt(dx * dx + dy * dy + dz * dz));
             }
             hits.add(new Where(e.key(), e.block(), n, distance));

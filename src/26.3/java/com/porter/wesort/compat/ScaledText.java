@@ -1,13 +1,12 @@
 package com.porter.wesort.compat;
 
 import com.porter.wesort.manager.gui.style.TextScale;
-import meteordevelopment.meteorclient.renderer.text.TextRenderer;
-import meteordevelopment.meteorclient.renderer.text.VanillaTextRenderer;
-import meteordevelopment.meteorclient.utils.render.color.Color;
-
 import java.util.function.DoubleSupplier;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
+import meteordevelopment.meteorclient.renderer.text.TextRenderer;
+import meteordevelopment.meteorclient.renderer.text.VanillaTextRenderer;
+import meteordevelopment.meteorclient.utils.render.color.Color;
 
 /**
  * Meteor's vanilla text renderer at the Stash Window's own text size. Meteor starts a text batch at the theme's scale
@@ -33,8 +32,14 @@ public final class ScaledText implements TextRenderer {
     }
 
     @Override
-    public void begin(net.minecraft.client.gui.GuiGraphicsExtractor graphics, double scale, boolean scaleOnly, boolean big) {
-        base.begin(graphics, TextScale.batchScale(scale, ref.getAsDouble(), unit.getAsInt(), setting.get().factor()), scaleOnly, big);
+    public void begin(
+            net.minecraft.client.gui.GuiGraphicsExtractor graphics, double scale, boolean scaleOnly, boolean big) {
+        base.begin(
+                graphics,
+                TextScale.batchScale(
+                        scale, ref.getAsDouble(), unit.getAsInt(), setting.get().factor()),
+                scaleOnly,
+                big);
     }
 
     @Override
@@ -49,7 +54,9 @@ public final class ScaledText implements TextRenderer {
 
     /** Outside a batch the base renderer measures at its default scale of 2; this window's normal text is bigger or smaller. */
     private double outside() {
-        return base.isBuilding() ? 1 : TextScale.physical(unit.getAsInt(), setting.get().factor()) / 2.0;
+        return base.isBuilding()
+                ? 1
+                : TextScale.physical(unit.getAsInt(), setting.get().factor()) / 2.0;
     }
 
     @Override

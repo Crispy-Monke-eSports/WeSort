@@ -7,8 +7,7 @@ import java.util.List;
  * The pieces of a rounded rectangle: three plain rectangles and a triangle fan per corner. Pure.
  */
 public final class RoundRect {
-    private RoundRect() {
-    }
+    private RoundRect() {}
 
     /** A radius no bigger than half of the shorter side, and never negative. */
     public static double clampRadius(double radius, double w, double h) {
@@ -30,7 +29,8 @@ public final class RoundRect {
         List<double[]> out = new ArrayList<>();
         int n = segments(r);
         if (n == 0) return out;
-        // Centre of each corner arc and the start angle (degrees, y down): top-left, top-right, bottom-right, bottom-left
+        // Centre of each corner arc and the start angle (degrees, y down): top-left, top-right, bottom-right,
+        // bottom-left
         double[][] centres = {{x + r, y + r}, {x + w - r, y + r}, {x + w - r, y + h - r}, {x + r, y + h - r}};
         double[] start = {180, 270, 0, 90};
         for (int k = 0; k < 4; k++) {

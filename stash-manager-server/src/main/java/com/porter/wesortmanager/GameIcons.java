@@ -1,8 +1,6 @@
 package com.porter.wesortmanager;
 
 import com.porter.wesortmanager.assets.IconRenderer;
-
-import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -12,6 +10,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import javax.imageio.ImageIO;
 
 /**
  * Renders Minecraft 26.3 icons exclusively from the official client JAR that
@@ -49,7 +48,9 @@ final class GameIcons implements AutoCloseable {
 
     /** True when a game render for this id is already on disk. */
     boolean cached(String mcVersion, String ns, String path) {
-        return enabled && IconService.MC_VERSION.matcher(mcVersion).matches() && Files.isRegularFile(cacheFile(mcVersion, ns, path));
+        return enabled
+                && IconService.MC_VERSION.matcher(mcVersion).matches()
+                && Files.isRegularFile(cacheFile(mcVersion, ns, path));
     }
 
     /**

@@ -3,7 +3,6 @@ package com.porter.wesort.manager.model;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.porter.wesort.stash.Order;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -13,7 +12,9 @@ import java.util.List;
  */
 public final class NamesDraft {
     public enum Mode {
-        NONE("No names"), ALL("One name for all"), EACH("A name for each");
+        NONE("No names"),
+        ALL("One name for all"),
+        EACH("A name for each");
 
         private final String label;
 
@@ -69,7 +70,8 @@ public final class NamesDraft {
         if (mode == Mode.ALL) return all.trim().isEmpty() ? 0 : units;
         if (mode != Mode.EACH) return 0;
         int n = 0;
-        for (int i = 0; i < Math.min(units, each.size()); i++) if (!each.get(i).trim().isEmpty()) n++;
+        for (int i = 0; i < Math.min(units, each.size()); i++)
+            if (!each.get(i).trim().isEmpty()) n++;
         return n;
     }
 
@@ -77,12 +79,17 @@ public final class NamesDraft {
     public String problem(int units) {
         if (mode == Mode.ALL) {
             String t = all.trim();
-            return t.isEmpty() || Order.valid(t) ? "" : "The name can be up to " + Order.MAX_NAME + " characters with no section sign or control characters.";
+            return t.isEmpty() || Order.valid(t)
+                    ? ""
+                    : "The name can be up to " + Order.MAX_NAME
+                            + " characters with no section sign or control characters.";
         }
         if (mode != Mode.EACH) return "";
         for (int i = 0; i < Math.min(units, each.size()); i++) {
             String t = each.get(i).trim();
-            if (!t.isEmpty() && !Order.valid(t)) return "Shulker " + (i + 1) + ": a name can be up to " + Order.MAX_NAME + " characters with no section sign or control characters.";
+            if (!t.isEmpty() && !Order.valid(t))
+                return "Shulker " + (i + 1) + ": a name can be up to " + Order.MAX_NAME
+                        + " characters with no section sign or control characters.";
         }
         return "";
     }

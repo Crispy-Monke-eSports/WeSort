@@ -7,6 +7,9 @@ import com.porter.wesort.manager.model.DisplayPolicy;
 import com.porter.wesort.manager.model.StashRef;
 import com.porter.wesort.manager.model.Text;
 import com.porter.wesort.manager.net.ApiError;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.LongConsumer;
 import meteordevelopment.meteorclient.gui.GuiTheme;
 import meteordevelopment.meteorclient.gui.widgets.WLabel;
 import meteordevelopment.meteorclient.gui.widgets.containers.WContainer;
@@ -16,10 +19,6 @@ import meteordevelopment.meteorclient.gui.widgets.containers.WVerticalList;
 import meteordevelopment.meteorclient.gui.widgets.pressable.WButton;
 import meteordevelopment.meteorclient.utils.Utils;
 import meteordevelopment.meteorclient.utils.render.color.Color;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.function.LongConsumer;
 
 /**
  * The Bots tab: the website's Bots page. One card per dashboard bot (state, what it is doing, versions, its stashes, and
@@ -92,15 +91,33 @@ public final class BotsTab {
     private String computeSignature() {
         StringBuilder sb = new StringBuilder();
         DisplayPolicy policy = host.policy();
-        sb.append(policy.streamer()).append(host.bots().selected()).append(host.bots().loaded()).append(releasing);
+        sb.append(policy.streamer())
+                .append(host.bots().selected())
+                .append(host.bots().loaded())
+                .append(releasing);
         for (BotList.Bot b : host.bots().list().bots()) {
             // the summary text and the last-seen age change all the time: they are updated in place
-            sb.append('|').append(b.botId()).append(b.online()).append(b.player()).append(b.summary().isEmpty()).append(b.caps()).append(b.stashes())
-                .append(b.runtimeVersion()).append(b.pluginVersion());
+            sb.append('|')
+                    .append(b.botId())
+                    .append(b.online())
+                    .append(b.player())
+                    .append(b.summary().isEmpty())
+                    .append(b.caps())
+                    .append(b.stashes())
+                    .append(b.runtimeVersion())
+                    .append(b.pluginVersion());
         }
         for (StashRef s : host.stashes()) {
-            sb.append('|').append(s.key()).append(s.online()).append(s.owner()).append(s.player()).append(s.stash()).append(s.server())
-                .append(BotsModel.delivery(s)).append(s.bot().openOrders()).append(s.bot().conflictAt());
+            sb.append('|')
+                    .append(s.key())
+                    .append(s.online())
+                    .append(s.owner())
+                    .append(s.player())
+                    .append(s.stash())
+                    .append(s.server())
+                    .append(BotsModel.delivery(s))
+                    .append(s.bot().openOrders())
+                    .append(s.bot().conflictAt());
         }
         return sb.toString();
     }
@@ -111,16 +128,24 @@ public final class BotsTab {
         signature = computeSignature();
         nextSignature = System.currentTimeMillis() + SIGNATURE_MS;
         if (!host.auth().can("activity")) {
-            parent.add(theme.label("Your account can't see the bots; ask the owner.", theme.scale(520))).expandX().widget().color(WARN);
+            parent.add(theme.label("Your account can't see the bots; ask the owner.", theme.scale(520)))
+                    .expandX()
+                    .widget()
+                    .color(WARN);
             return;
         }
         DisplayPolicy policy = host.policy();
         long now = System.currentTimeMillis();
         List<BotList.Bot> bots = host.bots().list().bots();
         if (bots.isEmpty()) {
-            parent.add(theme.label(host.bots().loaded()
-                ? "No dashboard bots yet. In the proxy, turn the WeSort plugin's dashboard on (stash manager dashboard on)."
-                : "Loading the bots...", theme.scale(520))).expandX().widget().color(host.bots().loaded() ? DIM : WARN);
+            parent.add(theme.label(
+                            host.bots().loaded()
+                                    ? "No dashboard bots yet. In the proxy, turn the WeSort plugin's dashboard on (stash manager dashboard on)."
+                                    : "Loading the bots...",
+                            theme.scale(520)))
+                    .expandX()
+                    .widget()
+                    .color(host.bots().loaded() ? DIM : WARN);
         }
         WVerticalList cards = parent.add(theme.verticalList()).expandX().widget();
         for (BotList.Bot b : bots) card(cards, b, policy, now);
@@ -137,7 +162,8 @@ public final class BotsTab {
         WHorizontalList head = card.add(theme.horizontalList()).expandX().widget();
         head.add(theme.label((selected ? "> " : "") + host.bots().list().name(b, policy.hideNames()), true));
         head.add(theme.label(b.online() ? "Online" : "Offline")).widget().color(b.online() ? GOOD : BAD);
-        WLabel seen = head.add(theme.label("last seen " + ago(b.lastSeen(), now))).widget();
+        WLabel seen =
+                head.add(theme.label("last seen " + ago(b.lastSeen(), now))).widget();
         seen.color(DIM);
         String id = b.botId();
         live.add(t -> {
@@ -145,16 +171,25 @@ public final class BotsTab {
             if (cur != null) seen.set("last seen " + ago(cur.lastSeen(), t));
         });
         if (!b.summary().isEmpty()) {
-            WLabel sum = card.add(theme.label(policy.hideCoords() ? "Now: (hidden)" : "Now: " + b.summary(), theme.scale(520))).expandX().widget();
+            WLabel sum = card.add(theme.label(
+                            policy.hideCoords() ? "Now: (hidden)" : "Now: " + b.summary(), theme.scale(520)))
+                    .expandX()
+                    .widget();
             live.add(t -> {
                 BotList.Bot cur = host.bots().list().find(id);
-                if (cur != null && !cur.summary().isEmpty()) sum.set(host.policy().hideCoords() ? "Now: (hidden)" : "Now: " + cur.summary());
+                if (cur != null && !cur.summary().isEmpty())
+                    sum.set(host.policy().hideCoords() ? "Now: (hidden)" : "Now: " + cur.summary());
             });
         }
-        card.add(theme.label(BotsModel.meta(b), theme.scale(520))).expandX().widget().color(DIM);
+        card.add(theme.label(BotsModel.meta(b), theme.scale(520)))
+                .expandX()
+                .widget()
+                .color(DIM);
 
         WHorizontalList stashes = card.add(theme.horizontalList()).expandX().widget();
-        stashes.add(theme.label(b.stashes().isEmpty() ? "No stash linked to this player." : "Stashes:")).widget().color(DIM);
+        stashes.add(theme.label(b.stashes().isEmpty() ? "No stash linked to this player." : "Stashes:"))
+                .widget()
+                .color(DIM);
         for (BotList.Link link : b.stashes()) {
             StashRef ref = find(link);
             String where = policy.hideServer() ? "(hidden)" : Text.sanitize(link.server(), 48);
@@ -186,13 +221,16 @@ public final class BotsTab {
     private void stashTable(WContainer parent, DisplayPolicy policy, long now) {
         List<StashRef> stashes = host.stashes();
         if (stashes.isEmpty()) {
-            parent.add(theme.label("No bots yet. Use Link addon (on the website) to connect one.", theme.scale(520))).expandX().widget().color(DIM);
+            parent.add(theme.label("No bots yet. Use Link addon (on the website) to connect one.", theme.scale(520)))
+                    .expandX()
+                    .widget()
+                    .color(DIM);
             return;
         }
         var view = parent.add(theme.view()).expandX().widget();
         view.maxHeight = Math.max(theme.scale(160), Utils.getWindowHeight() * 0.35);
         WTable table = view.add(theme.table()).expandX().widget();
-        for (String h : new String[]{"Bot", "Stash", "Status", "Doing", "Delivery container", "Open orders", ""}) {
+        for (String h : new String[] {"Bot", "Stash", "Status", "Doing", "Delivery container", "Open orders", ""}) {
             table.add(theme.label(h, true));
         }
         table.row();
@@ -200,11 +238,14 @@ public final class BotsTab {
         for (StashRef s : stashes) {
             if (shown++ >= MAX_STASH_ROWS) break;
             table.add(theme.label(policy.hideNames() ? "Bot" : BotsModel.who(s)));
-            table.add(theme.label(BotsModel.stashName(s, policy.hideNames()) + " @ " + (policy.hideServer() ? "(hidden)" : Text.sanitize(s.server(), 48))));
-            WLabel state = table.add(theme.label((s.online() ? "online" : "offline") + " · " + ago(s.lastSeen(), now))).widget();
+            table.add(theme.label(BotsModel.stashName(s, policy.hideNames()) + " @ "
+                    + (policy.hideServer() ? "(hidden)" : Text.sanitize(s.server(), 48))));
+            WLabel state = table.add(theme.label((s.online() ? "online" : "offline") + " · " + ago(s.lastSeen(), now)))
+                    .widget();
             state.color(s.online() ? GOOD : DIM);
             BotsModel.Doing doing = BotsModel.doing(s);
-            WLabel doingLabel = table.add(theme.label(policy.hideCoords() ? "(hidden)" : doing.text())).widget();
+            WLabel doingLabel = table.add(theme.label(policy.hideCoords() ? "(hidden)" : doing.text()))
+                    .widget();
             doingLabel.color(doing.warn() ? WARN : theme.textColor());
             String stashKey = s.key();
             live.add(t -> {
@@ -216,14 +257,21 @@ public final class BotsTab {
                 doingLabel.color(d.warn() ? WARN : theme.textColor());
             });
             boolean noDelivery = s.bot().deliveryAt().isEmpty();
-            table.add(theme.label(noDelivery ? BotsModel.delivery(s) : policy.hideCoords() ? "(hidden)" : BotsModel.delivery(s)))
-                .widget().color(noDelivery ? WARN : theme.textColor());
+            table.add(theme.label(
+                            noDelivery
+                                    ? BotsModel.delivery(s)
+                                    : policy.hideCoords() ? "(hidden)" : BotsModel.delivery(s)))
+                    .widget()
+                    .color(noDelivery ? WARN : theme.textColor());
             table.add(theme.label(String.valueOf(s.bot().openOrders())));
             if (BotsModel.canRelease(s, host.auth())) {
                 String key = s.key();
                 boolean armed = armedKey.equals(key) && now <= armedUntil;
-                WButton rel = table.add(theme.button(armed ? "Confirm release?" : "Release")).widget();
-                rel.tooltip = armed ? BotsModel.releaseWarning(s, policy.streamer()) : "Lets another bot take this stash name. Click twice.";
+                WButton rel = table.add(theme.button(armed ? "Confirm release?" : "Release"))
+                        .widget();
+                rel.tooltip = armed
+                        ? BotsModel.releaseWarning(s, policy.streamer())
+                        : "Lets another bot take this stash name. Click twice.";
                 rel.action = () -> clickedRelease(s);
             } else {
                 table.add(theme.label(""));
@@ -236,7 +284,9 @@ public final class BotsTab {
             }
         }
         if (stashes.size() > MAX_STASH_ROWS) {
-            parent.add(theme.label("Showing the first " + MAX_STASH_ROWS + " of " + stashes.size() + " stashes.")).widget().color(DIM);
+            parent.add(theme.label("Showing the first " + MAX_STASH_ROWS + " of " + stashes.size() + " stashes."))
+                    .widget()
+                    .color(DIM);
         }
     }
 
@@ -267,7 +317,9 @@ public final class BotsTab {
                 host.refreshStashes();
             } else if (r.kind() == ApiError.Kind.CANCELLED) {
                 host.notice("Not released: the password was not confirmed.");
-            } else if (r.kind() == ApiError.Kind.NO_PERMISSION || r.kind() == ApiError.Kind.LOGIN || r.kind() == ApiError.Kind.MUST_CHANGE) {
+            } else if (r.kind() == ApiError.Kind.NO_PERMISSION
+                    || r.kind() == ApiError.Kind.LOGIN
+                    || r.kind() == ApiError.Kind.MUST_CHANGE) {
                 host.failed(r);
             } else {
                 host.notice("Could not release: " + host.describe(r, "HTTP " + r.status()));

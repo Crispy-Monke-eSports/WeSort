@@ -5,8 +5,7 @@ package com.porter.wesortmanager;
  * Requests made with an older key (before a regenerate) don't count.
  */
 final class LinkState {
-    record Linked(String player, String server, String stash, long lastSeen) {
-    }
+    record Linked(String player, String server, String stash, long lastSeen) {}
 
     private static final int MAX_BOTS = 64;
 
@@ -28,7 +27,10 @@ final class LinkState {
 
     synchronized void seen(long keyGeneration, String server, String stash, String player) {
         if (keyGeneration != generation) return;
-        if (player == null && linked != null && linked.server().equals(server) && linked.stash().equals(stash)) {
+        if (player == null
+                && linked != null
+                && linked.server().equals(server)
+                && linked.stash().equals(stash)) {
             player = linked.player();
         }
         String key = server + "\u0000" + stash;

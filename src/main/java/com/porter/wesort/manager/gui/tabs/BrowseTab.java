@@ -10,6 +10,11 @@ import com.porter.wesort.manager.model.IndexModel;
 import com.porter.wesort.manager.model.IndexModel.Entry;
 import com.porter.wesort.manager.model.IndexModel.Sort;
 import com.porter.wesort.manager.model.Text;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import meteordevelopment.meteorclient.gui.GuiTheme;
 import meteordevelopment.meteorclient.gui.widgets.containers.WContainer;
 import meteordevelopment.meteorclient.gui.widgets.containers.WHorizontalList;
@@ -19,12 +24,6 @@ import meteordevelopment.meteorclient.gui.widgets.input.WTextBox;
 import meteordevelopment.meteorclient.gui.widgets.pressable.WButton;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.world.item.ItemStack;
-
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
 
 /**
  * The Browse tab: search, sort, an item grid, and the details of the selected item or shulker group. Reads only the
@@ -45,12 +44,10 @@ public final class BrowseTab {
         boolean hideCoords();
 
         /** A short message for the user (the window's status line). */
-        default void notice(String text) {
-        }
+        default void notice(String text) {}
 
         /** The Orders tab of the creative tabs was clicked: show the Orders page. */
-        default void openOrders() {
-        }
+        default void openOrders() {}
 
         /** True when right-clicking an item can put it in the order cart (for the hint under the grid). */
         default boolean cartEnabled() {
@@ -74,6 +71,7 @@ public final class BrowseTab {
 
     /** The sort select's entries, in the website's words, in the order of {@link #SORTS}. */
     private static final String[] SORT_LABELS = {"Creative order", "Count", "Name A-Z", "ID"};
+
     private static final Sort[] SORTS = {Sort.CREATIVE, Sort.COUNT, Sort.NAME, Sort.ID};
 
     private static final long SEARCH_DEBOUNCE_MS = 100;
@@ -84,6 +82,7 @@ public final class BrowseTab {
     private String searchText = "";
     /** Like the website: Search and Shulkers sort by count, a creative tab by creative order, each remembered. */
     private Sort sortAll = Sort.COUNT;
+
     private Sort sortTab = Sort.CREATIVE;
     private String tab = IndexModel.TAB_ALL;
     private String selectedKey;
@@ -124,7 +123,11 @@ public final class BrowseTab {
         grid = page.grid = page.add(new WItemGrid(host::graphics)).widget();
         grid.onCell = (cell, button) -> {
             // Right-click puts a stack in the order cart when orders are possible
-            if (button == 1 && adder != null && adder.enabled() && cell.ref() instanceof String key && byKey.get(key) != null) {
+            if (button == 1
+                    && adder != null
+                    && adder.enabled()
+                    && cell.ref() instanceof String key
+                    && byKey.get(key) != null) {
                 Entry picked = byKey.get(key);
                 host.notice(adder.add(picked.item() != null ? "item" : "shulker", key, false));
                 return;
@@ -133,14 +136,16 @@ public final class BrowseTab {
             grid.select(selectedKey);
             showDetails();
         };
-        WTextBox search = page.add(theme.textBox(searchText, "Search (e.g. diamond sword, @minecraft)")).widget();
+        WTextBox search = page.add(theme.textBox(searchText, "Search (e.g. diamond sword, @minecraft)"))
+                .widget();
         page.search = search;
         search.action = () -> {
             searchText = search.get();
             dirty = true;
             dirtyAt = System.currentTimeMillis();
         };
-        WDropdown<String> sortSelect = page.add(theme.dropdown(SORT_LABELS, SORT_LABELS[sortIndex(currentSort())])).widget();
+        WDropdown<String> sortSelect = page.add(theme.dropdown(SORT_LABELS, SORT_LABELS[sortIndex(currentSort())]))
+                .widget();
         page.sort = sortSelect;
         sortSelect.action = () -> {
             Sort picked = SORTS[Math.max(0, java.util.Arrays.asList(SORT_LABELS).indexOf(sortSelect.get()))];
@@ -228,20 +233,22 @@ public final class BrowseTab {
             page.summaryShort = page.summaryLong;
         } else {
             page.summaryLong = "Showing " + Text.grouped(entries.size()) + " of " + Text.grouped(countedAll)
-                + (shulkers ? " filled shulker kinds · total " : " slots · total ") + Text.grouped(total)
-                + (shulkers ? " shulkers" : " items");
-            page.summaryShort = Text.grouped(entries.size()) + " of " + Text.grouped(countedAll) + " · " + Text.grouped(total);
+                    + (shulkers ? " filled shulker kinds · total " : " slots · total ") + Text.grouped(total)
+                    + (shulkers ? " shulkers" : " items");
+            page.summaryShort =
+                    Text.grouped(entries.size()) + " of " + Text.grouped(countedAll) + " · " + Text.grouped(total);
         }
         page.hint = host.cartEnabled()
-            ? "Click an item for its details. Right-click puts a stack in the order cart."
-            : "Click an item for its details.";
+                ? "Click an item for its details. Right-click puts a stack in the order cart."
+                : "Click an item for its details.";
         page.invalidate();
         showDetails();
     }
 
     private WItemGrid.Cell cell(Entry e) {
         ItemStack real = source.stackFor(e.key());
-        ItemStack stack = real != null ? real : e.item() != null ? ItemStacks.display(e.item()) : ItemStacks.display(e.shulker());
+        ItemStack stack =
+                real != null ? real : e.item() != null ? ItemStacks.display(e.item()) : ItemStacks.display(e.shulker());
         String count = e.count() == 1 ? "" : Text.compact(e.count());
         String tip = e.name() + " x" + Text.grouped(e.count());
         return new WItemGrid.Cell(stack, count, tip, e.key());
@@ -263,23 +270,36 @@ public final class BrowseTab {
         if (e.item() != null) {
             IndexModel.Item it = e.item();
             details.add(theme.label(it.name(), true, wrap)).expandX();
-            if (!it.id().equals(it.name())) details.add(theme.label(it.id(), wrap)).expandX();
+            if (!it.id().equals(it.name()))
+                details.add(theme.label(it.id(), wrap)).expandX();
             details.add(theme.label(countLine(it), wrap)).expandX();
-            if (e.count() != it.count()) details.add(theme.label(Text.grouped(e.count()) + " empty, " + Text.grouped(it.count() - e.count()) + " filled (listed next to it)", wrap)).expandX();
+            if (e.count() != it.count())
+                details.add(theme.label(
+                                Text.grouped(e.count()) + " empty, " + Text.grouped(it.count() - e.count())
+                                        + " filled (listed next to it)",
+                                wrap))
+                        .expandX();
             boolean hasDurabilityLine = false;
             for (String line : it.details()) {
                 details.add(theme.label(line, wrap)).expandX();
                 hasDurabilityLine |= line.toLowerCase(Locale.ROOT).startsWith("durability");
             }
             if (it.durabilityLeft() >= 0 && !hasDurabilityLine) {
-                details.add(theme.label("Durability: " + Text.grouped(it.maxDamage() - it.damage()) + " / " + Text.grouped(it.maxDamage()), wrap)).expandX();
+                details.add(theme.label(
+                                "Durability: " + Text.grouped(it.maxDamage() - it.damage()) + " / "
+                                        + Text.grouped(it.maxDamage()),
+                                wrap))
+                        .expandX();
             }
             if (host.canInspect()) {
                 WButton inspect = details.add(theme.button("Inspect")).widget();
                 inspect.tooltip = "Opens the game's own item tooltip for this item. Esc comes back here.";
                 inspect.action = () -> {
                     ItemStack real = source.stackFor(it.key());
-                    host.inspect(real != null ? real : ItemStacks.display(it), it.count(), it.name() + " x" + Text.grouped(it.count()));
+                    host.inspect(
+                            real != null ? real : ItemStacks.display(it),
+                            it.count(),
+                            it.name() + " x" + Text.grouped(it.count()));
                 };
             }
             addWhere(it.key(), wrap);
@@ -287,15 +307,26 @@ public final class BrowseTab {
             IndexModel.Shulker g = e.shulker();
             IndexModel index = source.index();
             details.add(theme.label(g.name(), true, wrap)).expandX();
-            details.add(theme.label(Text.grouped(g.count()) + (g.count() == 1 ? " shulker" : " identical shulkers"), wrap)).expandX();
-            WSlotGrid contents = details.add(new WSlotGrid(host::graphics, IndexModel.SHULKER_SLOTS)).widget();
-            List<WItemGrid.Cell> cells = new ArrayList<>(java.util.Collections.nCopies(IndexModel.SHULKER_SLOTS, (WItemGrid.Cell) null));
+            details.add(theme.label(
+                            Text.grouped(g.count()) + (g.count() == 1 ? " shulker" : " identical shulkers"), wrap))
+                    .expandX();
+            WSlotGrid contents = details.add(new WSlotGrid(host::graphics, IndexModel.SHULKER_SLOTS))
+                    .widget();
+            List<WItemGrid.Cell> cells =
+                    new ArrayList<>(java.util.Collections.nCopies(IndexModel.SHULKER_SLOTS, (WItemGrid.Cell) null));
             for (IndexModel.Content c : index.contentsOf(g)) {
                 IndexModel.Item it = index.item(c.key());
                 ItemStack real = source.stackFor(c.key());
-                ItemStack stack = real != null ? real : it != null ? ItemStacks.display(it) : ItemStacks.displayId(c.key());
+                ItemStack stack =
+                        real != null ? real : it != null ? ItemStacks.display(it) : ItemStacks.displayId(c.key());
                 String name = it != null ? it.name() : Text.sanitize(c.key(), 60);
-                cells.set(c.slot(), new WItemGrid.Cell(stack, c.count() == 1 ? "" : Text.compact(c.count()), name + " x" + Text.grouped(c.count()), c.key()));
+                cells.set(
+                        c.slot(),
+                        new WItemGrid.Cell(
+                                stack,
+                                c.count() == 1 ? "" : Text.compact(c.count()),
+                                name + " x" + Text.grouped(c.count()),
+                                c.key()));
             }
             contents.setCells(cells);
             addWhere(g.key(), wrap);
@@ -307,7 +338,8 @@ public final class BrowseTab {
         if (adder == null || !adder.enabled()) return;
         String type = e.item() != null ? "item" : "shulker";
         WHorizontalList row = details.add(theme.horizontalList()).widget();
-        WButton one = row.add(theme.button(e.item() != null ? "Add a stack to cart" : "Add one to cart")).widget();
+        WButton one = row.add(theme.button(e.item() != null ? "Add a stack to cart" : "Add one to cart"))
+                .widget();
         one.tooltip = "Puts it in the order cart (right-click works too). Orders tab.";
         one.action = () -> host.notice(adder.add(type, e.key(), false));
         if (e.item() != null) {
@@ -324,7 +356,8 @@ public final class BrowseTab {
         if (!source.supportsWhere()) return;
         details.add(theme.label("Where", true)).expandX();
         if (host.hideCoords()) {
-            details.add(theme.label("Locations are hidden while streamer display is on.", wrap)).expandX();
+            details.add(theme.label("Locations are hidden while streamer display is on.", wrap))
+                    .expandX();
             return;
         }
         List<Where> hits = source.where(key);
@@ -337,18 +370,25 @@ public final class BrowseTab {
             WHorizontalList row = details.add(theme.horizontalList()).expandX().widget();
             String block = w.block().substring(w.block().indexOf(':') + 1).replace('_', ' ');
             String away = w.distance() >= 0 ? ", " + w.distance() + " m" : "";
-            row.add(theme.label(w.key().x() + " " + w.key().y() + " " + w.key().z() + " - " + block + " x" + Text.grouped(w.count()) + away, wrap)).expandX();
+            row.add(theme.label(
+                            w.key().x() + " " + w.key().y() + " " + w.key().z() + " - " + block + " x"
+                                    + Text.grouped(w.count()) + away,
+                            wrap))
+                    .expandX();
             WButton forget = row.add(theme.button("Forget")).widget();
             forget.tooltip = "Removes this container from the local index. It is remembered again when you open it.";
             forget.action = () -> source.forget(w.key());
         }
-        if (hits.size() > WHERE_SHOWN) details.add(theme.label("...and " + (hits.size() - WHERE_SHOWN) + " more", wrap)).expandX();
+        if (hits.size() > WHERE_SHOWN)
+            details.add(theme.label("...and " + (hits.size() - WHERE_SHOWN) + " more", wrap))
+                    .expandX();
     }
 
     private static String countLine(IndexModel.Item it) {
         double stacks = (double) it.count() / it.maxStack();
         double shulkers = stacks / IndexModel.SHULKER_SLOTS;
-        return "Count: " + Text.grouped(it.count()) + " (about " + approx(stacks) + " stacks, " + approx(shulkers) + " shulkers)";
+        return "Count: " + Text.grouped(it.count()) + " (about " + approx(stacks) + " stacks, " + approx(shulkers)
+                + " shulkers)";
     }
 
     private static String approx(double v) {

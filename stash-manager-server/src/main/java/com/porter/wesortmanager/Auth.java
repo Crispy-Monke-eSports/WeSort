@@ -1,12 +1,12 @@
 package com.porter.wesortmanager;
 
-import javax.crypto.SecretKeyFactory;
-import javax.crypto.spec.PBEKeySpec;
 import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.Base64;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
 
 /**
  * The dashboard password hash: {@code pbkdf2-sha256$<iterations>$<salt b64>$<hash b64>} (PBKDF2WithHmacSHA256, a 16-byte
@@ -21,28 +21,149 @@ final class Auth {
     private static final int HASH_BITS = 256;
     /** Upper bound on the iteration count accepted from a stored hash, so a hand-edited line can't stall logins. */
     private static final int MAX_ITERATIONS = 10_000_000;
+
     private static final SecureRandom RANDOM = new SecureRandom();
 
     /** The most common passwords (lowercase); refused for new passwords whatever their length. */
     private static final java.util.Set<String> COMMON = java.util.Set.of(
-        "123456", "password", "12345678", "qwerty", "123456789", "12345", "1234", "111111", "1234567", "dragon",
-        "123123", "baseball", "abc123", "football", "monkey", "letmein", "696969", "shadow", "master", "666666",
-        "qwertyuiop", "123321", "mustang", "1234567890", "michael", "654321", "superman", "1qaz2wsx", "7777777", "121212",
-        "000000", "qazwsx", "123qwe", "killer", "trustno1", "jordan", "jennifer", "zxcvbnm", "asdfgh", "hunter",
-        "buster", "soccer", "harley", "batman", "andrew", "tigger", "sunshine", "iloveyou", "2000", "charlie",
-        "robert", "thomas", "hockey", "ranger", "daniel", "starwars", "klaster", "112233", "george", "computer",
-        "michelle", "jessica", "pepper", "1111", "zxcvbn", "555555", "11111111", "131313", "freedom", "777777",
-        "pass", "maggie", "159753", "aaaaaa", "ginger", "princess", "joshua", "cheese", "amanda", "summer",
-        "love", "ashley", "nicole", "chelsea", "biteme", "matthew", "access", "yankees", "987654321", "dallas",
-        "austin", "thunder", "taylor", "matrix", "minecraft", "password1", "password123", "password1234", "passwordpassword", "qwerty123456",
-        "qwertyuiop123", "qwertyuiop12", "123456789012", "1234567890123", "12345678910", "111111111111", "000000000000", "123123123123", "abcdefghijkl", "abc123456789",
-        "iloveyou1234", "letmein12345", "welcome12345", "welcome123456", "administrator", "adminadmin123", "changeme1234", "minecraft123", "minecraft1234", "stashmanager",
-        "stash-manager", "stashmanager123", "1q2w3e4r5t6y", "qazwsxedcrfv", "zaq12wsxcde3", "asdfghjkl123", "trustno1trustno1", "superman1234", "monkey123456", "dragon123456",
-        "football1234", "baseball1234", "sunshine1234", "princess1234");
+            "123456",
+            "password",
+            "12345678",
+            "qwerty",
+            "123456789",
+            "12345",
+            "1234",
+            "111111",
+            "1234567",
+            "dragon",
+            "123123",
+            "baseball",
+            "abc123",
+            "football",
+            "monkey",
+            "letmein",
+            "696969",
+            "shadow",
+            "master",
+            "666666",
+            "qwertyuiop",
+            "123321",
+            "mustang",
+            "1234567890",
+            "michael",
+            "654321",
+            "superman",
+            "1qaz2wsx",
+            "7777777",
+            "121212",
+            "000000",
+            "qazwsx",
+            "123qwe",
+            "killer",
+            "trustno1",
+            "jordan",
+            "jennifer",
+            "zxcvbnm",
+            "asdfgh",
+            "hunter",
+            "buster",
+            "soccer",
+            "harley",
+            "batman",
+            "andrew",
+            "tigger",
+            "sunshine",
+            "iloveyou",
+            "2000",
+            "charlie",
+            "robert",
+            "thomas",
+            "hockey",
+            "ranger",
+            "daniel",
+            "starwars",
+            "klaster",
+            "112233",
+            "george",
+            "computer",
+            "michelle",
+            "jessica",
+            "pepper",
+            "1111",
+            "zxcvbn",
+            "555555",
+            "11111111",
+            "131313",
+            "freedom",
+            "777777",
+            "pass",
+            "maggie",
+            "159753",
+            "aaaaaa",
+            "ginger",
+            "princess",
+            "joshua",
+            "cheese",
+            "amanda",
+            "summer",
+            "love",
+            "ashley",
+            "nicole",
+            "chelsea",
+            "biteme",
+            "matthew",
+            "access",
+            "yankees",
+            "987654321",
+            "dallas",
+            "austin",
+            "thunder",
+            "taylor",
+            "matrix",
+            "minecraft",
+            "password1",
+            "password123",
+            "password1234",
+            "passwordpassword",
+            "qwerty123456",
+            "qwertyuiop123",
+            "qwertyuiop12",
+            "123456789012",
+            "1234567890123",
+            "12345678910",
+            "111111111111",
+            "000000000000",
+            "123123123123",
+            "abcdefghijkl",
+            "abc123456789",
+            "iloveyou1234",
+            "letmein12345",
+            "welcome12345",
+            "welcome123456",
+            "administrator",
+            "adminadmin123",
+            "changeme1234",
+            "minecraft123",
+            "minecraft1234",
+            "stashmanager",
+            "stash-manager",
+            "stashmanager123",
+            "1q2w3e4r5t6y",
+            "qazwsxedcrfv",
+            "zaq12wsxcde3",
+            "asdfghjkl123",
+            "trustno1trustno1",
+            "superman1234",
+            "monkey123456",
+            "dragon123456",
+            "football1234",
+            "baseball1234",
+            "sunshine1234",
+            "princess1234");
+
     private static final String CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O, 1/I
 
-    private Auth() {
-    }
+    private Auth() {}
 
     /** A problem with a new password (too short, too long, too common), or null. */
     static String checkNew(String p) {
@@ -68,7 +189,9 @@ final class Auth {
         if (given == null || code == null) return false;
         String a = given.replaceAll("[\\s-]", "").toUpperCase(java.util.Locale.ROOT);
         String b = code.replace("-", "");
-        return MessageDigest.isEqual(a.getBytes(java.nio.charset.StandardCharsets.UTF_8), b.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return MessageDigest.isEqual(
+                a.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                b.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
     /**
@@ -78,7 +201,8 @@ final class Auth {
     static String tag(String stored) {
         if (stored == null) return null;
         try {
-            byte[] d = MessageDigest.getInstance("SHA-256").digest(stored.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            byte[] d = MessageDigest.getInstance("SHA-256")
+                    .digest(stored.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             return java.util.HexFormat.of().formatHex(d, 0, 8);
         } catch (java.security.NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
@@ -87,6 +211,7 @@ final class Auth {
 
     /** The iterations new hashes get. Only tests lower it (so a test can create many users quickly). */
     static volatile int iterations = ITERATIONS;
+
     private static volatile String dummy;
 
     static String hash(String password) {
@@ -146,7 +271,9 @@ final class Auth {
         char[] chars = password.toCharArray();
         PBEKeySpec spec = new PBEKeySpec(chars, salt, iterations, HASH_BITS);
         try {
-            return SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).getEncoded();
+            return SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+                    .generateSecret(spec)
+                    .getEncoded();
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException("PBKDF2WithHmacSHA256 is not available", e);
         } finally {

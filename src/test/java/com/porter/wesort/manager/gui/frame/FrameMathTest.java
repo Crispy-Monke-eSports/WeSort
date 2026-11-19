@@ -1,10 +1,10 @@
 package com.porter.wesort.manager.gui.frame;
 
-import com.porter.wesort.manager.gui.frame.FrameMath.Edge;
-import org.junit.jupiter.api.Test;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.porter.wesort.manager.gui.frame.FrameMath.Edge;
+import org.junit.jupiter.api.Test;
 
 class FrameMathTest {
     private static final WindowGeometry G = new WindowGeometry(100, 50, 400, 300, false);

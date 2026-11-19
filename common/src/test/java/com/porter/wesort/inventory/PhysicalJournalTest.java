@@ -9,14 +9,16 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class PhysicalJournalTest {
-    @TempDir Path directory;
+    @TempDir
+    Path directory;
+
     private JsonObject context() {
-        return JsonParser
-            .parseString(
-                "{\"server\":\"private-test-server\",\"dimension\":\"minecraft:overworld\",\"agent\":\"00000000-0000-"
-                + "0000-0000-000000000001\",\"kind\":\"KIT\",\"jobId\":\"test-job\",\"orderId\":\"test-order\"}")
-            .getAsJsonObject();
+        return JsonParser.parseString(
+                        "{\"server\":\"private-test-server\",\"dimension\":\"minecraft:overworld\",\"agent\":\"00000000-0000-"
+                                + "0000-0000-000000000001\",\"kind\":\"KIT\",\"jobId\":\"test-job\",\"orderId\":\"test-order\"}")
+                .getAsJsonObject();
     }
+
     private JsonObject frame(int menu, String stack) {
         var frame = new JsonObject();
         frame.addProperty("menu", menu);
@@ -27,6 +29,7 @@ class PhysicalJournalTest {
         frame.addProperty("cursor", "");
         return frame;
     }
+
     private JsonObject intent() {
         var out = new JsonObject();
         out.add("origin", context());
@@ -34,20 +37,22 @@ class PhysicalJournalTest {
         out.add("expected", frame(5, "after"));
         return out;
     }
+
     @Test
     void durableIntentExistsBeforeMutationAndOnlyExactReceiptCanCommit() throws Exception {
         var journal = new PhysicalJournal(directory);
         journal.start(context());
         journal.phase("TRANSFER", new JsonObject());
         journal.intent(intent());
-        var stored = PhysicalJournal.validate(
-            JsonParser.parseString(Files.readString(directory.resolve("active.json"))).getAsJsonObject());
-        assertEquals("INTENT",
-            stored.getAsJsonArray("events")
-                .get(stored.getAsJsonArray("events").size() - 1)
-                .getAsJsonObject()
-                .get("type")
-                .getAsString());
+        var stored = PhysicalJournal.validate(JsonParser.parseString(Files.readString(directory.resolve("active.json")))
+                .getAsJsonObject());
+        assertEquals(
+                "INTENT",
+                stored.getAsJsonArray("events")
+                        .get(stored.getAsJsonArray("events").size() - 1)
+                        .getAsJsonObject()
+                        .get("type")
+                        .getAsString());
         assertTrue(journal.pending());
         assertThrows(java.io.IOException.class, journal::complete);
         assertThrows(java.io.IOException.class, () -> journal.verified(frame(5, "wrong variant"), false));
@@ -55,8 +60,11 @@ class PhysicalJournalTest {
         assertFalse(journal.pending());
         journal.complete();
         assertTrue(journal.terminal());
-        assertEquals("COMPLETED", new PhysicalJournal(directory).current().get("state").getAsString());
+        assertEquals(
+                "COMPLETED",
+                new PhysicalJournal(directory).current().get("state").getAsString());
     }
+
     @Test
     void everyPhysicalPhaseIsFencedOnRestartAndCannotBlindlyRetry() throws Exception {
         for (String phase : List.of("SELECT", "PLACE", "OPEN", "TRANSFER", "VERIFY", "BREAK", "PICKUP", "STORE")) {
@@ -73,6 +81,7 @@ class PhysicalJournalTest {
             assertThrows(java.io.IOException.class, restarted::complete);
         }
     }
+
     @Test
     void explicitFreshSourcePostconditionResumesVerificationWithoutDuplicatingMutation() throws Exception {
         var journal = new PhysicalJournal(directory);
@@ -85,15 +94,15 @@ class PhysicalJournalTest {
         restarted.verified(frame(9, "after"), true);
         restarted.complete();
         assertEquals("COMPLETED", restarted.current().get("state").getAsString());
-        assertEquals(1,
-            restarted.current()
-                .getAsJsonArray("events")
-                .asList()
-                .stream()
-                .filter(v -> v.getAsJsonObject().get("type").getAsString().equals("INTENT"))
-                .count());
+        assertEquals(
+                1,
+                restarted.current().getAsJsonArray("events").asList().stream()
+                        .filter(v ->
+                                v.getAsJsonObject().get("type").getAsString().equals("INTENT"))
+                        .count());
         assertEquals(before + 2, restarted.current().get("revision").getAsLong());
     }
+
     @Test
     void cannotReplaceUnresolvedWorkAndCompletedHistoryRetainsOrderCorrelation() throws Exception {
         var journal = new PhysicalJournal(directory);
@@ -106,9 +115,13 @@ class PhysicalJournalTest {
         journal.start(context());
         assertNotEquals(first, journal.current().get("id").getAsString());
         assertEquals(2, journal.records().size());
-        assertTrue(journal.records().stream().allMatch(
-            r -> r.getAsJsonObject("context").get("orderId").getAsString().equals("test-order")));
+        assertTrue(journal.records().stream()
+                .allMatch(r -> r.getAsJsonObject("context")
+                        .get("orderId")
+                        .getAsString()
+                        .equals("test-order")));
     }
+
     @Test
     void alteredContextStateOrEventIsRejectedAndFileRemainsUnchanged() throws Exception {
         var journal = new PhysicalJournal(directory);
@@ -116,18 +129,17 @@ class PhysicalJournalTest {
         journal.intent(intent());
         for (String field : List.of("state", "context", "events")) {
             var corrupt = journal.current();
-            if (field.equals("state"))
-                corrupt.addProperty("state", "COMPLETED");
+            if (field.equals("state")) corrupt.addProperty("state", "COMPLETED");
             else if (field.equals("context"))
                 corrupt.getAsJsonObject("context").addProperty("server", "another-server");
-            else
-                corrupt.getAsJsonArray("events").get(0).getAsJsonObject().addProperty("type", "FORGED");
+            else corrupt.getAsJsonArray("events").get(0).getAsJsonObject().addProperty("type", "FORGED");
             String bytes = corrupt.toString();
             Files.writeString(directory.resolve("active.json"), bytes);
             assertThrows(java.io.IOException.class, () -> new PhysicalJournal(directory));
             assertEquals(bytes, Files.readString(directory.resolve("active.json")));
         }
     }
+
     @Test
     void preconditionFailureIsDistinctFromUnknownPhysicalOutcome() throws Exception {
         var journal = new PhysicalJournal(directory);
@@ -138,6 +150,8 @@ class PhysicalJournalTest {
         journal.intent(intent());
         assertThrows(java.io.IOException.class, () -> journal.failBeforeMutation("Already transmitted"));
         journal.block("Missing server ACK");
-        assertEquals("NEEDS_RECONCILIATION", new PhysicalJournal(directory).current().get("state").getAsString());
+        assertEquals(
+                "NEEDS_RECONCILIATION",
+                new PhysicalJournal(directory).current().get("state").getAsString());
     }
 }

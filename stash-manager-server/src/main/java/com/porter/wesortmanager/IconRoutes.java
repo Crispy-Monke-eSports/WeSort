@@ -1,7 +1,6 @@
 package com.porter.wesortmanager;
 
 import com.sun.net.httpserver.HttpExchange;
-
 import java.io.IOException;
 
 /** GET /icon/<namespace>/<path>.png. The name and mc query parameters are accepted but ignored. */
@@ -25,7 +24,8 @@ final class IconRoutes {
         }
         String ns = rest.substring(0, slash);
         String path = rest.substring(slash + 1, rest.length() - ".png".length());
-        if (!IconService.ID_PART.matcher(ns).matches() || !IconService.ID_PART.matcher(path).matches()) {
+        if (!IconService.ID_PART.matcher(ns).matches()
+                || !IconService.ID_PART.matcher(path).matches()) {
             Http.error(ex, 400, "bad item id");
             return;
         }

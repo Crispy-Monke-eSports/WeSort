@@ -41,7 +41,10 @@ public class WNavPill extends WPressable {
         double u = t.unit();
         boolean hot = (mouseOver || pressed) && !t.hoverBlocked();
         int fill = active ? p.navActiveBg() : p.nav();
-        if (hot) fill = Palette.alpha(fill) == 0 ? Palette.withAlpha(p.navText(), pressed ? 70 : 40) : Palette.mix(fill, p.navText(), pressed ? 0.30 : 0.15);
+        if (hot)
+            fill = Palette.alpha(fill) == 0
+                    ? Palette.withAlpha(p.navText(), pressed ? 70 : 40)
+                    : Palette.mix(fill, p.navText(), pressed ? 0.30 : 0.15);
         double radius = p.radius == 0 ? 0 : height / 2;
         Paint.roundRect(renderer, t, x, y, width, height, radius, fill);
         if (p.bevel && active) Paint.bevel(renderer, t, x, y, width, height, u, 0xFF6B6B6B, 0xFF2A2A2A);

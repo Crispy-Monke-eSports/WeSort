@@ -1,7 +1,5 @@
 package com.porter.wesort.manager.local;
 
-import net.minecraft.nbt.Tag;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -9,6 +7,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import net.minecraft.nbt.Tag;
 
 /**
  * The containers the player has opened on one server, as the game showed them (items kept as their saved NBT, so the
@@ -114,8 +113,10 @@ public final class LocalStore {
 
     static boolean valid(Entry e) {
         if (e == null || e.key() == null || e.parts() == null || e.parts().isEmpty() || e.slots() == null) return false;
-        if (e.size() < 1 || e.size() > CaptureRules.MAX_SLOTS || e.slots().size() > CaptureRules.MAX_SLOTS) return false;
-        for (Slot s : e.slots()) if (s == null || s.item() == null || s.slot() < 0 || s.slot() >= e.size()) return false;
+        if (e.size() < 1 || e.size() > CaptureRules.MAX_SLOTS || e.slots().size() > CaptureRules.MAX_SLOTS)
+            return false;
+        for (Slot s : e.slots())
+            if (s == null || s.item() == null || s.slot() < 0 || s.slot() >= e.size()) return false;
         return true;
     }
 
@@ -169,7 +170,8 @@ public final class LocalStore {
         if (keep != null) candidates.removeIf(e -> e.key().equals(keep));
         // size() - cap entries must go; "keep" is not a candidate, and counts toward the cap
         int excess = entries.size() - limit;
-        for (Entry drop : Evict.oldest(candidates, candidates.size() - excess, Entry::readAt)) entries.remove(drop.key());
+        for (Entry drop : Evict.oldest(candidates, candidates.size() - excess, Entry::readAt))
+            entries.remove(drop.key());
         touch();
     }
 

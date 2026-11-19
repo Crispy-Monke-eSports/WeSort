@@ -4,7 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.porter.wesort.stash.Order;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -20,18 +19,38 @@ public final class OrderModel {
     private static final int MAX_ORDERS = 200;
     private static final int MAX_LINES = 200;
 
-    public static final String PENDING = "pending", ACCEPTED = "accepted", IN_PROGRESS = "in_progress",
-        DELIVERED = "delivered", FAILED = "failed", CANCELLED = "cancelled";
+    public static final String PENDING = "pending",
+            ACCEPTED = "accepted",
+            IN_PROGRESS = "in_progress",
+            DELIVERED = "delivered",
+            FAILED = "failed",
+            CANCELLED = "cancelled";
 
     /**
      * One order. {@code total} is 0 when there is no progress; {@code hasPlacedBy} is false for an order from before there
      * were users (it belongs to the owner).
      */
-    public record Entry(String id, String status, String phase, String message, int done, int total,
-                        boolean cancelRequested, long cancelRequestedAt, long updatedAt, long createdAt,
-                        boolean hasPlacedBy, String placedById, String placedByName, String retriedAs,
-                        List<Order.Line> lines, String namesMode, String namesAll, List<String> namesEach,
-                        int shulkers, boolean hasResult) {
+    public record Entry(
+            String id,
+            String status,
+            String phase,
+            String message,
+            int done,
+            int total,
+            boolean cancelRequested,
+            long cancelRequestedAt,
+            long updatedAt,
+            long createdAt,
+            boolean hasPlacedBy,
+            String placedById,
+            String placedByName,
+            String retriedAs,
+            List<Order.Line> lines,
+            String namesMode,
+            String namesAll,
+            List<String> namesEach,
+            int shulkers,
+            boolean hasResult) {
 
         public boolean open() {
             return OrderModel.isOpen(status);
@@ -58,8 +77,7 @@ public final class OrderModel {
         }
     }
 
-    private OrderModel() {
-    }
+    private OrderModel() {}
 
     public static boolean isOpen(String status) {
         return PENDING.equals(status) || ACCEPTED.equals(status) || IN_PROGRESS.equals(status);
@@ -97,8 +115,10 @@ public final class OrderModel {
             }
         }
         JsonObject available = Json.obj(o.get("available"));
-        return new Listing(List.copyOf(orders), numbers(available == null ? null : Json.obj(available.get("items"))),
-            numbers(available == null ? null : Json.obj(available.get("shulkers"))));
+        return new Listing(
+                List.copyOf(orders),
+                numbers(available == null ? null : Json.obj(available.get("items"))),
+                numbers(available == null ? null : Json.obj(available.get("shulkers"))));
     }
 
     private static Map<String, Long> numbers(JsonObject o) {
@@ -106,7 +126,8 @@ public final class OrderModel {
         if (o == null) return out;
         for (Map.Entry<String, JsonElement> e : o.entrySet()) {
             JsonElement v = e.getValue();
-            if (v != null && v.isJsonPrimitive() && v.getAsJsonPrimitive().isNumber()) out.put(e.getKey(), Math.max(0, v.getAsLong()));
+            if (v != null && v.isJsonPrimitive() && v.getAsJsonPrimitive().isNumber())
+                out.put(e.getKey(), Math.max(0, v.getAsLong()));
         }
         return out;
     }
@@ -124,7 +145,10 @@ public final class OrderModel {
             String type = Json.str(l, "type");
             String key = Json.str(l, "key");
             double count = Json.num(l, "count", 0);
-            if ((type.equals(Order.ITEM) || type.equals(Order.SHULKER)) && !key.isEmpty() && key.length() <= 256 && count >= 1) {
+            if ((type.equals(Order.ITEM) || type.equals(Order.SHULKER))
+                    && !key.isEmpty()
+                    && key.length() <= 256
+                    && count >= 1) {
                 lines.add(new Order.Line(type, key, (int) Math.min(Integer.MAX_VALUE, count)));
             }
         }
@@ -138,16 +162,33 @@ public final class OrderModel {
         if (eachRaw != null) {
             for (JsonElement e : eachRaw) {
                 if (each.size() >= Order.MAX_NAMES) break;
-                each.add(e.isJsonPrimitive() && e.getAsJsonPrimitive().isString() ? Text.sanitize(e.getAsString(), 60) : "");
+                each.add(
+                        e.isJsonPrimitive() && e.getAsJsonPrimitive().isString()
+                                ? Text.sanitize(e.getAsString(), 60)
+                                : "");
             }
         }
-        return new Entry(id, Text.sanitize(Json.str(o, "status"), 20), Text.sanitize(Json.str(o, "phase"), 120),
-            Text.sanitize(Json.str(o, "message"), 320),
-            progress == null ? 0 : (int) Math.max(0, Json.num(progress, "done", 0)), progress == null ? 0 : (int) Math.max(0, Json.num(progress, "total", 0)),
-            Json.bool(o, "cancelRequested"), Json.lng(o, "cancelRequestedAt", 0), Json.lng(o, "updatedAt", 0), Json.lng(o, "createdAt", 0),
-            by != null, by == null ? "" : Json.str(by, "id"), by == null ? "" : Text.sanitize(Json.str(by, "name"), 40),
-            Json.str(o, "retriedAs"), List.copyOf(lines), mode, names == null ? "" : Text.sanitize(Json.str(names, "name"), 60),
-            List.copyOf(each), result == null ? 0 : (int) Math.max(0, Json.num(result, "shulkers", 0)), result != null);
+        return new Entry(
+                id,
+                Text.sanitize(Json.str(o, "status"), 20),
+                Text.sanitize(Json.str(o, "phase"), 120),
+                Text.sanitize(Json.str(o, "message"), 320),
+                progress == null ? 0 : (int) Math.max(0, Json.num(progress, "done", 0)),
+                progress == null ? 0 : (int) Math.max(0, Json.num(progress, "total", 0)),
+                Json.bool(o, "cancelRequested"),
+                Json.lng(o, "cancelRequestedAt", 0),
+                Json.lng(o, "updatedAt", 0),
+                Json.lng(o, "createdAt", 0),
+                by != null,
+                by == null ? "" : Json.str(by, "id"),
+                by == null ? "" : Text.sanitize(Json.str(by, "name"), 40),
+                Json.str(o, "retriedAs"),
+                List.copyOf(lines),
+                mode,
+                names == null ? "" : Text.sanitize(Json.str(names, "name"), 60),
+                List.copyOf(each),
+                result == null ? 0 : (int) Math.max(0, Json.num(result, "shulkers", 0)),
+                result != null);
     }
 
     // ---------- who may do what (the website's canManageOrder and friends) ----------
@@ -167,7 +208,9 @@ public final class OrderModel {
 
     /** A failed or cancelled order that was not retried already. */
     public static boolean canRetry(Entry o, AuthState auth) {
-        return canManage(o, auth) && (FAILED.equals(o.status()) || CANCELLED.equals(o.status())) && o.retriedAs().isEmpty();
+        return canManage(o, auth)
+                && (FAILED.equals(o.status()) || CANCELLED.equals(o.status()))
+                && o.retriedAs().isEmpty();
     }
 
     /** A cancel the bot has not confirmed within a minute, or the bot is offline. */

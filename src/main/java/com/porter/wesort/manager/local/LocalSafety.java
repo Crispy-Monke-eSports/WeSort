@@ -23,8 +23,7 @@ public final class LocalSafety {
         }
     }
 
-    private LocalSafety() {
-    }
+    private LocalSafety() {}
 
     /**
      * @param nearestPlayer  distance to the nearest other player, or a negative number when none
@@ -32,9 +31,12 @@ public final class LocalSafety {
      * @return why the order must be stopped, or null
      */
     public static String check(Limits limits, double nearestPlayer, double nearestHostile, long elapsedMs) {
-        if (limits.playerRadius() > 0 && nearestPlayer >= 0 && nearestPlayer <= limits.playerRadius()) return "another player came within " + limits.playerRadius() + " blocks";
-        if (limits.hostileRadius() > 0 && nearestHostile >= 0 && nearestHostile <= limits.hostileRadius()) return "a hostile mob came within " + limits.hostileRadius() + " blocks";
-        if (elapsedMs > limits.timeoutMinutes() * 60_000L) return "it took longer than " + limits.timeoutMinutes() + " minutes";
+        if (limits.playerRadius() > 0 && nearestPlayer >= 0 && nearestPlayer <= limits.playerRadius())
+            return "another player came within " + limits.playerRadius() + " blocks";
+        if (limits.hostileRadius() > 0 && nearestHostile >= 0 && nearestHostile <= limits.hostileRadius())
+            return "a hostile mob came within " + limits.hostileRadius() + " blocks";
+        if (elapsedMs > limits.timeoutMinutes() * 60_000L)
+            return "it took longer than " + limits.timeoutMinutes() + " minutes";
         return null;
     }
 }

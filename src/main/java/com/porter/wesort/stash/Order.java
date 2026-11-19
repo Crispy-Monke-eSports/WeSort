@@ -3,13 +3,12 @@ package com.porter.wesort.stash;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.HashSet;
 import java.util.Set;
 import java.util.TreeMap;
 
@@ -21,6 +20,7 @@ public final class Order {
     public static final String ITEM = "item", SHULKER = "shulker";
     /** The most shulkers one order may need. */
     public static final int MAX_BINS = 54;
+
     public static final int SLOTS = 27;
 
     /** One line: {@code type} is "item" (key is an items[] key) or "shulker" (key is a shulkers[] group key). */
@@ -93,10 +93,11 @@ public final class Order {
     public final List<Line> lines;
     /** Null: no naming. */
     public final Names names;
-    /** Versioned server-owned labels MUST be physically verified before staging. */
+    /** Server-owned package labels must be physically verified before staging. */
     public final boolean requiredPackageLabels;
-    public final Map<String,Set<Integer>> protectedRoots;
-    public final Map<String,Set<Integer>> allocatedRoots;
+
+    public final Map<String, Set<Integer>> protectedRoots;
+    public final Map<String, Set<Integer>> allocatedRoots;
 
     public Order(String id, List<Line> lines) {
         this(id, lines, null);
@@ -106,8 +107,12 @@ public final class Order {
         this(id, lines, names, Map.of(), Map.of(), false);
     }
 
-    private Order(String id, List<Line> lines, Names names, Map<String,Set<Integer>> protectedRoots,
-                  Map<String,Set<Integer>> allocatedRoots, boolean requiredPackageLabels) {
+    private Order(
+            String id,
+            List<Line> lines,
+            Names names,
+            Map<String, Set<Integer>> protectedRoots,
+            Map<String, Set<Integer>> allocatedRoots, boolean requiredPackageLabels) {
         this.id = id;
         this.lines = lines;
         this.names = names;
@@ -130,15 +135,17 @@ public final class Order {
                 String type = l.get("type").getAsString();
                 String key = l.get("key").getAsString();
                 int count = l.get("count").getAsInt();
-                if ((type.equals(ITEM) || type.equals(SHULKER)) && !key.isEmpty() && count >= 1) lines.add(new Line(type, key, count));
+                if ((type.equals(ITEM) || type.equals(SHULKER)) && !key.isEmpty() && count >= 1)
+                    lines.add(new Line(type, key, count));
             } catch (RuntimeException ex) {
                 // A broken line is left out and shows up as undelivered
             }
         }
         String id = o.get("id").getAsString();
         if (id.isEmpty() || lines.isEmpty()) return null;
-        var guards = new LinkedHashMap<String,Set<Integer>>();
-        if (o.has("allocations") && !o.has("protectedRoots")) throw new IllegalArgumentException("Missing allocation guard");
+        var guards = new LinkedHashMap<String, Set<Integer>>();
+        if (o.has("allocations") && !o.has("protectedRoots"))
+            throw new IllegalArgumentException("Missing allocation guard");
         if (o.has("protectedRoots")) {
             for (var entry : o.getAsJsonObject("protectedRoots").entrySet()) {
                 var slots = new HashSet<Integer>();
@@ -150,14 +157,16 @@ public final class Order {
                 guards.put(entry.getKey(), Set.copyOf(slots));
             }
         }
-        var allocated = new LinkedHashMap<String,Set<Integer>>();
+        var allocated = new LinkedHashMap<String, Set<Integer>>();
         if (o.has("allocations")) {
             for (var value : o.getAsJsonArray("allocations")) {
                 var allocation = value.getAsJsonObject();
                 var path = allocation.get("path").getAsString();
                 int root = Integer.parseInt(path.split("/", 2)[0]);
                 if (root < 0 || root > 53) throw new IllegalArgumentException("Invalid reserved physical slot");
-                allocated.computeIfAbsent(allocation.get("source").getAsString(), ignored -> new HashSet<>()).add(root);
+                allocated
+                        .computeIfAbsent(allocation.get("source").getAsString(), ignored -> new HashSet<>())
+                        .add(root);
             }
             if (allocated.isEmpty()) throw new IllegalArgumentException("Empty physical allocation");
         }
@@ -201,7 +210,9 @@ public final class Order {
         try {
             if (!o.has("names") || !o.get("names").isJsonObject()) return null;
             JsonObject n = o.getAsJsonObject("names");
-            String mode = n.has("mode") && n.get("mode").isJsonPrimitive() ? n.get("mode").getAsString() : "";
+            String mode = n.has("mode") && n.get("mode").isJsonPrimitive()
+                    ? n.get("mode").getAsString()
+                    : "";
             if (Names.ALL.equals(mode)) {
                 return Names.of(mode, isText(n.get("name")) ? n.get("name").getAsString() : "", null);
             }
@@ -244,7 +255,8 @@ public final class Order {
      */
     public static List<List<Lot>> pack(List<Lot> lots) {
         Map<String, List<Lot>> byKey = new TreeMap<>();
-        for (Lot lot : lots) byKey.computeIfAbsent(lot.key, k -> new ArrayList<>()).add(lot);
+        for (Lot lot : lots)
+            byKey.computeIfAbsent(lot.key, k -> new ArrayList<>()).add(lot);
 
         List<List<Lot>> groups = new ArrayList<>(byKey.values());
         groups.sort((a, b) -> b.size() - a.size());

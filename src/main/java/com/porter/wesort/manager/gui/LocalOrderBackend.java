@@ -1,5 +1,7 @@
 package com.porter.wesort.manager.gui;
 
+import static meteordevelopment.meteorclient.MeteorClient.mc;
+
 import com.google.gson.JsonParser;
 import com.porter.wesort.manager.model.BotInfo;
 import com.porter.wesort.manager.model.DeliveryModel;
@@ -9,12 +11,9 @@ import com.porter.wesort.manager.model.OrderModel;
 import com.porter.wesort.modules.LocalOrders;
 import com.porter.wesort.stash.Order;
 import com.porter.wesort.stash.StashIndex;
-
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.function.Consumer;
-
-import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 /**
  * Orders carried out by this client with the wesort-stash-sorter's engine, no server ({@link LocalOrders}). The cart is built from
@@ -89,10 +88,24 @@ final class LocalOrderBackend implements OrderBackend {
         if (s == null) return BotInfo.NONE;
         StashIndex.DeliveryStorage st = orders.storage();
         boolean named = !s.anvilSource().isEmpty();
-        return new BotInfo(true, s.anvil() != null, named ? s.anvilSource() : "", s.xpLevels(),
-            true, s.craftingOn(), s.table() != null, s.tableSource(),
-            st != null, st != null && st.autoExpand(), st == null ? 0 : st.chests(), st == null ? 0 : st.full(), st != null && st.canExpand(),
-            st == null || st.blocked() == null ? "" : st.blocked(), "", s.delivery() != null, "");
+        return new BotInfo(
+                true,
+                s.anvil() != null,
+                named ? s.anvilSource() : "",
+                s.xpLevels(),
+                true,
+                s.craftingOn(),
+                s.table() != null,
+                s.tableSource(),
+                st != null,
+                st != null && st.autoExpand(),
+                st == null ? 0 : st.chests(),
+                st == null ? 0 : st.full(),
+                st != null && st.canExpand(),
+                st == null || st.blocked() == null ? "" : st.blocked(),
+                "",
+                s.delivery() != null,
+                "");
     }
 
     @Override
@@ -120,13 +133,16 @@ final class LocalOrderBackend implements OrderBackend {
 
     @Override
     public boolean canCancel(OrderModel.Entry e) {
-        // Also after the order ended, while the leftovers are put back (the first cancel then waits for that, the second stops)
+        // Also after the order ended, while the leftovers are put back (the first cancel then waits for that, the
+        // second stops)
         return e.id().equals(orders.activeId());
     }
 
     @Override
     public boolean canRetry(OrderModel.Entry e) {
-        return !orders.active() && (OrderModel.FAILED.equals(e.status()) || OrderModel.CANCELLED.equals(e.status())) && e.retriedAs().isEmpty();
+        return !orders.active()
+                && (OrderModel.FAILED.equals(e.status()) || OrderModel.CANCELLED.equals(e.status()))
+                && e.retriedAs().isEmpty();
     }
 
     @Override
@@ -160,7 +176,9 @@ final class LocalOrderBackend implements OrderBackend {
                 builtFor = stashNow;
                 try {
                     byte[] index = orders.indexJson();
-                    catalog = index == null ? IndexModel.empty() : IndexModel.parse(JsonParser.parseString(new String(index, StandardCharsets.UTF_8)));
+                    catalog = index == null
+                            ? IndexModel.empty()
+                            : IndexModel.parse(JsonParser.parseString(new String(index, StandardCharsets.UTF_8)));
                 } catch (RuntimeException e) {
                     catalog = IndexModel.empty();
                 }
@@ -174,7 +192,9 @@ final class LocalOrderBackend implements OrderBackend {
                 deliveryBuilt = true;
                 try {
                     byte[] d = orders.deliveryJson();
-                    delivery = d == null ? DeliveryModel.EMPTY : DeliveryModel.parse(JsonParser.parseString(new String(d, StandardCharsets.UTF_8)));
+                    delivery = d == null
+                            ? DeliveryModel.EMPTY
+                            : DeliveryModel.parse(JsonParser.parseString(new String(d, StandardCharsets.UTF_8)));
                 } catch (RuntimeException e) {
                     delivery = DeliveryModel.EMPTY;
                 }
@@ -193,7 +213,6 @@ final class LocalOrderBackend implements OrderBackend {
         history = next;
         return changed;
     }
-
 
     @Override
     public LocalOrders.Setup setup() {
@@ -224,7 +243,11 @@ final class LocalOrderBackend implements OrderBackend {
         Order order = new Order(orders.newId(), List.copyOf(lines), names.toNames(units));
         String why = orders.start(order);
         history = orders.history();
-        done.accept(why == null ? new PlaceResult(true, "Order started on this client. Stay near the stash; Cancel stops it.", -1) : new PlaceResult(false, why, -1));
+        done.accept(
+                why == null
+                        ? new PlaceResult(
+                                true, "Order started on this client. Stay near the stash; Cancel stops it.", -1)
+                        : new PlaceResult(false, why, -1));
     }
 
     @Override

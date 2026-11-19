@@ -1,16 +1,15 @@
 package com.porter.wesortmanager;
 
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The wiki icon cache version: a cache from before version 2 may hold flat block textures (the "shulker tops"),
@@ -43,8 +42,10 @@ class IconCacheVersionTest {
             assertTrue(Files.exists(game), "game renders are kept");
             assertTrue(Files.exists(gameShulker), "game renders are kept");
             assertEquals(IconService.CACHE_VERSION, s.cacheVersion());
-            assertEquals(Integer.toString(IconService.CACHE_VERSION),
-                Files.readString(icons.resolve(IconService.CACHE_VERSION_FILE), StandardCharsets.US_ASCII).trim());
+            assertEquals(
+                    Integer.toString(IconService.CACHE_VERSION),
+                    Files.readString(icons.resolve(IconService.CACHE_VERSION_FILE), StandardCharsets.US_ASCII)
+                            .trim());
 
             // Once upgraded, new wiki icons stay.
             Path fresh = write(icons.resolve("minecraft/white_shulker_box.png"));
@@ -88,21 +89,46 @@ class IconCacheVersionTest {
 
     @Test
     void blockEntityItemsNeverUseFlatTextures() {
-        for (String id : new String[]{"shulker_box", "black_shulker_box", "light_blue_shulker_box", "chest", "trapped_chest",
-            "ender_chest", "waxed_oxidized_copper_chest", "red_bed", "white_banner", "dragon_head", "player_head",
-            "skeleton_skull", "wither_skeleton_skull", "shield", "conduit", "decorated_pot", "copper_golem_statue",
-            "exposed_copper_golem_statue"}) {
+        for (String id : new String[] {
+            "shulker_box",
+            "black_shulker_box",
+            "light_blue_shulker_box",
+            "chest",
+            "trapped_chest",
+            "ender_chest",
+            "waxed_oxidized_copper_chest",
+            "red_bed",
+            "white_banner",
+            "dragon_head",
+            "player_head",
+            "skeleton_skull",
+            "wither_skeleton_skull",
+            "shield",
+            "conduit",
+            "decorated_pot",
+            "copper_golem_statue",
+            "exposed_copper_golem_statue"
+        }) {
             assertTrue(IconService.blockEntityItem(id), id);
         }
-        for (String id : new String[]{"stone", "chest_minecart", "bedrock", "banner_pattern", "flower_banner_pattern",
-            "headless", "oak_planks", "diamond", "conduit_frame"}) {
+        for (String id : new String[] {
+            "stone",
+            "chest_minecart",
+            "bedrock",
+            "banner_pattern",
+            "flower_banner_pattern",
+            "headless",
+            "oak_planks",
+            "diamond",
+            "conduit_frame"
+        }) {
             assertFalse(IconService.blockEntityItem(id), id);
         }
     }
 
     private static Path write(Path p) throws IOException {
         Files.createDirectories(p.getParent());
-        Files.write(p, new byte[]{1, 2, 3});
+        Files.write(p, new byte[] {1, 2, 3});
         return p;
     }
 }

@@ -1,10 +1,10 @@
 package com.porter.wesort.manager.net;
 
-import com.sun.net.httpserver.HttpServer;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -12,10 +12,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /** The client against a throwaway local server: where the cookie goes, what is not followed, how a 401 is handled. */
 class SmClientTest {
@@ -50,23 +49,32 @@ class SmClientTest {
             reply(ex, 200, "{\"ok\":true}");
         });
         server.createContext("/api/v1/redirect", ex -> {
-            ex.getResponseHeaders().add("Location", "http://127.0.0.1:" + other.getAddress().getPort() + "/stolen");
+            ex.getResponseHeaders()
+                    .add("Location", "http://127.0.0.1:" + other.getAddress().getPort() + "/stolen");
             ex.sendResponseHeaders(302, -1);
             ex.close();
         });
         server.createContext("/api/v1/upload", ex -> {
             byte[] in = ex.getRequestBody().readAllBytes();
-            uploads.add(ex.getRequestMethod() + "|" + ex.getRequestURI().getRawQuery() + "|" + ex.getRequestHeaders().getFirst("Content-Type")
-                + "|" + ex.getRequestHeaders().getFirst("X-Stash-Manager") + "|" + ex.getRequestHeaders().getFirst("Origin")
-                + "|" + ex.getRequestHeaders().getFirst("Sec-Fetch-Site") + "|" + ex.getRequestHeaders().getFirst("Cookie") + "|" + in.length
-                + "|" + (in.length > 2 ? in[2] : -1));
+            uploads.add(ex.getRequestMethod() + "|" + ex.getRequestURI().getRawQuery() + "|"
+                    + ex.getRequestHeaders().getFirst("Content-Type")
+                    + "|" + ex.getRequestHeaders().getFirst("X-Stash-Manager") + "|"
+                    + ex.getRequestHeaders().getFirst("Origin")
+                    + "|" + ex.getRequestHeaders().getFirst("Sec-Fetch-Site") + "|"
+                    + ex.getRequestHeaders().getFirst("Cookie") + "|" + in.length
+                    + "|" + (in.length > 2 ? in[2] : -1));
             reply(ex, 200, "{\"ok\":true}");
         });
         server.createContext("/api/v1/gone", ex -> reply(ex, 401, "{\"ok\":false,\"error\":\"login required\"}"));
         server.createContext("/api/v1/auth/login", ex -> {
-            postHeaders.add(ex.getRequestHeaders().getFirst("X-Stash-Manager") + "|" + ex.getRequestHeaders().getFirst("Content-Type")
-                + "|" + ex.getRequestHeaders().getFirst("Origin") + "|" + ex.getRequestHeaders().getFirst("Cookie"));
-            ex.getResponseHeaders().add("Set-Cookie", "wesort_session=NEWTOKEN_1-2; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000");
+            postHeaders.add(ex.getRequestHeaders().getFirst("X-Stash-Manager") + "|"
+                    + ex.getRequestHeaders().getFirst("Content-Type") + "|"
+                    + ex.getRequestHeaders().getFirst("Origin") + "|"
+                    + ex.getRequestHeaders().getFirst("Cookie"));
+            ex.getResponseHeaders()
+                    .add(
+                            "Set-Cookie",
+                            "wesort_session=NEWTOKEN_1-2; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000");
             reply(ex, 200, "{\"ok\":true,\"mustChange\":false}");
         });
         server.start();
@@ -111,17 +119,19 @@ class SmClientTest {
     void theServersDateHeaderIsExposed() throws Exception {
         ApiResult r = get("/api/v1/echo");
         long now = System.currentTimeMillis();
-        assertTrue(r.serverTimeMillis() > 0 && Math.abs(r.serverTimeMillis() - now) < 60_000, "Date header: " + r.serverTimeMillis());
+        assertTrue(
+                r.serverTimeMillis() > 0 && Math.abs(r.serverTimeMillis() - now) < 60_000,
+                "Date header: " + r.serverTimeMillis());
     }
-
-
 
     @Test
     void theCookieIsSentOnlyWhenOneIsSetAndOnlyToItsOrigin() throws Exception {
         assertTrue(get("/api/v1/echo").ok());
         assertEquals("null", cookiesSeen.get(0));
 
-        String origin = ServerUrl.parse("http://127.0.0.1:" + server.getAddress().getPort()).origin();
+        String origin = ServerUrl.parse(
+                        "http://127.0.0.1:" + server.getAddress().getPort())
+                .origin();
         client.setToken("TOKEN123", origin);
         assertTrue(get("/api/v1/echo").ok());
         assertEquals("wesort_session=TOKEN123", cookiesSeen.get(1));
@@ -134,7 +144,9 @@ class SmClientTest {
 
     @Test
     void redirectsAreNotFollowedAndTheCookieDoesNotLeave() throws Exception {
-        String origin = ServerUrl.parse("http://127.0.0.1:" + server.getAddress().getPort()).origin();
+        String origin = ServerUrl.parse(
+                        "http://127.0.0.1:" + server.getAddress().getPort())
+                .origin();
         client.setToken("TOKEN123", origin);
         ApiResult r = get("/api/v1/redirect");
         assertEquals(ApiError.Kind.REDIRECT, r.kind());
@@ -144,7 +156,9 @@ class SmClientTest {
 
     @Test
     void a401WithTheCookieCallsTheHookAndDropsTheAnswer() throws Exception {
-        String origin = ServerUrl.parse("http://127.0.0.1:" + server.getAddress().getPort()).origin();
+        String origin = ServerUrl.parse(
+                        "http://127.0.0.1:" + server.getAddress().getPort())
+                .origin();
         client.setToken("TOKEN123", origin);
         CountDownLatch hooked = new CountDownLatch(1);
         client.onUnauthorized(hooked::countDown);
@@ -165,7 +179,9 @@ class SmClientTest {
 
     @Test
     void loginSendsTheGuardHeadersWithoutOriginOrCookieAndReadsTheNewToken() throws Exception {
-        String origin = ServerUrl.parse("http://127.0.0.1:" + server.getAddress().getPort()).origin();
+        String origin = ServerUrl.parse(
+                        "http://127.0.0.1:" + server.getAddress().getPort())
+                .origin();
         client.setToken("OLDTOKEN", origin);
         AtomicReference<String> token = new AtomicReference<>();
         AtomicReference<ApiResult> result = new AtomicReference<>();
@@ -183,7 +199,9 @@ class SmClientTest {
 
     @Test
     void aDisabledClientMakesNoRequestEvenWithAnAddressAndToken() throws Exception {
-        String origin = ServerUrl.parse("http://127.0.0.1:" + server.getAddress().getPort()).origin();
+        String origin = ServerUrl.parse(
+                        "http://127.0.0.1:" + server.getAddress().getPort())
+                .origin();
         client.setToken("TOKEN123", origin);
         client.setEnabled(false);
         ApiResult r = get("/api/v1/echo");
@@ -225,12 +243,4 @@ class SmClientTest {
         ApiResult r = get("/api/v1/echo");
         assertEquals(ApiError.Kind.NETWORK, r.kind());
     }
-
-
-
-
-
-
-
-
 }

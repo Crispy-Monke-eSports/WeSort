@@ -7,9 +7,6 @@ import com.google.gson.JsonParser;
 import com.porter.wesort.manager.model.OrderModel;
 import com.porter.wesort.manager.model.OrderModel.Entry;
 import com.porter.wesort.stash.Order;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
@@ -24,6 +21,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The history of the orders this client carried out itself, one JSON file per game server. Bounded: at most
@@ -41,8 +40,7 @@ public final class LocalOrderStore {
     private static final Logger LOG = LoggerFactory.getLogger("WeSort/wesort-stash-window");
 
     /** An order and the stash (by name) it was for. */
-    public record Item(String stash, Entry entry) {
-    }
+    public record Item(String stash, Entry entry) {}
 
     private final Path folder;
     private final ExecutorService io = Executors.newSingleThreadExecutor(r -> {
@@ -102,7 +100,8 @@ public final class LocalOrderStore {
                 flushLocked(true);
                 if (dirty) {
                     pending.put(server, new ArrayList<>(items));
-                    while (pending.size() > MAX_PENDING) pending.remove(pending.keySet().iterator().next());
+                    while (pending.size() > MAX_PENDING)
+                        pending.remove(pending.keySet().iterator().next());
                 }
             }
             server = forServer;
@@ -156,7 +155,8 @@ public final class LocalOrderStore {
         synchronized (lock) {
             boolean replaced = false;
             for (int i = 0; i < items.size(); i++) {
-                if (items.get(i).entry().id().equals(entry.id()) && items.get(i).stash().equals(stash)) {
+                if (items.get(i).entry().id().equals(entry.id())
+                        && items.get(i).stash().equals(stash)) {
                     items.set(i, new Item(stash, entry));
                     replaced = true;
                     break;
@@ -184,7 +184,9 @@ public final class LocalOrderStore {
             int oldest = -1;
             for (int i = 0; i < list.size(); i++) {
                 if (!list.get(i).entry().finished()) continue;
-                if (oldest < 0 || list.get(i).entry().createdAt() < list.get(oldest).entry().createdAt()) oldest = i;
+                if (oldest < 0
+                        || list.get(i).entry().createdAt()
+                                < list.get(oldest).entry().createdAt()) oldest = i;
             }
             if (oldest < 0) return;
             list.remove(oldest);
@@ -192,14 +194,51 @@ public final class LocalOrderStore {
     }
 
     public static Entry withRetried(Entry e, String newId) {
-        return new Entry(e.id(), e.status(), e.phase(), e.message(), e.done(), e.total(), e.cancelRequested(), e.cancelRequestedAt(), e.updatedAt(), e.createdAt(),
-            e.hasPlacedBy(), e.placedById(), e.placedByName(), newId, e.lines(), e.namesMode(), e.namesAll(), e.namesEach(), e.shulkers(), e.hasResult());
+        return new Entry(
+                e.id(),
+                e.status(),
+                e.phase(),
+                e.message(),
+                e.done(),
+                e.total(),
+                e.cancelRequested(),
+                e.cancelRequestedAt(),
+                e.updatedAt(),
+                e.createdAt(),
+                e.hasPlacedBy(),
+                e.placedById(),
+                e.placedByName(),
+                newId,
+                e.lines(),
+                e.namesMode(),
+                e.namesAll(),
+                e.namesEach(),
+                e.shulkers(),
+                e.hasResult());
     }
 
     public static Entry withEnd(Entry e, String status, String message, long now) {
-        return new Entry(e.id(), status, status, message, e.done(), e.total(), e.cancelRequested(), e.cancelRequestedAt(), now, e.createdAt(),
-            e.hasPlacedBy(), e.placedById(), e.placedByName(), e.retriedAs(), e.lines(), e.namesMode(), e.namesAll(), e.namesEach(),
-            e.shulkers(), e.hasResult());
+        return new Entry(
+                e.id(),
+                status,
+                status,
+                message,
+                e.done(),
+                e.total(),
+                e.cancelRequested(),
+                e.cancelRequestedAt(),
+                now,
+                e.createdAt(),
+                e.hasPlacedBy(),
+                e.placedById(),
+                e.placedByName(),
+                e.retriedAs(),
+                e.lines(),
+                e.namesMode(),
+                e.namesAll(),
+                e.namesEach(),
+                e.shulkers(),
+                e.hasResult());
     }
 
     // ---------- writing ----------
@@ -262,7 +301,9 @@ public final class LocalOrderStore {
         warning = "The local order history could not be saved.";
         if (!loggedFailure) {
             loggedFailure = true;
-            LOG.warn("wesort-stash-window: could not save the local order history ({}); trying again later", t.toString());
+            LOG.warn(
+                    "wesort-stash-window: could not save the local order history ({}); trying again later",
+                    t.toString());
         }
     }
 
@@ -287,11 +328,16 @@ public final class LocalOrderStore {
 
     private static void setAside(Path file) {
         try {
-            Files.move(file, file.resolveSibling(file.getFileName() + ".bad-" + System.currentTimeMillis()), StandardCopyOption.REPLACE_EXISTING);
+            Files.move(
+                    file,
+                    file.resolveSibling(file.getFileName() + ".bad-" + System.currentTimeMillis()),
+                    StandardCopyOption.REPLACE_EXISTING);
             // Only the last few are kept
             String prefix = file.getFileName() + ".bad-";
             try (var files = Files.list(file.getParent())) {
-                List<Path> old = files.filter(f -> f.getFileName().toString().startsWith(prefix)).sorted().toList();
+                List<Path> old = files.filter(f -> f.getFileName().toString().startsWith(prefix))
+                        .sorted()
+                        .toList();
                 for (int i = 0; i < old.size() - KEEP_BAD; i++) Files.deleteIfExists(old.get(i));
             }
         } catch (Throwable ignored) {
@@ -310,7 +356,9 @@ public final class LocalOrderStore {
             int oldest = -1;
             for (int i = 0; i < work.size(); i++) {
                 if (!work.get(i).entry().finished()) continue;
-                if (oldest < 0 || work.get(i).entry().createdAt() < work.get(oldest).entry().createdAt()) oldest = i;
+                if (oldest < 0
+                        || work.get(i).entry().createdAt()
+                                < work.get(oldest).entry().createdAt()) oldest = i;
             }
             if (oldest < 0) return null;
             work.remove(oldest);
@@ -361,7 +409,9 @@ public final class LocalOrderStore {
     static List<Item> decode(String text) {
         try {
             JsonElement root = JsonParser.parseString(text);
-            if (!root.isJsonObject() || !root.getAsJsonObject().has("orders") || !root.getAsJsonObject().get("orders").isJsonArray()) return null;
+            if (!root.isJsonObject()
+                    || !root.getAsJsonObject().has("orders")
+                    || !root.getAsJsonObject().get("orders").isJsonArray()) return null;
             List<Item> out = new ArrayList<>();
             for (JsonElement e : root.getAsJsonObject().getAsJsonArray("orders")) {
                 if (!e.isJsonObject() || out.size() >= MAX_ORDERS) continue;
@@ -381,7 +431,8 @@ public final class LocalOrderStore {
                 if (!mode.isEmpty()) {
                     JsonObject names = new JsonObject();
                     names.addProperty("mode", mode);
-                    names.addProperty("name", o.has("namesAll") ? o.get("namesAll").getAsString() : "");
+                    names.addProperty(
+                            "name", o.has("namesAll") ? o.get("namesAll").getAsString() : "");
                     if (o.has("namesEach")) names.add("names", o.get("namesEach"));
                     asServer.add("names", names);
                 }

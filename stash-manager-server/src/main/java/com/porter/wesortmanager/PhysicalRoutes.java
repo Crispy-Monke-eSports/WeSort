@@ -21,26 +21,37 @@ final class PhysicalRoutes {
 
     void register(Router router) {
         router.exact(Router.GET, "/api/v1/physical", Router.Guard.SESSION, Router.Perm.OWNER, this::list);
-        router.exact(Router.POST, "/api/v1/physical/inspect", Router.Guard.BROWSER_WRITE, Router.Perm.OWNER, this::inspect);
+        router.exact(
+                Router.POST, "/api/v1/physical/inspect", Router.Guard.BROWSER_WRITE, Router.Perm.OWNER, this::inspect);
         router.exact(Router.POST, "/api/v1/physical/agent", Router.Guard.ADDON_KEY, this::agent);
     }
 
     private void list(HttpExchange ex) throws IOException {
-        if (Redact.forced(Router.user(ex))) { Http.error(ex, 404, "not found"); return; }
+        if (Redact.forced(Router.user(ex))) {
+            Http.error(ex, 404, "not found");
+            return;
+        }
         var response = new JsonObject();
         response.add("operations", operations().list());
         Http.json(ex, 200, response);
     }
 
     private void inspect(HttpExchange ex) throws IOException {
-        if (Redact.forced(Router.user(ex))) { Http.error(ex, 404, "not found"); return; }
+        if (Redact.forced(Router.user(ex))) {
+            Http.error(ex, 404, "not found");
+            return;
+        }
         var raw = AddonRoutes.readJson(ex);
         if (raw == null) return;
         try {
             var body = raw.getAsJsonObject();
             var operation = body.get("operation").getAsString();
-            var decision = operations().inspect(operation, body.get("revision").getAsBigDecimal().longValueExact(),
-                body.get("checksum").getAsString(), Router.user(ex).id());
+            var decision = operations()
+                    .inspect(
+                            operation,
+                            body.get("revision").getAsBigDecimal().longValueExact(),
+                            body.get("checksum").getAsString(),
+                            Router.user(ex).id());
             audit.add(Router.user(ex), "physical.inspect", operation, AuthRoutes.address(ex));
             Http.json(ex, 200, decision);
         } catch (PhysicalOperations.Conflict conflict) {
@@ -60,8 +71,11 @@ final class PhysicalRoutes {
             var receipt = store.accept(agent, body.getAsJsonObject("record"));
             if (body.has("result")) {
                 var result = body.getAsJsonObject("result");
-                store.decisionResult(agent, result.get("id").getAsString(), result.get("state").getAsString(),
-                    result.get("detail").getAsString());
+                store.decisionResult(
+                        agent,
+                        result.get("id").getAsString(),
+                        result.get("state").getAsString(),
+                        result.get("detail").getAsString());
             }
             var decision = store.decision(agent, receipt.get("id").getAsString());
             var response = new JsonObject();

@@ -5,10 +5,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -28,6 +24,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.zip.GZIPInputStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The window's connection to the WeSort Manager server.
@@ -71,12 +69,12 @@ public final class SmClient {
         });
         this.pool.allowCoreThreadTimeOut(true);
         this.http = HttpClient.newBuilder()
-            .version(HttpClient.Version.HTTP_1_1)
-            .followRedirects(HttpClient.Redirect.NEVER)
-            .proxy(HttpClient.Builder.NO_PROXY)
-            .connectTimeout(Duration.ofSeconds(5))
-            .executor(pool)
-            .build();
+                .version(HttpClient.Version.HTTP_1_1)
+                .followRedirects(HttpClient.Redirect.NEVER)
+                .proxy(HttpClient.Builder.NO_PROXY)
+                .connectTimeout(Duration.ofSeconds(5))
+                .executor(pool)
+                .build();
     }
 
     /**
@@ -157,8 +155,14 @@ public final class SmClient {
      * @param etag   sent as {@code If-None-Match} when not null
      * @param parser runs on a client thread for a successful answer, so big bodies don't stall the game
      */
-    public <T> void get(String path, Map<String, String> query, String etag, boolean gzip, Duration timeout,
-                        Parser<T> parser, BiConsumer<ApiResult, T> done) {
+    public <T> void get(
+            String path,
+            Map<String, String> query,
+            String etag,
+            boolean gzip,
+            Duration timeout,
+            Parser<T> parser,
+            BiConsumer<ApiResult, T> done) {
         run("GET", path, query, null, etag, gzip, timeout, true, false, parser, (r, t, token) -> done.accept(r, t));
     }
 
@@ -166,12 +170,23 @@ public final class SmClient {
         run("POST", path, null, body, null, false, DEFAULT_TIMEOUT, true, false, null, (r, t, token) -> done.accept(r));
     }
 
-/** Logs in without sending any old cookie. {@code token} is the new session value, or null. */
+    /** Logs in without sending any old cookie. {@code token} is the new session value, or null. */
     public void login(String user, String password, BiConsumer<ApiResult, String> done) {
         JsonObject body = new JsonObject();
         if (user != null && !user.isBlank()) body.addProperty("username", user.trim());
         body.addProperty("password", password);
-        run("POST", "/api/v1/auth/login", null, body, null, false, DEFAULT_TIMEOUT, false, true, null, (r, t, token) -> done.accept(r, token));
+        run(
+                "POST",
+                "/api/v1/auth/login",
+                null,
+                body,
+                null,
+                false,
+                DEFAULT_TIMEOUT,
+                false,
+                true,
+                null,
+                (r, t, token) -> done.accept(r, token));
     }
 
     /** From any thread: a request that carried the cookie got 401. Runs the unauthorized hook on the client thread, unless the generation moved on. */
@@ -190,8 +205,18 @@ public final class SmClient {
         void deliver(ApiResult result, T parsed, String loginToken);
     }
 
-    private <T> void run(String method, String path, Map<String, String> query, JsonObject body, String etag, boolean gzip,
-                         Duration timeout, boolean cookie, boolean readCookie, Parser<T> parser, Delivery<T> delivery) {
+    private <T> void run(
+            String method,
+            String path,
+            Map<String, String> query,
+            JsonObject body,
+            String etag,
+            boolean gzip,
+            Duration timeout,
+            boolean cookie,
+            boolean readCookie,
+            Parser<T> parser,
+            Delivery<T> delivery) {
         final int gen = generation.get();
         ServerUrl b = usable();
         HttpRequest request = null;
@@ -199,9 +224,13 @@ public final class SmClient {
         if (b != null) {
             try {
                 URI uri = b.resolve(path, query);
-                HttpRequest.Builder rb = HttpRequest.newBuilder(uri).timeout(timeout).header("Accept", "application/json");
+                HttpRequest.Builder rb =
+                        HttpRequest.newBuilder(uri).timeout(timeout).header("Accept", "application/json");
                 String t = token;
-                if (cookie && t != null && b.origin().equals(tokenOrigin) && b.origin().equals(ServerUrl.originOf(uri))) {
+                if (cookie
+                        && t != null
+                        && b.origin().equals(tokenOrigin)
+                        && b.origin().equals(ServerUrl.originOf(uri))) {
                     rb.header("Cookie", Cookies.NAME + "=" + t);
                     sentCookie = true;
                 }
@@ -236,41 +265,51 @@ public final class SmClient {
             });
             return;
         }
-        future.handleAsync((response, error) -> {
-            ApiResult result;
-            String loginToken = null;
-            if (error != null || response == null) {
-                result = ApiResult.network();
-            } else {
-                try {
-                    result = read(path, response);
-                } catch (OutOfMemoryError e) {
-                    result = ApiResult.network();
-                }
-                if (readCookie && result.ok()) loginToken = Cookies.session(response.headers().allValues("set-cookie")).orElse(null);
-            }
-            LOG.debug("wesort-stash-window: {} {} -> {}", method, path, result.status());
-            T parsed = null;
-            if (result.ok() && parser != null) {
-                try {
-                    parsed = parser.parse(result);
-                } catch (RuntimeException | OutOfMemoryError | StackOverflowError e) {
-                    result = new ApiResult(result.status(), JsonNull.INSTANCE, result.etag(), result.retryAfterSec(), ApiError.Kind.SERVER, result.serverTime());
-                }
-            }
-            ApiResult finalResult = result;
-            T finalParsed = parsed;
-            String finalToken = loginToken;
-            main.execute(() -> {
-                if (finalResult.kind() == ApiError.Kind.LOGIN && sent && gen == generation.get()) {
-                    Runnable hook = unauthorized;
-                    if (hook != null) hook.run();
-                    return;
-                }
-                if (gen == generation.get()) delivery.deliver(finalResult, finalParsed, finalToken);
-            });
-            return null;
-        }, pool);
+        future.handleAsync(
+                (response, error) -> {
+                    ApiResult result;
+                    String loginToken = null;
+                    if (error != null || response == null) {
+                        result = ApiResult.network();
+                    } else {
+                        try {
+                            result = read(path, response);
+                        } catch (OutOfMemoryError e) {
+                            result = ApiResult.network();
+                        }
+                        if (readCookie && result.ok())
+                            loginToken = Cookies.session(response.headers().allValues("set-cookie"))
+                                    .orElse(null);
+                    }
+                    LOG.debug("wesort-stash-window: {} {} -> {}", method, path, result.status());
+                    T parsed = null;
+                    if (result.ok() && parser != null) {
+                        try {
+                            parsed = parser.parse(result);
+                        } catch (RuntimeException | OutOfMemoryError | StackOverflowError e) {
+                            result = new ApiResult(
+                                    result.status(),
+                                    JsonNull.INSTANCE,
+                                    result.etag(),
+                                    result.retryAfterSec(),
+                                    ApiError.Kind.SERVER,
+                                    result.serverTime());
+                        }
+                    }
+                    ApiResult finalResult = result;
+                    T finalParsed = parsed;
+                    String finalToken = loginToken;
+                    main.execute(() -> {
+                        if (finalResult.kind() == ApiError.Kind.LOGIN && sent && gen == generation.get()) {
+                            Runnable hook = unauthorized;
+                            if (hook != null) hook.run();
+                            return;
+                        }
+                        if (gen == generation.get()) delivery.deliver(finalResult, finalParsed, finalToken);
+                    });
+                    return null;
+                },
+                pool);
     }
 
     private static ApiResult read(String path, HttpResponse<InputStream> response) {
@@ -303,13 +342,18 @@ public final class SmClient {
         String etag = response.headers().firstValue("etag").orElse(null);
         long retry = 0;
         try {
-            retry = Long.parseLong(response.headers().firstValue("retry-after").orElse("0").trim());
+            retry = Long.parseLong(
+                    response.headers().firstValue("retry-after").orElse("0").trim());
         } catch (NumberFormatException ignored) {
             // an HTTP date or junk: use the body's number instead
         }
         long date = 0;
         try {
-            date = java.time.ZonedDateTime.parse(response.headers().firstValue("date").orElse(""), java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli();
+            date = java.time.ZonedDateTime.parse(
+                            response.headers().firstValue("date").orElse(""),
+                            java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME)
+                    .toInstant()
+                    .toEpochMilli();
         } catch (RuntimeException ignored) {
             // no or odd Date header: no clock skew
         }

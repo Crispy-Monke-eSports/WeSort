@@ -1,14 +1,13 @@
 package com.porter.wesort.manager.gui.layout;
 
-import com.porter.wesort.manager.model.Text;
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.porter.wesort.manager.model.Text;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Test;
 
 class CountLayoutTest {
     /** The inside of a slot in physical pixels: 16 GUI pixels. */
@@ -18,8 +17,30 @@ class CountLayoutTest {
 
     private static List<Long> samples() {
         List<Long> out = new ArrayList<>();
-        long[] edges = {1, 2, 9, 99, 999, 1000, 1049, 9949, 9950, 9999, 10_000, 99_999, 999_499, 999_500, 1_000_000, 9_949_999, 9_950_000,
-            99_999_999, 999_499_999, 999_500_000, 1_000_000_000L, 9_949_999_999L};
+        long[] edges = {
+            1,
+            2,
+            9,
+            99,
+            999,
+            1000,
+            1049,
+            9949,
+            9950,
+            9999,
+            10_000,
+            99_999,
+            999_499,
+            999_500,
+            1_000_000,
+            9_949_999,
+            9_950_000,
+            99_999_999,
+            999_499_999,
+            999_500_000,
+            1_000_000_000L,
+            9_949_999_999L
+        };
         for (long e : edges) out.add(e);
         Random r = new Random(7);
         for (int i = 0; i < 3000; i++) out.add(1 + (long) (Math.pow(10, r.nextDouble() * 10)));

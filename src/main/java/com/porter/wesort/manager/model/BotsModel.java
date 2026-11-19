@@ -7,25 +7,26 @@ import java.util.List;
  * The text of the Bots page, as the website's {@code botDoing}, {@code conflictText} and {@code renderDashBots} say it. Pure.
  */
 public final class BotsModel {
-    private BotsModel() {
-    }
+    private BotsModel() {}
 
     /** The website shows a stash-name conflict for a day. */
     public static final long CONFLICT_SHOW_MS = 24L * 60 * 60 * 1000;
 
     /** What a stash's bot is doing; {@code warn} marks the lines the website colours as warnings. */
-    public record Doing(String text, boolean warn) {
-    }
+    public record Doing(String text, boolean warn) {}
 
     public static Doing doing(StashRef s) {
         BotInfo b = s.bot();
         if (!b.activeOrder().isEmpty()) return new Doing(b.activeOrder(), false);
         if (!b.orderBlocker().isEmpty()) return new Doing("Can't take orders: " + b.orderBlocker(), true);
         if (s.rescanPending() >= 0) return new Doing("Rescan requested", false);
-        if (!s.rescanBlocked().isEmpty()) return new Doing("Can't rescan: " + Text.sanitize(s.rescanBlocked(), 80), true);
+        if (!s.rescanBlocked().isEmpty())
+            return new Doing("Can't rescan: " + Text.sanitize(s.rescanBlocked(), 80), true);
         if (s.containersStale() > 0) {
-            return new Doing("Re-reading containers: " + Text.grouped(Math.max(0, s.containersTotal() - s.containersStale())) + " / "
-                + Text.grouped(Math.max(0, s.containersTotal())), false);
+            return new Doing(
+                    "Re-reading containers: " + Text.grouped(Math.max(0, s.containersTotal() - s.containersStale()))
+                            + " / " + Text.grouped(Math.max(0, s.containersTotal())),
+                    false);
         }
         return new Doing("Idle", false);
     }
@@ -46,8 +47,8 @@ public final class BotsModel {
         BotInfo b = s.bot();
         if (b.conflictAt() <= 0 || now - b.conflictAt() > CONFLICT_SHOW_MS) return "";
         if (hide) return "Another bot tried to use this stash. It was refused: give that bot its own stash name.";
-        return "Another bot (" + Text.sanitize(b.conflictPlayer(), 32) + ") tried to use stash '" + Text.sanitize(s.stash(), 48)
-            + "'. It was refused: give that bot its own stash name.";
+        return "Another bot (" + Text.sanitize(b.conflictPlayer(), 32) + ") tried to use stash '"
+                + Text.sanitize(s.stash(), 48) + "'. It was refused: give that bot its own stash name.";
     }
 
     /** The stash name for the table; "(hidden)" in streamer mode. */
@@ -79,21 +80,20 @@ public final class BotsModel {
     public static String releaseWarning(StashRef s, boolean hide) {
         if (hide) {
             return "Release this stash from its bot? Another bot can then take it over by using this stash name. "
-                + "If this bot still runs with this stash name, it takes it back on its next heartbeat.";
+                    + "If this bot still runs with this stash name, it takes it back on its next heartbeat.";
         }
         String owner = Text.sanitize(s.owner(), 32);
-        return "Release '" + Text.sanitize(s.stash(), 48) + "' from " + owner + "? Another bot can then take it over by using this stash name. "
-            + "If " + owner + " still runs with this stash name, it takes it back on its next heartbeat.";
+        return "Release '" + Text.sanitize(s.stash(), 48) + "' from " + owner
+                + "? Another bot can then take it over by using this stash name. " + "If " + owner
+                + " still runs with this stash name, it takes it back on its next heartbeat.";
     }
 
     /** One of the pages a bot card jumps to. */
-    public record Jump(NavPage page, String cap, String label) {
-    }
+    public record Jump(NavPage page, String cap, String label) {}
 
     /** The website's card buttons, in its order: shown when the bot has the capability. */
     public static final List<Jump> JUMPS = List.of(
-        new Jump(NavPage.ACTIVITY, "activity", "Activity"),
-        new Jump(NavPage.SETTINGS, "settings", "Settings"));
+            new Jump(NavPage.ACTIVITY, "activity", "Activity"), new Jump(NavPage.SETTINGS, "settings", "Settings"));
 
     /** The jumps a card offers for {@code bot}: it has the capability and the account may see the page. */
     public static List<Jump> jumps(BotList.Bot bot, AuthState auth) {
@@ -105,8 +105,10 @@ public final class BotsModel {
 
     /** "Plugin qs 1.2 · proxy 1.0 (MC 1.21.4) · id ct1" as the card's meta line says it. */
     public static String meta(BotList.Bot b) {
-        return "Plugin " + (b.pluginId().isEmpty() ? "?" : b.pluginId()) + (b.pluginVersion().isEmpty() ? "" : " " + b.pluginVersion())
-            + " · runtime " + (b.runtimeVersion().isEmpty() ? "?" : b.runtimeVersion()) + (b.runtimeMc().isEmpty() ? "" : " (MC " + b.runtimeMc() + ")")
-            + " · id " + Text.sanitize(b.botId(), 40);
+        return "Plugin " + (b.pluginId().isEmpty() ? "?" : b.pluginId())
+                + (b.pluginVersion().isEmpty() ? "" : " " + b.pluginVersion())
+                + " · runtime " + (b.runtimeVersion().isEmpty() ? "?" : b.runtimeVersion())
+                + (b.runtimeMc().isEmpty() ? "" : " (MC " + b.runtimeMc() + ")")
+                + " · id " + Text.sanitize(b.botId(), 40);
     }
 }

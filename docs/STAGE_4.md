@@ -165,3 +165,59 @@ packning och staging.
 
 Personkvoter och webbvyer för kvoter, säkerhetspolicy, teleport och
 verifierad UUID-hantering följer W-059 och W-061–W-064.
+
+## W-033 – 1–5 agenter och flera stashes per konto
+
+Varje agent har en egen nyckel för sitt Minecraft-konto, sin server och
+en eller flera stashes. Samma konto har ett stabilt bot-ID oavsett aktiv
+stash. Ett nyckelbyte ändrar bara den agentens autentisering. Gamla
+nyckelfiler med en stash läses vid uppgradering. Manager tillåter högst
+fem aktiva individuella agentnycklar.
+
+En stash har en ägare. För överföring, avsluta eller stäm av arbetet,
+rotera den gamla ägarens nyckel utan den berörda stashen och frigör
+stashen i Manager. Nästa behöriga agent som observerar stashen tar över.
+Individuellt autentiserade agenter kan inte automatiskt ta över en
+annan agents stash efter frånvaro.
+
+Manager sparar agentens identitet med anspråket och kan ge samma
+anspråk tillbaka efter omförsök. Ett nytt anspråk i en annan stash och ett
+samtidigt kitjobb blockeras för agenten som redan arbetar. Webben visar
+senaste kontakt, faktiskt ansluten server och dimension för behöriga
+roller, och de lagerförmågor som klienten annonserat.
+
+Flottprovet använder en verklig 26.3-agent och fyra signerade
+protokollklienter. Det kontrollerar fem oberoende sessioner och en agents
+fysiska flöde fram till staging. Själva upphämtningen, transporten,
+mottagarkvittensen och de tillhörande säkerhets- och teleportprofilerna
+följer W-036–W-039 och W-061–W-062.
+
+## W-043 – orderrevision och driftstatus
+
+**Orders → Order audit** söker på beställare, mottagare, vara,
+stash, order-ID och tidsintervall. Owner och orderansvariga ser historik
+inom sin stashbehörighet. Sökning på exakt order-ID visar stabila
+paket- och operations-ID:n från den verifierade fysiska journalen.
+Endast en fysiskt bekräftad staging visas som staged mängd.
+
+Manager sparar reservation, godkännande, avslag, anspråk, avbokning,
+statusövergång och manifestkvittens atomiskt med orderboken. Omförsök
+av samma agentrapport lägger inte till en ny händelse. Avslutade
+ordrar som rensas eller faller ur orderlistan sparas i ett arkiv med
+de 100 senast uppdaterade avslutade ordrarna per stash. Befintliga
+ordrar visar tillgängliga orderfält och fysisk journal. Händelser
+från före införandet av orderhistoriken återskapas inte.
+
+Exportera de filtrerade posterna som JSON från `GET /api/v1/audit/orders`
+via en inloggad, behörig session. Sökningen returnerar högst 200
+ordrar. Exakt order-ID returnerar högst 128 fysiska operationer. Auditen
+innehåller ingen rå inventariesnapshot, slotallokering eller manifestposition.
+Tvingat streamerläge spärrar orderrevisionen. Ägarens separata konto-
+och administrationslogg behåller de senaste 2 000 posterna.
+
+**Bots** visar aktuell stock-, order- och agentsammanställning samt
+larm om gamla eller onåbara källor, frånkopplade agenter och order som
+behöver avstämmas. Agenten rapporterar också sitt lokala tillstånd för
+död, osäker inventarie och platsbrist. Larmsidan använder signerade
+observationer och visar aktiva förhållanden. Leverans, kvoter och
+specialiserade transportjobb får sina händelser när respektive flöde finns.

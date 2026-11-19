@@ -1,7 +1,11 @@
 package com.porter.wesort.modules;
 
+import static meteordevelopment.meteorclient.MeteorClient.mc;
+
 import com.porter.wesort.compat.Players;
 import com.porter.wesort.utils.ChestStack;
+import java.util.HashSet;
+import java.util.Set;
 import meteordevelopment.meteorclient.utils.misc.input.Input;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
 import meteordevelopment.meteorclient.utils.player.Rotations;
@@ -17,11 +21,6 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.ChestType;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
-
-import java.util.HashSet;
-import java.util.Set;
-
-import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 /**
  * Puts the next row of chests up for the delivery storage, as {@link ChestStack} plans it (the rules are there and are the proxy
@@ -62,10 +61,15 @@ final class ChestPlacer {
     }
 
     /** @param placed the row stands; @param partial only the first half of a double chest does; @param failure why not, when not placed at all */
-    record Outcome(boolean placed, boolean partial, String failure) {
-    }
+    record Outcome(boolean placed, boolean partial, String failure) {}
 
-    private enum Step { Walk, Hold, Aim, Click, Wait }
+    private enum Step {
+        Walk,
+        Hold,
+        Aim,
+        Click,
+        Wait
+    }
 
     private static final int WALK_TIMEOUT = 20 * 60;
     private static final int WAIT_TICKS = 40;
@@ -172,7 +176,10 @@ final class ChestPlacer {
     /** Puts the hand back as it was, once no screen is open and nothing is on the cursor. */
     void restoreHand() {
         if (!swapped) return;
-        if (mc.player == null || mc.screen != null || mc.player.containerMenu != mc.player.inventoryMenu || !mc.player.containerMenu.getCarried().isEmpty()) return;
+        if (mc.player == null
+                || mc.screen != null
+                || mc.player.containerMenu != mc.player.inventoryMenu
+                || !mc.player.containerMenu.getCarried().isEmpty()) return;
         InvUtils.swapBack();
         swapped = false;
         heldSlot = -1;
@@ -187,8 +194,7 @@ final class ChestPlacer {
         if (on) {
             sneaking = true;
             key.setDown(true);
-        }
-        else if (sneaking) {
+        } else if (sneaking) {
             sneaking = false;
             key.setDown(Input.isPressed(key));
         }
@@ -284,7 +290,9 @@ final class ChestPlacer {
         Set<Integer> keep = owner.keep();
         int hotbar = -1;
         if (src < 9 && !keep.contains(src)) hotbar = src;
-        else for (int i = 0; i < 9 && hotbar == -1; i++) if (!keep.contains(i) && mc.player.getInventory().getItem(i).isEmpty()) hotbar = i;
+        else
+            for (int i = 0; i < 9 && hotbar == -1; i++)
+                if (!keep.contains(i) && mc.player.getInventory().getItem(i).isEmpty()) hotbar = i;
         if (hotbar == -1) {
             end(new Outcome(half == 1, half == 1, "no free hotbar slot to place a chest from"));
             return;
@@ -300,8 +308,7 @@ final class ChestPlacer {
         if (!swapped) {
             InvUtils.swap(hotbar, true);
             swapped = true;
-        }
-        else InvUtils.swap(hotbar, false);
+        } else InvUtils.swap(hotbar, false);
         step = Step.Aim;
         stepTicks = 0;
         owner.pause(owner.delay());
@@ -364,19 +371,24 @@ final class ChestPlacer {
                 nextStand("the look would turn the chest the wrong way");
                 return;
             }
-        }
-        else {
+        } else {
             clicked = bp(plan.first());
             BlockPos two = bp(plan.second());
             int dx = Integer.signum(two.getX() - clicked.getX()), dz = Integer.signum(two.getZ() - clicked.getZ());
             face = dx > 0 ? Direction.EAST : dx < 0 ? Direction.WEST : dz > 0 ? Direction.SOUTH : Direction.NORTH;
-            where = new Vec3(clicked.getX() + 0.5 + dx * ChestStack.CHEST_SIDE, clicked.getY() + 0.5, clicked.getZ() + 0.5 + dz * ChestStack.CHEST_SIDE);
+            where = new Vec3(
+                    clicked.getX() + 0.5 + dx * ChestStack.CHEST_SIDE,
+                    clicked.getY() + 0.5,
+                    clicked.getZ() + 0.5 + dz * ChestStack.CHEST_SIDE);
         }
         BlockHitResult hit = new BlockHitResult(where, face, clicked, false);
         clickIssued = true;
         Runnable action = () -> {
             // The rotation can finish after we have started to give way
-            if (step != Step.Click || !owner.running() || !handReady() || !mc.level.getBlockState(want).isAir()) {
+            if (step != Step.Click
+                    || !owner.running()
+                    || !handReady()
+                    || !mc.level.getBlockState(want).isAir()) {
                 clickIssued = false;
                 return;
             }

@@ -4,7 +4,6 @@ import com.porter.wesort.manager.gui.style.SmGuiTheme;
 import meteordevelopment.meteorclient.gui.renderer.GuiRenderer;
 import meteordevelopment.meteorclient.gui.widgets.pressable.WPressable;
 
-
 /**
  * The part of the header that moves the window. It is the last child of the frame, so a button or select in the header
  * takes a click first and only a click on bare header gets here. Like {@link WResizeGrip} it overrides no click

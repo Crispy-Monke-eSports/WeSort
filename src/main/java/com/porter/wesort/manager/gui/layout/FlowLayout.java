@@ -7,8 +7,7 @@ import java.util.List;
  * Wraps items of known widths into rows, like a CSS flex row with flex-wrap. Pure.
  */
 public final class FlowLayout {
-    private FlowLayout() {
-    }
+    private FlowLayout() {}
 
     /**
      * The rows as {@code [from, to)} index pairs. The gap sits between items only; an item wider than the row gets a

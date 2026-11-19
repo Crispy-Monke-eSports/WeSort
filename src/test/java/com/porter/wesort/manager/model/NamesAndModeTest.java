@@ -1,15 +1,15 @@
 package com.porter.wesort.manager.model;
 
-import com.google.gson.JsonParser;
-import com.porter.wesort.manager.local.LocalSafety;
-import com.porter.wesort.stash.Order;
-import org.junit.jupiter.api.Test;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.google.gson.JsonParser;
+import com.porter.wesort.manager.local.LocalSafety;
+import com.porter.wesort.stash.Order;
+import org.junit.jupiter.api.Test;
 
 class NamesAndModeTest {
     @Test
@@ -40,7 +40,8 @@ class NamesAndModeTest {
         d.setEach(2, " C ");
         assertEquals(2, d.namedCount(3));
         assertEquals(1, d.namedCount(2), "only the shulkers that exist count");
-        assertEquals("{\"mode\":\"each\",\"names\":[\"A\",\"\",\"C\"]}", d.toJson(3).toString());
+        assertEquals(
+                "{\"mode\":\"each\",\"names\":[\"A\",\"\",\"C\"]}", d.toJson(3).toString());
         // a shorter cart keeps the typed names for later
         assertEquals("{\"mode\":\"each\",\"names\":[\"A\"]}".length() > 0, d.toJson(1) != null);
         assertEquals(" C ", d.each(2));
@@ -86,8 +87,10 @@ class NamesAndModeTest {
         assertTrue(OrderMode.localRefusal(true, true, false, false, true, true).contains("wesort-stash-manager"));
         assertTrue(OrderMode.localRefusal(true, false, true, false, true, true).contains("already running"));
         assertTrue(OrderMode.localRefusal(true, false, false, true, true, true).contains("busy"));
-        assertTrue(OrderMode.localRefusal(true, false, false, false, false, true).contains("No stash"));
-        assertTrue(OrderMode.localRefusal(true, false, false, false, true, false).contains("delivery"));
+        assertTrue(
+                OrderMode.localRefusal(true, false, false, false, false, true).contains("No stash"));
+        assertTrue(
+                OrderMode.localRefusal(true, false, false, false, true, false).contains("delivery"));
         // wesort-stash-manager wins over everything else that is fine
         assertTrue(OrderMode.localRefusal(true, true, true, true, true, true).contains("already running"));
     }
@@ -122,14 +125,22 @@ class NamesAndModeTest {
         BotInfo none = BotInfo.parse(JsonParser.parseString("{}").getAsJsonObject());
         assertEquals("This bot can't name shulkers; they'll arrive unnamed.", none.namesWarning(2));
         assertEquals("", none.namesWarning(0));
-        BotInfo noAnvil = BotInfo.parse(JsonParser.parseString("{\"naming\":{\"anvil\":false,\"xpLevels\":3}}").getAsJsonObject());
+        BotInfo noAnvil = BotInfo.parse(JsonParser.parseString("{\"naming\":{\"anvil\":false,\"xpLevels\":3}}")
+                .getAsJsonObject());
         assertTrue(noAnvil.namesWarning(1).startsWith("No anvil set;"));
-        BotInfo finds = BotInfo.parse(JsonParser.parseString("{\"naming\":{\"anvil\":false,\"anvilSource\":\"none\",\"xpLevels\":3}}").getAsJsonObject());
+        BotInfo finds = BotInfo.parse(
+                JsonParser.parseString("{\"naming\":{\"anvil\":false,\"anvilSource\":\"none\",\"xpLevels\":3}}")
+                        .getAsJsonObject());
         assertTrue(finds.namesWarning(1).startsWith("No anvil yet:"));
-        BotInfo xp = BotInfo.parse(JsonParser.parseString("{\"naming\":{\"anvil\":true,\"xpLevels\":3}}").getAsJsonObject());
-        assertEquals("May run out of XP: about 1 level per shulker. The bot has 3 levels for 5 named shulkers; any it can't name arrive unnamed.", xp.namesWarning(5));
+        BotInfo xp = BotInfo.parse(JsonParser.parseString("{\"naming\":{\"anvil\":true,\"xpLevels\":3}}")
+                .getAsJsonObject());
+        assertEquals(
+                "May run out of XP: about 1 level per shulker. The bot has 3 levels for 5 named shulkers; any it can't name arrive unnamed.",
+                xp.namesWarning(5));
         assertEquals("", xp.namesWarning(3));
-        BotInfo storage = BotInfo.parse(JsonParser.parseString("{\"deliveryStorage\":{\"autoExpand\":false,\"chests\":3,\"full\":1,\"canExpand\":false,\"blocked\":null}}").getAsJsonObject());
+        BotInfo storage = BotInfo.parse(JsonParser.parseString(
+                        "{\"deliveryStorage\":{\"autoExpand\":false,\"chests\":3,\"full\":1,\"canExpand\":false,\"blocked\":null}}")
+                .getAsJsonObject());
         assertEquals("3 delivery chests, 1 full (auto expand is off).", storage.storageText());
         assertTrue(storage.craftInfo().startsWith("3 delivery chests"));
         assertTrue(Order.valid("ok"));
@@ -167,6 +178,7 @@ class NamesAndModeTest {
 
     @Test
     void theOtherRefusalsComeBeforeAParkedServerOrder() {
-        assertTrue(OrderMode.localRefusal(true, false, false, false, false, true, "o-1").contains("No stash"));
+        assertTrue(OrderMode.localRefusal(true, false, false, false, false, true, "o-1")
+                .contains("No stash"));
     }
 }

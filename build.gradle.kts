@@ -2,6 +2,7 @@ import java.util.Properties
 
 plugins {
     id("net.fabricmc.fabric-loom") version "1.17.21"
+    id("com.diffplug.spotless") version "8.11.0"
 }
 
 // Only Minecraft 26.3 is supported. Old -Pmc targets must fail instead of silently building a different jar.
@@ -152,5 +153,25 @@ loom {
             providers.gradleProperty("testServer").orNull?.let { programArgs("--quickPlayMultiplayer", it) }
             if (providers.gradleProperty("worldTest").orNull == "true") programArgs("--username", "WeSortE2E")
         }
+    }
+}
+
+// Format hand-maintained Java only. The Minecraft 26.3 port produces derived
+// Java under build/generated/sources/mc26; never reformat those outputs.
+spotless {
+    // Existing sources have not been mass-formatted yet. Keep build/check green
+    // until a separate formatting-only migration has been reviewed.
+    setEnforceCheck(false)
+    java {
+        target(
+            "src/main/java/**/*.java",
+            "src/26.3/java/**/*.java",
+            "src/test/java/**/*.java",
+            "common/src/main/java/**/*.java",
+            "common/src/test/java/**/*.java"
+        )
+        palantirJavaFormat("2.103.0")
+        trimTrailingWhitespace()
+        endWithNewline()
     }
 }

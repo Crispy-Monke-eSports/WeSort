@@ -18,19 +18,27 @@ public final class PhysicalSlots {
 
     /** A visible identity claim is not proof of globally unique registered ownership. */
     public record BoxIdentity(boolean hasUUID, String boxUUID, String identityStatus) {
-        static BoxIdentity unregistered() { return new BoxIdentity(false, null, "UNREGISTERED"); }
-        static BoxIdentity invalid() { return new BoxIdentity(false, null, "INVALID"); }
+        static BoxIdentity unregistered() {
+            return new BoxIdentity(false, null, "UNREGISTERED");
+        }
+
+        static BoxIdentity invalid() {
+            return new BoxIdentity(false, null, "INVALID");
+        }
     }
+
     private static final java.util.regex.Pattern BOX_UUID = java.util.regex.Pattern.compile(
-        "WeSort-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}");
+            "WeSort-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}");
 
     /**
      * Parse vanilla 26.3's typed CUSTOM_NAME, not an untrusted hasUUID field.
      * Only an independent verified Manager registry may upgrade UNKNOWN to REGISTERED.
      */
     public static BoxIdentity boxIdentity(String id, Kind kind, String components) {
-        if (kind != Kind.SHULKER || id == null
-            || !id.matches("minecraft:(?:shulker_box|(?:white|orange|magenta|light_blue|yellow|lime|pink|gray|light_gray|cyan|purple|blue|brown|green|red|black)_shulker_box)"))
+        if (kind != Kind.SHULKER
+                || id == null
+                || !id.matches(
+                        "minecraft:(?:shulker_box|(?:white|orange|magenta|light_blue|yellow|lime|pink|gray|light_gray|cyan|purple|blue|brown|green|red|black)_shulker_box)"))
             return BoxIdentity.unregistered();
         try {
             JsonObject patch = JsonParser.parseString(components).getAsJsonObject();
@@ -52,8 +60,7 @@ public final class PhysicalSlots {
                 JsonObject data = typed.getAsJsonObject("value");
                 if (data.size() != 1 || !data.has("text")) return BoxIdentity.invalid();
                 JsonObject textTag = data.getAsJsonObject("text");
-                if (textTag.get("type").getAsBigDecimal().intValueExact() != 8)
-                    return BoxIdentity.invalid();
+                if (textTag.get("type").getAsBigDecimal().intValueExact() != 8) return BoxIdentity.invalid();
                 visible = snbtString(textTag.get("value").getAsString());
                 if (visible == null) return BoxIdentity.invalid();
             } else if (tagType == 8) {
@@ -61,11 +68,17 @@ public final class PhysicalSlots {
                 if (payload == null) return BoxIdentity.invalid();
                 if (payload.startsWith("{") || payload.startsWith("\"")) {
                     JsonElement component = JsonParser.parseString(payload);
-                    if (component.isJsonPrimitive() && component.getAsJsonPrimitive().isString()) {
+                    if (component.isJsonPrimitive()
+                            && component.getAsJsonPrimitive().isString()) {
                         visible = component.getAsString();
-                    } else if (component.isJsonObject() && component.getAsJsonObject().size() == 1
-                        && component.getAsJsonObject().has("text")
-                        && component.getAsJsonObject().get("text").getAsJsonPrimitive().isString()) {
+                    } else if (component.isJsonObject()
+                            && component.getAsJsonObject().size() == 1
+                            && component.getAsJsonObject().has("text")
+                            && component
+                                    .getAsJsonObject()
+                                    .get("text")
+                                    .getAsJsonPrimitive()
+                                    .isString()) {
                         visible = component.getAsJsonObject().get("text").getAsString();
                     } else return BoxIdentity.invalid();
                 } else visible = payload; // Vanilla plain literal StringTag
@@ -83,14 +96,16 @@ public final class PhysicalSlots {
     private static String snbtString(String snbt) {
         if (snbt == null || snbt.length() < 2) return null;
         char quote = snbt.charAt(0);
-        if ((quote != '\'' && quote != '"') || snbt.charAt(snbt.length() - 1) != quote)
-            return null;
+        if ((quote != '\'' && quote != '"') || snbt.charAt(snbt.length() - 1) != quote) return null;
         if (quote == '"') {
             try {
                 JsonElement decoded = JsonParser.parseString(snbt);
                 return decoded.isJsonPrimitive() && decoded.getAsJsonPrimitive().isString()
-                    ? decoded.getAsString() : null;
-            } catch (RuntimeException malformed) { return null; }
+                        ? decoded.getAsString()
+                        : null;
+            } catch (RuntimeException malformed) {
+                return null;
+            }
         }
         StringBuilder result = new StringBuilder();
         for (int i = 1; i < snbt.length() - 1; i++) {
@@ -204,7 +219,9 @@ public final class PhysicalSlots {
             return contents;
         }
 
-        public BoxIdentity boxIdentity() { return PhysicalSlots.boxIdentity(id, kind, components); }
+        public BoxIdentity boxIdentity() {
+            return PhysicalSlots.boxIdentity(id, kind, components);
+        }
     }
 
     public record Located(String path, String parent, Slot stack, long copies) {
@@ -311,9 +328,11 @@ public final class PhysicalSlots {
                     row.addProperty("hasUUID", identity.hasUUID());
                     if (identity.boxUUID() != null) row.addProperty("boxUUID", identity.boxUUID());
                     else row.add("boxUUID", JsonNull.INSTANCE);
-                    row.addProperty("identityStatus", identity.hasUUID()
-                        && visibleClaims.getOrDefault(identity.boxUUID(), 0L) > 1
-                            ? "DUPLICATE" : identity.identityStatus());
+                    row.addProperty(
+                            "identityStatus",
+                            identity.hasUUID() && visibleClaims.getOrDefault(identity.boxUUID(), 0L) > 1
+                                    ? "DUPLICATE"
+                                    : identity.identityStatus());
                 }
                 positions.add(row);
             }

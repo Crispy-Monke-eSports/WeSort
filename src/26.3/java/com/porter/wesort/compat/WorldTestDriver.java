@@ -421,6 +421,8 @@ public final class WorldTestDriver {
                     ((Setting<Boolean>) sorter.settings.get("barrels")).set(true);
                     ((Setting<Boolean>) sorter.settings.get("walk"))
                             .set(!command.has("walk") || command.get("walk").getAsBoolean());
+                    if (command.has("reach"))
+                        ((Setting<Double>) sorter.settings.get("reach")).set(command.get("reach").getAsDouble());
                     ((Setting<Integer>) sorter.settings.get("radius")).set(32);
                     ((Setting<Integer>) sorter.settings.get("delay")).set(1);
                     ((Setting<Integer>) sorter.settings.get("container-delay")).set(0);

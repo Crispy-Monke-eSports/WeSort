@@ -96,7 +96,7 @@ separata validerade fält, inte härledda ur fri kommentar.
 | Manager OrderStore/OrderRoutes | Befintlig stashorder; får inte parallellt äga framtida guildreservationer |
 | Users/AuthRoutes/Signer/AccessControl/AuditLog | Bevara konton, signing, sessioner, scopes och sekretess; framtida roller/audit via samma backend |
 | BotHub/BotRoutes | Nuvarande settings/status; hållbara jobbleases införs senare enligt kontraktet |
-| StaticRoutes och web/ | Obligatorisk medlems-/administrationsportal, samma process och API |
+| StaticRoutes och web/ | React/TypeScript-storefronten (se docs/WEB_ARCHITECTURE.md), samma process och API |
 
 JSON AtomicFiles gör en enskild filersättning atomisk, men ger inte en
 transaktion över order + quota + reservation + journal. Därför väljs en

@@ -784,8 +784,8 @@ final class OrderStore {
             throw new OrderException(409, "Physical sorting active or awaiting reconciliation", -1);
         if (requested.isEmpty()) throw new OrderException(400, "an order needs at least one line", -1);
         if (requested.size() > MAX_LINES) throw new OrderException(400, "at most " + MAX_LINES + " lines", -1);
-        IndexStore.OrderCounts counts = index.orderCounts(server, stash);
-        if (counts == null) throw new OrderException(400, "no index for that stash", -1);
+        IndexStore.OrderCounts fresh = index.orderCounts(server, stash);
+        if (fresh == null) throw new OrderException(400, "no index for that stash", -1);
 
         // Merge lines with the same type and key, remembering where each first appeared (for error reporting).
         Map<String, Line> merged = new LinkedHashMap<>();
@@ -831,7 +831,90 @@ final class OrderStore {
                                 || merged.values().stream().anyMatch(line -> line.type.equals("shulker")))) {
             throw new OrderException(409, "Resolve existing reservations before mixing source observation formats", -1);
         }
-        var allocations = physical.hasSnapshots() ? physical.allocate(merged.values(), held, firstIndex) : null;
+        try {
+            return commitOrder(
+                    server,
+                    stash,
+                    merged,
+                    firstIndex,
+                    names,
+                    packageLabel,
+                    byId,
+                    byName,
+                    organizationId,
+                    intent,
+                    receiptKey,
+                    fingerprint,
+                    retryOf,
+                    needsApproval,
+                    recipient,
+                    fresh,
+                    physical,
+                    held,
+                    false);
+        } catch (OrderException shortfall) {
+            if (!isShortage(shortfall)) throw shortfall;
+            // No bot online: the sources went stale, so verified counts read zero. Queue against the
+            // last-verified counts instead. Claim still requires a fresh observation, so the bot
+            // re-verifies before it touches anything. Ported from PR #89.
+            IndexStore.OrderCounts stale = index.orderCountsIncludingStale(server, stash);
+            if (stale == null) throw shortfall;
+            try {
+                return commitOrder(
+                        server,
+                        stash,
+                        merged,
+                        firstIndex,
+                        names,
+                        packageLabel,
+                        byId,
+                        byName,
+                        organizationId,
+                        intent,
+                        receiptKey,
+                        fingerprint,
+                        retryOf,
+                        needsApproval,
+                        recipient,
+                        stale,
+                        physical,
+                        held,
+                        true);
+            } catch (OrderException retryFailed) {
+                throw isShortage(retryFailed) ? shortfall : retryFailed;
+            }
+        }
+    }
+
+    /** A 400/409 against one order line: a real shortage, not a policy refusal. */
+    private static boolean isShortage(OrderException e) {
+        return e.line >= 0 && (e.status == 400 || e.status == 409);
+    }
+
+    private Order commitOrder(
+            String server,
+            String stash,
+            Map<String, Line> merged,
+            Map<String, Integer> firstIndex,
+            JsonObject names,
+            JsonObject packageLabel,
+            String byId,
+            String byName,
+            String organizationId,
+            OrderIntent intent,
+            String receiptKey,
+            String fingerprint,
+            Order retryOf,
+            boolean needsApproval,
+            String recipient,
+            IndexStore.OrderCounts counts,
+            PhysicalReservations physical,
+            Set<PhysicalReservations.Root> held,
+            boolean allowStale)
+            throws OrderException, IOException {
+        var allocations = physical.hasSnapshots()
+                ? physical.allocate(merged.values(), held, firstIndex, allowStale)
+                : null;
         Book b = book(server, stash);
         synchronized (b) {
             long open = b.orders.stream().filter(o -> OPEN.contains(o.status)).count();
@@ -1091,6 +1174,13 @@ final class OrderStore {
         }
     }
 
+    /** No positive units: nothing verified (or nothing at all). Ported from PR #89. */
+    private static boolean isEmpty(IndexStore.OrderCounts counts) {
+        if (counts == null) return true;
+        return counts.items().values().stream().noneMatch(n -> n > 0)
+                && counts.shulkers().values().stream().noneMatch(n -> n > 0);
+    }
+
     /** { orders: [newest first], available: { items: {key: n}, shulkers: {key: n} } } */
     JsonObject listJson(String server, String stash) {
         JsonObject out = new JsonObject();
@@ -1114,6 +1204,17 @@ final class OrderStore {
                     var physical = PhysicalReservations.read(index.stock(), server, stash);
                     if (physical.hasSnapshots()) physicalAvailable = physical.available(heldRoots(server));
                     counts = index.orderCounts(server, stash);
+                    // No bot online: verified counts read zero, but the stash is still orderable
+                    // (queued) against the last observation. Report that, so the shop and the
+                    // submit check agree; claim still requires a fresh observation.
+                    if (isEmpty(counts) && (physicalAvailable == null || physicalAvailable.isEmpty())) {
+                        var stale = index.orderCountsIncludingStale(server, stash);
+                        if (!isEmpty(stale)) {
+                            counts = stale;
+                            if (physical.hasSnapshots())
+                                physicalAvailable = physical.available(heldRoots(server), null, true);
+                        }
+                    }
                 }
             } catch (IOException ignored) {
                 counts = null;

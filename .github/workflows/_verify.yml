@@ -78,6 +78,9 @@ jobs:
           java-version: '21'
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c
       - uses: ./.github/actions/configure-gradle-mirror
+      - uses: oven-sh/setup-bun@v2
+      - name: Build React storefront into the Manager resources
+        run: cd web && bun install --frozen-lockfile && bun run test && bun run build
       - name: Build and test Manager
         run: ./gradlew --no-daemon -p stash-manager-server build
       - name: Verify fresh installation, restart and data isolation

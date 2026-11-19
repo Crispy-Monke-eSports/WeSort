@@ -349,6 +349,9 @@ public final class WeSortManager {
         new UserRoutes(users, sessions, audit).register(router);
         guild.register(router);
         new IconRoutes(icons).register(router);
+        // The vanilla dirt background for the Classic theme (from the verified official client);
+        // 404 here falls back to the bundled dirt.svg layer in style.css.
+        new DirtRoutes(VanillaTexture.dirt(config.dataDir().resolve("icons"))).register(router);
         new StaticRoutes().register(router); // last: the catch-all
         return new Routes(router, authRoutes, delivery, credentials);
     }

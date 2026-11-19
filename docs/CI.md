@@ -3,8 +3,9 @@
 **Supportpolicy:** Endast Minecraft **26.3** stöds och testas som klienttarget.
 1.21.4/1.21.11 är historiska upstream-baslinjer, inte CI-mål. Minecraft-klienten
 använder låst **Temurin 25.0.5+8**, Gradle och Fabric/Meteor/Baritone-versioner
-från projektets versionsfiler. Manager bygger separat med **Java 21** och webbtester
-använder **Node.js 22**.
+från projektets versionsfiler. Manager bygger separat med **Java 21**,
+React-storefronten byggs med **Bun 1** (`web/`: tsc, Vitest, Vite) före
+Manager-jar:en, och webbtester använder **Node.js 22**.
 
 ## Workflow-arkitektur
 

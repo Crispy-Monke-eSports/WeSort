@@ -181,6 +181,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-mc26
+        with:
+          cache-read-only: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
 
       - name: Start actual Minecraft, Meteor and Baritone
         run: xvfb-run -a -s '-screen 0 1280x720x24' python3 tools/mc26-toolchain/verify.py
@@ -222,6 +224,9 @@ jobs:
     timeout-minutes: 110
     strategy:
       fail-fast: false
+      # Maven Central is mirrored and Gradle caches are read-only in E2E
+      # shards, so shards no longer contend on downloads. Run all 10 shards
+      # at once to cut wall-clock time.
       max-parallel: 10
       matrix:
         include:

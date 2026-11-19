@@ -16,6 +16,7 @@ jobs:
           distribution: temurin
           java-version: '25.0.5+8'
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c
+      - uses: ./.github/actions/configure-gradle-mirror
       # Maven Central can rate-limit shared GitHub runners (HTTP 429). Retry only
       # that transient failure, never genuine compile or test errors.
       - name: Build and test Minecraft 26.3 client
@@ -76,8 +77,7 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c
-        with:
-          cache-read-only: true
+      - uses: ./.github/actions/configure-gradle-mirror
       - name: Build and test Manager
         run: ./gradlew --no-daemon -p stash-manager-server build
       - name: Verify fresh installation, restart and data isolation
@@ -176,7 +176,21 @@ jobs:
           cache: npm
           cache-dependency-path: web-tests/package-lock.json
       - run: npm ci --prefix web-tests
-      - run: npm exec --prefix web-tests -- playwright install --with-deps chromium
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('web-tests/package-lock.json') }}
+      - name: Install Playwright chromium (browsers cached, system deps only if missing)
+        shell: bash
+        run: |
+          # Browser binaries persist via the cache above; system libraries live
+          # in the rootfs and cannot be cached, but the ubuntu image usually
+          # ships them. Only pay for `apt-get` when a known chromium dep is absent.
+          if ! dpkg -s libnss3 >/dev/null 2>&1; then
+            npm exec --prefix web-tests -- playwright install --with-deps chromium
+          else
+            npm exec --prefix web-tests -- playwright install chromium
+          fi
       - name: Docker bridge, browser portal, bootstrap, persistence and TLS smoke
         run: python3 scripts/docker-smoke.py --image wesort-manager:ci --browser --report build/evidence/docker-smoke.json
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f

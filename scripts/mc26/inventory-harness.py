@@ -330,6 +330,15 @@ class InventoryHarness(world.Harness):
             self.command('screenshot')
             world.shutil.copyfile(self.game_dir / 'screenshots/fixture.png', self.evidence / 'fixture.png')
             self.verify_manager_index(index)
+            # The signed index is verified; now isolate the exact crash-before-
+            # transmission experiment from the Manager's background container
+            # rescan. Otherwise the Manager may close this test's chest menu
+            # between the open and the click, yielding "Stale menu/state id"
+            # before the physical intent can ever be persisted or held.
+            self.command('manager-pause')
+            paused = self.command('state')['state']
+            require(not paused['sorterActive'] and paused['inventoryReady'],
+                'Inventory fault injection did not begin with a quiescent client')
             self.disconnect_and_restart(index)
             after = self.physical_snapshot()
             require(after == before, 'Server container data changed after inventory/fault scenarios')

@@ -6839,17 +6839,24 @@ public class StashSorter extends Module {
                 ? wanderSpot
                 : null;
         if (managedKit()) {
-            if (approved == null
-                    || !mc.level.isLoaded(approved)
-                    || !BlockUtils.canPlace(approved, true)
-                    || spotProblem(approved) != null) {
+            if (approved == null || !mc.level.isLoaded(approved) || spotProblem(approved) != null) {
                 kitBuilder.suspend("The exact Manager-approved workspace is unavailable");
                 endHandling();
                 return;
             }
-            if (!inReachOf(approved)) {
+            boolean canPlace = BlockUtils.canPlace(approved, true);
+            // The agent can temporarily obstruct its own approved placement while
+            // approaching it. Walk clear of the exact cell; never bypass either
+            // the Manager's workspace policy or the normal placement checks.
+            boolean occupyingWorkspace = mc.player.getBoundingBox().intersects(new AABB(approved));
+            if (!canPlace && !occupyingWorkspace) {
+                kitBuilder.suspend("The exact Manager-approved workspace is unavailable");
+                endHandling();
+                return;
+            }
+            if (!inReachOf(approved) || !canPlace) {
                 if (!walkOn() || wanderTries++ >= WANDER_TRIES) {
-                    kitBuilder.suspend("Could not reach the exact Manager workspace");
+                    kitBuilder.suspend("Could not reach the exact Manager workspace without obstructing it");
                     endHandling();
                     return;
                 }
@@ -6857,7 +6864,8 @@ public class StashSorter extends Module {
                 wanderStand = approved.north();
                 wanderRestarts = 0;
                 wanderStart = handleTicks;
-                walkNear(wanderStand, 1);
+                // Radius 1 stops the bot partly inside the reserved shulker cell.
+                walkNear(wanderStand, 0);
                 handle = Handle.Wander;
                 return;
             }
@@ -8280,6 +8288,12 @@ public class StashSorter extends Module {
         }
         Vec3 at = mc.player.position();
         boolean arrived = at.distanceToSqr(Vec3.atBottomCenterOf(wanderStand)) <= 1.8 * 1.8;
+        if (managedKit()
+                && wanderSpot != null
+                && wanderSpot.equals(Modules.get().get(StashManager.class).kitWorkspace()))
+            arrived = arrived
+                    && !mc.player.getBoundingBox().intersects(new AABB(wanderSpot))
+                    && BlockUtils.canPlace(wanderSpot, true);
         if (arrived) {
             releaseGoal();
             wanderStand = null;
@@ -8294,7 +8308,10 @@ public class StashSorter extends Module {
                 wanderGiveUp();
                 return;
             }
-            walkNear(wanderStand, 1);
+            boolean exactWorkspace = managedKit()
+                    && wanderSpot != null
+                    && wanderSpot.equals(Modules.get().get(StashManager.class).kitWorkspace());
+            walkNear(wanderStand, exactWorkspace ? 0 : 1);
             wanderStart = handleTicks;
             return;
         }

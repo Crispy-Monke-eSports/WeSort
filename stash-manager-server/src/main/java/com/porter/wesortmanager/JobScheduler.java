@@ -66,6 +66,9 @@ final class JobScheduler {
         } catch (RuntimeException invalid) {
             throw new IOException("Cannot read job scheduler", invalid);
         }
+        // W-044: a restart never blindly resumes an uncertain physical step — any lease that lapsed while the
+        // Manager was down is marked for reconciliation before the first claim.
+        expire();
     }
 
     synchronized Job submit(Job.Category category, String chain, String detail, int priority, String by)

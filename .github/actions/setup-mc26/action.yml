@@ -1,5 +1,9 @@
 name: Set up Minecraft 26.3 E2E runner
-description: Pinned Temurin 25, Gradle cache, and software display dependencies
+description: Pinned Temurin 25, read-only Gradle cache by default, Maven Central mirror, and software display dependencies
+inputs:
+  cache-read-only:
+    description: Disable Gradle cache writes for parallel E2E consumers (set false only for the toolchain cache producer on main)
+    default: 'true'
 runs:
   using: composite
   steps:
@@ -8,8 +12,24 @@ runs:
         distribution: temurin
         java-version: '25.0.5+8'
     - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c
+      with:
+        cache-read-only: ${{ inputs.cache-read-only }}
+    - uses: ./.github/actions/configure-gradle-mirror
     - name: Install software display dependencies
       shell: bash
       run: |
+        # The ubuntu-24.04 image usually already provides these. Skip the
+        # ~13 MB archive update and ~30 MB mesa upgrade when nothing is
+        # missing; only truly absent packages are installed, never upgraded.
+        missing=()
+        for pkg in xvfb libgl1-mesa-dri libglx-mesa0 libgl1 libegl1 libegl-mesa0 mesa-vulkan-drivers libvulkan1 libopenal1; do
+          if ! dpkg -s "$pkg" >/dev/null 2>&1; then
+            missing+=("$pkg")
+          fi
+        done
+        if [ "${#missing[@]}" -eq 0 ]; then
+          echo "Display dependencies already installed; skipping apt."
+          exit 0
+        fi
         sudo apt-get update
-        sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 libgl1 libegl1 libegl-mesa0 mesa-vulkan-drivers libvulkan1 libopenal1
+        sudo apt-get install -y --no-upgrade "${missing[@]}"

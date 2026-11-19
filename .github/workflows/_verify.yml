@@ -1,0 +1,168 @@
+name: WeSort basic verification
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  client:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880
+        with:
+          distribution: temurin
+          java-version: '25.0.5+8'
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c
+      - name: Build and test Minecraft 26.3 client
+        run: ./gradlew --no-daemon build -Pmc=26.3
+      - name: Record tests and build identity
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p build/evidence
+          {
+            echo "commit=$GITHUB_SHA target=26.3"
+            java -version 2>&1
+            ./gradlew --version
+            cat .java-version gradle/libs.versions.toml versions/26.3.properties
+          } > build/evidence/versions.txt
+          python3 scripts/test-summary.py build > build/evidence/tests.txt 2>&1 || true
+          cat build/evidence/tests.txt >> "$GITHUB_STEP_SUMMARY"
+- uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: client-26.3-${{ github.run_id }}
+          path: |
+            build/libs/*.jar
+            build/test-results/
+            build/reports/
+            build/evidence/
+            LICENSE
+            docs/UPSTREAM.md
+          retention-days: 7
+          if-no-files-found: ignore
+
+  manager:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c
+      - name: Build and test Manager
+        run: ./gradlew --no-daemon -p stash-manager-server build
+      - name: Verify fresh installation, restart and data isolation
+        run: |
+          mkdir -p stash-manager-server/build/evidence
+          python3 scripts/smoke-isolation.py | tee stash-manager-server/build/evidence/isolation.txt
+      - name: Record tests and build identity
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p stash-manager-server/build/evidence
+          {
+            echo "commit=$GITHUB_SHA target=manager"
+            java -version 2>&1
+            ./gradlew --version
+            cat stash-manager-server/build.gradle.kts
+          } > stash-manager-server/build/evidence/versions.txt
+          python3 scripts/test-summary.py stash-manager-server/build > stash-manager-server/build/evidence/tests.txt 2>&1 || true
+          cat stash-manager-server/build/evidence/tests.txt >> "$GITHUB_STEP_SUMMARY"
+- uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: manager-${{ github.run_id }}
+          path: |
+            stash-manager-server/build/libs/*.jar
+            stash-manager-server/build/test-results/
+            stash-manager-server/build/reports/
+            stash-manager-server/build/evidence/
+            LICENSE
+            docs/UPSTREAM.md
+          retention-days: 7
+          if-no-files-found: ignore
+
+  web:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web-tests/package-lock.json
+      - run: npm ci --prefix web-tests
+      - run: npm test --prefix web-tests
+
+  manager-image:
+    needs: manager
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: wesort-manager:ci
+          build-args: REVISION=${{ github.sha }}
+          cache-from: type=gha,scope=manager
+          cache-to: type=gha,mode=max,scope=manager
+      - name: Export the exact image built from this revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/manager-ci-image"
+          docker image inspect wesort-manager:ci --format '{{.Id}}' > "$RUNNER_TEMP/manager-ci-image/image-id.txt"
+          docker save wesort-manager:ci | zstd -T0 -1 -o "$RUNNER_TEMP/manager-ci-image/manager.tar.zst"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: manager-ci-image-${{ github.run_id }}
+          path: '${{ runner.temp }}/manager-ci-image/'
+          compression-level: 0
+          retention-days: 7
+          overwrite: true
+          if-no-files-found: error
+
+  docker:
+    needs: [manager-image, web]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/load-manager-image
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web-tests/package-lock.json
+      - run: npm ci --prefix web-tests
+      - run: npm exec --prefix web-tests -- playwright install --with-deps chromium
+      - name: Docker bridge, browser portal, bootstrap, persistence and TLS smoke
+        run: python3 scripts/docker-smoke.py --image wesort-manager:ci --browser --report build/evidence/docker-smoke.json
+- uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: docker-smoke-${{ github.run_id }}
+          path: |
+            build/evidence/docker-smoke.json
+          retention-days: 7
+          if-no-files-found: ignore

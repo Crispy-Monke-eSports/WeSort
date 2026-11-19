@@ -1,38 +1,38 @@
-# CI – enbart Minecraft 26.3 (W-003)
+# CI architecture
 
-**Aktuell supportpolicy:** Endast Minecraft **26.3** stöds och testas som
-klienttarget. 1.21.4/1.21.11 är historiska upstream-baslinjer, inte CI-mål.
+The four GitHub Actions workflows are:
 
-`.github/workflows/build.yml` bygger exakt en Fabric/Meteor-klient med
-**Temurin 25.0.5+8**, Gradle 9.6.0 och versionslåsta 26.3-dependencies.
-Samma workflow bygger separat Manager med **Java 21**, kör webb-/Node 22-
-tester, installation/isolation och lokal Docker smoke. Enhetsresultat,
-JAR, versionsidentitet, licens och testartefakter publiceras även vid fel.
+- `ci.yml`: the entry point for **every PR**, pushes to `main`, nightly
+  runs and manual full-suite runs. Also called by the release workflow.
+- `_verify.yml`: client/Manager/web tests, a single source-bound Manager
+  Docker image, and browser/TLS/Docker smoke tests.
+- `_mc26-e2e.yml`: **all** original Minecraft 26.3 E2E harnesses, consuming
+  the exact image built by verification.
+- `manager-image.yml`: guarded manual or tag release; full CI first, then
+  versioned candidate, SBOM, publish and anonymous pull verification.
 
-`.github/workflows/mc26-client.yml` och separata 26.3-världs-, inventory-,
-navigerings-, assets-, stock- och sorting-workflows testar verklig 26.3-
-klient under Xvfb/Mesa och där det är relevant en vanilla-server och
-Manager i Docker. En framgångsrik JUnit-build är **inte** fysisk E2E.
+The 34 original matrix scenarios run in ten isolated sequential shards:
+journal (9), kits (10) and repack (15). Each keeps its own 25-minute timeout.
+A failed scenario is reported, later scenarios continue, and the shard fails.
+Nine additional standalone E2E suites are unchanged: assets/UI,
+client-runtime, hierarchy, inventory, navigation, sorting, stock, toolchain
+and world.
 
-`.github/workflows/manager-image.yml` anropar baslinjeworkflowet som
-releasegrind och får endast publicera GHCR-image från betrodda main-/tagg-
-händelser. PR-jobb har `contents:read`, inga skrivtokens för paket.
+The shared Manager image is built once per run with BuildKit/GHA cache,
+exported to a zstd-compressed artifact (7-day retention), loaded in each
+Docker-dependent job, and verified by image ID and source revision. No image
+is published to any registry during CI.
 
-## Lokal verifiering
+The stable required branch-protection check is `ci-required`. Update
+GitHub branch protection/rulesets to use this check after the new draft PR
+has run. Old per-workflow status names no longer exist. If compilation or
+unit tests fail, E2E is skipped to conserve runner resources, but the
+required check is failed. If any E2E job fails, the required check fails.
 
-```sh
-# JAVA_HOME: Temurin 25.0.5+8
-./gradlew --no-daemon clean build
-python3 scripts/test-summary.py build
-python3 scripts/mc26/client-runtime.py
+A release uses read-only permission for verification and only elevates
+to `packages: write` inside the guarded publish job; release workflows
+never auto-cancel. Manual publication remains explicitly gated.
 
-# JAVA_HOME: Temurin 21 för separat Manager
-./gradlew --no-daemon -p stash-manager-server clean build
-python3 scripts/test-summary.py stash-manager-server/build
-npm ci --prefix web-tests && npm test --prefix web-tests
-```
-
-Root-`.java-version` motsvarar Minecraft-klientens Java 25; Manager-workflowet
-väljer uttryckligen Java 21. Dokumentera faktisk GitHub Actions-status separat
-från lokala byggen. De tidigare 1.21.x-resultaten finns enbart i
-[historisk baslinje](BASELINE.md).
+Before merging, compare runtime, queue time, runner-minutes and artifact
+transfer against the old workflows. Batching and shared images are
+engineering hypotheses, not yet measured performance improvements.

@@ -6,6 +6,7 @@ import importlib.util
 import json
 from pathlib import Path
 import time
+import urllib.parse
 
 spec = importlib.util.spec_from_file_location('world_harness', Path(__file__).with_name('world-harness.py'))
 world = importlib.util.module_from_spec(spec); spec.loader.exec_module(world)
@@ -148,7 +149,11 @@ class StockHarness(world.Harness):
             require(self.amount(expired, 'minecraft:diamond', 'unknown') == 1344, 'Expired stock was invented or lost instead of marked unknown')
             status, _ = self.http('/api/v1/orders', {'server': self.server_name, 'stash': 'e2e-fixture',
                 'lines': [{'type': 'item', 'key': 'minecraft:diamond', 'count': 1}]})
-            require(status == 400, 'Expired source allowed a new order')
+            # Physical-root freshness conflicts use HTTP 409; older aggregate
+            # validation returns 400. Either response must deny the reservation.
+            require(status in (400, 409), f'Expired source allowed a new order (HTTP {status})')
+            code, listed = self.http('/api/v1/orders?server=' + urllib.parse.quote(self.server_name, safe='') + '&stash=e2e-fixture')
+            require(code == 200 and not listed['orders'], 'Rejected expired-stock request still created an order')
             self.ok('real expiry policy marks last counts unknown and rejects a new reservation; pause/heartbeats do not renew observations')
 
             # Change actual server inventory while the observer is paused; the production scanner must find the delta.

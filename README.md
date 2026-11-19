@@ -68,6 +68,39 @@ bygg/test ensamt verifierar inte fysisk inventory-hantering, Baritone eller
 leverans. Se [26.3-portstatus](docs/MC_26_3_PORT.md),
 [CI](docs/CI.md) och [historisk upstream-baslinje](docs/BASELINE.md).
 
+## Formatering av Java i VS Code
+
+Java-koden använder Spotless 8.11.0 med Palantir Java Format 2.103.0
+(4 mellanslag och normalt 120 teckens radbredd), i linje med
+`.editorconfig`. De delade Java-filerna i `common/` formateras via
+rotprojektet. Kod som genereras under `build/generated/` formateras inte.
+
+Öppna repositoryroten i VS Code och installera de rekommenderade tilläggen
+**Gradle for Java** och **Spotless for Gradle and Maven**. Med de incheckade
+`.vscode/settings.json`-inställningarna formateras Java-kod när du sparar
+(`Ctrl+S`). VS Codes vanliga Java-formatter är avaktiverad vid sparning
+för att undvika motstridiga formatregler.
+
+För manuell formatering eller kontroll (med klientens JDK 25):
+
+```sh
+./gradlew spotlessApply
+./gradlew spotlessCheck
+```
+
+Manager är ett separat Gradle-bygge. Det använder JDK 21:
+
+```sh
+./gradlew -p stash-manager-server spotlessApply
+./gradlew -p stash-manager-server spotlessCheck
+```
+
+**Observera:** `spotlessCheck` kan rapportera befintliga formatavvikelser.
+Spotless är tills vidare frikopplat från Gradles vanliga `check`/`build`
+för att inte blockera CI innan en separat formatmigrering har genomförts.
+Kör inte `spotlessApply` över hela projektet i en vanlig funktions-PR
+utan att granska diffen först.
+
 ## Avgränsning och fortsatt arbete
 
 Guildidentitet, SELF/GUILD-order, reservationer, kvoter (av som standard),

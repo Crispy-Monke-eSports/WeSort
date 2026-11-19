@@ -181,6 +181,7 @@
                 <input id="order-recipient" maxlength="16" autocomplete="off">
               </label>
               <label>Comment (optional) <textarea id="order-comment" maxlength="500" rows="2"></textarea></label>
+              <label id="order-quota-override-row" hidden><input type="checkbox" id="order-quota-override"> Override withdrawal quota (audited, approvers only)</label>
               <div class="cart-actions">
                 <button type="button" class="mc-button" id="cart-place">Place order</button>
                 <button type="button" class="mc-button danger" id="cart-clear">Clear cart</button>
@@ -195,6 +196,7 @@
             <div class="section-title" id="order-history-title">Your orders</div>
             <button type="button" class="mc-button small" id="orders-clear" disabled>Clear history</button>
           </div>
+          <div class="note" id="quota-usage" hidden></div>
           <div id="order-list"></div>
         </section>
         <details class="inset order-list" id="order-audit" hidden>
@@ -361,9 +363,46 @@
           <summary>Audit log</summary>
           <div class="audit-head">
             <span class="note" id="audit-status"></span>
+            <label>Person <input class="mc-input" id="audit-person" type="search" placeholder="member, id or blank for all" autocomplete="off"></label>
             <button type="button" class="mc-button small" id="audit-refresh">Refresh</button>
           </div>
           <div class="audit-list" id="audit-list"></div>
+        </details>
+        <details class="audit" id="quotas">
+          <summary>Withdrawal quotas (optional, off by default)</summary>
+          <div class="audit-head">
+            <span class="note" id="quotas-status"></span>
+            <label><input type="checkbox" id="quotas-enabled"> Enabled</label>
+            <button type="button" class="mc-button small" id="quotas-refresh">Refresh</button>
+            <button type="button" class="mc-button small" id="quotas-save">Save</button>
+          </div>
+          <p class="note">One rule per row: subject (member id, role or *), key (item:&lt;key&gt;, shulker:&lt;key&gt; or *), max count, window seconds. Orders that exceed a matching rule are rejected with HTTP 429 unless an approver overrides (audited).</p>
+          <div id="quotas-rules"></div>
+          <button type="button" class="mc-button small" id="quotas-add">Add rule</button>
+        </details>
+        <details class="audit" id="scheduler-jobs">
+          <summary>Scheduler jobs</summary>
+          <div class="audit-head">
+            <span class="note" id="jobs-status"></span>
+            <button type="button" class="mc-button small" id="jobs-refresh">Refresh</button>
+          </div>
+          <div id="jobs-list"></div>
+          <form id="jobs-submit" class="order-audit-filters">
+            <label>Category
+              <select id="jobs-category" class="mc-select">
+                <option value="SCAN">SCAN</option>
+                <option value="SORT">SORT</option>
+                <option value="PACK">PACK</option>
+                <option value="PICKUP">PICKUP</option>
+                <option value="DELIVER">DELIVER</option>
+                <option value="RECONCILE">RECONCILE</option>
+              </select>
+            </label>
+            <label>Chain<input class="mc-input" id="jobs-chain" type="search"></label>
+            <label>Detail<input class="mc-input" id="jobs-detail" type="search"></label>
+            <label>Priority<input class="mc-input" id="jobs-priority" type="number" value="0"></label>
+            <button class="mc-button small" type="submit">Submit job</button>
+          </form>
         </details>
       </section>
       <div class="dash-head">

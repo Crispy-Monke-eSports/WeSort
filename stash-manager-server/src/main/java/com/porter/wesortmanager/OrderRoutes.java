@@ -22,6 +22,7 @@ final class OrderRoutes {
     private static final Pattern STATUS = Pattern.compile("^/api/v1/orders/(o-[0-9a-f]{12})/status$");
     private static final Pattern RETRY = Pattern.compile("^/api/v1/orders/(o-[0-9a-f]{12})/retry$");
     private static final Pattern FORCE_CANCEL = Pattern.compile("^/api/v1/orders/(o-[0-9a-f]{12})/force-cancel$");
+    private static final Pattern RECONCILE = Pattern.compile("^/api/v1/orders/(o-[0-9a-f]{12})/reconcile$");
     private static final int MAX_KEY = 256;
     private static final int MAX_RESULT_LINES = 400;
 
@@ -103,6 +104,12 @@ final class OrderRoutes {
                         Router.Perm.ORDER_OWN_OR_ALL,
                         this::forceCancel)
                 .pattern(Router.POST, RETRY, Router.Guard.BROWSER_WRITE, Router.Perm.ORDER_OWN_OR_ALL, this::retry)
+                .pattern(
+                        Router.POST,
+                        RECONCILE,
+                        Router.Guard.BROWSER_WRITE,
+                        Router.Perm.ORDERS_ALL,
+                        this::reconcile)
                 .pattern(Router.POST, STATUS, Router.Guard.ADDON_KEY, this::status);
     }
 
@@ -184,6 +191,14 @@ final class OrderRoutes {
         }
         try {
             var profile = guild.profile();
+            boolean quotaOverride = o.has("quotaOverride")
+                    && o.get("quotaOverride").isJsonPrimitive()
+                    && o.getAsJsonPrimitive("quotaOverride").isBoolean()
+                    && o.getAsJsonPrimitive("quotaOverride").getAsBoolean();
+            if (quotaOverride && !who.perms().ordersAll()) {
+                lineError(ex, 403, "Only an approver role may override withdrawal quotas", -1);
+                return;
+            }
             var submission = orders.submit(
                     server,
                     stash,
@@ -196,10 +211,17 @@ final class OrderRoutes {
                     intent,
                     idempotencyKey(ex),
                     profile.approvalPolicy().requiresApproval(intent),
-                    draft -> resolveRecipient(who, draft));
+                    draft -> resolveRecipient(who, draft),
+                    Users.roleLabels(who),
+                    quotaOverride);
             OrderStore.Order order = submission.order();
-            if (submission.created())
+            if (submission.created()) {
                 audit.add(who, "order.place", order.id + " " + intent.purpose().name(), AuthRoutes.address(ex));
+                if (quotaOverride)
+                    audit.add(
+                            who, "order.quota.override", order.id + " " + intent.purpose().name(),
+                            AuthRoutes.address(ex));
+            }
             JsonObject out = Http.ok();
             out.add("order", shown(ex, order.toJson()));
             Http.json(ex, 200, out);
@@ -350,7 +372,8 @@ final class OrderRoutes {
                     who.perms().guildOrders(),
                     profile.id().toString(),
                     profile.approvalPolicy(),
-                    draft -> resolveRecipient(who, draft));
+                    draft -> resolveRecipient(who, draft),
+                    Users.roleLabels(who));
             audit.add(who, "order.retry", m.group(1) + " as " + order.id, AuthRoutes.address(ex));
             JsonObject out = Http.ok();
             out.add("order", shown(ex, order.toJson()));
@@ -358,6 +381,32 @@ final class OrderRoutes {
         } catch (OrderStore.OrderException e) {
             if (e.status == 400) lineError(ex, e.status, e.getMessage(), e.line);
             else Http.error(ex, e.status, e.getMessage());
+        }
+    }
+
+    /** POST /api/v1/orders/{id}/reconcile {outcome: requeue|fail}: operator recovery for a fenced order. */
+    private void reconcile(HttpExchange ex) throws IOException {
+        Matcher m = RECONCILE.matcher(ex.getRequestURI().getRawPath());
+        if (!m.matches()) {
+            Http.error(ex, 404, "not found");
+            return;
+        }
+        if (!mayChange(ex, m.group(1))) return;
+        JsonElement json = AddonRoutes.readJson(ex);
+        JsonObject o = json != null && json.isJsonObject() ? json.getAsJsonObject() : null;
+        String outcome = o == null ? null : AddonRoutes.string(o, "outcome");
+        if (outcome == null) {
+            Http.error(ex, 400, "outcome must be requeue or fail");
+            return;
+        }
+        try {
+            OrderStore.Order order = orders.reconcile(m.group(1), outcome, Router.user(ex).id());
+            audit.add(Router.user(ex), "order.reconcile." + outcome, order.id, AuthRoutes.address(ex));
+            JsonObject out = Http.ok();
+            out.add("order", shown(ex, order.toJson()));
+            Http.json(ex, 200, out);
+        } catch (OrderStore.OrderException e) {
+            Http.error(ex, e.status, e.getMessage());
         }
     }
 

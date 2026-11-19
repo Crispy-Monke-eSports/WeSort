@@ -342,8 +342,10 @@ final class UserRoutes {
         } catch (NumberFormatException ignored) {
         }
         limit = Math.max(1, Math.min(AuditLog.MAX, limit));
+        String person = Http.query(ex).getOrDefault("person", "").trim();
         JsonObject out = new JsonObject();
-        out.add("entries", audit.newest(limit));
+        // Step 4 (W-043/W-057): filterable per-member timeline; empty means everyone.
+        out.add("entries", person.isEmpty() ? audit.newest(limit) : audit.newestFor(person, limit));
         Http.json(ex, 200, out);
     }
 

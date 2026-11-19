@@ -10,7 +10,7 @@
   var PLACEHOLDER = "/placeholder.svg";
   var ICON_RETRIES = 20;
   var ICON_SOURCE_TOKEN = "g2"; // bump when the server changes how icons are made
-  var DEFAULT_MC = "1.21.11";
+  var DEFAULT_MC = "26.3";
   var ICON_RETRY_DELAYS = [1000, 2000, 3000, 5000];
   var STORAGE_KEY = "wesort.selected";
 
@@ -786,7 +786,7 @@
       var observedLabel = Number(source.verifiedAt) > 0 && Number.isFinite(observedDate.getTime()) ? observedDate.toISOString() : "not verified";
       var sourceState = ({FRESH: "Fresh", PROTECTED: "Protected stock; automation blocked", STALE_STARTUP: "Rescan required after restart", STALE_AGE: "Observation expired", STALE: "Rescan required", UNREACHABLE: "Cannot reach container", UNKNOWN: "Not read yet", MISSING: "Container missing", WITHDRAWN: "Absent from latest scan; contents unknown", SHARED_SOURCE: source.slotSchema ? "Shared physical source" : "Shared source; ordering paused"})[source.state] || source.state;
       row.textContent = (source.serverLabel || source.server) + " · " + (Array.isArray(source.stashes) ? source.stashes.join(", ") : source.stash) + " · " + (source.dimension || "") + position + " · " + sourceState +
-        " · revision " + source.sourceRevision + " · last verified " + observedLabel;
+        " · revision " + source.sourceRevision + " · last verified " + observedLabel + boxIdentityLabel(source);
       if (source.id && source.slotSchema) {
         var details = document.createElement("details");
         var summary = document.createElement("summary"); summary.textContent = "Inspect last verified slots (" + source.slotCount + ")"; details.appendChild(summary);
@@ -816,6 +816,20 @@
       }
       sources.appendChild(row);
     });
+  }
+
+  // Step 4 (W-030/W-063): box UUID identity per physical source, when the Manager knows any.
+  function boxIdentityLabel(source) {
+    if (!Array.isArray(source.boxIdentities) || !source.boxIdentities.length) return "";
+    var parts = source.boxIdentities.map(function (entry) {
+      if (!entry || typeof entry !== "object") return null;
+      var path = str(entry.path);
+      if (!entry.hasUUID) return (path ? path + ": " : "") + "unlabeled box";
+      var label = (path ? path + ": " : "") + "UUID " + str(entry.boxUUID) + " (" + str(entry.identityStatus) + ")";
+      if (entry.identityStatus === "DUPLICATE" || entry.identityStatus === "INVALID") label += " – needs review";
+      return label;
+    }).filter(Boolean);
+    return parts.length ? " · boxes: " + parts.join("; ") : "";
   }
 
   function returnIntakeControls(source, slot) {
@@ -3552,6 +3566,7 @@
     el.cartTotals.classList.toggle("warn", !units);
     $("order-purpose-row").hidden = !can("guildOrders");
     $("order-recipient-row").hidden = !can("guildOrders");
+    $("order-quota-override-row").hidden = !can("ordersAll");
     el.cartPlace.disabled = !cart.lines.length || !state.items.length || !units;
     el.cartClear.disabled = !cart.lines.length;
     var s = currentStash();
@@ -3588,7 +3603,8 @@
     el.cartStatus.textContent = "Placing the order...";
     el.cartStatus.classList.remove("warn");
     var draft = { server: s.server, stash: s.stash, names: namesBody(), lines: cart.lines.slice(),
-      purpose: can("guildOrders") ? $("order-purpose").value : "SELF", comment: $("order-comment").value };
+      purpose: can("guildOrders") ? $("order-purpose").value : "SELF", comment: $("order-comment").value,
+      quotaOverride: can("ordersAll") && $("order-quota-override").checked };
     if (can("guildOrders") && $("order-recipient").value.trim()) {
       draft.recipient = $("order-recipient").value.trim();
     }
@@ -3604,6 +3620,7 @@
       $("order-purpose").value = "SELF";
       $("order-recipient").value = "";
       $("order-comment").value = "";
+      $("order-quota-override").checked = false;
       el.cartStatus.textContent = s.online ? "Order placed." : "Order placed. It will start when the bot reconnects.";
       toast("Order placed");
       renderCart();
@@ -4097,8 +4114,38 @@
     return serverNow() - since >= FORCE_CANCEL_AFTER_MS;
   }
 
+  var quotaUsageAt = 0;
+
+  /** Step 4 (W-031/W-059): show the member's own remaining withdrawal quotas, if any are configured. */
+  function loadQuotaUsage() {
+    var holder = $("quota-usage");
+    if (!holder || state.tab !== "orders") return;
+    var now = Date.now();
+    if (now - quotaUsageAt < 30000) return;
+    quotaUsageAt = now;
+    api("/api/v1/quotas/me").then(function (body) {
+      var usage = body && body.usage && typeof body.usage === "object" ? body.usage : {};
+      var parts = [];
+      Object.keys(usage).forEach(function (ref) {
+        var row = usage[ref] || {};
+        parts.push(ref + ": used " + num(row.consumed, 0) + ", reserved " + num(row.reserved, 0));
+      });
+      if (!parts.length) {
+        holder.hidden = true;
+        holder.textContent = "";
+        return;
+      }
+      holder.hidden = false;
+      holder.textContent = "Your quota usage – " + parts.join(" · ");
+    }, function () {
+      holder.hidden = true;
+      holder.textContent = "";
+    });
+  }
+
   function renderOrderList() {
     $("order-history-title").textContent = can("ordersAll") ? "Guild orders" : "Your orders";
+    loadQuotaUsage();
     $("order-audit").hidden = !can("ordersAll") || !can("view") || forcedStreamer();
     el.ordersClear.hidden = !can("ordersAll");
     el.ordersClear.disabled = !finishedCount();
@@ -4207,6 +4254,33 @@
         });
         head.appendChild(force);
       }
+      if (o.state === "NEEDS_RECONCILIATION" && can("ordersAll")) {
+        ["requeue", "fail"].forEach(function (outcome) {
+          var action = document.createElement("button");
+          action.type = "button";
+          action.className = "mc-button small" + (outcome === "fail" ? " danger" : "");
+          action.textContent = outcome === "requeue" ? "Requeue" : "Fail";
+          action.title = outcome === "requeue"
+            ? "Return this fenced order to READY for pickup so delivery can be re-driven"
+            : "Close this fenced order as failed and release its quota reservation";
+          action.addEventListener("click", function () {
+            if (!window.confirm(outcome === "requeue"
+              ? "Return this order to READY for pickup?"
+              : "Close this order as failed? Its quota reservation is released.")) return;
+            action.disabled = true;
+            api("/api/v1/orders/" + encodeURIComponent(o.id) + "/reconcile", {
+              method: "POST", body: { outcome: outcome }
+            }).then(function () {
+              toast(outcome === "requeue" ? "Order requeued" : "Order failed");
+              scheduleOrdersPoll(0);
+            }, function (e) {
+              toast("Could not reconcile" + (e && e.body && e.body.error ? ": " + e.body.error : ""));
+              scheduleOrdersPoll(0);
+            });
+          });
+          head.appendChild(action);
+        });
+      }
       card.appendChild(head);
       if (o.recipient) card.appendChild(line("note", (o.deliveryMode === "PLAYER" ? "Confirmed recipient · " : "Requested recipient · ") + o.recipient));
       if (o.comment) card.appendChild(line("note", o.comment));
@@ -4276,6 +4350,27 @@
       if (o.result && typeof o.result === "object" && (o.state === "PICKUP_READY" || o.state === "DELIVERED")) {
         var resultLabel = o.state === "PICKUP_READY" ? "Ready in " : "Delivered in ";
         details.appendChild(line("order-line note", resultLabel + plural(String(num(o.result.shulkers, 0)), "shulker")));
+      }
+      if (me.owner && o.id) {
+        var cust = document.createElement("details");
+        cust.className = "order-custody";
+        var custSummary = document.createElement("summary");
+        custSummary.textContent = "Packages";
+        cust.appendChild(custSummary);
+        cust.addEventListener("toggle", function () {
+          if (!cust.open || cust.dataset.loaded) return;
+          cust.dataset.loaded = "1";
+          api("/api/v1/custody?order=" + encodeURIComponent(o.id)).then(function (body) {
+            var pkgs = body && Array.isArray(body.packages) ? body.packages : [];
+            if (!pkgs.length) cust.appendChild(line("order-line note", "No tracked packages."));
+            pkgs.forEach(function (p) {
+              cust.appendChild(line("order-line", str(p.packageId) + " · " + str(p.state) + (p.agent ? " · " + str(p.agent) : "")));
+            });
+          }, function () {
+            cust.appendChild(line("order-line note", "Could not load packages."));
+          });
+        });
+        details.appendChild(cust);
       }
       card.appendChild(details);
       frag.appendChild(card);
@@ -6610,7 +6705,8 @@
     if (!me.owner) return;
     el.auditStatus.textContent = "Loading...";
     el.auditRefresh.disabled = true;
-    api("/api/v1/audit?limit=200").then(function (d) {
+    var person = $("audit-person") && $("audit-person").value.trim();
+    api("/api/v1/audit?limit=200" + (person ? "&person=" + encodeURIComponent(person) : "")).then(function (d) {
       var entries = d && Array.isArray(d.entries) ? d.entries.filter(function (x) { return x && typeof x === "object"; }) : [];
       renderAudit(entries);
       el.auditStatus.textContent = entries.length ? plural(String(entries.length), "entry").replace(/entrys$/, "entries") + ", newest first" : "";
@@ -6648,6 +6744,165 @@
     if (el.audit.open) loadAudit();
   });
   el.auditRefresh.addEventListener("click", loadAudit);
+
+  // ----- withdrawal quotas (owner policy, member usage above) -----
+
+  var quotaRevision = 0;
+
+  function quotaRuleRow(rule) {
+    var row = document.createElement("div");
+    row.className = "quota-row";
+    [["subject", "member, role or *"], ["key", "item:key, shulker:key or *"], ["max", "max"], ["windowSeconds", "window s"]].forEach(function (field) {
+      var input = document.createElement("input");
+      input.className = "mc-input";
+      input.dataset.k = field[0];
+      input.placeholder = field[1];
+      input.value = rule && rule[field[0]] != null ? String(rule[field[0]]) : "";
+      if (field[0] === "max" || field[0] === "windowSeconds") input.type = "number";
+      row.appendChild(input);
+    });
+    var remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "mc-button small danger";
+    remove.textContent = "Remove";
+    remove.addEventListener("click", function () { row.remove(); });
+    row.appendChild(remove);
+    return row;
+  }
+
+  function loadQuotas() {
+    if (!me.owner) return;
+    $("quotas-status").textContent = "Loading...";
+    api("/api/v1/quotas").then(function (body) {
+      quotaRevision = num(body && body.revision, 0);
+      $("quotas-enabled").checked = !!(body && body.enabled);
+      var holder = $("quotas-rules");
+      holder.replaceChildren();
+      var rules = body && Array.isArray(body.rules) ? body.rules : [];
+      if (!rules.length) holder.appendChild(line("note", "No rules: every member may withdraw freely."));
+      rules.forEach(function (r) { holder.appendChild(quotaRuleRow(r)); });
+      $("quotas-status").textContent = "";
+    }, function (e) {
+      $("quotas-status").textContent = failText(e, "Could not load quotas");
+    });
+  }
+
+  function numInput(row, key, fallback) {
+    var input = row.querySelector('[data-k="' + key + '"]');
+    var n = input ? Math.floor(Number(input.value)) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : fallback;
+  }
+
+  $("quotas-add").addEventListener("click", function () {
+    $("quotas-rules").appendChild(quotaRuleRow({}));
+  });
+  $("quotas-refresh").addEventListener("click", loadQuotas);
+  $("quotas").addEventListener("toggle", function () {
+    if (this.open) loadQuotas();
+  });
+  $("quotas-save").addEventListener("click", function () {
+    var rules = [];
+    Array.prototype.forEach.call($("quotas-rules").children, function (row) {
+      var get = function (k) {
+        var input = row.querySelector('[data-k="' + k + '"]');
+        return input ? input.value.trim() : "";
+      };
+      if (!get("subject") && !get("key")) return;
+      rules.push({
+        subject: get("subject"), key: get("key"),
+        max: numInput(row, "max", 1), windowSeconds: numInput(row, "windowSeconds", 3600)
+      });
+    });
+    api("/api/v1/quotas", {
+      method: "POST",
+      body: { expectedRevision: quotaRevision, enabled: $("quotas-enabled").checked, rules: rules }
+    }).then(function () {
+      toast("Quotas saved");
+      loadQuotas();
+    }, function (e) {
+      toast("Could not save quotas" + (e && e.body && e.body.error ? ": " + e.body.error : ""));
+    });
+  });
+
+  // ----- scheduler jobs (owner command) -----
+
+  function loadJobs() {
+    if (!me.owner) return;
+    $("jobs-status").textContent = "Loading...";
+    api("/api/v1/jobs").then(function (body) {
+      var holder = $("jobs-list");
+      holder.replaceChildren();
+      var jobs = body && Array.isArray(body.jobs) ? body.jobs : [];
+      if (!jobs.length) holder.appendChild(line("note", "No jobs."));
+      jobs.forEach(function (j) {
+        var row = document.createElement("div");
+        row.className = "order-line";
+        row.textContent = str(j.id) + " · " + str(j.category) + " · " + str(j.state)
+          + " · prio " + num(j.priority, 0) + (j.agent ? " · " + str(j.agent) : "")
+          + (j.chain ? " · " + str(j.chain) : "") + (j.detail ? " · " + str(j.detail) : "");
+        holder.appendChild(row);
+        var actions = document.createElement("div");
+        ["revoke", "reconcile"].forEach(function (kind) {
+          var action = document.createElement("button");
+          action.type = "button";
+          action.className = "mc-button small" + (kind === "revoke" ? " danger" : "");
+          action.textContent = kind === "revoke" ? "Revoke" : "Reconcile";
+          action.title = kind === "revoke"
+            ? "Revoke this job; the holding agent must stop"
+            : "Reconcile a fenced job: requeue it or complete it";
+          action.addEventListener("click", function () {
+            var outcome = null;
+            if (kind === "reconcile") {
+              outcome = window.prompt("Outcome (requeue or complete):", "requeue");
+              if (outcome !== "requeue" && outcome !== "complete") return;
+            } else if (!window.confirm("Revoke job " + str(j.id) + "?")) return;
+            action.disabled = true;
+            var payload = { action: kind, id: j.id };
+            if (outcome) payload.outcome = outcome;
+            api("/api/v1/jobs", { method: "POST", body: payload }).then(function () {
+              toast(kind === "revoke" ? "Job revoked" : "Job reconciled");
+              loadJobs();
+            }, function (e) {
+              toast("Job action failed" + (e && e.body && e.body.error ? ": " + e.body.error : ""));
+              loadJobs();
+            });
+          });
+          actions.appendChild(action);
+        });
+        holder.appendChild(actions);
+      });
+      $("jobs-status").textContent = "";
+    }, function (e) {
+      $("jobs-status").textContent = failText(e, "Could not load jobs");
+    });
+  }
+
+  $("jobs-refresh").addEventListener("click", loadJobs);
+  $("scheduler-jobs").addEventListener("toggle", function () {
+    if (this.open) loadJobs();
+  });
+  $("jobs-submit").addEventListener("submit", function (event) {
+    event.preventDefault();
+    var chain = $("jobs-chain").value.trim();
+    if (!chain) {
+      toast("A chain (work unit) is required.");
+      return;
+    }
+    api("/api/v1/jobs", {
+      method: "POST",
+      body: {
+        action: "submit", category: $("jobs-category").value, chain: chain,
+        detail: $("jobs-detail").value.trim(), priority: Math.max(0, Math.floor(Number($("jobs-priority").value)) || 0)
+      }
+    }).then(function () {
+      $("jobs-chain").value = "";
+      $("jobs-detail").value = "";
+      toast("Job submitted");
+      loadJobs();
+    }, function (e) {
+      toast("Could not submit job" + (e && e.body && e.body.error ? ": " + e.body.error : ""));
+    });
+  });
 
   var orderAuditForm = $("order-audit-search");
   orderAuditForm.addEventListener("submit", function (event) {

@@ -9,10 +9,14 @@ import java.util.List;
 /** Owner handoff management and the signed agent arrive/no-show/drop endpoint (W-039). */
 final class HandoffRoutes {
     private final Handoffs handoffs;
+    private final OrderStore orders;
+    private final Quotas quotas;
     private final AuditLog audit;
 
-    HandoffRoutes(Handoffs handoffs, AuditLog audit) {
+    HandoffRoutes(Handoffs handoffs, OrderStore orders, Quotas quotas, AuditLog audit) {
         this.handoffs = handoffs;
+        this.orders = orders;
+        this.quotas = quotas;
         this.audit = audit;
     }
 
@@ -63,6 +67,13 @@ final class HandoffRoutes {
                     result = handoffs.resolve(
                             requireId(body), outcome(body), Router.user(ex).id());
             }
+            // Step 4 (W-026/W-059): a verified handoff outcome settles the linked order and its quota.
+            try {
+                settleOrder(result, Router.user(ex), AuthRoutes.address(ex));
+            } catch (OrderStore.OrderException conflict) {
+                Http.error(ex, conflict.status, conflict.getMessage());
+                return;
+            }
             audit.add(Router.user(ex), "handoff." + action, result.id(), AuthRoutes.address(ex));
             Http.json(ex, 200, result.json());
         } catch (Handoffs.Conflict conflict) {
@@ -108,6 +119,30 @@ final class HandoffRoutes {
         String id = AddonRoutes.string(body, "id");
         if (id == null) throw new IllegalArgumentException("id is required");
         return id;
+    }
+
+    /**
+     * Step 4 (W-026/W-059): a verified handoff outcome settles the linked guild order. DELIVERED walks the
+     * order to DELIVERED and consumes its quota; RETURNED fences it for reconciliation (the reservation is
+     * kept: a re-driven delivery still consumes exactly once, a terminal cancel releases it); an arrival
+     * fences it as awaiting the customer. Unknown legacy orders only affect the handoff.
+     */
+    private void settleOrder(Handoff result, Users.Principal who, String address)
+            throws IOException, OrderStore.OrderException {
+        String actor = who == null ? "owner" : who.id();
+        try {
+            if (result.state() == Handoff.State.DELIVERED) {
+                orders.advanceToward(result.orderId(), OrderStage.DELIVERED, actor);
+                quotas.consume(result.orderId());
+                audit.add(who, "order.quota.consume", result.orderId(), address);
+            } else if (result.state() == Handoff.State.RETURNED) {
+                orders.advanceToward(result.orderId(), OrderStage.NEEDS_RECONCILIATION, actor);
+            } else if (result.state() == Handoff.State.AWAITING_RECIPIENT) {
+                orders.advanceToward(result.orderId(), OrderStage.AWAITING_CUSTOMER, actor);
+            }
+        } catch (OrderStore.OrderException unknown) {
+            if (unknown.status != 404) throw unknown;
+        }
     }
 
     private static Handoff.State outcome(JsonObject body) {

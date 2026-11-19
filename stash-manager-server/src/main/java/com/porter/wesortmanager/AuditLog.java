@@ -76,6 +76,23 @@ final class AuditLog {
         return out;
     }
 
+    /** Step 4 (W-043/W-057): newest entries for one member (id or name), at most limit. */
+    synchronized JsonArray newestFor(String person, int limit) {
+        JsonArray out = new JsonArray();
+        String want = person.toLowerCase(java.util.Locale.ROOT);
+        for (Iterator<JsonObject> it = entries.descendingIterator(); it.hasNext() && out.size() < limit; ) {
+            JsonObject e = it.next();
+            if (contains(e, "userId", want) || contains(e, "user", want)) out.add(e.deepCopy());
+        }
+        return out;
+    }
+
+    private static boolean contains(JsonObject e, String field, String want) {
+        return e.has(field)
+                && e.get(field).isJsonPrimitive()
+                && e.get(field).getAsString().toLowerCase(java.util.Locale.ROOT).contains(want);
+    }
+
     synchronized int size() {
         return entries.size();
     }

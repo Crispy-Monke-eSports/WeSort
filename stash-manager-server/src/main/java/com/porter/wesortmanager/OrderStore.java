@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.HexFormat;
@@ -395,6 +396,13 @@ final class OrderStore {
     private final Map<IndexStore.StashKey, Book> books = new ConcurrentHashMap<>();
     private final Map<String, Book> byOrderId = new ConcurrentHashMap<>();
 
+    /** Step 4 (W-026/W-059): withdrawal quotas. Null disables enforcement (tests, legacy paths). */
+    private volatile Quotas quotas;
+
+    void setQuotas(Quotas quotas) {
+        this.quotas = quotas;
+    }
+
     OrderStore(Path dataDir, IndexStore index) {
         this.dir = dataDir.resolve("orders");
         this.index = index;
@@ -480,6 +488,119 @@ final class OrderStore {
             throw failure;
         }
         pruned.forEach(order -> byOrderId.remove(order.id, book));
+    }
+
+    /** Step 4 (W-026/W-059): order lines as quota references ({@code item:<key>} or {@code shulker:<key>}). */
+    private static List<Quotas.Line> quotaLines(Collection<Line> lines) {
+        var out = new ArrayList<Quotas.Line>();
+        for (Line l : lines) out.add(new Quotas.Line(l.type + ":" + l.key, l.count));
+        return out;
+    }
+
+    /** Step 4 (W-026/W-059): release a quota reservation; a no-op when quotas are unwired or unknown. */
+    private void releaseQuota(String orderId) throws IOException {
+        Quotas quotaRules = quotas;
+        if (quotaRules != null) quotaRules.release(orderId);
+    }
+
+    /**
+     * Step 4 (W-026): drive an order along the canonical delivery chain toward a verified outcome, recording every
+     * step. Used when handoffs, deposits or custody verify physical delivery or return -- never by the agent
+     * directly. A no-op when the order is already there; 409 when the current stage cannot reach the target.
+     */
+    Order advanceToward(String id, OrderStage target, String actor) throws OrderException, IOException {
+        synchronized (index) {
+            Book b = byOrderId.get(id);
+            if (b == null) throw new OrderException(404, "no such order", -1);
+            synchronized (b) {
+                Order previous = find(b, id);
+                if (previous == null) throw new OrderException(404, "no such order", -1);
+                return advanceTowardLocked(b, previous, id, target, actor);
+            }
+        }
+    }
+
+    private Order advanceTowardLocked(Book b, Order previous, String id, OrderStage target, String actor)
+            throws OrderException, IOException {
+        if (previous.stage() == target) return previous;
+        if (target == OrderStage.NEEDS_RECONCILIATION || target == OrderStage.PICKUP_READY) {
+            if (!previous.stage().allows(target))
+                throw new OrderException(
+                        409, "order " + id + " cannot move from " + previous.stage() + " to " + target, -1);
+            Order o = Order.fromJson(previous.snapshot());
+            long now = System.currentTimeMillis();
+            o.stage = target;
+            o.status = target == OrderStage.NEEDS_RECONCILIATION ? "needs_reconciliation" : "packed";
+            o.record("order.transition", actor, now);
+            o.updatedAt = now;
+            update(b, previous, o);
+            return o;
+        }
+        OrderStage[] chain = {
+            OrderStage.RESERVED,
+            OrderStage.PACKING,
+            OrderStage.PICKUP_READY,
+            OrderStage.PICKED_UP,
+            OrderStage.IN_TRANSIT,
+            OrderStage.AWAITING_CUSTOMER,
+            OrderStage.DELIVERED
+        };
+        int at = -1, want = -1;
+        for (int i = 0; i < chain.length; i++) {
+            if (chain[i] == previous.stage()) at = i;
+            if (chain[i] == target) want = i;
+        }
+        if (at < 0 || want < 0 || want < at)
+            throw new OrderException(
+                    409, "order " + id + " cannot move from " + previous.stage() + " to " + target, -1);
+        Order o = Order.fromJson(previous.snapshot());
+        long now = System.currentTimeMillis();
+        for (int i = at + 1; i <= want; i++) {
+            if (!o.stage().allows(chain[i]))
+                throw new OrderException(
+                        409, "order " + id + " cannot move from " + o.stage() + " to " + chain[i], -1);
+            o.stage = chain[i];
+            if (chain[i] == OrderStage.DELIVERED) o.status = "delivered";
+            o.record("order.transition", actor, now);
+            o.updatedAt = now;
+        }
+        update(b, previous, o);
+        return o;
+    }
+
+    /**
+     * Step 4 (W-026): operator recovery for a fenced order. {@code requeue} returns it to PICKUP_READY for a
+     * re-driven delivery; {@code fail} closes it as FAILED and releases its quota reservation. Anything else
+     * is a 409, as is reconciling an order that is not fenced.
+     */
+    Order reconcile(String id, String outcome, String actor) throws OrderException, IOException {
+        if (!List.of("requeue", "fail").contains(outcome))
+            throw new OrderException(400, "outcome must be requeue or fail", -1);
+        synchronized (index) {
+            Book b = byOrderId.get(id);
+            if (b == null) throw new OrderException(404, "no such order", -1);
+            synchronized (b) {
+                Order previous = find(b, id);
+                if (previous == null) throw new OrderException(404, "no such order", -1);
+                Order o;
+                if (outcome.equals("requeue")) {
+                    o = advanceTowardLocked(b, previous, id, OrderStage.PICKUP_READY, actor);
+                } else {
+                    if (!previous.stage().allows(OrderStage.FAILED))
+                        throw new OrderException(
+                                409, "order " + id + " cannot move from " + previous.stage() + " to FAILED", -1);
+                    o = Order.fromJson(previous.snapshot());
+                    long now = System.currentTimeMillis();
+                    o.stage = OrderStage.FAILED;
+                    o.status = "failed";
+                    o.record("order.reconcile.fail", actor, now);
+                    o.updatedAt = now;
+                    update(b, previous, o);
+                    releaseQuota(o.id);
+                }
+                return o;
+            }
+        }
     }
 
     /** Moves the oldest finished orders beyond KEEP out of the operational order list. */
@@ -712,7 +833,9 @@ final class OrderStore {
                 intent,
                 idempotencyKey,
                 needsApproval,
-                recipient);
+                recipient,
+                null,
+                false);
     }
 
     Submission submit(
@@ -728,6 +851,39 @@ final class OrderStore {
             String idempotencyKey,
             boolean needsApproval,
             RecipientResolver recipient)
+            throws OrderException, IOException {
+        return submit(
+                server,
+                stash,
+                requested,
+                names,
+                packageLabel,
+                byId,
+                byName,
+                organizationId,
+                intent,
+                idempotencyKey,
+                needsApproval,
+                recipient,
+                null,
+                false);
+    }
+
+    Submission submit(
+            String server,
+            String stash,
+            List<Line> requested,
+            JsonObject names,
+            JsonObject packageLabel,
+            String byId,
+            String byName,
+            String organizationId,
+            OrderIntent intent,
+            String idempotencyKey,
+            boolean needsApproval,
+            RecipientResolver recipient,
+            List<String> roles,
+            boolean quotaOverride)
             throws OrderException, IOException {
         synchronized (index) {
             String key = null, fingerprint = null;
@@ -759,7 +915,9 @@ final class OrderStore {
                             fingerprint,
                             null,
                             needsApproval,
-                            recipient.resolve(intent)),
+                            recipient.resolve(intent),
+                            roles,
+                            quotaOverride),
                     true);
         }
     }
@@ -778,7 +936,9 @@ final class OrderStore {
             String fingerprint,
             Order retryOf,
             boolean needsApproval,
-            String recipient)
+            String recipient,
+            List<String> roles,
+            boolean quotaOverride)
             throws OrderException, IOException {
         if (index.automation().current(server) != null)
             throw new OrderException(409, "Physical sorting active or awaiting reconciliation", -1);
@@ -856,9 +1016,19 @@ final class OrderStore {
                                 + MAX_SHULKERS + " (one double chest)",
                         -1);
             }
+            String orderId = newId();
+            Quotas quotaRules = quotas;
+            if (quotaRules != null && !quotaOverride) {
+                try {
+                    quotaRules.checkAndReserve(
+                            byId == null ? Users.OWNER_ID : byId, roles, quotaLines(merged.values()), orderId);
+                } catch (Quotas.Exceeded exceeded) {
+                    throw new OrderException(429, exceeded.getMessage(), firstIndex.getOrDefault(exceeded.ref, -1));
+                }
+            }
             long now = System.currentTimeMillis();
             Order o = new Order();
-            o.id = newId();
+            o.id = orderId;
             o.server = server;
             o.stash = stash;
             o.organizationId = organizationId;
@@ -920,6 +1090,19 @@ final class OrderStore {
             GuildProfile.ApprovalPolicy policy,
             RecipientResolver recipient)
             throws OrderException, IOException {
+        return retry(id, byId, byName, mayOrderForGuild, organizationId, policy, recipient, null);
+    }
+
+    Order retry(
+            String id,
+            String byId,
+            String byName,
+            boolean mayOrderForGuild,
+            String organizationId,
+            GuildProfile.ApprovalPolicy policy,
+            RecipientResolver recipient,
+            List<String> roles)
+            throws OrderException, IOException {
         synchronized (index) {
             Book book = byOrderId.get(id);
             if (book == null) throw new OrderException(404, "no such order", -1);
@@ -953,7 +1136,9 @@ final class OrderStore {
                         null,
                         old,
                         policy.requiresApproval(old.intent),
-                        recipient.resolve(old.intent));
+                        recipient.resolve(old.intent),
+                        roles,
+                        false);
             }
         }
     }
@@ -1229,6 +1414,7 @@ final class OrderStore {
                 o.advance(OrderStage.CANCELLED);
                 o.status = "cancelled";
                 o.message = "Cancelled before the bot started.";
+                releaseQuota(o.id);
             } else if (!o.cancelRequested) {
                 o.cancelRequested = true;
                 o.cancelRequestedAt = System.currentTimeMillis();
@@ -1275,6 +1461,7 @@ final class OrderStore {
             o.message = "cancelled from the website (bot didn't confirm)";
             o.updatedAt = System.currentTimeMillis();
             o.record("order.force-cancel", actor, o.updatedAt);
+            releaseQuota(o.id);
             update(b, previous, o);
             return o;
         }
@@ -1563,6 +1750,7 @@ final class OrderStore {
             else if (result != null) o.result = result;
             o.updatedAt = System.currentTimeMillis();
             if (next != previous.stage()) o.record("order.transition", agent, o.updatedAt);
+            if (next == OrderStage.CANCELLED || next == OrderStage.FAILED) releaseQuota(o.id);
             b.receipts.put(key, new Receipt(fingerprint, o.toJson()));
             try {
                 update(b, previous, o);

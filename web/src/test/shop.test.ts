@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { boxedContents, shelfCount, shulkersNeeded, splitItemLine, takeBoxes } from "../lib/shop";
+import { boxedContents, shulkersNeeded, splitItemLine, takeBoxes } from "../lib/shop";
 
-const box = (key: string, count: number, perBox: number) => ({
+const diamonds = (key: string, count: number, perBox: number) => ({
   key,
   id: "minecraft:shulker_box",
   itemKey: "minecraft:diamond",
@@ -9,44 +9,78 @@ const box = (key: string, count: number, perBox: number) => ({
   contents: [{ slot: 0, key: "minecraft:diamond", count: perBox }],
 });
 
-describe("boxed aggregation (PR #89)", () => {
-  it("aggregates loose plus boxed counts", () => {
-    const shulkers = [box("a", 1, 1728), box("b", 2, 1728)];
-    expect(boxedContents("minecraft:diamond", shulkers)).toBe(1728 + 2 * 1728);
-    expect(shelfCount({ key: "minecraft:diamond", id: "minecraft:diamond", count: 64, maxStack: 64 }, shulkers)).toBe(64 + 5184);
-  });
-});
-
 describe("automatic shulker splitting (PR #89)", () => {
   it("takes whole boxes first and keeps the loose remainder", () => {
-    const shulkers = [box("diamond-box", 1, 1728)];
+    const shulkers = [diamonds("a", 1, 1728)];
     const { took, remainder } = takeBoxes("minecraft:diamond", 1792, shulkers, () => 0);
-    expect(took).toEqual([{ key: "diamond-box", count: 1 }]);
+    expect(took).toEqual([{ key: "a", count: 1 }]);
     expect(remainder).toBe(64);
   });
 
   it("never over-delivers: a box larger than the need is not taken", () => {
-    const shulkers = [box("diamond-box", 1, 1728)];
-    const { took, remainder } = takeBoxes("minecraft:diamond", 100, shulkers, () => 0);
+    const shulkers = [diamonds("a", 1, 1728)];
+    expect(takeBoxes("minecraft:diamond", 100, shulkers, () => 0)).toEqual({ took: [], remainder: 100 });
+  });
+
+  it("respects already-reserved packed boxes", () => {
+    const shulkers = [diamonds("a", 1, 1728)];
+    const { took, remainder } = takeBoxes("minecraft:diamond", 1792, shulkers, (box) => (box === "a" ? 1 : 0));
     expect(took).toEqual([]);
-    expect(remainder).toBe(100);
+    expect(remainder).toBe(1792);
+  });
+
+  it("handles several groups, biggest per-box first", () => {
+    const shulkers = [diamonds("small", 2, 100), diamonds("big", 1, 1000)];
+    const { took, remainder } = takeBoxes("minecraft:diamond", 1100, shulkers, () => 0);
+    expect(took).toEqual([{ key: "big", count: 1 }, { key: "small", count: 1 }]);
+    expect(remainder).toBe(0);
+  });
+
+  it("never aliases the input array", () => {
+    const input = [{ type: "item", key: "minecraft:diamond", count: 10 }] as { type: "item" | "shulker"; key: string; count: number }[];
+    const out = splitItemLine(input, "minecraft:diamond", 64, []);
+    expect(out).not.toBe(input);
+    expect(out).toEqual(input);
+    expect(input).toEqual([{ type: "item", key: "minecraft:diamond", count: 10 }]);
   });
 
   it("splitItemLine refuses when the loose remainder exceeds availability", () => {
-    const shulkers = [box("diamond-box", 1, 1728)];
-    const next = [{ type: "item" as const, key: "minecraft:diamond", count: 100 }];
-    // 64 loose: remainder would be 100 (no full box fits), so refuse.
-    expect(splitItemLine(next, "minecraft:diamond", 64, shulkers)).toBeNull();
-    // 1792 wanted with 64 loose: one box + 64 loose works.
-    const ok = splitItemLine([{ type: "item" as const, key: "minecraft:diamond", count: 1792 }], "minecraft:diamond", 64, shulkers);
-    expect(ok).toContainEqual({ type: "shulker", key: "diamond-box", count: 1 });
+    const shulkers = [diamonds("a", 1, 1728)];
+    expect(splitItemLine([{ type: "item", key: "minecraft:diamond", count: 100 }], "minecraft:diamond", 64, shulkers)).toBeNull();
+    const ok = splitItemLine([{ type: "item", key: "minecraft:diamond", count: 1792 }], "minecraft:diamond", 64, shulkers);
+    expect(ok).toContainEqual({ type: "shulker", key: "a", count: 1 });
     expect(ok).toContainEqual({ type: "item", key: "minecraft:diamond", count: 64 });
+  });
+
+  it("leaves packed lines untouched while splitting the item part", () => {
+    const shulkers = [diamonds("a", 1, 1728)];
+    const ok = splitItemLine(
+      [
+        { type: "item", key: "minecraft:diamond", count: 1792 },
+        { type: "shulker", key: "other-box", count: 2 },
+      ],
+      "minecraft:diamond",
+      64,
+      shulkers,
+    );
+    expect(ok).toContainEqual({ type: "shulker", key: "a", count: 1 });
+    expect(ok).toContainEqual({ type: "item", key: "minecraft:diamond", count: 64 });
+    expect(ok).toContainEqual({ type: "shulker", key: "other-box", count: 2 });
   });
 });
 
-describe("order capacity", () => {
-  it("counts packed lines 1:1 and item lines via stacks", () => {
-    expect(shulkersNeeded([{ type: "shulker", key: "b", count: 2 }], () => 64, () => false)).toBe(2);
+describe("capacity", () => {
+  it("counts every packed unit (not lines)", () => {
+    expect(shulkersNeeded([{ type: "shulker", key: "b", count: 10 }], () => 64, () => false)).toBe(10);
     expect(shulkersNeeded([{ type: "item", key: "d", count: 64 }], () => 64, () => false)).toBe(1);
+    expect(shulkersNeeded([{ type: "item", key: "d", count: 64 * 27 + 1 }], () => 64, () => false)).toBe(2);
+  });
+});
+
+describe("aggregation", () => {
+  it("aggregates loose plus boxed counts", () => {
+    const shulkers = [diamonds("a", 1, 1728), diamonds("b", 2, 1728)];
+    expect(boxedContents("minecraft:diamond", shulkers)).toBe(1728 + 2 * 1728);
+    expect(boxedContents("minecraft:iron_ingot", shulkers)).toBe(0);
   });
 });

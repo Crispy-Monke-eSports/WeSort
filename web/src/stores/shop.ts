@@ -1,89 +1,134 @@
+import { z } from "zod";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { OrderLine } from "../api/types";
 
-export interface CartLine extends OrderLine {}
+export interface CartLine extends OrderLine {
+  server: string;
+  stash: string;
+}
+
+const CartLineSchema = z.object({
+  type: z.enum(["item", "shulker"]),
+  key: z.string().min(1).max(512),
+  count: z.number().int().min(1).max(2 ** 31 - 1),
+  server: z.string().min(1).max(256),
+  stash: z.string().min(1).max(256),
+});
+
+const PersistedSchema = z.object({
+  carts: z.record(z.string(), z.array(CartLineSchema)).default({}),
+});
+
+function scopeKey(user: string): string {
+  return `user:${user}`;
+}
 
 interface CartState {
-  lines: CartLine[];
-  badLine: number;
+  /** Active scope; set from the logged-in user id. */
+  activeScope: string;
+  carts: Record<string, CartLine[]>;
+  badLines: Record<string, number>;
+  setScope: (user: string) => void;
+  lines: () => CartLine[];
+  badLine: () => number;
   setLines: (lines: CartLine[]) => void;
   clear: () => void;
   setBadLine: (n: number) => void;
-  countOf: (type: string, key: string) => number;
+  countOf: (type: string, key: string, server?: string, stash?: string) => number;
+  /** Logout: forget which scope is active. Persisted per-user carts stay on disk. */
+  resetScope: () => void;
 }
-
-function scopeKey(user: string, server: string, stash: string): string {
-  return `wesort.cart:${user || "anon"}:${server}:${stash}`;
-}
-
-// The active scope is set by the Shop page (user + stash). Zustand persist needs a
-// stable storage key per scope so carts never leak across users or stashes.
-let activeScope = "wesort.cart:anon::";
-export function setCartScope(user: string, server: string, stash: string): void {
-  activeScope = scopeKey(user, server, stash);
-}
-
-const scopedStorage = {
-  getItem: (name: string) => {
-    try {
-      return localStorage.getItem(`${activeScope}:${name}`);
-    } catch {
-      return null;
-    }
-  },
-  setItem: (name: string, value: string) => {
-    try {
-      localStorage.setItem(`${activeScope}:${name}`, value);
-    } catch {
-      /* storage full or blocked: cart stays in memory */
-    }
-  },
-  removeItem: (name: string) => {
-    try {
-      localStorage.removeItem(`${activeScope}:${name}`);
-    } catch {
-      /* ignore */
-    }
-  },
-};
 
 export const useCart = create<CartState>()(
   persist(
     (set, get) => ({
-      lines: [],
-      badLine: -1,
-      setLines: (lines) => set({ lines, badLine: -1 }),
-      clear: () => set({ lines: [], badLine: -1 }),
-      setBadLine: (n) => set({ badLine: n }),
-      countOf: (type, key) => get().lines.filter((l) => l.type === type && l.key === key).reduce((a, l) => a + l.count, 0),
+      activeScope: "",
+      carts: {},
+      badLines: {},
+      setScope: (user) => {
+        const key = scopeKey(user || "anon");
+        if (get().activeScope !== key) set({ activeScope: key });
+      },
+      lines: () => get().carts[get().activeScope] ?? [],
+      badLine: () => get().badLines[get().activeScope] ?? -1,
+      setLines: (lines) => {
+        const scope = get().activeScope;
+        if (!scope) return;
+        set((s) => ({ carts: { ...s.carts, [scope]: lines }, badLines: { ...s.badLines, [scope]: -1 } }));
+      },
+      clear: () => {
+        const scope = get().activeScope;
+        if (!scope) return;
+        set((s) => {
+          const carts = { ...s.carts };
+          delete carts[scope];
+          return { carts, badLines: { ...s.badLines, [scope]: -1 } };
+        });
+      },
+      setBadLine: (n) => {
+        const scope = get().activeScope;
+        if (!scope) return;
+        set((s) => ({ badLines: { ...s.badLines, [scope]: n } }));
+      },
+      countOf: (type, key, server, stash) =>
+        (get().carts[get().activeScope] ?? [])
+          .filter(
+            (l) =>
+              l.type === type &&
+              l.key === key &&
+              (server === undefined || l.server === server) &&
+              (stash === undefined || l.stash === stash),
+          )
+          .reduce((a, l) => a + l.count, 0),
+      resetScope: () => set({ activeScope: "" }),
     }),
-    { name: "cart", storage: scopedStorage as any },
+    {
+      name: "wesort.carts.v1",
+      partialize: (s) => ({ carts: s.carts }) as CartState,
+      merge: (persisted, current) => {
+        const parsed = PersistedSchema.safeParse(persisted);
+        return { ...current, carts: parsed.success ? parsed.data.carts : {}, badLines: {}, activeScope: "" };
+      },
+    },
   ),
 );
 
+/** Backwards-compatible scope setter used by the Shop page. */
+export function setCartScope(user: string): void {
+  useCart.getState().setScope(user);
+}
+
 interface PrefsState {
-  theme: "classic" | "clean";
+  theme: "modern" | "classic";
   streamer: boolean;
   sort: "creative" | "count" | "name" | "id";
   query: string;
-  setTheme: (t: "classic" | "clean") => void;
+  category: string;
+  availability: "all" | "available" | "low" | "empty";
+  setTheme: (t: "modern" | "classic") => void;
   setStreamer: (b: boolean) => void;
   setSort: (s: PrefsState["sort"]) => void;
   setQuery: (q: string) => void;
+  setCategory: (c: string) => void;
+  setAvailability: (a: PrefsState["availability"]) => void;
 }
 
 export const usePrefs = create<PrefsState>()(
   persist(
     (set) => ({
-      theme: "classic",
+      theme: "modern",
       streamer: false,
       sort: "count",
       query: "",
+      category: "all",
+      availability: "all",
       setTheme: (theme) => set({ theme }),
       setStreamer: (streamer) => set({ streamer }),
       setSort: (sort) => set({ sort }),
       setQuery: (query) => set({ query }),
+      setCategory: (category) => set({ category }),
+      setAvailability: (availability) => set({ availability }),
     }),
     { name: "wesort.prefs" },
   ),

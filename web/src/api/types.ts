@@ -1,87 +1,220 @@
-export interface StashRef {
-  server: string;
-  stash: string;
-  online?: boolean;
-  indexedAt?: number;
-  player?: string;
-  deliveryConfigured?: boolean;
-  orderBlocker?: string | null;
-  naming?: { anvil?: boolean; anvilSource?: string } | null;
-  delivery?: { x: number; y: number; z: number; dimension?: string } | null;
-}
+import { z } from "zod";
 
-export interface IndexItem {
-  key: string;
-  id: string;
-  name?: string;
-  englishName?: string;
-  count: number;
-  maxStack: number;
-  contents?: { slot: number; key: string; count: number }[];
-  tab?: string;
-  tabOrder?: number;
-}
+/* Exact TypeScript models of the Java Manager's JSON responses.
+ * Field names and shapes verified against AuthRoutes, Users, BrowserRoutes,
+ * OrderRoutes/OrderStore, DashboardRoutes/BotHub, GuildRoutes, QuotaRoutes,
+ * UserRoutes and OrderAuditRoutes. Unknown extra fields are ignored. */
 
-export interface ShulkerEntry {
-  key: string;
-  id: string;
-  itemKey?: string;
-  count: number;
-  contents?: { slot: number; key: string; count: number }[];
-  name?: string;
-}
+// ---------- auth ----------
 
-export interface IndexResponse {
-  mcVersion?: string;
-  items: IndexItem[];
-  shulkers: ShulkerEntry[];
-}
+export const PermsSchema = z.object({
+  view: z.boolean().default(false),
+  order: z.boolean().default(false),
+  ordersAll: z.boolean().default(false),
+  guildOrders: z.boolean().default(false),
+  positions: z.boolean().default(false),
+  activity: z.boolean().default(false),
+  settings: z.boolean().default(false),
+  rescan: z.boolean().default(false),
+  link: z.boolean().default(false),
+  streamer: z.boolean().default(false),
+  stashes: z
+    .array(z.object({ server: z.string(), stash: z.string() }))
+    .nullable()
+    .default(null),
+  bots: z.array(z.string()).nullable().default(null),
+});
+export type Perms = z.infer<typeof PermsSchema>;
 
-export interface OrderLine {
-  type: "item" | "shulker";
-  key: string;
-  count: number;
-}
+export const AuthUserSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  owner: z.boolean().default(false),
+  mustChange: z.boolean().default(false),
+  perms: PermsSchema.default({}),
+});
+export type AuthUser = z.infer<typeof AuthUserSchema>;
 
-export interface OrderStatus {
-  id: string;
-  status: string;
-  stage?: string;
-  lines?: OrderLine[];
-  createdAt?: number;
-  updatedAt?: number;
-  message?: string;
-  progress?: any;
-  placedBy?: { id?: string; name?: string } | null;
-}
+export const AuthStateSchema = z.object({
+  setupNeeded: z.boolean().default(false),
+  setupAllowed: z.boolean().default(false),
+  codeRequired: z.boolean().default(false),
+  loggedIn: z.boolean().default(false),
+  elevated: z.boolean().default(false),
+  elevatedUntil: z.number().default(0),
+  minLength: z.number().default(12),
+  user: AuthUserSchema.optional(),
+});
+export type AuthState = z.infer<typeof AuthStateSchema>;
 
-export interface OrdersResponse {
-  orders: OrderStatus[];
-  available: { items: Record<string, number>; shulkers: Record<string, number> };
-}
+// ---------- stashes / index ----------
 
-export interface AuthState {
-  loggedIn: boolean;
-  elevated?: boolean;
-  elevatedUntil?: number;
-  user?: {
-    id: string;
-    name: string;
-    owner?: boolean;
-    permissions?: string[];
-    perms?: string[];
-    roles?: string[];
-  };
-  permissions?: string[];
-  perms?: string[];
-  can?: Record<string, boolean>;
-}
+export const StashSummarySchema = z.object({
+  open: z.number().default(0),
+  active: z
+    .object({
+      id: z.string(),
+      status: z.string(),
+      phase: z.string().nullable().optional(),
+      progress: z.unknown().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
+});
 
-export interface BotInfo {
-  id: string;
-  player?: string;
-  online?: boolean;
-  server?: string;
-  stash?: string;
-  version?: string;
-}
+export const StashRefSchema = z.object({
+  server: z.string(),
+  stash: z.string(),
+  player: z.string().nullable().optional(),
+  online: z.boolean().default(false),
+  lastSeen: z.number().nullable().optional(),
+  indexedAt: z.number().nullable().optional(),
+  itemTypes: z.number().default(0),
+  itemTotal: z.number().default(0),
+  delivery: z
+    .object({ x: z.number(), y: z.number(), z: z.number(), dimension: z.string().nullable().optional() })
+    .nullable()
+    .optional(),
+  naming: z.object({ anvil: z.boolean().default(false), anvilSource: z.string().nullable().optional() }).nullable().optional(),
+  crafting: z.object({ enabled: z.boolean().default(false) }).nullable().optional(),
+  deliveryStorage: z.unknown().nullable().optional(),
+  orderBlocker: z.string().nullable().optional(),
+  rescanPending: z.boolean().default(false),
+  rescanBlocked: z.boolean().default(false),
+  owner: z.string().nullable().optional(),
+  conflict: z.unknown().nullable().optional(),
+  orders: StashSummarySchema.optional(),
+});
+export type StashRef = z.infer<typeof StashRefSchema>;
+
+const BoxContentSchema = z.object({ slot: z.number(), key: z.string(), count: z.number() });
+
+export const IndexItemSchema = z.object({
+  key: z.string(),
+  id: z.string(),
+  name: z.string().nullable().optional(),
+  englishName: z.string().nullable().optional(),
+  count: z.number().default(0),
+  maxStack: z.number().default(64),
+  contents: z.array(BoxContentSchema).nullable().optional(),
+  tab: z.string().nullable().optional(),
+  tabOrder: z.number().nullable().optional(),
+});
+export type IndexItem = z.infer<typeof IndexItemSchema>;
+
+export const ShulkerEntrySchema = z.object({
+  key: z.string(),
+  id: z.string().default("minecraft:shulker_box"),
+  itemKey: z.string().nullable().optional(),
+  count: z.number().default(0),
+  name: z.string().nullable().optional(),
+  contents: z.array(BoxContentSchema).nullable().optional(),
+});
+export type ShulkerEntry = z.infer<typeof ShulkerEntrySchema>;
+
+export const IndexResponseSchema = z.object({
+  mcVersion: z.string().nullable().optional(),
+  items: z.array(IndexItemSchema).default([]),
+  shulkers: z.array(ShulkerEntrySchema).default([]),
+});
+export type IndexResponse = z.infer<typeof IndexResponseSchema>;
+
+// ---------- orders ----------
+
+export const OrderLineSchema = z.object({
+  type: z.enum(["item", "shulker"]),
+  key: z.string().min(1),
+  count: z.number().int().min(1),
+});
+export type OrderLine = z.infer<typeof OrderLineSchema>;
+
+export const OrderStatusSchema = z.object({
+  id: z.string(),
+  server: z.string().optional(),
+  stash: z.string().optional(),
+  status: z.string().default("pending"),
+  stage: z.string().nullable().optional(),
+  phase: z.string().nullable().optional(),
+  message: z.string().nullable().optional(),
+  progress: z.unknown().nullable().optional(),
+  lines: z.array(OrderLineSchema).default([]),
+  createdAt: z.number().optional(),
+  updatedAt: z.number().optional(),
+  claimedAt: z.number().nullable().optional(),
+  agent: z.string().nullable().optional(),
+  purpose: z.string().nullable().optional(),
+  recipient: z.string().nullable().optional(),
+  declaredRecipient: z.string().nullable().optional(),
+  verifiedRecipient: z.string().nullable().optional(),
+  deliveryMode: z.string().nullable().optional(),
+  comment: z.string().nullable().optional(),
+  approvalState: z.string().nullable().optional(),
+  decidedBy: z.string().nullable().optional(),
+  packageTotal: z.number().nullable().optional(),
+  cancelRequested: z.boolean().default(false),
+  requestedBy: z.string().nullable().optional(),
+  placedBy: z.object({ id: z.string().nullable().optional(), name: z.string().nullable().optional() }).nullable().optional(),
+  names: z.unknown().nullable().optional(),
+  history: z.array(z.unknown()).optional(),
+  events: z.array(z.unknown()).optional(),
+});
+export type OrderStatus = z.infer<typeof OrderStatusSchema>;
+
+export const OrdersResponseSchema = z.object({
+  orders: z.array(OrderStatusSchema).default([]),
+  available: z
+    .object({ items: z.record(z.string(), z.number()).default({}), shulkers: z.record(z.string(), z.number()).default({}) })
+    .default({ items: {}, shulkers: {} }),
+});
+export type OrdersResponse = z.infer<typeof OrdersResponseSchema>;
+
+// ---------- bots / activity ----------
+
+export const BotInfoSchema = z.object({
+  botId: z.string(),
+  player: z.string().nullable().optional(),
+  online: z.boolean().default(false),
+  lastSeen: z.number().nullable().optional(),
+  plugin: z.unknown().nullable().optional(),
+  runtime: z.unknown().nullable().optional(),
+  caps: z.array(z.string()).default([]),
+  summary: z.string().nullable().optional(),
+  activityAt: z.number().nullable().optional(),
+  scopes: z.array(z.string()).default([]),
+  stashes: z.array(z.object({ server: z.string(), stash: z.string() })).default([]),
+  lastLocation: z.unknown().nullable().optional(),
+});
+export type BotInfo = z.infer<typeof BotInfoSchema>;
+
+export const BotActivitySchema = z.object({
+  activity: z.unknown().nullable().optional(),
+  receivedAt: z.number().nullable().optional(),
+  events: z.array(z.unknown()).default([]),
+  online: z.boolean().default(false),
+});
+export type BotActivity = z.infer<typeof BotActivitySchema>;
+
+// ---------- guild / quotas / users ----------
+
+export const GuildSchema = z.object({
+  name: z.string().default(""),
+  description: z.string().nullable().optional(),
+  revision: z.number().default(0),
+  approvalPolicy: z.string().nullable().optional(),
+});
+export type Guild = z.infer<typeof GuildSchema>;
+
+export const QuotaMeSchema = z.object({ usage: z.record(z.string(), z.unknown()).default({}) }).catchall(z.unknown());
+export type QuotaMe = z.infer<typeof QuotaMeSchema>;
+
+export const ManagedUserSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  disabled: z.boolean().default(false),
+  mustChange: z.boolean().default(false),
+  perms: PermsSchema.default({}),
+  createdAt: z.number().optional(),
+  lastLoginAt: z.number().nullable().optional(),
+  sessions: z.number().optional(),
+});
+export type ManagedUser = z.infer<typeof ManagedUserSchema>;

@@ -2,113 +2,128 @@
 @tailwind components;
 @tailwind utilities;
 
-/* WeSort shop theme: Minecraft-inspired but modern storefront. Classic theme
-   uses the verified vanilla dirt texture (/dirt.png) with dirt.svg fallback. */
-:root {
-  color-scheme: light dark;
+/* WeSort design tokens. Modern Dark is the default; Classic keeps the vanilla
+   dirt background (/dirt.png with dirt.svg fallback) and pixel styling. */
+
+@layer base {
+  :root,
+  body.theme-modern {
+    --background: 222 14% 7%;
+    --foreground: 0 0% 96%;
+    --card: 222 12% 10%;
+    --card-foreground: 0 0% 96%;
+    --popover: 222 12% 9%;
+    --popover-foreground: 0 0% 96%;
+    --primary: 142 71% 45%;
+    --primary-foreground: 144 61% 8%;
+    --secondary: 222 10% 15%;
+    --secondary-foreground: 0 0% 96%;
+    --muted: 222 10% 15%;
+    --muted-foreground: 220 9% 60%;
+    --accent: 222 10% 15%;
+    --accent-foreground: 0 0% 96%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 220 10% 18%;
+    --input: 220 10% 20%;
+    --ring: 142 71% 45%;
+    --radius: 0.75rem;
+    color-scheme: dark;
+  }
+
+  body.theme-modern {
+    background-color: hsl(var(--background));
+    background-image: radial-gradient(1200px 400px at 50% -10%, rgba(34, 197, 94, 0.07), transparent 70%);
+    background-attachment: fixed;
+    color: hsl(var(--foreground));
+  }
+
+  body.theme-classic {
+    --background: 20 20% 6%;
+    --foreground: 0 0% 96%;
+    --card: 20 18% 10%;
+    --card-foreground: 0 0% 96%;
+    --popover: 20 18% 8%;
+    --popover-foreground: 0 0% 96%;
+    --primary: 142 71% 45%;
+    --primary-foreground: 144 61% 8%;
+    --secondary: 20 12% 16%;
+    --secondary-foreground: 0 0% 96%;
+    --muted: 20 12% 16%;
+    --muted-foreground: 30 8% 62%;
+    --accent: 20 12% 16%;
+    --accent-foreground: 0 0% 96%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 30 12% 22%;
+    --input: 30 12% 24%;
+    --ring: 142 71% 45%;
+    --radius: 0.375rem;
+    color-scheme: dark;
+    background-color: #14100d;
+    background-image: url("/dirt.png"), url("/dirt.svg");
+    background-size: 64px 64px, 64px 64px;
+    background-repeat: repeat;
+    color: #f5f5f4;
+  }
+
+  body.theme-classic::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(rgba(10, 8, 6, 0.68), rgba(10, 8, 6, 0.8));
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  body.theme-classic #root {
+    position: relative;
+    z-index: 1;
+  }
+
+  body.theme-clean {
+    display: none;
+  }
+
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  body {
+    font-family: Inter, "IBM Plex Sans", "Atkinson Hyperlegible", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
 }
 
-body.theme-classic {
-  background-color: #1a1210;
-  background-image: url("/dirt.png"), url("/dirt.svg");
-  background-size: 64px 64px, 64px 64px;
-  background-repeat: repeat;
-}
-
-body.theme-classic::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  pointer-events: none;
-  z-index: -1;
-}
-
-body.theme-clean {
-  background: hsl(var(--background));
-}
-
-.mc-slot {
-  image-rendering: pixelated;
+@layer components {
+  .mc-slot {
+    image-rendering: pixelated;
+  }
+  .mc-pixel-btn {
+    image-rendering: pixelated;
+    border: 2px solid #101010;
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.35), 0 2px 0 rgba(0, 0, 0, 0.55);
+  }
+  .ws-slot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 1;
+    border-radius: 0.6rem;
+    background:
+      linear-gradient(rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.55)),
+      repeating-conic-gradient(rgba(255, 255, 255, 0.035) 0 25%, transparent 0 50%) 0 0 / 16px 16px;
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.6);
+    border: 1px solid rgba(0, 0, 0, 0.6);
+  }
+  .ws-slot img {
+    image-rendering: pixelated;
+    filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.55));
+  }
 }
 
 .no-order .order-only {
   display: none !important;
-}
-
-/* shadcn-style Minecraft components: chunky buttons, dark inputs, inventory slots. */
-.mc-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.25rem;
-  border: 2px solid #1c1c1c;
-  border-radius: 0.25rem;
-  background: linear-gradient(#8bc34a, #5d9c3f);
-  color: #101010;
-  font-weight: 600;
-  padding: 0.4rem 0.9rem;
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.35), 0 2px 0 rgba(0, 0, 0, 0.55);
-  cursor: pointer;
-}
-.mc-button:hover {
-  filter: brightness(1.07);
-}
-.mc-button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-.mc-button.small {
-  padding: 0.15rem 0.5rem;
-  font-size: 0.8rem;
-}
-.mc-button.danger {
-  background: linear-gradient(#e57373, #b71c1c);
-  color: #fff;
-}
-.mc-button.selected,
-.mc-button[aria-current="step"] {
-  outline: 2px solid #f5c542;
-}
-
-.mc-input,
-.mc-select,
-.mc-button select {
-  background: #141414;
-  color: #f0f0f0;
-  border: 2px solid #3a3a3a;
-  border-radius: 0.25rem;
-  padding: 0.35rem 0.6rem;
-}
-.mc-input:focus,
-.mc-select:focus {
-  outline: 2px solid #f5c542;
-}
-.mc-input:disabled {
-  opacity: 0.55;
-}
-
-.slot {
-  min-height: 88px;
-  cursor: pointer;
-}
-.slot:hover {
-  border-color: #f5c542;
-}
-.slot .mc-slot {
-  pointer-events: none;
-}
-
-.note {
-  font-size: 0.85rem;
-  opacity: 0.85;
-}
-.note.warn {
-  color: #ffb74d;
-}
-
-.step-pill {
-  font-size: 0.8rem;
 }
 
 .only-mobile {

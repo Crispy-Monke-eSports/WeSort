@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { RouterProvider, createMemoryHistory, createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
+import { RouterProvider, createBrowserHistory, createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
 import React from "react";
+import { z } from "zod";
 import { Layout } from "./components/layout";
 import { BotsPage, ActivityPage, LoginPage, OrdersPage, SettingsPage } from "./routes/pages";
 import { ShopPage } from "./routes/shop";
@@ -11,9 +12,35 @@ const queryClient = new QueryClient({
 
 const rootRoute = createRootRoute({ component: Layout });
 
-const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login", component: LoginPage });
-const shopRoute = createRoute({ getParentRoute: () => rootRoute, path: "/shop", component: ShopPage });
-const ordersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/orders", component: OrdersPage });
+const loginSearch = z.object({ redirect: z.string().default("/shop") });
+const loginRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/login",
+  validateSearch: loginSearch,
+  component: LoginPage,
+});
+
+const shopSearch = z.object({
+  q: z.string().optional(),
+  sort: z.enum(["creative", "count", "name", "id"]).optional(),
+  cat: z.string().optional(),
+  avail: z.enum(["all", "available", "low", "empty"]).optional(),
+});
+const shopRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/shop",
+  validateSearch: shopSearch,
+  component: ShopPage,
+});
+
+const ordersSearch = z.object({ q: z.string().optional() });
+const ordersRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/orders",
+  validateSearch: ordersSearch,
+  component: OrdersPage,
+});
+
 const botsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/bots", component: BotsPage });
 const activityRoute = createRoute({ getParentRoute: () => rootRoute, path: "/activity", component: ActivityPage });
 const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: SettingsPage });
@@ -29,15 +56,15 @@ const routeTree = rootRoute.addChildren([indexRoute, loginRoute, shopRoute, orde
 
 export const router = createRouter({
   routeTree,
-  history: createMemoryHistory({ initialEntries: [window.location.pathname] }),
+  history: createBrowserHistory(),
   defaultPreload: "intent",
 });
 
-// Keep the URL in sync for direct navigation + refresh (Java serves index.html for these paths).
-router.subscribe("onResolved", () => {
-  const to = router.state.location.pathname + router.state.location.search;
-  if (window.location.pathname + window.location.search !== to) window.history.replaceState(null, "", to);
-});
+declare module "@tanstack/react-router" {
+  interface Register {
+    router: typeof router;
+  }
+}
 
 export function App() {
   return (

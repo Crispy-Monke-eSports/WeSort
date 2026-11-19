@@ -54,7 +54,7 @@ for (const retired of ['/api/v1/stock', '/api/v1/planner', '/api/v1/console', '/
   assert.equal(bundle.includes(retired), false, `Retired reference still in bundle: ${retired}`);
 }
 // Unified shop markers from PR #89 survive the migration.
-for (const marker of ['item-grid', 'cart-lines', 'cart-place', 'order-history-title', 'order-audit']) {
+for (const marker of ['item-grid', 'cart-lines', 'cart-place', 'order-list', 'order-audit', 'order-card', 'Idempotency-Key', '/icon/']) {
   assert.ok(bundle.includes(marker), `Shop marker missing from bundle: ${marker}`);
 }
 

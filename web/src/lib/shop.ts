@@ -3,6 +3,22 @@ import type { IndexItem, OrderLine, ShulkerEntry } from "../api/types";
 export const MAX_SHULKERS = 54;
 export const SHULKER_SLOTS = 27;
 
+/** One stash's slice of the unified shop: its own items, boxes and net availability. */
+export interface StashSlice {
+  server: string;
+  stash: string;
+  online: boolean;
+  items: IndexItem[];
+  shulkers: ShulkerEntry[];
+  availableItems: Record<string, number>;
+  availableShulkers: Record<string, number>;
+}
+
+export interface CartLine extends OrderLine {
+  server: string;
+  stash: string;
+}
+
 export function isShulkerBoxId(id: string | undefined): boolean {
   return !!id && /^minecraft:([a-z_]+_)?shulker_box$/.test(id);
 }
@@ -92,16 +108,49 @@ export function shelfCount(item: IndexItem, shulkers: ShulkerEntry[]): number {
   return item.count + boxedContents(item.key, shulkers);
 }
 
+/** Net orderable units of an item key inside one slice (loose + whole-box contents). */
+export function sliceAvailability(key: string, slice: StashSlice): number {
+  return Math.max(0, slice.availableItems[key] ?? 0) + boxedContents(key, slice.shulkers);
+}
+
+/** Pick the slice holding the most orderable units of a key (ties: first). */
+export function chooseSlice(
+  key: string,
+  slices: StashSlice[],
+  packedInCart: (server: string, stash: string, boxKey: string) => number,
+  looseInCart: (server: string, stash: string, key: string) => number,
+): StashSlice | null {
+  let best: StashSlice | null = null;
+  let bestN = 0;
+  for (const s of slices) {
+    let boxed = 0;
+    for (const b of s.shulkers) {
+      let perBox = 0;
+      for (const c of b.contents ?? []) if (c?.key === key) perBox += Math.max(0, c.count);
+      boxed += perBox * Math.max(0, b.count - packedInCart(s.server, s.stash, b.key));
+    }
+    const n = Math.max(0, (s.availableItems[key] ?? 0) - looseInCart(s.server, s.stash, key)) + boxed;
+    if (n > bestN) {
+      bestN = n;
+      best = s;
+    }
+  }
+  return bestN > 0 ? best : null;
+}
+
 export interface SplitInput {
   type: "item" | "shulker";
   key: string;
   count: number;
+  server?: string;
+  stash?: string;
 }
 
 /**
  * Moves whole filled shulkers out of an item line (working copy): each taken box becomes a
  * packed line, the rest stays loose. Returns null when the loose remainder exceeds loose
  * availability (backend would refuse too) — caller keeps the old lines and shows the message.
+ * The returned array is always fresh; callers may mutate it in place.
  */
 export function splitItemLine(
   next: SplitInput[],
@@ -109,13 +158,45 @@ export function splitItemLine(
   looseAvail: number,
   shulkers: ShulkerEntry[],
 ): SplitInput[] | null {
-  const total = next.filter((l) => l.type === "item" && l.key === key).reduce((a, l) => a + l.count, 0);
-  if (total <= looseAvail) return next;
-  const cartPacked = (boxKey: string) => next.filter((l) => l.type === "shulker" && l.key === boxKey).reduce((a, l) => a + l.count, 0);
+  return splitScopedItemLine(next, key, undefined, undefined, looseAvail, shulkers);
+}
+
+/**
+ * Stash-scoped variant for the unified multi-stash shop: only item lines for the same
+ * (server, stash) take part in the split, and taken boxes are tagged with that stash.
+ * Other lines pass through untouched. Pass server/stash as undefined for the legacy
+ * single-stash behavior.
+ */
+export function splitScopedItemLine(
+  next: SplitInput[],
+  key: string,
+  server: string | undefined,
+  stash: string | undefined,
+  looseAvail: number,
+  shulkers: ShulkerEntry[],
+): SplitInput[] | null {
+  const inScope = (l: SplitInput) =>
+    l.type === "item" &&
+    l.key === key &&
+    (server === undefined || l.server === server) &&
+    (stash === undefined || l.stash === stash);
+  const total = next.filter(inScope).reduce((a, l) => a + l.count, 0);
+  // Return a fresh array: callers mutate the result in place, so aliasing `next` would corrupt it.
+  if (total <= looseAvail) return [...next];
+  const cartPacked = (boxKey: string) =>
+    next
+      .filter(
+        (l) =>
+          l.type === "shulker" &&
+          l.key === boxKey &&
+          (server === undefined || l.server === server) &&
+          (stash === undefined || l.stash === stash),
+      )
+      .reduce((a, l) => a + l.count, 0);
   const take = takeBoxes(key, total, shulkers, cartPacked);
   if (take.remainder > looseAvail) return null;
-  const kept = next.filter((l) => !(l.type === "item" && l.key === key));
-  if (take.remainder > 0) kept.push({ type: "item", key, count: take.remainder });
-  for (const t of take.took) kept.push({ type: "shulker", key: t.key, count: t.count });
+  const kept = next.filter((l) => !inScope(l));
+  if (take.remainder > 0) kept.push({ type: "item", key, count: take.remainder, server, stash });
+  for (const t of take.took) kept.push({ type: "shulker", key: t.key, count: t.count, server, stash });
   return kept;
 }

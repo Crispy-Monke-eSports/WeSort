@@ -104,12 +104,7 @@ final class OrderRoutes {
                         Router.Perm.ORDER_OWN_OR_ALL,
                         this::forceCancel)
                 .pattern(Router.POST, RETRY, Router.Guard.BROWSER_WRITE, Router.Perm.ORDER_OWN_OR_ALL, this::retry)
-                .pattern(
-                        Router.POST,
-                        RECONCILE,
-                        Router.Guard.BROWSER_WRITE,
-                        Router.Perm.ORDERS_ALL,
-                        this::reconcile)
+                .pattern(Router.POST, RECONCILE, Router.Guard.BROWSER_WRITE, Router.Perm.ORDERS_ALL, this::reconcile)
                 .pattern(Router.POST, STATUS, Router.Guard.ADDON_KEY, this::status);
     }
 
@@ -219,7 +214,9 @@ final class OrderRoutes {
                 audit.add(who, "order.place", order.id + " " + intent.purpose().name(), AuthRoutes.address(ex));
                 if (quotaOverride)
                     audit.add(
-                            who, "order.quota.override", order.id + " " + intent.purpose().name(),
+                            who,
+                            "order.quota.override",
+                            order.id + " " + intent.purpose().name(),
                             AuthRoutes.address(ex));
             }
             JsonObject out = Http.ok();
@@ -400,7 +397,8 @@ final class OrderRoutes {
             return;
         }
         try {
-            OrderStore.Order order = orders.reconcile(m.group(1), outcome, Router.user(ex).id());
+            OrderStore.Order order =
+                    orders.reconcile(m.group(1), outcome, Router.user(ex).id());
             audit.add(Router.user(ex), "order.reconcile." + outcome, order.id, AuthRoutes.address(ex));
             JsonObject out = Http.ok();
             out.add("order", shown(ex, order.toJson()));

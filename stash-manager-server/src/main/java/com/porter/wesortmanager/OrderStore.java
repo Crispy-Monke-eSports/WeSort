@@ -557,8 +557,7 @@ final class OrderStore {
         long now = System.currentTimeMillis();
         for (int i = at + 1; i <= want; i++) {
             if (!o.stage().allows(chain[i]))
-                throw new OrderException(
-                        409, "order " + id + " cannot move from " + o.stage() + " to " + chain[i], -1);
+                throw new OrderException(409, "order " + id + " cannot move from " + o.stage() + " to " + chain[i], -1);
             o.stage = chain[i];
             if (chain[i] == OrderStage.DELIVERED) o.status = "delivered";
             o.record("order.transition", actor, now);

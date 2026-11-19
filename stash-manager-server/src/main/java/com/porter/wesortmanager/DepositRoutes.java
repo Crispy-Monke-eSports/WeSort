@@ -86,7 +86,8 @@ final class DepositRoutes {
                 if (result.state() == Deposit.State.DELIVERED) {
                     settleOrder(result.orderId(), OrderStage.DELIVERED, true, agent, AuthRoutes.address(ex));
                 } else if (result.state() == Deposit.State.NEEDS_RECONCILIATION) {
-                    settleOrder(result.orderId(), OrderStage.NEEDS_RECONCILIATION, false, agent, AuthRoutes.address(ex));
+                    settleOrder(
+                            result.orderId(), OrderStage.NEEDS_RECONCILIATION, false, agent, AuthRoutes.address(ex));
                 }
             } catch (OrderStore.OrderException conflict) {
                 Http.error(ex, conflict.status, conflict.getMessage());

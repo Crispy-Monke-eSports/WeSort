@@ -73,11 +73,12 @@ class OrderDeliveryWalkTest {
         // Terminal DELIVERED orders cannot move again.
         OrderStore.Order done = orders.advanceToward(o.id, OrderStage.DELIVERED, "owner");
         assertEquals(OrderStage.DELIVERED, done.stage());
-        OrderStore.OrderException illegal =
-                assertThrows(OrderStore.OrderException.class, () -> orders.advanceToward(o.id, OrderStage.PACKING, "owner"));
+        OrderStore.OrderException illegal = assertThrows(
+                OrderStore.OrderException.class, () -> orders.advanceToward(o.id, OrderStage.PACKING, "owner"));
         assertEquals(409, illegal.status);
-        OrderStore.OrderException missing =
-                assertThrows(OrderStore.OrderException.class, () -> orders.advanceToward("o-deadbeefcafe", OrderStage.DELIVERED, "owner"));
+        OrderStore.OrderException missing = assertThrows(
+                OrderStore.OrderException.class,
+                () -> orders.advanceToward("o-deadbeefcafe", OrderStage.DELIVERED, "owner"));
         assertEquals(404, missing.status);
         assertTrue(done.id.startsWith("o-"));
     }

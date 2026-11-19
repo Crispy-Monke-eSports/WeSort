@@ -61,8 +61,7 @@ class QuotaOrderWiringTest {
     }
 
     private OrderStore.Order submit(String member, long count) throws Exception {
-        return orders
-                .submit(
+        return orders.submit(
                         "s",
                         "a",
                         diamonds(count),
@@ -96,8 +95,7 @@ class QuotaOrderWiringTest {
     void placeReservesAndExceededIsRejectedWith429() throws Exception {
         OrderStore.Order first = submit("u-1", 40);
         assertEquals(40, reserved("u-1"));
-        OrderStore.OrderException rejected =
-                assertThrows(OrderStore.OrderException.class, () -> submit("u-1", 40));
+        OrderStore.OrderException rejected = assertThrows(OrderStore.OrderException.class, () -> submit("u-1", 40));
         assertEquals(429, rejected.status);
         // The rejected order left no reservation behind.
         assertEquals(40, reserved("u-1"));
@@ -117,8 +115,7 @@ class QuotaOrderWiringTest {
 
     @Test
     void overrideBypassesReserve() throws Exception {
-        OrderStore.Order o = orders
-                .submit(
+        OrderStore.Order o = orders.submit(
                         "s",
                         "a",
                         diamonds(1000),

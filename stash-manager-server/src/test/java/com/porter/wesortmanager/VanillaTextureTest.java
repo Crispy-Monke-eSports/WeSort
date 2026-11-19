@@ -15,9 +15,7 @@ class VanillaTextureTest {
     @TempDir
     Path data;
 
-    private static final byte[] PNG = {
-        (byte) 0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 1, 2, 3, 4, 5, 6, 7, 8, 9
-    };
+    private static final byte[] PNG = {(byte) 0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 1, 2, 3, 4, 5, 6, 7, 8, 9};
 
     private Path jarWith(String entry, byte[] payload) throws Exception {
         Path jar = data.resolve("client-test.jar");

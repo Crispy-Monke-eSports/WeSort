@@ -107,8 +107,7 @@ class StockAvailabilityTest {
         // (The running order is cancelled first: only one physical order runs at a time.)
         orders.cancel(first.id);
         orders.forceCancel(first.id);
-        var queued = orders.place(
-                "s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 1)), null);
+        var queued = orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 1)), null);
         assertEquals("pending", queued.status);
         assertNull(orders.claim("s", "a"));
         var row = balance(owner);

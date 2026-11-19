@@ -912,9 +912,8 @@ final class OrderStore {
             Set<PhysicalReservations.Root> held,
             boolean allowStale)
             throws OrderException, IOException {
-        var allocations = physical.hasSnapshots()
-                ? physical.allocate(merged.values(), held, firstIndex, allowStale)
-                : null;
+        var allocations =
+                physical.hasSnapshots() ? physical.allocate(merged.values(), held, firstIndex, allowStale) : null;
         Book b = book(server, stash);
         synchronized (b) {
             long open = b.orders.stream().filter(o -> OPEN.contains(o.status)).count();

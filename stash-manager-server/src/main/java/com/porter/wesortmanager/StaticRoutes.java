@@ -20,7 +20,8 @@ final class StaticRoutes {
     private static final Pattern STATIC_NAME = Pattern.compile("^[a-z0-9_-][a-z0-9_.-]{0,63}$");
 
     /** React app routes served with index.html (direct navigation + refresh). */
-    private static final Set<String> SPA_ROUTES = Set.of("/shop", "/orders", "/bots", "/activity", "/settings", "/login");
+    private static final Set<String> SPA_ROUTES =
+            Set.of("/shop", "/orders", "/bots", "/activity", "/settings", "/login");
 
     private final Map<String, byte[]> cache = new ConcurrentHashMap<>();
 

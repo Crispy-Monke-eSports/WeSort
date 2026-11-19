@@ -100,14 +100,18 @@ final class PhysicalReservations {
      * fingerprints and counts before it touches anything. Ported from PR #89.
      */
     List<Allocation> allocate(
-            Iterable<OrderStore.Line> requested, Set<Root> reserved, Map<String, Integer> firstIndex, boolean allowStale)
+            Iterable<OrderStore.Line> requested,
+            Set<Root> reserved,
+            Map<String, Integer> firstIndex,
+            boolean allowStale)
             throws OrderStore.OrderException {
         var selected = new ArrayList<Allocation>();
         var used = new HashMap<Root, List<Allocation>>();
         for (var line : requested) {
             long remaining = line.count();
             for (var candidate : candidates) {
-                if ((!allowStale && !candidate.fresh()) || !candidate.reference().equals(line.ref())) continue;
+                if ((!allowStale && !candidate.fresh())
+                        || !candidate.reference().equals(line.ref())) continue;
                 var allocation = candidate.allocate(line.ref(), Math.min(remaining, candidate.count()));
                 var existing = used.get(allocation.root());
                 if (reserved.contains(allocation.root())

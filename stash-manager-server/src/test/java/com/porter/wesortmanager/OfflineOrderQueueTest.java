@@ -60,11 +60,13 @@ class OfflineOrderQueueTest {
     void orderListReportsLastVerifiedAvailabilitySoTheShopAgreesWithSubmit() throws Exception {
         goStale();
         var available = orders.listJson("s", "a").getAsJsonObject("available");
-        assertEquals(64, available.getAsJsonObject("items").get("minecraft:diamond").getAsLong());
+        assertEquals(
+                64, available.getAsJsonObject("items").get("minecraft:diamond").getAsLong());
     }
 
     @Test
-    void orderQueuesWhileStaleAndIsClaimedOnlyWhenFresh() throws Exception {        goStale();
+    void orderQueuesWhileStaleAndIsClaimedOnlyWhenFresh() throws Exception {
+        goStale();
         OrderStore.Order queued = orders.place("s", "a", diamonds(10), null);
         assertEquals("pending", queued.status);
 
@@ -85,14 +87,14 @@ class OfflineOrderQueueTest {
     @Test
     void realShortagesStillFailAndReportVerifiedStock() throws Exception {
         // Fresh and short: no fallback, plain 400.
-        OrderStore.OrderException fresh = assertThrows(
-                OrderStore.OrderException.class, () -> orders.place("s", "a", diamonds(100), null));
+        OrderStore.OrderException fresh =
+                assertThrows(OrderStore.OrderException.class, () -> orders.place("s", "a", diamonds(100), null));
         assertEquals(400, fresh.status);
 
         // Stale and short of even the last-verified stock: the verified (zero) message stands.
         goStale();
-        OrderStore.OrderException stale = assertThrows(
-                OrderStore.OrderException.class, () -> orders.place("s", "a", diamonds(100), null));
+        OrderStore.OrderException stale =
+                assertThrows(OrderStore.OrderException.class, () -> orders.place("s", "a", diamonds(100), null));
         assertEquals(400, stale.status);
         assertTrue(stale.getMessage().contains("available"));
     }

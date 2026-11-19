@@ -21,6 +21,15 @@ def configureMirror = { repositories ->
 
 gradle.beforeSettings { settings ->
     configureMirror(settings.buildscript.repositories)
+
+    // The default Plugin Portal does not reliably provide transitive JARs that
+    // originate on Maven Central. Putting the mirror first resolves those JARs
+    // there, while plugin markers and artifacts unavailable on Central still
+    // use repositories explicitly configured by settings.gradle(.kts).
+    settings.pluginManagement.repositories.maven { MavenArtifactRepository repo ->
+        repo.setName("CI Maven Central mirror for plugins")
+        repo.setUrl(mirrorUrl)
+    }
     configureMirror(settings.pluginManagement.repositories)
 }
 gradle.settingsEvaluated { settings ->

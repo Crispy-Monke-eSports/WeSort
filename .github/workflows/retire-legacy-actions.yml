@@ -1,0 +1,150 @@
+# One-time maintenance: cancel obsolete runs and disable workflows removed from main.
+# Delete this file after the maintenance run succeeds.
+name: Retire obsolete GitHub Actions
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/retire-legacy-actions.yml'
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  retire:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+    steps:
+      - name: Disable old workflows and cancel their outstanding runs
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+          import time
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          token = os.environ["GITHUB_TOKEN"]
+          allowed = {
+              ".github/workflows/ci.yml",
+              ".github/workflows/autofix.yml",
+              ".github/workflows/_verify.yml",
+              ".github/workflows/_mc26-e2e.yml",
+              ".github/workflows/manager-image.yml",
+              ".github/workflows/retire-legacy-actions.yml",
+          }
+          base = f"https://api.github.com/repos/{repo}"
+          errors = []
+          disabled = 0
+          cancelled = 0
+          already_finished = 0
+
+          def api(path, method="GET"):
+              request = urllib.request.Request(
+                  base + path,
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Accept": "application/vnd.github+json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                      "User-Agent": "wesort-retire-legacy-actions",
+                  },
+                  method=method,
+              )
+              for attempt in range(4):
+                  try:
+                      with urllib.request.urlopen(request, timeout=40) as response:
+                          data = response.read()
+                          return json.loads(data) if data else {}
+                  except urllib.error.HTTPError as exc:
+                      if exc.code in (429, 500, 502, 503, 504) and attempt < 3:
+                          time.sleep(2 ** attempt)
+                          continue
+                      raise
+
+          def pages(resource, key):
+              page = 1
+              while True:
+                  separator = "&" if "?" in resource else "?"
+                  result = api(f"{resource}{separator}per_page=100&page={page}")
+                  items = result.get(key, [])
+                  yield from items
+                  if len(items) < 100:
+                      break
+                  page += 1
+
+          # Workflows removed from the current main branch are not allowed to
+          # spawn new runs from historical refs or branches.
+          stale_ids = set()
+          for workflow in pages("/actions/workflows", "workflows"):
+              workflow_id = workflow["id"]
+              path = workflow.get("path", "")
+              if path in allowed:
+                  continue
+              stale_ids.add(workflow_id)
+              if workflow.get("state") != "active":
+                  print(f"Old workflow {workflow_id} ({path}): already {workflow.get('state')}")
+                  continue
+              try:
+                  api(f"/actions/workflows/{workflow_id}/disable", "PUT")
+                  disabled += 1
+                  print(f"Disabled old workflow {workflow_id}: {path}")
+              except urllib.error.HTTPError as exc:
+                  errors.append(f"Could not disable {path} ({workflow_id}): HTTP {exc.code}")
+
+          # Some deleted workflows no longer appear in the workflow listing,
+          # but their queued/in-progress runs still exist. Filter by run path.
+          run_ids = set()
+          for status in ("queued", "in_progress", "waiting", "pending", "requested"):
+              try:
+                  active_runs = list(pages(
+                      f"/actions/runs?status={urllib.parse.quote(status)}",
+                      "workflow_runs",
+                  ))
+              except urllib.error.HTTPError as exc:
+                  errors.append(f"Could not list {status} workflow runs: HTTP {exc.code}")
+                  continue
+              for run in active_runs:
+                  run_id = run["id"]
+                  if run_id in run_ids:
+                      continue
+                  if run.get("path") in allowed:
+                      continue
+                  run_ids.add(run_id)
+                  print(
+                      f"Cancel obsolete run {run_id} "
+                      f"({run.get('name')}, {run.get('head_branch')}, {status})"
+                  )
+                  try:
+                      api(f"/actions/runs/{run_id}/cancel", "POST")
+                      cancelled += 1
+                  except urllib.error.HTTPError as exc:
+                      if exc.code in (404, 409, 422):
+                          already_finished += 1
+                          print(f"Run {run_id} already finished or is not cancellable (HTTP {exc.code})")
+                      else:
+                          errors.append(f"Could not cancel {run_id}: HTTP {exc.code}")
+
+          report = (
+              f"Old workflows disabled: {disabled}. "
+              f"Old runs cancellation requested: {cancelled}. "
+              f"Already finished/non-cancellable: {already_finished}. "
+              f"Errors: {len(errors)}."
+          )
+          print(report)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write("## Retire obsolete GitHub Actions\n\n" + report + "\n")
+              for error in errors:
+                  summary.write(f"- {error}\n")
+          if errors:
+              for error in errors:
+                  print(f"ERROR: {error}", file=sys.stderr)
+              sys.exit(1)
+          PY

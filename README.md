@@ -108,21 +108,31 @@ Workflowen [`autofix.ci`](.github/workflows/autofix.yml) kör
 Den inkluderar även Java-verktyget under `tools/mc26-toolchain/src/` via
 rotprojektet. Genererad kod lämnas orörd.
 
-- **Pull requests mot `main`:** [autofix.ci](https://autofix.ci/) får
+- **Pull requests:** [autofix.ci](https://autofix.ci/) får
   formatteringsdiffen och skapar en rättningscommit i PR-grenen.
   Formatkontrollen blir röd på den ursprungliga committen och går igen
   på rättningscommitten. Workflowens PR-jobb har endast läsrättigheter.
 - **`main`:** vid varje push (eller manuell `workflow_dispatch`) formateras
   Java-koden. Eventuella avvikelser skapar automatiskt en separat commit
   direkt på `main` via GitHub Actions `GITHUB_TOKEN`, utan force-push.
-  Jobbet har skrivrättigheter endast på `main`.
+  Jobbet har skrivbehörighet endast vid körning på `main`. Efter rättningen
+  startas `ci.yml` genom `workflow_dispatch` så att verifieringen körs på
+  den faktiskt formaterade committen.
 
-Observera att commit skapad via `GITHUB_TOKEN` normalt inte utlöser nya
-`push`-workflows. Därför kör arbetsflödet `spotlessCheck` **innan**
-det committar ändringarna. Om `main` skyddas med branch rules som nekar
+En push med `GITHUB_TOKEN` utlöser inte vanliga `push`-workflows. Därför
+använder workflowen ett explicit `workflow_dispatch` efter auto-commit;
+detta kräver `actions: write` i `main`-jobbet. `spotlessCheck` körs också
+**innan** committen skapas. Om `main` skyddas med branch rules som nekar
 GitHub Actions att pusha kommer auto-commit att misslyckas tills rätt
 behörighet ges. Fullständig massformatering kan inträffa första gången
 workflowen körs efter merge.
+
+Den centrala [`ci.yml`](.github/workflows/ci.yml) börjar med jobbet
+**Java formatting gate**. Både compile/unit/Docker och Minecraft E2E har
+beroenden till den kontrollen (`needs`), och `ci-required` kräver att
+formatkontroll, verifiering och E2E samtliga lyckas. Om en PR behöver
+rättas blir den första körningen röd; autofix.ci committar ändringen i
+PR-grenen och nästa körning går vidare först när all Java är formaterad.
 
 ## Avgränsning och fortsatt arbete
 

@@ -1,0 +1,6 @@
+{
+  "recommendations": [
+    "vscjava.vscode-gradle",
+    "yagipass.vscode-spotless-for-gradle-and-maven"
+  ]
+}

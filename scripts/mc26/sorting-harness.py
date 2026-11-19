@@ -12,11 +12,11 @@ world = importlib.util.module_from_spec(spec); spec.loader.exec_module(world)
 require = world.require
 
 class SortingHarness(world.Harness):
-    locations = list(range(0, 33, 3))
-    labels = {3: 'dias', 6: 'building blocks', 9: 'diamond swords', 12: 'dias', 15: 'dias', 18: 'misc', 24: 'strength', 27: 'egaps'}
+    locations = [-6, -3] + list(range(0, 33, 3))
+    labels = {-6: 'seeds', -3: 'pearls', 3: 'dias', 6: 'building blocks', 9: 'diamond swords', 12: 'dias', 15: 'dias', 18: 'misc', 24: 'strength', 27: 'egaps'}
     def fixture(self):
         super().fixture()
-        self.rcon.command('fill -1 64 -4 35 66 4 minecraft:air')
+        self.rcon.command('fill -7 64 -4 35 66 4 minecraft:air')
         self.rcon.command('kill @e[type=minecraft:item]')
         for x in self.locations:
             self.rcon.command(f'setblock {x} 64 3 minecraft:barrel')
@@ -28,6 +28,10 @@ class SortingHarness(world.Harness):
         self.setitem(0, 3, 'enchanted_golden_apple', 4)
         self.setitem(0, 4, 'potion[minecraft:potion_contents={potion:"minecraft:strength"}]', 1)
         self.setitem(0, 5, 'spyglass', 1)
+        # W-005: formerly farmed items and ResetPearl inputs are ordinary guild stock.
+        # Keep real server-observed quantities within each item's vanilla stack limit.
+        self.setitem(0, 6, 'wheat_seeds', 23)
+        self.setitem(0, 7, 'ender_pearl', 11)
         for slot in range(27): self.setitem(3, slot, 'diamond', 60 if slot == 0 else 64)
         self.setitem(12, 0, 'diamond', 5); self.setitem(15, 0, 'diamond', 7); self.setitem(30, 0, 'diamond', 9)
         self.setitem(15, 1, 'shulker_box[minecraft:custom_name={text:"Reserved kit"},minecraft:container=[{slot:0,item:{id:"minecraft:diamond",count:8}}]]', 1)
@@ -79,17 +83,33 @@ class SortingHarness(world.Harness):
                 and any(row['id']=='minecraft:diamond' and row['available']>0 for row in stock['items'])
                 and self.command('state')['state']['containerId']==0,
                 'Fresh physical index did not reach Manager')
+            # Real, role-checked Manager orders must accept non-automation seed/dirt/pearl
+            # items from the exact physical stock, not an old farming/pearl module.
+            for item, amount in [('wheat_seeds', 7), ('dirt', 4), ('ender_pearl', 5)]:
+                status, placed = self.http('/api/v1/orders', {
+                    'server': self.server_name, 'stash': 'e2e-fixture',
+                    'lines': [{'type': 'item', 'key': 'minecraft:' + item, 'count': amount}]})
+                require(status == 200 and placed['order']['status'] == 'pending',
+                    'Manager rejected ordinary inventory order for ' + item + ': ' + str(status))
+                oid = placed['order']['id']
+                status, canceled = self.http('/api/v1/orders/' + oid + '/cancel', {})
+                require(status == 200 and canceled['order']['id'] == oid,
+                    'Cannot release ordinary item reservation for ' + item)
+            self.ok('signed Manager accepts and cancels ordinary seed, dirt and pearl item reservations without any farming/pearl module')
             status, reservation = self.order(); require(status==200,'Could not create actual reservation')
             before_reserved = {x:self.nbt(x) for x in self.locations}
             before_clicks = self.command('state')['state']['attemptedClicks']
             self.teleport(0.5, 2); self.command('sort-config')
             self.command('open', x=0, y=64, z=3, slots=27, item='minecraft:diamond', count=32)
-            labels = ['dias', 'building blocks', 'diamond swords', 'egaps', 'strength', 'Unbreaking I', 'Do not rename', 'misc']
+            labels = ['dias', 'building blocks', 'diamond swords', 'egaps', 'strength', 'Unbreaking I', 'Do not rename', 'misc', 'seeds', 'pearls', 'dirt']
             diagnostic = self.command('sort-explain', labels=labels)['state']
             (self.evidence / 'sort-diagnostics.json').write_text(json.dumps(diagnostic, indent=2) + '\n')
             probes = diagnostic['probes']
             require(next(p for p in probes if p['item'].startswith('minecraft:diamond_sword'))['scores']['Unbreaking I'] > 0, 'Actual enchantment category missing')
             require(next(p for p in probes if p['item'].startswith('minecraft:potion'))['scores']['strength'] > 0, 'Actual potion category missing')
+            for item, label in [('minecraft:wheat_seeds', 'seeds'), ('minecraft:ender_pearl', 'pearls'), ('minecraft:dirt', 'dirt')]:
+                require(next(p for p in probes if p['item'] == item)['scores'][label] > 0,
+                    'Actual normal item category missing: ' + item)
             require(any(c['reason'] == 'PROTECTED' for c in probes[0]['candidates']) and any(c['reason'] == 'EXCLUDED' for c in probes[0]['candidates']), 'Protection diagnostics missing')
             self.command('close')
             activated = self.command('sort-start')['state']['sorterStorage']
@@ -107,6 +127,7 @@ class SortingHarness(world.Harness):
             self.wait(lambda: self.count(6, 'dirt') == 16 and self.count(9, 'diamond_sword') == 1
                 and self.count(24, 'potion') == 1 and self.count(27, 'enchanted_golden_apple') == 4 and self.count(0, 'diamond') == 0
                 and self.count(3, 'diamond') == 1728 and self.count(18, 'diamond') + self.count(21, 'diamond') == 28
+                and self.count(-6, 'wheat_seeds') == 23 and self.count(-3, 'ender_pearl') == 11
                 and '[]' in self.rcon.command('data get entity ' + self.player + ' Inventory') and self.command('state')['state']['inventoryReady'],
                 'Production sign sorter did not place the mixed fixture correctly')
             self.command('sort-stop')
@@ -117,7 +138,10 @@ class SortingHarness(world.Harness):
                 'Exact name/damage/enchantment components changed during actual sorting')
             require(self.rcon.command('data get block 24 64 3 Items[{id:"minecraft:potion"}].components').split(': ',1)[-1]==potion_components,
                 'Exact potion components changed during actual sorting')
-            self.ok('actual production Signs engine routes mixed items by labels/slang, preserves metadata and partial stacks, uses overflow and leaves excluded/protected kit/outbound stock unchanged')
+            require(self.count(18, 'wheat_seeds') + self.count(21, 'wheat_seeds') == 0
+                and self.count(18, 'ender_pearl') + self.count(21, 'ender_pearl') == 0,
+                'Categorized seeds/pearls leaked into miscellaneous overflow')
+            self.ok('actual production Signs engine routes seeds and pearls into distinct labeled categories, dirt into building blocks, preserves metadata and overflow, and protects reserved kit/outbound stock')
             self.wait(lambda: not self.stock()['automation'],'Verified sorting did not release its exclusion',timeout=30)
             self.command('manager-unlink-test')
             self.teleport(15.5,2); self.command('open',x=15,y=64,z=3,slots=27,item='minecraft:diamond',count=7)
@@ -156,7 +180,7 @@ class SortingHarness(world.Harness):
             require(full_before=={x:self.nbt(x) for x in self.locations},'Full stock moved or lost items')
             self.ok('full labeled/misc/unsigned storage produces an explicit blocked alert with exact unchanged server inventories')
             self.command('screenshot'); world.shutil.copyfile(self.game_dir / 'screenshots/fixture.png', self.evidence / 'sorting-world.png')
-            report = {'result':'PASS','scope':'W-019 actual 26.3 production sorting','checks':self.checks,
+            report = {'result':'PASS','scope':'W-019 and W-005 actual 26.3 production sorting and ordinary seed/dirt/pearl orders','checks':self.checks,
                 'manager_image':self.env['WESORT_IMAGE'],'manager_image_id':manager_image_id,
                 'source_commit':world.subprocess.check_output(['git','rev-parse','HEAD'],cwd=world.ROOT,text=True).strip(),
                 'dirty_worktree':bool(world.subprocess.check_output(['git','status','--porcelain'],cwd=world.ROOT,text=True).strip())}

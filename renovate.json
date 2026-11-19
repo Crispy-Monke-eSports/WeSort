@@ -15,6 +15,6 @@
   },
   "vulnerabilityAlerts": {
     "automerge": true,
-    "minimumReleaseAge": "14 days"
+    "minimumReleaseAge": null
   }
 }

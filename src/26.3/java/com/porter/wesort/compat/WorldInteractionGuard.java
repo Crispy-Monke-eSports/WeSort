@@ -134,8 +134,7 @@ public final class WorldInteractionGuard {
         // vs server state, or a stale break target). Unknown-job and safety-sensitive denials
         // keep their own counters via breakDecision below.
         long now = now();
-        boolean permit =
-                PERMITS.allows(now, position.asLong(), Operation.BREAK, blockId(position), job);
+        boolean permit = PERMITS.allows(now, position.asLong(), Operation.BREAK, blockId(position), job);
         if (!permit && job != null && !job.isEmpty() && !job.equals("unknown") && safeBlock(position)) {
             String holder = PERMITS.jobOf(now, position.asLong(), Operation.BREAK);
             denied(holder == null ? "break-no-permit-expired" : "break-no-permit-block");

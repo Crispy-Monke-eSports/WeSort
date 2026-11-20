@@ -92,7 +92,7 @@ export function LoginPage() {
             </form>
           )}
           <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 2 }}>
-            NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.
+            Guild stash &amp; order manager.
           </Typography>
         </CardContent>
       </Card>

@@ -98,8 +98,7 @@ test("empty stash and auth redirect", async ({ page }) => {
   await expect(page).toHaveURL(/\/login/);
 });
 
-test("failed orders expose retry, partial stash failure is explicit", async ({ page }) => {
-  await page.route("**/api/v1/auth/state", (r) =>
+test("failed orders expose retry, partial stash failure is explicit", async ({ page }) => {  await page.route("**/api/v1/auth/state", (r) =>
     r.fulfill({ json: { loggedIn: true, user: { id: "owner", name: "Owner", owner: true, perms: { view: true, order: true, ordersAll: true } } } }),
   );
   await page.route("**/api/v1/stashes", (r) =>
@@ -114,4 +113,108 @@ test("failed orders expose retry, partial stash failure is explicit", async ({ p
   await page.getByTestId("order-card").first().click();
   // Retry is visible for failed orders (not hidden inside an open-state gate).
   await expect(page.getByRole("button", { name: "Retry as new order" })).toBeVisible();
+});
+
+test("SPA navigation shares one canonical orders cache without reload", async ({ page }) => {
+  // P0-02 regression: Inventory and Orders read the same keys.orders(stash)
+  // cache entries (OrdersResponse). Navigating between pages must never show
+  // the other page's projected shape (missing `available`, phantom rows).
+  await page.route("**/api/v1/auth/state", (r) =>
+    r.fulfill({ json: { loggedIn: true, user: { id: "owner", name: "Owner", owner: true, perms: { view: true, order: true, ordersAll: true, activity: true } } } }),
+  );
+  await page.route("**/api/v1/stashes", (r) =>
+    r.fulfill({ json: [{ stash: "a", online: true }] }),
+  );
+  await page.route("**/api/v1/index*", (r) =>
+    r.fulfill({ json: { mcVersion: "26.3",
+      items: [{ key: "minecraft:dirt", id: "minecraft:dirt", name: "Dirt", count: 10, maxStack: 64, tab: "natural_blocks" }],
+      shulkers: [] } }),
+  );
+  await page.route("**/api/v1/orders?*", (r) =>
+    r.fulfill({ json: { orders: [{ id: "o-shared1", status: "pending", stash: "a", lines: [{ type: "item", key: "minecraft:dirt", count: 5 }], createdAt: 1, updatedAt: 2 }], available: { items: { "minecraft:dirt": 10 }, shulkers: {} } } }),
+  );
+  await page.route("**/api/v1/bots", (r) => r.fulfill({ json: [] }));
+  await page.route("**/api/v1/server", (r) => r.fulfill({ json: { server: "test", configured: true } }));
+
+  await page.goto("/inventory");
+  // Inventory renders availability from the shared cache entry.
+  await expect(page.getByTestId("item-grid").getByText("10").first()).toBeVisible();
+
+  await page.getByRole("link", { name: "Orders", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Orders" })).toBeVisible();
+  await expect(page.getByTestId("order-card")).toHaveCount(1);
+
+  await page.getByRole("link", { name: "Inventory", exact: true }).click();
+  await expect(page.getByTestId("item-grid").getByText("10").first()).toBeVisible();
+
+  await page.getByRole("link", { name: "Overview", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+
+  await page.getByRole("link", { name: "Orders", exact: true }).click();
+  await expect(page.getByTestId("order-card")).toHaveCount(1);
+  // No Reload anywhere above: cache inside and outside stale time stays coherent.
+});
+
+test("network failure, reload, exact retry: no duplicates, no silent loss", async ({ page }) => {
+  test.setTimeout(90_000);
+  // P0-04: an aborted submit becomes uncertain, survives reload via the
+  // persisted store, surfaces a resume banner, and retries with the exact
+  // same body + idempotency key. A confirmed retry reconciles the cart.
+  await page.route("**/api/v1/auth/state", (r) =>
+    r.fulfill({ json: { loggedIn: true, user: { id: "owner", name: "Owner", owner: true, perms: { view: true, order: true } } } }),
+  );
+  await page.route("**/api/v1/stashes", (r) =>
+    r.fulfill({ json: [{ stash: "a", online: true }] }),
+  );
+  await page.route("**/api/v1/index*", (r) =>
+    r.fulfill({ json: { mcVersion: "26.3",
+      items: [{ key: "minecraft:dirt", id: "minecraft:dirt", name: "Dirt", count: 10, maxStack: 64, tab: "natural_blocks" }],
+      shulkers: [] } }),
+  );
+  await page.route("**/api/v1/orders?*", (r) =>
+    r.fulfill({ json: { orders: [], available: { items: { "minecraft:dirt": 10 }, shulkers: {} } } }),
+  );
+  const posted: { headers: Record<string, string>; body: any }[] = [];
+  let failNext = true;
+  await page.route("**/api/v1/orders", (r) => {
+    if (r.request().method() === "POST") {
+      posted.push({ headers: r.request().headers(), body: r.request().postDataJSON() });
+      if (failNext) {
+        failNext = false;
+        return r.abort("failed");
+      }
+      return r.fulfill({ json: { ok: true, order: { id: "o-retry1" } } });
+    }
+    return r.continue();
+  });
+
+  await page.goto("/inventory");
+  await page.getByTestId("item-grid").locator(".MuiCard-root").first().getByRole("button", { name: "Add" }).click();
+  await page.getByRole("button", { name: "Add to cart" }).click();
+  await page.getByRole("button", { name: /cart/i }).first().click();
+  await expect(page.locator("#cart-lines .cart-line")).toHaveCount(1);
+  await page.getByRole("button", { name: "Checkout" }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Review" }).click();
+  await page.getByRole("button", { name: "Place orders" }).click();
+  await expect(page.getByText("Uncertain — retry safely")).toBeVisible({ timeout: 10_000 });
+  expect(posted).toHaveLength(1);
+
+  // Reload: the uncertain outcome must not be silently lost.
+  await page.reload();
+  await expect(page.getByText("may or may not have reached the server")).toBeVisible({ timeout: 10_000 });
+  await page.getByRole("button", { name: "Review and retry" }).click();
+  await expect(page.getByText("Uncertain — retry safely")).toBeVisible();
+
+  // Exact retry: same body, same idempotency key, then cart reconciled.
+  await page.getByRole("button", { name: "Retry safely" }).click();
+  await expect(page.getByText("Confirmed o-retry1")).toBeVisible({ timeout: 10_000 });
+  expect(posted).toHaveLength(2);
+  expect(posted[1].body).toEqual(posted[0].body);
+  expect(posted[1].headers["idempotency-key"]).toBe(posted[0].headers["idempotency-key"]);
+  // Cart reconciled: the confirmed line is gone, the draft is empty, the
+  // resume banner cleared with it, and the cart button is inert.
+  await page.getByRole("button", { name: "Done" }).click();
+  await expect(page.getByText("may or may not have reached the server")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /cart/i }).first()).toBeDisabled();
 });

@@ -42,6 +42,8 @@ export function OperationsPage() {
   const loggedIn = !!auth.data?.loggedIn;
   const canActivity = loggedIn && (perms.can("activity") || perms.owner);
   const owner = !!auth.data?.loggedIn && perms.owner;
+  // Order audit is a backend ORDERS_ALL capability (officers included), not owner-only.
+  const canAudit = !!auth.data?.loggedIn && (perms.can("ordersAll") || perms.owner);
   const [tab, setTab] = useState(0);
 
   const ops = useOperations(canActivity);
@@ -54,7 +56,7 @@ export function OperationsPage() {
 
   const [auditQ, setAuditQ] = useState({ order: "", person: "", item: "", stash: "" });
   const [auditGo, setAuditGo] = useState({ order: "", person: "", item: "", stash: "" });
-  const audit = useAuditOrders(owner, { limit: 50, ...auditGo });
+  const audit = useAuditOrders(canAudit, { limit: 50, ...auditGo });
 
   const [inspectMsg, setInspectMsg] = useState("");
   async function inspect(op: any) {
@@ -118,21 +120,21 @@ export function OperationsPage() {
         </Grid>
       </Grid>
 
-      {owner && (
+      {(owner || canAudit) && (
         <Card>
-          <CardHeader title="Operator queues" subheader="Owner-only physical and fulfillment work" />
+          <CardHeader title="Operator queues" subheader={owner ? "Owner-only physical and fulfillment work" : "Order audit for your role"} />
           <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto" aria-label="Operator queues">
-            <Tab label={`Physical (${rowsOf(physical.data, "operations").length})`} />
-            <Tab label={`Jobs (${rowsOf(jobs.data, "jobs").length})`} />
-            <Tab label={`Handoffs (${rowsOf(handoffs.data, "handoffs").length})`} />
-            <Tab label={`Custody (${rowsOf(custody.data, "packages").length})`} />
-            <Tab label={`Deposits (${rowsOf(deposits.data, "deposits").length})`} />
-            <Tab label={`Box jobs (${rowsOf(boxJobs.data, "jobs").length})`} />
+            {owner && <Tab label={`Physical (${rowsOf(physical.data, "operations").length})`} />}
+            {owner && <Tab label={`Jobs (${rowsOf(jobs.data, "jobs").length})`} />}
+            {owner && <Tab label={`Handoffs (${rowsOf(handoffs.data, "handoffs").length})`} />}
+            {owner && <Tab label={`Custody (${rowsOf(custody.data, "packages").length})`} />}
+            {owner && <Tab label={`Deposits (${rowsOf(deposits.data, "deposits").length})`} />}
+            {owner && <Tab label={`Box jobs (${rowsOf(boxJobs.data, "jobs").length})`} />}
             <Tab label="Order audit" />
           </Tabs>
           <CardContent>
             {inspectMsg && <Alert severity="info" sx={{ mb: 1 }} onClose={() => setInspectMsg("")}>{inspectMsg}</Alert>}
-            {tab === 0 && (
+            {owner && tab === 0 && (
               <OpsTable
                 loading={physical.isLoading} error={physical.isError}
                 columns={["Operation", "State", "Revision", "Last seen", "Action"]}
@@ -145,7 +147,7 @@ export function OperationsPage() {
                 ])}
               />
             )}
-            {tab === 1 && (
+            {owner && tab === 1 && (
               <OpsTable
                 loading={jobs.isLoading} error={jobs.isError}
                 columns={["Job", "Category", "State", "Chain", "Updated"]}
@@ -155,7 +157,7 @@ export function OperationsPage() {
                 ])}
               />
             )}
-            {tab === 2 && (
+            {owner && tab === 2 && (
               <OpsTable
                 loading={handoffs.isLoading} error={handoffs.isError}
                 columns={["Handoff", "Order", "Recipient", "State", "Confirmed by"]}
@@ -165,7 +167,7 @@ export function OperationsPage() {
                 ])}
               />
             )}
-            {tab === 3 && (
+            {owner && tab === 3 && (
               <OpsTable
                 loading={custody.isLoading} error={custody.isError}
                 columns={["Package", "Order", "State", "Label", "Updated"]}
@@ -175,7 +177,7 @@ export function OperationsPage() {
                 ])}
               />
             )}
-            {tab === 4 && (
+            {owner && tab === 4 && (
               <OpsTable
                 loading={deposits.isLoading} error={deposits.isError}
                 columns={["Deposit", "Order", "Kind", "State", "Destination"]}
@@ -185,7 +187,7 @@ export function OperationsPage() {
                 ])}
               />
             )}
-            {tab === 5 && (
+            {owner && tab === 5 && (
               <OpsTable
                 loading={boxJobs.isLoading} error={boxJobs.isError}
                 columns={["Job", "State", "Server", "Stash", "Updated"]}
@@ -195,7 +197,7 @@ export function OperationsPage() {
                 ])}
               />
             )}
-            {tab === 6 && (
+            {((owner && tab === 6) || (!owner && tab === 0)) && (
               <Stack spacing={1.5}>
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={1} id="order-audit">
                   <TextField label="Order id" value={auditQ.order} onChange={(e) => setAuditQ({ ...auditQ, order: e.target.value })} size="small" />

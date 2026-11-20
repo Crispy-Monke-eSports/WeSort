@@ -49,8 +49,8 @@ import { useTheme } from "@mui/material/styles";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { api, idempotencyKey } from "../api/client";
-import { keys, useAuth, usePermissions, useStashes } from "../api/queries";
-import { IndexResponseSchema, OrdersResponseSchema, type IndexResponse, type OrdersResponse } from "../api/types";
+import { keys, ordersQueryOptions, useAuth, usePermissions, useStashes } from "../api/queries";
+import { IndexResponseSchema, type IndexResponse } from "../api/types";
 import {
   boxedContents,
   grouped,
@@ -117,7 +117,8 @@ export function InventoryPage() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const userId = auth.data?.user?.id ?? "anon";
-  const checkoutStore = useCheckout();
+  const getPending = useCheckout((s) => s.getPending);
+  const setPendingStore = useCheckout((s) => s.setPending);
 
   useEffect(() => {
     setCartScope(userId);
@@ -140,15 +141,8 @@ export function InventoryPage() {
     })),
   });
   const orderQueries = useQueries({
-    queries: stashList.map((s) => ({
-      queryKey: keys.orders(s.stash),
-      queryFn: async () =>
-        OrdersResponseSchema.parse(await api<unknown>(`/api/v1/orders?stash=${encodeURIComponent(s.stash)}`)) as OrdersResponse,
-      enabled: canView,
-      staleTime: 2_000,
-      retry: 1 as const,
-      refetchInterval: canView ? 15000 : false,
-    })),
+    // Same canonical entries as useAllOrders: OrdersResponse per stash.
+    queries: stashList.map((s) => ordersQueryOptions(s.stash, canView)),
   });
 
   const slices: SliceState[] = useMemo(
@@ -316,7 +310,15 @@ export function InventoryPage() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [step, setStep] = useState(0);
   const [placing, setPlacing] = useState(false);
-  const [groups, setGroups] = useState<CheckoutGroup[]>(() => checkoutStore.getPending(userId).filter((g) => g.status !== "confirmed"));
+  const [groups, setGroups] = useState<CheckoutGroup[]>(() => getPending(userId).filter((g) => g.status !== "confirmed"));
+  // Re-hydrate when the authenticated identity resolves (userId is "anon"
+  // while auth loads): never strand uncertain outcomes under the wrong key.
+  // Re-hydrate when the authenticated identity resolves (userId is "anon" while
+  // auth loads): only identity changes re-seed the view, so in-session
+  // confirmations are never stripped by a store update.
+  useEffect(() => {
+    setGroups(getPending(userId).filter((g) => g.status !== "confirmed"));
+  }, [userId, getPending]);
   const [purpose, setPurpose] = useState<"SELF" | "GUILD">("SELF");
   const [recipient, setRecipient] = useState("");
   const [comment, setComment] = useState("");
@@ -348,13 +350,13 @@ export function InventoryPage() {
   }
 
   function persist(next: CheckoutGroup[]) {
-    checkoutStore.setPending(userId, next);
+    setPendingStore(userId, next);
     setGroups(next);
   }
 
   async function submitGroup(g: CheckoutGroup): Promise<CheckoutGroup> {
     const working: CheckoutGroup = { ...g, status: "submitting", error: undefined };
-    persist(checkoutStore.getPending(userId).map((p) => (p.hash === g.hash && p.body.stash === g.body.stash ? working : p)));
+    persist(getPending(userId).map((p) => (p.hash === g.hash && p.body.stash === g.body.stash ? working : p)));
     try {
       const res = await api<{ ok: boolean; order: { id: string } }>("/api/v1/orders", {
         method: "POST",
@@ -362,7 +364,7 @@ export function InventoryPage() {
         body: g.body,
       });
       const done: CheckoutGroup = { ...working, status: "confirmed", orderId: res.order.id, updatedAt: Date.now() };
-      persist(checkoutStore.getPending(userId).map((p) => (p.hash === g.hash && p.body.stash === g.body.stash ? done : p)));
+      persist(getPending(userId).map((p) => (p.hash === g.hash && p.body.stash === g.body.stash ? done : p)));
       return done;
     } catch (e: any) {
       const status: number | undefined = e?.status;
@@ -375,7 +377,7 @@ export function InventoryPage() {
         status === 0 || status === undefined
           ? { ...working, status: "uncertain", error: "uncertain outcome", updatedAt: Date.now() }
           : { ...working, status: "rejected", error: e?.message ?? "failed", updatedAt: Date.now() };
-      persist(checkoutStore.getPending(userId).map((p) => (p.hash === g.hash && p.body.stash === g.body.stash ? failed : p)));
+      persist(getPending(userId).map((p) => (p.hash === g.hash && p.body.stash === g.body.stash ? failed : p)));
       return failed;
     }
   }
@@ -385,7 +387,7 @@ export function InventoryPage() {
     if (!cartLines.length || placing || !canOrder) return;
     setPlacing(true);
     const bodies = buildBodies();
-    const persisted = checkoutStore.getPending(userId);
+    const persisted = getPending(userId);
     // Reuse the stored key AND exact body on hash match (recipient/purpose/comment/names included).
     const merged: CheckoutGroup[] = bodies.map((body) => {
       const hash = payloadHash(body);
@@ -425,11 +427,15 @@ export function InventoryPage() {
   }
 
   async function retryExact(g: CheckoutGroup) {
-    await submitGroup(g);
+    // Same confirmation/cart reconciliation as the normal submit path, so a
+    // successful retry never leaves already-ordered lines in the draft.
+    const out = await submitGroup(g);
+    if (out.status === "confirmed") removeConfirmedLines(out.body);
+    queryClient.invalidateQueries({ queryKey: keys.orders(g.body.stash) });
   }
 
   function discard(hash: string) {
-    persist(checkoutStore.getPending(userId).filter((p) => p.hash !== hash));
+    persist(getPending(userId).filter((p) => p.hash !== hash));
   }
 
   const uncertainCount = groups.filter((g) => g.status === "uncertain").length;
@@ -495,6 +501,14 @@ export function InventoryPage() {
       )}
       {stashes.isError && canView && (
         <Alert severity="error">Could not load the stash list. Check the Manager connection and reload.</Alert>
+      )}
+      {uncertainCount > 0 && !checkoutOpen && (
+        <Alert
+          severity="warning"
+          action={<Button color="inherit" size="small" onClick={() => { setStep(3); setCheckoutOpen(true); }}>Review and retry</Button>}
+        >
+          {uncertainCount} stash order{uncertainCount === 1 ? "" : "s"} may or may not have reached the server (network failure or reload). Retry reuses the exact same request and idempotency key — no duplicates.
+        </Alert>
       )}
 
       <Grid container spacing={2}>

@@ -1,4 +1,4 @@
-import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient, type UseQueryOptions } from "@tanstack/react-query";
 import { api } from "./client";
 import {
   AuthStateSchema,
@@ -257,27 +257,43 @@ export interface StashOrder {
 }
 
 /**
- * Orders across all visible stashes, newest first. A stash whose API fails is
- * reported in `failedStashes` — never silently treated as an empty order list.
+ * Canonical per-stash orders cache entry: every consumer reads the same
+ * `OrdersResponse` under `keys.orders(stash)` and transforms afterwards.
+ * (Two shapes under one key previously let Inventory and Orders poison
+ * each other's cache on SPA navigation.)
+ */
+export function ordersQueryOptions(stash: string, enabled: boolean): UseQueryOptions<OrdersResponse> {
+  return {
+    queryKey: keys.orders(stash),
+    queryFn: async () =>
+      OrdersResponseSchema.parse(
+        await api<unknown>(`/api/v1/orders?stash=${encodeURIComponent(stash)}`),
+      ) as OrdersResponse,
+    enabled,
+    staleTime: 2_000,
+    retry: 1 as const,
+    refetchInterval: enabled ? 15000 : false,
+  };
+}
+
+/**
+ * Orders across all visible stashes, newest first. Reads the canonical
+ * `OrdersResponse` cache entries (shared with Inventory) and projects them
+ * to `StashOrder[]`. A stash whose API fails is reported in `failedStashes`
+ * — never silently treated as an empty order list.
  */
 export function useAllOrders(
   stashes: { stash: string }[],
   enabled: boolean,
 ): { orders: StashOrder[]; failedStashes: string[]; loading: boolean } {
   const results = useQueries({
-    queries: stashes.map((s) => ({
-      queryKey: keys.orders(s.stash),
-      queryFn: async () => {
-        const d = OrdersResponseSchema.parse(
-          await api<unknown>(`/api/v1/orders?stash=${encodeURIComponent(s.stash)}`),
-        ) as OrdersResponse;
-        return (d.orders ?? []).map((o: any) => ({ ...o, stash: s.stash }) as StashOrder);
-      },
-      enabled,
-      staleTime: 5_000,
-      retry: 1 as const,
-      refetchInterval: enabled ? 15000 : false,
-    })),
+    queries: stashes.map(
+      (s): UseQueryOptions<OrdersResponse, Error, StashOrder[]> => ({
+        ...ordersQueryOptions(s.stash, enabled),
+        select: (d: OrdersResponse) =>
+          (d.orders ?? []).map((o: any) => ({ ...o, stash: s.stash }) as StashOrder),
+      }),
+    ),
   });
   const orders = results
     .flatMap((r: { data?: StashOrder[] }) => r.data ?? [])

@@ -355,11 +355,13 @@ public final class InventorySync {
                 }
                 // An announced placement against this exact cell: durable intent with the
                 // placed block before the packet leaves (W-061 journal ordering). The slot
-                // clears on the first own UseItemOn whether it matches or not.
+                // clears only on a matching own UseItemOn: an interleaved use against another
+                // cell (survey open, sign click, recovery reopen) must not eat another job's
+                // announced placement. Stale slots are still bounded: every announce site
+                // clears explicitly when its place call fails, and only a placement into the
+                // announced cell can consume it.
                 BlockPos want = expectSpot;
                 String placing = expectBlock;
-                expectSpot = null;
-                expectBlock = null;
                 if (want != null
                         && placing != null
                         && !placing.isEmpty()
@@ -367,6 +369,8 @@ public final class InventorySync {
                                 .getBlockPos()
                                 .relative(use.hitResult().getDirection())
                                 .equals(want)) {
+                    expectSpot = null;
+                    expectBlock = null;
                     blocks.put(
                             use.sequence(),
                             new BlockExpected(use.sequence(), want, placing, System.nanoTime() + 8_000_000_000L));

@@ -66,7 +66,15 @@ public final class WorldTestDriver {
 
     static void physicalPhasePersisted(String phase) {
         var driver = instance;
-        if (driver == null || !phase.equals(driver.crashPhysicalPhase)) return;
+        if (driver == null) return;
+        try {
+            // Every durable phase leaves a stamped marker, so a missed arming window still
+            // names the last durable phase instead of timing out blindly.
+            Files.writeString(driver.control.resolve("physical-crash-" + phase), phase);
+        } catch (java.io.IOException ignored) {
+            // Marker files are diagnostics only; the journal itself is already durable.
+        }
+        if (!phase.equals(driver.crashPhysicalPhase)) return;
         try {
             Files.writeString(driver.control.resolve("physical-crash-ready"), phase);
             // The isolated harness kills this process after observing the marker.

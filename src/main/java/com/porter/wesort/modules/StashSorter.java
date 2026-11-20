@@ -6689,7 +6689,14 @@ public class StashSorter extends Module {
                 case Leave -> com.porter.wesort.inventory.PhysicalWork.Phase.SELECT;
             };
             if (repacking) repackWork.enter(phase, System.nanoTime());
-            journalShulkerPhase(phase);
+            // The durable journal phase must reflect a durable fact: OPEN is only persisted once
+            // the placed shulker is confirmed in the world. BlockUtils.place defers the real
+            // interact into a rotation callback, so the schedule (handle = Open) precedes the
+            // packet — and the crash marker arms on the journal phase. Persisting OPEN early
+            // would arm the crash on a placement whose packet (and durable intent) never left.
+            boolean openConfirmed =
+                    phase != com.porter.wesort.inventory.PhysicalWork.Phase.OPEN || placed == null || placedConfirmed;
+            if (openConfirmed) journalShulkerPhase(phase);
             if (PhysicalJournalRuntime.blocked()) return;
         }
         handleTicks++;

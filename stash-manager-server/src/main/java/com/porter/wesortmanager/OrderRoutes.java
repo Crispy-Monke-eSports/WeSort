@@ -154,6 +154,18 @@ final class OrderRoutes {
             Http.error(ex, 400, "lines must be an array");
             return;
         }
+        // Explicit offline queue: only a requester that opts in may reserve against
+        // last-verified counts when verified stock falls short. Absent or false, an
+        // expired source fails with the original shortage (400/409, no order row).
+        boolean queueWhenStale = false;
+        if (o.has("queueWhenStale")) {
+            var flag = o.get("queueWhenStale");
+            if (!flag.isJsonPrimitive() || !flag.getAsJsonPrimitive().isBoolean()) {
+                Http.error(ex, 400, "queueWhenStale must be a boolean");
+                return;
+            }
+            queueWhenStale = flag.getAsBoolean();
+        }
         JsonArray raw = o.getAsJsonArray("lines");
         if (raw.size() > OrderStore.MAX_LINES) {
             Http.error(ex, 400, "at most " + OrderStore.MAX_LINES + " lines");
@@ -197,7 +209,8 @@ final class OrderRoutes {
                     intent,
                     idempotencyKey(ex),
                     profile.approvalPolicy().requiresApproval(intent),
-                    draft -> resolveRecipient(who, draft));
+                    draft -> resolveRecipient(who, draft),
+                    queueWhenStale);
             OrderStore.Order order = submission.order();
             if (submission.created())
                 audit.add(who, "order.place", order.id + " " + intent.purpose().name(), AuthRoutes.address(ex));

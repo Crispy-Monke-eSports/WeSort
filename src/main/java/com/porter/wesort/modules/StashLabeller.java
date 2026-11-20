@@ -975,6 +975,11 @@ final class StashLabeller {
             for (BlockPos p : Containers.signSpots(box)) if (signThere(p)) preexisting.add(p);
             // W-061: this job puts its sign into this empty cell, nothing else.
             com.porter.wesort.compat.WorldInteractionGuard.authorizePlace(spot);
+            com.porter.wesort.compat.InventorySync.expectPlacement(
+                    spot,
+                    net.minecraft.core.registries.BuiltInRegistries.ITEM
+                            .getKey(mc.player.getMainHandItem().getItem())
+                            .toString());
             mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, hit);
             mc.player.swing(InteractionHand.MAIN_HAND);
             clickAge = age;

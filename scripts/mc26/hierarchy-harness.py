@@ -320,18 +320,26 @@ class HierarchyHarness(stock.StockHarness):
         self.run(cli + ['agent-require-scoped'])
         # The stash-def gate is fail-closed: in-scope heartbeats for a second
         # stash need its definition (the owner session from start_manager persists).
-        status, _ = self.http('/api/v1/stash-defs', {'action': 'create', 'name': 'secondary-fixture',
-            'dimension': 'minecraft:overworld',
-            'pos1': {'x': -32, 'y': 40, 'z': -32}, 'pos2': {'x': 63, 'y': 90, 'z': 32}})
-        require(status == 200, 'secondary-fixture stash def failed: %s' % status)
+        # other-stash is likewise defined so the second credential's own-scope
+        # heartbeat is meaningful; unassigned-fixture stays undefined on purpose.
+        for name in ('secondary-fixture', 'other-stash'):
+            status, _ = self.http('/api/v1/stash-defs', {'action': 'create', 'name': name,
+                'dimension': 'minecraft:overworld',
+                'pos1': {'x': -32, 'y': 40, 'z': -32}, 'pos2': {'x': 63, 'y': 90, 'z': 32}})
+            require(status == 200, '%s stash def failed: %s' % (name, status))
         heartbeat = {'server': self.server_name, 'stash': 'e2e-fixture', 'player': self.player}
         require(shared.post('/api/v1/heartbeat', heartbeat)[0] == 401, 'Shared credential survived scoped-only activation')
         require(old.post('/api/v1/heartbeat', heartbeat)[0] == 401, 'Rotated credential could still act')
         require(current.post('/api/v1/heartbeat', heartbeat)[0] == 200, 'Current credential could not read its warehouse heartbeat')
         require(current.post('/api/v1/heartbeat', dict(heartbeat, stash='secondary-fixture'))[0] == 200,
                 'One credential could not reach its second stash')
-        require(current.post('/api/v1/heartbeat', dict(heartbeat, stash='unassigned-fixture'))[0] == 403,
-                'One credential could reach an unassigned stash')
+        # No per-stash ownership: every authorized bot may work in every DEFINED stash.
+        # An undefined stash name is fail-closed 404, never silently accepted (and never 200
+        # with an empty directive). The 403s in this suite are identity mismatches, not location.
+        require(current.post('/api/v1/heartbeat', dict(heartbeat, stash='unassigned-fixture'))[0] == 404,
+                'Undefined stash was not refused with 404')
+        require(current.post('/api/v1/heartbeat', dict(heartbeat, server='evil-server'))[0] == 409,
+                'Heartbeat from a foreign server was not refused with 409')
         require(foreign.post('/api/v1/heartbeat', heartbeat)[0] == 403, 'Agent accessed another stash')
         unauthorized = {'server': self.server_name, 'stash': 'other-stash', 'player': 'OtherBot'}
         require(foreign.post('/api/v1/heartbeat', unauthorized)[0] == 200, 'Second credential was unusable in its own scope')

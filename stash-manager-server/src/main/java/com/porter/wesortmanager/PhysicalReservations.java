@@ -31,7 +31,8 @@ final class PhysicalReservations {
             long count,
             String fingerprint,
             long revision,
-            boolean fresh) {
+            boolean fresh,
+            boolean queueable) {
         String reference() {
             return item.isEmpty() ? "shulker:" + shulker : "item:" + item;
         }
@@ -62,6 +63,13 @@ final class PhysicalReservations {
             String id = value.get("id").getAsString();
             if (sources.putIfAbsent(id, source) != null) continue;
             boolean fresh = source.status().equals("FRESH");
+            // The offline queue may only fall back to last-verified counts from sources whose
+            // last observation is intact but aged (or pending a first post-restart rescan). An
+            // explicitly invalidated source (STALE), an unreachable/missing one, a withdrawn or
+            // protected one, or a superseded topology must never back even a queued reservation.
+            boolean queueable = fresh
+                    || source.status().equals("STALE_AGE")
+                    || source.status().equals("STALE_STARTUP");
             for (var slot : ledger.physicalSlots(id)) {
                 if (!slot.get("present").getAsBoolean()) continue;
                 String path = slot.get("path").getAsString();
@@ -78,7 +86,8 @@ final class PhysicalReservations {
                                 slot.get("copies").getAsLong()),
                         slot.get("fingerprint").getAsString(),
                         slot.get("revision").getAsLong(),
-                        fresh));
+                        fresh,
+                        queueable));
             }
         }
         return new PhysicalReservations(List.copyOf(candidates), Map.copyOf(sources));
@@ -111,6 +120,7 @@ final class PhysicalReservations {
             long remaining = line.count();
             for (var candidate : candidates) {
                 if ((!allowStale && !candidate.fresh())
+                        || (allowStale && !candidate.queueable())
                         || !candidate.reference().equals(line.ref())) continue;
                 var allocation = candidate.allocate(line.ref(), Math.min(remaining, candidate.count()));
                 var existing = used.get(allocation.root());
@@ -159,6 +169,7 @@ final class PhysicalReservations {
         var totals = new HashMap<String, Long>();
         for (var candidate : source == null ? candidates : bySource.getOrDefault(source, List.of())) {
             if (!allowStale && !candidate.fresh()) continue;
+            if (allowStale && !candidate.queueable()) continue;
             String ref = candidate.reference();
             if (!held.contains(candidate.allocate(ref, 0).root())) totals.merge(ref, candidate.count(), Math::addExact);
         }

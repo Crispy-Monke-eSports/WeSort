@@ -112,6 +112,7 @@ final class OrderStore {
         String placedByName; // the name at the time
         String retriedAs; // the order this one was placed again as (Retry, or the planner's "order part again"), or
         // null
+        boolean queuedOffline; // true when reserved against last-verified (stale) counts via the explicit offline queue
         private JsonArray history = new JsonArray();
 
         void record(String action, String actor, long time) {
@@ -216,6 +217,7 @@ final class OrderStore {
             o.addProperty("updatedAt", updatedAt);
             o.addProperty("status", status);
             o.addProperty("state", stage().name());
+            o.addProperty("queuedOffline", queuedOffline);
             o.addProperty("phase", phase);
             o.add("progress", progress == null ? null : progress.deepCopy());
             o.addProperty("message", message);
@@ -284,6 +286,7 @@ final class OrderStore {
                 r.packageLabel = null;
             }
             r.packageTotal = o.has("packageTotal") ? o.get("packageTotal").getAsInt() : 0;
+            r.queuedOffline = o.has("queuedOffline") && o.get("queuedOffline").getAsBoolean();
             r.createdAt = o.get("createdAt").getAsLong();
             r.updatedAt = o.get("updatedAt").getAsLong();
             r.status = o.get("status").getAsString();
@@ -661,6 +664,30 @@ final class OrderStore {
         return place(server, stash, requested, names, byId, byName, null, OrderIntent.DEFAULT);
     }
 
+    /**
+     * The same with an explicit offline-queue request: when verified counts fall short, the order
+     * may be queued as pending against last-verified counts instead of failing. Without the flag
+     * an expired source keeps its shortage (400/409, no order row).
+     */
+    Order place(String server, String stash, List<Line> requested, JsonObject names, boolean queueWhenStale)
+            throws OrderException, IOException {
+        return submit(
+                        server,
+                        stash,
+                        requested,
+                        names,
+                        null,
+                        null,
+                        null,
+                        null,
+                        OrderIntent.DEFAULT,
+                        null,
+                        false,
+                        ignored -> null,
+                        queueWhenStale)
+                .order();
+    }
+
     Order place(
             String server,
             String stash,
@@ -729,6 +756,37 @@ final class OrderStore {
             boolean needsApproval,
             RecipientResolver recipient)
             throws OrderException, IOException {
+        return submit(
+                server,
+                stash,
+                requested,
+                names,
+                packageLabel,
+                byId,
+                byName,
+                organizationId,
+                intent,
+                idempotencyKey,
+                needsApproval,
+                recipient,
+                false);
+    }
+
+    Submission submit(
+            String server,
+            String stash,
+            List<Line> requested,
+            JsonObject names,
+            JsonObject packageLabel,
+            String byId,
+            String byName,
+            String organizationId,
+            OrderIntent intent,
+            String idempotencyKey,
+            boolean needsApproval,
+            RecipientResolver recipient,
+            boolean queueWhenStale)
+            throws OrderException, IOException {
         synchronized (index) {
             String key = null, fingerprint = null;
             if (idempotencyKey != null) {
@@ -740,6 +798,7 @@ final class OrderStore {
                 body.add("names", names == null ? JsonNull.INSTANCE : names);
                 body.add("packageLabel", packageLabel == null ? JsonNull.INSTANCE : packageLabel);
                 body.add("intent", Json.GSON.toJsonTree(intent));
+                body.addProperty("queueWhenStale", queueWhenStale);
                 fingerprint = hash(body);
                 var saved = previouslyReceived(key);
                 if (saved != null) return new Submission(replay(saved, fingerprint), false);
@@ -759,7 +818,8 @@ final class OrderStore {
                             fingerprint,
                             null,
                             needsApproval,
-                            recipient.resolve(intent)),
+                            recipient.resolve(intent),
+                            queueWhenStale),
                     true);
         }
     }
@@ -778,7 +838,8 @@ final class OrderStore {
             String fingerprint,
             Order retryOf,
             boolean needsApproval,
-            String recipient)
+            String recipient,
+            boolean queueWhenStale)
             throws OrderException, IOException {
         if (index.automation().current(server) != null)
             throw new OrderException(409, "Physical sorting active or awaiting reconciliation", -1);
@@ -853,10 +914,12 @@ final class OrderStore {
                     held,
                     false);
         } catch (OrderException shortfall) {
-            if (!isShortage(shortfall)) throw shortfall;
-            // No bot online: the sources went stale, so verified counts read zero. Queue against the
-            // last-verified counts instead. Claim still requires a fresh observation, so the bot
-            // re-verifies before it touches anything. Ported from PR #89.
+            // The offline queue is explicit, never silent: only a caller that opts in with
+            // queueWhenStale may fall back to last-verified counts. An expired source on the
+            // default path keeps the original shortage (400/409, no order row), so stale stock
+            // is never reserved behind the requester's back. Claim still requires a fresh
+            // observation, so the bot re-verifies before it touches anything. Ported from PR #89.
+            if (!queueWhenStale || !isShortage(shortfall)) throw shortfall;
             IndexStore.OrderCounts stale = index.orderCountsIncludingStale(server, stash);
             if (stale == null) throw shortfall;
             try {
@@ -952,6 +1015,10 @@ final class OrderStore {
             o.packageLabel = packageLabel == null ? null : packageLabel.deepCopy();
             o.packageTotal = (int) shulkers;
             o.allocations = allocations;
+            // A stale-backed reservation is an explicitly queued offline order, never a
+            // verified reservation: visibly marked in every API response, and unclaimable
+            // until a fresh observation re-verifies it (claim path stays fresh-only).
+            o.queuedOffline = allowStale;
             o.sourceGuards = sourceGuards(server, stash);
             o.createdAt = now;
             o.updatedAt = now;
@@ -1035,7 +1102,8 @@ final class OrderStore {
                         null,
                         old,
                         policy.requiresApproval(old.intent),
-                        recipient.resolve(old.intent));
+                        recipient.resolve(old.intent),
+                        false);
             }
         }
     }

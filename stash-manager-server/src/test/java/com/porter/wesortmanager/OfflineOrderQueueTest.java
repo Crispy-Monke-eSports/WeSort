@@ -67,8 +67,9 @@ class OfflineOrderQueueTest {
     @Test
     void orderQueuesWhileStaleAndIsClaimedOnlyWhenFresh() throws Exception {
         goStale();
-        OrderStore.Order queued = orders.place("s", "a", diamonds(10), null);
+        OrderStore.Order queued = orders.place("s", "a", diamonds(10), null, true);
         assertEquals("pending", queued.status);
+        assertTrue(queued.queuedOffline);
 
         // Nothing verified: the bot has nothing it may run yet.
         assertNull(orders.claimPayload("s", "a", "agent-1"));
@@ -82,6 +83,19 @@ class OfflineOrderQueueTest {
         var payload = orders.claimPayload("s", "a", "agent-1");
         assertEquals(queued.id, payload.get("id").getAsString());
         assertEquals("accepted", payload.get("status").getAsString());
+    }
+
+    @Test
+    void staleOrderIsDeniedByDefaultAndCreatesNoOrder() throws Exception {
+        goStale();
+        // The default path never queues silently: an expired source keeps its shortage and no
+        // order row is created, so expired stock cannot be reserved behind the requester's back.
+        OrderStore.OrderException denied =
+                assertThrows(OrderStore.OrderException.class, () -> orders.place("s", "a", diamonds(1), null));
+        assertTrue(denied.status == 400 || denied.status == 409, "stale order denied, got " + denied.status);
+        assertEquals(
+                0,
+                orders.listJson("s", "a").getAsJsonArray("orders").size());
     }
 
     @Test

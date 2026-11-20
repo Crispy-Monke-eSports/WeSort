@@ -7164,7 +7164,9 @@ public class StashSorter extends Module {
             // Hand the controller back cleanly: without an explicit stop, vanilla keeps the
             // destroy state set and every later stop/continue re-checks the stale target
             // against an expired permit (break-no-permit storm in Collect with no live permit).
-            com.porter.wesort.compat.WorldInteractionGuard.authorizeBreak(placed);
+            // Finish the previously authorized START; never reissue a BREAK
+            // permit against client-predicted air (that overwrites the original
+            // exact shulker permit before STOP_DESTROY_BLOCK is sent).
             mc.gameMode.stopDestroyBlock();
             handle = Handle.Collect;
             handleTicks = 0;

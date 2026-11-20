@@ -4,7 +4,7 @@
 FROM oven/bun:1 AS frontend
 WORKDIR /workspace
 COPY web/package.json web/bun.lock web/
-COPY web/index.html web/vite.config.ts web/tsconfig.json web/tailwind.config.js web/postcss.config.js web/vitest.config.ts web/playwright.config.ts web/
+COPY web/index.html web/vite.config.ts web/tsconfig.json web/vitest.config.ts web/playwright.config.ts web/
 COPY web/src/ web/src/
 COPY web/e2e/ web/e2e/
 COPY stash-manager-server/src/main/resources/web/ stash-manager-server/src/main/resources/web/

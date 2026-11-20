@@ -174,9 +174,9 @@ export function OrdersPage() {
             <Typography variant="h4" gutterBottom>Order administration</Typography>
             <Stack spacing={1}>
               {visible.map((s) => (
-                <Stack key={s.stash} direction="row" spacing={1} sx={{ alignItems: "center" }}>
-                  <Typography variant="body2" sx={{ fontFamily: "monospace", flexGrow: 1 }}>{s.stash}</Typography>
-                  <Button variant="outlined" size="small" onClick={() => clearFinished(s.stash)}>Clear finished</Button>
+                <Stack key={s.stash} direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ alignItems: { sm: "center" } }}>
+                  <Typography variant="body2" sx={{ fontFamily: "monospace", flexGrow: 1, wordBreak: "break-all" }}>{s.stash}</Typography>
+                  <Box><Button variant="outlined" size="small" onClick={() => clearFinished(s.stash)}>Clear finished</Button></Box>
                 </Stack>
               ))}
             </Stack>

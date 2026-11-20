@@ -77,8 +77,9 @@ export const StashRefSchema = z.object({
   crafting: z.object({ enabled: z.boolean().default(false) }).nullable().optional(),
   deliveryStorage: z.unknown().nullable().optional(),
   orderBlocker: z.string().nullable().optional(),
-  rescanPending: z.boolean().default(false),
-  rescanBlocked: z.boolean().default(false),
+  // Java serializes these stall flags as booleans or epoch timestamps (or explicit nulls).
+  rescanPending: z.union([z.boolean(), z.number()]).nullish().transform((v) => (typeof v === "number" ? v > 0 : (v ?? false))),
+  rescanBlocked: z.union([z.boolean(), z.number()]).nullish().transform((v) => (typeof v === "number" ? v > 0 : (v ?? false))),
   owner: z.string().nullable().optional(),
   conflict: z.unknown().nullable().optional(),
   orders: StashSummarySchema.optional(),

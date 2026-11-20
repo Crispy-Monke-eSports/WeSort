@@ -103,14 +103,15 @@ function ServerSection() {
   return (
     <Stack spacing={2}>
       <Typography color="text.secondary">
-        The single server this Manager serves{server.data?.server ? `: ` : " (not set yet)"}
-        {server.data?.server && <Typography component="span" sx={{ fontFamily: "monospace" }}>{server.data.server}</Typography>}.
-        The bot only sends its stash name; the server is fixed here.
+        The single server this Manager serves. The bot only sends its stash name; the server is fixed here.
+      </Typography>
+      <Typography>
+        Configured: <Typography component="span" sx={{ fontFamily: "monospace" }}>{server.data?.server || "(not set yet)"}</Typography>
       </Typography>
       {perms.owner ? (
-        <Stack direction="row" spacing={1}>
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
           <TextField label="Minecraft server" value={value} onChange={(e) => setValue(e.target.value)} size="small" fullWidth sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }} placeholder="e.g. play.example.com" />
-          <Button variant="contained" onClick={save}>Save server</Button>
+          <Button variant="contained" onClick={save} sx={{ flexShrink: 0 }}>Save server</Button>
         </Stack>
       ) : (
         <Typography color="text.secondary">Only the owner can set the server.</Typography>

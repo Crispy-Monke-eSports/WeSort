@@ -202,11 +202,16 @@ export function InventoryPage() {
     return [...byKey.values()];
   }, [slices]);
 
-  const orderableOf = (key: string): number => {
-    // Loose net availability plus whole single-content boxes (mixed boxes never auto-pack).
+  /**
+   * Guild-wide orderable units, or null when reservation state is UNKNOWN
+   * (orders API failed: never present uncertain stock as orderable or as empty).
+   */
+  const orderableOf = (key: string): number | null => {
+    let unknown = false;
     let looseTotal = 0;
     let exact = 0;
     for (const s of slices) {
+      if (!s.ordersOk) { unknown = true; continue; }
       looseTotal += Math.max(0, (s.availableItems[key] ?? 0) - looseInCart(s.stash, key));
       for (const b of s.shulkers) {
         if (!isSingleContent(b, key)) continue;
@@ -215,6 +220,7 @@ export function InventoryPage() {
         exact += perBox * Math.max(0, b.count - packedInCart(s.stash, b.key));
       }
     }
+    if (unknown && looseTotal + exact <= 0) return null;
     return looseTotal + exact;
   };
 
@@ -226,8 +232,8 @@ export function InventoryPage() {
       return tokens.every((t) => hay.includes(t));
     });
     if (cat !== "all") shown = shown.filter((e) => (e.tab ?? "other") === cat);
-    if (avail === "orderable") shown = shown.filter((e) => orderableOf(e.key) > 0);
-    else if (avail === "empty") shown = shown.filter((e) => orderableOf(e.key) <= 0);
+    if (avail === "orderable") shown = shown.filter((e) => (orderableOf(e.key) ?? 0) > 0);
+    else if (avail === "empty") shown = shown.filter((e) => orderableOf(e.key) !== null && (orderableOf(e.key) ?? 0) <= 0);
     else if (avail === "unverified") shown = shown.filter((e) => slices.some((s) => !s.ordersOk || !s.indexOk));
     shown.sort((a, b) => sort === "name"
       ? (a.name ?? a.id).localeCompare(b.name ?? b.id)
@@ -246,6 +252,8 @@ export function InventoryPage() {
   const cartLines = cart.lines();
   const packedInCart = (stash: string, boxKey: string) =>
     cartLines.filter((l) => l.type === "shulker" && l.stash === stash && l.key === boxKey).reduce((a, l) => a + l.count, 0);
+  const inCartTotal = (key: string) =>
+    cartLines.filter((l) => l.key === key).reduce((a, l) => a + l.count, 0);
   const looseInCart = (stash: string, key: string) =>
     cartLines.filter((l) => l.type === "item" && l.stash === stash && l.key === key).reduce((a, l) => a + l.count, 0);
 
@@ -485,6 +493,9 @@ export function InventoryPage() {
       {!serverOk(slices) && canView && (
         <Alert severity="warning">Some stash data is unavailable — availability below may be partial. Failed stashes are marked per row.</Alert>
       )}
+      {stashes.isError && canView && (
+        <Alert severity="error">Could not load the stash list. Check the Manager connection and reload.</Alert>
+      )}
 
       <Grid container spacing={2}>
         {!isMobile && (
@@ -496,9 +507,11 @@ export function InventoryPage() {
           </Grid>
         )}
         <Grid size={{ xs: 12, md: 9, lg: 10 }}>
-          {!isMobile && (
-            <TextField label="Search items" value={q} onChange={(e) => setQ(e.target.value)} size="small" sx={{ mb: 2, maxWidth: 420 }} placeholder="diamond, redstone…" />
-          )}
+          <TextField
+            label="Search items" value={q} onChange={(e) => setQ(e.target.value)} size="small" fullWidth
+            sx={{ mb: 2, maxWidth: 420 }}
+            placeholder="diamond, redstone…"
+          />
           {loading ? (
             <Grid container spacing={2}>{[0, 1, 2, 3, 4, 5].map((i) => <Grid key={i} size={{ xs: 12, sm: 6, lg: 4 }}><Skeleton variant="rounded" height={180} /></Grid>)}</Grid>
           ) : indexFailed ? (
@@ -507,7 +520,7 @@ export function InventoryPage() {
             <Grid container spacing={2} data-testid="item-grid">
               {items.slice(0, 120).map((e) => (
                 <Grid key={e.key} size={{ xs: 12, sm: 6, lg: 4, xl: 3 }}>
-                  <ItemCard item={e} slices={slices} mcVersion={mcVersion} onBuy={() => setBuy(e)} canOrder={canOrder} orderable={orderableOf(e.key)} />
+                  <ItemCard item={e} slices={slices} mcVersion={mcVersion} onBuy={() => setBuy(e)} canOrder={canOrder} orderable={orderableOf(e.key)} inCart={inCartTotal(e.key)} />
                 </Grid>
               ))}
             </Grid>
@@ -527,7 +540,7 @@ export function InventoryPage() {
                 </TableHead>
                 <TableBody>
                   {items.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((e) => (
-                    <InventoryRow key={e.key} item={e} slices={slices} mcVersion={mcVersion} onBuy={() => setBuy(e)} canOrder={canOrder} orderable={orderableOf(e.key)} />
+                  <InventoryRow key={e.key} item={e} slices={slices} mcVersion={mcVersion} onBuy={() => setBuy(e)} canOrder={canOrder} orderable={orderableOf(e.key)} inCart={inCartTotal(e.key)} />
                   ))}
                 </TableBody>
               </Table>
@@ -556,7 +569,7 @@ export function InventoryPage() {
         </Box>
       </Drawer>
 
-      <BuyDialog item={buy} slices={slices} mcVersion={mcVersion} canOrder={canOrder} onClose={() => setBuy(null)} onAdd={(n) => { if (buy && addToCart(buy.key, n)) setBuy(null); }} />
+      <BuyDialog item={buy} slices={slices} mcVersion={mcVersion} canOrder={canOrder} remaining={buy ? (orderableOf(buy.key) ?? 0) : 0} onClose={() => setBuy(null)} onAdd={(n) => { if (buy && addToCart(buy.key, n)) setBuy(null); }} />
       <CartDrawer
         open={cartOpen} onClose={() => setCartOpen(false)} lines={cartLines} slices={slices}
         onCheckout={() => { setCartOpen(false); setStep(0); setCheckoutOpen(true); }}
@@ -578,7 +591,7 @@ function serverOk(slices: SliceState[]): boolean {
   return slices.every((s) => s.indexOk && s.ordersOk);
 }
 
-function AvailabilityLine({ item, slices }: { item: MergedItem; slices: SliceState[] }) {
+function AvailabilityLine({ item, slices, orderable, inCart }: { item: MergedItem; slices: SliceState[]; orderable: number | null; inCart: number }) {
   const av = useMemo(() => {
     let loose = 0;
     let boxed = 0;
@@ -593,21 +606,25 @@ function AvailabilityLine({ item, slices }: { item: MergedItem; slices: SliceSta
     }
     return { loose, boxed, mixed, verified };
   }, [item, slices]);
+  // Headline is cart-adjusted (what you can still add); breakdown is observed stock.
+  const headline = orderable ?? av.loose + av.boxed;
   return (
     <Typography variant="body2" color="text.secondary">
-      <Typography component="span" sx={{ fontWeight: 700, color: "text.primary" }}>{grouped(av.loose + av.boxed)}</Typography> orderable
+      <Typography component="span" sx={{ fontWeight: 700, color: "text.primary" }}>{orderable === null ? "?" : grouped(headline)}</Typography> orderable
       <Typography component="span" variant="caption" sx={{ display: "block" }}>
         {grouped(av.loose)} loose{av.boxed > 0 ? ` · ${grouped(av.boxed)} in whole boxes` : ""}{av.mixed > 0 ? ` · ${grouped(av.mixed)} in mixed boxes` : ""}
         {!av.verified ? " · unverified" : ""}
+        {inCart > 0 ? ` · ${grouped(inCart)} in draft` : ""}
       </Typography>
     </Typography>
   );
 }
 
-function ItemCard({ item, slices, mcVersion, onBuy, canOrder, orderable }: {
-  item: MergedItem; slices: SliceState[]; mcVersion: string | null; onBuy: () => void; canOrder: boolean; orderable: number;
+function ItemCard({ item, slices, mcVersion, onBuy, canOrder, orderable, inCart }: {
+  item: MergedItem; slices: SliceState[]; mcVersion: string | null; onBuy: () => void; canOrder: boolean; orderable: number | null; inCart: number;
 }) {
   const stale = slices.some((s) => s.online === false);
+  const unknown = orderable === null;
   return (
     <Card sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <CardContent sx={{ flexGrow: 1 }}>
@@ -619,17 +636,19 @@ function ItemCard({ item, slices, mcVersion, onBuy, canOrder, orderable }: {
           </Box>
         </Stack>
         <Box sx={{ mt: 1 }}>
-          <AvailabilityLine item={item} slices={slices} />
+          <AvailabilityLine item={item} slices={slices} orderable={orderable} inCart={inCart} />
         </Box>
         <Stack direction="row" spacing={1} sx={{ mt: 1, alignItems: "center" }}>
-          {orderable > 0 && !stale && <Chip size="small" color="success" label="Orderable" />}
+          {unknown && <Chip size="small" variant="outlined" label="Unverified" />}
+          {!unknown && (orderable ?? 0) > 0 && !stale && inCart <= 0 && <Chip size="small" color="success" label="Orderable" />}
+          {!unknown && (orderable ?? 0) > 0 && !stale && inCart > 0 && <Chip size="small" color="info" label="In draft" />}
           {stale && <Chip size="small" color="warning" variant="outlined" label="Stale — bot offline" />}
           {slices.some((s) => !s.ordersOk || !s.indexOk) && <Chip size="small" variant="outlined" label="Unverified" />}
-          {orderable <= 0 && <Chip size="small" label="Empty" />}
+          {!unknown && (orderable ?? 0) <= 0 && <Chip size="small" label="Empty" />}
         </Stack>
       </CardContent>
       <CardActions>
-        <Button size="small" variant="contained" startIcon={<AddShoppingCartIcon />} onClick={onBuy} disabled={!canOrder || orderable <= 0}>
+        <Button size="small" variant="contained" startIcon={<AddShoppingCartIcon />} onClick={onBuy} disabled={!canOrder || (orderable ?? 0) <= 0}>
           Add
         </Button>
       </CardActions>
@@ -637,8 +656,8 @@ function ItemCard({ item, slices, mcVersion, onBuy, canOrder, orderable }: {
   );
 }
 
-function InventoryRow({ item, slices, mcVersion, onBuy, canOrder, orderable }: {
-  item: MergedItem; slices: SliceState[]; mcVersion: string | null; onBuy: () => void; canOrder: boolean; orderable: number;
+function InventoryRow({ item, slices, mcVersion, onBuy, canOrder, orderable, inCart }: {
+  item: MergedItem; slices: SliceState[]; mcVersion: string | null; onBuy: () => void; canOrder: boolean; orderable: number | null; inCart: number;
 }) {
   const av = useMemo(() => {
     let loose = 0;
@@ -669,33 +688,30 @@ function InventoryRow({ item, slices, mcVersion, onBuy, canOrder, orderable }: {
       <TableCell align="right">{grouped(av.loose)}</TableCell>
       <TableCell align="right">{grouped(av.boxed)}</TableCell>
       <TableCell align="right">{grouped(av.mixed)}</TableCell>
-      <TableCell align="right"><strong>{grouped(orderable)}</strong></TableCell>
+      <TableCell align="right"><strong>{orderable === null ? "?" : grouped(orderable)}</strong></TableCell>
       <TableCell>
-        <Stack direction="row" spacing={0.5}>
+        <Stack direction="row" spacing={0.5} sx={{ alignItems: "center" }}>
           {stale && <Chip size="small" color="warning" variant="outlined" label="Stale" />}
           {!av.verified && <Chip size="small" variant="outlined" label="Unverified" />}
-          {orderable <= 0 && <Chip size="small" label="Empty" />}
-          {orderable > 0 && !stale && av.verified && <Chip size="small" color="success" label="OK" />}
+          {orderable !== null && orderable <= 0 && <Chip size="small" label="Empty" />}
+          {orderable !== null && orderable > 0 && !stale && av.verified && inCart <= 0 && <Chip size="small" color="success" label="OK" />}
+          {orderable !== null && orderable > 0 && !stale && av.verified && inCart > 0 && <Chip size="small" color="info" label="In draft" />}
         </Stack>
       </TableCell>
       <TableCell align="right">
-        <Button size="small" variant="outlined" onClick={onBuy} disabled={!canOrder || orderable <= 0}>Add</Button>
+        <Button size="small" variant="outlined" onClick={onBuy} disabled={!canOrder || (orderable ?? 0) <= 0}>Add</Button>
       </TableCell>
     </TableRow>
   );
 }
 
-function BuyDialog({ item, slices, mcVersion, canOrder, onClose, onAdd }: {
+function BuyDialog({ item, slices, mcVersion, canOrder, remaining, onClose, onAdd }: {
   item: MergedItem | null; slices: SliceState[]; mcVersion: string | null; canOrder: boolean;
+  remaining: number;
   onClose: () => void; onAdd: (n: number) => void;
 }) {
-  const orderable = useMemo(() => {
-    if (!item) return 0;
-    let n = 0;
-    for (const s of slices) n += Math.max(0, s.availableItems[item.key] ?? 0) + singleBoxedContents(item.key, s.shulkers);
-    return n;
-  }, [item, slices]);
-  const max = Math.max(1, orderable);
+  // Max is cart-adjusted: never offer more than the draft can still absorb.
+  const max = Math.max(1, remaining);
   const [n, setN] = useState(max);
   useEffect(() => { setN(max); }, [item?.key]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!item) return null;
@@ -706,7 +722,7 @@ function BuyDialog({ item, slices, mcVersion, canOrder, onClose, onAdd }: {
         <Stack direction="row" spacing={2} sx={{ mb: 2, alignItems: "center" }}>
           <ItemIcon id={item.id} size={64} label={item.name ?? undefined} mcVersion={mcVersion} />
           <Box>
-            <Typography variant="body1"><strong>{grouped(orderable)}</strong> orderable across all stashes</Typography>
+            <Typography variant="body1"><strong>{grouped(remaining)}</strong> orderable across all stashes</Typography>
             <Typography variant="body2" color="text.secondary">
               {grouped(item.count)} observed loose · {grouped(item.boxed)} in whole boxes · {grouped(item.mixed)} in mixed boxes (never packed whole)
             </Typography>
@@ -739,7 +755,7 @@ function BuyDialog({ item, slices, mcVersion, canOrder, onClose, onAdd }: {
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Cancel</Button>
-        <Button variant="contained" onClick={() => onAdd(n)} disabled={!canOrder || orderable < 1}>Add to cart</Button>
+        <Button variant="contained" onClick={() => onAdd(n)} disabled={!canOrder || remaining < 1}>Add to cart</Button>
       </DialogActions>
     </Dialog>
   );

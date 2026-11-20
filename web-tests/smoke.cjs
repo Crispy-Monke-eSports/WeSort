@@ -36,19 +36,22 @@ for (const legacy of ['app.js', 'style.css', 'theme-init.js', 'streamer-init.js'
 
 // SPA shell: #root mount, Vite hashed assets, brand lockup reference.
 assert.match(html, /<div id="root"><\/div>/, 'SPA mount missing');
+// The CSP style nonce Meta must survive the build (the Manager replaces it per request).
+assert.ok(html.includes('__WESORT_STYLE_NONCE__'), 'Emotion CSP nonce placeholder missing from index.html');
 const assets = [...html.matchAll(/assets\/index-[A-Za-z0-9_-]+\.(js|css)/g)].map(m => m[0]);
 assert.ok(assets.some(a => a.endsWith('.js')), 'Hashed JS bundle missing from index.html');
-assert.ok(assets.some(a => a.endsWith('.css')), 'Hashed CSS bundle missing from index.html');
 for (const asset of new Set(assets)) {
   assert.ok(fs.existsSync(path.join(root, asset)), `Referenced asset missing: ${asset}`);
 }
-// The Minecraft non-affiliation notice and the Classic dirt fallback ship in the bundle.
+// The Minecraft non-affiliation notice ships in the bundle.
 const bundle = assets.filter(a => a.endsWith('.js')).map(a => fs.readFileSync(path.join(root, a), 'utf8')).join('\n');
 const styles = assets.filter(a => a.endsWith('.css')).map(a => fs.readFileSync(path.join(root, a), 'utf8')).join('\n');
+// MUI styles are runtime-injected Emotion (no separate CSS bundle by design): the bundle
+// must contain the Emotion cache runtime, and the served CSP must carry the matching nonce.
+assert.ok(bundle.includes('@emotion') || bundle.includes('emotion'), 'Emotion runtime missing from the bundle');
 assert.ok(bundle.includes('wesort-lockup.svg') || html.includes('wesort-lockup.svg'), 'Brand lockup not referenced');
 const notice = 'NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.';
 assert.ok(bundle.includes(notice), 'Minecraft disclaimer missing from the bundle');
-assert.ok(styles.includes('/dirt.png') && styles.includes('dirt.svg'), 'Classic dirt background/fallback missing');
 // Retired endpoints and the old guild-stock DOM must not come back through the bundle.
 for (const retired of ['/api/v1/stock', '/api/v1/planner', '/api/v1/console', '/api/v1/viewer', 'stock-balances', 'picker-body']) {
   assert.equal(bundle.includes(retired), false, `Retired reference still in bundle: ${retired}`);
@@ -58,4 +61,4 @@ for (const marker of ['item-grid', 'cart-lines', 'cart-place', 'order-list', 'or
   assert.ok(bundle.includes(marker), `Shop marker missing from bundle: ${marker}`);
 }
 
-console.log('Web regression passed: branding, SPA shell, hashed assets, dirt fallback, disclaimer, no retired implementation.');
+console.log('Web regression passed: branding, SPA shell, hashed assets, Emotion CSP nonce, disclaimer, no retired implementation.');

@@ -64,6 +64,9 @@ export function OverviewPage() {
           Could not load orders for {failedStashes.join(", ")}. The list below is partial.
         </Alert>
       )}
+      {stashes.isError && (
+        <Alert severity="error">Could not load the stash list. Check the Manager connection and reload.</Alert>
+      )}
 
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>

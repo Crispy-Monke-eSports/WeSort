@@ -19,7 +19,10 @@ test("inventory aggregates, drafts, checks out and places with idempotency heade
     const depot = new URL(r.request().url()).searchParams.get("stash") === "depot";
     return r.fulfill({
       json: depot
-        ? { mcVersion: "26.3", items: [{ key: "minecraft:torch", id: "minecraft:torch", name: "Torch", count: 32, maxStack: 64, tab: "functional_blocks" }], shulkers: [] }
+        ? { mcVersion: "26.3", items: [
+          { key: "minecraft:torch", id: "minecraft:torch", name: "Torch", count: 32, maxStack: 64, tab: "functional_blocks" },
+          { key: "minecraft:diamond", id: "minecraft:diamond", name: "Diamond", count: 200, maxStack: 64, tab: "ingredients" },
+        ], shulkers: [] }
         : {
             mcVersion: "26.3",
             items: [{ key: "minecraft:diamond", id: "minecraft:diamond", name: "Diamond", count: 64, maxStack: 64, tab: "ingredients" }],
@@ -27,9 +30,10 @@ test("inventory aggregates, drafts, checks out and places with idempotency heade
           },
     });
   });
-  await page.route("**/api/v1/orders?*", (r) =>
-    r.fulfill({ json: { orders: [], available: { items: { "minecraft:diamond": 64 }, shulkers: {} } } }),
-  );
+  await page.route("**/api/v1/orders?*", (r) => {
+    const depot = new URL(r.request().url()).searchParams.get("stash") === "depot";
+    return r.fulfill({ json: { orders: [], available: { items: depot ? { "minecraft:diamond": 200 } : { "minecraft:diamond": 64 }, shulkers: {} } } });
+  });
   let posted: { headers: Record<string, string>; body: any }[] = [];
   await page.route("**/api/v1/orders", (r) => {
     if (r.request().method() === "POST") {
@@ -41,8 +45,8 @@ test("inventory aggregates, drafts, checks out and places with idempotency heade
 
   await page.goto("/inventory");
   await expect(page.getByRole("heading", { name: "Inventory" })).toBeVisible();
-  // Aggregated loose (64) + whole-box (1728).
-  await expect(page.getByTestId("item-grid").getByText("1,792").first()).toBeVisible();
+  // Guild-wide orderable: fixture loose (64) + depot loose (200) + whole-box (1728).
+  await expect(page.getByTestId("item-grid").getByText("1,992").first()).toBeVisible();
 
   // Search narrows the grid.
   await page.getByLabel("Search items").first().fill("diamond");
@@ -50,7 +54,7 @@ test("inventory aggregates, drafts, checks out and places with idempotency heade
   await page.getByLabel("Search items").first().fill("");
   await expect(page.getByTestId("item-grid").locator(".MuiCard-root")).toHaveCount(2);
 
-  // Add one stack via the item dialog.
+  // Add the full orderable quantity via the item dialog (defaults to max).
   await page.getByTestId("item-grid").locator(".MuiCard-root").first().getByRole("button", { name: "Add" }).click();
   await page.getByRole("button", { name: "Add to cart" }).click();
 
@@ -70,15 +74,15 @@ test("inventory aggregates, drafts, checks out and places with idempotency heade
   await expect(page.getByText("Confirmed o-e2e-1")).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText("Confirmed o-e2e-2")).toBeVisible({ timeout: 10_000 });
 
-  // The guild-wide draft (1856 diamonds) split across stashes: loose + whole box
-  // from fixture, loose remainder from depot. Each group has its own idempotency key.
+  // The guild-wide draft (1992 diamonds) split across stashes: fixture loose + whole
+  // box, depot loose remainder. Each group has its own idempotency key.
   expect(posted).toHaveLength(2);
   const byStash = Object.fromEntries(posted.map((p) => [p.body.stash, p]));
   expect(byStash["fixture"].body.lines).toEqual([
     { type: "item", key: "minecraft:diamond", count: 64 },
     { type: "shulker", key: "diamond-box", count: 1 },
   ]);
-  expect(byStash["depot"].body.lines).toEqual([{ type: "item", key: "minecraft:diamond", count: 64 }]);
+  expect(byStash["depot"].body.lines).toEqual([{ type: "item", key: "minecraft:diamond", count: 200 }]);
   for (const p of posted) {
     expect(p.headers["idempotency-key"]).toMatch(/^[A-Za-z0-9_-]{1,128}$/);
     expect(p.body).not.toHaveProperty("idempotencyKey");

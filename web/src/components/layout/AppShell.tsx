@@ -1,4 +1,6 @@
 import AccountCircleIcon from "@mui/icons-material/AccountCircle";
+import Brightness4Icon from "@mui/icons-material/Brightness4";
+import Brightness7Icon from "@mui/icons-material/Brightness7";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import InventoryIcon from "@mui/icons-material/Inventory";
@@ -26,7 +28,7 @@ import MenuItem from "@mui/material/MenuItem";
 import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
-import { useTheme } from "@mui/material/styles";
+import { useColorScheme, useTheme } from "@mui/material/styles";
 import { Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useAuth, useLogout, usePermissions } from "../../api/queries";
@@ -55,6 +57,11 @@ export function AppShell() {
   const location = useLocation();
 
   const user = auth.data?.user ?? null;
+  const { mode, setMode } = useColorScheme();
+  const dark = mode !== "light";
+  function toggleMode() {
+    setMode(dark ? "light" : "dark");
+  }
   const visibleNav = NAV.filter((n) => (n.perm === "view" ? perms.can("view") || perms.owner : perms.can(n.perm) || perms.owner));
 
   // Auth gate: unauthenticated users go to login (except on /login itself).
@@ -140,6 +147,15 @@ export function AppShell() {
                 variant="outlined"
                 sx={{ color: "inherit", borderColor: "rgba(255,255,255,0.4)", mr: 1 }}
               />
+              <IconButton
+                color="inherit"
+                onClick={toggleMode}
+                aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
+                title={dark ? "Light theme" : "Dark theme"}
+                sx={{ mr: 0.5 }}
+              >
+                {dark ? <Brightness7Icon /> : <Brightness4Icon />}
+              </IconButton>
               <IconButton color="inherit" onClick={(e) => setAnchor(e.currentTarget)} aria-label="Account menu">
                 <Avatar sx={{ width: 32, height: 32, bgcolor: "secondary.main" }}>
                   <AccountCircleIcon />
@@ -187,7 +203,7 @@ export function AppShell() {
           </Drawer>
         )}
       </Box>
-      <Box component="main" sx={{ flexGrow: 1, p: { xs: 2, md: 3 }, width: { md: `calc(100% - ${DRAWER_WIDTH}px)` }, mt: 8 }}>
+      <Box component="main" sx={{ flexGrow: 1, minWidth: 0, maxWidth: "100%", p: { xs: 2, md: 3 }, width: { md: `calc(100% - ${DRAWER_WIDTH}px)` }, mt: 8 }}>
         <Outlet />
       </Box>
       <ToastHost />

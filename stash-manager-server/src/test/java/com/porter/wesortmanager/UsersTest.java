@@ -51,6 +51,7 @@ class UsersTest {
     OrderStore orders;
     AuditLog audit;
     Router router;
+    BotHub hub;
     final HttpClient http = HttpClient.newHttpClient();
 
     @BeforeAll
@@ -101,6 +102,7 @@ class UsersTest {
         users.load();
         audit = new AuditLog(data);
         audit.load();
+        hub = new BotHub();
         WeSortManager.Routes r = WeSortManager.routes(
                 config,
                 store,
@@ -111,7 +113,7 @@ class UsersTest {
                 sessions,
                 users,
                 audit,
-                new BotHub(),
+                hub,
                 new LoginLimiter());
         router = r.router();
         server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 16);
@@ -655,6 +657,63 @@ class UsersTest {
         assertEquals(404, post(e, "/api/v1/orders/clear", "{\"stash\":\"b\"}").status);
         assertEquals(404, post(e, "/api/v1/rescan", "{\"stash\":\"b\"}").status);
         assertEquals(200, post(e, "/api/v1/rescan", "{\"stash\":\"a\"}").status);
+    }
+
+    @Test
+    void editingOneFlagKeepsStashAndBotScopes() throws Exception {
+        // P0-01: a routine flag edit that omits the scope keys must not widen
+        // the user to all stashes/bots. Two stashes (a/b) and two bots exist;
+        // erin may use only the first of each.
+        String owner = owner();
+        String otherOrder = placeOrder(owner, "b", "minecraft:dirt", 10);
+        hub.hello("bot-a", "BotA", new JsonObject(), new JsonObject(), List.of(), List.of());
+        hub.hello("bot-b", "BotB", new JsonObject(), new JsonObject(), List.of(), List.of());
+        String id = create(
+                owner,
+                "erin",
+                "{\"view\":true,\"order\":true,\"activity\":true,\"stashes\":[{\"stash\":\"a\"}],\"bots\":[\"bot-a\"]}",
+                false);
+        String e = login("erin", TEMP_PW);
+        assertEquals(200, get(e, "/api/v1/index?stash=a").status);
+        assertEquals(404, get(e, "/api/v1/index?stash=b").status);
+        assertEquals(200, get(e, "/api/v1/bots/bot-a/activity").status);
+        assertEquals(404, get(e, "/api/v1/bots/bot-b/activity").status);
+
+        // The old UI payload: only boolean flags, no stashes/bots keys.
+        // (order:true kept: dropping it would 403 on permission before scope.)
+        Res edited = post(owner, "/api/v1/users/" + id, "{\"perms\":{\"view\":true,\"order\":true,\"activity\":true}}");
+        assertEquals(200, edited.status, edited.raw.body());
+        JsonObject perms = edited.obj().getAsJsonObject("user").getAsJsonObject("perms");
+        assertEquals("a", perms.getAsJsonArray("stashes").get(0).getAsJsonObject().get("stash").getAsString());
+        assertEquals("bot-a", perms.getAsJsonArray("bots").get(0).getAsString());
+
+        // Scopes still enforced after the flag edit.
+        assertEquals(200, get(e, "/api/v1/index?stash=a").status);
+        assertEquals(404, get(e, "/api/v1/index?stash=b").status);
+        assertEquals(
+                404,
+                post(
+                                e,
+                                "/api/v1/orders",
+                                "{\"stash\":\"b\",\"lines\":[{\"type\":\"item\",\"key\":\"minecraft:dirt\",\"count\":1}]}")
+                        .status);
+        assertEquals(
+                404, post(e, "/api/v1/orders/" + otherOrder + "/cancel", null).status, "still out of scope");
+        assertEquals(200, get(e, "/api/v1/bots/bot-a/activity").status);
+        assertEquals(404, get(e, "/api/v1/bots/bot-b/activity").status);
+
+        // Explicit null widens to all; explicit [] narrows to none.
+        Res widened = post(owner, "/api/v1/users/" + id, "{\"perms\":{\"view\":true,\"order\":true,\"activity\":true,\"stashes\":null,\"bots\":null}}");
+        assertEquals(200, widened.status, widened.raw.body());
+        assertTrue(widened.obj().getAsJsonObject("user").getAsJsonObject("perms").get("stashes").isJsonNull());
+        assertEquals(200, get(e, "/api/v1/index?stash=b").status);
+        assertEquals(200, get(e, "/api/v1/bots/bot-b/activity").status);
+        Res narrowed = post(owner, "/api/v1/users/" + id, "{\"perms\":{\"view\":true,\"order\":true,\"activity\":true,\"stashes\":[],\"bots\":[]}}");
+        assertEquals(200, narrowed.status, narrowed.raw.body());
+        assertEquals(0, get(e, "/api/v1/stashes").body.getAsJsonArray().size());
+        assertEquals(0, get(e, "/api/v1/bots").body.getAsJsonArray().size());
+        assertEquals(404, get(e, "/api/v1/index?stash=a").status);
+        assertEquals(404, get(e, "/api/v1/bots/bot-a/activity").status);
     }
 
     @Test

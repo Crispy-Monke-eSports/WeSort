@@ -259,6 +259,16 @@ public class StashManager extends Module {
         return status;
     }
 
+    /**
+     * Truthful link state for the connection GUI (P1-12): storing an address and key is not a
+     * connection, so this never reports online before a verified Manager reply. See ConnectionState.
+     */
+    public String connectionState() {
+        return com.porter.wesort.commands.ConnectionState.of(
+                        isActive(), serverUrl.get(), apiKey.get(), status)
+                .name();
+    }
+
     @Override
     public void onDeactivate() {
         sortingUntil = 0;

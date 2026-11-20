@@ -91,6 +91,41 @@ final class Users {
                     view, order, ordersAll, activity, settings, rescan, link, stashes, bots, guildOrders, allowed);
         }
 
+        /**
+         * Scoped update helpers: absent scope keys in an update body keep the
+         * existing scope (PATCH-like merge) instead of widening to "all".
+         * Explicit null still means unlimited, [] still means no access.
+         */
+        Perms withStashes(List<StashRef> scopes) {
+            return new Perms(
+                    view,
+                    order,
+                    ordersAll,
+                    activity,
+                    settings,
+                    rescan,
+                    link,
+                    scopes == null ? null : List.copyOf(scopes),
+                    bots,
+                    guildOrders,
+                    positions);
+        }
+
+        Perms withBots(List<String> scopes) {
+            return new Perms(
+                    view,
+                    order,
+                    ordersAll,
+                    activity,
+                    settings,
+                    rescan,
+                    link,
+                    stashes,
+                    scopes == null ? null : List.copyOf(scopes),
+                    guildOrders,
+                    positions);
+        }
+
         boolean seesStash(String stash) {
             return stashes == null || stashes.stream().anyMatch(r -> r.stash.equals(stash));
         }

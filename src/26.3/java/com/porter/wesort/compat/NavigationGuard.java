@@ -19,7 +19,7 @@ final class NavigationGuard {
             for (int z = -1; z <= 1; z++) {
                 var neighbor = feet.offset(x, 0, z);
                 if (!mc.level.isLoaded(neighbor)
-                        || BlockSafety.passiveTrigger(WorldInteractionGuard.blockPath(neighbor))) return false;
+                        || BlockSafety.passiveTrigger(WorldInteractionGuard.blockId(neighbor))) return false;
             }
         }
         return true;

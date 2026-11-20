@@ -28,6 +28,7 @@ import {
   useJobQueue, useOperations, usePermissions, usePhysicalOps,
   type OpsList,
 } from "../api/queries";
+import { useConfirm } from "../components/dialogs";
 
 function rowsOf(data: OpsList | undefined, key: string): any[] {
   const v = (data as any)?.[key];
@@ -61,19 +62,23 @@ export function OperationsPage() {
   const audit = useAuditOrders(canAudit, { limit: 50, ...auditGo });
 
   const [inspectMsg, setInspectMsg] = useState("");
-  async function inspect(op: any) {
+  const confirm = useConfirm();
+  function inspect(op: any) {
     setInspectMsg("");
-    if (!window.confirm(`Inspect physical operation ${op.id ?? op.operation} (revision ${op.revision})?`)) return;
-    try {
-      const res = await api<{ ok: boolean; [k: string]: unknown }>("/api/v1/physical/inspect", {
-        method: "POST",
-        body: { operation: op.id ?? op.operation, revision: op.revision, checksum: op.checksum },
-      });
-      setInspectMsg(`Inspection recorded: ${JSON.stringify(res).slice(0, 200)}`);
-      physical.refetch();
-    } catch (e: any) {
-      setInspectMsg(e?.message ?? "Inspection failed.");
-    }
+    confirm.ask({
+      title: `Inspect physical operation ${op.id ?? op.operation}?`,
+      intro: `Revision ${op.revision}. A re-inspection is recorded against the operation's checksum and may re-queue physical verification.`,
+      changes: [`operation: ${op.id ?? op.operation}`, `revision: ${op.revision}`, `stash: ${op.stash ?? "?"}`],
+      confirmLabel: "Record inspection",
+      run: async () => {
+        const res = await api<{ ok: boolean; [k: string]: unknown }>("/api/v1/physical/inspect", {
+          method: "POST",
+          body: { operation: op.id ?? op.operation, revision: op.revision, checksum: op.checksum },
+        });
+        setInspectMsg(`Inspection recorded: ${JSON.stringify(res).slice(0, 200)}`);
+        physical.refetch();
+      },
+    });
   }
 
   const alerts: { code: string; count: number }[] = Array.isArray((ops.data as any)?.alerts) ? (ops.data as any).alerts : [];
@@ -83,7 +88,7 @@ export function OperationsPage() {
 
   return (
     <Stack spacing={2}>
-      <Typography variant="h1">Operations</Typography>
+      <Typography variant="h5" component="h1">Operations</Typography>
       {!canActivity && <Alert severity="info">Sign in with activity permission to see operations.</Alert>}
 
       {alerts.length > 0 && (
@@ -225,6 +230,7 @@ export function OperationsPage() {
           </CardContent>
         </Card>
       )}
+      {confirm.dialog}
     </Stack>
   );
 }
@@ -232,13 +238,28 @@ export function OperationsPage() {
 function StateTable({ states }: { states: Record<string, number> | undefined }) {
   const entries = Object.entries(states ?? {});
   if (!entries.length) return <Typography color="text.secondary">No data.</Typography>;
+  const isXs = useMediaQuery(useTheme().breakpoints.down("sm"));
+  // Two-column tables clip the value column on narrow screens (P1-06): on xs
+  // both the label and the value stack vertically so each stays visible.
+  if (isXs) {
+    return (
+      <Stack spacing={0.75}>
+        {entries.map(([k, v]) => (
+          <Box key={k} sx={{ minWidth: 0 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ wordBreak: "break-word" }}>{k}</Typography>
+            <Typography variant="body2" sx={{ fontWeight: 700 }}>{v}</Typography>
+          </Box>
+        ))}
+      </Stack>
+    );
+  }
   return (
-    <TableContainer>
+    <TableContainer sx={{ minWidth: 0 }}>
       <Table size="small" aria-label="State counts">
         <TableBody>
           {entries.map(([k, v]) => (
             <TableRow key={k}>
-              <TableCell>{k}</TableCell>
+              <TableCell sx={{ wordBreak: "break-word" }}>{k}</TableCell>
               <TableCell align="right"><strong>{v}</strong></TableCell>
             </TableRow>
           ))}

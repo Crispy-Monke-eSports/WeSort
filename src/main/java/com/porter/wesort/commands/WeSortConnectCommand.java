@@ -32,7 +32,7 @@ public final class WeSortConnectCommand extends Command {
                                             StringArgumentType.getString(context, "address"),
                                             String.valueOf(IntegerArgumentType.getInteger(context, "port")),
                                             StringArgumentType.getString(context, "api-key"));
-                                    if (error == null) info("Connected to the WeSort Manager.");
+                                    if (error == null) info("Connection saved (%s).", savedStateLabel());
                                     else error("%s", error);
                                     return SINGLE_SUCCESS;
                                 }))));
@@ -83,6 +83,20 @@ public final class WeSortConnectCommand extends Command {
         Setting<?> setting = manager.settings.get(name);
         Object value = setting == null ? null : setting.get();
         return value instanceof String s ? s : "";
+    }
+
+    /**
+     * Human connection state right after a save (P1-12): "Contacting…", never "Connected" —
+     * only a verified server reply counts, and the tick has not run yet.
+     */
+    static String savedStateLabel() {
+        StashManager manager = Modules.get().get(StashManager.class);
+        if (manager == null) return ConnectionState.DISCONNECTED.label();
+        try {
+            return ConnectionState.valueOf(manager.connectionState()).label();
+        } catch (RuntimeException e) {
+            return ConnectionState.CONTACTING.label();
+        }
     }
 
     @SuppressWarnings("unchecked")

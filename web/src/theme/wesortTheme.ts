@@ -34,7 +34,7 @@ export const wesortTheme = createTheme({
         secondary: { main: "#546e7a", light: "#819ca9", dark: "#29434e", contrastText: "#ffffff" },
         background: { default: "#f2f4f1", paper: "#ffffff" },
         error: { main: "#c62828", light: "#e57373", dark: "#8e0000", contrastText: "#ffffff" },
-        warning: { main: "#e65100", light: "#ff833a", dark: "#ac1900", contrastText: "#ffffff" },
+        warning: { main: "#e65100", light: "#ff833a", dark: "#ac1900", contrastText: "#000000" },
         info: { main: "#1565c0", light: "#5e92f3", dark: "#003c8f", contrastText: "#ffffff" },
         success: { main: "#2e7d32", light: "#60ad5e", dark: "#005005", contrastText: "#ffffff" },
         text: { primary: "rgba(18, 24, 19, 0.87)", secondary: "rgba(18, 24, 19, 0.6)", disabled: "rgba(18, 24, 19, 0.38)" },
@@ -44,16 +44,17 @@ export const wesortTheme = createTheme({
   },
   shape: { borderRadius: 4 },
   typography: {
+    // MD2 type scale: MUI v9 defaults already implement the MD2 roles
+    // (H1 96/Light … H6 20/Medium, subtitle, body, caption, overline).
+    // Pages use the semantic level with an explicit smaller visual variant
+    // (e.g. component="h1" variant="h5") instead of redefining the scale.
     fontFamily: '"Inter", "IBM Plex Sans", "Roboto", "Helvetica", "Arial", sans-serif',
-    h1: { fontSize: "1.5rem", fontWeight: 600 },
-    h2: { fontSize: "1.25rem", fontWeight: 600 },
-    h3: { fontSize: "1.1rem", fontWeight: 600 },
-    h4: { fontSize: "1rem", fontWeight: 600 },
     button: { textTransform: "none", fontWeight: 600 },
   },
   components: {
     MuiButton: {
-      defaultProps: { disableElevation: true },
+      // MD2 contained buttons carry 2dp elevation (8dp pressed): no global
+      // disableElevation. Text buttons are unaffected (they have none).
       styleOverrides: {
         root: { borderRadius: 4 },
       },
@@ -69,11 +70,8 @@ export const wesortTheme = createTheme({
         root: { borderRadius: 4 },
       },
     },
-    MuiChip: {
-      styleOverrides: {
-        root: { borderRadius: 4, fontWeight: 600 },
-      },
-    },
+    // MuiChip: intentionally no overrides — the MUI default (fully rounded
+    // stadium with Body-2 labelling) is the MD2 chip pattern.
     MuiDialog: {
       styleOverrides: {
         paper: { borderRadius: 4 },

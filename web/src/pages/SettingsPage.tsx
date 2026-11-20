@@ -1,4 +1,5 @@
 import Alert from "@mui/material/Alert";
+import Autocomplete from "@mui/material/Autocomplete";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
@@ -15,9 +16,10 @@ import InputLabel from "@mui/material/InputLabel";
 import LinearProgress from "@mui/material/LinearProgress";
 import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
-import ListItemText from "@mui/material/ListItemText";
 import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
+import Radio from "@mui/material/Radio";
+import RadioGroup from "@mui/material/RadioGroup";
 import Select from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
 import Switch from "@mui/material/Switch";
@@ -27,7 +29,9 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
-import { useAuth, useGuild, usePermissions, useQuotaMe, useServer, useStashDefs } from "../api/queries";
+import { useAuth, useBots, useGuild, usePermissions, useQuotaMe, useServer, useStashDefs } from "../api/queries";
+import { ConfirmDialog, PasswordDialog, useConfirm } from "../components/dialogs";
+import { botListOf, buildUserPerms, presetMatches, scopeDiff, stashListOf } from "../lib/userScopes";
 import type { StashDef } from "../api/types";
 
 function parseVec(text: string): { x: number; y: number; z: number } | null {
@@ -49,7 +53,7 @@ export function SettingsPage() {
 
   return (
     <Stack spacing={2}>
-      <Typography variant="h1">Settings</Typography>
+      <Typography variant="h5" component="h1">Settings</Typography>
       <Card>
         <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto" aria-label="Settings sections">
           <Tab label="Server" />
@@ -79,6 +83,7 @@ function ServerSection() {
   const [value, setValue] = useState("");
   const [msg, setMsg] = useState("");
   const [loaded, setLoaded] = useState(false);
+  const confirm = useConfirm();
   useEffect(() => {
     if (!loaded && server.data) {
       setValue(server.data.server ?? "");
@@ -88,18 +93,18 @@ function ServerSection() {
 
   async function save() {
     setMsg("");
-    if (!window.confirm(
-      value.trim()
-        ? `Set the Minecraft server to "${value.trim()}"? Bots on other servers are refused; change or clear only when no physical work is running.`
-        : "Clear the Minecraft server? All physical work stops until a server is set again.",
-    )) return;
-    try {
-      await api("/api/v1/server", { method: "POST", body: { server: value.trim() } });
-      setMsg("Server saved. Bots on other servers are refused with 409.");
-      await server.refetch();
-    } catch (e: any) {
-      setMsg(e?.message ?? "Save failed.");
-    }
+    confirm.ask({
+      title: value.trim() ? `Set the Minecraft server to "${value.trim()}"?` : "Clear the Minecraft server?",
+      intro: value.trim()
+        ? "Bots on other servers are refused; change or clear only when no physical work is running."
+        : "All physical work stops until a server is set again.",
+      confirmLabel: "Save server",
+      run: async () => {
+        await api("/api/v1/server", { method: "POST", body: { server: value.trim() } });
+        setMsg("Server saved. Bots on other servers are refused with 409.");
+        await server.refetch();
+      },
+    });
   }
 
   return (
@@ -119,6 +124,7 @@ function ServerSection() {
         <Typography color="text.secondary">Only the owner can set the server.</Typography>
       )}
       {msg && <Alert severity="info" onClose={() => setMsg("")}>{msg}</Alert>}
+      {confirm.dialog}
     </Stack>
   );
 }
@@ -129,6 +135,7 @@ function StashSection() {
   const defs = useStashDefs(!!auth.data?.loggedIn);
   const [editing, setEditing] = useState<null | (Partial<StashDef> & { isNew: boolean })>(null);
   const [msg, setMsg] = useState("");
+  const confirm = useConfirm();
 
   function startCreate() {
     setEditing({ isNew: true, name: "", dimension: "minecraft:overworld", revision: 0 });
@@ -137,16 +144,20 @@ function StashSection() {
     setEditing({ ...d, isNew: false });
   }
 
-  async function remove(d: StashDef) {
+  function remove(d: StashDef) {
     setMsg("");
-    if (!window.confirm(`Delete stash "${d.name}"? Bots keep working with their last directive until they rescan; make sure no order or observation is running for it.`)) return;
-    try {
-      await api("/api/v1/stash-defs", { method: "POST", body: { action: "delete", name: d.name, expectedRevision: d.revision } });
-      setMsg(`Stash "${d.name}" deleted.`);
-      await defs.refetch();
-    } catch (e: any) {
-      setMsg(e?.message ?? "Delete failed. Reload and retry on revision conflicts.");
-    }
+    confirm.ask({
+      title: `Delete stash "${d.name}"?`,
+      intro: "Bots keep working with their last directive until they rescan; make sure no order or observation is running for it.",
+      changes: [`stash: ${d.name}`, `revision: ${d.revision}`],
+      confirmLabel: "Delete",
+      danger: true,
+      run: async () => {
+        await api("/api/v1/stash-defs", { method: "POST", body: { action: "delete", name: d.name, expectedRevision: d.revision } });
+        setMsg(`Stash "${d.name}" deleted.`);
+        await defs.refetch();
+      },
+    });
   }
 
   return (
@@ -195,6 +206,7 @@ function StashSection() {
           onSaved={async (m) => { setEditing(null); setMsg(m); await defs.refetch(); }}
         />
       )}
+      {confirm.dialog}
     </Stack>
   );
 }
@@ -280,12 +292,28 @@ function UsersSection() {
   const [editDisabled, setEditDisabled] = useState(false);
   const [editName, setEditName] = useState("");
   const [editPreset, setEditPreset] = useState("");
+  const [editStashMode, setEditStashMode] = useState<"all" | "selected">("all");
+  const [editStashes, setEditStashes] = useState<string[]>([]);
+  const [editBotMode, setEditBotMode] = useState<"all" | "selected">("all");
+  const [editBots, setEditBots] = useState<string[]>([]);
+  const stashDefs = useStashDefs(true);
+  const botsList = useBots(true);
+  const [minLength, setMinLength] = useState(12);
+  const [confirm, setConfirm] = useState<null | {
+    title: string; intro?: string; changes?: string[]; confirmLabel: string; danger?: boolean; run: () => Promise<void>;
+  }>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [confirmError, setConfirmError] = useState("");
+  const [pwUser, setPwUser] = useState<any | null>(null);
+  const [pwBusy, setPwBusy] = useState(false);
+  const [pwError, setPwError] = useState("");
 
   async function load() {
     setMsg("");
     try {
       const raw = await api<any>("/api/v1/users");
       setUsers(raw?.users ?? []);
+      if (typeof raw?.minLength === "number") setMinLength(raw.minLength);
       const p = raw?.presets;
       if (p && typeof p === "object") {
         setPresets(Object.keys(p));
@@ -313,10 +341,17 @@ function UsersSection() {
 
   function presetNameOf(perms: any): string {
     for (const [name, def] of Object.entries(presetDefs)) {
-      const d: any = def;
-      if (FLAG_FIELDS.every((f) => !!d?.[f] === !!perms?.[f])) return name;
+      // A scoped user is never an unlimited preset, even when the boolean
+      // flags happen to match: null and [] are distinct access levels.
+      if (presetMatches(def, perms, FLAG_FIELDS)) return name;
     }
     return "custom";
+  }
+
+  function scopeSummary(label: string, value: unknown, items: string[]): string {
+    if (value == null) return `${label}: All`;
+    if (items.length === 0) return `${label}: None (no access)`;
+    return `${label}: ${items.join(", ")}`;
   }
 
   function startEdit(u: any) {
@@ -325,24 +360,39 @@ function UsersSection() {
     setEditFlags(flags);
     setEditDisabled(!!u.disabled);
     setEditName(u.name ?? "");
+    setEditStashMode(u.perms?.stashes == null ? "all" : "selected");
+    setEditStashes(stashListOf(u.perms));
+    setEditBotMode(u.perms?.bots == null ? "all" : "selected");
+    setEditBots(botListOf(u.perms));
     setEditPreset(presetNameOf(u.perms));
     setEditId(u.id);
   }
 
+  function fullPerms() {
+    // Always explicit: absent keys would be ambiguous with unlimited.
+    return buildUserPerms(editFlags, FLAG_FIELDS, editStashMode, editStashes, editBotMode, editBots);
+  }
+
   /** Only changed fields are sent; privilege changes need explicit confirm. */
-  async function update(id: string, original: any) {
+  function update(id: string, original: any) {
     const changes: string[] = [];
-    const perms: Record<string, boolean> = {};
+    const before = {
+      stashes: original?.perms?.stashes == null ? null : stashListOf(original.perms),
+      bots: original?.perms?.bots == null ? null : botListOf(original.perms),
+    };
+    const nextStashes = editStashMode === "all" ? null : [...editStashes].sort();
+    const nextBots = editBotMode === "all" ? null : [...editBots].sort();
     let permsChanged = false;
     for (const f of FLAG_FIELDS) {
-      perms[f] = !!editFlags[f];
       if (!!editFlags[f] !== !!original?.perms?.[f]) {
         permsChanged = true;
         changes.push(`${f}: ${!!original?.perms?.[f]} → ${!!editFlags[f]}`);
       }
     }
+    changes.push(...scopeDiff(before.stashes, nextStashes, before.bots, nextBots));
+    if (changes.some((c) => c.startsWith("stashes:") || c.startsWith("bots:"))) permsChanged = true;
     const body: any = {};
-    if (permsChanged) body.perms = perms;
+    if (permsChanged) body.perms = fullPerms();
     if (editDisabled !== !!original?.disabled) {
       body.disabled = editDisabled;
       changes.push(`disabled: ${!!original?.disabled} → ${editDisabled}`);
@@ -356,29 +406,103 @@ function UsersSection() {
       setEditId(null);
       return;
     }
-    if (!window.confirm(`Apply to ${original?.name ?? id}?\n${changes.join("\n")}`)) return;
+    setConfirm({
+      title: `Apply to ${original?.name ?? id}?`,
+      intro: permsChanged
+        ? "The new permission object replaces the old one. Scopes are shown explicitly: All means every stash/bot, None means no access."
+        : undefined,
+      changes,
+      confirmLabel: "Apply",
+      run: async () => {
+        await api(`/api/v1/users/${id}`, { method: "POST", body });
+        setEditId(null);
+        setMsg(`User updated (${changes.length} change${changes.length === 1 ? "" : "s"}).`);
+        await load();
+      },
+    });
+  }
+
+  function action(id: string, a: "logout" | "delete") {
+    const u = users.find((x: any) => x.id === id);
+    if (a === "logout") {
+      setConfirm({
+        title: `End sessions for ${u?.name ?? id}?`,
+        intro: "All of their sessions end immediately. They must sign in again.",
+        confirmLabel: "End sessions",
+        run: async () => {
+          await api(`/api/v1/users/${id}/logout`, { method: "POST", body: {} });
+          setMsg("Sessions ended.");
+          await load();
+        },
+      });
+      return;
+    }
+    setConfirm({
+      title: `Delete ${u?.name ?? id}?`,
+      intro: "Their orders stay; their sessions end. This cannot be undone.",
+      changes: [
+        `name: ${u?.name ?? id}`,
+        scopeSummary("stashes", u?.perms?.stashes, stashListOf(u?.perms)),
+        scopeSummary("bots", u?.perms?.bots, botListOf(u?.perms)),
+      ],
+      confirmLabel: "Delete",
+      danger: true,
+      run: async () => {
+        await api(`/api/v1/users/${id}/delete`, { method: "POST", body: {} });
+        setMsg("User deleted.");
+        await load();
+      },
+    });
+  }
+
+  async function runConfirm() {
+    if (!confirm) return;
+    setConfirmBusy(true);
+    setConfirmError("");
     try {
-      await api(`/api/v1/users/${id}`, { method: "POST", body });
-      setEditId(null);
-      setMsg(`User updated (${changes.length} change${changes.length === 1 ? "" : "s"}).`);
-      await load();
+      await confirm.run();
+      setConfirm(null);
     } catch (e: any) {
-      setMsg(e?.message ?? "Update failed.");
+      setConfirmError(e?.message ?? "Action failed.");
+    } finally {
+      setConfirmBusy(false);
     }
   }
 
-  async function action(id: string, a: "password" | "logout" | "delete", extra?: any) {
-    if (a === "delete" && !window.confirm("Delete this user? Their orders stay; their sessions end.")) return;
-    const secret = a === "password" ? window.prompt("New temporary password:") : null;
-    if (a === "password" && !secret) return;
+  async function resetPassword(password: string) {
+    if (!pwUser) return;
+    setPwBusy(true);
+    setPwError("");
     try {
-      await api(`/api/v1/users/${id}/${a}`, { method: "POST", body: a === "password" ? { password: secret } : {} });
-      setMsg(a === "delete" ? "User deleted." : a === "logout" ? "Sessions ended." : "Password reset.");
+      await api(`/api/v1/users/${pwUser.id}/password`, { method: "POST", body: { password } });
+      setPwUser(null);
+      setMsg("Password reset.");
       await load();
     } catch (e: any) {
-      setMsg(e?.message ?? `${a} failed.`);
+      setPwError(e?.message ?? "Reset failed.");
+    } finally {
+      setPwBusy(false);
     }
-    void extra;
+  }
+
+  const stashOptions = Array.from(new Set([
+    ...((stashDefs.data ?? []) as any[]).map((d: any) => String(d?.name ?? "")).filter(Boolean),
+    ...users.flatMap((u: any) => stashListOf(u.perms)),
+  ])).sort();
+  const botOptions = Array.from(new Set([
+    ...((botsList.data ?? []) as any[]).map((b: any) => String(b?.botId ?? "")).filter(Boolean),
+    ...users.flatMap((u: any) => botListOf(u.perms)),
+  ])).sort();
+
+  function scopeChips(u: any) {
+    const stashes = u.perms?.stashes == null ? null : stashListOf(u.perms);
+    const bots = u.perms?.bots == null ? null : botListOf(u.perms);
+    return (
+      <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap", gap: 0.5, mt: 0.5 }}>
+        <Chip size="small" variant="outlined" label={stashes == null ? "All stashes" : stashes.length ? `Stashes: ${stashes.join(", ")}` : "No stashes"} />
+        <Chip size="small" variant="outlined" label={bots == null ? "All bots" : bots.length ? `Bots: ${bots.join(", ")}` : "No bots"} />
+      </Stack>
+    );
   }
 
   return (
@@ -386,18 +510,25 @@ function UsersSection() {
       {msg && <Alert severity="info" onClose={() => setMsg("")}>{msg}</Alert>}
       <List dense>
         {users.map((u: any) => (
-          <ListItem key={u.id} divider alignItems="flex-start" secondaryAction={
-            <Stack direction="row" spacing={1}>
-              <Button size="small" onClick={() => startEdit(u)}>Edit</Button>
-              <Button size="small" onClick={() => action(u.id, "logout")}>End sessions</Button>
-              <Button size="small" onClick={() => action(u.id, "password")}>Reset pw</Button>
-              <Button size="small" color="error" onClick={() => action(u.id, "delete")}>Delete</Button>
+          <ListItem key={u.id} divider sx={{ alignItems: "flex-start" }}>
+            <Stack spacing={1} sx={{ width: "100%", minWidth: 0 }}>
+              <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexWrap: "wrap" }}>
+                <Typography sx={{ fontWeight: 600, wordBreak: "break-word" }}>{u.name}</Typography>
+                {u.owner && <Chip size="small" label="owner" />}
+                {u.disabled && <Chip size="small" color="error" label="disabled" />}
+                <Chip size="small" variant="outlined" label={presetNameOf(u.perms)} />
+              </Stack>
+              {scopeChips(u)}
+              <Typography variant="caption" color="text.secondary" sx={{ fontFamily: "monospace", wordBreak: "break-all" }}>
+                {u.id} · sessions: {u.sessions ?? 0}
+              </Typography>
+              <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+                <Button size="small" onClick={() => startEdit(u)}>Edit</Button>
+                <Button size="small" onClick={() => action(u.id, "logout")}>End sessions</Button>
+                <Button size="small" onClick={() => setPwUser(u)}>Reset pw</Button>
+                <Button size="small" color="error" onClick={() => action(u.id, "delete")}>Delete</Button>
+              </Stack>
             </Stack>
-          }>
-            <ListItemText
-              primary={<>{u.name} {u.owner && <Chip size="small" label="owner" />} {u.disabled && <Chip size="small" color="error" label="disabled" />}</>}
-              secondary={<Typography variant="caption" sx={{ fontFamily: "monospace" }}>{u.id} · perms: {JSON.stringify(u.perms ?? {})} · sessions: {u.sessions ?? 0}</Typography>}
-            />
           </ListItem>
         ))}
       </List>
@@ -432,10 +563,14 @@ function UsersSection() {
                 onChange={(e) => {
                   setEditPreset(e.target.value);
                   const def: any = presetDefs[e.target.value];
-                  if (def) {
+                  if (def && e.target.value !== "custom") {
                     const next: Record<string, boolean> = {};
                     for (const f of FLAG_FIELDS) next[f] = !!def[f];
                     setEditFlags(next);
+                    setEditStashMode(def.stashes == null ? "all" : "selected");
+                    setEditStashes(Array.isArray(def.stashes) ? def.stashes.map((x: any) => String(x?.stash ?? x)) : []);
+                    setEditBotMode(def.bots == null ? "all" : "selected");
+                    setEditBots(Array.isArray(def.bots) ? def.bots.map(String) : []);
                   }
                 }}
               >
@@ -459,6 +594,59 @@ function UsersSection() {
                 label={<Typography variant="body2" sx={{ fontFamily: "monospace" }}>{f}</Typography>}
               />
             ))}
+            <Divider>Stash scope</Divider>
+            <RadioGroup
+              row
+              aria-label="Stash scope"
+              value={editStashMode}
+              onChange={(e) => setEditStashMode(e.target.value as "all" | "selected")}
+            >
+              <FormControlLabel value="all" control={<Radio size="small" />} label="All stashes" />
+              <FormControlLabel value="selected" control={<Radio size="small" />} label="Selected stashes" />
+            </RadioGroup>
+            {editStashMode === "selected" && (
+              <Autocomplete
+                multiple
+                options={stashOptions}
+                value={editStashes}
+                onChange={(_, v) => { setEditStashes(v); setEditPreset("custom"); }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    size="small"
+                    label="Stashes"
+                    helperText="Empty selection means no stash access. Missing stashes can be typed when known."
+                  />
+                )}
+              />
+            )}
+            <Divider>Bot scope</Divider>
+            <RadioGroup
+              row
+              aria-label="Bot scope"
+              value={editBotMode}
+              onChange={(e) => setEditBotMode(e.target.value as "all" | "selected")}
+            >
+              <FormControlLabel value="all" control={<Radio size="small" />} label="All bots" />
+              <FormControlLabel value="selected" control={<Radio size="small" />} label="Selected bots" />
+            </RadioGroup>
+            {editBotMode === "selected" && (
+              <Autocomplete
+                multiple
+                freeSolo
+                options={botOptions}
+                value={editBots}
+                onChange={(_, v) => { setEditBots(v); setEditPreset("custom"); }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    size="small"
+                    label="Bots"
+                    helperText="Empty selection means no bot access. Bot IDs can be typed."
+                  />
+                )}
+              />
+            )}
             <FormControlLabel
               control={
                 <Switch size="small" checked={editDisabled} onChange={(e) => setEditDisabled(e.target.checked)} />
@@ -467,7 +655,8 @@ function UsersSection() {
             />
             <TextField label="Account name" value={editName} onChange={(e) => setEditName(e.target.value)} size="small" fullWidth />
             <Typography variant="caption" color="text.secondary">
-              Only changed fields are sent. Stash/bot scopes are managed server-side and shown read-only in the list.
+              Only changed fields are sent. Scopes are always explicit: All means every stash/bot, an empty
+              selection means no access.
             </Typography>
           </Stack>
         </DialogContent>
@@ -476,6 +665,30 @@ function UsersSection() {
           <Button variant="contained" onClick={() => editId && update(editId, users.find((u: any) => u.id === editId))}>Save</Button>
         </DialogActions>
       </Dialog>
+      {confirm && (
+        <ConfirmDialog
+          open
+          title={confirm.title}
+          intro={confirm.intro}
+          changes={confirm.changes}
+          confirmLabel={confirm.confirmLabel}
+          danger={confirm.danger}
+          busy={confirmBusy}
+          error={confirmError}
+          onClose={() => { if (!confirmBusy) setConfirm(null); }}
+          onConfirm={runConfirm}
+        />
+      )}
+      <PasswordDialog
+        open={!!pwUser}
+        title={`Reset password for ${pwUser?.name ?? ""}`}
+        userName={pwUser?.name}
+        minLength={minLength}
+        busy={pwBusy}
+        error={pwError}
+        onClose={() => { if (!pwBusy) setPwUser(null); }}
+        onConfirm={resetPassword}
+      />
     </Stack>
   );
 }
@@ -514,7 +727,7 @@ function GuildSection() {
       {quotaMe.data && Object.keys((quotaMe.data as any).usage ?? {}).length > 0 && (
         <>
           <Divider />
-          <Typography variant="h4">Your withdrawal usage</Typography>
+          <Typography variant="h6" component="h2">Your withdrawal usage</Typography>
           <Stack spacing={0.5}>
             {Object.entries((quotaMe.data as any).usage).map(([k, v]) => (
               <Typography key={k} variant="caption" sx={{ fontFamily: "monospace" }}>{k}: {JSON.stringify(v)}</Typography>
@@ -563,7 +776,7 @@ function SecuritySection() {
 
   return (
     <Stack spacing={2}>
-      <Typography variant="h4">Change password</Typography>
+      <Typography variant="h6" component="h2">Change password</Typography>
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
         <TextField label="Current" type="password" value={current} onChange={(e) => setCurrent(e.target.value)} size="small" />
         <TextField label="New" type="password" value={next} onChange={(e) => setNext(e.target.value)} size="small" />
@@ -571,7 +784,7 @@ function SecuritySection() {
       </Stack>
       <Divider />
       <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-        <Typography variant="h4">Admin unlock</Typography>
+        <Typography variant="h6" component="h2">Admin unlock</Typography>
         {elevated && <Chip size="small" color="warning" label="active" />}
       </Stack>
       {elevated ? (
@@ -590,6 +803,7 @@ function SecuritySection() {
 function LinkSection() {
   const [link, setLink] = useState<any | null>(null);
   const [msg, setMsg] = useState("");
+  const confirm = useConfirm();
   async function load() {
     try {
       setLink(await api("/api/v1/link"));
@@ -598,14 +812,17 @@ function LinkSection() {
     }
   }
   useEffect(() => { void load(); }, []);
-  async function regenerate() {
-    if (!window.confirm("Regenerate the addon API key? Connected bots must reconnect with the new key.")) return;
-    try {
-      await api("/api/v1/link/regenerate", { method: "POST", body: {} });
-      await load();
-    } catch (e: any) {
-      setMsg(e?.message ?? "Regenerate failed.");
-    }
+  function regenerate() {
+    confirm.ask({
+      title: "Regenerate the addon API key?",
+      intro: "Connected bots must reconnect with the new key. The current key stops working immediately.",
+      confirmLabel: "Regenerate",
+      danger: true,
+      run: async () => {
+        await api("/api/v1/link/regenerate", { method: "POST", body: {} });
+        await load();
+      },
+    });
   }
   return (
     <Stack spacing={1.5}>
@@ -619,6 +836,7 @@ function LinkSection() {
         </Paper>
       )}
       <Box><Button variant="outlined" onClick={regenerate}>Regenerate API key</Button></Box>
+      {confirm.dialog}
     </Stack>
   );
 }

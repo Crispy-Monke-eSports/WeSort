@@ -152,6 +152,30 @@ def main():
 
         status, srv, _ = owner.request("/api/v1/server", {"server": "Survival"})
         assert status == 200 and srv.get("configured"), f"server: {srv}"
+        # A scoped member + a second role so the users-admin screenshots show
+        # real scope chips (not raw JSON) on desktop and mobile.
+        status, scoped, _ = owner.request(
+            "/api/v1/users",
+            {
+                "name": "hall-member",
+                "password": "member-pw-12345",
+                "mustChange": False,
+                "perms": {
+                    "view": True,
+                    "order": True,
+                    "activity": False,
+                    "stashes": [{"stash": "main-hall"}],
+                    "bots": ["fake-bot"],
+                },
+            },
+        )
+        assert status == 200, f"scoped user: {scoped}"
+        status, viewer, _ = owner.request(
+            "/api/v1/users",
+            {"name": "hall-viewer", "password": "viewer-pw-12345", "preset": "viewer"},
+        )
+        assert status == 200, f"viewer: {viewer}"
+        ok("2 seeded users (scoped member + viewer)")
         for name, dim, p1, p2 in [
             (
                 "main-hall",

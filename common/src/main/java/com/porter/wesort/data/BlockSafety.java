@@ -44,22 +44,35 @@ public final class BlockSafety {
 
     private BlockSafety() {}
 
+    /**
+     * The registry path of a block id: permits compare full namespaced ids
+     * (minecraft:stone is not mod:stone), but this classification is syntactic
+     * on the path, so the namespace is stripped before matching.
+     */
+    static String path(String id) {
+        if (id == null) return "";
+        int colon = id.indexOf(':');
+        return colon < 0 ? id : id.substring(colon + 1);
+    }
+
     /** Passively triggered blocks that a route must never cross or touch. */
     public static boolean passiveTrigger(String id) {
-        return id.endsWith("_pressure_plate")
-                || id.equals("tripwire")
-                || id.equals("detector_rail")
-                || id.endsWith("sculk_sensor")
-                || id.equals("sculk_shrieker");
+        String p = path(id);
+        return p.endsWith("_pressure_plate")
+                || p.equals("tripwire")
+                || p.equals("detector_rail")
+                || p.endsWith("sculk_sensor")
+                || p.equals("sculk_shrieker");
     }
 
     /** Whether a block registry path is denied use/break and denied as a route cell in a dedicated profile. */
     public static boolean safetySensitive(String id) {
-        return id.endsWith("_door")
-                || id.endsWith("_trapdoor")
-                || id.endsWith("_fence_gate")
-                || id.endsWith("_button")
+        String p = path(id);
+        return p.endsWith("_door")
+                || p.endsWith("_trapdoor")
+                || p.endsWith("_fence_gate")
+                || p.endsWith("_button")
                 || passiveTrigger(id)
-                || DEVICES.contains(id);
+                || DEVICES.contains(p);
     }
 }

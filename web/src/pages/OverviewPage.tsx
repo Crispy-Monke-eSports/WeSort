@@ -5,16 +5,20 @@ import CardContent from "@mui/material/CardContent";
 import CardHeader from "@mui/material/CardHeader";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
+import ErrorIcon from "@mui/icons-material/Error";
 import Grid from "@mui/material/Grid";
 import LinearProgress from "@mui/material/LinearProgress";
 import Link from "@mui/material/Link";
 import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
+import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import { Link as RouterLink } from "@tanstack/react-router";
 import { useAuth, useBots, useOperations, usePermissions, useServer, useStashes, useAllOrders } from "../api/queries";
+import { orderUiState } from "../lib/orderStatus";
 import { OrderStatusChip, PresenceChip, timeAgo } from "../components/status";
 
 /** One actionable problem, backend-derived, with a direct link to resolve it. */
@@ -52,23 +56,33 @@ export function OverviewPage() {
 
   const botList = (bots.data ?? []).filter((b) => perms.seesBot(b.botId));
   const onlineBots = botList.filter((b) => b.online);
-  const openOrders = orders.filter((o) => !["completed", "delivered", "failed", "cancelled"].includes((o.status ?? "").toLowerCase()));
-  const needAttention = orders.filter((o) =>
-    ["failed", "needs_reconciliation", "uncertain"].includes((o.status ?? "").toLowerCase()) ||
-    (o.message ?? "").length > 0 && (o.status ?? "").toLowerCase() === "failed",
-  );
+  const openOrders = orders.filter((o) => orderUiState(String(o.status ?? "unknown")).open);
+  const needAttention = orders.filter((o) => {
+    const s = String(o.status ?? "unknown").toLowerCase();
+    // Backend attention states from the tested mapping, plus the frontend
+    // checkout state for groups whose outcome is still unknown.
+    return orderUiState(s).needsAttention || s === "uncertain";
+  });
 
   // Backend-derived health contract: offline agents, failed orders, operator
   // alerts and stale stock rank by severity. Nothing blocked is only claimed
   // when every source is quiet.
+  //
+  // Counter semantics (P1-13): the figure counts attention SIGNALS after
+  // same-incident folding, not raw backend rows. One offline bot yields both
+  // agents.OFFLINE and alerts.DISCONNECTED server-side; the operations alert
+  // is folded into the per-bot entries so the same incident is not counted
+  // twice. Likewise NEEDS_RECONCILIATION alerts fold into listed orders.
   const attention: Attention[] = [];
-  for (const b of botList.filter((b) => !b.online)) {
+  const offlineBots = botList.filter((b) => !b.online);
+  for (const b of offlineBots) {
     attention.push({
       severity: "warning",
       text: `Bot ${b.player ?? b.botId} offline — seen ${timeAgo(b.lastSeen ?? b.activityAt)}. Orders queue until it returns.`,
       to: "/bots",
     });
   }
+  const listedReconciliation = needAttention.some((o) => (o.status ?? "").toLowerCase() === "needs_reconciliation");
   for (const o of needAttention.slice(0, 5)) {
     attention.push({
       severity: "error",
@@ -78,6 +92,10 @@ export function OverviewPage() {
   }
   const opsAlerts: { code: string; count: number }[] = Array.isArray((ops.data as any)?.alerts) ? (ops.data as any).alerts : [];
   for (const a of opsAlerts.slice(0, 5)) {
+    // Same-incident folding: the DISCONNECTED alert counts the same offline
+    // bots listed above; the reconciliation alert counts orders listed above.
+    if (a.code === "DISCONNECTED" && offlineBots.length > 0) continue;
+    if (a.code === "NEEDS_RECONCILIATION" && listedReconciliation) continue;
     attention.push({ severity: "warning", text: `Operations alert: ${a.code} (${a.count})`, to: "/operations" });
   }
   if (failedStashes.length > 0) {
@@ -90,7 +108,7 @@ export function OverviewPage() {
 
   return (
     <Stack spacing={2}>
-      <Typography variant="h1">Overview</Typography>
+      <Typography variant="h5" component="h1">Overview</Typography>
 
       {!server.data?.configured && (
         <Alert severity="warning">
@@ -113,7 +131,7 @@ export function OverviewPage() {
             <CardHeader title="Bots" subheader={`${onlineBots.length} of ${botList.length} online`} />
             <CardContent>
               {bots.isLoading ? <CircularProgress size={24} /> : (
-                <Typography variant="h3">{onlineBots.length}/{botList.length}</Typography>
+                <Typography variant="h4" component="p">{onlineBots.length}/{botList.length}</Typography>
               )}
               <Typography variant="body2" color="text.secondary">
                 {botList.length === 0 ? "No bots reported yet." : "Signed agents reporting presence."}
@@ -126,7 +144,7 @@ export function OverviewPage() {
             <CardHeader title="Stashes" subheader="Defined regions" />
             <CardContent>
               {stashes.isLoading ? <CircularProgress size={24} /> : (
-                <Typography variant="h3">{stashes.data?.length ?? 0}</Typography>
+                <Typography variant="h4" component="p">{stashes.data?.length ?? 0}</Typography>
               )}
               <Typography variant="body2" color="text.secondary">
                 Server: <Typography component="span" sx={{ fontFamily: "monospace" }}>{server.data?.server || "not set"}</Typography>
@@ -139,7 +157,7 @@ export function OverviewPage() {
             <CardHeader title="Open orders" subheader="Across visible stashes" />
             <CardContent>
               {ordersLoading ? <CircularProgress size={24} /> : (
-                <Typography variant="h3">{openOrders.length}</Typography>
+                <Typography variant="h4" component="p">{openOrders.length}</Typography>
               )}
               <Typography variant="body2" color="text.secondary">
                 {orders.length} total tracked.
@@ -152,7 +170,7 @@ export function OverviewPage() {
             <CardHeader title="Needs attention" subheader="Bots, orders, alerts" />
             <CardContent>
               {ordersLoading ? <CircularProgress size={24} /> : (
-                <Typography variant="h3" color={attention.length ? "error" : undefined}>{attention.length}</Typography>
+                <Typography variant="h4" component="p" color={attention.length ? "error" : undefined}>{attention.length}</Typography>
               )}
               <Typography variant="body2" color="text.secondary">
                 {attention.length ? "Resolve below — each item links straight there." : "Nothing blocked."}
@@ -169,6 +187,11 @@ export function OverviewPage() {
             <List dense>
               {attention.slice(0, 8).map((a, i) => (
                 <ListItem key={i} disableGutters>
+                  <ListItemIcon sx={{ minWidth: 32 }}>
+                    {a.severity === "error"
+                      ? <ErrorIcon fontSize="small" color="error" />
+                      : <WarningAmberIcon fontSize="small" color="warning" />}
+                  </ListItemIcon>
                   <ListItemText
                     primary={
                       <Link component={RouterLink} to={a.to} underline="hover">

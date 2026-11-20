@@ -23,6 +23,7 @@ import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useEffect, useState } from "react";
+import { useConfirm } from "../components/dialogs";
 import { api } from "../api/client";
 import { useAuth, useBotActivity, useBotSettings, useBots, usePermissions } from "../api/queries";
 import { PresenceChip, timeAgo } from "../components/status";
@@ -49,7 +50,7 @@ export function BotsPage() {
 
   return (
     <Stack spacing={2}>
-      <Typography variant="h1">Bots</Typography>
+      <Typography variant="h5" component="h1">Bots</Typography>
       {bots.isError && <Alert severity="error">Could not load bots.</Alert>}
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 4, lg: 3 }}>
@@ -185,6 +186,7 @@ function BotSettingsCard({ botId }: { botId: string }) {
   const [draft, setDraft] = useState<Record<string, number | boolean>>({});
   const [msg, setMsg] = useState("");
   const [sending, setSending] = useState(false);
+  const confirm = useConfirm();
 
   const schema: any[] = Array.isArray((settings.data as any)?.schema) ? (settings.data as any).schema : [];
   const values: Record<string, any> = (settings.data as any)?.values ?? {};
@@ -205,21 +207,32 @@ function BotSettingsCard({ botId }: { botId: string }) {
     .map((s) => ({ s, from: values[s.path], to: draft[s.path] }))
     .filter((d) => d.to !== undefined && d.from !== d.to);
 
-  async function send() {
+  function send() {
     if (!diff.length || sending) return;
-    const changes = diff.map((d) => ({ path: d.s.path, value: d.to, expect: d.from ?? null }));
-    if (!window.confirm(`Send ${changes.length} setting${changes.length === 1 ? "" : "s"} to ${botId}?\n${changes.map((c) => `${c.path}: ${JSON.stringify(c.expect)} → ${JSON.stringify(c.value)}`).join("\n")}`)) return;
-    setSending(true);
-    setMsg("");
-    try {
-      await api(`/api/v1/bots/${encodeURIComponent(botId)}/settings`, { method: "POST", body: { scope: "plugin", changes } });
-      setMsg("Settings sent to the bot.");
-      settings.refetch();
-    } catch (e: any) {
-      setMsg(e?.message ?? "Could not update settings.");
-    } finally {
-      setSending(false);
-    }
+    confirm.ask({
+      title: `Send ${diff.length} setting${diff.length === 1 ? "" : "s"} to ${botId}?`,
+      intro: "Each value is applied on the bot with an expected-value check; mismatches are rejected.",
+      changes: changesPreview(),
+      confirmLabel: "Send",
+      run: async () => {
+        setSending(true);
+        setMsg("");
+        try {
+          await api(`/api/v1/bots/${encodeURIComponent(botId)}/settings`, { method: "POST", body: { scope: "plugin", changes: diff.map((d) => ({ path: d.s.path, value: d.to, expect: d.from ?? null })) } });
+          setMsg("Settings sent to the bot.");
+          settings.refetch();
+        } catch (e: any) {
+          setMsg(e?.message ?? "Could not update settings.");
+          throw e;
+        } finally {
+          setSending(false);
+        }
+      },
+    });
+  }
+
+  function changesPreview(): string[] {
+    return diff.map((d) => `${d.s.path}: ${JSON.stringify(d.from ?? null)} → ${JSON.stringify(d.to)}`);
   }
 
   return (
@@ -299,6 +312,7 @@ function BotSettingsCard({ botId }: { botId: string }) {
           </Box>
         </Stack>
       </CardContent>
+      {confirm.dialog}
     </Card>
   );
 }

@@ -43,6 +43,21 @@ betrodd; klientens spoofbara forwardingheaders ger aldrig Owner-bootstrap.
 Agentnycklar och medlemscookies är separata identiteter. En agent får aldrig
 själv ändra en medlems kvot, roll eller bekräfta mottagning för en annan aktör.
 
+### Rättighets- och interaktionsgränser (PR #94)
+
+- Behörighetsuppdateringar är PATCH-lika för scopes: frånvarande
+  `stashes`/`bots`-nycklar behåller befintlig scope; explicit `null` betyder
+  obegränsad, `[]` betyder ingen åtkomst (`UserRoutes.update`,
+  `Users.Perms.withStashes/withBots`). En rutinmässig flaggändring kan därför
+  aldrig vidga åtkomst tyst. Webbläsarens kontroller är aldrig auktoritativa.
+- Världsinteraktion kräver exakta tillstånd (position + operation + fullständigt
+  namespaced block-ID + auktoriserande jobb + utgång). Jobbet är en verifierad
+  gräns: jobbbyte ogiltigförklarar gamla tillstånd, `unknown` auktoriserar
+  aldrig, och tillstånd konsumeras inte (samma logiska handling kontrolleras
+  flera gånger: mixin, paketgrind, stopDestroy-återkontroll).
+  Destruktiva operationer ogiltigförklarar sig själva via blockmatchning
+  (break lämnar luft, placering upptar cellen).
+
 ## Fysisk källa och global stock
 
 Fysisk nyckel: `(minecraftServerId, dimensionId, stashId, containerId, slot)`.

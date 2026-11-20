@@ -15,7 +15,7 @@ The product is an operations dashboard, not a storefront: Overview, Inventory
 |---|---|---|---|---|
 | Bot presence summary | `GET /api/v1/bots` | Overview cards + list | screenshot (live icons) | ✅ |
 | Stash/region summary | `GET /api/v1/stashes`, `/api/v1/server` | Overview cards + chips | screenshot | ✅ |
-| Open/needs-attention orders | `GET /api/v1/orders?stash=` (all visible) | Overview cards + latest list, partial-failure alert | screenshot + e2e | ✅ |
+| Open/needs-attention orders | `GET /api/v1/orders?stash=` (all visible) | Overview cards + latest list, partial-failure alert, same-incident folding (offline bots ⊃ DISCONNECTED; listed orders ⊃ reconciliation alert), icon+chip severities | screenshot + e2e | ✅ |
 | Cross-stash failure visibility | same | `useAllOrders` reports failed stashes, never silent-empty | e2e | ✅ |
 
 ## Inventory (guild stock + ordering)
@@ -23,19 +23,19 @@ The product is an operations dashboard, not a storefront: Overview, Inventory
 | Existing feature | Java endpoint | React implementation | Test | Status |
 |---|---|---|---|---|
 | Central item search | `GET /api/v1/index` | local search (no fake URL params) | e2e | ✅ |
-| Item grid with counts | same | MUI cards, real 26.3 icons | e2e + screenshots | ✅ |
+| Item grid with counts | same | MUI cards, real 26.3 icons, full-catalog paging with visible count (no silent cap) | e2e + screenshots | ✅ |
 | Table view (dense) | same | MUI table + pagination (25/50/100) | screenshot | ✅ |
 | Loose + whole-box + mixed breakdown | `orderCounts` (index) | per-item + per-stash breakdown, mixed never auto-packed | unit + e2e + screenshots | ✅ |
-| Availability states (orderable/empty/stale/unverified) | `available` + `online` + query health | chips with text (not color-only), unknown ≠ empty | unit + screenshot | ✅ |
+| Availability states (orderable/empty/stale/unverified) | `available` + `online` + query health | error-aware verification (stale data after failed refetch is Unverified, never 0/confirmed; unknown stock not draftable), presence polling, chips with text (not color-only), unknown ≠ empty | e2e (offline-after-load) + screenshot | ✅ |
 | Category filtering (creative tabs) | `tab` field in index bytes | filter drawer + desktop panel | screenshot | ✅ |
 | Availability filter + sorting | same | availability, sort | screenshot | ✅ |
 | Item details + quantity | — (client) | MUI dialog, per-stash table, stack size | e2e + screenshot | ✅ |
 | Guild-wide cross-stash split | `POST /api/v1/orders` per stash | loose-first + whole single-content boxes; draft split commits in one step, each stash is its own backend order (deliberate: no cross-stash transaction — partial success keeps failed groups retryable with the same key) | e2e (2 groups, 2 keys) | ✅ |
 | Cart draft (per user) | — (client) | Zustand persisted per-user draft drawer | unit + e2e | ✅ |
 | No over-delivery from mixed shulkers | `OrderStore`/`PhysicalReservations` (server authoritative) | single-content rule for whole-box lines | unit (mixed negatives) | ✅ |
-| 54-shulker capacity | `MAX_SHULKERS` server | client pre-check, server enforces | unit | ✅ |
+| 54-shulker capacity | `MAX_SHULKERS` server | per-stash pre-check (`perStashBoxUsage` with real max stacks, validated on every add, shown in cart, blocks Place over 54), server enforces | unit (53/54/55, mixed stacks) + e2e | ✅ |
 | Checkout stepper (draft → details → review → confirmation) | `POST /api/v1/orders` | MUI Stepper + per-group state machine (`not_submitted/submitting/confirmed/uncertain/rejected`), exact retry, discard, reload-safe persisted keys+bodies | e2e | ✅ |
-| W-064 box labels | `normalizePackageLabel` + `PackageLabel.generate` | text/all-per-box UI (33-unit counter, server-mirroring validation, locked-Y preview, invalid blocks Place); bot parses `packageLabel`+frozen `packageTotal` into exact `WeSort (X/Y)` names, legacy names only as fallback | unit (bot parse 6, UI validation) + e2e (payload + preview) | ✅ |
+| W-064 box labels | `normalizePackageLabel` + `PackageLabel.generate` | per-stash label config (each stash order owns its texts; estimated Y per stash, server freezes X/Y per order, order kept across retry); 33-unit counter, server-mirroring validation, invalid blocks Place; bot parses `packageLabel`+frozen `packageTotal` into exact `WeSort (X/Y)` names, legacy names only as fallback | unit (bot parse 6, UI validation, per-stash) + e2e (per-stash payloads + preview) | ✅ |
 | Purpose / recipient / comment | `OrderIntent` | validated (recipient regex ≤16, comment ≤500) | unit + e2e | ✅ |
 | Legacy free names | `normalizeNames` | kept for persisted-group compat only; new orders send `names: null` | schema compat | ✅ |
 | Idempotent order submission | `Idempotency-Key` header | key+body bound to full payload hash, reused only on exact match | e2e + Java integration | ✅ |
@@ -45,7 +45,7 @@ The product is an operations dashboard, not a storefront: Overview, Inventory
 
 | Existing feature | Java endpoint | React implementation | Test | Status |
 |---|---|---|---|---|
-| Order history + polling (15s) | `GET /api/v1/orders` | MUI table, search + status filter, pagination | e2e + screenshot | ✅ |
+| Order history + polling (15s) | `GET /api/v1/orders` | MUI table/cards, search + backend-vocabulary status filter, pagination; actions gated by the tested status mapping (`orderUiState`) | e2e + screenshot + vitest contract | ✅ |
 | Partial stash failure | same | explicit error, never silent-empty | e2e | ✅ |
 | Order details + timeline | same | MUI dialog, items/recipient/message + timeline | e2e + screenshot | ✅ |
 | Retry for failed/cancelled | `POST .../retry` | reachable button (was hidden behind open-state gate) | e2e | ✅ |
@@ -84,7 +84,7 @@ The product is an operations dashboard, not a storefront: Overview, Inventory
 | Password change (+mustChange gate) | `POST /api/v1/auth/password` | Security section; 403 surfaced | Java integration | ✅ |
 | Admin unlock / lock (elevated) | `POST /api/v1/auth/confirm`, `/lock` | Security section + AppBar state | screenshot | ✅ |
 | Guild view / rename | `GET/POST /api/v1/guild` (POST owner-only) | Guild section (owner-gated) | screenshot | ✅ |
-| User administration (roles, scopes, disable, reset, logout, delete) | `GET/POST /api/v1/users*` (owner-only) | Users tab: presets + full perms JSON edit | screenshot | ✅ |
+| User administration (roles, scopes, disable, reset, logout, delete) | `GET/POST /api/v1/users*` (owner-only) | Users tab: role presets (scoped users never match unlimited presets), All/Selected stash+bot scopes with explicit null-vs-[] semantics, readable scope chips, full diff before apply; PATCH-like backend merge keeps scopes when keys are absent; masked password dialog (no prompt) | UsersTest scope-preservation + vitest payload + Playwright scope e2e | ✅ |
 | Server (single) + change confirmation | `GET/POST /api/v1/server` | Server tab, owner-only, confirm dialog | screenshot | ✅ |
 | Stash definitions (create/edit/delete, revision conflicts, deliveryDimension) | `GET/POST /api/v1/stash-defs` | Stashes tab, owner-only, edit dialog | screenshot | ✅ |
 | Link addon / regenerate key | `GET /api/v1/link*` (link perm / owner) | Connection section, confirm on regenerate | screenshot | ✅ |
@@ -98,7 +98,7 @@ The product is an operations dashboard, not a storefront: Overview, Inventory
 
 ## Limitations (documented, not silent)
 
-- **W-061 core done, two tails remain.** The fail-closed allowlist (exact position+operation+block+job+expiry permits on every mutation path, sign packet gated, stopDestroyBlock hook, stone-probe harness case) is implemented with 5 registry unit tests + 530 mod tests green. Remaining: Meteor module-allowlist audit surface and the Manager policy/status reporting. Real 26.3 proof runs in CI.
+- **W-061 core done, two tails remain.** The fail-closed allowlist (exact position+operation+block+job+expiry permits on every mutation path, job-bound authorization, full namespaced block ids, unknown-job deny, sign packet gated, stopDestroyBlock hook, stone-probe harness case) is implemented with 9 registry unit tests + BlockSafety namespace tests + 530 mod tests green. No-consume analysis documented (mixin+packet+stopDestroy re-check the same action; destructive ops self-invalidate; same-job reuse is idempotent). Remaining: Meteor module-allowlist audit surface and the Manager policy/status reporting. Real 26.3 proof runs in CI.
 - **No audit-log viewer or per-bot jobs view.** The operator queues that matter for daily runs are covered; these two remain future work.
 - **W-064 physical proof pending CI 26.3 run.** UI contract + bot name generation are implemented and unit/e2e-tested; rename-before-staging reuses the existing anvil path with generated names. Server-blockstate proof of 1–54 numbering, partial delivery and restart recovery runs in the MC E2E job.
 - **W-063 stock-UUID lifecycle + return intake: NOT READY.** No UUID registry, no anvil-applied `WeSort-<uuid>` stock identity, no verified return intake. Explicit product gap, not claimed.

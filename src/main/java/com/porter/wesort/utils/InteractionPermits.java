@@ -46,13 +46,27 @@ public final class InteractionPermits {
     }
 
     /**
-     * True only with a live permit for the exact position and operation whose expected block id equals
-     * the block actually there. Expired permits are pruned on read.
+     * True only with a live permit for the exact position, operation and block id
+     * whose authorizing job is exactly the job asking now. Expired permits are
+     * pruned on read. The job is a verified boundary, not metadata: a permit for
+     * job A never authorizes job B, a job change or abort invalidates every
+     * permit of the old job at once, and "unknown" never authorizes anything.
+     *
+     * <p>Permits are deliberately NOT consumed on first approval. One logical
+     * action is checked up to three times (mixin entry, packet gate,
+     * stopDestroyBlock re-check), so consuming would self-deny legitimate work.
+     * Reuse is still safe: destructive operations self-invalidate because the
+     * block no longer matches (break leaves air, placement occupies the cell),
+     * re-activation by the same live job is idempotent, and the permit expires
+     * within seconds, lives only in memory and is replaced on reissue.
      */
-    public boolean allows(long now, long pos, Operation op, String actualBlock) {
+    public boolean allows(long now, long pos, Operation op, String actualBlock, String job) {
         prune(now);
         Permit p = permits.get(new Key(pos, op));
         if (p == null || now >= p.expiresAt()) return false;
+        if (p.job().equals("unknown")) return false;
+        if (job == null || job.isEmpty() || job.equals("unknown")) return false;
+        if (!p.job().equals(job)) return false;
         return Objects.equals(p.expectedBlock(), actualBlock == null ? "" : actualBlock);
     }
 

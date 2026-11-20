@@ -175,9 +175,17 @@ final class UserRoutes {
         if (perms != null
                 && before != null
                 && o.has("perms")
-                && o.get("perms").isJsonObject()
-                && !o.getAsJsonObject("perms").has("guildOrders")) {
-            perms = perms.withGuildOrders(before.perms().guildOrders());
+                && o.get("perms").isJsonObject()) {
+            // PATCH-like merge: absent keys keep the existing scope instead of
+            // widening to unlimited. A routine flag edit must never silently
+            // grant more stashes or bots (P0-01). Explicit null narrows nothing
+            // (unlimited) and [] narrows to no access; both are honored because
+            // the key is then present.
+            JsonObject sent = o.getAsJsonObject("perms");
+            if (!sent.has("guildOrders")) perms = perms.withGuildOrders(before.perms().guildOrders());
+            if (!sent.has("positions")) perms = perms.withPositions(before.perms().positions());
+            if (!sent.has("stashes")) perms = perms.withStashes(before.perms().stashes());
+            if (!sent.has("bots")) perms = perms.withBots(before.perms().bots());
         }
         Users.User u;
         try {

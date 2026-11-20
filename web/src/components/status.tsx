@@ -1,18 +1,9 @@
 import Chip from "@mui/material/Chip";
+import { orderUiState } from "../lib/orderStatus";
 
-/** Order status → MUI chip color + human label. Statuses come from real backend states. */
+/** Order status → MUI chip color + human label. Severities come from the tested backend mapping. */
 export function OrderStatusChip({ status }: { status: string }) {
-  const s = (status ?? "unknown").toLowerCase();
-  const color =
-    s === "completed" || s === "delivered" || s === "done"
-      ? "success"
-      : s === "failed" || s === "cancelled" || s === "force-cancelled"
-        ? "error"
-        : s === "pending" || s === "queued" || s === "stale" || s === "unknown"
-          ? "default"
-          : s === "accepted" || s === "in_progress" || s === "packing" || s === "staging"
-            ? "info"
-            : "warning";
+  const color = orderUiState(status).severity;
   return <Chip size="small" color={color} label={status} />;
 }
 

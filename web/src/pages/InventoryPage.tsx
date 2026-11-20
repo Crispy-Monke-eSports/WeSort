@@ -58,10 +58,12 @@ import {
   isSingleContent,
   labelTextError,
   LABEL_MAX_TEXT,
+  MAX_SHULKERS,
   mixedBoxedContents,
   netBoxedContents,
   netBoxes,
   payloadHash,
+  perStashBoxUsage,
   shulkersNeeded,
 } from "../lib/shop";
 import { setCartScope, useCart, useCheckout, type CartLine, type CheckoutGroup, type OrderBody } from "../stores/shop";
@@ -102,6 +104,25 @@ interface SliceState {
   shulkers: IndexResponse["shulkers"];
   availableItems: Record<string, number>;
   availableShulkers: Record<string, number>;
+}
+
+interface StashLabels {
+  mode: "none" | "all" | "each";
+  text: string;
+  texts: string[];
+}
+
+function cleanLabel(s: string): string {
+  return (s ?? "").trim().slice(0, 33);
+}
+
+/** Per-stash package label (P1-11): the texts belong to THIS stash's order only. */
+function packageLabelFor(cfg: StashLabels): OrderBody["packageLabel"] {
+  if (cfg.mode === "all" && cleanLabel(cfg.text)) return { mode: "all", text: cleanLabel(cfg.text) };
+  if (cfg.mode === "each" && cfg.texts.some((t) => cleanLabel(t))) {
+    return { mode: "each", texts: cfg.texts.map(cleanLabel).slice(0, 54) };
+  }
+  return null;
 }
 
 function statusOf(group: CheckoutGroup): { label: string; color: "default" | "info" | "success" | "warning" | "error" } {
@@ -153,19 +174,27 @@ export function InventoryPage() {
 
   const slices: SliceState[] = useMemo(
     () =>
-      stashList.map((s, i) => ({
-        stash: s.stash,
-        online: s.online ?? null,
-        lastSeen: s.lastSeen ?? null,
-        indexedAt: s.indexedAt ?? null,
-        indexOk: !!indexQueries[i]?.data,
-        indexError: !!indexQueries[i]?.isError,
-        ordersOk: !!orderQueries[i]?.data,
-        items: indexQueries[i]?.data?.items ?? [],
-        shulkers: indexQueries[i]?.data?.shulkers ?? [],
-        availableItems: orderQueries[i]?.data?.available.items ?? {},
-        availableShulkers: orderQueries[i]?.data?.available.shulkers ?? {},
-      })),
+      stashList.map((s, i) => {
+        // Error-aware verification (P1-09): React Query keeps last data after
+        // a failed refetch, so data alone must NOT mean "verified". A stash
+        // counts as verified only with fresh data and no current error —
+        // otherwise its stock shows as Unverified, never as 0 or as confirmed.
+        const indexQ = indexQueries[i];
+        const orderQ = orderQueries[i];
+        return {
+          stash: s.stash,
+          online: s.online ?? null,
+          lastSeen: s.lastSeen ?? null,
+          indexedAt: s.indexedAt ?? null,
+          indexOk: !!indexQ?.data && !indexQ?.isError,
+          indexError: !!indexQ?.isError,
+          ordersOk: !!orderQ?.data && !orderQ?.isError,
+          items: indexQ?.data?.items ?? [],
+          shulkers: indexQ?.data?.shulkers ?? [],
+          availableItems: orderQ?.data?.available.items ?? {},
+          availableShulkers: orderQ?.data?.available.shulkers ?? {},
+        };
+      }),
     [stashList, indexQueries, orderQueries],
   );
   const mcVersion = indexQueries.find((q) => q.data?.mcVersion)?.data?.mcVersion ?? null;
@@ -252,6 +281,28 @@ export function InventoryPage() {
 
   // ---- cart ----
   const cartLines = cart.lines();
+  // Real max stacks per key from the observed index (default 64): capacity
+  // math must use the item's own stack size, not a global guess (P1-08).
+  const maxStackByKey = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const s of slices) {
+      for (const it of s.items) {
+        if (!m.has(it.key) && it.maxStack != null && it.maxStack > 0) m.set(it.key, it.maxStack);
+      }
+    }
+    return m;
+  }, [slices]);
+  const maxStackOf = (key: string) => maxStackByKey.get(key) ?? 64;
+  // Per-stash box usage of the current draft (P1-08): shown in the cart and
+  // enforced before Place, because the 54-box limit is per stash order.
+  const boxUsage = useMemo(
+    () => perStashBoxUsage(cartLines, (key) => maxStackByKey.get(key) ?? 64),
+    [cartLines, maxStackByKey],
+  );
+  const overLimitStashes = useMemo(
+    () => [...boxUsage.entries()].filter(([, n]) => n > MAX_SHULKERS).map(([s]) => s),
+    [boxUsage],
+  );
   const packedInCart = (stash: string, boxKey: string) =>
     cartLines.filter((l) => l.type === "shulker" && l.stash === stash && l.key === boxKey).reduce((a, l) => a + l.count, 0);
   const inCartTotal = (key: string) =>
@@ -310,6 +361,12 @@ export function InventoryPage() {
       }
     }
     if (remaining > 0) return false;
+    // P1-08: validate the whole new per-stash order, not just this addition.
+    // Individually-valid additions can overflow the same stash together; the
+    // server would reject the oversized order, so the draft refuses it first.
+    for (const n of perStashBoxUsage(next, maxStackOf).values()) {
+      if (n > MAX_SHULKERS) return false;
+    }
     cart.setLines(next);
     return true;
   }
@@ -333,9 +390,17 @@ export function InventoryPage() {
   const [purpose, setPurpose] = useState<"SELF" | "GUILD">("SELF");
   const [recipient, setRecipient] = useState("");
   const [comment, setComment] = useState("");
-  const [labelMode, setLabelMode] = useState<"none" | "all" | "each">("none");
-  const [labelText, setLabelText] = useState("");
-  const [labelTexts, setLabelTexts] = useState<string[]>([]);
+  // W-064, P1-11: box labels are PER STASH, because checkout creates one
+  // backend order per stash and the server freezes WeSort (X/Y) numbering per
+  // order. A shared label array across stashes would misattribute texts to
+  // the wrong order. Estimated Y is explicit; retry reuses the exact array.
+  const [labels, setLabels] = useState<Record<string, StashLabels>>({});
+  function labelsFor(stash: string): StashLabels {
+    return labels[stash] ?? { mode: "none", text: "", texts: [] };
+  }
+  function setLabelsFor(stash: string, next: StashLabels) {
+    setLabels((m) => ({ ...m, [stash]: next }));
+  }
 
   function buildBodies(): OrderBody[] {
     const byStash = new Map<string, CartLine[]>();
@@ -343,19 +408,13 @@ export function InventoryPage() {
       if (!byStash.has(l.stash)) byStash.set(l.stash, []);
       byStash.get(l.stash)!.push(l);
     }
-    // W-064: the user picks only the text part; the server generates `WeSort (X/Y) - text`.
-    const labelTextClean = labelText.trim().slice(0, 33);
-    const packageLabel =
-      labelMode === "all" && labelTextClean
-        ? { mode: "all" as const, text: labelTextClean }
-        : labelMode === "each" && labelTexts.some((s) => (s ?? "").trim())
-          ? { mode: "each" as const, texts: labelTexts.map((s) => (s ?? "").trim().slice(0, 33)).slice(0, 54) }
-          : null;
+    // W-064: the user picks only the text part per stash; the server generates
+    // `WeSort (X/Y) - text` from the frozen packageTotal of THAT stash order.
     return [...byStash.entries()].map(([stash, lines]) => ({
       stash,
       lines: lines.map((l) => ({ type: l.type, key: l.key, count: l.count })),
       names: null,
-      packageLabel,
+      packageLabel: packageLabelFor(labelsFor(stash)),
       purpose,
       recipient: recipient.trim() ? recipient.trim().slice(0, 16) : null,
       comment: comment.trim() ? comment.trim().slice(0, 500) : null,
@@ -457,6 +516,10 @@ export function InventoryPage() {
   // ---- pagination ----
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
+  // Grid shows the full filtered catalog in pages (P1-10): no silent 120-item
+  // cap. The count is always visible; "Show more" extends the grid.
+  const [gridLimit, setGridLimit] = useState(120);
+  useEffect(() => { setGridLimit(120); }, [q, cat, avail, sort]);
 
   const filters = (
     <Stack spacing={2}>
@@ -491,7 +554,7 @@ export function InventoryPage() {
   return (
     <Stack spacing={2}>
       <Stack direction="row" spacing={2}>
-        <Typography variant="h1" sx={{ flexGrow: 1 }}>Inventory</Typography>
+        <Typography variant="h5" component="h1" sx={{ flexGrow: 1 }}>Inventory</Typography>
         {!isXs && (
         <ToggleButtonGroup value={view} exclusive onChange={(_, v) => v && setView(v)} size="small" aria-label="Inventory view">
           <ToggleButton value="grid" aria-label="Grid view"><GridViewIcon /></ToggleButton>
@@ -530,7 +593,7 @@ export function InventoryPage() {
         {!isMobile && (
           <Grid size={{ md: 3, lg: 2 }}>
             <Paper sx={{ p: 2, position: "sticky", top: 88 }}>
-              <Typography variant="h4" gutterBottom>Filters</Typography>
+              <Typography variant="h6" component="h2" gutterBottom>Filters</Typography>
               {filters}
             </Paper>
           </Grid>
@@ -547,7 +610,7 @@ export function InventoryPage() {
             <Alert severity="error">Could not load the guild stock. Check that a bot is connected and rescanning.</Alert>
           ) : (isXs || view === "grid") ? (
             <Grid container spacing={2} data-testid="item-grid">
-              {items.slice(0, 120).map((e) => (
+              {items.slice(0, gridLimit).map((e) => (
                 <Grid key={e.key} size={{ xs: 12, sm: 6, lg: 4, xl: 3 }}>
                   <ItemCard item={e} slices={slices} mcVersion={mcVersion} onBuy={() => setBuy(e)} canOrder={canOrder} orderable={orderableOf(e.key)} inCart={inCartTotal(e.key)} />
                 </Grid>
@@ -584,31 +647,43 @@ export function InventoryPage() {
               />
             </TableContainer>
           )}
-          {view === "grid" && items.length > 120 && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>Showing 120 of {grouped(items.length)} items — refine search or use table view with pagination.</Typography>
+          {view === "grid" && (
+            <Stack spacing={1} sx={{ mt: 1, alignItems: "flex-start" }}>
+              <Typography variant="body2" color="text.secondary" data-testid="grid-count">
+                Showing {Math.min(gridLimit, items.length)} of {grouped(items.length)} items
+                {items.length > gridLimit ? "" : " — refine search or use table view with pagination."}
+              </Typography>
+              {items.length > gridLimit && (
+                <Button variant="outlined" size="small" onClick={() => setGridLimit((l) => l + 120)}>
+                  Show {Math.min(120, items.length - gridLimit)} more
+                </Button>
+              )}
+            </Stack>
           )}
         </Grid>
       </Grid>
 
       <Drawer anchor={isMobile ? "bottom" : "right"} open={filterOpen} onClose={() => setFilterOpen(false)}>
         <Box sx={{ p: 2, width: isMobile ? "auto" : 320 }}>
-          <Typography variant="h4" gutterBottom>Filters</Typography>
+          <Typography variant="h6" component="h2" gutterBottom>Filters</Typography>
           {filters}
           <Button sx={{ mt: 2 }} fullWidth variant="contained" onClick={() => setFilterOpen(false)}>Show results</Button>
         </Box>
       </Drawer>
 
-      <BuyDialog item={buy} slices={slices} mcVersion={mcVersion} canOrder={canOrder} remaining={buy ? (orderableOf(buy.key) ?? 0) : 0} onClose={() => setBuy(null)} onAdd={(n) => { if (buy && addToCart(buy.key, n)) setBuy(null); }} />
+      <BuyDialog item={buy} slices={slices} mcVersion={mcVersion} canOrder={canOrder} remaining={buy ? (orderableOf(buy.key) ?? 0) : 0} onClose={() => setBuy(null)} onAdd={(n) => { if (buy && addToCart(buy.key, n)) { setBuy(null); return true; } return false; }} />
       <CartDrawer
         open={cartOpen} onClose={() => setCartOpen(false)} lines={cartLines} slices={slices}
+        boxUsage={boxUsage} overLimit={overLimitStashes}
         onCheckout={() => { setCartOpen(false); setStep(0); setCheckoutOpen(true); }}
       />
       <CheckoutDialog
         open={checkoutOpen} onClose={() => setCheckoutOpen(false)} step={step} setStep={setStep}
         lines={cartLines} groups={groups} placing={placing} onPlace={place}
         purpose={purpose} setPurpose={setPurpose} recipient={recipient} setRecipient={setRecipient}
-        comment={comment} setComment={setComment} labelMode={labelMode} setLabelMode={setLabelMode}
-        labelText={labelText} setLabelText={setLabelText} labelTexts={labelTexts} setLabelTexts={setLabelTexts}
+        comment={comment} setComment={setComment} labelsFor={labelsFor} setLabelsFor={setLabelsFor}
+        estBoxes={Object.fromEntries(boxUsage)}
+        overLimit={overLimitStashes}
         onRetryExact={retryExact} onDiscard={discard} uncertainCount={uncertainCount} confirmedCount={confirmedCount}
         canOrder={canOrder} slices={slices}
       />
@@ -690,7 +765,7 @@ function ItemCard({ item, slices, mcVersion, onBuy, canOrder, orderable, inCart 
         <Stack direction="row" spacing={1.5} sx={{ alignItems: "flex-start" }}>
           <ItemIcon id={item.id} size={48} label={item.name ?? undefined} mcVersion={mcVersion} />
           <Box sx={{ minWidth: 0 }}>
-            <Typography variant="h4" noWrap title={item.name ?? item.id}>{item.name ?? item.id}</Typography>
+            <Typography variant="subtitle1" component="h3" noWrap title={item.name ?? item.id}>{item.name ?? item.id}</Typography>
             <Typography variant="caption" color="text.secondary" sx={{ fontFamily: "monospace", wordBreak: "break-all" }}>{item.id}</Typography>
           </Box>
         </Stack>
@@ -767,7 +842,7 @@ function InventoryRow({ item, slices, mcVersion, onBuy, canOrder, orderable, inC
 function BuyDialog({ item, slices, mcVersion, canOrder, remaining, onClose, onAdd }: {
   item: MergedItem | null; slices: SliceState[]; mcVersion: string | null; canOrder: boolean;
   remaining: number;
-  onClose: () => void; onAdd: (n: number) => void;
+  onClose: () => void; onAdd: (n: number) => boolean;
 }) {
   const isXsDialog = useMediaQuery(useTheme().breakpoints.down("sm"));
   // Max is cart-adjusted and capacity-clamped: never offer more than the draft
@@ -776,7 +851,8 @@ function BuyDialog({ item, slices, mcVersion, canOrder, remaining, onClose, onAd
   const fitsInLimit = 54 * 27 * maxStack;
   const max = Math.max(1, Math.min(remaining, fitsInLimit));
   const [n, setN] = useState(max);
-  useEffect(() => { setN(max); }, [item?.key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [addError, setAddError] = useState("");
+  useEffect(() => { setN(max); setAddError(""); }, [item?.key]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!item) return null;
   const estBoxes = item
     ? shulkersNeeded([{ type: "item", key: item.key, count: n }], () => maxStack, () => false)
@@ -844,23 +920,36 @@ function BuyDialog({ item, slices, mcVersion, canOrder, remaining, onClose, onAd
           </Alert>
         )}
         {!canOrder && <Alert severity="warning" sx={{ mt: 1 }}>Your account can't place orders.</Alert>}
+        {addError && <Alert severity="error" sx={{ mt: 1 }}>{addError}</Alert>}
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Cancel</Button>
-        <Button variant="contained" onClick={() => onAdd(n)} disabled={!canOrder || remaining < 1 || estBoxes > 54}>Add to cart</Button>
+        <Button
+          variant="contained"
+          onClick={() => {
+            if (!onAdd(n)) {
+              setAddError("That quantity would push a stash order past 54 boxes. Lower it or split the items across checkouts — the server rejects oversized orders.");
+            }
+          }}
+          disabled={!canOrder || remaining < 1 || estBoxes > 54}
+        >
+          Add to cart
+        </Button>
       </DialogActions>
     </Dialog>
   );
 }
 
-function CartDrawer({ open, onClose, lines, slices, onCheckout }: {
-  open: boolean; onClose: () => void; lines: CartLine[]; slices: SliceState[]; onCheckout: () => void;
+function CartDrawer({ open, onClose, lines, slices, boxUsage, overLimit, onCheckout }: {
+  open: boolean; onClose: () => void; lines: CartLine[]; slices: SliceState[];
+  boxUsage: Map<string, number>; overLimit: string[];
+  onCheckout: () => void;
 }) {
   const cart = useCart();
   return (
     <Drawer anchor="right" open={open} onClose={onClose} sx={{ "& .MuiDrawer-paper": { width: { xs: "100%", sm: 420 } } }}>
       <Box sx={{ p: 2, display: "flex", flexDirection: "column", height: "100%" }}>
-        <Typography variant="h3" gutterBottom>Order draft</Typography>
+        <Typography variant="h6" component="h2" gutterBottom>Order draft</Typography>
         {lines.length === 0 ? (
           <Typography color="text.secondary">The draft is empty. Add items from Inventory.</Typography>
         ) : (
@@ -884,9 +973,20 @@ function CartDrawer({ open, onClose, lines, slices, onCheckout }: {
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
               {lines.length} lines · {grouped(lines.reduce((a, l) => a + l.count, 0))} units · {new Set(lines.map((l) => l.stash)).size} stash(es) → one order each.
             </Typography>
-            <Stack direction="row" spacing={1}>
+            {[...boxUsage.entries()].map(([stash, n]) => (
+              <Typography key={stash} variant="body2" color={n > MAX_SHULKERS ? "error" : "text.secondary"} sx={{ fontFamily: "monospace" }}>
+                {stash}: {n}/{MAX_SHULKERS} boxes{overLimit.includes(stash) ? " — over the per-order limit" : ""}
+              </Typography>
+            ))}
+            {overLimit.length > 0 && (
+              <Alert severity="error" sx={{ mt: 1 }}>
+                {overLimit.join(", ")} need{overLimit.length === 1 ? "s" : ""} more than {MAX_SHULKERS} boxes.
+                Remove lines or check out in parts — the server rejects oversized orders and stays authoritative.
+              </Alert>
+            )}
+            <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
               <Button variant="outlined" onClick={() => cart.clear()}>Clear</Button>
-              <Button id="cart-place" variant="contained" fullWidth onClick={onCheckout}>Checkout</Button>
+              <Button id="cart-place" variant="contained" fullWidth onClick={onCheckout} disabled={overLimit.length > 0}>Checkout</Button>
             </Stack>
           </>
         )}
@@ -901,9 +1001,8 @@ function CheckoutDialog(props: {
   purpose: "SELF" | "GUILD"; setPurpose: (v: "SELF" | "GUILD") => void;
   recipient: string; setRecipient: (v: string) => void;
   comment: string; setComment: (v: string) => void;
-  labelMode: "none" | "all" | "each"; setLabelMode: (v: "none" | "all" | "each") => void;
-  labelText: string; setLabelText: (v: string) => void;
-  labelTexts: string[]; setLabelTexts: (v: string[]) => void;
+  labelsFor: (stash: string) => StashLabels; setLabelsFor: (stash: string, next: StashLabels) => void;
+  estBoxes: Record<string, number>; overLimit: string[];
   onRetryExact: (g: CheckoutGroup) => void; onDiscard: (hash: string) => void;
   uncertainCount: number; confirmedCount: number; canOrder: boolean; slices: SliceState[];
 }) {
@@ -917,21 +1016,17 @@ function CheckoutDialog(props: {
     }
     return [...m.entries()];
   }, [props.lines]);
-  // Estimated boxes for the W-064 preview: item lines via 27-slot bins (64-stack
-  // estimate), packed lines 1:1. The server locks the final Y at commit.
-  const labelInvalid =
-    (props.labelMode === "all" && !!labelTextError(props.labelText)) ||
-    (props.labelMode === "each" && props.labelTexts.some((t) => t.trim() !== "" && !!labelTextError(t)));
-  const estimatedBoxes = Math.max(
-    1,
-    ...perStash.map(([, ls]) =>
-      shulkersNeeded(
-        ls.map((l) => ({ type: l.type, key: l.key, count: l.count })),
-        () => 64,
-        (k) => ls.some((l) => l.type === "shulker" && l.key === k),
-      ),
-    ),
-  );
+  // Estimated boxes per stash: the real draft usage (P1-08), at least 1 row so
+  // an empty estimate still offers one label field. The server locks the final
+  // Y at commit; estimates are labelled as estimates everywhere.
+  const estFor = (stash: string) => Math.max(1, props.estBoxes[stash] ?? 1);
+  // Any invalid label text blocks Place: the server would 400 the group.
+  const labelInvalid = perStash.some(([stash]) => {
+    const cfg = props.labelsFor(stash);
+    if (cfg.mode === "all") return !!labelTextError(cfg.text);
+    if (cfg.mode === "each") return cfg.texts.some((t) => t.trim() !== "" && !!labelTextError(t));
+    return false;
+  });
 
   return (
     <Dialog open={props.open} onClose={props.onClose} maxWidth="md" fullWidth>
@@ -969,49 +1064,67 @@ function CheckoutDialog(props: {
             </FormControl>
             <TextField label="Recipient (optional)" value={props.recipient} onChange={(e) => props.setRecipient(e.target.value)} size="small" slotProps={{ htmlInput: { maxLength: 16 } }} helperText="Letters, digits and underscore, at most 16 characters" />
             <TextField label="Comment (optional)" value={props.comment} onChange={(e) => props.setComment(e.target.value)} size="small" multiline rows={2} slotProps={{ htmlInput: { maxLength: 500 } }} />
-            <FormControl size="small" fullWidth>
-              <InputLabel id="box-labels-label">Box labels</InputLabel>
-              <Select labelId="box-labels-label" id="box-labels" value={props.labelMode} label="Box labels" onChange={(e) => props.setLabelMode(e.target.value as typeof props.labelMode)}>
-                <MenuItem value="none">Default (“Beställning”)</MenuItem>
-                <MenuItem value="all">Same text on every box</MenuItem>
-                <MenuItem value="each">Different text per box</MenuItem>
-              </Select>
-            </FormControl>
-            {props.labelMode !== "none" && (
-              <Typography variant="body2" color="text.secondary">
-                The server names every box <Typography component="span" sx={{ fontFamily: "monospace" }}>WeSort (X/Y) - text</Typography> from
-                the locked packing plan (preview Y ≈ {estimatedBoxes} below; final numbering locked server-side).
-              </Typography>
-            )}
-            {props.labelMode === "all" && (
-              <LabelTextField
-                label="Text for every box"
-                value={props.labelText}
-                onChange={props.setLabelText}
-                previewY={estimatedBoxes}
-              />
-            )}
-            {props.labelMode === "each" && (
-              <Stack spacing={1}>
-                <Typography variant="body2" color="text.secondary">One text per planned box (about {estimatedBoxes} box{estimatedBoxes === 1 ? "" : "es"}); blanks fall back to “Beställning”.</Typography>
-                {props.labelTexts.map((nm, i) => (
-                  <LabelTextField
-                    key={i}
-                    label={`Box ${i + 1} text`}
-                    previewY={estimatedBoxes}
-                    value={nm}
-                    onChange={(v) => {
-                      const next = [...props.labelTexts];
-                      next[i] = v;
-                      props.setLabelTexts(next);
-                    }}
-                  />
-                ))}
-                {props.labelTexts.length < Math.min(54, Math.max(estimatedBoxes, 1)) && (
-                  <Button variant="outlined" size="small" onClick={() => props.setLabelTexts([...props.labelTexts, ""])}>Add box row</Button>
-                )}
-              </Stack>
-            )}
+            <Typography variant="body2" color="text.secondary">
+              Box labels are set <strong>per stash order</strong>: each stash below becomes its own backend
+              order, and the server freezes <Typography component="span" sx={{ fontFamily: "monospace" }}>WeSort (X/Y)</Typography> numbering
+              separately for each one. Y below is an estimate; the server locks the final count at commit.
+            </Typography>
+            {perStash.map(([stash]) => {
+              const cfg = props.labelsFor(stash);
+              const est = estFor(stash);
+              return (
+                <Paper key={stash} variant="outlined" sx={{ p: 1.5 }}>
+                  <Stack spacing={1}>
+                    <Typography variant="subtitle2" sx={{ fontFamily: "monospace" }}>
+                      {stash} · ≈{est} box{est === 1 ? "" : "es"} (estimate)
+                    </Typography>
+                    <FormControl size="small" fullWidth>
+                      <InputLabel id={`box-labels-${stash}`}>Box labels for {stash}</InputLabel>
+                      <Select
+                        labelId={`box-labels-${stash}`} id={`box-labels-${stash}`} value={cfg.mode} label={`Box labels for ${stash}`}
+                        onChange={(e) => props.setLabelsFor(stash, { ...cfg, mode: e.target.value as StashLabels["mode"] })}
+                      >
+                        <MenuItem value="none">Default (“Beställning”)</MenuItem>
+                        <MenuItem value="all">Same text on every box</MenuItem>
+                        <MenuItem value="each">Different text per box</MenuItem>
+                      </Select>
+                    </FormControl>
+                    {cfg.mode === "all" && (
+                      <LabelTextField
+                        label={`Text for every box in ${stash}`}
+                        value={cfg.text}
+                        onChange={(v) => props.setLabelsFor(stash, { ...cfg, text: v })}
+                        previewY={est}
+                      />
+                    )}
+                    {cfg.mode === "each" && (
+                      <Stack spacing={1}>
+                        <Typography variant="body2" color="text.secondary">
+                          One text per planned box in {stash} (about {est}); blanks fall back to “Beställning”.
+                          The order of texts is kept exactly, including across retry.
+                        </Typography>
+                        {cfg.texts.map((nm, i) => (
+                          <LabelTextField
+                            key={i}
+                            label={`${stash} box ${i + 1} text`}
+                            previewY={est}
+                            value={nm}
+                            onChange={(v) => {
+                              const next = [...cfg.texts];
+                              next[i] = v;
+                              props.setLabelsFor(stash, { ...cfg, texts: next });
+                            }}
+                          />
+                        ))}
+                        {cfg.texts.length < Math.min(54, est) && (
+                          <Button variant="outlined" size="small" onClick={() => props.setLabelsFor(stash, { ...cfg, texts: [...cfg.texts, ""] })}>Add box row</Button>
+                        )}
+                      </Stack>
+                    )}
+                  </Stack>
+                </Paper>
+              );
+            })}
             {!props.canOrder && <Alert severity="warning">Your account can't place orders.</Alert>}
           </Stack>
         )}
@@ -1026,6 +1139,25 @@ function CheckoutDialog(props: {
                     ×{grouped(l.count)} {l.type === "shulker" ? `packed ${l.key}` : l.key}
                   </Typography>
                 ))}
+                {(() => {
+                  const cfg = props.labelsFor(stash);
+                  const est = estFor(stash);
+                  if (cfg.mode === "all" && cleanLabel(cfg.text)) {
+                    return (
+                      <Typography variant="body2" color="text.secondary">
+                        Labels: “{cleanLabel(cfg.text)}” on every box (≈{est}; server freezes X/Y for this order).
+                      </Typography>
+                    );
+                  }
+                  if (cfg.mode === "each" && cfg.texts.some((t) => cleanLabel(t))) {
+                    return (
+                      <Typography variant="body2" color="text.secondary">
+                        Labels: {cfg.texts.map(cleanLabel).filter(Boolean).map((t) => `“${t}”`).join(", ")} (≈{est} boxes; order kept exactly).
+                      </Typography>
+                    );
+                  }
+                  return null;
+                })()}
               </Paper>
             ))}
             <Typography variant="body2" color="text.secondary">
@@ -1037,6 +1169,12 @@ function CheckoutDialog(props: {
               <Alert severity="info">
                 {perStash.length} separate backend orders (one per stash) — not one transaction.
                 If a stash fails, the others still confirm; retry the failed group with its same key.
+              </Alert>
+            )}
+            {props.overLimit.length > 0 && (
+              <Alert severity="error">
+                {props.overLimit.join(", ")} exceed{props.overLimit.length === 1 ? "s" : ""} the {MAX_SHULKERS}-box
+                per-order limit. Go back and remove lines — the server rejects oversized orders.
               </Alert>
             )}
           </Stack>
@@ -1086,7 +1224,10 @@ function CheckoutDialog(props: {
         {step === 2 && (
           <>
             <Button onClick={() => setStep(1)}>Back</Button>
-            <Button variant="contained" onClick={props.onPlace} disabled={props.placing || !props.lines.length || !props.canOrder || labelInvalid}>
+            <Button
+              variant="contained" onClick={props.onPlace}
+              disabled={props.placing || !props.lines.length || !props.canOrder || labelInvalid || props.overLimit.length > 0}
+            >
               {props.placing ? "Placing…" : "Place orders"}
             </Button>
           </>

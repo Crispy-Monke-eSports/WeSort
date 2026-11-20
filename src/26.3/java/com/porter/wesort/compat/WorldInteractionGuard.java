@@ -48,17 +48,17 @@ public final class WorldInteractionGuard {
      * the job uses, click the face a placement goes on). Revoked on close.
      */
     public static AutoCloseable permitUse(BlockPos pos) {
-        return PERMITS.permit(pos.asLong(), Operation.USE, blockPath(pos), currentJob(), PERMIT_TTL_MS, now());
+        return PERMITS.permit(pos.asLong(), Operation.USE, blockId(pos), currentJob(), PERMIT_TTL_MS, now());
     }
 
     /** Issues a scoped BREAK permit for one destruction (only a shulker the bot itself placed). */
     public static AutoCloseable permitBreak(BlockPos pos) {
-        return PERMITS.permit(pos.asLong(), Operation.BREAK, blockPath(pos), currentJob(), PERMIT_TTL_MS, now());
+        return PERMITS.permit(pos.asLong(), Operation.BREAK, blockId(pos), currentJob(), PERMIT_TTL_MS, now());
     }
 
     /** Issues a scoped SIGN permit for one sign-text write at an already-placed sign. */
     public static AutoCloseable permitSign(BlockPos pos) {
-        return PERMITS.permit(pos.asLong(), Operation.SIGN, blockPath(pos), currentJob(), PERMIT_TTL_MS, now());
+        return PERMITS.permit(pos.asLong(), Operation.SIGN, blockId(pos), currentJob(), PERMIT_TTL_MS, now());
     }
 
     /**
@@ -68,7 +68,7 @@ public final class WorldInteractionGuard {
      */
     public static AutoCloseable permitPlace(BlockPos emptyCell) {
         return PERMITS.permit(
-                emptyCell.asLong(), Operation.PLACE, blockPath(emptyCell), currentJob(), PERMIT_TTL_MS, now());
+                emptyCell.asLong(), Operation.PLACE, blockId(emptyCell), currentJob(), PERMIT_TTL_MS, now());
     }
 
     /**
@@ -76,49 +76,58 @@ public final class WorldInteractionGuard {
      * Prefer the scoped {@link #permitUse} for synchronous calls.
      */
     public static void authorizeUse(BlockPos pos) {
-        PERMITS.permit(pos.asLong(), Operation.USE, blockPath(pos), currentJob(), PERMIT_TTL_MS, now());
+        PERMITS.permit(pos.asLong(), Operation.USE, blockId(pos), currentJob(), PERMIT_TTL_MS, now());
     }
 
     /** Fire-and-forget BREAK authorization (see {@link #authorizeUse}). */
     public static void authorizeBreak(BlockPos pos) {
-        PERMITS.permit(pos.asLong(), Operation.BREAK, blockPath(pos), currentJob(), PERMIT_TTL_MS, now());
+        PERMITS.permit(pos.asLong(), Operation.BREAK, blockId(pos), currentJob(), PERMIT_TTL_MS, now());
     }
 
     /** Fire-and-forget PLACE authorization (see {@link #permitPlace}). */
     public static void authorizePlace(BlockPos emptyCell) {
-        PERMITS.permit(emptyCell.asLong(), Operation.PLACE, blockPath(emptyCell), currentJob(), PERMIT_TTL_MS, now());
+        PERMITS.permit(emptyCell.asLong(), Operation.PLACE, blockId(emptyCell), currentJob(), PERMIT_TTL_MS, now());
     }
 
     /** Fire-and-forget SIGN authorization (see {@link #permitSign}). */
     public static void authorizeSign(BlockPos pos) {
-        PERMITS.permit(pos.asLong(), Operation.SIGN, blockPath(pos), currentJob(), PERMIT_TTL_MS, now());
+        PERMITS.permit(pos.asLong(), Operation.SIGN, blockId(pos), currentJob(), PERMIT_TTL_MS, now());
     }
 
     public static boolean allowUse(BlockHitResult hit) {
         if (!dedicated()) return true;
+        // Fail-closed: without a live, known job no mutation is authorized,
+        // even with a leftover permit (permits themselves also reject unknown).
+        String job = currentJob();
+        if (job == null || job.isEmpty() || job.equals("unknown")) return false;
         if (mc.level == null) return false;
         var position = hit.getBlockPos();
         if (!mc.level.isLoaded(position)) return false;
         long now = now();
         // Activation: the clicked block itself is authorized for this job.
-        if (PERMITS.allows(now, position.asLong(), Operation.USE, blockPath(position))) return true;
+        if (PERMITS.allows(now, position.asLong(), Operation.USE, blockId(position), job)) return true;
         // Placement: the click lands on a support while the adjacent cell carries a live PLACE
         // permit naming the air the job puts its block into.
         var target = position.relative(hit.getDirection());
-        return mc.level.isLoaded(target) && PERMITS.allows(now, target.asLong(), Operation.PLACE, blockPath(target));
+        return mc.level.isLoaded(target)
+                && PERMITS.allows(now, target.asLong(), Operation.PLACE, blockId(target), job);
     }
 
     public static boolean allowBreak(BlockPos position) {
         if (!dedicated()) return true;
+        String job = currentJob();
+        if (job == null || job.isEmpty() || job.equals("unknown")) return false;
         if (mc.level == null || !mc.level.isLoaded(position)) return false;
-        return PERMITS.allows(now(), position.asLong(), Operation.BREAK, blockPath(position));
+        return PERMITS.allows(now(), position.asLong(), Operation.BREAK, blockId(position), job);
     }
 
     /** Sign text goes in its own packet: it needs its own permit, like any other mutation. */
     public static boolean allowSign(BlockPos position) {
         if (!dedicated()) return true;
+        String job = currentJob();
+        if (job == null || job.isEmpty() || job.equals("unknown")) return false;
         if (mc.level == null || !mc.level.isLoaded(position)) return false;
-        return PERMITS.allows(now(), position.asLong(), Operation.SIGN, blockPath(position));
+        return PERMITS.allows(now(), position.asLong(), Operation.SIGN, blockId(position), job);
     }
 
     /** The authorizing job of the live permit, for deny audit (null when there is none). */
@@ -128,13 +137,14 @@ public final class WorldInteractionGuard {
 
     static boolean safeBlock(BlockPos position) {
         if (mc.level == null || !mc.level.isLoaded(position)) return false;
-        return !com.porter.wesort.data.BlockSafety.safetySensitive(blockPath(position));
+        return !com.porter.wesort.data.BlockSafety.safetySensitive(blockId(position));
     }
 
-    static String blockPath(BlockPos position) {
+    /** Full namespaced block id (minecraft:stone, never bare path): permits for one namespace never match another. */
+    static String blockId(BlockPos position) {
         return BuiltInRegistries.BLOCK
                 .getKey(mc.level.getBlockState(position).getBlock())
-                .getPath();
+                .toString();
     }
 
     private static long now() {

@@ -33,7 +33,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { keys, useAllOrders, useAuth, usePermissions, useStashes } from "../api/queries";
+import { ConfirmDialog } from "../components/dialogs";
 import { OrderStatusChip } from "../components/status";
+import { ORDER_STATUSES, orderUiState } from "../lib/orderStatus";
 
 function progressText(o: any): string {
   const p = o?.progress;
@@ -65,6 +67,11 @@ export function OrdersPage() {
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [detail, setDetail] = useState<any | null>(null);
   const [actionMsg, setActionMsg] = useState("");
+  const [confirm, setConfirm] = useState<null | {
+    title: string; intro?: string; changes?: string[]; confirmLabel: string; danger?: boolean; run: () => Promise<void>;
+  }>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [confirmError, setConfirmError] = useState("");
   // Genuine mobile view (cards, not a squeezed table): render exactly one variant.
   const theme = useTheme();
   const isXs = useMediaQuery(theme.breakpoints.down("sm"));
@@ -89,36 +96,61 @@ export function OrdersPage() {
     return list;
   }, [orders, statusFilter, query, perms, auth.data]);
 
-  async function act(order: any, action: "cancel" | "force-cancel" | "retry") {
+  function act(order: any, action: "cancel" | "force-cancel" | "retry") {
     setActionMsg("");
-    const verb = action === "cancel" ? "request cancel for" : action === "force-cancel" ? "force-cancel" : "retry";
-    if (!window.confirm(`${verb} order ${order.id}?`)) return;
+    const verb = action === "cancel" ? "Request cancel for" : action === "force-cancel" ? "Force-cancel" : "Retry";
+    const danger = action === "force-cancel";
+    setConfirm({
+      title: `${verb} order ${order.id}?`,
+      intro: action === "retry"
+        ? "A terminal order is retried as a new order with the same lines. The old order stays finished."
+        : action === "force-cancel"
+          ? "Force-cancel ends the order even if the bot is mid-pack. This cannot be undone."
+          : "The bot is asked to stop work on this order and its reservations are released.",
+      changes: [`order: ${order.id}`, `stash: ${order.stash ?? "?"}`, `status: ${order.status ?? "?"}`],
+      confirmLabel: verb,
+      danger,
+      run: async () => {
+        const path = action === "retry" ? `/api/v1/orders/${order.id}/retry` : `/api/v1/orders/${order.id}/${action}`;
+        const res = await api<{ ok: boolean; order?: any }>(path, { method: "POST", body: {} });
+        setActionMsg(action === "retry" ? `Retried as ${res.order?.id ?? "a new order"}.` : `Order ${order.id}: ${action} sent.`);
+        if (order.stash) queryClient.invalidateQueries({ queryKey: keys.orders(order.stash) });
+        setDetail(null);
+      },
+    });
+  }
+
+  async function runConfirm() {
+    if (!confirm) return;
+    setConfirmBusy(true);
+    setConfirmError("");
     try {
-      const path = action === "retry" ? `/api/v1/orders/${order.id}/retry` : `/api/v1/orders/${order.id}/${action}`;
-      const res = await api<{ ok: boolean; order?: any }>(path, { method: "POST", body: {} });
-      setActionMsg(action === "retry" ? `Retried as ${res.order?.id ?? "a new order"}.` : `Order ${order.id}: ${action} sent.`);
-      if (order.stash) queryClient.invalidateQueries({ queryKey: keys.orders(order.stash) });
-      setDetail(null);
+      await confirm.run();
+      setConfirm(null);
     } catch (e: any) {
-      setActionMsg(e?.message ?? `${action} failed.`);
+      setConfirmError(e?.message ?? "Action failed.");
+    } finally {
+      setConfirmBusy(false);
     }
   }
 
-  async function clearFinished(stash: string) {
+  function clearFinished(stash: string) {
     setActionMsg("");
-    if (!window.confirm(`Clear finished orders for stash ${stash}? Open orders stay.`)) return;
-    try {
-      const res = await api<{ removed: number }>("/api/v1/orders/clear", { method: "POST", body: { stash } });
-      setActionMsg(`Cleared ${res.removed} finished orders (${stash}).`);
-      queryClient.invalidateQueries({ queryKey: keys.orders(stash) });
-    } catch (e: any) {
-      setActionMsg(e?.message ?? "Clear failed.");
-    }
+    setConfirm({
+      title: `Clear finished orders for stash ${stash}?`,
+      intro: "Only finished orders are removed. Open orders stay.",
+      confirmLabel: "Clear finished",
+      run: async () => {
+        const res = await api<{ removed: number }>("/api/v1/orders/clear", { method: "POST", body: { stash } });
+        setActionMsg(`Cleared ${res.removed} finished orders (${stash}).`);
+        queryClient.invalidateQueries({ queryKey: keys.orders(stash) });
+      },
+    });
   }
 
   return (
     <Stack spacing={2}>
-      <Typography variant="h1">Orders</Typography>
+      <Typography variant="h5" component="h1">Orders</Typography>
       {failedStashes.length > 0 && (
         <Alert severity="error">Could not load orders for {failedStashes.join(", ")} — the table below is partial.</Alert>
       )}
@@ -129,7 +161,7 @@ export function OrdersPage() {
         <FormControl size="small" sx={{ minWidth: 160 }}>
           <InputLabel id="orders-status-label">Status</InputLabel>
           <Select value={statusFilter} labelId="orders-status-label" id="orders-status" label="Status" onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}>
-            {["all", "pending", "accepted", "in_progress", "packed", "needs_reconciliation", "delivered", "failed", "cancelled"].map((s) => (
+            {["all", ...ORDER_STATUSES].map((s) => (
               <MenuItem key={s} value={s}>{s === "all" ? "All statuses" : s}</MenuItem>
             ))}
           </Select>
@@ -223,7 +255,7 @@ export function OrdersPage() {
       {perms.can("ordersAll") && (
         <Card>
           <CardContent>
-            <Typography variant="h4" gutterBottom>Order administration</Typography>
+            <Typography variant="h6" component="h2" gutterBottom>Order administration</Typography>
             <Stack spacing={1}>
               {visible.map((s) => (
                 <Stack key={s.stash} direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ alignItems: { sm: "center" } }}>
@@ -237,6 +269,20 @@ export function OrdersPage() {
       )}
 
       <OrderDialog order={detail} onClose={() => setDetail(null)} canChange={canChange} canAudit={perms.can("ordersAll") || perms.owner} onAction={act} />
+      {confirm && (
+        <ConfirmDialog
+          open
+          title={confirm.title}
+          intro={confirm.intro}
+          changes={confirm.changes}
+          confirmLabel={confirm.confirmLabel}
+          danger={confirm.danger}
+          busy={confirmBusy}
+          error={confirmError}
+          onClose={() => { if (!confirmBusy) setConfirm(null); }}
+          onConfirm={runConfirm}
+        />
+      )}
     </Stack>
   );
 }
@@ -262,9 +308,10 @@ function OrderDialog({ order, onClose, canChange, canAudit, onAction }: {
   }, [orderId, canAudit]);
   if (!order) return null;
   const status = String(order.status ?? "unknown").toLowerCase();
-  // Retry is for terminal states; cancel actions are for open ones. Never nested in one gate.
-  const cancellable = ["pending", "accepted", "in_progress"].includes(status);
-  const retryable = ["failed", "cancelled"].includes(status);
+  // Action gates follow the tested backend mapping (P2-17), never local lists.
+  const ui = orderUiState(status);
+  const cancellable = ui.cancellable;
+  const retryable = ui.retryable;
   const lines: any[] = order.lines ?? [];
 
   async function run(action: "cancel" | "force-cancel" | "retry") {
@@ -304,7 +351,7 @@ function OrderDialog({ order, onClose, canChange, canAudit, onAction }: {
             )}
           </Box>
           <Box>
-            <Typography variant="h4" gutterBottom>Items</Typography>
+            <Typography variant="h6" component="h2" gutterBottom>Items</Typography>
             {lines.map((l: any, i: number) => (
               <Typography key={i} variant="body2">×{l.count} {l.type === "shulker" ? `packed ${l.key}` : l.key}</Typography>
             ))}
@@ -318,7 +365,7 @@ function OrderDialog({ order, onClose, canChange, canAudit, onAction }: {
           </Box>
           <Divider />
           <Box>
-            <Typography variant="h4" gutterBottom>Timeline</Typography>
+            <Typography variant="h6" component="h2" gutterBottom>Timeline</Typography>
             <Stack spacing={1}>
               {[
                 order.createdAt ? { at: order.createdAt, label: `Placed by ${order.placedBy?.name ?? order.requestedBy ?? "?"}` } : null,

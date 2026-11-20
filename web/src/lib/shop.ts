@@ -194,6 +194,31 @@ export function shulkersNeeded(lines: OrderLine[], maxStackOf: (key: string) => 
   return units + Math.ceil(slots / SHULKER_SLOTS);
 }
 
+/**
+ * Boxes each stash's cart lines need (P1-08): group by stash, then
+ * shulkersNeeded with the real max stack per key. A per-item 54-box check is
+ * not enough — two individually-valid additions can overflow the same stash
+ * order together, and the server (authoritative, MAX_SHULKERS) rejects those.
+ */
+export function perStashBoxUsage(
+  lines: CartLine[],
+  maxStackOf: (key: string) => number,
+): Map<string, number> {
+  const byStash = new Map<string, OrderLine[]>();
+  for (const l of lines) {
+    if (!byStash.has(l.stash)) byStash.set(l.stash, []);
+    byStash.get(l.stash)!.push({ type: l.type, key: l.key, count: l.count });
+  }
+  const out = new Map<string, number>();
+  for (const [stash, ls] of byStash) {
+    out.set(
+      stash,
+      shulkersNeeded(ls, maxStackOf, (k) => ls.some((l) => l.type === "shulker" && l.key === k)),
+    );
+  }
+  return out;
+}
+
 /** Display total for a shelf item: loose plus boxed (non-box keys only). */
 export function shelfCount(item: IndexItem, shulkers: ShulkerEntry[]): number {
   if (isShulkerBoxId(item.id)) return item.count;

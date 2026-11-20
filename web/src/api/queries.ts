@@ -110,6 +110,9 @@ export function useStashes(enabled: boolean) {
     },
     enabled,
     staleTime: 10_000,
+    // Presence polling (P1-09): bot online/offline is used in Inventory while
+    // the page is open; a stale list would show a dead bot as reachable.
+    refetchInterval: enabled ? 15000 : false,
     retry: 1,
   });
 }

@@ -65,7 +65,7 @@ export function LoginPage() {
       </Box>
       <Card>
         <CardContent id="auth-screen" sx={{ p: 3 }}>
-          <Typography variant="h2" gutterBottom>{setupNeeded ? "First-run setup" : "Welcome back"}</Typography>
+          <Typography variant="h5" component="h1" gutterBottom>{setupNeeded ? "First-run setup" : "Welcome back"}</Typography>
           <Typography color="text.secondary" sx={{ mb: 2 }}>
             {setupNeeded ? "Create the owner account to get started." : "Sign in to manage the guild stock."}
           </Typography>

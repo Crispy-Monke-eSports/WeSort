@@ -34,10 +34,15 @@ a verification gate, not best-effort capture (page/API/capture failures are red)
 
 ## Status model (tested, not just documented)
 
-- Implemented + unit/e2e-tested: inventory grid/table, checkout state machine
-  with exact retry, guild-wide split, single-content whole boxes,
-  reservation-safe counts, orders with retry/cancel/clear, bots/activity/
-  settings, operations queues + order audit, W-064 box-label UI.
+- Implemented + unit/e2e-tested: inventory grid (full-catalog paging)/table,
+  checkout state machine with exact retry, guild-wide split, single-content
+  whole boxes, reservation-safe counts, per-stash 54-box pre-check,
+  error-aware verification (stale ≠ verified ≠ 0), orders with retry/cancel/
+  clear behind the tested status mapping, bots/activity/settings, operations
+  queues + order audit with same-incident folding, W-064 per-stash box labels,
+  scope-safe user admin (null-vs-[]), MD2 dialogs everywhere (no
+  window.confirm/prompt), MD2 theme (see `docs/MD2_COMPLIANCE.md`) with
+  dark+light toggle.
 - Implemented, CI-verified (Docker/MC E2E): everything the mandatory jobs cover.
 - Explicitly remaining: W-063 stock-UUID lifecycle + return intake; Manager-side
   module-allowlist audit surface; per-bot jobs view; audit-log viewer UI.

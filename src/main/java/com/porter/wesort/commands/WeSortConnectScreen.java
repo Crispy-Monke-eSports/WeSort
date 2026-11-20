@@ -48,11 +48,12 @@ public final class WeSortConnectScreen extends WidgetScreen {
         fillCurrent();
 
         status = list.add(theme.label("")).expandX().widget();
+        refreshStatus();
 
         WButton connect = list.add(theme.button("Connect")).expandX().widget();
         connect.action = () -> {
             String error = WeSortConnectCommand.connect(addressBox.get(), portBox.get(), keyBox.get());
-            if (error == null) closeToGame();
+            if (error == null) refreshStatus();
             else status.set(error);
         };
         WButton disconnect = list.add(theme.button("Disconnect")).expandX().widget();
@@ -63,8 +64,26 @@ public final class WeSortConnectScreen extends WidgetScreen {
                 if (manager.isActive()) manager.toggle();
             }
             keyBox.set("");
-            status.set("Disconnected. API key cleared.");
+            refreshStatus();
         };
+        WButton back = list.add(theme.button("Back to Meteor menu")).expandX().widget();
+        back.action = WeSortConnectScreen::closeToGame;
+    }
+
+    /** Truthful link state (P1-12): storing values is not connecting. Reopen to refresh. */
+    private void refreshStatus() {
+        StashManager manager = Modules.get().get(StashManager.class);
+        if (manager == null) {
+            status.set("The wesort-stash-manager module is missing.");
+            return;
+        }
+        ConnectionState state;
+        try {
+            state = ConnectionState.valueOf(manager.connectionState());
+        } catch (RuntimeException e) {
+            state = ConnectionState.CONTACTING;
+        }
+        status.set(state.label() + ": " + state.hint() + " (Reopen this screen to refresh.)");
     }
 
     private WTextBox field(WVerticalList list, String label) {

@@ -30,9 +30,19 @@ final class Http {
     }
 
     static void securityHeaders(Headers h) {
+        securityHeaders(h, null);
+    }
+
+    /**
+     * CSP for every response. The React app injects its MUI/Emotion styles at runtime, so the
+     * index.html response carries a per-request style nonce (replacing __WESORT_STYLE_NONCE__);
+     * linked stylesheets stay 'self'. No other response needs inline styles.
+     */
+    static void securityHeaders(Headers h, String styleNonce) {
+        String style = styleNonce == null ? "style-src 'self'" : "style-src 'self' 'nonce-" + styleNonce + "'";
         h.set(
                 "Content-Security-Policy",
-                "default-src 'self'; img-src 'self' data:; style-src 'self'; font-src 'self'; script-src 'self'; "
+                "default-src 'self'; img-src 'self' data:; " + style + "; font-src 'self'; script-src 'self'; "
                         + "base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
         h.set("X-Content-Type-Options", "nosniff");
         h.set("Referrer-Policy", "no-referrer");

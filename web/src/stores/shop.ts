@@ -131,9 +131,14 @@ const CheckoutGroupSchema = z.object({
   body: z.object({
     stash: z.string(),
     lines: z.array(OrderBodyLineSchema),
-    names: z.unknown().nullable(),
-    packageLabel: z.unknown().nullable(),
-    purpose: z.string(),
+    names: z
+      .union([
+        z.object({ mode: z.literal("all"), name: z.string() }),
+        z.object({ mode: z.literal("each"), names: z.array(z.string()) }),
+      ])
+      .nullable(),
+    packageLabel: z.null(),
+    purpose: z.enum(["SELF", "GUILD"]),
     recipient: z.string().nullable(),
     comment: z.string().nullable(),
   }),

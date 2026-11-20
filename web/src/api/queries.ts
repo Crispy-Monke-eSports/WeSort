@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 import {
   AuthStateSchema,
@@ -221,6 +221,50 @@ export function useStashDefs(enabled: boolean) {
 export function useInvalidateOrders() {
   const qc = useQueryClient();
   return (stash: string) => qc.invalidateQueries({ queryKey: keys.orders(stash) });
+}
+
+export interface StashOrder {
+  stash: string;
+  id: string;
+  status: string;
+  lines: { type: string; key: string; count: number }[];
+  message?: string | null;
+  createdAt?: number;
+  updatedAt?: number;
+  [key: string]: unknown;
+}
+
+/**
+ * Orders across all visible stashes, newest first. A stash whose API fails is
+ * reported in `failedStashes` — never silently treated as an empty order list.
+ */
+export function useAllOrders(
+  stashes: { stash: string }[],
+  enabled: boolean,
+): { orders: StashOrder[]; failedStashes: string[]; loading: boolean } {
+  const results = useQueries({
+    queries: stashes.map((s) => ({
+      queryKey: keys.orders(s.stash),
+      queryFn: async () => {
+        const d = OrdersResponseSchema.parse(
+          await api<unknown>(`/api/v1/orders?stash=${encodeURIComponent(s.stash)}`),
+        ) as OrdersResponse;
+        return (d.orders ?? []).map((o: any) => ({ ...o, stash: s.stash }) as StashOrder);
+      },
+      enabled,
+      staleTime: 5_000,
+      retry: 1 as const,
+      refetchInterval: enabled ? 15000 : false,
+    })),
+  });
+  const orders = results
+    .flatMap((r: { data?: StashOrder[] }) => r.data ?? [])
+    .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  const failedStashes = results
+    .map((r: { isError: boolean }, i: number) => (r.isError ? stashes[i].stash : null))
+    .filter((s): s is string => s != null);
+  const loading = results.some((r: { isLoading: boolean }) => r.isLoading);
+  return { orders, failedStashes, loading };
 }
 
 /** Clear every cached server response on logout so the next user starts clean. */

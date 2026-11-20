@@ -29,6 +29,7 @@ import {
   chooseSlice,
   grouped,
   isShulkerBoxId,
+  isSingleContent,
   shulkersNeeded,
   splitScopedItemLine,
 } from "../lib/shop";
@@ -267,8 +268,9 @@ export function ShopPage() {
     for (const s of slices) {
       let boxed = 0;
       for (const b of s.shulkers) {
+        if (!isSingleContent(b, key)) continue;
         let perBox = 0;
-        for (const c of b.contents ?? []) if (c.key === key) perBox += Math.max(0, c.count);
+        for (const c of b.contents ?? []) perBox += Math.max(0, c?.count ?? 0);
         boxed += perBox * Math.max(0, b.count - packedInCart(s.stash, b.key));
       }
       n += Math.max(0, (s.availableItems[key] ?? 0) - looseInCart(s.stash, key)) + boxed;
@@ -378,8 +380,9 @@ export function ShopPage() {
     if (line.type !== "item") return Math.max(0, (s.availableShulkers[line.key] ?? 0) - (cart.countOf(line.type, line.key, line.stash) - exclude));
     let boxed = 0;
     for (const b of s.shulkers) {
+      if (!isSingleContent(b, line.key)) continue;
       let perBox = 0;
-      for (const c of b.contents ?? []) if (c.key === line.key) perBox += Math.max(0, c.count);
+      for (const c of b.contents ?? []) perBox += Math.max(0, c?.count ?? 0);
       boxed += perBox * Math.max(0, b.count - packedInCart(s.stash, b.key));
     }
     return Math.max(0, (s.availableItems[line.key] ?? 0) - (cart.countOf(line.type, line.key, line.stash) - exclude)) + boxed;

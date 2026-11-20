@@ -73,12 +73,59 @@ export interface BoxSource {
   boxes: number;
 }
 
-/** Filled groups holding an item, most per box first. cartPacked excludes boxes already taken as packed. */
+/**
+ * True when every non-empty slot of the box holds the requested key. Only such
+ * single-content boxes may become whole-shulker order lines: a mixed box taken
+ * whole would deliver items the order never asked for (over-delivery).
+ * Item variants beyond the index key (enchantments/NBT) are not visible here;
+ * exactness for those relies on the Manager's physical allocation at claim.
+ */
+export function isSingleContent(box: ShulkerEntry, key: string): boolean {
+  const contents = box.contents ?? [];
+  let n = 0;
+  for (const c of contents) {
+    if (c == null || c.count <= 0) continue;
+    if (c.key !== key) return false;
+    n += c.count;
+  }
+  return n > 0;
+}
+
+/** Units of a key inside single-content boxes (safe to order as whole shulkers). */
+export function singleBoxedContents(key: string, shulkers: ShulkerEntry[]): number {
+  let n = 0;
+  for (const e of shulkers) {
+    if (!isSingleContent(e, key)) continue;
+    let perBox = 0;
+    for (const c of e.contents ?? []) perBox += Math.max(0, c?.count ?? 0);
+    n += perBox * Math.max(0, e.count);
+  }
+  return n;
+}
+
+/** Units of a key trapped inside mixed boxes: visible, but never auto-packed whole. */
+export function mixedBoxedContents(key: string, shulkers: ShulkerEntry[]): number {
+  let n = 0;
+  for (const e of shulkers) {
+    let mine = 0;
+    let other = false;
+    for (const c of e.contents ?? []) {
+      if (c == null || c.count <= 0) continue;
+      if (c.key === key) mine += Math.max(0, c.count);
+      else other = true;
+    }
+    if (mine > 0 && other) n += mine * Math.max(0, e.count);
+  }
+  return n;
+}
+
+/** Filled single-content groups holding an item, most per box first. cartPacked excludes boxes already taken as packed. */
 export function boxSources(key: string, shulkers: ShulkerEntry[], cartPacked: (boxKey: string) => number): BoxSource[] {
   const out: BoxSource[] = [];
   for (const e of shulkers) {
+    if (!isSingleContent(e, key)) continue;
     let perBox = 0;
-    for (const c of e.contents ?? []) if (c?.key === key) perBox += Math.max(0, c.count);
+    for (const c of e.contents ?? []) perBox += Math.max(0, c?.count ?? 0);
     const boxes = Math.max(0, e.count - cartPacked(e.key));
     if (perBox > 0 && boxes > 0) out.push({ key: e.key, perBox, boxes });
   }
@@ -127,9 +174,23 @@ export function shelfCount(item: IndexItem, shulkers: ShulkerEntry[]): number {
   return item.count + boxedContents(item.key, shulkers);
 }
 
-/** Net orderable units of an item key inside one slice (loose + whole-box contents). */
+/** Orderable breakdown of an item key: loose units plus whole single-content boxes. */
+export interface Availability {
+  loose: number;
+  boxed: number;
+  mixed: number;
+  orderable: number;
+}
+
+export function availabilityOf(key: string, looseAvail: number, shulkers: ShulkerEntry[]): Availability {
+  const boxed = singleBoxedContents(key, shulkers);
+  const mixed = mixedBoxedContents(key, shulkers);
+  return { loose: looseAvail, boxed, mixed, orderable: looseAvail + boxed };
+}
+
+/** Net orderable units of an item key inside one slice (loose + whole single-content boxes). */
 export function sliceAvailability(key: string, slice: StashSlice): number {
-  return Math.max(0, slice.availableItems[key] ?? 0) + boxedContents(key, slice.shulkers);
+  return Math.max(0, slice.availableItems[key] ?? 0) + singleBoxedContents(key, slice.shulkers);
 }
 
 /** Pick the slice holding the most orderable units of a key (ties: first). */
@@ -142,13 +203,15 @@ export function chooseSlice(
   let best: StashSlice | null = null;
   let bestN = 0;
   for (const s of slices) {
-    let boxed = 0;
+    // Only single-content boxes count: a mixed box taken whole would over-deliver.
+    let exact = 0;
     for (const b of s.shulkers) {
+      if (!isSingleContent(b, key)) continue;
       let perBox = 0;
-      for (const c of b.contents ?? []) if (c?.key === key) perBox += Math.max(0, c.count);
-      boxed += perBox * Math.max(0, b.count - packedInCart(s.stash, b.key));
+      for (const c of b.contents ?? []) perBox += Math.max(0, c?.count ?? 0);
+      exact += perBox * Math.max(0, b.count - packedInCart(s.stash, b.key));
     }
-    const n = Math.max(0, (s.availableItems[key] ?? 0) - looseInCart(s.stash, key)) + boxed;
+    const n = Math.max(0, (s.availableItems[key] ?? 0) - looseInCart(s.stash, key)) + exact;
     if (n > bestN) {
       bestN = n;
       best = s;

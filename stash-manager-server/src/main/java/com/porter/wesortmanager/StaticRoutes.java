@@ -12,16 +12,20 @@ import java.util.regex.Pattern;
  * The website's files from the jar's /web folder, plus the React single-page app.
  *
  * <p>Registered last as the GET catch-all: every Java API, icon and texture route runs first.
- * Frontend routes (/shop, /orders, /bots, /activity, /settings, /login) serve index.html so
+ * Frontend routes (/overview, /inventory, /orders, /bots, /operations, /settings, /login) serve index.html so
  * direct navigation and refresh work; /assets/* serves hashed Vite files immutable; unknown
  * /api/* paths answer JSON 404 here instead of leaking the SPA.
  */
 final class StaticRoutes {
     private static final Pattern STATIC_NAME = Pattern.compile("^[a-z0-9_-][a-z0-9_.-]{0,63}$");
 
+    /** Placeholder in the built index.html replaced per request with the CSP style nonce. */
+    static final String NONCE_PLACEHOLDER = "__WESORT_STYLE_NONCE__";
+
     /** React app routes served with index.html (direct navigation + refresh). */
     private static final Set<String> SPA_ROUTES =
-            Set.of("/shop", "/orders", "/bots", "/activity", "/settings", "/login");
+            Set.of("/", "/overview", "/inventory", "/orders", "/bots", "/operations", "/settings", "/login",
+                    "/shop", "/activity");
 
     private final Map<String, byte[]> cache = new ConcurrentHashMap<>();
 
@@ -32,16 +36,8 @@ final class StaticRoutes {
     private void staticFile(HttpExchange ex) throws IOException {
         String path = ex.getRequestURI().getRawPath();
         if (path == null || path.isEmpty()) path = "/";
-        if (path.equals("/")) {
-            sendCached(ex, "index.html", "no-cache");
-            return;
-        }
-        if (path.equals("/index.html")) {
-            sendCached(ex, "index.html", "no-cache");
-            return;
-        }
-        if (SPA_ROUTES.contains(path)) {
-            sendCached(ex, "index.html", "no-cache");
+        if (path.equals("/") || path.equals("/index.html") || SPA_ROUTES.contains(path)) {
+            sendIndex(ex);
             return;
         }
         if (path.startsWith("/assets/")) {
@@ -69,7 +65,7 @@ final class StaticRoutes {
             return;
         }
         if (name.equals("index.html")) {
-            sendCached(ex, "index.html", "no-cache");
+            sendIndex(ex);
             return;
         }
         byte[] data = cached(name);
@@ -78,6 +74,26 @@ final class StaticRoutes {
             return;
         }
         Http.send(ex, 200, type(name), data, "no-cache");
+    }
+
+    /**
+     * The SPA shell with a per-request CSP style nonce for the MUI/Emotion runtime styles.
+     * The template is cached; the nonce placeholder is replaced per request (index.html itself
+     * is never cached, so a logout/login in the same browser never reuses another user's shell).
+     */
+    private void sendIndex(HttpExchange ex) throws IOException {
+        byte[] template = cached("index.html");
+        if (template == null) {
+            Http.error(ex, 404, "not found");
+            return;
+        }
+        byte[] nonceBytes = new byte[16];
+        new java.security.SecureRandom().nextBytes(nonceBytes);
+        String nonce = java.util.Base64.getEncoder().encodeToString(nonceBytes);
+        String html = new String(template, java.nio.charset.StandardCharsets.UTF_8)
+                .replace(NONCE_PLACEHOLDER, nonce);
+        Http.securityHeaders(ex.getResponseHeaders(), nonce);
+        Http.send(ex, 200, type("index.html"), html.getBytes(java.nio.charset.StandardCharsets.UTF_8), "no-cache");
     }
 
     private void sendCached(HttpExchange ex, String name, String cacheControl) throws IOException {

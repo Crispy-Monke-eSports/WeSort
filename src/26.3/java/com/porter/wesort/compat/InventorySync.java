@@ -363,7 +363,10 @@ public final class InventorySync {
                 if (want != null
                         && placing != null
                         && !placing.isEmpty()
-                        && use.hitResult().getBlockPos().relative(use.hitResult().getDirection()).equals(want)) {
+                        && use.hitResult()
+                                .getBlockPos()
+                                .relative(use.hitResult().getDirection())
+                                .equals(want)) {
                     blocks.put(
                             use.sequence(),
                             new BlockExpected(use.sequence(), want, placing, System.nanoTime() + 8_000_000_000L));

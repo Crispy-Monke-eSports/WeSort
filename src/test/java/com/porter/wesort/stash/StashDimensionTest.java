@@ -36,8 +36,7 @@ class StashDimensionTest {
     void differentDimensionsStayDifferent() {
         assertFalse(Stash.sameDimension("minecraft:overworld", "minecraft:the_nether"));
         assertFalse(
-                Stash.sameDimension(
-                        "ResourceKey[minecraft:dimension / minecraft:overworld]", "minecraft:the_nether"));
+                Stash.sameDimension("ResourceKey[minecraft:dimension / minecraft:overworld]", "minecraft:the_nether"));
     }
 
     @Test

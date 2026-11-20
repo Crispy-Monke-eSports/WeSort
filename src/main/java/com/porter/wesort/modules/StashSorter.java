@@ -5813,7 +5813,8 @@ public class StashSorter extends Module {
         // W-061: this job places its anvil/table into this empty cell, nothing else.
         com.porter.wesort.compat.WorldInteractionGuard.authorizePlace(anvilSpot);
         com.porter.wesort.compat.InventorySync.expectPlacement(
-                anvilSpot, BuiltInRegistries.ITEM.getKey(inv.getItem(anvilSlot).getItem()).toString());
+                anvilSpot,
+                BuiltInRegistries.ITEM.getKey(inv.getItem(anvilSlot).getItem()).toString());
         if (BlockUtils.place(
                 anvilSpot,
                 new FindItemResult(anvilSlot, inv.getItem(anvilSlot).getCount()),

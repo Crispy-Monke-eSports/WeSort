@@ -71,8 +71,13 @@ class JournalHarness(repack.RepackHarness):
                         comps.pop('minecraft:damage', None)
                 return {key: out[key] for key in sorted(out)}
             if isinstance(node, list):
-                if node and all(isinstance(e, dict) and 'Slot' in e for e in node):
-                    return {'Slot:' + str(e['Slot']): norm(e) for e in sorted(node, key=lambda e: e['Slot'])}
+                # Top-level inventories use 'Slot'; nested packed container/bundle
+                # children use lowercase 'slot' (server-snbt.py): normalize both.
+                if node and all(isinstance(e, dict) and ('Slot' in e or 'slot' in e) for e in node):
+                    def slot_key(entry):
+                        return entry.get('Slot', entry.get('slot'))
+                    return {'slot:' + str(slot_key(e)): norm(e)
+                            for e in sorted(node, key=slot_key)}
                 return [norm(e) for e in node]
             return node
 

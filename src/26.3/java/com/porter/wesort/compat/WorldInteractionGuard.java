@@ -99,25 +99,78 @@ public final class WorldInteractionGuard {
         // Fail-closed: without a live, known job no mutation is authorized,
         // even with a leftover permit (permits themselves also reject unknown).
         String job = currentJob();
-        if (job == null || job.isEmpty() || job.equals("unknown")) return false;
         if (mc.level == null) return false;
         var position = hit.getBlockPos();
         if (!mc.level.isLoaded(position)) return false;
+        var target = position.relative(hit.getDirection());
+        if (!mc.level.isLoaded(target)) return false;
         long now = now();
         // Activation: the clicked block itself is authorized for this job.
-        if (PERMITS.allows(now, position.asLong(), Operation.USE, blockId(position), job)) return true;
+        boolean usePermit =
+                PERMITS.allows(now, position.asLong(), Operation.USE, blockId(position), job);
         // Placement: the click lands on a support while the adjacent cell carries a live PLACE
         // permit naming the air the job puts its block into.
-        var target = position.relative(hit.getDirection());
-        return mc.level.isLoaded(target) && PERMITS.allows(now, target.asLong(), Operation.PLACE, blockId(target), job);
+        boolean placePermit =
+                PERMITS.allows(now, target.asLong(), Operation.PLACE, blockId(target), job);
+        return useDecision(job, safeBlock(position), safeBlock(target), usePermit, placePermit);
     }
 
     public static boolean allowBreak(BlockPos position) {
         if (!dedicated()) return true;
         String job = currentJob();
-        if (job == null || job.isEmpty() || job.equals("unknown")) return false;
         if (mc.level == null || !mc.level.isLoaded(position)) return false;
-        return PERMITS.allows(now(), position.asLong(), Operation.BREAK, blockId(position), job);
+        return breakDecision(
+                job,
+                safeBlock(position),
+                PERMITS.allows(now(), position.asLong(), Operation.BREAK, blockId(position), job));
+    }
+
+    /**
+     * Pure use policy (no Minecraft access, unit-tested): safety-sensitive blocks are never
+     * authorized — not even with a live permit. Main's fail-closed denial of doors, redstone and
+     * trapped chests holds alongside the exact-permit check; a permit alone never opens them.
+     */
+    static boolean useDecision(
+            String job, boolean safePos, boolean safeTarget, boolean usePermit, boolean placePermit) {
+        if (job == null || job.isEmpty() || job.equals("unknown")) {
+            denied("use-unknown-job");
+            return false;
+        }
+        if (!safePos || !safeTarget) {
+            denied("use-safety-sensitive");
+            return false;
+        }
+        if (!(usePermit || placePermit)) denied("use-no-permit");
+        return usePermit || placePermit;
+    }
+
+    /**
+     * Pure break policy (no Minecraft access, unit-tested): safety-sensitive blocks are never
+     * authorized for destruction, even with a live permit.
+     */
+    static boolean breakDecision(String job, boolean safePos, boolean breakPermit) {
+        if (job == null || job.isEmpty() || job.equals("unknown")) {
+            denied("break-unknown-job");
+            return false;
+        }
+        if (!safePos) {
+            denied("break-safety-sensitive");
+            return false;
+        }
+        if (!breakPermit) denied("break-no-permit");
+        return breakPermit;
+    }
+
+    /** Deny audit counters (exposed to the E2E driver state): why automatic mutations were refused. */
+    private static final java.util.concurrent.ConcurrentHashMap<String, Long> DENIALS =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static void denied(String reason) {
+        DENIALS.merge(reason, 1L, Long::sum);
+    }
+
+    public static java.util.Map<String, Long> denialCounts() {
+        return java.util.Map.copyOf(DENIALS);
     }
 
     /** Sign text goes in its own packet: it needs its own permit, like any other mutation. */

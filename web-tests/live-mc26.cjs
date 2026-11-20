@@ -19,22 +19,28 @@ const cookie = process.env.WESORT_TEST_COOKIE;
   const html = await root.text();
   assert.match(html, /<div id="root"><\/div>/);
   const assets = [...new Set([...html.matchAll(/assets\/index-[A-Za-z0-9_-]+\.(js|css)/g)].map(m => m[0]))];
-  assert.ok(assets.some(a => a.endsWith('.js')) && assets.some(a => a.endsWith('.css')), 'Hashed bundle missing');
+  const jsAssets = assets.filter(a => a.endsWith('.js'));
+  const cssAssets = assets.filter(a => a.endsWith('.css'));
+  assert.ok(jsAssets.length > 0, 'Hashed bundle missing');
   const checked = [];
-  for (const asset of assets) {
+  for (const asset of jsAssets) {
     const res = await request('/' + asset);
     assert.equal(res.status, 200, 'Missing built asset: ' + asset);
-    if (asset.endsWith('.js')) {
-      assert.match(res.headers.get('cache-control'), /immutable/, 'Hashed JS must cache immutably');
-      const bundle = await res.text();
-      for (const marker of ['item-grid', 'cart-lines', 'cart-place', 'order-history-title']) {
-        assert.ok(bundle.includes(marker), 'Shop marker missing: ' + marker);
-      }
-      checked.push(asset);
+    assert.match(res.headers.get('cache-control'), /immutable/, 'Hashed JS must cache immutably');
+    const bundle = await res.text();
+    for (const marker of ['item-grid', 'cart-lines', 'cart-place', 'order-list']) {
+      assert.ok(bundle.includes(marker), 'Shop marker missing: ' + marker);
     }
-    if (asset.endsWith('.css')) {
-      assert.match(res.headers.get('cache-control') || '', /immutable/, 'Hashed CSS must cache immutably');
-    }
+    // MUI v9 + Emotion inject component styles at runtime: the bundle itself must carry the
+    // Emotion runtime (no separate hashed CSS is emitted by Vite for CSS-in-JS).
+    assert.ok(bundle.includes('data-emotion'), 'Emotion runtime missing from bundle');
+    checked.push(asset);
+  }
+  assert.match(html, /<meta name="emotion-nonce"/, 'Emotion nonce meta missing');
+  for (const asset of cssAssets) {
+    const res = await request('/' + asset);
+    assert.equal(res.status, 200, 'Missing built asset: ' + asset);
+    assert.match(res.headers.get('cache-control') || '', /immutable/, 'Hashed CSS must cache immutably');
   }
   // Frontend routes serve the SPA directly; unknown API paths stay JSON 404; traversal is refused.
   for (const route of ['/shop', '/orders', '/bots', '/activity', '/settings', '/login']) {

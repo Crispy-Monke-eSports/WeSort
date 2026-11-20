@@ -210,6 +210,10 @@ class Harness:
             raw = response.read()
             return response.status, json.loads(raw) if raw else None
 
+    def manager_server_name(self):
+        # What the test client reports as its server: the address it connected to.
+        return '127.0.0.1:' + str(self.server_port)
+
     def start_manager(self):
         self.run(self.compose + ['up', '-d', '--no-build'])
         for _ in range(240):
@@ -229,7 +233,7 @@ class Harness:
         # Minecraft server to exactly what the test client reports as its
         # connection address, and defines e2e-fixture over the fixture area.
         require(self.http('/api/v1/auth/login', {'password': owner_password})[0] == 200, 'Owner login failed')
-        status, srv = self.http('/api/v1/server', {'server': '127.0.0.1:' + str(self.server_port)})
+        status, srv = self.http('/api/v1/server', {'server': self.manager_server_name()})
         require(status == 200 and srv.get('configured'), 'Manager server setup failed: %s %s' % (status, srv))
         status, _ = self.http('/api/v1/stash-defs', {'action': 'create', 'name': 'e2e-fixture',
             'dimension': 'minecraft:overworld',

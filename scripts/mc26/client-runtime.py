@@ -12,9 +12,26 @@ evidence = root / 'build/evidence/mc26'
 evidence.mkdir(parents=True, exist_ok=True)
 logfile = evidence / 'client-runtime.log'
 with logfile.open('w') as log:
-    subprocess.run([str(root / 'gradlew'), '--no-daemon', 'build', 'runClient',
-        '-Pmc=26.3', '-PwithBaritone=true', '-PruntimeProbe=true'],
-        cwd=root, stdout=log, stderr=subprocess.STDOUT, timeout=600, check=True)
+    try:
+        subprocess.run([str(root / 'gradlew'), '--no-daemon', 'build', 'runClient',
+            '-Pmc=26.3', '-PwithBaritone=true', '-PruntimeProbe=true'],
+            cwd=root, stdout=log, stderr=subprocess.STDOUT, timeout=600, check=True)
+    except subprocess.TimeoutExpired:
+        # Stage diagnostics instead of a bare timeout: the probe now always stops
+        # the client on failure, so a timeout means a startup, render or shutdown
+        # hang. The markers below say which one.
+        text = logfile.read_text()
+        if 'WESORT_CLIENT_RUNTIME_PASS' in text or 'WESORT_CLIENT_RUNTIME_FAIL' in text:
+            stage = 'shutdown hang: probe finished but the client did not exit'
+        elif 'WESORT_CLIENT_RUNTIME_PROBE_CHECK' in text:
+            stage = 'probe hang: window check never completed'
+        elif 'WESORT_CLIENT_RUNTIME_PROBE_OPEN' in text:
+            stage = 'probe hang: module/window open never completed'
+        elif 'WESORT_CLIENT_RUNTIME_START' in text:
+            stage = 'startup hang: probe thread never started (Mixin/client init stuck)'
+        else:
+            stage = 'startup hang: client never initialized (Gradle/Minecraft boot stuck)'
+        raise RuntimeError('Client runtime %s; inspect client-runtime.log' % stage)
 if re.search(r'\[(?:Render thread|main)/ERROR\].*(?:WeSortAddon|Mixin|wesort)', logfile.read_text()):
     raise RuntimeError('The client logged an error; inspect client-runtime.log')
 result = json.loads(report.read_text())

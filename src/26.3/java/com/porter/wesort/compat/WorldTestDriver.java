@@ -785,6 +785,10 @@ public final class WorldTestDriver {
         out.addProperty("lastBlockAck", InventorySync.lastBlockAck());
         out.addProperty("lastBlockSequence", InventorySync.lastBlockSequence());
         out.addProperty("attemptedClicks", InventorySync.attemptedClicks());
+        var denials = new JsonObject();
+        for (var entry : WorldInteractionGuard.denialCounts().entrySet())
+            denials.addProperty(entry.getKey(), entry.getValue());
+        out.add("guardDenials", denials);
         JsonArray slots = new JsonArray();
         for (var slot : mc.player.containerMenu.slots) {
             JsonObject value = new JsonObject();

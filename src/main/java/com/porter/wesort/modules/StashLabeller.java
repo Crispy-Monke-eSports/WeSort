@@ -927,6 +927,29 @@ final class StashLabeller {
     }
 
     /**
+     * The block the held sign becomes once placed on a wall. The hand holds the standing-sign
+     * item (e.g. {@code minecraft:oak_sign}) but the placed block is the wall variant (e.g.
+     * {@code minecraft:oak_wall_sign}); the durable placement intent must name the block the
+     * server will confirm, or the block-ack re-check fail-closes on every sign. Falls back to
+     * the item id when the derived name is not a known block.
+     */
+    private static String wallSignBlock() {
+        String item = net.minecraft.core.registries.BuiltInRegistries.ITEM
+                .getKey(mc.player.getMainHandItem().getItem())
+                .toString();
+        String wall = item.endsWith("_hanging_sign")
+                ? item.substring(0, item.length() - "_hanging_sign".length()) + "_wall_hanging_sign"
+                : item.endsWith("_sign") ? item.substring(0, item.length() - "_sign".length()) + "_wall_sign" : item;
+        try {
+            if (net.minecraft.core.registries.BuiltInRegistries.BLOCK.containsKey(
+                    net.minecraft.resources.Identifier.parse(wall))) return wall;
+        } catch (RuntimeException ignored) {
+            // Malformed derived name: fall through to the item id rather than inventing one.
+        }
+        return item;
+    }
+
+    /**
      * The right click on the chest's side, sneaking, with the sign in the hand: the sign goes against that side. Straight
      * on the chest rather than through the block placer, which would pick a side that isn't the chest's.
      */
@@ -975,11 +998,7 @@ final class StashLabeller {
             for (BlockPos p : Containers.signSpots(box)) if (signThere(p)) preexisting.add(p);
             // W-061: this job puts its sign into this empty cell, nothing else.
             com.porter.wesort.compat.WorldInteractionGuard.authorizePlace(spot);
-            com.porter.wesort.compat.InventorySync.expectPlacement(
-                    spot,
-                    net.minecraft.core.registries.BuiltInRegistries.ITEM
-                            .getKey(mc.player.getMainHandItem().getItem())
-                            .toString());
+            com.porter.wesort.compat.InventorySync.expectPlacement(spot, wallSignBlock());
             mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, hit);
             mc.player.swing(InteractionHand.MAIN_HAND);
             clickAge = age;

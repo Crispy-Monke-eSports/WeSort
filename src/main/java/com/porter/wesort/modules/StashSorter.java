@@ -7513,6 +7513,7 @@ public class StashSorter extends Module {
         handle = null;
         placed = null;
         placedConfirmed = false;
+        com.porter.wesort.compat.InventorySync.clearPlacementExpectation();
         shulkersAtBreak = -1;
         breakRetries = 0;
         brokenSince = -1;

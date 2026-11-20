@@ -62,6 +62,7 @@ public final class InventorySync {
     private static BlockUse blockUse;
     private static BlockPos expectSpot;
     private static String expectBlock;
+    private static long expectAt;
     private static boolean recoveringWorld, recoveringReceipt;
     private static boolean reopenRequested;
 
@@ -251,18 +252,21 @@ public final class InventorySync {
     /**
      * Announce a placement the bot is about to send: the following own UseItemOn against this
      * empty cell is a durable physical mutation, so its intent (with the placed block) is recorded
-     * before the packet leaves. Set immediately before the interact/place call; consumed by the
-     * next own UseItemOn against the same cell, cleared otherwise, so a stale slot can never
-     * invent an intent.
+     * before the packet leaves. Set immediately before the interact/place call. The slot is
+     * single-entry and bounded: consumed on a matching own UseItemOn, overwritten by the next
+     * announce, cleared explicitly on failure/abort paths, and ignored once older than a minute
+     * (well beyond any rotation deferral), so a stale slot can never invent an intent.
      */
     public static void expectPlacement(BlockPos spot, String block) {
         expectSpot = spot == null ? null : spot.immutable();
         expectBlock = block;
+        expectAt = System.nanoTime();
     }
 
     public static void clearPlacementExpectation() {
         expectSpot = null;
         expectBlock = null;
+        expectAt = 0;
     }
 
     public static void beginBlockUse(net.minecraft.world.phys.BlockHitResult hit) {
@@ -362,9 +366,11 @@ public final class InventorySync {
                 // announced cell can consume it.
                 BlockPos want = expectSpot;
                 String placing = expectBlock;
+                long announcedAt = expectAt;
                 if (want != null
                         && placing != null
                         && !placing.isEmpty()
+                        && System.nanoTime() - announcedAt < 60_000_000_000L
                         && use.hitResult()
                                 .getBlockPos()
                                 .relative(use.hitResult().getDirection())

@@ -642,7 +642,8 @@ public class StashManager extends Module {
                             // local stash is configured, so .wesort-connect alone is enough.
                             if (hello.has("stashes") && hello.get("stashes").isJsonArray()) {
                                 for (var el : hello.getAsJsonArray("stashes")) {
-                                    if (!el.isJsonPrimitive() || !el.getAsJsonPrimitive().isString()) continue;
+                                    if (!el.isJsonPrimitive()
+                                            || !el.getAsJsonPrimitive().isString()) continue;
                                     StashSorter sorter = Modules.get().get(StashSorter.class);
                                     if (sorter != null && sorter.adoptAnnouncedStash(el.getAsString())) break;
                                 }
@@ -1220,9 +1221,7 @@ public class StashManager extends Module {
             // and require reconciliation first. The directive is revision-pinned, so the next
             // heartbeat after recovery applies exactly what was skipped.
             if (com.porter.wesort.compat.PhysicalJournalRuntime.blocked() || !InventorySync.ready()) {
-                info(
-                        "Manager directive (revision %d) deferred: physical reconciliation required first.",
-                        rev);
+                info("Manager directive (revision %d) deferred: physical reconciliation required first.", rev);
                 return;
             }
             sorter.applyDirective(d, rev);

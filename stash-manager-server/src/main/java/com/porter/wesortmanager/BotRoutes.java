@@ -158,8 +158,7 @@ final class BotRoutes {
                 return;
             }
             if (ServerRoutes.unknownStash(defs, manifestScope.stash())) {
-                Http.error(
-                        ex, 404, "unknown stash '" + manifestScope.stash() + "': define it in Settings first");
+                Http.error(ex, 404, "unknown stash '" + manifestScope.stash() + "': define it in Settings first");
                 return;
             }
         }

@@ -188,8 +188,7 @@ class AgentScopeTest {
     }
 
     static String claim(String server, String stash) {
-        return "{\"server\":\"" + server + "\",\"stash\":\"" + stash + "\",\"agent\":\"" + UUID.randomUUID()
-                + "\"}";
+        return "{\"server\":\"" + server + "\",\"stash\":\"" + stash + "\",\"agent\":\"" + UUID.randomUUID() + "\"}";
     }
 
     /**
@@ -197,8 +196,7 @@ class AgentScopeTest {
      * Built without a NUL literal in source: Character.toString(0).
      */
     static String scopeBotId(String srv, String agent) {
-        return UUID.nameUUIDFromBytes(
-                        (srv + Character.toString(0) + agent).getBytes(StandardCharsets.UTF_8))
+        return UUID.nameUUIDFromBytes((srv + Character.toString(0) + agent).getBytes(StandardCharsets.UTF_8))
                 .toString();
     }
 
@@ -218,8 +216,8 @@ class AgentScopeTest {
                 400,
                 botPost(
                                 "/api/v1/delivery",
-                                "{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"player\":\"Bot\","
-                                        + "\"hash\":\"" + "a".repeat(40) + "\",\"readAt\":0,\"chests\":[]}")
+                                "{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"player\":\"Bot\"," + "\"hash\":\""
+                                        + "a".repeat(40) + "\",\"readAt\":0,\"chests\":[]}")
                         .status);
         assertEquals(
                 400,
@@ -237,8 +235,7 @@ class AgentScopeTest {
                         .status);
         assertEquals(
                 400,
-                botPost("/api/v1/jobs/agent", "{\"action\":\"claim\",\"agent\":\"" + UUID.randomUUID() + "\"}")
-                        .status);
+                botPost("/api/v1/jobs/agent", "{\"action\":\"claim\",\"agent\":\"" + UUID.randomUUID() + "\"}").status);
         // Browser order placement is refused the same way.
         String owner = login(null, OWNER_PW);
         assertEquals(400, post(owner, "/api/v1/orders", "{\"stash\":\"a\",\"lines\":[]}").status);
@@ -259,15 +256,14 @@ class AgentScopeTest {
                 409,
                 botPost(
                                 "/api/v1/delivery",
-                                "{\"version\":1,\"server\":\"evil\",\"stash\":\"a\",\"player\":\"Bot\","
-                                        + "\"hash\":\"" + "a".repeat(40) + "\",\"readAt\":0,\"chests\":[]}")
+                                "{\"version\":1,\"server\":\"evil\",\"stash\":\"a\",\"player\":\"Bot\"," + "\"hash\":\""
+                                        + "a".repeat(40) + "\",\"readAt\":0,\"chests\":[]}")
                         .status);
         assertEquals(
                 409,
                 botPost(
                                 "/api/v1/automation",
-                                "{\"server\":\"evil\",\"agent\":\"" + UUID.randomUUID()
-                                        + "\",\"action\":\"acquire\"}")
+                                "{\"server\":\"evil\",\"agent\":\"" + UUID.randomUUID() + "\",\"action\":\"acquire\"}")
                         .status);
         assertEquals(409, botPost("/api/v1/orders/claim", claim("evil", "a")).status);
         assertEquals(
@@ -296,7 +292,11 @@ class AgentScopeTest {
         // Forged Minecraft account on a valid credential: 403.
         assertEquals(
                 403,
-                agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat("s", "a").replace("Bot", "Eve"))
+                agentPost(
+                                agentA,
+                                agentKeyA,
+                                "/api/v1/heartbeat",
+                                heartbeat("s", "a").replace("Bot", "Eve"))
                         .status);
         // Forged agent id on a valid credential: 403.
         assertEquals(
@@ -305,12 +305,11 @@ class AgentScopeTest {
                                 agentA,
                                 agentKeyA,
                                 "/api/v1/orders/claim",
-                                "{\"server\":\"s\",\"stash\":\"a\",\"player\":\"Bot\",\"agent\":\""
-                                        + UUID.randomUUID() + "\"}")
+                                "{\"server\":\"s\",\"stash\":\"a\",\"player\":\"Bot\",\"agent\":\"" + UUID.randomUUID()
+                                        + "\"}")
                         .status);
         // A forged server is refused even for a signed agent: 409.
-        assertEquals(
-                409, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat("evil", "a")).status);
+        assertEquals(409, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat("evil", "a")).status);
         // Every authorized bot may work in every defined stash: agent A (scoped "a" at
         // issuance) heartbeats "b" successfully. No ownership, no per-stash confinement.
         assertEquals(200, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat("s", "b")).status);
@@ -334,7 +333,9 @@ class AgentScopeTest {
         assertEquals(200, ok.status, ok.body);
         JsonArray stashes = ok.obj().getAsJsonArray("stashes");
         assertTrue(
-                stashes != null && stashes.size() == 1 && stashes.get(0).getAsString().equals("a"),
+                stashes != null
+                        && stashes.size() == 1
+                        && stashes.get(0).getAsString().equals("a"),
                 "hello announces defined stash names: " + ok.body);
         assertTrue(!ok.body.contains("\"pos1\""), "coordinates are never announced in hello: " + ok.body);
     }

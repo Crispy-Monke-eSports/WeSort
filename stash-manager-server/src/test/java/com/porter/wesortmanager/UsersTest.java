@@ -951,8 +951,7 @@ class UsersTest {
         assertEquals(200, withPos.status);
         JsonArray scoped = withPos.obj().getAsJsonArray("defs");
         assertEquals(1, scoped.size(), "stash b stays out of scope");
-        assertTrue(
-                scoped.get(0).getAsJsonObject().has("pos1"), "positions permission reveals coordinates");
+        assertTrue(scoped.get(0).getAsJsonObject().has("pos1"), "positions permission reveals coordinates");
 
         // An empty stash scope sees no definitions at all.
         create(owner, "vic", "{\"view\":true,\"stashes\":[]}", false);
@@ -965,11 +964,7 @@ class UsersTest {
         assertEquals(403, post(e, "/api/v1/stash-defs", defA).status, "member cannot write stash defs");
         assertEquals(
                 403,
-                post(
-                                e,
-                                "/api/v1/stash-defs",
-                                "{\"action\":\"delete\",\"name\":\"a\",\"expectedRevision\":1}")
-                        .status,
+                post(e, "/api/v1/stash-defs", "{\"action\":\"delete\",\"name\":\"a\",\"expectedRevision\":1}").status,
                 "member cannot delete stash defs");
     }
 }

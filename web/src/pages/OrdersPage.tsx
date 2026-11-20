@@ -161,7 +161,10 @@ export function OrdersPage() {
               >
                 <TableCell sx={{ fontFamily: "monospace", fontSize: "0.8rem" }}>{o.id}</TableCell>
                 <TableCell sx={{ fontFamily: "monospace", fontSize: "0.8rem" }}>{o.stash ?? o.stashName ?? o.server}</TableCell>
-                <TableCell>{(o.lines ?? []).map((l: any) => `${l.key} ×${l.count}`).join(", ")}</TableCell>
+                <TableCell>
+                  {(o.lines ?? []).map((l: any) => `${l.key} ×${l.count}`).join(", ")}
+                  {o.comment ? <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>“{String(o.comment)}”</Typography> : null}
+                </TableCell>
                 <TableCell><OrderStatusChip status={String(o.status ?? "unknown")} /></TableCell>
                 <TableCell>{o.updatedAt ? new Date(o.updatedAt).toLocaleString() : "—"}</TableCell>
               </TableRow>
@@ -198,6 +201,9 @@ export function OrdersPage() {
               <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                 {o.stash ?? o.stashName ?? o.server} · {(o.lines ?? []).map((l: any) => `${l.key} ×${l.count}`).join(", ")}
               </Typography>
+              {o.comment ? (
+                <Typography variant="body2" color="text.secondary">“{String(o.comment)}”</Typography>
+              ) : null}
               <Typography variant="caption" color="text.secondary">
                 {o.updatedAt ? new Date(o.updatedAt).toLocaleString() : "—"}
               </Typography>

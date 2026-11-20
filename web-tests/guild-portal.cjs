@@ -31,7 +31,7 @@ async function main() {
     return page;
   }
   async function inventorySearch(page, text) {
-    await page.getByRole('link', { name: 'Inventory', exact: true }).click();
+    await page.getByRole('navigation').getByRole('link', { name: 'Inventory', exact: true }).click();
     await expectHeading(page, 'Inventory');
     await page.getByLabel('Search items').first().fill(text);
   }
@@ -68,7 +68,7 @@ async function main() {
     for (const [i, page] of pages.entries()) {
       await page.reload();
       // Private history: exactly one order (the member's own), with its note.
-      await page.getByRole('link', { name: 'Orders', exact: true }).click();
+      await page.getByRole('navigation').getByRole('link', { name: 'Orders', exact: true }).click();
       await expectHeading(page, 'Orders');
       const history = page.getByTestId('order-card');
       await expectCount(history, 1);
@@ -81,13 +81,13 @@ async function main() {
       await expectHeading(page, 'Operations');
       await expect(page.getByRole('tab', { name: 'Order audit' })).toHaveCount(0);
       await expect(page.getByText('Operator queues')).toHaveCount(0);
-      await inventorySearch(page, '=minecraft:diamond');
+      await inventorySearch(page, 'diamond');
       await page.getByTestId('item-grid').locator('.MuiCard-root').first().waitFor();
     }
 
     // Officer: same login, then audit by person + item finds the one order.
     const reviewer = await login(officer);
-    await reviewer.getByRole('link', { name: 'Operations', exact: true }).click();
+    await reviewer.getByRole('navigation').getByRole('link', { name: 'Operations', exact: true }).click();
     await expectHeading(reviewer, 'Operations');
     await reviewer.getByRole('tab', { name: 'Order audit' }).click();
     const audit = reviewer.locator('#order-audit');
@@ -119,7 +119,7 @@ async function expectCount(locator, n) {
   assert.equal(await locator.count(), n);
 }
 
-async function expect(locator) {
+function expect(locator) {
   return {
     toContainText: (t) => locator.filter({ hasText: t }).first().waitFor({ timeout: 10000 }),
     toHaveCount: (n) => expectCount(locator, n),

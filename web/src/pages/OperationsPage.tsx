@@ -200,8 +200,8 @@ export function OperationsPage() {
               />
             )}
             {((owner && tab === 6) || (!owner && tab === 0)) && (
-              <Stack spacing={1.5}>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={1} id="order-audit">
+              <Stack spacing={1.5} id="order-audit">
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
                   <TextField label="Order id" value={auditQ.order} onChange={(e) => setAuditQ({ ...auditQ, order: e.target.value })} size="small" />
                   <TextField label="Person" value={auditQ.person} onChange={(e) => setAuditQ({ ...auditQ, person: e.target.value })} size="small" />
                   <TextField label="Item" value={auditQ.item} onChange={(e) => setAuditQ({ ...auditQ, item: e.target.value })} size="small" />

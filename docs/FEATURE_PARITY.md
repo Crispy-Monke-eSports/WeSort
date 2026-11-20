@@ -35,9 +35,9 @@ The product is an operations dashboard, not a storefront: Overview, Inventory
 | No over-delivery from mixed shulkers | `OrderStore`/`PhysicalReservations` (server authoritative) | single-content rule for whole-box lines | unit (mixed negatives) | ✅ |
 | 54-shulker capacity | `MAX_SHULKERS` server | client pre-check, server enforces | unit | ✅ |
 | Checkout stepper (draft → details → review → confirmation) | `POST /api/v1/orders` | MUI Stepper + per-group state machine (`not_submitted/submitting/confirmed/uncertain/rejected`), exact retry, discard, reload-safe persisted keys+bodies | e2e | ✅ |
-| Shulker names (`none`/`all`/`each`) | `normalizeNames` | all interactive, capped (50/row, 54 rows) | unit (limits) | ✅ |
+| W-064 box labels | `normalizePackageLabel` + `PackageLabel.generate` | text/all-per-box UI (33-unit counter, server-mirroring validation, locked-Y preview, invalid blocks Place); bot parses `packageLabel`+frozen `packageTotal` into exact `WeSort (X/Y)` names, legacy names only as fallback | unit (bot parse 6, UI validation) + e2e (payload + preview) | ✅ |
 | Purpose / recipient / comment | `OrderIntent` | validated (recipient regex ≤16, comment ≤500) | unit + e2e | ✅ |
-| Package labels | `normalizePackageLabel` | ❌ no UI (see limitations) | — | ❌ |
+| Legacy free names | `normalizeNames` | kept for persisted-group compat only; new orders send `names: null` | schema compat | ✅ |
 | Idempotent order submission | `Idempotency-Key` header | key+body bound to full payload hash, reused only on exact match | e2e + Java integration | ✅ |
 | Offline order queue (order while bot offline) | `orderCountsIncludingStale` + stale fallback | stale chips, queued message, claim still needs fresh | Java tests + screenshot | ✅ |
 
@@ -51,7 +51,9 @@ The product is an operations dashboard, not a storefront: Overview, Inventory
 | Retry for failed/cancelled | `POST .../retry` | reachable button (was hidden behind open-state gate) | e2e | ✅ |
 | Cancel / force-cancel + confirm | `POST .../cancel`, `/force-cancel` | confirm dialogs, result alerts, refresh | e2e | ✅ |
 | Clear finished per stash | `POST /api/v1/orders/clear` | admin card, responsive | screenshot | ✅ |
-| Order approvals display | `approvalState` | status chip | unit shape | ✅ |
+| Order approvals display | `approvalState` | approval + decider + timestamp in details | screenshot | ✅ |
+| Order provenance | `purpose/recipient/deliveryMode/destination/agent/cancelRequested/retriedAs/state` | all surfaced in details; stage shown when it differs from status | screenshot | ✅ |
+| Order timeline | `createdAt/claimedAt/updatedAt` + audit `physicalOperations` | base timeline + real event chain for ordersAll holders | screenshot | ✅ |
 | Order audit search (person/item/order/stash) | `GET /api/v1/audit/orders` | Operations → Order audit tab | screenshot | ✅ |
 
 ## Bots (monitoring + control)
@@ -60,7 +62,7 @@ The product is an operations dashboard, not a storefront: Overview, Inventory
 |---|---|---|---|---|
 | Bot list (online, player, caps, summary, scopes) | `GET /api/v1/bots` | MUI list + presence chips | screenshot | ✅ |
 | Per-bot activity + events | `GET /api/v1/bots/{id}/activity` | tasks table + events list | screenshot | ✅ |
-| Per-bot settings (schema + values, send changes) | `GET/POST /api/v1/bots/{id}/settings` | positions-gated card | screenshot | ✅ |
+| Per-bot settings (schema + values, send changes) | `GET/POST /api/v1/bots/{id}/settings` | typed form generated from the bot schema (int/bool + ranges), separated loading/offline/forbidden/empty states, diff + confirm | screenshot | ✅ |
 | Coordinates hidden without positions | `Redact` server-side | UI gates + no coordinate display | Java tests | ✅ |
 
 ## Operations (new operator surface)
@@ -96,9 +98,10 @@ The product is an operations dashboard, not a storefront: Overview, Inventory
 
 ## Limitations (documented, not silent)
 
+- **W-061 core done, two tails remain.** The fail-closed allowlist (exact position+operation+block+job+expiry permits on every mutation path, sign packet gated, stopDestroyBlock hook, stone-probe harness case) is implemented with 5 registry unit tests + 530 mod tests green. Remaining: Meteor module-allowlist audit surface and the Manager policy/status reporting. Real 26.3 proof runs in CI.
 - **No audit-log viewer or per-bot jobs view.** The operator queues that matter for daily runs are covered; these two remain future work.
-- **No package-label editor.** The backend field exists (`packageLabel: null` sent); no UI yet.
-- **Order names follow the client `names` contract** (`none`/`all`/`each`, 50 chars); the W-064 server-owned `WeSort (X/Y) - text` naming remains a documented product blocker, not silently claimed.
+- **W-064 physical proof pending CI 26.3 run.** UI contract + bot name generation are implemented and unit/e2e-tested; rename-before-staging reuses the existing anvil path with generated names. Server-blockstate proof of 1–54 numbering, partial delivery and restart recovery runs in the MC E2E job.
+- **W-063 stock-UUID lifecycle + return intake: NOT READY.** No UUID registry, no anvil-applied `WeSort-<uuid>` stock identity, no verified return intake. Explicit product gap, not claimed.
 - **`names.each` uses a capped row list** (54 rows); the bot re-plans from reachability anyway and names apply in order.
 - **Guild shared-stock tables were removed by PR #89's unified direction**; the table view covers dense inspection instead.
 - **Item variants beyond the index key** (enchantments/NBT) are not distinguishable client-side; whole-box auto-pack requires single-content keys and the Manager's physical allocation owns exactness at claim.

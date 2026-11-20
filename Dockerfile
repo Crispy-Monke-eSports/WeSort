@@ -10,7 +10,7 @@ COPY web/e2e/ web/e2e/
 COPY stash-manager-server/src/main/resources/web/ stash-manager-server/src/main/resources/web/
 RUN cd web && bun install --frozen-lockfile && bun run clean && bun run build
 
-FROM eclipse-temurin:21.0.12_8-jdk-jammy@sha256:c7d5863b5dd8f26b90c64f1d80cc2b0e5a5e4642f8db9955a370d348edd8f438 AS build
+FROM eclipse-temurin:25.0.4.1_1-jdk-jammy@sha256:917e4ad2363fb761904f2e515237171bb6867521f03b1ab2cbf466c8ebd92399 AS build
 WORKDIR /workspace
 COPY gradlew ./
 COPY gradle/wrapper/ gradle/wrapper/

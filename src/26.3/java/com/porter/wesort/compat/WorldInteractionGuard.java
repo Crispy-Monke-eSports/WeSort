@@ -109,8 +109,7 @@ public final class WorldInteractionGuard {
         // Placement: the click lands on a support while the adjacent cell carries a live PLACE
         // permit naming the air the job puts its block into.
         var target = position.relative(hit.getDirection());
-        return mc.level.isLoaded(target)
-                && PERMITS.allows(now, target.asLong(), Operation.PLACE, blockId(target), job);
+        return mc.level.isLoaded(target) && PERMITS.allows(now, target.asLong(), Operation.PLACE, blockId(target), job);
     }
 
     public static boolean allowBreak(BlockPos position) {

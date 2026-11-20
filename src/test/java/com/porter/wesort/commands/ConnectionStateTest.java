@@ -24,8 +24,7 @@ class ConnectionStateTest {
         // Operational states mean local work, not a verified reply: never ONLINE.
         assertEquals(ConnectionState.CONTACTING, ConnectionState.of(true, "http://h:1", "k", "idle"));
         assertEquals(
-                ConnectionState.CONTACTING,
-                ConnectionState.of(true, "http://h:1", "k", "awaiting server inventory"));
+                ConnectionState.CONTACTING, ConnectionState.of(true, "http://h:1", "k", "awaiting server inventory"));
         assertEquals(
                 ConnectionState.CONTACTING,
                 ConnectionState.of(true, "http://h:1", "k", "physical operation needs reconciliation"));

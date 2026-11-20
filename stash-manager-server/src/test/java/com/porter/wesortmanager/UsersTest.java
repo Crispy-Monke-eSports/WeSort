@@ -684,7 +684,13 @@ class UsersTest {
         Res edited = post(owner, "/api/v1/users/" + id, "{\"perms\":{\"view\":true,\"order\":true,\"activity\":true}}");
         assertEquals(200, edited.status, edited.raw.body());
         JsonObject perms = edited.obj().getAsJsonObject("user").getAsJsonObject("perms");
-        assertEquals("a", perms.getAsJsonArray("stashes").get(0).getAsJsonObject().get("stash").getAsString());
+        assertEquals(
+                "a",
+                perms.getAsJsonArray("stashes")
+                        .get(0)
+                        .getAsJsonObject()
+                        .get("stash")
+                        .getAsString());
         assertEquals("bot-a", perms.getAsJsonArray("bots").get(0).getAsString());
 
         // Scopes still enforced after the flag edit.
@@ -697,18 +703,27 @@ class UsersTest {
                                 "/api/v1/orders",
                                 "{\"stash\":\"b\",\"lines\":[{\"type\":\"item\",\"key\":\"minecraft:dirt\",\"count\":1}]}")
                         .status);
-        assertEquals(
-                404, post(e, "/api/v1/orders/" + otherOrder + "/cancel", null).status, "still out of scope");
+        assertEquals(404, post(e, "/api/v1/orders/" + otherOrder + "/cancel", null).status, "still out of scope");
         assertEquals(200, get(e, "/api/v1/bots/bot-a/activity").status);
         assertEquals(404, get(e, "/api/v1/bots/bot-b/activity").status);
 
         // Explicit null widens to all; explicit [] narrows to none.
-        Res widened = post(owner, "/api/v1/users/" + id, "{\"perms\":{\"view\":true,\"order\":true,\"activity\":true,\"stashes\":null,\"bots\":null}}");
+        Res widened = post(
+                owner,
+                "/api/v1/users/" + id,
+                "{\"perms\":{\"view\":true,\"order\":true,\"activity\":true,\"stashes\":null,\"bots\":null}}");
         assertEquals(200, widened.status, widened.raw.body());
-        assertTrue(widened.obj().getAsJsonObject("user").getAsJsonObject("perms").get("stashes").isJsonNull());
+        assertTrue(widened.obj()
+                .getAsJsonObject("user")
+                .getAsJsonObject("perms")
+                .get("stashes")
+                .isJsonNull());
         assertEquals(200, get(e, "/api/v1/index?stash=b").status);
         assertEquals(200, get(e, "/api/v1/bots/bot-b/activity").status);
-        Res narrowed = post(owner, "/api/v1/users/" + id, "{\"perms\":{\"view\":true,\"order\":true,\"activity\":true,\"stashes\":[],\"bots\":[]}}");
+        Res narrowed = post(
+                owner,
+                "/api/v1/users/" + id,
+                "{\"perms\":{\"view\":true,\"order\":true,\"activity\":true,\"stashes\":[],\"bots\":[]}}");
         assertEquals(200, narrowed.status, narrowed.raw.body());
         assertEquals(0, get(e, "/api/v1/stashes").body.getAsJsonArray().size());
         assertEquals(0, get(e, "/api/v1/bots").body.getAsJsonArray().size());

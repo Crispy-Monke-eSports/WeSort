@@ -264,8 +264,7 @@ public class StashManager extends Module {
      * connection, so this never reports online before a verified Manager reply. See ConnectionState.
      */
     public String connectionState() {
-        return com.porter.wesort.commands.ConnectionState.of(
-                        isActive(), serverUrl.get(), apiKey.get(), status)
+        return com.porter.wesort.commands.ConnectionState.of(isActive(), serverUrl.get(), apiKey.get(), status)
                 .name();
     }
 

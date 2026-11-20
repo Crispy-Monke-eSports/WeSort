@@ -54,9 +54,7 @@ public final class WorldInteractionGuard {
         if (manager == null) return "unknown";
         var sorter = Modules.get().get(StashSorter.class);
         return jobTag(
-                manager.activeOrderId(),
-                sorter == null ? null : sorter.activeRepackJobId(),
-                manager.activeTask());
+                manager.activeOrderId(), sorter == null ? null : sorter.activeRepackJobId(), manager.activeTask());
     }
 
     static String jobTag(String order, String repackId, String fallback) {

@@ -560,19 +560,23 @@ public final class InventorySync {
         // state update has reached the client on this same callback. Keep the
         // mutation fenced until the matching world state arrives; if the server
         // never confirms it, the original eight-second deadline fails closed.
+        boolean confirmedBlock = false;
         for (var block : List.copyOf(blocks.values())) {
             if (lastBlockAck >= block.sequence
                     && mc.level != null
                     && mc.level.isLoaded(block.pos)
                     && blockId(block.pos).equals(block.block)) {
                 blocks.remove(block.sequence);
+                confirmedBlock = true;
             } else if (!recoveringWorld && System.nanoTime() >= block.deadline) {
                 gate.fail("Block acknowledgement or verified state timed out; do not replay the action");
                 reportFailure();
                 return;
             }
         }
-        complete();
+        // Only finalize after a pending block has been confirmed; otherwise
+        // complete() would fsync the journal directory on every client tick.
+        if (confirmedBlock) complete();
         gate.expire(System.nanoTime());
         if (gate.failed()) {
             reportFailure();

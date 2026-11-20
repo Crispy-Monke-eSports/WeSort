@@ -90,9 +90,11 @@ class OfflineOrderQueueTest {
         goStale();
         // The default path never queues silently: an expired source keeps its shortage and no
         // order row is created, so expired stock cannot be reserved behind the requester's back.
+        // This aggregate fixture deterministically fails fresh with 400, which the gate preserves.
         OrderStore.OrderException denied =
                 assertThrows(OrderStore.OrderException.class, () -> orders.place("s", "a", diamonds(1), null));
-        assertTrue(denied.status == 400 || denied.status == 409, "stale order denied, got " + denied.status);
+        assertEquals(400, denied.status);
+        assertTrue(denied.getMessage().contains("available"));
         assertEquals(0, orders.listJson("s", "a").getAsJsonArray("orders").size());
     }
 

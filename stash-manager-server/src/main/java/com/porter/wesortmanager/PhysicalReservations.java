@@ -67,9 +67,11 @@ final class PhysicalReservations {
             // last observation is intact but aged (or pending a first post-restart rescan). An
             // explicitly invalidated source (STALE), an unreachable/missing one, a withdrawn or
             // protected one, or a superseded topology must never back even a queued reservation.
-            boolean queueable = fresh
-                    || source.status().equals("STALE_AGE")
-                    || source.status().equals("STALE_STARTUP");
+            // Shared sources are excluded like the aggregate counts (IndexStore.counted).
+            boolean queueable = (fresh
+                            || source.status().equals("STALE_AGE")
+                            || source.status().equals("STALE_STARTUP"))
+                    && !source.shared();
             for (var slot : ledger.physicalSlots(id)) {
                 if (!slot.get("present").getAsBoolean()) continue;
                 String path = slot.get("path").getAsString();

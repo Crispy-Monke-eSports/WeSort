@@ -278,7 +278,10 @@ public final class InventorySync {
                             case START_DESTROY_BLOCK, STOP_DESTROY_BLOCK ->
                                 !WorldInteractionGuard.allowBreak(action.getPos());
                             default -> false;
-                        })) {
+                        })
+                // Sign text travels in its own packet: it needs a live SIGN permit like any mutation.
+                || (event.packet instanceof ServerboundSignUpdatePacket sign
+                        && !WorldInteractionGuard.allowSign(sign.pos()))) {
             event.cancel();
             return;
         }
@@ -659,6 +662,8 @@ public final class InventorySync {
         recoveryOpening = true;
         try {
             lastInteracted = pos;
+            // W-061: recovery reopens the exact container being recovered, nothing else.
+            WorldInteractionGuard.authorizeUse(pos);
             meteordevelopment.meteorclient.utils.world.BlockUtils.interact(
                     new net.minecraft.world.phys.BlockHitResult(
                             net.minecraft.world.phys.Vec3.atCenterOf(pos), net.minecraft.core.Direction.UP, pos, false),

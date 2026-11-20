@@ -392,6 +392,8 @@ final class ChestPlacer {
                 clickIssued = false;
                 return;
             }
+            // W-061: this job places its chest half into this empty cell, nothing else.
+            com.porter.wesort.compat.WorldInteractionGuard.authorizePlace(want);
             mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, hit);
             mc.player.swing(InteractionHand.MAIN_HAND);
             clickIssued = false;

@@ -232,6 +232,26 @@ public class StashManager extends Module {
         return !serverUrl.get().isBlank() && !apiKey.get().isBlank();
     }
 
+    /**
+     * The Manager order the bot is currently working, or null (W-061: the job tag every world-interaction
+     * permit is issued under; permits without a job are still exact-position, exact-block and expiring).
+     */
+    public String activeOrderId() {
+        try {
+            var sorter = Modules.get().get(com.porter.wesort.modules.StashSorter.class);
+            if (sorter == null) return null;
+            var orders = sorter.orders();
+            return orders == null ? null : orders.orderId();
+        } catch (RuntimeException ex) {
+            return null;
+        }
+    }
+
+    /** What the bot is currently doing, for permit audit when no order is in hand (never a secret). */
+    public String activeTask() {
+        return status;
+    }
+
     @Override
     public void onDeactivate() {
         sortingUntil = 0;

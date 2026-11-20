@@ -43,7 +43,21 @@ public abstract class BlockInputMixin {
             at = @At("HEAD"),
             cancellable = true)
     private void wesort$beforeBlockBreak(BlockPos pos, Direction face, CallbackInfoReturnable<Boolean> cir) {
+        wesort$lastBreakTarget = pos == null ? null : pos.immutable();
         if (!WorldInteractionGuard.allowBreak(pos) || (InventorySync.calledFromWeSort() && !InventorySync.allowInput()))
             cir.setReturnValue(false);
+    }
+
+    private static BlockPos wesort$lastBreakTarget;
+
+    // stopDestroyBlock carries no position: refuse it unless the break it finishes was allowed.
+    // The STOP_DESTROY_BLOCK packet is independently checked in InventorySync.
+    @Inject(method = "stopDestroyBlock", at = @At("HEAD"), cancellable = true)
+    private void wesort$beforeBlockBreakStop(org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
+        BlockPos pos = wesort$lastBreakTarget;
+        if (pos != null
+                && (!WorldInteractionGuard.allowBreak(pos)
+                        || (InventorySync.calledFromWeSort() && !InventorySync.allowInput())))
+            ci.cancel();
     }
 }

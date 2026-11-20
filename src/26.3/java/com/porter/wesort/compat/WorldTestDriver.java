@@ -126,6 +126,8 @@ public final class WorldTestDriver {
                         respond(false, "Unloaded target", null);
                         return;
                     }
+                    // Test-only hook: the harness authorizes its own explicit open like production code does.
+                    WorldInteractionGuard.authorizeUse(pos);
                     if (mc.player.distanceToSqr(Vec3.atCenterOf(pos)) > 25) {
                         respond(false, "Target outside interaction range", null);
                         return;
@@ -145,6 +147,8 @@ public final class WorldTestDriver {
                         respond(false, "Ambiguity probe requires reachable fixture halves", null);
                         return;
                     }
+                    for (BlockPos part : List.of(pos, other))
+                        WorldInteractionGuard.authorizeUse(part);
                     for (BlockPos part : List.of(pos, other))
                         meteordevelopment.meteorclient.utils.world.BlockUtils.interact(
                                 new BlockHitResult(Vec3.atCenterOf(part), Direction.UP, part, false),
@@ -300,6 +304,7 @@ public final class WorldTestDriver {
                         respond(false, "Placement target is not loaded, empty and reachable", state());
                         return;
                     }
+                    WorldInteractionGuard.authorizePlace(pos);
                     meteordevelopment.meteorclient.utils.world.BlockUtils.interact(
                             new BlockHitResult(Vec3.atBottomCenterOf(pos), Direction.UP, pos.below(), false),
                             InteractionHand.MAIN_HAND,
@@ -315,6 +320,7 @@ public final class WorldTestDriver {
                         respond(false, "Break target not loaded/reachable", state());
                         return;
                     }
+                    WorldInteractionGuard.authorizeBreak(pos);
                     meteordevelopment.meteorclient.utils.world.BlockUtils.breakBlock(pos, true);
                 }
                 case "forget" -> {
@@ -575,6 +581,7 @@ public final class WorldTestDriver {
             List<String> lines = new ArrayList<>();
             pending.getAsJsonArray("lines").forEach(line -> lines.add(line.getAsString()));
             if (!signSent) {
+                WorldInteractionGuard.authorizeSign(pos);
                 signEpoch = blockEntities.getOrDefault(pos, 0L);
                 mc.player.connection.send(
                         new net.minecraft.network.protocol.game.ServerboundSignUpdatePacket(pos, lines, signSlot));

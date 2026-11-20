@@ -973,6 +973,8 @@ final class StashLabeller {
             }
             preexisting.clear();
             for (BlockPos p : Containers.signSpots(box)) if (signThere(p)) preexisting.add(p);
+            // W-061: this job puts its sign into this empty cell, nothing else.
+            com.porter.wesort.compat.WorldInteractionGuard.authorizePlace(spot);
             mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, hit);
             mc.player.swing(InteractionHand.MAIN_HAND);
             clickAge = age;
@@ -1109,6 +1111,8 @@ final class StashLabeller {
             BlockHitResult hit = new BlockHitResult(where, dir, spot, false);
             Runnable action = () -> {
                 if (step != Step.Reopen || !owner.running() || !handReady()) return;
+                // W-061: this job reopens the editor of the sign it put up, nothing else.
+                com.porter.wesort.compat.WorldInteractionGuard.authorizeUse(spot);
                 mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, hit);
                 mc.player.swing(InteractionHand.MAIN_HAND);
                 clickAge = age;
@@ -1129,6 +1133,9 @@ final class StashLabeller {
      */
     private void write() {
         BlockPos spot = face.sign();
+        // The text travels in its own packet outside the use/click funnel: the send is gated by
+        // WorldInteractionGuard in InventorySync, like any other world mutation.
+        com.porter.wesort.compat.WorldInteractionGuard.authorizeSign(spot);
         owner.releaseGoal();
         sneak(false);
         mc.player.connection.send(

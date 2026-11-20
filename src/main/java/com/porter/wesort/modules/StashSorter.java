@@ -4595,6 +4595,9 @@ public class StashSorter extends Module {
                 openPos = pos;
                 openClickTick = ticks;
                 openMenuBefore = mc.player.containerMenu;
+                // W-061: the exact container this job opens, nothing else. TTL-bound (rotation
+                // callbacks run ticks later), exact position + block + job, revoked by expiry.
+                com.porter.wesort.compat.WorldInteractionGuard.authorizeUse(pos);
                 BlockUtils.interact(hit, InteractionHand.MAIN_HAND, true);
             };
 
@@ -5807,6 +5810,8 @@ public class StashSorter extends Module {
             anvilSpotFailed();
             return;
         }
+        // W-061: this job places its anvil/table into this empty cell, nothing else.
+        com.porter.wesort.compat.WorldInteractionGuard.authorizePlace(anvilSpot);
         if (BlockUtils.place(
                 anvilSpot,
                 new FindItemResult(anvilSlot, inv.getItem(anvilSlot).getCount()),
@@ -5991,6 +5996,9 @@ public class StashSorter extends Module {
                 openPos = pos;
                 openClickTick = ticks;
                 openMenuBefore = mc.player.containerMenu;
+                // W-061: the exact container this job opens, nothing else. TTL-bound (rotation
+                // callbacks run ticks later), exact position + block + job, revoked by expiry.
+                com.porter.wesort.compat.WorldInteractionGuard.authorizeUse(pos);
                 BlockUtils.interact(hit, InteractionHand.MAIN_HAND, true);
             };
 
@@ -6776,6 +6784,8 @@ public class StashSorter extends Module {
         }
         shulkersBefore = countShulkers();
         placedStacks = StackInfo.of(shulker).contents().size();
+        // W-061: this job places its own temporary shulker into this empty cell, nothing else.
+        com.porter.wesort.compat.WorldInteractionGuard.authorizePlace(spot);
         if (!BlockUtils.place(
                 spot, new FindItemResult(hotbar, shulker.getCount()), rotate.get(), 50, true, true, true)) {
             placeFailed(spot);
@@ -6951,6 +6961,8 @@ public class StashSorter extends Module {
                 return;
             }
             BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(placed), Direction.UP, placed, false);
+            // W-061: this job opens the shulker it placed, nothing else.
+            com.porter.wesort.compat.WorldInteractionGuard.authorizeUse(placed);
             BlockUtils.interact(hit, InteractionHand.MAIN_HAND, true);
         }
     }
@@ -7158,6 +7170,8 @@ public class StashSorter extends Module {
                 pickaxeSwapped = true;
             }
         }
+        // W-061: this job breaks the temporary shulker it placed, nothing else.
+        com.porter.wesort.compat.WorldInteractionGuard.authorizeBreak(placed);
         BlockUtils.breakBlock(placed, true);
     }
 
@@ -8726,6 +8740,9 @@ public class StashSorter extends Module {
                 openPos = pos;
                 openClickTick = ticks;
                 openMenuBefore = mc.player.containerMenu;
+                // W-061: the exact container this job opens, nothing else. TTL-bound (rotation
+                // callbacks run ticks later), exact position + block + job, revoked by expiry.
+                com.porter.wesort.compat.WorldInteractionGuard.authorizeUse(pos);
                 BlockUtils.interact(hit, InteractionHand.MAIN_HAND, true);
             };
 

@@ -254,8 +254,23 @@ try:
     ok(
         "agent credential retrieval is confined to local CLI and rotation immediately retires the old control key"
     )
-    # Single-server operation: the owner sets the one Minecraft server first.
+    # Single-server operation: the owner sets the one Minecraft server first,
+    # then defines the stash region the bot may report for.
     assert http("/api/v1/server", {"server": fake.SERVER}, opener=browser)[0] == 200
+    assert (
+        http(
+            "/api/v1/stash-defs",
+            {
+                "action": "create",
+                "name": fake.STASH,
+                "dimension": "minecraft:overworld",
+                "pos1": {"x": 0, "y": -60, "z": 0},
+                "pos2": {"x": 31, "y": 20, "z": 31},
+            },
+            opener=browser,
+        )[0]
+        == 200
+    )
     index = fake.protocol_observation(fake.build_index())
     assert agent(network, key, "/api/v1/index", index)["status"] == 200
     assert (
@@ -300,6 +315,20 @@ try:
     )
     if args.browser:
         portal_stash = "portal-nether"
+        assert (
+            http(
+                "/api/v1/stash-defs",
+                {
+                    "action": "create",
+                    "name": portal_stash,
+                    "dimension": "minecraft:the_nether",
+                    "pos1": {"x": 0, "y": 30, "z": 0},
+                    "pos2": {"x": 15, "y": 50, "z": 15},
+                },
+                opener=browser,
+            )[0]
+            == 200
+        )
         secondary = fake.build_index()
         secondary["stash"] = portal_stash
         secondary["dimension"] = dimension = "minecraft:the_nether"

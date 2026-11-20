@@ -129,10 +129,19 @@ public final class WorldInteractionGuard {
             denied("break-unloaded");
             return false;
         }
-        return breakDecision(
-                job,
-                safeBlock(position),
-                PERMITS.allows(now(), position.asLong(), Operation.BREAK, blockId(position), job));
+        // Refine the no-permit audit so a stall names its cause: no live permit here at all
+        // (absent or TTL-expired) vs a live permit naming a different block (client prediction
+        // vs server state, or a stale break target). Unknown-job and safety-sensitive denials
+        // keep their own counters via breakDecision below.
+        long now = now();
+        boolean permit =
+                PERMITS.allows(now, position.asLong(), Operation.BREAK, blockId(position), job);
+        if (!permit && job != null && !job.isEmpty() && !job.equals("unknown") && safeBlock(position)) {
+            String holder = PERMITS.jobOf(now, position.asLong(), Operation.BREAK);
+            denied(holder == null ? "break-no-permit-expired" : "break-no-permit-block");
+            return false;
+        }
+        return breakDecision(job, safeBlock(position), permit);
     }
 
     /**

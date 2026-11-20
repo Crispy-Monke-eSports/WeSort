@@ -120,11 +120,24 @@ class JournalHarness(repack.RepackHarness):
                         stalled = self.command('state')['state']
                     except Exception as failed:
                         stalled = {'state_error': str(failed)}
-                    (self.evidence / 'arming-stall.json').write_text(json.dumps({
+                    stall = {
                         'armed_phase': self.phase,
                         'durable_markers': [path.name for path in armed],
                         'client_state': stalled,
-                    }, indent=2, default=str) + '\n')
+                    }
+                    # Decisive server ground truth for a PICKUP/BREAK stall: is the
+                    # shulker still standing, dropped as an item, or gone?
+                    try:
+                        pos = (stalled or {}).get('repackPosition')
+                        if pos:
+                            stall['server_block_at_repack'] = self.rcon.command(
+                                'data get block %d %d %d' % tuple(pos))
+                            stall['server_drops'] = self.rcon.command(
+                                'data get entity @e[type=minecraft:item,limit=5]')
+                    except Exception as failed:
+                        stall['server_probe_error'] = str(failed)
+                    (self.evidence / 'arming-stall.json').write_text(json.dumps(
+                        stall, indent=2, default=str) + '\n')
                     raise RuntimeError('The armed durable phase was not reached '
                                        '(last durable markers: %s)' % [path.name for path in armed])
                 time.sleep(.025)

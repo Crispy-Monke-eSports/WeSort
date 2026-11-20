@@ -103,6 +103,32 @@ export function singleBoxedContents(key: string, shulkers: ShulkerEntry[]): numb
   return n;
 }
 
+/**
+ * Net available whole boxes of a group: the server's reservation-safe count
+ * (`available.shulkers`, net of open orders) capped by observed boxes.
+ * Never observed-only: a box reserved by another open order is not shown
+ * as free. Missing keys count as zero (fully reserved or unknown).
+ */
+export function netBoxes(boxKey: string, observed: number, availableShulkers: Record<string, number>): number {
+  return Math.max(0, Math.min(Math.max(0, observed), Math.max(0, availableShulkers[boxKey] ?? 0)));
+}
+
+/** Reservation-safe single-content units of a key: whole boxes minus open-order holds. */
+export function netBoxedContents(
+  key: string,
+  shulkers: ShulkerEntry[],
+  availableShulkers: Record<string, number>,
+): number {
+  let n = 0;
+  for (const e of shulkers) {
+    if (!isSingleContent(e, key)) continue;
+    let perBox = 0;
+    for (const c of e.contents ?? []) perBox += Math.max(0, c?.count ?? 0);
+    n += perBox * netBoxes(e.key, e.count, availableShulkers);
+  }
+  return n;
+}
+
 /** Units of a key trapped inside mixed boxes: visible, but never auto-packed whole. */
 export function mixedBoxedContents(key: string, shulkers: ShulkerEntry[]): number {
   let n = 0;

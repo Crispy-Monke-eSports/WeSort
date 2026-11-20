@@ -4,6 +4,8 @@ import {
   boxedContents,
   isSingleContent,
   mixedBoxedContents,
+  netBoxedContents,
+  netBoxes,
   shulkersNeeded,
   singleBoxedContents,
   splitItemLine,
@@ -140,5 +142,36 @@ describe("mixed shulkers never over-deliver (P0 2.4)", () => {
     expect(mixedBoxedContents("minecraft:netherite_ingot", shulkers)).toBe(2 * 64);
     const av = availabilityOf("minecraft:diamond", 10, shulkers);
     expect(av).toEqual({ loose: 10, boxed: 1728, mixed: 128, orderable: 1738 });
+  });
+});
+
+describe("reservation-safe whole-box availability (P0-06)", () => {
+  const mixedBox = (key: string, count: number) => ({
+    key,
+    id: "minecraft:shulker_box",
+    itemKey: "minecraft:diamond",
+    count,
+    contents: [
+      { slot: 0, key: "minecraft:diamond", count: 64 },
+      { slot: 1, key: "minecraft:netherite_ingot", count: 64 },
+    ],
+  });
+
+  it("caps observed boxes by the server reservation-safe count", () => {
+    expect(netBoxes("a", 4, { a: 4 })).toBe(4);
+    // Another open order holds 3 of 4: only 1 is shown as free.
+    expect(netBoxes("a", 4, { a: 1 })).toBe(1);
+    expect(netBoxes("a", 4, { a: 0 })).toBe(0);
+    // Unknown key (fully reserved or never reported): never shown as free.
+    expect(netBoxes("a", 4, {})).toBe(0);
+    // Never exceeds observation (stale server counts can't inflate).
+    expect(netBoxes("a", 2, { a: 99 })).toBe(2);
+  });
+
+  it("netBoxedContents excludes reserved whole boxes", () => {
+    const shulkers = [diamonds("a", 4, 1728), mixedBox("m", 2)];
+    expect(netBoxedContents("minecraft:diamond", shulkers, { a: 4, m: 2 })).toBe(4 * 1728);
+    expect(netBoxedContents("minecraft:diamond", shulkers, { a: 1, m: 2 })).toBe(1728);
+    expect(netBoxedContents("minecraft:diamond", shulkers, {})).toBe(0);
   });
 });

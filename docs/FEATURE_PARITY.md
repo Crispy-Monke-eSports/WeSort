@@ -30,7 +30,7 @@ The product is an operations dashboard, not a storefront: Overview, Inventory
 | Category filtering (creative tabs) | `tab` field in index bytes | filter drawer + desktop panel | screenshot | ✅ |
 | Availability filter + sorting | same | availability, sort | screenshot | ✅ |
 | Item details + quantity | — (client) | MUI dialog, per-stash table, stack size | e2e + screenshot | ✅ |
-| Guild-wide cross-stash split | `POST /api/v1/orders` per stash | loose-first + whole single-content boxes, atomic commit or fail | e2e (2 groups, 2 keys) | ✅ |
+| Guild-wide cross-stash split | `POST /api/v1/orders` per stash | loose-first + whole single-content boxes; draft split commits in one step, each stash is its own backend order (deliberate: no cross-stash transaction — partial success keeps failed groups retryable with the same key) | e2e (2 groups, 2 keys) | ✅ |
 | Cart draft (per user) | — (client) | Zustand persisted per-user draft drawer | unit + e2e | ✅ |
 | No over-delivery from mixed shulkers | `OrderStore`/`PhysicalReservations` (server authoritative) | single-content rule for whole-box lines | unit (mixed negatives) | ✅ |
 | 54-shulker capacity | `MAX_SHULKERS` server | client pre-check, server enforces | unit | ✅ |

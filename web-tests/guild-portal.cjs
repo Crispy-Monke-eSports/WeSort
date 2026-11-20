@@ -1,13 +1,16 @@
 // Run through docker-smoke.py --browser. Manager and its HTTP sessions are real.
-// Covers the unified Shop: members log in, search the stash, shift-click a
-// stack into the cart, walk cart -> delivery -> review -> place, and see
-// private order histories; an officer audits by person and item.
+// Covers the React/MUI dashboard: two members log in, search shared stock,
+// add to the draft, walk cart -> details -> review -> place, and see private
+// order histories (member isolation); an officer audits by person and item.
+// Any page error or request leaving the Manager origin fails the run.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const { chromium } = require('playwright');
 
 async function main() {
   const { url, stash, otherStash, password, members, officer } = JSON.parse(fs.readFileSync(0, 'utf8'));
+  void stash;
+  void otherStash;
   const browser = await chromium.launch({ executablePath: process.env.WESORT_CHROMIUM || undefined });
   const errors = [];
   const external = [];
@@ -24,61 +27,77 @@ async function main() {
     await page.locator('#auth-username').fill(username);
     await page.locator('#auth-password').fill(password);
     await page.locator('#auth-submit').click();
-    await page.waitForURL(/\/shop/, { timeout: 20000 });
+    await page.waitForURL(/\/overview/, { timeout: 20000 });
     return page;
+  }
+  async function inventorySearch(page, text) {
+    await page.getByRole('link', { name: 'Inventory', exact: true }).click();
+    await expectHeading(page, 'Inventory');
+    await page.getByLabel('Search items').first().fill(text);
+  }
+  async function expectHeading(page, name) {
+    await page.getByRole('heading', { name }).first().waitFor({ timeout: 10000 });
   }
   try {
     const pages = [];
     for (const username of members) {
       const page = await login(username);
-      const search = page.getByRole('searchbox', { name: 'Search the stash' });
-      await search.fill('diamond @minecraft');
-      await page.locator('#item-grid [role="listitem"]').first().waitFor();
-      await search.fill('=minecraft:diamond');
+      await inventorySearch(page, 'diamond');
+      await page.getByTestId('item-grid').locator('.MuiCard-root').first().waitFor();
       pages.push(page);
     }
 
+    // Each member drafts 64 diamonds with a distinct comment and places.
     const notes = ['Portal building order', 'Portal mining order'];
     for (const [i, page] of pages.entries()) {
-      const search = page.getByRole('searchbox', { name: 'Search the stash' });
-      assert.equal(await search.inputValue(), '=minecraft:diamond');
-      await page.locator('#item-grid [role="listitem"]').first().click({ modifiers: ['Shift'] });
-      await expectTotals(page, /64 items/);
-      await page.getByRole('button', { name: 'Continue to delivery' }).click();
-      await page.locator('#order-comment').fill(notes[i]);
-      await page.getByRole('button', { name: 'Continue to review' }).click();
-      await page.locator('#cart-place').click();
-      await page.locator('#cart-status').getByText(/Order placed|queued/).waitFor();
-      const history = page.locator('#order-list');
-      await history.getByText(notes[i], { exact: false }).waitFor();
-      assert.equal(await history.locator('.order-card').count(), 1);
-      assert.match(await history.textContent(), /Pending|Queued|Reserved/i);
+      await page.getByTestId('item-grid').locator('.MuiCard-root').first().getByRole('button', { name: 'Add' }).click();
+      await page.getByLabel('Quantity').fill('64');
+      await page.getByRole('button', { name: 'Add to cart' }).click();
+      await page.getByRole('button', { name: /cart/i }).click();
+      await expectCartLines(page, 1);
+      await page.getByRole('button', { name: 'Checkout', exact: true }).click();
+      await page.getByRole('button', { name: 'Continue' }).click();
+      await page.getByLabel('Comment (optional)').fill(notes[i]);
+      await page.getByRole('button', { name: 'Review' }).click();
+      await expect(page.locator('#order-review')).toContainText(notes[i]);
+      await page.getByRole('button', { name: 'Place orders' }).click();
+      await page.getByText(/Confirmed o-/).first().waitFor({ timeout: 15000 });
+      await page.getByRole('button', { name: 'Done' }).click();
     }
 
     for (const [i, page] of pages.entries()) {
       await page.reload();
-      await page.locator('#dash-nav [data-page="orders"]').click();
-      const history = page.locator('#order-list');
-      await history.getByText(notes[i], { exact: false }).waitFor();
-      assert.equal(await history.locator('.order-card').count(), 1);
-      assert.equal(await history.getByText(notes[1 - i], { exact: false }).count(), 0);
-      assert.equal(await page.locator('#order-audit').count(), 0);
-      await page.locator('#dash-nav [data-page="shop"]').click();
-      await page.getByRole('searchbox', { name: 'Search the stash' }).fill('=minecraft:diamond');
-      await page.locator('#item-grid [role="listitem"]').first().waitFor();
+      // Private history: exactly one order (the member's own), with its note.
+      await page.getByRole('link', { name: 'Orders', exact: true }).click();
+      await expectHeading(page, 'Orders');
+      const history = page.getByTestId('order-card');
+      await expectCount(history, 1);
+      await expect(history.first()).toContainText(notes[i]);
+      await expect(page.getByText(notes[1 - i], { exact: false })).toHaveCount(0);
+      // No audit surface for members (backend ORDERS_ALL, UI-gated too).
+      // Members lack the activity perm so Operations is not in their nav;
+      // reach it directly and verify no audit tab or operator queues render.
+      await page.goto(url + '/operations');
+      await expectHeading(page, 'Operations');
+      await expect(page.getByRole('tab', { name: 'Order audit' })).toHaveCount(0);
+      await expect(page.getByText('Operator queues')).toHaveCount(0);
+      await inventorySearch(page, '=minecraft:diamond');
+      await page.getByTestId('item-grid').locator('.MuiCard-root').first().waitFor();
     }
 
+    // Officer: same login, then audit by person + item finds the one order.
     const reviewer = await login(officer);
-    await reviewer.locator('#dash-nav [data-page="orders"]').click();
+    await reviewer.getByRole('link', { name: 'Operations', exact: true }).click();
+    await expectHeading(reviewer, 'Operations');
+    await reviewer.getByRole('tab', { name: 'Order audit' }).click();
     const audit = reviewer.locator('#order-audit');
-    await audit.getByRole('button', { name: 'Search audit' }).waitFor();
-    await audit.getByRole('searchbox', { name: 'Person' }).fill(members[0]);
-    await audit.getByRole('searchbox', { name: 'Item key' }).fill('diamond');
-    await audit.getByRole('button', { name: 'Search audit' }).click();
-    const result = audit.locator('#order-audit-results details');
-    await result.getByText(members[0], { exact: false }).first().waitFor();
-    assert.equal(await result.count(), 1);
-    assert.match(await result.textContent(), /minecraft:diamond.*order\.reserve/);
+    await audit.getByLabel('Person').fill(members[0]);
+    await audit.getByLabel('Item').fill('diamond');
+    await audit.getByRole('button', { name: 'Search', exact: true }).click();
+    const rows = audit.locator('tbody tr');
+    await expectCount(rows, 1);
+    await expect(rows.first()).toContainText(members[0]);
+    await expect(rows.first()).toContainText('minecraft:diamond');
     assert.deepEqual(errors, []);
     assert.deepEqual(external, []);
   } finally {
@@ -86,12 +105,25 @@ async function main() {
   }
 }
 
-async function expectTotals(page, re) {
-  await page.waitForFunction(
-    (pattern) => new RegExp(pattern).test(document.querySelector('#cart-totals')?.textContent || ''),
-    re.source,
-    { timeout: 10000 },
-  );
+async function expectCartLines(page, n) {
+  await page.locator('#cart-lines .cart-line').first().waitFor({ timeout: 10000 });
+  assert.equal(await page.locator('#cart-lines .cart-line').count(), n);
+}
+
+async function expectCount(locator, n) {
+  if (n === 0) {
+    assert.equal(await locator.count(), 0);
+    return;
+  }
+  await locator.first().waitFor({ timeout: 15000 });
+  assert.equal(await locator.count(), n);
+}
+
+async function expect(locator) {
+  return {
+    toContainText: (t) => locator.filter({ hasText: t }).first().waitFor({ timeout: 10000 }),
+    toHaveCount: (n) => expectCount(locator, n),
+  };
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

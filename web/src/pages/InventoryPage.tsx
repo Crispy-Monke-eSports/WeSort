@@ -57,8 +57,9 @@ import {
   isShulkerBoxId,
   isSingleContent,
   mixedBoxedContents,
+  netBoxedContents,
+  netBoxes,
   payloadHash,
-  singleBoxedContents,
 } from "../lib/shop";
 import { setCartScope, useCart, useCheckout, type CartLine, type CheckoutGroup, type OrderBody } from "../stores/shop";
 import { ItemIcon } from "../components/minecraft/ItemIcon";
@@ -211,7 +212,8 @@ export function InventoryPage() {
         if (!isSingleContent(b, key)) continue;
         let perBox = 0;
         for (const c of b.contents ?? []) perBox += Math.max(0, c?.count ?? 0);
-        exact += perBox * Math.max(0, b.count - packedInCart(s.stash, b.key));
+        // Server reservations first: a box held by another open order is not orderable.
+        exact += perBox * Math.max(0, netBoxes(b.key, b.count, s.availableShulkers) - packedInCart(s.stash, b.key));
       }
     }
     if (unknown && looseTotal + exact <= 0) return null;
@@ -253,9 +255,12 @@ export function InventoryPage() {
 
   function addToCart(key: string, n: number): boolean {
     if (n < 1 || !canOrder) return false;
-    // Guild-wide split, committed atomically: loose units first (most-loose stash first),
-    // then whole single-content boxes (biggest first). Mixed boxes are never packed whole.
-    // Anything left over fails instead of over-promising.
+    // Guild-wide split: loose units first (most-loose stash first), then whole
+    // single-content boxes (biggest first). Mixed boxes are never packed whole.
+    // Anything left over fails instead of over-promising. Committed to the
+    // draft in one step; each stash still becomes its OWN backend order
+    // (no cross-stash transaction — partial success keeps failed groups
+    // retryable with the same idempotency key).
     const next: CartLine[] = cartLines.map((l) => ({ ...l }));
     let remaining = n;
     const looseInNext = (stash: string) =>
@@ -282,7 +287,7 @@ export function InventoryPage() {
           if (!isSingleContent(b, key)) continue;
           let perBox = 0;
           for (const c of b.contents ?? []) perBox += Math.max(0, c?.count ?? 0);
-          const left = Math.max(0, b.count - packedInNext(s.stash, b.key));
+          const left = Math.max(0, netBoxes(b.key, b.count, s.availableShulkers) - packedInNext(s.stash, b.key));
           if (perBox > 0 && left > 0) cands.push({ stash: s.stash, boxKey: b.key, perBox, left });
         }
       }
@@ -615,7 +620,7 @@ function AvailabilityLine({ item, slices, orderable, inCart }: { item: MergedIte
       const it = s.items.find((x) => x.key === item.key);
       if (it) loose += Math.max(0, (s.availableItems[item.key] ?? it.count));
       if (!s.ordersOk) verified = false;
-      boxed += singleBoxedContents(item.key, s.shulkers);
+      boxed += netBoxedContents(item.key, s.shulkers, s.availableShulkers);
       mixed += mixedBoxedContents(item.key, s.shulkers);
     }
     return { loose, boxed, mixed, verified };
@@ -682,7 +687,7 @@ function InventoryRow({ item, slices, mcVersion, onBuy, canOrder, orderable, inC
       const it = s.items.find((x) => x.key === item.key);
       if (it) loose += Math.max(0, (s.availableItems[item.key] ?? it.count));
       if (!s.ordersOk) verified = false;
-      boxed += singleBoxedContents(item.key, s.shulkers);
+      boxed += netBoxedContents(item.key, s.shulkers, s.availableShulkers);
       mixed += mixedBoxedContents(item.key, s.shulkers);
     }
     return { loose, boxed, mixed, verified };
@@ -753,7 +758,7 @@ function BuyDialog({ item, slices, mcVersion, canOrder, remaining, onClose, onAd
                 <TableRow key={s.stash}>
                   <TableCell sx={{ fontFamily: "monospace" }}>{s.stash}</TableCell>
                   <TableCell align="right">{grouped(Math.max(0, s.availableItems[item.key] ?? 0))}</TableCell>
-                  <TableCell align="right">{grouped(singleBoxedContents(item.key, s.shulkers))}</TableCell>
+                  <TableCell align="right">{grouped(netBoxedContents(item.key, s.shulkers, s.availableShulkers))}</TableCell>
                   <TableCell><PresenceChip online={s.online} label={s.online ? "bot online" : s.online === false ? "bot offline" : "unknown"} /></TableCell>
                 </TableRow>
               ))}
@@ -923,6 +928,12 @@ function CheckoutDialog(props: {
               {props.recipient.trim() ? ` · recipient ${props.recipient.trim()}` : ""}
               {props.comment.trim() ? ` · “${props.comment.trim()}”` : ""}
             </Typography>
+            {perStash.length > 1 && (
+              <Alert severity="info">
+                {perStash.length} separate backend orders (one per stash) — not one transaction.
+                If a stash fails, the others still confirm; retry the failed group with its same key.
+              </Alert>
+            )}
           </Stack>
         )}
 

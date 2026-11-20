@@ -32,7 +32,9 @@ test("inventory aggregates, drafts, checks out and places with idempotency heade
   });
   await page.route("**/api/v1/orders?*", (r) => {
     const depot = new URL(r.request().url()).searchParams.get("stash") === "depot";
-    return r.fulfill({ json: { orders: [], available: { items: depot ? { "minecraft:diamond": 200 } : { "minecraft:diamond": 64 }, shulkers: {} } } });
+    return r.fulfill({ json: { orders: [], available: depot
+      ? { items: { "minecraft:diamond": 200 }, shulkers: {} }
+      : { items: { "minecraft:diamond": 64 }, shulkers: { "diamond-box": 1 } } } });
   });
   let posted: { headers: Record<string, string>; body: any }[] = [];
   await page.route("**/api/v1/orders", (r) => {
@@ -67,6 +69,11 @@ test("inventory aggregates, drafts, checks out and places with idempotency heade
   // Walk the stepper: cart -> details -> review -> place.
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByLabel("Comment (optional)").fill("e2e order");
+  // W-064 box text: the payload carries packageLabel, never legacy names.
+  await page.getByLabel("Box labels").click();
+  await page.getByRole("option", { name: "Same text on every box" }).click();
+  await page.getByLabel("Text for every box").fill("e2e boxes");
+  await expect(page.getByText("WeSort (1/").first()).toBeVisible();
   await page.getByRole("button", { name: "Review" }).click();
   await expect(page.locator("#order-review")).toContainText("e2e order");
   await page.getByRole("button", { name: "Place orders" }).click();
@@ -83,6 +90,10 @@ test("inventory aggregates, drafts, checks out and places with idempotency heade
     { type: "shulker", key: "diamond-box", count: 1 },
   ]);
   expect(byStash["depot"].body.lines).toEqual([{ type: "item", key: "minecraft:diamond", count: 200 }]);
+  for (const p of posted) {
+    expect(p.body.packageLabel).toEqual({ mode: "all", text: "e2e boxes" });
+    expect(p.body.names).toBeNull();
+  }
   for (const p of posted) {
     expect(p.headers["idempotency-key"]).toMatch(/^[A-Za-z0-9_-]{1,128}$/);
     expect(p.body).not.toHaveProperty("idempotencyKey");

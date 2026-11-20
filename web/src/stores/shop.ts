@@ -104,8 +104,10 @@ export type CheckoutStatus = "not_submitted" | "submitting" | "confirmed" | "unc
 export interface OrderBody {
   stash: string;
   lines: { type: "item" | "shulker"; key: string; count: number }[];
+  /** Legacy free names (kept for persisted-group compat; new orders send null). */
   names: { mode: "all"; name: string } | { mode: "each"; names: string[] } | null;
-  packageLabel: null;
+  /** W-064 label: the server generates `WeSort (X/Y) - text` from the frozen total. */
+  packageLabel: { mode: "all"; text: string } | { mode: "each"; texts: string[] } | null;
   purpose: "SELF" | "GUILD";
   recipient: string | null;
   comment: string | null;
@@ -137,7 +139,12 @@ const CheckoutGroupSchema = z.object({
         z.object({ mode: z.literal("each"), names: z.array(z.string()) }),
       ])
       .nullable(),
-    packageLabel: z.null(),
+    packageLabel: z
+      .union([
+        z.object({ mode: z.literal("all"), text: z.string().max(33) }),
+        z.object({ mode: z.literal("each"), texts: z.array(z.string().max(33)).max(54) }),
+      ])
+      .nullable(),
     purpose: z.enum(["SELF", "GUILD"]),
     recipient: z.string().nullable(),
     comment: z.string().nullable(),

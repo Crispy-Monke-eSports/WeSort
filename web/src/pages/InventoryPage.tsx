@@ -56,10 +56,13 @@ import {
   grouped,
   isShulkerBoxId,
   isSingleContent,
+  labelTextError,
+  LABEL_MAX_TEXT,
   mixedBoxedContents,
   netBoxedContents,
   netBoxes,
   payloadHash,
+  shulkersNeeded,
 } from "../lib/shop";
 import { setCartScope, useCart, useCheckout, type CartLine, type CheckoutGroup, type OrderBody } from "../stores/shop";
 import { ItemIcon } from "../components/minecraft/ItemIcon";
@@ -327,9 +330,9 @@ export function InventoryPage() {
   const [purpose, setPurpose] = useState<"SELF" | "GUILD">("SELF");
   const [recipient, setRecipient] = useState("");
   const [comment, setComment] = useState("");
-  const [namesMode, setNamesMode] = useState<"none" | "all" | "each">("none");
-  const [namesAll, setNamesAll] = useState("");
-  const [namesEach, setNamesEach] = useState<string[]>([]);
+  const [labelMode, setLabelMode] = useState<"none" | "all" | "each">("none");
+  const [labelText, setLabelText] = useState("");
+  const [labelTexts, setLabelTexts] = useState<string[]>([]);
 
   function buildBodies(): OrderBody[] {
     const byStash = new Map<string, CartLine[]>();
@@ -337,17 +340,19 @@ export function InventoryPage() {
       if (!byStash.has(l.stash)) byStash.set(l.stash, []);
       byStash.get(l.stash)!.push(l);
     }
-    const names =
-      namesMode === "all" && namesAll.trim()
-        ? { mode: "all" as const, name: namesAll.trim().slice(0, 50) }
-        : namesMode === "each"
-          ? { mode: "each" as const, names: namesEach.map((s) => (s ?? "").trim().slice(0, 50)) }
+    // W-064: the user picks only the text part; the server generates `WeSort (X/Y) - text`.
+    const labelTextClean = labelText.trim().slice(0, 33);
+    const packageLabel =
+      labelMode === "all" && labelTextClean
+        ? { mode: "all" as const, text: labelTextClean }
+        : labelMode === "each" && labelTexts.some((s) => (s ?? "").trim())
+          ? { mode: "each" as const, texts: labelTexts.map((s) => (s ?? "").trim().slice(0, 33)).slice(0, 54) }
           : null;
     return [...byStash.entries()].map(([stash, lines]) => ({
       stash,
       lines: lines.map((l) => ({ type: l.type, key: l.key, count: l.count })),
-      names,
-      packageLabel: null,
+      names: null,
+      packageLabel,
       purpose,
       recipient: recipient.trim() ? recipient.trim().slice(0, 16) : null,
       comment: comment.trim() ? comment.trim().slice(0, 500) : null,
@@ -454,15 +459,15 @@ export function InventoryPage() {
     <Stack spacing={2}>
       <TextField label="Search items" value={q} onChange={(e) => setQ(e.target.value)} size="small" fullWidth placeholder="diamond, redstone…" />
       <FormControl size="small" fullWidth>
-        <InputLabel>Category</InputLabel>
-        <Select value={cat} label="Category" onChange={(e) => setCat(e.target.value)}>
+        <InputLabel id="inv-cat-label">Category</InputLabel>
+        <Select value={cat} labelId="inv-cat-label" id="inv-cat" label="Category" onChange={(e) => setCat(e.target.value)}>
           <MenuItem value="all">All categories</MenuItem>
           {categories.map(([c, n]) => <MenuItem key={c} value={c}>{tabLabel(c)} ({n})</MenuItem>)}
         </Select>
       </FormControl>
       <FormControl size="small" fullWidth>
-        <InputLabel>Availability</InputLabel>
-        <Select value={avail} label="Availability" onChange={(e) => setAvail(e.target.value as typeof avail)}>
+        <InputLabel id="inv-avail-label">Availability</InputLabel>
+        <Select value={avail} labelId="inv-avail-label" id="inv-avail" label="Availability" onChange={(e) => setAvail(e.target.value as typeof avail)}>
           <MenuItem value="all">All</MenuItem>
           <MenuItem value="orderable">Orderable</MenuItem>
           <MenuItem value="empty">Empty</MenuItem>
@@ -470,8 +475,8 @@ export function InventoryPage() {
         </Select>
       </FormControl>
       <FormControl size="small" fullWidth>
-        <InputLabel>Sort</InputLabel>
-        <Select value={sort} label="Sort" onChange={(e) => setSort(e.target.value as typeof sort)}>
+        <InputLabel id="inv-sort-label">Sort</InputLabel>
+        <Select value={sort} labelId="inv-sort-label" id="inv-sort" label="Sort" onChange={(e) => setSort(e.target.value as typeof sort)}>
           <MenuItem value="count">Most stock</MenuItem>
           <MenuItem value="name">Name</MenuItem>
           <MenuItem value="id">Item ID</MenuItem>
@@ -597,8 +602,8 @@ export function InventoryPage() {
         open={checkoutOpen} onClose={() => setCheckoutOpen(false)} step={step} setStep={setStep}
         lines={cartLines} groups={groups} placing={placing} onPlace={place}
         purpose={purpose} setPurpose={setPurpose} recipient={recipient} setRecipient={setRecipient}
-        comment={comment} setComment={setComment} namesMode={namesMode} setNamesMode={setNamesMode}
-        namesAll={namesAll} setNamesAll={setNamesAll} namesEach={namesEach} setNamesEach={setNamesEach}
+        comment={comment} setComment={setComment} labelMode={labelMode} setLabelMode={setLabelMode}
+        labelText={labelText} setLabelText={setLabelText} labelTexts={labelTexts} setLabelTexts={setLabelTexts}
         onRetryExact={retryExact} onDiscard={discard} uncertainCount={uncertainCount} confirmedCount={confirmedCount}
         canOrder={canOrder} slices={slices}
       />
@@ -608,6 +613,31 @@ export function InventoryPage() {
 
 function serverOk(slices: SliceState[]): boolean {
   return slices.every((s) => s.indexOk && s.ordersOk);
+}
+
+/**
+ * W-064 box-label text field: 33-unit counter, server-mirroring validation and
+ * a live `WeSort (1/Y) - text` preview (Y estimated; the server locks it).
+ */
+function LabelTextField({ label, value, onChange, previewY }: {
+  label: string; value: string; onChange: (v: string) => void; previewY?: number;
+}) {
+  const error = labelTextError(value);
+  const units = (value ?? "").length; // UTF-16 units, like the server counts
+  return (
+    <TextField
+      label={label}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      size="small"
+      fullWidth
+      error={!!error}
+      helperText={
+        error ?? `${units}/${LABEL_MAX_TEXT}${previewY && value.trim() ? ` · preview: WeSort (1/${previewY}) - ${value.trim()}` : ""}`
+      }
+      slotProps={{ htmlInput: { maxLength: LABEL_MAX_TEXT + 8 } }}
+    />
+  );
 }
 
 function AvailabilityLine({ item, slices, orderable, inCart }: { item: MergedItem; slices: SliceState[]; orderable: number | null; inCart: number }) {
@@ -828,9 +858,9 @@ function CheckoutDialog(props: {
   purpose: "SELF" | "GUILD"; setPurpose: (v: "SELF" | "GUILD") => void;
   recipient: string; setRecipient: (v: string) => void;
   comment: string; setComment: (v: string) => void;
-  namesMode: "none" | "all" | "each"; setNamesMode: (v: "none" | "all" | "each") => void;
-  namesAll: string; setNamesAll: (v: string) => void;
-  namesEach: string[]; setNamesEach: (v: string[]) => void;
+  labelMode: "none" | "all" | "each"; setLabelMode: (v: "none" | "all" | "each") => void;
+  labelText: string; setLabelText: (v: string) => void;
+  labelTexts: string[]; setLabelTexts: (v: string[]) => void;
   onRetryExact: (g: CheckoutGroup) => void; onDiscard: (hash: string) => void;
   uncertainCount: number; confirmedCount: number; canOrder: boolean; slices: SliceState[];
 }) {
@@ -843,7 +873,21 @@ function CheckoutDialog(props: {
     }
     return [...m.entries()];
   }, [props.lines]);
-  const maxEach = Math.min(54, Math.max(0, ...perStash.map(([, ls]) => ls.length * 2), 0));
+  // Estimated boxes for the W-064 preview: item lines via 27-slot bins (64-stack
+  // estimate), packed lines 1:1. The server locks the final Y at commit.
+  const labelInvalid =
+    (props.labelMode === "all" && !!labelTextError(props.labelText)) ||
+    (props.labelMode === "each" && props.labelTexts.some((t) => t.trim() !== "" && !!labelTextError(t)));
+  const estimatedBoxes = Math.max(
+    1,
+    ...perStash.map(([, ls]) =>
+      shulkersNeeded(
+        ls.map((l) => ({ type: l.type, key: l.key, count: l.count })),
+        () => 64,
+        (k) => ls.some((l) => l.type === "shulker" && l.key === k),
+      ),
+    ),
+  );
 
   return (
     <Dialog open={props.open} onClose={props.onClose} maxWidth="md" fullWidth>
@@ -873,8 +917,8 @@ function CheckoutDialog(props: {
         {step === 1 && (
           <Stack spacing={2}>
             <FormControl size="small" fullWidth>
-              <InputLabel>Order for</InputLabel>
-              <Select value={props.purpose} label="Order for" onChange={(e) => props.setPurpose(e.target.value as "SELF" | "GUILD")}>
+              <InputLabel id="order-for-label">Order for</InputLabel>
+              <Select labelId="order-for-label" id="order-for" value={props.purpose} label="Order for" onChange={(e) => props.setPurpose(e.target.value as "SELF" | "GUILD")}>
                 <MenuItem value="SELF">Myself</MenuItem>
                 <MenuItem value="GUILD">The guild</MenuItem>
               </Select>
@@ -882,28 +926,45 @@ function CheckoutDialog(props: {
             <TextField label="Recipient (optional)" value={props.recipient} onChange={(e) => props.setRecipient(e.target.value)} size="small" slotProps={{ htmlInput: { maxLength: 16 } }} helperText="Letters, digits and underscore, at most 16 characters" />
             <TextField label="Comment (optional)" value={props.comment} onChange={(e) => props.setComment(e.target.value)} size="small" multiline rows={2} slotProps={{ htmlInput: { maxLength: 500 } }} />
             <FormControl size="small" fullWidth>
-              <InputLabel>Shulker names</InputLabel>
-              <Select value={props.namesMode} label="Shulker names" onChange={(e) => props.setNamesMode(e.target.value as typeof props.namesMode)}>
-                <MenuItem value="none">No names</MenuItem>
-                <MenuItem value="all">Same name for every shulker</MenuItem>
-                <MenuItem value="each">Name each shulker</MenuItem>
+              <InputLabel id="box-labels-label">Box labels</InputLabel>
+              <Select labelId="box-labels-label" id="box-labels" value={props.labelMode} label="Box labels" onChange={(e) => props.setLabelMode(e.target.value as typeof props.labelMode)}>
+                <MenuItem value="none">Default (“Beställning”)</MenuItem>
+                <MenuItem value="all">Same text on every box</MenuItem>
+                <MenuItem value="each">Different text per box</MenuItem>
               </Select>
             </FormControl>
-            {props.namesMode === "all" && (
-              <TextField label="Name for every shulker" value={props.namesAll} onChange={(e) => props.setNamesAll(e.target.value)} size="small" slotProps={{ htmlInput: { maxLength: 50 } }} />
+            {props.labelMode !== "none" && (
+              <Typography variant="body2" color="text.secondary">
+                The server names every box <Typography component="span" sx={{ fontFamily: "monospace" }}>WeSort (X/Y) - text</Typography> from
+                the locked packing plan (preview Y ≈ {estimatedBoxes} below; final numbering locked server-side).
+              </Typography>
             )}
-            {props.namesMode === "each" && (
+            {props.labelMode === "all" && (
+              <LabelTextField
+                label="Text for every box"
+                value={props.labelText}
+                onChange={props.setLabelText}
+                previewY={estimatedBoxes}
+              />
+            )}
+            {props.labelMode === "each" && (
               <Stack spacing={1}>
-                <Typography variant="body2" color="text.secondary">One name per planned shulker (estimate — the bot plans again from what it can reach).</Typography>
-                {props.namesEach.map((nm, i) => (
-                  <TextField key={i} label={`Shulker ${i + 1}`} value={nm} onChange={(e) => {
-                    const next = [...props.namesEach];
-                    next[i] = e.target.value;
-                    props.setNamesEach(next);
-                  }} size="small" slotProps={{ htmlInput: { maxLength: 50 } }} />
+                <Typography variant="body2" color="text.secondary">One text per planned box (about {estimatedBoxes} box{estimatedBoxes === 1 ? "" : "es"}); blanks fall back to “Beställning”.</Typography>
+                {props.labelTexts.map((nm, i) => (
+                  <LabelTextField
+                    key={i}
+                    label={`Box ${i + 1} text`}
+                    previewY={estimatedBoxes}
+                    value={nm}
+                    onChange={(v) => {
+                      const next = [...props.labelTexts];
+                      next[i] = v;
+                      props.setLabelTexts(next);
+                    }}
+                  />
                 ))}
-                {props.namesEach.length < Math.max(maxEach, 1) && (
-                  <Button variant="outlined" size="small" onClick={() => props.setNamesEach([...props.namesEach, ""])}>Add name row</Button>
+                {props.labelTexts.length < Math.min(54, Math.max(estimatedBoxes, 1)) && (
+                  <Button variant="outlined" size="small" onClick={() => props.setLabelTexts([...props.labelTexts, ""])}>Add box row</Button>
                 )}
               </Stack>
             )}
@@ -981,7 +1042,7 @@ function CheckoutDialog(props: {
         {step === 2 && (
           <>
             <Button onClick={() => setStep(1)}>Back</Button>
-            <Button variant="contained" onClick={props.onPlace} disabled={props.placing || !props.lines.length || !props.canOrder}>
+            <Button variant="contained" onClick={props.onPlace} disabled={props.placing || !props.lines.length || !props.canOrder || labelInvalid}>
               {props.placing ? "Placing…" : "Place orders"}
             </Button>
           </>

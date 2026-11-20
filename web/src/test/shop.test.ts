@@ -175,3 +175,18 @@ describe("reservation-safe whole-box availability (P0-06)", () => {
     expect(netBoxedContents("minecraft:diamond", shulkers, {})).toBe(0);
   });
 });
+
+describe("W-064 label text pre-check mirrors the server", () => {
+  it("accepts plain text, rejects server-refused content", async () => {
+    const { labelTextError } = await import("../lib/shop");
+    expect(labelTextError("")).toBeNull();
+    expect(labelTextError("   ")).toBeNull();
+    expect(labelTextError("Byggmaterial 123")).toBeNull();
+    expect(labelTextError("x".repeat(33))).toBeNull();
+    expect(labelTextError("x".repeat(34))).toMatch(/33/);
+    expect(labelTextError("a§b")).toMatch(/§/);
+    expect(labelTextError("a\u0007b")).toMatch(/Control/);
+    expect(labelTextError("a​b")).toMatch(/Invisible/);
+    expect(labelTextError("a\ud800b")).toMatch(/surrogate/);
+  });
+});

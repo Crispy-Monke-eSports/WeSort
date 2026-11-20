@@ -304,3 +304,29 @@ export function splitScopedItemLine(
   for (const t of take.took) kept.push({ type: "shulker", key: t.key, count: t.count, stash });
   return kept;
 }
+
+/** W-064: user box-label text budget is 33 UTF-16 units (50 anvil minus the 17-unit prefix). */
+export const LABEL_MAX_TEXT = 33;
+/** W-064: at most 54 boxes per order. */
+export const LABEL_MAX_BOXES = 54;
+
+/**
+ * Client pre-check mirroring the server's PackageLabel.text rules (JS string
+ * length is UTF-16 units, like Java's String.length). Returns the error or
+ * null when the text is acceptable. The server stays authoritative (400s
+ * surface as rejected groups with the server message).
+ */
+export function labelTextError(raw: string): string | null {
+  const value = (raw ?? "").trim();
+  if (!value) return null; // blank falls back to the server default “Beställning”
+  if (value.length > LABEL_MAX_TEXT)
+    return `At most ${LABEL_MAX_TEXT} characters (${value.length} now; the full box name is capped at 50)`;
+  if (value.includes("§")) return "§ is not allowed in box text";
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f]/.test(value)) return "Control characters are not allowed";
+  if (/[\u200b-\u200f\u2028-\u202f\u2060-\u206f\ufeff\u061c\u180e]/.test(value))
+    return "Invisible or direction-changing characters are not allowed";
+  if (/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(value))
+    return "Broken surrogate pairs are not allowed";
+  return null;
+}

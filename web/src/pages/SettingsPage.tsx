@@ -359,8 +359,8 @@ function UsersSection() {
           <TextField label="Name" value={name} onChange={(e) => setName(e.target.value)} size="small" />
           <TextField label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} size="small" />
           <FormControl size="small" sx={{ minWidth: 140 }}>
-            <InputLabel>Role</InputLabel>
-            <Select value={preset} label="Role" onChange={(e) => setPreset(e.target.value)}>
+            <InputLabel id="user-role-label">Role</InputLabel>
+            <Select value={preset} labelId="user-role-label" id="user-role" label="Role" onChange={(e) => setPreset(e.target.value)}>
               {presets.map((p) => <MenuItem key={p} value={p}>{p}</MenuItem>)}
             </Select>
           </FormControl>

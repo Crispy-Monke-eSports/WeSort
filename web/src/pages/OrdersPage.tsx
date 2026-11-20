@@ -122,8 +122,8 @@ export function OrdersPage() {
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
         <TextField label="Search orders" value={query} onChange={(e) => { setQuery(e.target.value); setPage(0); }} size="small" sx={{ minWidth: 220 }} placeholder="order id, stash, item, recipient…" />
         <FormControl size="small" sx={{ minWidth: 160 }}>
-          <InputLabel>Status</InputLabel>
-          <Select value={statusFilter} label="Status" onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}>
+          <InputLabel id="orders-status-label">Status</InputLabel>
+          <Select value={statusFilter} labelId="orders-status-label" id="orders-status" label="Status" onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}>
             {["all", "pending", "accepted", "in_progress", "completed", "failed", "cancelled"].map((s) => (
               <MenuItem key={s} value={s}>{s === "all" ? "All statuses" : s}</MenuItem>
             ))}

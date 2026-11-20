@@ -84,7 +84,10 @@ public final class ClientRuntimeProbe {
                         try {
                             Files.writeString(
                                     loader.getGameDir().resolve("runtime-result.json"),
-                                    new GsonBuilder().setPrettyPrinting().create().toJson(failure));
+                                    new GsonBuilder()
+                                            .setPrettyPrinting()
+                                            .create()
+                                            .toJson(failure));
                         } catch (Exception ignored) {
                             // The game directory may be unavailable; the log below still diagnoses.
                         }

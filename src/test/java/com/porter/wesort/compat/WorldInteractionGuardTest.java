@@ -43,10 +43,8 @@ class WorldInteractionGuardTest {
 
     @Test
     void denialsAreCountedForAudit() {
-        long before =
-                WorldInteractionGuard.denialCounts().getOrDefault("use-safety-sensitive", 0L);
+        long before = WorldInteractionGuard.denialCounts().getOrDefault("use-safety-sensitive", 0L);
         WorldInteractionGuard.useDecision("order-1", false, true, true, true);
-        assertEquals(
-                before + 1, WorldInteractionGuard.denialCounts().getOrDefault("use-safety-sensitive", 0L));
+        assertEquals(before + 1, WorldInteractionGuard.denialCounts().getOrDefault("use-safety-sensitive", 0L));
     }
 }

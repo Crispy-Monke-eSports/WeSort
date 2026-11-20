@@ -106,12 +106,10 @@ public final class WorldInteractionGuard {
         if (!mc.level.isLoaded(target)) return false;
         long now = now();
         // Activation: the clicked block itself is authorized for this job.
-        boolean usePermit =
-                PERMITS.allows(now, position.asLong(), Operation.USE, blockId(position), job);
+        boolean usePermit = PERMITS.allows(now, position.asLong(), Operation.USE, blockId(position), job);
         // Placement: the click lands on a support while the adjacent cell carries a live PLACE
         // permit naming the air the job puts its block into.
-        boolean placePermit =
-                PERMITS.allows(now, target.asLong(), Operation.PLACE, blockId(target), job);
+        boolean placePermit = PERMITS.allows(now, target.asLong(), Operation.PLACE, blockId(target), job);
         return useDecision(job, safeBlock(position), safeBlock(target), usePermit, placePermit);
     }
 

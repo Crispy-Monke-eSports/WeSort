@@ -448,8 +448,7 @@ public final class InventorySync {
             // withheld instead of mutating the world without an intent; the job retries through
             // its normal place-failed path with a fresh announcement. Withholding cancels the
             // send, so no phantom read-open is registered below for the cancelled packet.
-            var target =
-                    use.hitResult().getBlockPos().relative(use.hitResult().getDirection());
+            var target = use.hitResult().getBlockPos().relative(use.hitResult().getDirection());
             if (expectSpot != null) intentCounted("consume-miss");
             if (com.porter.wesort.compat.WorldInteractionGuard.hasLivePlacePermit(target)) {
                 intentCounted("unmatched-placement-cancelled");

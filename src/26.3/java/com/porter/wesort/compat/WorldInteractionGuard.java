@@ -183,6 +183,20 @@ public final class WorldInteractionGuard {
         return java.util.Map.copyOf(DENIALS);
     }
 
+    /**
+     * Whether the target cell carries a live PLACE permit for the current job. Opens authorize
+     * only the USE permit on the clicked block; placements additionally announce a PLACE permit
+     * on the target cell (authorizePlace + expectPlacement together). A use against a cell with
+     * a live PLACE permit is therefore a placement whose durable intent must be recorded — a
+     * mismatch there is a lost intent, never a read.
+     */
+    public static boolean hasLivePlacePermit(BlockPos target) {
+        if (!dedicated() || mc.level == null || !mc.level.isLoaded(target)) return false;
+        String job = currentJob();
+        if (job == null || job.isEmpty() || job.equals("unknown")) return false;
+        return PERMITS.allows(now(), target.asLong(), Operation.PLACE, blockId(target), job);
+    }
+
     /** Sign text goes in its own packet: it needs its own permit, like any other mutation. */
     public static boolean allowSign(BlockPos position) {
         if (!dedicated()) return true;

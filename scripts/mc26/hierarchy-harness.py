@@ -366,6 +366,15 @@ class HierarchyHarness(stock.StockHarness):
         endpoint = f'http://127.0.0.1:{self.manager_port}'
         expected = {native['botId']}
         credentials = []
+        # Fleet peers bind their own stashes: bot/hello fail-closes 404 on an undefined
+        # stash (BotRoutes unknownStash gate). Define all four up front so registration
+        # tests session independence, not setup. Adding definitions is not ownership:
+        # every authorized bot may still use every defined stash.
+        for i in range(1, 5):
+            status, _ = self.http('/api/v1/stash-defs', {'action': 'create', 'name': f'fleet-peer-{i}',
+                'dimension': 'minecraft:overworld',
+                'pos1': {'x': -32, 'y': 40, 'z': -32}, 'pos2': {'x': 63, 'y': 90, 'z': 32}})
+            require(status == 200, 'fleet-peer-%d stash def failed: %s' % (i, status))
         for i in range(1, 5):
             ident, player, stash = str(uuid.uuid4()), f'FleetPeer{i}', f'fleet-peer-{i}'
             token = self.run(cli + ['agent-issue', ident, player, self.server_name, stash]).strip()
@@ -375,7 +384,14 @@ class HierarchyHarness(stock.StockHarness):
                      'manifestScope': {'server': self.server_name, 'stash': stash,
                                        'dimension': 'minecraft:overworld', 'agent': ident}}
             code, reply = agent.post('/api/v1/bot/hello', hello)
-            require(code == 200 and reply.get('controlEpoch'), 'Independent fleet member could not register')
+            if code != 200 or not (reply or {}).get('controlEpoch'):
+                status, defs = self.http('/api/v1/stash-defs')
+                names = sorted(d['name'] for d in defs.get('defs', [])) if status == 200 else defs
+                raise RuntimeError(
+                    'Independent fleet member could not register: hello=%s body=%s stash=%s defined=%s' % (
+                        code,
+                        {k: (v if k != 'controlSession' else '<redacted>') for k, v in (reply or {}).items()},
+                        stash, names))
             require(agent.post('/api/v1/bot/hello', dict(hello, controlSession=secrets.token_hex(32)))[0] == 409,
                     'A concurrent control session displaced an online agent')
             require(agent.post('/api/v1/bot/next', {'botId': native['botId'], 'controlSession': hello['controlSession']})[0] == 403,

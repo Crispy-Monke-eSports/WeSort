@@ -312,6 +312,14 @@ public final class WorldTestDriver {
                         return;
                     }
                     WorldInteractionGuard.authorizePlace(pos);
+                    // The driver places through the same deferred rotation path: announce the
+                    // placement so the fail-closed intent gate records it (same as production).
+                    String placing = command.has("block")
+                            ? command.get("block").getAsString()
+                            : net.minecraft.core.registries.BuiltInRegistries.ITEM
+                                    .getKey(mc.player.getMainHandItem().getItem())
+                                    .toString();
+                    InventorySync.expectPlacement(pos, placing);
                     meteordevelopment.meteorclient.utils.world.BlockUtils.interact(
                             new BlockHitResult(Vec3.atBottomCenterOf(pos), Direction.UP, pos.below(), false),
                             InteractionHand.MAIN_HAND,
@@ -406,6 +414,11 @@ public final class WorldTestDriver {
                     ((Setting<Integer>) sorter.settings.get("delay")).set(1);
                     ((Setting<Integer>) sorter.settings.get("container-delay")).set(0);
                     if (command.get("action").getAsString().equals("sort-start") && !sorter.isActive()) sorter.toggle();
+                    // An explicit sort-start is an operator authorization to work: it releases a
+                    // crash-recovery fence (no-op when none is held). Mirror round-trips,
+                    // inspection results and automatic restores never release it.
+                    if (command.get("action").getAsString().equals("sort-start"))
+                        com.porter.wesort.compat.PhysicalJournalRuntime.releaseReconciled();
                     respond(true, "actual StashSorter configured", state());
                 }
                 case "sort-stop" -> {
@@ -626,8 +639,12 @@ public final class WorldTestDriver {
                             .equals(pending.get("block").getAsString());
             if (done && InventorySync.lastBlockAck() >= InventorySync.lastBlockSequence()) {
                 respond(true, "native server block acknowledgement and inventory readback verified", state());
-            } else if (action.equals("break"))
+            } else if (action.equals("break")) {
+                // Re-authorize every poll iteration: the fire-and-forget permit lives 10 s and
+                // the poll may run longer. Same exact position/block/job match, no weakening.
+                WorldInteractionGuard.authorizeBreak(pos);
                 meteordevelopment.meteorclient.utils.world.BlockUtils.breakBlock(pos, true);
+            }
             return;
         }
         if (action.equals("click")) {
@@ -797,6 +814,10 @@ public final class WorldTestDriver {
         for (var entry : WorldInteractionGuard.denialCounts().entrySet())
             denials.addProperty(entry.getKey(), entry.getValue());
         out.add("guardDenials", denials);
+        var intents = new JsonObject();
+        for (var entry : InventorySync.intentAudit().entrySet())
+            intents.addProperty(entry.getKey(), entry.getValue());
+        out.add("intentAudit", intents);
         JsonArray slots = new JsonArray();
         for (var slot : mc.player.containerMenu.slots) {
             JsonObject value = new JsonObject();

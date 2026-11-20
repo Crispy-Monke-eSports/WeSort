@@ -1712,6 +1712,12 @@ public class StashSorter extends Module {
             driven = false;
             teardown();
         }
+        // An explicit off-to-on cycle is an operator release of a crash-recovery fence:
+        // automatic restores (no deactivate seen since startup) never release it.
+        if (sawDeactivate) {
+            sawDeactivate = false;
+            com.porter.wesort.compat.PhysicalJournalRuntime.releaseReconciled();
+        }
         setup();
     }
 
@@ -1874,6 +1880,7 @@ public class StashSorter extends Module {
 
     @Override
     public void onDeactivate() {
+        sawDeactivate = true;
         PhysicalJournalRuntime.block("Automation stopped during physical work");
         teardown();
     }
@@ -3770,6 +3777,9 @@ public class StashSorter extends Module {
 
     // Set up and not yet torn down, driven or not
     private boolean setUp;
+    // Seen a deactivate since startup: distinguishes an explicit operator off-to-on
+    // cycle (which releases a crash-recovery fence) from an automatic restore.
+    private boolean sawDeactivate;
     // Why the loop can't be driven now, for the blocker
     private String driveBlocked;
 

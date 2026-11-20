@@ -63,6 +63,18 @@ public final class InventorySync {
     private static BlockPos expectSpot;
     private static String expectBlock;
     private static long expectAt;
+
+    /** Placement-intent audit counters (exposed to the E2E driver state). */
+    private static final java.util.concurrent.ConcurrentHashMap<String, Long> INTENT_AUDIT =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static void intentCounted(String reason) {
+        INTENT_AUDIT.merge(reason, 1L, Long::sum);
+    }
+
+    public static java.util.Map<String, Long> intentAudit() {
+        return java.util.Map.copyOf(INTENT_AUDIT);
+    }
     private static boolean recoveringWorld, recoveringReceipt;
     private static boolean reopenRequested;
 
@@ -258,12 +270,15 @@ public final class InventorySync {
      * (well beyond any rotation deferral), so a stale slot can never invent an intent.
      */
     public static void expectPlacement(BlockPos spot, String block) {
+        if (expectSpot != null && (spot == null || !expectSpot.equals(spot))) intentCounted("announce-overwrite");
+        intentCounted("announce");
         expectSpot = spot == null ? null : spot.immutable();
         expectBlock = block;
         expectAt = System.nanoTime();
     }
 
     public static void clearPlacementExpectation() {
+        if (expectSpot != null) intentCounted("clear");
         expectSpot = null;
         expectBlock = null;
         expectAt = 0;
@@ -375,8 +390,10 @@ public final class InventorySync {
                                 .getBlockPos()
                                 .relative(use.hitResult().getDirection())
                                 .equals(want)) {
+                    intentCounted("consume-hit");
                     expectSpot = null;
                     expectBlock = null;
+                    expectAt = 0;
                     blocks.put(
                             use.sequence(),
                             new BlockExpected(use.sequence(), want, placing, System.nanoTime() + 8_000_000_000L));
@@ -440,7 +457,27 @@ public final class InventorySync {
                         false);
             }
         }
-        if (!mutation) return;
+        if (!mutation) {
+            // Fail-closed placement intent (W-061 journal ordering): an own block-use against a
+            // cell carrying a live PLACE permit for this job is an announced placement whose
+            // durable intent must be recorded before the packet leaves. Opens authorize only the
+            // USE permit on the clicked block, so they never take this branch. If the announced
+            // slot did not match (lost, overwritten, expired, or mis-targeted), the packet is
+            // cancelled and the journal fenced instead of mutating the world without an intent.
+            // The job retries through its normal place-failed path with a fresh announcement.
+            if (event.packet instanceof ServerboundUseItemOnPacket use && ours) {
+                var target = use.hitResult().getBlockPos().relative(use.hitResult().getDirection());
+                if (expectSpot != null) intentCounted("consume-miss");
+                if (com.porter.wesort.compat.WorldInteractionGuard.hasLivePlacePermit(target)) {
+                    intentCounted("unmatched-placement-cancelled");
+                    event.cancel();
+                    gate.fail("Placement without a durable intent was withheld");
+                    reportFailure();
+                    return;
+                }
+            }
+            return;
+        }
         if (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror()) {
             event.cancel();
             gate.fail("Physical journal withheld an automated mutation");

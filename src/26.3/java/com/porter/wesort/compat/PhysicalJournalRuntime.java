@@ -28,10 +28,17 @@ public final class PhysicalJournalRuntime {
 
     private PhysicalJournalRuntime() {}
 
+    private static boolean reconcileRequired;
+
     public static void initialize() {
         try {
             journal = new PhysicalJournal(DataDirectory.clientFolder(MeteorClient.FOLDER.toPath(), "physical-journal"));
             recoveryFence = journal.blocked();
+            // A crash-restarted operation keeps automation fenced even after its inspection
+            // proves no mutation: terminal FAILED is not an authorization for new work. Only
+            // an explicit operator release clears this (see releaseReconciled).
+            var current = journal.current();
+            reconcileRequired = current != null && current.has("interruptedPhase");
         } catch (Exception invalid) {
             failure = "Cannot validate durable physical evidence; automatic input is disabled";
             MeteorClient.LOG.error(failure);
@@ -175,7 +182,10 @@ public final class PhysicalJournalRuntime {
             if (journal.lastIntentEvidence() == null) {
                 journal.inspectedWithoutMutation(frame, playerInventory, decisionId);
                 journal.failBeforeMutation("Read-only inspection verified that no WeSort mutation was transmitted");
-                recoveryFence = false;
+                // A crash-recovered operation stays fenced after its no-mutation proof: the
+                // terminal FAILED state authorizes nothing new. Only releaseReconciled()
+                // (explicit operator action) resumes automation, never a mirror round-trip.
+                if (!reconcileRequired) recoveryFence = false;
                 finishInspection(true, "No transmitted mutation; operation failed safely");
                 return;
             }
@@ -186,6 +196,7 @@ public final class PhysicalJournalRuntime {
             String phase = value.get("phase").getAsString();
             if (kind.equals("DIRECT") || phase.equals("COMPLETED")) {
                 journal.complete();
+                reconcileRequired = false;
                 recoveryFence = false;
                 finishInspection(true, "Exact original source and postcondition verified; no mutation replayed");
             } else {
@@ -230,6 +241,17 @@ public final class PhysicalJournalRuntime {
         } catch (Exception failed) {
             failed("Cannot persist physical reconciliation fence");
         }
+    }
+
+    /**
+     * Explicit operator release after a crash-recovered operation was inspected. Called only
+     * from deliberate operator actions (module off-to-on, explicit sort-start), never from
+     * mirror round-trips, inspection results, or automatic restores. Recomputes the fence
+     * instead of blindly clearing it, so a live failure or blocked journal stays fenced.
+     */
+    public static void releaseReconciled() {
+        reconcileRequired = false;
+        recoveryFence = !failure.isEmpty() || journal != null && journal.blocked();
     }
 
     public static void failed(String reason) {

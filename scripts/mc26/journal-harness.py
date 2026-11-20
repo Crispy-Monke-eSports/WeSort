@@ -165,8 +165,21 @@ class JournalHarness(repack.RepackHarness):
                     time.sleep(.25)
                 else:
                     raise RuntimeError('Safe SELECT recovery did not complete')
+            # A crash-recovered operation stays fenced after its no-mutation proof: the
+            # terminal FAILED state authorizes nothing new. Only an explicit operator
+            # release (off-to-on toggle, explicit sort-start) resumes automation — never a
+            # mirror round-trip, inspection result, publish or rescan.
+            fenced = self.command('state')['state']
+            require(fenced['physicalJournal'] in ('NEEDS_RECONCILIATION', 'WAITING_MANAGER_RECEIPT'),
+                    'Client left the recovery fence without an explicit operator release: %s'
+                    % fenced['physicalJournal'])
+            require(fenced.get('sortingPermitted', False) is False,
+                    'Sorter re-armed without an explicit operator release')
+            require(fenced['attemptedClicks'] == 0, 'Client replayed an inventory click')
             after = self.snapshot_after_restart(row)
-            time.sleep(2)
+            # Soak past the 5s automation-permit window: any re-armed sorting would move
+            # the world here, and the canonical comparison below would name the delta.
+            time.sleep(8)
             self.require_same_world(after, self.snapshot_after_restart(row))
             require(self.command('state')['state']['attemptedClicks'] == 0, 'Client replayed an inventory click')
             require(self.totals(before) == self.totals(after), 'Crash changed authoritative recursive totals or metadata')

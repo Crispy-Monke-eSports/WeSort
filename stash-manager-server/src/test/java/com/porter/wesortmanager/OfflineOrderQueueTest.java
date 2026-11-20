@@ -93,9 +93,7 @@ class OfflineOrderQueueTest {
         OrderStore.OrderException denied =
                 assertThrows(OrderStore.OrderException.class, () -> orders.place("s", "a", diamonds(1), null));
         assertTrue(denied.status == 400 || denied.status == 409, "stale order denied, got " + denied.status);
-        assertEquals(
-                0,
-                orders.listJson("s", "a").getAsJsonArray("orders").size());
+        assertEquals(0, orders.listJson("s", "a").getAsJsonArray("orders").size());
     }
 
     @Test

@@ -53,6 +53,8 @@ public final class Config {
     private volatile KeyState key;
     /** dashboardPassword=: the website password hash (see Auth), or null before the first-run setup. */
     private volatile String dashboardPassword;
+    /** minecraftServer=: the single Minecraft server this Manager serves (set once in the web UI by the owner). */
+    private volatile String minecraftServer;
 
     private Config(
             Path file,
@@ -100,6 +102,19 @@ public final class Config {
     /** The stored password hash, or null when none is set (the website then asks for the first-run setup). */
     public String dashboardPassword() {
         return dashboardPassword;
+    }
+
+    /** The single Minecraft server this Manager serves, or null until the owner sets it in the web UI. */
+    public String minecraftServer() {
+        return minecraftServer;
+    }
+
+    /** Saves the single Minecraft server address (owner-only, from the web UI). Empty clears it. */
+    public synchronized void setMinecraftServer(String server) throws IOException {
+        String v = server == null ? "" : server.trim();
+        if (v.length() > 256) throw new IllegalArgumentException("server address too long");
+        writeLine(file, Pattern.compile("^\\s*minecraftServer\\s*[=:].*$"), "minecraftServer", v);
+        minecraftServer = v.isEmpty() ? null : v;
     }
 
     /** Saves a new password hash in its own line of config.properties (other lines and comments are kept). */
@@ -192,6 +207,8 @@ public final class Config {
             }
             config.dashboardPassword = password;
         }
+        String single = props.getProperty("minecraftServer", "").trim();
+        if (!single.isEmpty()) config.minecraftServer = single;
         return config;
     }
 

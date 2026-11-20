@@ -27,16 +27,14 @@ final class DashboardRoutes {
 
     private final BotHub hub;
     private final IndexStore store;
-    private final Owners owners;
     private final SessionStore sessions;
     private final AuditLog audit;
 
-    DashboardRoutes(BotHub hub, IndexStore store, Owners owners, SessionStore sessions, AuditLog audit) {
+    DashboardRoutes(BotHub hub, IndexStore store, SessionStore sessions, AuditLog audit) {
         this.sessions = sessions;
         this.audit = audit;
         this.hub = hub;
         this.store = store;
-        this.owners = owners;
     }
 
     void register(Router router) {
@@ -75,7 +73,7 @@ final class DashboardRoutes {
                 all.forEach(scopes::add);
                 o.add("scopes", scopes);
                 active = b.manifestScope;
-                if (active != null && perms.positions() && perms.seesStash(active.server(), active.stash())) {
+                if (active != null && perms.positions() && perms.seesStash(active.stash())) {
                     JsonObject location = new JsonObject();
                     location.addProperty("server", active.server());
                     location.addProperty("stash", active.stash());
@@ -91,25 +89,20 @@ final class DashboardRoutes {
             if (player != null) {
                 for (JsonElement e : stashes) {
                     JsonObject s = e.getAsJsonObject();
-                    String server = s.get("server").getAsString();
                     String stash = s.get("stash").getAsString();
-                    if (active != null && !server.equals(active.server())) continue;
-                    String owner = owners.owner(server, stash);
                     String used = s.has("player") && !s.get("player").isJsonNull()
                             ? s.get("player").getAsString()
                             : null;
-                    if (player.equalsIgnoreCase(owner != null ? owner : used == null ? "" : used)
-                            && perms.seesStash(server, stash)) {
+                    if (player.equalsIgnoreCase(used == null ? "" : used)
+                            && perms.seesStash(stash)) {
                         JsonObject ref = new JsonObject();
-                        ref.addProperty("server", server);
                         ref.addProperty("stash", stash);
                         mine.add(ref);
                     }
                 }
             }
             o.add("stashes", mine);
-            if (Redact.on(ex)) Redact.bot(o);
-            else if (!perms.positions()) o.add("summary", com.google.gson.JsonNull.INSTANCE);
+            if (!perms.positions()) o.add("summary", com.google.gson.JsonNull.INSTANCE);
             out.add(o);
         }
         Http.json(ex, 200, out);
@@ -123,7 +116,7 @@ final class DashboardRoutes {
 
     /** The bot, or null after answering 404 (also for a bot outside the user's bot scope). */
     private BotHub.Bot bot(HttpExchange ex, Matcher m) throws IOException {
-        String id = Router.botParam(ex, m.group(1)); // forced streamer mode: an opaque bot id
+        String id = Router.botParam(ex, m.group(1));
         BotHub.Bot b = id != null && Router.user(ex).perms().seesBot(id) ? hub.bot(id) : null;
         if (b == null) Http.error(ex, 404, "no such bot");
         return b;
@@ -140,13 +133,8 @@ final class DashboardRoutes {
             return;
         }
 
-        // Forced streamer mode: only the (redacted) activity. Settings values, job results and the console can hold
-        // positions and names.
+        // Bot details need the positions permission (settings values, job results and console can hold positions).
         if (!m.group(2).equals("activity")) {
-            if (Redact.on(ex)) {
-                streamerForbid(ex);
-                return;
-            }
             if (!perms(ex).positions()) {
                 Router.forbid(ex, "read agent settings and job details", "positions");
                 return;
@@ -162,7 +150,7 @@ final class DashboardRoutes {
                 Http.json(
                         ex,
                         200,
-                        Redact.on(ex) || !perms(ex).positions()
+                        !perms(ex).positions()
                                 ? Redact.activity(hub.activityJson(b))
                                 : hub.activityJson(b));
             }
@@ -184,11 +172,6 @@ final class DashboardRoutes {
             }
             default -> Http.error(ex, 404, "not found");
         }
-    }
-
-    /** 403 for what a user in forced streamer mode can't use (settings, proxy settings, console, job results). */
-    static void streamerForbid(HttpExchange ex) throws IOException {
-        Router.forbid(ex, "use that in streamer mode (enforced by the owner)", "streamer");
     }
 
     private void getSettings(HttpExchange ex, BotHub.Bot b, String scope) throws IOException {
@@ -234,10 +217,6 @@ final class DashboardRoutes {
         Matcher m = BOT.matcher(ex.getRequestURI().getRawPath());
         if (!m.matches() || m.group(2).equals("jobs") || m.group(2).equals("activity")) {
             Http.error(ex, 404, "not found");
-            return;
-        }
-        if (Redact.on(ex)) {
-            streamerForbid(ex);
             return;
         }
         if (!perms(ex).positions()) {

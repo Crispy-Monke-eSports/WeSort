@@ -143,42 +143,11 @@ final class AuthRoutes {
         return a == null ? "?" : a.getHostAddress();
     }
 
-    private volatile ServerIds ids;
-
-    /** The opaque ids, so a forced user's own scope lists in auth/state never carry raw addresses or bot ids. */
-    void ids(ServerIds ids) {
-        this.ids = ids;
-    }
-
     /**
-     * The user's own JSON for auth/state. For a user in forced streamer mode the stash scope's server addresses
-     * and the bot scope's ids are replaced by their opaque ids (the same ones every other response uses).
+     * The user's own JSON for auth/state.
      */
     private JsonObject userJson(Users.Principal who) {
-        JsonObject u = who.toJson();
-        if (!Redact.forced(who)) return u;
-        ServerIds idMap = ids;
-        JsonObject perms = u.getAsJsonObject("perms");
-        if (perms == null) return u;
-        JsonElement st = perms.get("stashes");
-        if (st != null && st.isJsonArray()) {
-            for (JsonElement e : st.getAsJsonArray()) {
-                if (!e.isJsonObject()) continue;
-                JsonObject so = e.getAsJsonObject();
-                String server = AddonRoutes.string(so, "server");
-                so.addProperty("server", server == null || idMap == null ? "hidden" : idMap.sid(server));
-            }
-        }
-        JsonElement bt = perms.get("bots");
-        if (bt != null && bt.isJsonArray()) {
-            com.google.gson.JsonArray out = new com.google.gson.JsonArray();
-            for (JsonElement e : bt.getAsJsonArray()) {
-                String id = e.isJsonPrimitive() ? e.getAsString() : null;
-                out.add(id == null || idMap == null ? "hidden" : idMap.bid(id));
-            }
-            perms.add("bots", out);
-        }
-        return u;
+        return who.toJson();
     }
 
     private void state(HttpExchange ex) throws IOException {

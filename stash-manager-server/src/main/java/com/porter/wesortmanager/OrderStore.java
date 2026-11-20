@@ -512,7 +512,7 @@ final class OrderStore {
         synchronized (index) {
             var rows = new ArrayList<Order>();
             for (Book book : books.values()) {
-                if (!who.perms().seesStash(book.server, book.stash)) continue;
+                if (!who.perms().seesStash(book.stash)) continue;
                 synchronized (book) {
                     for (var orders : List.of(book.orders, book.archived)) {
                         for (Order order : orders) if (matches.test(order)) rows.add(order);
@@ -531,7 +531,7 @@ final class OrderStore {
     Map<String, Integer> activeStates(Users.Principal who) {
         var totals = new java.util.TreeMap<String, Integer>();
         for (Book book : books.values()) {
-            if (!who.perms().seesStash(book.server, book.stash)) continue;
+            if (!who.perms().seesStash(book.stash)) continue;
             synchronized (book) {
                 for (Order order : book.orders)
                     if (!order.stage().archiveable()) {
@@ -1532,7 +1532,6 @@ final class OrderStore {
     private Order claimWithObservationLock(String server, String stash, String agent) throws IOException {
         var counts = index.orderCounts(server, stash);
         if (counts == null || index.automation().current(server) != null) return null;
-        if (agent != null && !"local".equals(agent) && KitJobs.hasActiveWork(index.stock(), server, agent)) return null;
         for (var running : ordersOnServer(server)) {
             if (!isExecuting(running)) continue;
             boolean sameAgent = agent != null && agent.equals(running.agent);

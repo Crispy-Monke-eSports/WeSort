@@ -108,31 +108,18 @@ final class Router implements HttpHandler {
     private final Config config;
     private final Users users;
     private final List<Entry> entries = new ArrayList<>();
-    private ServerIds ids;
-
-    /** The opaque ids for users in forced streamer mode. */
-    Router ids(ServerIds ids) {
-        this.ids = ids;
-        return this;
-    }
-
-    ServerIds ids() {
-        return ids;
-    }
 
     /**
-     * A server address from a request: as given, or for a user in forced streamer mode the address of a known opaque
-     * id (a raw address is not accepted from them). Null when it isn't one: answer 404.
+     * A server address from a request, as given. Null when it isn't one: answer 404.
      */
     static String serverParam(HttpExchange ex, String value) {
         if (value == null) return null;
-        return Http.attr(ex, Http.MASK) instanceof ServerIds ids ? ids.server(value) : value;
+        return value;
     }
 
     /** The same for a bot id. */
     static String botParam(HttpExchange ex, String value) {
-        if (value == null) return null;
-        return Http.attr(ex, Http.MASK) instanceof ServerIds ids ? ids.bot(value) : value;
+        return value;
     }
 
     private final AgentCredentials agentCredentials;
@@ -370,7 +357,6 @@ final class Router implements HttpHandler {
             Http.json(ex, 403, o);
             return false;
         }
-        if (Redact.forced(s.user()) && ids != null) Http.attr(ex, Http.MASK, ids); // before any answer
         if (!perm.allows(s.user())) {
             forbid(ex, perm.what, perm.key);
             return false;
@@ -457,7 +443,6 @@ final class Router implements HttpHandler {
             case "/api/v1/index", "/api/v1/heartbeat", "/api/v1/delivery" ->
                 scope.matchesLocation(server, stash) && scope.player().equalsIgnoreCase(player);
             case "/api/v1/orders/claim",
-                    "/api/v1/kits/agent",
                     "/api/v1/boxes/agent",
                     "/api/v1/custody/agent",
                     "/api/v1/deposits/agent" ->

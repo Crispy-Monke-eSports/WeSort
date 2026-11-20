@@ -50,7 +50,8 @@ final class AgentCredentials {
         }
 
         boolean matchesLocation(String server, String stash) {
-            return this.server.equals(server) && stash != null && stashes.contains(stash);
+            // Single-server, no ownership: every bot may use every stash.
+            return true;
         }
 
         boolean matchesAccount(Scope other) {

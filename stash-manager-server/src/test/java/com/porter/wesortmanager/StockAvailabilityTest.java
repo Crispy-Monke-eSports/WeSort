@@ -194,7 +194,7 @@ class StockAvailabilityTest {
                                 false,
                                 false,
                                 false,
-                                List.of(new Users.StashRef("s", "a")),
+                                List.of(new Users.StashRef("a")),
                                 List.of())
                         .withPositions(true),
                 false);

@@ -70,6 +70,8 @@ test("shop aggregates, carts, checks out and places with idempotency header", as
   expect(posted!.headers["idempotency-key"]).toMatch(/^[A-Za-z0-9_-]{1,128}$/);
   expect(posted!.body.lines).toEqual([{ type: "item", key: "minecraft:diamond", count: 64 }]);
   expect(posted!.body).not.toHaveProperty("idempotencyKey");
+  expect(posted!.body).not.toHaveProperty("server");
+  expect(posted!.body.stash).toBe("fixture");
   expect(posted!.body.purpose).toBe("SELF");
 });
 

@@ -38,8 +38,8 @@ final class Users {
     /** Characters a console might read as chaining or substitution; refused in "list" mode. */
     /** In "list" mode a whole command may only use these (plain ASCII words, names, numbers, coordinates). */
 
-    /** A stash a scoped user may see and use. */
-    record StashRef(String server, String stash) {}
+    /** A stash a scoped user may see and use. Single-server: the stash name alone is the scope. */
+    record StashRef(String stash) {}
 
     record Perms(
             boolean view,
@@ -49,7 +49,6 @@ final class Users {
             boolean settings,
             boolean rescan,
             boolean link,
-            boolean streamer,
             List<StashRef> stashes,
             List<String> bots,
             boolean guildOrders,
@@ -68,20 +67,6 @@ final class Users {
                 boolean link,
                 List<StashRef> stashes,
                 List<String> bots) {
-            return of(view, order, ordersAll, activity, settings, rescan, link, false, stashes, bots);
-        }
-
-        static Perms of(
-                boolean view,
-                boolean order,
-                boolean ordersAll,
-                boolean activity,
-                boolean settings,
-                boolean rescan,
-                boolean link,
-                boolean streamer,
-                List<StashRef> stashes,
-                List<String> bots) {
             return new Perms(
                     view || order || ordersAll,
                     order,
@@ -90,33 +75,15 @@ final class Users {
                     settings,
                     rescan,
                     link,
-                    streamer,
                     stashes == null ? null : List.copyOf(stashes),
                     bots == null ? null : List.copyOf(bots),
                     false,
                     settings);
         }
 
-        Perms withStreamer(boolean on) {
-            return new Perms(
-                    view,
-                    order,
-                    ordersAll,
-                    activity,
-                    settings,
-                    rescan,
-                    link,
-                    on,
-                    stashes,
-                    bots,
-                    guildOrders,
-                    positions);
-        }
-
         Perms withGuildOrders(boolean allowed) {
             return new Perms(
-                    view, order, ordersAll, activity, settings, rescan, link, streamer, stashes, bots, allowed,
-                    positions);
+                    view, order, ordersAll, activity, settings, rescan, link, stashes, bots, allowed, positions);
         }
 
         Perms withPositions(boolean allowed) {
@@ -128,15 +95,14 @@ final class Users {
                     settings,
                     rescan,
                     link,
-                    streamer,
                     stashes,
                     bots,
                     guildOrders,
                     allowed);
         }
 
-        boolean seesStash(String server, String stash) {
-            return stashes == null || stashes.stream().anyMatch(r -> r.server.equals(server) && r.stash.equals(stash));
+        boolean seesStash(String stash) {
+            return stashes == null || stashes.stream().anyMatch(r -> r.stash.equals(stash));
         }
 
         boolean seesBot(String botId) {
@@ -154,14 +120,13 @@ final class Users {
             o.addProperty("settings", settings);
             o.addProperty("rescan", rescan);
             o.addProperty("link", link);
-            o.addProperty("streamer", streamer);
+
             if (stashes == null) {
                 o.add("stashes", JsonNull.INSTANCE);
             } else {
                 JsonArray s = new JsonArray();
                 for (StashRef r : stashes) {
                     JsonObject ro = new JsonObject();
-                    ro.addProperty("server", r.server);
                     ro.addProperty("stash", r.stash);
                     s.add(ro);
                 }
@@ -184,22 +149,16 @@ final class Users {
             JsonElement se = o.get("stashes");
             if (se != null && !se.isJsonNull()) {
                 if (!se.isJsonArray())
-                    throw new IllegalArgumentException("stashes must be null or a list of {server, stash}");
+                    throw new IllegalArgumentException("stashes must be null or a list of {stash}");
                 stashes = new ArrayList<>();
                 for (JsonElement item : se.getAsJsonArray()) {
                     if (!item.isJsonObject())
-                        throw new IllegalArgumentException("stashes must be null or a list of {server, stash}");
-                    String server = AddonRoutes.string(item.getAsJsonObject(), "server");
+                        throw new IllegalArgumentException("stashes must be null or a list of {stash}");
                     String stash = AddonRoutes.string(item.getAsJsonObject(), "stash");
-                    if (server == null
-                            || stash == null
-                            || server.isEmpty()
-                            || stash.isEmpty()
-                            || server.length() > 256
-                            || stash.length() > 256) {
-                        throw new IllegalArgumentException("every stash needs a server and a stash");
+                    if (stash == null || stash.isEmpty() || stash.length() > 256) {
+                        throw new IllegalArgumentException("every stash needs a stash name");
                     }
-                    StashRef r = new StashRef(server, stash);
+                    StashRef r = new StashRef(stash);
                     if (!stashes.contains(r)) stashes.add(r);
                 }
                 if (stashes.size() > MAX_SCOPE) throw new IllegalArgumentException("at most " + MAX_SCOPE + " stashes");
@@ -227,7 +186,6 @@ final class Users {
                             bool(o, "settings"),
                             bool(o, "rescan"),
                             bool(o, "link"),
-                            bool(o, "streamer"),
                             stashes,
                             bots)
                     .withGuildOrders(bool(o, "guildOrders"));

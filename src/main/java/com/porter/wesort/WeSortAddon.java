@@ -3,7 +3,6 @@ package com.porter.wesort;
 import com.mojang.logging.LogUtils;
 import com.porter.wesort.compat.ClientRuntimeProbe;
 import com.porter.wesort.modules.StashManager;
-import com.porter.wesort.modules.StashOverlay;
 import com.porter.wesort.modules.StashSorter;
 import meteordevelopment.meteorclient.addons.GithubRepo;
 import meteordevelopment.meteorclient.addons.MeteorAddon;
@@ -20,12 +19,12 @@ public class WeSortAddon extends MeteorAddon {
     public void onInitialize() {
         LOG.info("Initializing WeSort");
 
-        // Modules
+        // Modules: headless executors only. No visual interface: the bot logs to chat (Meteor chat, never server chat).
         Modules.get().add(new StashSorter());
-        Modules.get().add(new StashOverlay());
         Modules.get().add(new StashManager());
 
-        // Commands
+        // Commands: connection only (address, port, API key). The Manager owns regions, planning and settings.
+        Commands.add(new com.porter.wesort.commands.WeSortConnectCommand());
         Commands.add(new com.porter.wesort.commands.InventoryReconcileCommand());
         Commands.add(new com.porter.wesort.commands.NavigationCommand());
         Commands.add(new com.porter.wesort.commands.SortWhyCommand());

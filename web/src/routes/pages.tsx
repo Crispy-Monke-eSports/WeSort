@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
-import { useAuth, useBotActivity, useBotSettings, useBots, useGuild, usePermissions, useQuotaMe, useStashes } from "../api/queries";
-import { usePrefs } from "../stores/shop";
+import { useAuth, useBotActivity, useBotSettings, useBots, useGuild, usePermissions, useQuotaMe, useServer, useStashDefs, useStashes } from "../api/queries";
 import { AuthUserSchema } from "../api/types";
 import { OrderRow, statusVariant } from "./shop";
 import { Badge } from "../components/ui/badge";
@@ -146,7 +145,7 @@ export function OrdersPage() {
   );
 }
 
-function useOrdersFull(stashes: { server: string; stash: string }[], enabled: boolean) {
+function useOrdersFull(stashes: { stash: string }[], enabled: boolean) {
   const [data, setData] = useState<{ orders: any[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -157,8 +156,8 @@ function useOrdersFull(stashes: { server: string; stash: string }[], enabled: bo
     const load = (quiet: boolean) =>
       Promise.all(
         stashes.map((s) =>
-          apiClient<{ orders: any[] }>(`/api/v1/orders?server=${encodeURIComponent(s.server)}&stash=${encodeURIComponent(s.stash)}`)
-            .then((d) => (d.orders ?? []).map((o) => ({ ...o, stashServer: s.server, stashName: s.stash })))
+          apiClient<{ orders: any[] }>(`/api/v1/orders?stash=${encodeURIComponent(s.stash)}`)
+            .then((d) => (d.orders ?? []).map((o) => ({ ...o, stashName: s.stash })))
             .catch(() => [] as any[]),
         ),
       ).then((parts) => {
@@ -174,11 +173,11 @@ function useOrdersFull(stashes: { server: string; stash: string }[], enabled: bo
     void load(false);
     const t = window.setInterval(() => { void load(true); }, 15000);
     return () => { cancelled = true; window.clearInterval(t); };
-  }, [enabled, JSON.stringify(stashes.map((s) => `${s.server} ${s.stash}`))]);
+  }, [enabled, JSON.stringify(stashes.map((s) => s.stash))]);
   return { data, error, loading };
 }
 
-export function OrderHistoryFull({ stashes, filter, onOpen, ownOnly, userId }: { stashes: { server: string; stash: string }[]; filter: string; onOpen: (o: any) => void; ownOnly?: boolean; userId?: string }) {
+export function OrderHistoryFull({ stashes, filter, onOpen, ownOnly, userId }: { stashes: { stash: string }[]; filter: string; onOpen: (o: any) => void; ownOnly?: boolean; userId?: string }) {
   const { data, error, loading } = useOrdersFull(stashes, true);
   const mine = (data?.orders ?? []).filter((o: any) => !ownOnly || !o.requestedBy || o.requestedBy === userId);
   const list = mine.filter(
@@ -197,14 +196,14 @@ export function OrderHistoryFull({ stashes, filter, onOpen, ownOnly, userId }: {
     <div className="flex flex-col gap-2">
       <ul id="order-list" className="flex flex-col gap-2">
         {list.slice(0, 100).map((o) => (
-          <li key={`${o.stashServer} ${o.stashName} ${o.id}`}>
+          <li key={`${o.stashName} ${o.id}`}>
             <button type="button" onClick={() => onOpen(o)} className="block w-full text-left">
               <OrderRow
                 orderId={o.id}
                 status={o.status}
                 lines={(o.lines ?? []).map((l: any) => `${l.type === "shulker" ? "📦" : ""}${l.key} ×${l.count}`).join(" · ")}
                 message={o.message ?? progressText(o)}
-                stash={`${o.stashServer ?? o.server} / ${o.stashName ?? o.stash}`}
+                stash={`${o.stashName ?? o.stash}`}
               />
             </button>
           </li>
@@ -251,7 +250,7 @@ export function OrderDetails({ order: o }: { order: any }) {
         {o.deliveryMode && <Badge variant="outline">{o.deliveryMode}</Badge>}
       </div>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-        <dt className="text-muted-foreground">Server / stash</dt><dd className="font-mono text-xs">{o.server} / {o.stash}</dd>
+        <dt className="text-muted-foreground">Stash</dt><dd className="font-mono text-xs">{o.stash}</dd>
         <dt className="text-muted-foreground">Placed</dt><dd>{o.createdAt ? new Date(o.createdAt).toLocaleString() : "—"}{o.requestedBy ? ` · ${o.placedBy?.name ?? o.requestedBy}` : ""}</dd>
         {o.recipient && <><dt className="text-muted-foreground">Recipient</dt><dd>{o.recipient}</dd></>}
         {o.comment && <><dt className="text-muted-foreground">Comment</dt><dd>{o.comment}</dd></>}
@@ -283,13 +282,13 @@ export function OrderDetails({ order: o }: { order: any }) {
   );
 }
 
-function OrderAdmins({ stashes }: { stashes: { server: string; stash: string }[] }) {
+function OrderAdmins({ stashes }: { stashes: { stash: string }[] }) {
   const [msg, setMsg] = useState("");
-  async function clear(server: string, stash: string) {
+  async function clear(stash: string) {
     setMsg("");
     try {
-      const res = await api<{ removed: number }>("/api/v1/orders/clear", { method: "POST", body: { server, stash } });
-      setMsg(`Cleared ${res.removed} finished orders (${server} / ${stash}).`);
+      const res = await api<{ removed: number }>("/api/v1/orders/clear", { method: "POST", body: { stash } });
+      setMsg(`Cleared ${res.removed} finished orders (${stash}).`);
     } catch (e: any) {
       setMsg(e?.message ?? "Clear failed.");
     }
@@ -299,9 +298,9 @@ function OrderAdmins({ stashes }: { stashes: { server: string; stash: string }[]
       <CardHeader className="pb-2"><h2 className="font-bold">Order administration</h2></CardHeader>
       <CardContent className="flex flex-col gap-1.5">
         {stashes.map((s) => (
-          <div key={`${s.server} ${s.stash}`} className="flex items-center gap-2 text-sm">
-            <span className="min-w-0 flex-1 truncate font-mono text-xs">{s.server} / {s.stash}</span>
-            <Button variant="secondary" size="sm" onClick={() => clear(s.server, s.stash)}>Clear finished</Button>
+          <div key={s.stash} className="flex items-center gap-2 text-sm">
+            <span className="min-w-0 flex-1 truncate font-mono text-xs">{s.stash}</span>
+            <Button variant="secondary" size="sm" onClick={() => clear(s.stash)}>Clear finished</Button>
           </div>
         ))}
         {msg && <p role="status" className="text-sm">{msg}</p>}
@@ -394,14 +393,14 @@ export function BotsPage() {
           {bots.data && !bots.data.length && <p className="py-4 text-center text-sm text-muted-foreground">No bots reported yet.</p>}
         </CardContent>
       </Card>
-      {sel ? <BotDetails botId={sel.botId} canPosition={perms.can("positions")} streamer={usePrefs.getState().streamer} /> : (
+      {sel ? <BotDetails botId={sel.botId} canPosition={perms.can("positions")} /> : (
         <Card className="p-8 text-center text-sm text-muted-foreground">Select a bot to inspect settings and activity.</Card>
       )}
     </div>
   );
 }
 
-function BotDetails({ botId, canPosition, streamer }: { botId: string; canPosition: boolean; streamer: boolean }) {
+function BotDetails({ botId, canPosition }: { botId: string; canPosition: boolean }) {
   const auth = useAuth();
   const perms = usePermissions(auth.data);
   const activity = useBotActivity(botId, !!auth.data?.loggedIn && perms.can("activity"));
@@ -435,8 +434,8 @@ function BotDetails({ botId, canPosition, streamer }: { botId: string; canPositi
     <div className="flex min-w-0 flex-col gap-4">
       <Card>
         <CardHeader className="pb-2">
-          <h2 className="text-base font-bold">{streamer ? "Bot" : (bot?.player ?? botId)}</h2>
-          <p className="font-mono text-xs text-muted-foreground">{streamer ? "hidden" : botId}</p>
+          <h2 className="text-base font-bold">{bot?.player ?? botId}</h2>
+          <p className="font-mono text-xs text-muted-foreground">{botId}</p>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-1.5 text-xs">
           <Badge variant={bot?.online ? "success" : "destructive"}>{bot?.online ? "online" : "offline"}</Badge>
@@ -592,7 +591,156 @@ export function SettingsPage() {
         </Card>
       )}
       {perms.can("link") && <LinkPanel />}
+      <ServerPanel />
+      {perms.owner && <StashDefsPanel />}
     </div>
+  );
+}
+
+function ServerPanel() {
+  const auth = useAuth();
+  const perms = usePermissions(auth.data);
+  const server = useServer(!!auth.data?.loggedIn);
+  const [value, setValue] = useState("");
+  const [msg, setMsg] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    if (!loaded && server.data) {
+      setValue(server.data.server ?? "");
+      setLoaded(true);
+    }
+  }, [server.data, loaded]);
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setMsg("");
+    try {
+      await api("/api/v1/server", { method: "POST", body: { server: value.trim() } });
+      setMsg("Server saved. Bots on other servers are refused.");
+      await server.refetch();
+    } catch (err: any) {
+      setMsg(err?.message ?? "Save failed.");
+    }
+  }
+  return (
+    <Card>
+      <CardHeader className="pb-2"><h2 className="font-bold">Minecraft server</h2></CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        <p className="text-sm text-muted-foreground">
+          The single server this Manager serves{server.data?.server ? `: ${server.data.server}` : " (not set yet)"}. The bot only sends its stash name; the server is fixed here.
+        </p>
+        {perms.owner ? (
+          <form onSubmit={save} className="flex gap-2">
+            <Input aria-label="Minecraft server" className="flex-1 font-mono" value={value} onChange={(e) => setValue(e.target.value)} placeholder="e.g. play.example.com" />
+            <Button type="submit" size="sm">Save server</Button>
+          </form>
+        ) : (
+          <p className="text-sm text-muted-foreground">Only the owner can set the server.</p>
+        )}
+        {msg && <p role="status" className="text-sm">{msg}</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
+function parseVec(text: string): { x: number; y: number; z: number } | null {
+  const parts = text.split(/[, ]+/).map((s) => s.trim()).filter(Boolean).map(Number);
+  if (parts.length !== 3 || parts.some((n) => !Number.isInteger(n))) return null;
+  return { x: parts[0], y: parts[1], z: parts[2] };
+}
+
+function StashDefsPanel() {
+  const auth = useAuth();
+  const defs = useStashDefs(!!auth.data?.loggedIn);
+  const [name, setName] = useState("");
+  const [dimension, setDimension] = useState("minecraft:overworld");
+  const [pos1, setPos1] = useState("");
+  const [pos2, setPos2] = useState("");
+  const [delivery, setDelivery] = useState("");
+  const [anvil, setAnvil] = useState("");
+  const [table, setTable] = useState("");
+  const [msg, setMsg] = useState("");
+  async function create(e: React.FormEvent) {
+    e.preventDefault();
+    setMsg("");
+    const p1 = parseVec(pos1);
+    const p2 = parseVec(pos2);
+    if (!name.trim() || !p1 || !p2) {
+      setMsg("Name and Position 1/2 as 'x, y, z' are required.");
+      return;
+    }
+    try {
+      await api("/api/v1/stash-defs", {
+        method: "POST",
+        body: {
+          action: "create",
+          name: name.trim(),
+          dimension: dimension.trim() || "minecraft:overworld",
+          pos1: p1,
+          pos2: p2,
+          delivery: parseVec(delivery) ?? null,
+          anvil: parseVec(anvil) ?? null,
+          table: parseVec(table) ?? null,
+        },
+      });
+      setMsg(`Stash '${name.trim()}' created. The cube between the positions is the stash.`);
+      setName("");
+      setPos1("");
+      setPos2("");
+      setDelivery("");
+      setAnvil("");
+      setTable("");
+      await defs.refetch();
+    } catch (err: any) {
+      setMsg(err?.message ?? "Create failed.");
+    }
+  }
+  async function remove(defName: string, revision: number) {
+    setMsg("");
+    try {
+      await api("/api/v1/stash-defs", { method: "POST", body: { action: "delete", name: defName, expectedRevision: revision } });
+      setMsg(`Stash '${defName}' deleted.`);
+      await defs.refetch();
+    } catch (err: any) {
+      setMsg(err?.message ?? "Delete failed.");
+    }
+  }
+  return (
+    <Card>
+      <CardHeader className="pb-2"><h2 className="font-bold">Stashes (regions)</h2></CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        <p className="text-sm text-muted-foreground">
+          Each stash is a cube between Position 1 and Position 2. Delivery point, anvil and workbench are optional placements the bot executes headlessly.
+        </p>
+        <form onSubmit={create} className="grid grid-cols-2 gap-2">
+          <Input aria-label="Stash name" className="font-mono" value={name} onChange={(e) => setName(e.target.value)} placeholder="Stash name" />
+          <Input aria-label="Dimension" className="font-mono" value={dimension} onChange={(e) => setDimension(e.target.value)} placeholder="minecraft:overworld" />
+          <Input aria-label="Position 1 (x, y, z)" className="font-mono" value={pos1} onChange={(e) => setPos1(e.target.value)} placeholder="Position 1: x, y, z" />
+          <Input aria-label="Position 2 (x, y, z)" className="font-mono" value={pos2} onChange={(e) => setPos2(e.target.value)} placeholder="Position 2: x, y, z" />
+          <Input aria-label="Delivery (x, y, z, optional)" className="font-mono" value={delivery} onChange={(e) => setDelivery(e.target.value)} placeholder="Delivery: x, y, z (optional)" />
+          <Input aria-label="Anvil (x, y, z, optional)" className="font-mono" value={anvil} onChange={(e) => setAnvil(e.target.value)} placeholder="Anvil: x, y, z (optional)" />
+          <Input aria-label="Workbench (x, y, z, optional)" className="font-mono" value={table} onChange={(e) => setTable(e.target.value)} placeholder="Workbench: x, y, z (optional)" />
+          <div><Button type="submit" size="sm">Create stash</Button></div>
+        </form>
+        {msg && <p role="status" className="text-sm">{msg}</p>}
+        <ul className="flex flex-col gap-1">
+          {(defs.data ?? []).map((d) => (
+            <li key={d.name} className="flex items-center gap-2 rounded-lg border border-border/60 px-2.5 py-2 text-sm">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-mono font-semibold">{d.name}</span>
+                <span className="block truncate font-mono text-xs text-muted-foreground">
+                  {d.dimension} [{d.pos1.x},{d.pos1.y},{d.pos1.z}]–[{d.pos2.x},{d.pos2.y},{d.pos2.z}]
+                  {d.delivery ? ` · drop ${d.delivery.x},${d.delivery.y},${d.delivery.z}` : ""}
+                  {d.anvil ? ` · anvil ${d.anvil.x},${d.anvil.y},${d.anvil.z}` : ""}
+                  {d.table ? ` · bench ${d.table.x},${d.table.y},${d.table.z}` : ""}
+                </span>
+              </span>
+              <Button variant="secondary" size="sm" onClick={() => void remove(d.name, d.revision)}>Delete</Button>
+            </li>
+          ))}
+        </ul>
+        {defs.data && !defs.data.length && <p className="text-sm text-muted-foreground">No stashes yet. Create the first cube above.</p>}
+      </CardContent>
+    </Card>
   );
 }
 

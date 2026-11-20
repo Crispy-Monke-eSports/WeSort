@@ -10,14 +10,12 @@ final class BoxRoutes {
     private final IndexStore index;
     private final AuditLog audit;
     private final OrderStore orders;
-    private final Owners owners;
     private BoxJobs jobs;
 
-    BoxRoutes(IndexStore index, AuditLog audit, OrderStore orders, Owners owners) {
+    BoxRoutes(IndexStore index, AuditLog audit, OrderStore orders) {
         this.index = index;
         this.audit = audit;
         this.orders = orders;
-        this.owners = owners;
     }
 
     private synchronized BoxJobs jobs() throws IOException {
@@ -32,10 +30,6 @@ final class BoxRoutes {
     }
 
     private void jobList(HttpExchange ex) throws IOException {
-        if (Redact.forced(Router.user(ex))) {
-            Http.error(ex, 404, "not found");
-            return;
-        }
         var out = new JsonObject();
         out.add("jobs", jobs().list(Http.query(ex).getOrDefault("server", "")));
         Http.json(ex, 200, out);
@@ -77,14 +71,7 @@ final class BoxRoutes {
                 String server = AddonRoutes.string(body, "server");
                 String stash = AddonRoutes.string(body, "stash");
                 synchronized (index) {
-                    String owner = owners.check(server, stash, AddonRoutes.string(body, "player"), false);
-                    if (owner != null) {
-                        AddonRoutes.conflict(ex, owner);
-                        return;
-                    }
-                    job = KitJobs.hasActiveWork(index.stock(), server, agentId)
-                            ? null
-                            : jobs().claim(server, stash, agentId);
+                    job = jobs().claim(server, stash, agentId);
                 }
             } else {
                 job = jobs().advance(

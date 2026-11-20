@@ -38,13 +38,11 @@ final class BotRoutes {
     private final BotHub hub;
     private final AuditLog audit;
     private final OrderStore orders;
-    private final Owners owners;
 
-    BotRoutes(BotHub hub, AuditLog audit, OrderStore orders, Owners owners) {
+    BotRoutes(BotHub hub, AuditLog audit, OrderStore orders) {
         this.hub = hub;
         this.audit = audit;
         this.orders = orders;
-        this.owners = owners;
     }
 
     void register(Router router) {
@@ -218,10 +216,7 @@ final class BotRoutes {
     }
 
     private BotHub.ManifestScope currentManifestScope(BotHub.Bot bot, String session, String epoch) {
-        var scope = hub.manifestScope(bot, session, epoch);
-        return scope != null && scope.player().equalsIgnoreCase(owners.owner(scope.server(), scope.stash()))
-                ? scope
-                : null;
+        return hub.manifestScope(bot, session, epoch);
     }
 
     private void acknowledgeManifest(HttpExchange ex) throws IOException {

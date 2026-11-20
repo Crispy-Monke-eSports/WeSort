@@ -13,7 +13,6 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { Disclaimer, ToastHost } from "./ui/feedback";
-import { cn } from "../lib/utils";
 
 function NavLink({ to, page, label }: { to: string; page: string; label: string }) {
   return (
@@ -82,14 +81,11 @@ export function Layout() {
           </nav>
           <div className="ml-auto flex items-center gap-1.5">
             {auth.data?.user && (
-              <span className={cn("mr-1 hidden text-sm text-muted-foreground", !prefs.streamer && "lg:inline")}>
-                {prefs.streamer ? "Logged in" : `Logged in as ${auth.data.user.name}`}
+              <span className="mr-1 hidden text-sm text-muted-foreground lg:inline">
+                Logged in as {auth.data.user.name}
                 {elevatedLive && <span className="ml-1 rounded bg-amber-500/20 px-1.5 py-0.5 text-[11px] font-semibold text-amber-500">admin unlocked</span>}
               </span>
             )}
-            <Button variant="ghost" size="icon" title={prefs.streamer ? "Streamer mode on: names hidden" : "Streamer mode off"} onClick={() => prefs.setStreamer(!prefs.streamer)} aria-pressed={prefs.streamer}>
-              <span aria-hidden>{prefs.streamer ? "◉" : "◎"}</span>
-            </Button>
             <Button
               variant="ghost"
               size="icon"
@@ -102,11 +98,11 @@ export function Layout() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="secondary" size="sm" className="max-w-36 truncate">
-                    {prefs.streamer ? "Account" : (auth.data.user?.name ?? "Account")}
+                    {auth.data.user?.name ?? "Account"}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuLabel>{prefs.streamer ? "Signed in" : (auth.data.user?.name ?? "Account")}</DropdownMenuLabel>
+                  <DropdownMenuLabel>{auth.data.user?.name ?? "Account"}</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onSelect={() => void navigate({ to: "/settings" })}>Settings</DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => void doLogout()}>Log out</DropdownMenuItem>

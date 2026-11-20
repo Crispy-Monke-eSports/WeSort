@@ -74,7 +74,3 @@ export function ItemIcon({
     </span>
   );
 }
-
-export function maskServer(name: string, streamer: boolean): string {
-  return streamer ? "Hidden" : name;
-}

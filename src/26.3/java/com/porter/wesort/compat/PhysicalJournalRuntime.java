@@ -40,7 +40,7 @@ public final class PhysicalJournalRuntime {
 
     private static String managerScope() {
         var manager = Modules.get().get(StashManager.class);
-        return manager == null ? "" : manager.kitScope();
+        return manager == null ? "" : manager.linkScope();
     }
 
     public static boolean blocked() {

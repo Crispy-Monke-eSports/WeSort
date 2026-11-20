@@ -70,6 +70,7 @@ class UsersTest {
     void start() throws Exception {
         Config config = Config.load(data);
         config.setDashboardPassword(Auth.hash(OWNER_PW));
+        config.setMinecraftServer("s");
         SessionStore old = new SessionStore(data);
         legacyOwnerSession = old.create();
         // Strip the user field, as an older server wrote it.
@@ -92,8 +93,6 @@ class UsersTest {
                         + "{\"key\":\"minecraft:dirt\",\"id\":\"minecraft:dirt\",\"count\":1000,\"maxStack\":64}]}"));
         orders = new OrderStore(data, store);
         orders.load();
-        Owners owners = new Owners(data);
-        owners.load();
         IconService icons = new IconService(
                 data, id -> null, v -> false, new GameIcons(data.resolve("icons"), false, false), false);
         sessions = new SessionStore(data);
@@ -106,7 +105,6 @@ class UsersTest {
                 config,
                 store,
                 orders,
-                owners,
                 icons,
                 new LinkState(config.keyState().generation()),
                 List.of(),
@@ -208,7 +206,7 @@ class UsersTest {
         Res r = post(
                 token,
                 "/api/v1/orders",
-                "{\"server\":\"s\",\"stash\":\"" + stash + "\",\"lines\":[{\"type\":\"item\",\"key\":\"" + key
+                "{\"stash\":\"" + stash + "\",\"lines\":[{\"type\":\"item\",\"key\":\"" + key
                         + "\",\"count\":" + n + "}]}");
         assertEquals(200, r.status, r.raw.body());
         return r.obj().getAsJsonObject("order").get("id").getAsString();
@@ -248,7 +246,7 @@ class UsersTest {
                 get(member, "/api/v1/stock").obj().get("items"),
                 get(viewer, "/api/v1/stock").obj().get("items"));
         var request = json("""
-            {"server":"s","stash":"a","lines":[{"type":"item","key":"minecraft:diamond","count":2}]}
+            {"stash":"a","lines":[{"type":"item","key":"minecraft:diamond","count":2}]}
             """);
         assertEquals(403, post(viewer, "/api/v1/orders", request.toString()).status);
         String memberBinding = "/api/v1/users/" + memberId + "/minecraft";
@@ -279,21 +277,21 @@ class UsersTest {
         assertEquals("Projekt Å <test>", guildOrder.get("comment").getAsString());
         assertEquals(profile.get("id"), guildOrder.get("organizationId"));
         assertFalse(
-                get(viewer, "/api/v1/orders?server=s&stash=a").obj().toString().contains("Projekt Å"));
+                get(viewer, "/api/v1/orders?stash=a").obj().toString().contains("Projekt Å"));
         String own = selfOrder.get("id").getAsString();
         assertTrue(audit.newest(30).toString().contains(own + " SELF"));
         assertFalse(audit.newest(30).toString().contains("Projekt Å"));
         String other = guildOrder.get("id").getAsString();
-        var memberHistory = get(member, "/api/v1/orders?server=s&stash=a").obj().getAsJsonArray("orders");
+        var memberHistory = get(member, "/api/v1/orders?stash=a").obj().getAsJsonArray("orders");
         assertEquals(1, memberHistory.size());
         assertEquals(own, memberHistory.get(0).getAsJsonObject().get("id").getAsString());
-        assertTrue(get(viewer, "/api/v1/orders?server=s&stash=a")
+        assertTrue(get(viewer, "/api/v1/orders?stash=a")
                 .obj()
                 .getAsJsonArray("orders")
                 .isEmpty());
         assertEquals(
                 2,
-                get(officer, "/api/v1/orders?server=s&stash=a")
+                get(officer, "/api/v1/orders?stash=a")
                         .obj()
                         .getAsJsonArray("orders")
                         .size());
@@ -302,25 +300,25 @@ class UsersTest {
         assertEquals(403, post(officer, "/api/v1/orders/" + other + "/retry", "{}").status);
         assertEquals(
                 1,
-                get(officer, "/api/v1/orders?server=s&stash=a")
+                get(officer, "/api/v1/orders?stash=a")
                         .obj()
                         .getAsJsonArray("orders")
                         .size());
         var balances = get(viewer, "/api/v1/stock").obj().get("items");
         assertEquals(200, post(owner, "/api/v1/users/" + memberId, "{\"disabled\":true}").status);
-        assertEquals(401, get(member, "/api/v1/orders?server=s&stash=a").status);
+        assertEquals(401, get(member, "/api/v1/orders?stash=a").status);
         request.addProperty("recipient", "BuilderIGN");
         assertEquals(400, post(owner, "/api/v1/orders", request.toString()).status);
         assertEquals(balances, get(viewer, "/api/v1/stock").obj().get("items"));
         assertTrue(
-                get(owner, "/api/v1/orders?server=s&stash=a").obj().toString().contains(own));
+                get(owner, "/api/v1/orders?stash=a").obj().toString().contains(own));
     }
 
     @Test
     void concurrentOrderReplayPersistsAcrossRestartAndArchive() throws Exception {
         String owner = owner();
         String body = """
-            {"server":"s","stash":"a","lines":[{"type":"item","key":"minecraft:diamond","count":2}]}
+            {"stash":"a","lines":[{"type":"item","key":"minecraft:diamond","count":2}]}
             """;
         var gate = new java.util.concurrent.CountDownLatch(1);
         String id;
@@ -351,7 +349,7 @@ class UsersTest {
         assertEquals(200, post(owner, "/api/v1/orders/" + id + "/cancel", "{}").status);
         assertEquals(
                 1,
-                post(owner, "/api/v1/orders/clear", "{\"server\":\"s\",\"stash\":\"a\"}")
+                post(owner, "/api/v1/orders/clear", "{\"stash\":\"a\"}")
                         .obj()
                         .get("removed")
                         .getAsInt());
@@ -396,7 +394,7 @@ class UsersTest {
         assertEquals(403, post(officer, "/api/v1/guild", policy).status);
         assertEquals(200, post(owner, "/api/v1/guild", policy).status);
         var draft = """
-            {"server":"s","stash":"a","lines":[{"type":"item","key":"minecraft:diamond","count":2}]}
+            {"stash":"a","lines":[{"type":"item","key":"minecraft:diamond","count":2}]}
             """;
         var placed = post(member, "/api/v1/orders", draft);
         assertEquals(200, placed.status);
@@ -434,7 +432,7 @@ class UsersTest {
         create(
                 owner,
                 "OtherVaultAuditor",
-                "{\"view\":true,\"ordersAll\":true,\"stashes\":[{\"server\":\"s\",\"stash\":\"b\"}]}",
+                "{\"view\":true,\"ordersAll\":true,\"stashes\":[{\"stash\":\"b\"}]}",
                 false);
         assertEquals(
                 0,
@@ -535,20 +533,20 @@ class UsersTest {
         String v = login("viewer1", TEMP_PW);
 
         assertEquals(200, get(v, "/api/v1/stashes").status);
-        assertEquals(200, get(v, "/api/v1/index?server=s&stash=a").status);
-        assertEquals(200, get(v, "/api/v1/orders?server=s&stash=a").status);
+        assertEquals(200, get(v, "/api/v1/index?stash=a").status);
+        assertEquals(200, get(v, "/api/v1/orders?stash=a").status);
 
         String order =
-                "{\"server\":\"s\",\"stash\":\"a\",\"lines\":[{\"type\":\"item\",\"key\":\"minecraft:diamond\",\"count\":1}]}";
+                "{\"stash\":\"a\",\"lines\":[{\"type\":\"item\",\"key\":\"minecraft:diamond\",\"count\":1}]}";
         Res refused = post(v, "/api/v1/orders", order);
         assertEquals(403, refused.status);
         assertEquals("order", refused.obj().get("permission").getAsString());
         assertEquals(403, post(v, "/api/v1/orders/" + ownerOrder + "/cancel", null).status);
         assertEquals(403, post(v, "/api/v1/orders/" + ownerOrder + "/retry", null).status);
         assertEquals(403, post(v, "/api/v1/orders/" + ownerOrder + "/force-cancel", null).status);
-        assertEquals(403, post(v, "/api/v1/orders/clear", "{\"server\":\"s\",\"stash\":\"a\"}").status);
-        assertEquals(403, post(v, "/api/v1/rescan", "{\"server\":\"s\",\"stash\":\"a\"}").status);
-        assertEquals(403, post(v, "/api/v1/stashes/release", "{\"server\":\"s\",\"stash\":\"a\"}").status);
+        assertEquals(403, post(v, "/api/v1/orders/clear", "{\"stash\":\"a\"}").status);
+        assertEquals(403, post(v, "/api/v1/rescan", "{\"stash\":\"a\"}").status);
+        assertEquals(404, post(v, "/api/v1/stashes/release", "{\"stash\":\"a\"}").status, "release is removed");
         assertEquals(403, get(v, "/api/v1/link").status);
         assertEquals(403, post(v, "/api/v1/link/regenerate", null).status);
         assertEquals(403, get(v, "/api/v1/bots").status);
@@ -572,7 +570,7 @@ class UsersTest {
         String c = login("carol", TEMP_PW);
         String mine = placeOrder(c, "a", "minecraft:diamond", 5);
 
-        JsonArray list = get(c, "/api/v1/orders?server=s&stash=a").obj().getAsJsonArray("orders");
+        JsonArray list = get(c, "/api/v1/orders?stash=a").obj().getAsJsonArray("orders");
         boolean sawMine = false;
         for (JsonElement e : list) {
             JsonObject o = e.getAsJsonObject();
@@ -598,7 +596,7 @@ class UsersTest {
                         .getAsJsonObject("placedBy")
                         .get("name")
                         .getAsString());
-        assertEquals(403, post(c, "/api/v1/orders/clear", "{\"server\":\"s\",\"stash\":\"a\"}").status);
+        assertEquals(403, post(c, "/api/v1/orders/clear", "{\"stash\":\"a\"}").status);
         assertEquals(403, get(c, "/api/v1/bots").status);
         // The owner may change anyone's.
         assertEquals(
@@ -621,9 +619,9 @@ class UsersTest {
         create(owner, "dave", "operator", false);
         String d = login("dave", TEMP_PW);
         assertEquals(200, post(d, "/api/v1/orders/" + ownerOrder + "/cancel", null).status);
-        assertEquals(200, post(d, "/api/v1/orders/clear", "{\"server\":\"s\",\"stash\":\"a\"}").status);
+        assertEquals(200, post(d, "/api/v1/orders/clear", "{\"stash\":\"a\"}").status);
         assertEquals(200, get(d, "/api/v1/bots").status);
-        assertEquals(200, post(d, "/api/v1/rescan", "{\"server\":\"s\",\"stash\":\"a\"}").status);
+        assertEquals(200, post(d, "/api/v1/rescan", "{\"stash\":\"a\"}").status);
         assertEquals(403, get(d, "/api/v1/link").status);
         assertEquals(403, get(d, "/api/v1/users").status);
         // Console is "none" for an operator: refused before the password check.
@@ -638,7 +636,7 @@ class UsersTest {
         create(
                 owner,
                 "erin",
-                "{\"view\":true,\"order\":true,\"ordersAll\":true,\"rescan\":true,\"stashes\":[{\"server\":\"s\",\"stash\":\"a\"}]}",
+                "{\"view\":true,\"order\":true,\"ordersAll\":true,\"rescan\":true,\"stashes\":[{\"stash\":\"a\"}]}",
                 false);
         String e = login("erin", TEMP_PW);
 
@@ -647,23 +645,23 @@ class UsersTest {
         assertEquals("a", stashes.get(0).getAsJsonObject().get("stash").getAsString());
         assertEquals(2, get(owner, "/api/v1/stashes").body.getAsJsonArray().size());
 
-        assertEquals(200, get(e, "/api/v1/index?server=s&stash=a").status);
-        assertEquals(404, get(e, "/api/v1/index?server=s&stash=b").status);
-        assertEquals(404, get(e, "/api/v1/orders?server=s&stash=b").status);
+        assertEquals(200, get(e, "/api/v1/index?stash=a").status);
+        assertEquals(404, get(e, "/api/v1/index?stash=b").status);
+        assertEquals(404, get(e, "/api/v1/orders?stash=b").status);
         assertEquals(
                 404,
                 post(
                                 e,
                                 "/api/v1/orders",
-                                "{\"server\":\"s\",\"stash\":\"b\",\"lines\":[{\"type\":\"item\",\"key\":\"minecraft:dirt\",\"count\":1}]}")
+                                "{\"stash\":\"b\",\"lines\":[{\"type\":\"item\",\"key\":\"minecraft:dirt\",\"count\":1}]}")
                         .status);
         assertEquals(
                 404,
                 post(e, "/api/v1/orders/" + otherOrder + "/cancel", null).status,
                 "even with ordersAll, out of scope");
-        assertEquals(404, post(e, "/api/v1/orders/clear", "{\"server\":\"s\",\"stash\":\"b\"}").status);
-        assertEquals(404, post(e, "/api/v1/rescan", "{\"server\":\"s\",\"stash\":\"b\"}").status);
-        assertEquals(200, post(e, "/api/v1/rescan", "{\"server\":\"s\",\"stash\":\"a\"}").status);
+        assertEquals(404, post(e, "/api/v1/orders/clear", "{\"stash\":\"b\"}").status);
+        assertEquals(404, post(e, "/api/v1/rescan", "{\"stash\":\"b\"}").status);
+        assertEquals(200, post(e, "/api/v1/rescan", "{\"stash\":\"a\"}").status);
     }
 
     @Test
@@ -817,7 +815,7 @@ class UsersTest {
     @Test
     void theLinkPanelListsOnlyStashesInScope() throws Exception {
         String owner = owner();
-        create(owner, "oz", "{\"link\":true,\"stashes\":[{\"server\":\"s\",\"stash\":\"a\"}]}", false);
+        create(owner, "oz", "{\"link\":true,\"stashes\":[{\"stash\":\"a\"}]}", false);
         String o = login("oz", TEMP_PW);
         Res link = get(o, "/api/v1/link");
         assertEquals(200, link.status);
@@ -827,10 +825,10 @@ class UsersTest {
         assertFalse(get(owner, "/api/v1/link").obj().has("apiKey"));
         assertFalse(post(owner, "/api/v1/link/regenerate", "{}").obj().has("apiKey"));
         assertEquals(
-                200,
-                post(o, "/api/v1/stashes/release", "{\"server\":\"s\",\"stash\":\"a\"}").status,
-                "release in scope is allowed");
-        assertEquals(404, post(o, "/api/v1/stashes/release", "{\"server\":\"s\",\"stash\":\"b\"}").status);
+                404,
+                post(o, "/api/v1/stashes/release", "{\"stash\":\"a\"}").status,
+                "release is removed: no bot owns a stash");
+        assertEquals(404, post(o, "/api/v1/stashes/release", "{\"stash\":\"b\"}").status);
     }
 
     @Test

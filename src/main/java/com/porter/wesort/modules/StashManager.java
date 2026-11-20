@@ -8,7 +8,6 @@ import com.google.gson.JsonPrimitive;
 import com.porter.wesort.WeSortAddon;
 import com.porter.wesort.compat.InventorySync;
 import com.porter.wesort.compat.PhysicalJournalRuntime;
-import com.porter.wesort.compat.RightClick;
 import com.porter.wesort.stash.Order;
 import com.porter.wesort.stash.Stash;
 import com.porter.wesort.stash.StashIndex;
@@ -24,18 +23,12 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import meteordevelopment.meteorclient.events.game.GameLeftEvent;
-import meteordevelopment.meteorclient.events.render.Render3DEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
-import meteordevelopment.meteorclient.renderer.ShapeMode;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
-import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import meteordevelopment.orbit.EventHandler;
-import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.HitResult;
 
 /**
  * Pushes what is in the saved stash (the one wesort-stash-sorter uses) to the WeSort Manager web server on the local network,
@@ -110,101 +103,11 @@ public class StashManager extends Module {
 
     private final SettingGroup sgDelivery = settings.createGroup("Delivery");
 
-    private final Setting<Boolean> selectDelivery = sgDelivery.add(new BoolSetting.Builder()
-            .name("select-delivery")
-            .description(
-                    "Turn on, then right-click a container in the stash to make it the delivery container, where finished orders are put. Right-click the current one to clear it. Turns itself off after one click.")
-            .defaultValue(false)
-            .onChanged(on -> {
-                if (on && Modules.get().get(StashSorter.class).currentStash() == null) {
-                    warning(
-                            "No stash is loaded. Scan one with wesort-stash-sorter first; this uses the stash named in its settings.");
-                    this.selectDelivery.set(false);
-                }
-                // Only one of the picks at a time
-                else if (on) {
-                    if (this.selectAnvil != null && this.selectAnvil.get()) this.selectAnvil.set(false);
-                    if (this.selectCraftingTable != null && this.selectCraftingTable.get())
-                        this.selectCraftingTable.set(false);
-                }
-            })
-            .build());
-
-    private final Setting<Boolean> clearDelivery = sgDelivery.add(new BoolSetting.Builder()
-            .name("clear-delivery")
-            .description("Turn on to clear the delivery container. Turns itself off again.")
-            .defaultValue(false)
-            .onChanged(on -> {
-                if (!on) return;
-                this.clearDelivery.set(false);
-                if (Modules.get().get(StashSorter.class).clearDelivery()) info("Delivery container cleared.");
-                else info("There is no delivery container.");
-            })
-            .build());
-
-    private final Setting<Boolean> showDelivery = sgDelivery.add(new BoolSetting.Builder()
-            .name("show-delivery")
-            .description("Outline the delivery container while this module is on.")
-            .defaultValue(true)
-            .build());
-
-    private final Setting<SettingColor> deliveryColor = sgDelivery.add(new ColorSetting.Builder()
-            .name("delivery-color")
-            .description("The outline of the delivery container.")
-            .defaultValue(new SettingColor(60, 255, 90, 90))
-            .visible(showDelivery::get)
-            .build());
-
     private final Setting<Boolean> autoExpandDelivery = sgDelivery.add(new BoolSetting.Builder()
             .name("auto-expand-delivery")
             .description(
                     "When every chest of the delivery storage is full, put another double chest up one block above the highest one (taken from the stash, or crafted when enable-crafting is on) and keep filling the lowest chest with room. A chest a player emptied is used again. Off: an order waits for space (paused for up to 2 hours, then it ends). It goes up for as long as the new chests could be opened and the bot can reach them: from the floor the first row above the delivery container, higher ones need something to stand on beside the stack. The chests are never sorted into or listed.")
             .defaultValue(false)
-            .build());
-
-    private final SettingGroup sgAnvil = settings.createGroup("Anvil");
-
-    private final Setting<Boolean> selectAnvil = sgAnvil.add(new BoolSetting.Builder()
-            .name("select-anvil")
-            .description(
-                    "Turn on, then right-click an anvil to make it the anvil orders are named at (when an order gives its shulkers names). Right-click the current one to clear it. It may be outside the stash area, and is never sorted or listed. Turns itself off after one click.")
-            .defaultValue(false)
-            .onChanged(on -> {
-                if (on && Modules.get().get(StashSorter.class).currentStash() == null) {
-                    warning(
-                            "No stash is loaded. Scan one with wesort-stash-sorter first; this uses the stash named in its settings.");
-                    this.selectAnvil.set(false);
-                } else if (on) {
-                    if (this.selectDelivery.get()) this.selectDelivery.set(false);
-                    if (this.selectCraftingTable != null && this.selectCraftingTable.get())
-                        this.selectCraftingTable.set(false);
-                }
-            })
-            .build());
-
-    private final Setting<Boolean> clearAnvil = sgAnvil.add(new BoolSetting.Builder()
-            .name("clear-anvil")
-            .description("Turn on to clear the anvil. Turns itself off again.")
-            .defaultValue(false)
-            .onChanged(on -> {
-                if (!on) return;
-                this.clearAnvil.set(false);
-                if (Modules.get().get(StashSorter.class).clearAnvil()) info("Anvil cleared.");
-                else info("There is no anvil.");
-            })
-            .build());
-
-    private final Setting<Boolean> showAnvil = sgAnvil.add(new BoolSetting.Builder()
-            .name("show-anvil")
-            .description("Outline the anvil while this module is on.")
-            .defaultValue(true)
-            .build());
-
-    private final Setting<SettingColor> anvilColor = sgAnvil.add(new ColorSetting.Builder()
-            .name("anvil-color")
-            .description("The outline of the anvil.")
-            .defaultValue(new SettingColor(255, 190, 40, 90))
-            .visible(showAnvil::get)
             .build());
 
     private final SettingGroup sgCrafting = settings.createGroup("Crafting");
@@ -245,51 +148,6 @@ public class StashManager extends Module {
             .name("craft-never-use")
             .description("Items crafting never uses as ingredients, whatever the stash holds.")
             .defaultValue(List.of())
-            .build());
-
-    private final SettingGroup sgCraftingTable = settings.createGroup("Crafting table");
-
-    private final Setting<Boolean> selectCraftingTable = sgCraftingTable.add(new BoolSetting.Builder()
-            .name("select-crafting-table")
-            .description(
-                    "Turn on, then right-click a crafting table to make it the table crafting is done at (without one, the bot finds, places or crafts one itself). Right-click the current one to clear it. It may be outside the stash area, and is never sorted or listed. Turns itself off after one click.")
-            .defaultValue(false)
-            .onChanged(on -> {
-                if (on && Modules.get().get(StashSorter.class).currentStash() == null) {
-                    warning(
-                            "No stash is loaded. Scan one with wesort-stash-sorter first; this uses the stash named in its settings.");
-                    this.selectCraftingTable.set(false);
-                } else if (on) {
-                    if (this.selectDelivery.get()) this.selectDelivery.set(false);
-                    if (this.selectAnvil.get()) this.selectAnvil.set(false);
-                }
-            })
-            .build());
-
-    private final Setting<Boolean> clearCraftingTable = sgCraftingTable.add(new BoolSetting.Builder()
-            .name("clear-crafting-table")
-            .description("Turn on to clear the crafting table. Turns itself off again.")
-            .defaultValue(false)
-            .onChanged(on -> {
-                if (!on) return;
-                this.clearCraftingTable.set(false);
-                if (Modules.get().get(StashSorter.class).clearCraftingTable()) info("Crafting table cleared.");
-                else info("There is no crafting table.");
-            })
-            .build());
-
-    private final Setting<Boolean> showCraftingTable = sgCraftingTable.add(new BoolSetting.Builder()
-            .name("show-crafting-table")
-            .description(
-                    "Outline the crafting table while this module is on. The chat says whether it was set, found, placed or crafted.")
-            .defaultValue(true)
-            .build());
-
-    private final Setting<SettingColor> craftingTableColor = sgCraftingTable.add(new ColorSetting.Builder()
-            .name("crafting-table-color")
-            .description("The outline of the crafting table.")
-            .defaultValue(new SettingColor(120, 170, 255, 90))
-            .visible(showCraftingTable::get)
             .build());
 
     private static final long HEARTBEAT_MS = 15_000;
@@ -340,9 +198,7 @@ public class StashManager extends Module {
     private String warnedOwner;
     private String ordersNote = "";
 
-    // Client thread only: the delivery container's blocks, for drawing, and what the last heartbeat said about it
-    private List<BlockPos> deliveryParts = List.of();
-    private BlockPos anvilPart, craftingTablePart;
+    // What the last heartbeat said about delivery.
     private String sentDelivery = "";
     // The delivery contents report (0.4.0-dev.7): when to build and send it, the last stamp of the delivery chests, the
     // hash of the
@@ -366,95 +222,10 @@ public class StashManager extends Module {
                 WeSortAddon.CATEGORY,
                 "wesort-stash-manager",
                 "Sends what's in your saved stash to the WeSort Manager web server on your network, which shows it. Uses the stash saved by wesort-stash-sorter. With accept-orders on, or during a website rescan, it moves the bot by itself; to stop that, turn off accept-orders or this module. Turning wesort-stash-sorter off hands control back to this module while accept-orders is on.");
-        RightClick.listen(this::onRightClick);
-    }
-
-    /**
-     * While selecting, the next right-click on a container sets or clears the delivery container.
-     * @return true when the click is used, so the container doesn't open
-     */
-    private boolean onRightClick() {
-        if (!selectDelivery.get() && !selectAnvil.get() && !selectCraftingTable.get()) return false;
-        if (mc.player == null || mc.level == null || !mc.mouseHandler.isMouseGrabbed()) return false;
-        if (!(mc.hitResult instanceof BlockHitResult hit) || hit.getType() != HitResult.Type.BLOCK) return false;
-
-        BlockPos pos = hit.getBlockPos();
-        if (selectCraftingTable.get()) {
-            switch (Modules.get().get(StashSorter.class).toggleCraftingTable(pos)) {
-                case -2 -> {
-                    warning("No stash is loaded. Scan one with wesort-stash-sorter first.");
-                    this.selectCraftingTable.set(false);
-                }
-                case -1 -> info("That isn't a crafting table.");
-                case 0 -> {
-                    info("Crafting table cleared.");
-                    this.selectCraftingTable.set(false);
-                }
-                default -> {
-                    info("Crafting table set to %d, %d, %d.", pos.getX(), pos.getY(), pos.getZ());
-                    this.selectCraftingTable.set(false);
-                }
-            }
-            return true;
-        }
-        if (!selectDelivery.get()) {
-            switch (Modules.get().get(StashSorter.class).toggleAnvil(pos)) {
-                case -2 -> {
-                    warning("No stash is loaded. Scan one with wesort-stash-sorter first.");
-                    this.selectAnvil.set(false);
-                }
-                case -1 -> info("That isn't an anvil.");
-                case 0 -> {
-                    info("Anvil cleared.");
-                    this.selectAnvil.set(false);
-                }
-                default -> {
-                    info("Anvil set to %d, %d, %d.", pos.getX(), pos.getY(), pos.getZ());
-                    this.selectAnvil.set(false);
-                }
-            }
-            return true;
-        }
-        int result = Modules.get().get(StashSorter.class).toggleDelivery(pos);
-        switch (result) {
-            case -2 -> {
-                warning("No stash is loaded. Scan one with wesort-stash-sorter first.");
-                this.selectDelivery.set(false);
-            }
-            case -3 ->
-                info(
-                        "That spot is not loaded and more than 128 blocks away, so it is not made the delivery container.");
-            case -1 -> info("That isn't a chest or barrel.");
-            case 0 -> {
-                info("Delivery container cleared.");
-                this.selectDelivery.set(false);
-            }
-            default -> {
-                info("Delivery container set to %d, %d, %d.", pos.getX(), pos.getY(), pos.getZ());
-                this.selectDelivery.set(false);
-            }
-        }
-        return true;
-    }
-
-    @EventHandler
-    private void onRender3D(Render3DEvent event) {
-        if (showAnvil.get() && anvilPart != null) {
-            SettingColor anvil = anvilColor.get();
-            event.renderer.box(anvilPart, anvil, anvil, ShapeMode.Both, 0);
-        }
-        if (showCraftingTable.get() && craftingTablePart != null) {
-            SettingColor table = craftingTableColor.get();
-            event.renderer.box(craftingTablePart, table, table, ShapeMode.Both, 0);
-        }
-        if (!showDelivery.get()) return;
-        SettingColor color = deliveryColor.get();
-        for (BlockPos part : deliveryParts) event.renderer.box(part, color, color, ShapeMode.Both, 0);
     }
 
     @Override
     public void onActivate() {
-        nextKitCatalogAt = 0;
         selfCheck();
         reset();
     }
@@ -465,16 +236,7 @@ public class StashManager extends Module {
 
     @Override
     public void onDeactivate() {
-        com.porter.wesort.stash.Kits.revoke();
-        kitUncertain = kitJob != null;
-        nextKitCatalogAt = 0;
         sortingUntil = 0;
-        selectDelivery.set(false);
-        selectAnvil.set(false);
-        selectCraftingTable.set(false);
-        deliveryParts = List.of();
-        anvilPart = null;
-        craftingTablePart = null;
         // Nobody is left to tell the server how an order is going: park it so a later claim carries on
         StashSorter sorter = Modules.get().get(StashSorter.class);
         if (sorter != null) {
@@ -526,7 +288,7 @@ public class StashManager extends Module {
 
     private boolean servicePhysicalJournal() {
         if (inFlight || mc.player == null || mc.level == null) return false;
-        String scope = kitScope();
+        String scope = linkScope();
         if (scope.isEmpty()) return false;
         URI base = parse(serverUrl.get());
         if (base == null) return false;
@@ -545,7 +307,7 @@ public class StashManager extends Module {
                 apiKey.get().trim(),
                 (code, body) -> {
                     if (code != 200
-                            || !scope.equals(kitScope())
+                            || !scope.equals(linkScope())
                             || mc.player == null
                             || !agent.equals(mc.player.getUUID().toString())) return true;
                     var reply = JsonParser.parseString(body).getAsJsonObject();
@@ -621,7 +383,7 @@ public class StashManager extends Module {
         request.addProperty("agent", mc.player.getUUID().toString());
         request.addProperty("token", sortingToken);
         boolean uncertain =
-                InventorySync.failed() || PhysicalJournalRuntime.blocked() || kitJob != null && kitUncertain;
+                InventorySync.failed() || PhysicalJournalRuntime.blocked();
         if (uncertain && sortingToken == null) return false;
         request.addProperty("action", uncertain ? "uncertain" : wants ? "acquire" : "release");
         sortingPoll = now + 2_000_000_000L;
@@ -655,22 +417,7 @@ public class StashManager extends Module {
 
     @EventHandler
     private void onTick(TickEvent.Post event) {
-        if (kitJob != null && System.nanoTime() >= kitUntil && !kitUncertain)
-            kitUncertain("Manager execution lease expired");
         if (servicePhysicalJournal() || serviceSorting()) return;
-        // Read-only job coordination continues while physical input awaits verification or is safely paused.
-        if (kitJob != null
-                && mc.player != null
-                && mc.level != null
-                && !inFlight
-                && !apiKey.get().isBlank()) {
-            if (InventorySync.failed() || PhysicalJournalRuntime.blocked())
-                kitUncertain("Inventory needs reconciliation: " + InventorySync.reason());
-            if (com.porter.wesort.compat.NavigationRuntime.paused())
-                kitUncertain("Navigation needs reconciliation: " + com.porter.wesort.compat.NavigationRuntime.status());
-            URI jobBase = parse(serverUrl.get());
-            if (jobBase != null && serviceKitCatalog(jobBase, apiKey.get().trim(), System.currentTimeMillis())) return;
-        }
         if (com.porter.wesort.compat.NavigationRuntime.paused()) {
             setStatus(com.porter.wesort.compat.NavigationRuntime.status());
             serviceBlockedControl();
@@ -736,7 +483,6 @@ public class StashManager extends Module {
 
         // Orders come first: the server should hear how the bot is doing, and a claim is cheap
         if (orderStep(base, key, now)) return;
-        if (serviceKitCatalog(base, key, now)) return;
 
         if (current == null) return;
         if (serviceControl(base, key, now)) return;
@@ -1066,7 +812,7 @@ public class StashManager extends Module {
     private JsonObject controlActivity() {
         var sorter = Modules.get().get(StashSorter.class);
         var runner = sorter == null ? null : sorter.orders();
-        boolean needsReconciliation = InventorySync.failed() || PhysicalJournalRuntime.blocked() || kitUncertain;
+        boolean needsReconciliation = InventorySync.failed() || PhysicalJournalRuntime.blocked();
         String incident = null;
         String task;
         if (mc.player.getHealth() <= 0) {
@@ -1077,7 +823,6 @@ public class StashManager extends Module {
             incident = "INVENTORY_UNVERIFIED";
         } else if (com.porter.wesort.compat.NavigationRuntime.paused()) task = "Navigation paused";
         else if (!InventorySync.ready()) task = "Awaiting server inventory";
-        else if (kitJob != null) task = kitPacked ? "Verifying kit" : "Packing kit";
         else if (runner != null && runner.running()) task = "Packing " + runner.info();
         else if (orderIntakePaused.get()) task = "New orders paused";
         else if (sorter != null && acceptOrders.get() && "no free inventory slot".equals(sorter.orderBlocker())) {
@@ -1429,11 +1174,10 @@ public class StashManager extends Module {
     /** The website asked for a rescan: every container is marked to be read again, and the server is told at once. */
     private void readRescan(String body) {
         try {
-            JsonElement e = JsonParser.parseString(body);
-            if (!e.isJsonObject()
-                    || !e.getAsJsonObject().has("rescan")
-                    || e.getAsJsonObject().get("rescan").isJsonNull()) return;
-            long id = e.getAsJsonObject().get("rescan").getAsLong();
+            JsonObject in = JsonParser.parseString(body).getAsJsonObject();
+            readDirective(in);
+            if (!in.has("rescan") || in.get("rescan").isJsonNull()) return;
+            long id = in.get("rescan").getAsLong();
             // The server sends an id until it has our rescanDone, so one handled and waiting to be acknowledged is not
             // done twice
             if (id == rescanDone) return;
@@ -1450,6 +1194,26 @@ public class StashManager extends Module {
             else info("Rescan requested from the website: re-reading %d containers.", count);
         } catch (RuntimeException ex) {
             WeSortAddon.LOG.warn("wesort-stash-manager: couldn't read the rescan request", ex);
+        }
+    }
+
+    /** A Manager directive from a heartbeat reply: region, delivery, anvil, workbench. Only applied to the matching stash. */
+    private void readDirective(JsonObject in) {
+        try {
+            if (!in.has("directive") || in.get("directive").isJsonNull()) return;
+            JsonObject d = in.getAsJsonObject("directive");
+            StashSorter sorter = Modules.get().get(StashSorter.class);
+            if (sorter == null || sorter.currentStash() == null) return;
+            String name = d.has("stash") && d.get("stash").isJsonPrimitive()
+                    ? d.get("stash").getAsString()
+                    : null;
+            if (name == null || !name.equals(sorter.currentStash().name)) return;
+            long rev = d.has("revision") && d.get("revision").isJsonPrimitive()
+                    ? d.get("revision").getAsLong()
+                    : -1;
+            sorter.applyDirective(d, rev);
+        } catch (RuntimeException ex) {
+            WeSortAddon.LOG.warn("wesort-stash-manager: couldn't read the Manager directive", ex);
         }
     }
 
@@ -1529,7 +1293,7 @@ public class StashManager extends Module {
         // are not read by the bot on their own
         if (rescanning && !sorter.needsReading()) rescanning = false;
         boolean want =
-                isActive() && sorter.currentStash() != null && (acceptOrders.get() || rescanning || kitJob != null);
+                isActive() && sorter.currentStash() != null && (acceptOrders.get() || rescanning);
         sorter.drive(want);
     }
 
@@ -1541,12 +1305,8 @@ public class StashManager extends Module {
             return;
         }
         OrderRunner runner = sorter.orders();
-        Stash.Box delivery = runner.deliveryBox();
-        deliveryParts = delivery == null ? List.of() : List.copyOf(delivery.parts);
-        anvilPart = sorter.anvilPos();
-        craftingTablePart = sorter.craftingTablePos();
-
         String info = runner.info();
+        Stash.Box delivery = runner.deliveryBox();
         if (sorter.returningLeftovers()) {
             ordersNote = "(returning leftovers)";
             return;
@@ -1748,14 +1508,7 @@ public class StashManager extends Module {
         }
     }
 
-    /** What to do with the reply, on the client thread. {@code code} is -1 when the server could not be reached. */
-    private JsonObject kitJob;
-
-    private String kitCatalogNote = "awaiting Manager assignment", kitProblem = "";
-    private boolean kitUncertain, kitPacked;
-    private long nextKitCatalogAt, kitUntil;
-
-    public String kitScope() {
+    public String linkScope() {
         if (!isActive()
                 || mc.level == null
                 || serverUrl.get().isBlank()
@@ -1764,169 +1517,7 @@ public class StashManager extends Module {
                 + com.porter.wesort.data.ContainerIdentity.hash(apiKey.get().trim());
     }
 
-    public String kitCatalogStatus() {
-        return kitCatalogNote;
-    }
-
-    public String kitProblem() {
-        return kitProblem;
-    }
-
-    public boolean kitIsPacked() {
-        return kitPacked;
-    }
-
-    public String physicalKitId() {
-        return kitJob == null ? null : kitJob.get("id").getAsString();
-    }
-
-    public boolean hasKitJob() {
-        return kitJob != null;
-    }
-
-    public boolean kitAllowed() {
-        return kitJob != null
-                && !kitUncertain
-                && System.nanoTime() < kitUntil
-                && com.porter.wesort.stash.Kits.buildable(com.porter.wesort.stash.Kits.assigned());
-    }
-
-    public net.minecraft.core.BlockPos kitWorkspace() {
-        if (!kitAllowed()) return null;
-        var work = kitJob.getAsJsonObject("workspace");
-        if (!com.porter.wesort.stash.StashIndex.dimension()
-                .equals(work.get("dimension").getAsString())) return null;
-        return new net.minecraft.core.BlockPos(
-                work.get("x").getAsInt(),
-                work.get("y").getAsInt(),
-                work.get("z").getAsInt());
-    }
-
-    public void kitPacked() {
-        PhysicalJournalRuntime.phase("STORE", new JsonObject());
-        kitPacked = true;
-        nextKitCatalogAt = 0;
-        info("Kit packed exactly; verifying storage at the Manager destination.");
-    }
-
-    public void kitUncertain(String why) {
-        if (kitJob == null || kitUncertain) return;
-        kitUncertain = true;
-        kitProblem = why;
-        PhysicalJournalRuntime.block("Manager kit needs physical reconciliation");
-        var sorter = Modules.get().get(StashSorter.class);
-        if (sorter != null) sorter.pauseManagedKit();
-        com.porter.wesort.stash.Kits.revoke();
-        nextKitCatalogAt = 0;
-        warning("Kit job paused for reconciliation: %s", why);
-    }
-
-    private boolean serviceKitCatalog(URI base, String key, long now) {
-        if (kitJob != null && System.nanoTime() >= kitUntil && !kitUncertain)
-            kitUncertain("Manager execution lease expired");
-        if (now < nextKitCatalogAt || kitJob == null && PhysicalJournalRuntime.unfinished()) return false;
-        var sorter = Modules.get().get(StashSorter.class);
-        var stash = sorter == null ? null : sorter.currentStash();
-        if (stash == null || mc.player == null) return false;
-        String scope = kitScope();
-        var body = new JsonObject();
-        String action = "claim";
-        if (kitJob != null) {
-            body.addProperty("id", kitJob.get("id").getAsString());
-            body.addProperty("token", kitJob.get("token").getAsString());
-            action = kitUncertain
-                    ? "uncertain"
-                    : kitPacked && !"VERIFYING".equals(kitJob.get("state").getAsString())
-                            ? "packed"
-                            : kitPacked && sorter.kitStored() ? "complete" : "renew";
-        }
-        if (kitJob != null) {
-            var supply = sorter.kitReport(kitJob.get("name").getAsString());
-            supply.remove("template");
-            supply.remove("destinations");
-            if (supply.has("possible") && supply.has("estimateExact")) body.add("supply", supply);
-        }
-        body.addProperty("message", kitProblem);
-        body.addProperty("action", action);
-        body.addProperty("server", Stash.currentServer());
-        body.addProperty("stash", stash.name);
-        body.addProperty("agent", mc.player.getUUID().toString());
-        nextKitCatalogAt = now + 2_000;
-        long started = System.nanoTime();
-        send(
-                base,
-                "/api/v1/kits/agent",
-                bytes(body),
-                key,
-                (code, text) -> {
-                    if (!scope.equals(kitScope())) {
-                        kitUncertain("Manager link changed");
-                        return true;
-                    }
-                    if (code != 200) {
-                        kitCatalogNote = "Manager kit job unavailable";
-                        return true;
-                    }
-                    try {
-                        var response = JsonParser.parseString(text).getAsJsonObject();
-                        if (!response.has("job") || response.get("job").isJsonNull()) return true;
-                        var incoming = response.getAsJsonObject("job");
-                        String state = incoming.get("state").getAsString();
-                        if (kitJob == null) {
-                            var template =
-                                    com.porter.wesort.data.KitTemplate.read(incoming.getAsJsonObject("template"));
-                            if (!template.fingerprint()
-                                            .equals(incoming.get("fingerprint").getAsString())
-                                    || !stash.name.equals(incoming.get("stash").getAsString())
-                                    || !Stash.currentServer()
-                                            .equals(incoming.get("server").getAsString()))
-                                throw new IllegalArgumentException("Assignment scope/version mismatch");
-                            kitJob = incoming;
-                            kitPacked = false;
-                            kitUncertain = false;
-                            kitProblem = "";
-                            com.porter.wesort.stash.Kits.assign(
-                                    template,
-                                    scope,
-                                    incoming.get("destination").getAsString(),
-                                    started + 5_000_000_000L);
-                            info(
-                                    "Manager assigned kit %s, version %d (%s).",
-                                    template.name(),
-                                    incoming.get("revision").getAsLong(),
-                                    template.fingerprint().substring(0, 12));
-                        } else {
-                            if (!kitJob.get("id").equals(incoming.get("id"))
-                                    || !kitJob.get("fingerprint").equals(incoming.get("fingerprint"))
-                                    || !kitJob.get("revision").equals(incoming.get("revision")))
-                                throw new IllegalArgumentException("Pinned kit version changed");
-                            kitJob.addProperty("state", state);
-                        }
-                        if ("COMPLETED".equals(state)) {
-                            info(
-                                    "Kit stored and verified by Manager. Job %s completed.",
-                                    kitJob.get("id").getAsString());
-                            PhysicalJournalRuntime.complete();
-                            kitJob = null;
-                            com.porter.wesort.stash.Kits.release();
-                            kitCatalogNote = "kit storage verified";
-                        } else if (!List.of("IN_PROGRESS", "VERIFYING").contains(state)) {
-                            kitUncertain("Manager state " + state);
-                            kitCatalogNote = state;
-                        } else if (!kitUncertain) {
-                            kitUntil = started + 5_000_000_000L;
-                            com.porter.wesort.stash.Kits.renew(kitUntil);
-                            kitCatalogNote = state;
-                        }
-                    } catch (RuntimeException invalid) {
-                        kitUncertain("Exact assignment could not be verified by Minecraft 26.3");
-                        kitCatalogNote = "invalid kit assignment";
-                    }
-                    return true;
-                },
-                true);
-        return true;
-    }
+    // Kit jobs were removed: the Manager no longer assigns kits. Local shulker-packing for orders is untouched.
 
     private interface Reply {
         /** @return false when it failed and should be tried again later */

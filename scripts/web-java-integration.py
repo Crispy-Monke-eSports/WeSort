@@ -161,6 +161,38 @@ def main():
         )
         ok("owner login over username-less body; exact perms object")
 
+        # Single-server operation: the owner sets the one Minecraft server.
+        status, srv, _ = owner.request("/api/v1/server", {"server": "s"})
+        require(
+            status == 200
+            and srv.get("server") == "s"
+            and srv.get("configured") is True,
+            f"server set: {srv}",
+        )
+        ok("single Minecraft server configured by owner")
+
+        # Stash definitions: the owner creates the region cube + placements.
+        status, created, _ = owner.request(
+            "/api/v1/stash-defs",
+            {
+                "action": "create",
+                "name": "a",
+                "dimension": "minecraft:overworld",
+                "pos1": {"x": 0, "y": -60, "z": 0},
+                "pos2": {"x": 31, "y": 20, "z": 31},
+            },
+        )
+        require(
+            status == 200 and created.get("def", {}).get("name") == "a",
+            f"stash def created: {created}",
+        )
+        status, defs, _ = owner.request("/api/v1/stash-defs")
+        require(
+            status == 200 and len(defs.get("defs", [])) == 1,
+            f"stash def listed: {defs}",
+        )
+        ok("owner-created stash definition (region cube)")
+
         # username field (not name) selects the member account.
         status, _m, _ = owner.request(
             "/api/v1/users", {"name": "member1", "password": "member-test-pw-1"}
@@ -223,7 +255,6 @@ def main():
 
         # Order shape: member without order perm is refused; header key enforced for the owner.
         order = {
-            "server": "s",
             "stash": "a",
             "lines": [{"type": "item", "key": "minecraft:diamond", "count": 1}],
         }
@@ -256,7 +287,7 @@ def main():
         )
         ok("Idempotency-Key read from header; order shape validated by Java")
 
-        status, listing, _ = member.request("/api/v1/orders?server=s&stash=a")
+        status, listing, _ = member.request("/api/v1/orders?stash=a")
         require(
             status == 200
             and listing.get("orders") == []

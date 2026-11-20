@@ -4,7 +4,6 @@ import { persist } from "zustand/middleware";
 import type { OrderLine } from "../api/types";
 
 export interface CartLine extends OrderLine {
-  server: string;
   stash: string;
 }
 
@@ -12,7 +11,6 @@ const CartLineSchema = z.object({
   type: z.enum(["item", "shulker"]),
   key: z.string().min(1).max(512),
   count: z.number().int().min(1).max(2 ** 31 - 1),
-  server: z.string().min(1).max(256),
   stash: z.string().min(1).max(256),
 });
 
@@ -35,7 +33,7 @@ interface CartState {
   setLines: (lines: CartLine[]) => void;
   clear: () => void;
   setBadLine: (n: number) => void;
-  countOf: (type: string, key: string, server?: string, stash?: string) => number;
+  countOf: (type: string, key: string, stash?: string) => number;
   /** Logout: forget which scope is active. Persisted per-user carts stay on disk. */
   resetScope: () => void;
 }
@@ -71,13 +69,12 @@ export const useCart = create<CartState>()(
         if (!scope) return;
         set((s) => ({ badLines: { ...s.badLines, [scope]: n } }));
       },
-      countOf: (type, key, server, stash) =>
+      countOf: (type, key, stash) =>
         (get().carts[get().activeScope] ?? [])
           .filter(
             (l) =>
               l.type === type &&
               l.key === key &&
-              (server === undefined || l.server === server) &&
               (stash === undefined || l.stash === stash),
           )
           .reduce((a, l) => a + l.count, 0),
@@ -101,13 +98,11 @@ export function setCartScope(user: string): void {
 
 interface PrefsState {
   theme: "modern" | "classic";
-  streamer: boolean;
   sort: "creative" | "count" | "name" | "id";
   query: string;
   category: string;
   availability: "all" | "available" | "low" | "empty";
   setTheme: (t: "modern" | "classic") => void;
-  setStreamer: (b: boolean) => void;
   setSort: (s: PrefsState["sort"]) => void;
   setQuery: (q: string) => void;
   setCategory: (c: string) => void;
@@ -118,13 +113,11 @@ export const usePrefs = create<PrefsState>()(
   persist(
     (set) => ({
       theme: "modern",
-      streamer: false,
       sort: "count",
       query: "",
       category: "all",
       availability: "all",
       setTheme: (theme) => set({ theme }),
-      setStreamer: (streamer) => set({ streamer }),
       setSort: (sort) => set({ sort }),
       setQuery: (query) => set({ query }),
       setCategory: (category) => set({ category }),

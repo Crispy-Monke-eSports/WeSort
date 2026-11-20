@@ -34,7 +34,7 @@ Legend: ✅ implemented · ⚠️ partial · ❌ not carried over (with reason)
 | Order audit search (person/item) | `GET /api/v1/audit/orders` | officer-only audit panel | guild-portal e2e | ✅ |
 | Stash status (online, blocker, delivery, naming) | `GET /api/v1/stashes` | sidebar status line + bot strip info | screenshot | ✅ |
 | Manual rescan | `POST /api/v1/rescan` | sidebar button (rescan perm) | — | ✅ |
-| Stash release | `POST /api/v1/stashes/release` | ❌ no UI (see limitations) | — | ❌ |
+| Stash release | removed (no bot owns a stash) | — | — | ❌ |
 | Guild shared-stock tables + per-stash drilldown | `GET /api/v1/stock` | ❌ removed by design (PR #89 unified shop; endpoint untouched) | — | ❌ |
 
 ## Bots, activity, operations
@@ -47,7 +47,7 @@ Legend: ✅ implemented · ⚠️ partial · ❌ not carried over (with reason)
 | Per-bot jobs view | `GET /api/v1/bots/{id}/jobs` | ⚠️ not surfaced (see limitations) | — | ⚠️ |
 | Global operations/activity | `GET /api/v1/operations` | ❌ Activity page is per-bot (see limitations) | — | ❌ |
 | Physical operations / inspect | `GET/POST /api/v1/physical*` | ❌ no UI (see limitations) | — | ❌ |
-| Kits + kit editor + kit jobs | `GET/POST /api/v1/kits*` | ❌ no UI (see limitations) | — | ❌ |
+| Manager kit templates + kit jobs | removed (backend + Manager link + mod UI) | — | backend tests | ❌ |
 | Delivery points / deposits / handoffs / custody / transport / boxes | respective `/api/v1/*` | ❌ no UI (see limitations) | — | ❌ |
 
 ## Accounts, guild, system
@@ -63,13 +63,15 @@ Legend: ✅ implemented · ⚠️ partial · ❌ not carried over (with reason)
 | Audit log viewer | `GET /api/v1/audit` | ❌ no UI (see limitations) | — | ❌ |
 | Link addon / regenerate key | `GET /api/v1/link*` (link perm / owner) | settings panel | screenshot | ✅ |
 | Themes (dirt Classic + clean look) | `GET /dirt.png` + `dirt.svg` | Modern Dark (default) + Classic themes | screenshots | ✅ |
-| Streamer mode | `Redact` (server) | client mask toggle | unit (`maskServer`) | ✅ |
+| Streamer mode | removed (server + client) | — | — | ❌ |
+| Single-server operation | `GET/POST /api/v1/server` | Settings → server panel | — | ✅ |
+| Stash definitions (region cube + placements) | `GET/POST /api/v1/stash-defs`, heartbeat `directive` | Settings → stashes panel | screenshot | ✅ |
 | Minecraft disclaimer + branding | static assets | footer + login, byte-identical SVGs | smoke.cjs | ✅ |
 | Minecraft icons | `GET /icon/<ns>/<path>.png` | `iconUrl` + retry + letter fallback | unit + Java integration | ✅ |
 
 ## Limitations (documented, not silent)
 
-- **No kit editor, physical ops, delivery/deposit/handoff/custody/transport/box managers, global operations view, stash release, audit-log viewer, per-bot jobs view, or package-label editor.** These are owner/operator consoles with large surface area; rebuilding each was out of scope. The Java APIs are untouched and the old UI was removed rather than left half-working. Follow-ups can add them one screen at a time behind the same design system.
+- **No physical ops, delivery/deposit/handoff/custody/transport/box managers, global operations view, audit-log viewer, per-bot jobs view, or package-label editor.** These are owner/operator consoles with large surface area; rebuilding each was out of scope. Follow-ups can add them one screen at a time behind the same design system.
 - **`names.each` uses an estimated shulker count** (client `shulkersNeeded` estimate, capped at 54); the bot re-plans from reachability anyway and names apply in order.
 - **Guild shared-stock tables were removed by PR #89's unified-shop direction**; availability is visible per item (loose + boxed) instead.
 - **Quota override checkbox removed**: `main`'s order path has no quota wiring (that was PR #84, unmerged); showing it would be a no-op control.

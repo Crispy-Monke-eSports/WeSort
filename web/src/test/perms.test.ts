@@ -33,8 +33,7 @@ const javaMember = {
       settings: false,
       rescan: false,
       link: false,
-      streamer: false,
-      stashes: [{ server: "s", stash: "a" }],
+      stashes: [{ stash: "a" }],
       bots: ["bot-1"],
     },
   },
@@ -53,7 +52,7 @@ describe("auth contracts (Java shape)", () => {
     expect(Array.isArray(s.user?.perms)).toBe(false);
     expect(s.user?.perms.view).toBe(true);
     expect(s.user?.perms.ordersAll).toBe(false);
-    expect(s.user?.perms.stashes).toEqual([{ server: "s", stash: "a" }]);
+    expect(s.user?.perms.stashes).toEqual([{ stash: "a" }]);
     expect(s.user?.perms.bots).toEqual(["bot-1"]);
   });
 

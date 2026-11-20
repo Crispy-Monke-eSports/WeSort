@@ -20,10 +20,6 @@ final class OrderAuditRoutes {
     }
 
     private void search(HttpExchange ex) throws IOException {
-        if (Redact.on(ex)) {
-            Http.error(ex, 403, "Order audit is hidden in enforced streamer mode");
-            return;
-        }
         var viewer = Router.user(ex);
         if (!viewer.perms().view()) {
             Router.forbid(ex, "view stashes", "view");

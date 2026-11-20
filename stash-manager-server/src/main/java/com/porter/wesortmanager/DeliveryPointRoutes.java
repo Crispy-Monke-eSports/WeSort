@@ -28,10 +28,6 @@ final class DeliveryPointRoutes {
     }
 
     private void list(HttpExchange ex) throws IOException {
-        if (Redact.forced(Router.user(ex))) {
-            Http.error(ex, 404, "not found");
-            return;
-        }
         var out = new JsonObject();
         out.add("points", points.list());
         Http.json(ex, 200, out);

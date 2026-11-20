@@ -69,8 +69,6 @@ final class Http {
      * which closes it; the Router must not (closing would block behind that write).
      */
     static final String DETACHED = "wesortmanager.detached";
-    /** Exchange attribute: the ServerIds that mask this response (a user in forced streamer mode). */
-    static final String MASK = "wesortmanager.mask";
     /** Exchange attribute: the request body, read once by the Router to check a signature (byte[]). */
     static final String BODY = "wesortmanager.body";
     /** Exchange attributes for signing the response to a signed request: the key K (byte[]) and the request nonce. */
@@ -130,8 +128,6 @@ final class Http {
     }
 
     static void json(HttpExchange ex, int status, JsonElement json) throws IOException {
-        // Forced streamer mode: every "server" and "botId" in the response becomes its opaque id.
-        if (Http.attr(ex, MASK) instanceof ServerIds ids) json = ids.mask(json);
         byte[] body = Json.GSON.toJson(json).getBytes(StandardCharsets.UTF_8);
         sendJson(ex, status, body, body.length >= GZIP_MIN ? null : body, "no-store");
     }

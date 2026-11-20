@@ -116,9 +116,6 @@ public final class WeSortManager {
             store.load();
             OrderStore orders = new OrderStore(dataDir, store);
             orders.load();
-            Owners owners = new Owners(dataDir);
-            owners.load();
-            owners.adoptAll(store.players());
             GameIcons game = new GameIcons(dataDir.resolve("icons"), true, config.eulaAccepted);
             // Tab icons the page shows are allowed even when no index has them.
             java.util.function.Function<String, IndexStore.IconInfo> known = id -> {
@@ -160,7 +157,6 @@ public final class WeSortManager {
                     config,
                     store,
                     orders,
-                    owners,
                     icons,
                     link,
                     urls,
@@ -273,7 +269,6 @@ public final class WeSortManager {
             Config config,
             IndexStore store,
             OrderStore orders,
-            Owners owners,
             IconService icons,
             LinkState link,
             List<String> urls,
@@ -287,7 +282,6 @@ public final class WeSortManager {
                 config,
                 store,
                 orders,
-                owners,
                 icons,
                 link,
                 urls,
@@ -303,7 +297,6 @@ public final class WeSortManager {
             Config config,
             IndexStore store,
             OrderStore orders,
-            Owners owners,
             IconService icons,
             LinkState link,
             List<String> urls,
@@ -317,35 +310,32 @@ public final class WeSortManager {
         var credentials = new AgentCredentials(config.dataDir());
         Router router = new Router(new AccessControl(config), sessions, config, users, credentials, orders);
         health.register(router);
-        router.ids(new ServerIds(
-                ServerIds.secret(config.dataDir()),
-                store::servers,
-                () -> hub.all().stream().map(b -> b.botId).toList()));
         AuthRoutes authRoutes = new AuthRoutes(config, sessions, limiter, users, audit);
-        authRoutes.ids(router.ids());
         authRoutes.register(router);
         DeliveryContents delivery = new DeliveryContents(); // in memory only
-        new AddonRoutes(store, link, icons, orders, owners, delivery).register(router);
-        new BrowserRoutes(store, config, link, urls, orders, owners, sessions, audit, delivery, credentials)
+        var stashDefs = new StashDefs(config.dataDir());
+        new AddonRoutes(store, link, icons, orders, delivery, config, stashDefs).register(router);
+        new BrowserRoutes(store, config, link, urls, orders, sessions, audit, delivery, credentials)
                 .register(router);
-        new DeliveryRoutes(delivery, owners).register(router);
+        new DeliveryRoutes(delivery, config).register(router);
         var guild = new GuildRoutes(config.dataDir(), audit);
-        new OrderRoutes(orders, owners, audit, guild, users).register(router);
+        new OrderRoutes(orders, audit, guild, users, config).register(router);
         new OrderAuditRoutes(orders, store).register(router);
         new OperationsRoutes(store, orders, hub).register(router);
         new StockRoutes(store, orders).register(router, audit);
-        new KitRoutes(store, audit, orders, owners).register(router);
-        new BoxRoutes(store, audit, orders, owners).register(router);
+        new BoxRoutes(store, audit, orders).register(router);
         new TransportRoutes(new TransportProfiles(config.dataDir()), audit).register(router);
         new QuotaRoutes(new Quotas(config.dataDir()), audit).register(router);
         new CustodyRoutes(new PackageCustody(config.dataDir()), audit).register(router);
         new DeliveryPointRoutes(new DeliveryPoints(config.dataDir()), audit).register(router);
+        new ServerRoutes(config, audit).register(router);
+        new StashDefRoutes(stashDefs, audit).register(router);
         new DepositRoutes(new Deposits(config.dataDir()), audit).register(router);
         new JobRoutes(new JobScheduler(config.dataDir()), audit).register(router);
         new HandoffRoutes(new Handoffs(config.dataDir()), audit).register(router);
         new PhysicalRoutes(store, audit).register(router);
-        new BotRoutes(hub, audit, orders, owners).register(router);
-        new DashboardRoutes(hub, store, owners, sessions, audit).register(router);
+        new BotRoutes(hub, audit, orders).register(router);
+        new DashboardRoutes(hub, store, sessions, audit).register(router);
         new UserRoutes(users, sessions, audit).register(router);
         guild.register(router);
         new IconRoutes(icons).register(router);

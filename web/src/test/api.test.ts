@@ -18,13 +18,13 @@ describe("api client (Java BrowserWrite contract)", () => {
     await api("/api/v1/orders", {
       method: "POST",
       headers: { "Idempotency-Key": "key-1" },
-      body: { server: "s", stash: "a", lines: [] },
+      body: { stash: "a", lines: [] },
     });
     expect(calls).toHaveLength(1);
     expect(calls[0].init.headers["X-Stash-Manager"]).toBe("1");
     expect(calls[0].init.headers["Content-Type"]).toBe("application/json");
     expect(calls[0].init.headers["Idempotency-Key"]).toBe("key-1");
-    expect(JSON.parse(calls[0].init.body)).toEqual({ server: "s", stash: "a", lines: [] });
+    expect(JSON.parse(calls[0].init.body)).toEqual({ stash: "a", lines: [] });
   });
 
   it("never puts the idempotency key in the JSON body", async () => {

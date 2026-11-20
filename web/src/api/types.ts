@@ -17,9 +17,8 @@ export const PermsSchema = z.object({
   settings: z.boolean().default(false),
   rescan: z.boolean().default(false),
   link: z.boolean().default(false),
-  streamer: z.boolean().default(false),
   stashes: z
-    .array(z.object({ server: z.string(), stash: z.string() }))
+    .array(z.object({ stash: z.string() }))
     .nullable()
     .default(null),
   bots: z.array(z.string()).nullable().default(null),
@@ -63,7 +62,6 @@ export const StashSummarySchema = z.object({
 });
 
 export const StashRefSchema = z.object({
-  server: z.string(),
   stash: z.string(),
   player: z.string().nullable().optional(),
   online: z.boolean().default(false),
@@ -86,6 +84,26 @@ export const StashRefSchema = z.object({
   orders: StashSummarySchema.optional(),
 });
 export type StashRef = z.infer<typeof StashRefSchema>;
+
+export const VecSchema = z.object({ x: z.number().int(), y: z.number().int(), z: z.number().int() });
+export type Vec = z.infer<typeof VecSchema>;
+
+export const StashDefSchema = z.object({
+  name: z.string(),
+  dimension: z.string().default("minecraft:overworld"),
+  pos1: VecSchema,
+  pos2: VecSchema,
+  delivery: VecSchema.nullable().optional(),
+  deliveryDimension: z.string().nullable().optional(),
+  anvil: VecSchema.nullable().optional(),
+  table: VecSchema.nullable().optional(),
+  revision: z.number().default(1),
+  updatedAt: z.number().default(0),
+});
+export type StashDef = z.infer<typeof StashDefSchema>;
+
+export const ServerStateSchema = z.object({ server: z.string().default(""), configured: z.boolean().default(false) });
+export type ServerState = z.infer<typeof ServerStateSchema>;
 
 const BoxContentSchema = z.object({ slot: z.number(), key: z.string(), count: z.number() });
 
@@ -181,7 +199,7 @@ export const BotInfoSchema = z.object({
   summary: z.string().nullable().optional(),
   activityAt: z.number().nullable().optional(),
   scopes: z.array(z.string()).default([]),
-  stashes: z.array(z.object({ server: z.string(), stash: z.string() })).default([]),
+  stashes: z.array(z.object({ stash: z.string() })).default([]),
   lastLocation: z.unknown().nullable().optional(),
 });
 export type BotInfo = z.infer<typeof BotInfoSchema>;

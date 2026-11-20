@@ -27,20 +27,12 @@ final class PhysicalRoutes {
     }
 
     private void list(HttpExchange ex) throws IOException {
-        if (Redact.forced(Router.user(ex))) {
-            Http.error(ex, 404, "not found");
-            return;
-        }
         var response = new JsonObject();
         response.add("operations", operations().list());
         Http.json(ex, 200, response);
     }
 
     private void inspect(HttpExchange ex) throws IOException {
-        if (Redact.forced(Router.user(ex))) {
-            Http.error(ex, 404, "not found");
-            return;
-        }
         var raw = AddonRoutes.readJson(ex);
         if (raw == null) return;
         try {

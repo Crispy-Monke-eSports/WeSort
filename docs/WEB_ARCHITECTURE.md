@@ -81,7 +81,7 @@ business logic moved out of Java.
 
 Modern Dark is the default theme (neutral dark surfaces, green accent);
 Classic (verified dirt + tighter radius) is opt-in and theme-aware. Both share
-the same components. Theme + streamer mode persist; streamer mode masks names.
+the same components. Theme persists (Modern Dark default, Classic opt-in).
 
 ## Static serving
 

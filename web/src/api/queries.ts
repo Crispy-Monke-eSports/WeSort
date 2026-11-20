@@ -8,6 +8,8 @@ import {
   IndexResponseSchema,
   OrdersResponseSchema,
   QuotaMeSchema,
+  ServerStateSchema,
+  StashDefSchema,
   StashRefSchema,
   type AuthState,
   type BotActivity,
@@ -17,20 +19,24 @@ import {
   type OrdersResponse,
   type Perms,
   type QuotaMe,
+  type ServerState,
+  type StashDef,
   type StashRef,
 } from "./types";
 
 export const keys = {
   auth: ["auth", "state"] as const,
   stashes: ["stashes"] as const,
-  index: (server: string, stash: string) => ["index", server, stash] as const,
-  orders: (server: string, stash: string) => ["orders", server, stash] as const,
+  index: (stash: string) => ["index", stash] as const,
+  orders: (stash: string) => ["orders", stash] as const,
   bots: ["bots"] as const,
   botActivity: (id: string) => ["bots", id, "activity"] as const,
   botSettings: (id: string) => ["bots", id, "settings"] as const,
   guild: ["guild"] as const,
   quotaMe: ["quotas", "me"] as const,
   users: ["users"] as const,
+  server: ["server"] as const,
+  stashDefs: ["stash-defs"] as const,
 };
 
 export function useAuth() {
@@ -48,7 +54,7 @@ export function usePermissions(auth: AuthState | undefined): {
   owner: boolean;
   mustChange: boolean;
   can: (perm: keyof Perms) => boolean;
-  seesStash: (server: string, stash: string) => boolean;
+  seesStash: (stash: string) => boolean;
   seesBot: (botId: string) => boolean;
 } {
   const user = auth?.user ?? null;
@@ -66,9 +72,9 @@ export function usePermissions(auth: AuthState | undefined): {
     owner,
     mustChange: user?.mustChange ?? false,
     can,
-    seesStash: (server, stash) => {
+    seesStash: (stash) => {
       if (owner || !perms || perms.stashes == null) return true;
-      return perms.stashes.some((r) => r.server === server && r.stash === stash);
+      return perms.stashes.some((r) => r.stash === stash);
     },
     seesBot: (botId) => {
       if (owner || !perms || perms.bots == null) return true;
@@ -100,14 +106,14 @@ export function useStashes(enabled: boolean) {
   });
 }
 
-export function useIndex(server: string | null, stash: string | null, enabled: boolean) {
+export function useIndex(stash: string | null, enabled: boolean) {
   return useQuery({
-    queryKey: server && stash ? keys.index(server, stash) : ["index", "none"],
+    queryKey: stash ? keys.index(stash) : ["index", "none"],
     queryFn: async () =>
       IndexResponseSchema.parse(
-        await api<unknown>(`/api/v1/index?server=${encodeURIComponent(server!)}&stash=${encodeURIComponent(stash!)}`),
+        await api<unknown>(`/api/v1/index?stash=${encodeURIComponent(stash!)}`),
       ) as IndexResponse,
-    enabled: enabled && !!server && !!stash,
+    enabled: enabled && !!stash,
     staleTime: 5_000,
     retry: 1,
   });
@@ -118,16 +124,16 @@ export function indexEmptyState(error: unknown): boolean {
   return (error as { status?: number })?.status === 404;
 }
 
-export function useOrders(server: string | null, stash: string | null, enabled: boolean, visible: boolean) {
+export function useOrders(stash: string | null, enabled: boolean, visible: boolean) {
   return useQuery({
-    queryKey: server && stash ? keys.orders(server, stash) : ["orders", "none"],
+    queryKey: stash ? keys.orders(stash) : ["orders", "none"],
     queryFn: async () =>
       OrdersResponseSchema.parse(
-        await api<unknown>(`/api/v1/orders?server=${encodeURIComponent(server!)}&stash=${encodeURIComponent(stash!)}`),
+        await api<unknown>(`/api/v1/orders?stash=${encodeURIComponent(stash!)}`),
       ) as OrdersResponse,
-    enabled: enabled && !!server && !!stash,
+    enabled: enabled && !!stash,
     // Shop polls faster while visible (3s) than in background (15s); stale errors keep last data.
-    refetchInterval: enabled && server && stash ? (visible ? 3000 : 15000) : false,
+    refetchInterval: enabled && stash ? (visible ? 3000 : 15000) : false,
     staleTime: 2_000,
     retry: 1,
   });
@@ -188,9 +194,33 @@ export function useQuotaMe(enabled: boolean) {
   });
 }
 
+export function useServer(enabled: boolean) {
+  return useQuery({
+    queryKey: [...keys.server],
+    queryFn: async () => ServerStateSchema.parse(await api<unknown>("/api/v1/server")) as ServerState,
+    enabled,
+    staleTime: 15_000,
+    retry: 1,
+  });
+}
+
+export function useStashDefs(enabled: boolean) {
+  return useQuery({
+    queryKey: [...keys.stashDefs],
+    queryFn: async () => {
+      const raw = (await api<unknown>("/api/v1/stash-defs")) as { defs?: unknown[] };
+      const list = Array.isArray(raw?.defs) ? raw.defs : [];
+      return list.map((d) => StashDefSchema.parse(d)) as StashDef[];
+    },
+    enabled,
+    staleTime: 15_000,
+    retry: 1,
+  });
+}
+
 export function useInvalidateOrders() {
   const qc = useQueryClient();
-  return (server: string, stash: string) => qc.invalidateQueries({ queryKey: keys.orders(server, stash) });
+  return (stash: string) => qc.invalidateQueries({ queryKey: keys.orders(stash) });
 }
 
 /** Clear every cached server response on logout so the next user starts clean. */

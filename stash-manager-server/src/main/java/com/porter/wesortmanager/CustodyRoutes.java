@@ -20,10 +20,6 @@ final class CustodyRoutes {
     }
 
     private void list(HttpExchange ex) throws IOException {
-        if (Redact.forced(Router.user(ex))) {
-            Http.error(ex, 404, "not found");
-            return;
-        }
         var out = new JsonObject();
         out.add("packages", custody.list(Http.query(ex).get("order")));
         Http.json(ex, 200, out);

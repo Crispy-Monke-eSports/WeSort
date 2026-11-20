@@ -9,7 +9,7 @@ import { keys } from "../api/queries";
 import { useAuth, usePermissions, useStashes } from "../api/queries";
 import { IndexResponse, OrdersResponse } from "../api/types";
 import { IndexResponseSchema, OrdersResponseSchema } from "../api/types";
-import { ItemIcon, maskServer } from "../components/icons";
+import { ItemIcon } from "../components/icons";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -32,7 +32,7 @@ import {
   shulkersNeeded,
   splitScopedItemLine,
 } from "../lib/shop";
-import { setCartScope, useCart, usePrefs } from "../stores/shop";
+import { setCartScope, useCart } from "../stores/shop";
 
 const shopRoute = getRouteApi("/shop");
 
@@ -118,14 +118,13 @@ function createCheckoutForm(onSubmit: (value: DeliveryValues) => Promise<void>) 
 
 type CheckoutForm = ReturnType<typeof createCheckoutForm>;
 
-function stashLabel(server: string, stash: string): string {
-  return `${server} / ${stash}`;
+function stashLabel(stash: string): string {
+  return stash;
 }
 
 export function ShopPage() {
   const auth = useAuth();
   const perms = usePermissions(auth.data);
-  const prefs = usePrefs();
   const cart = useCart();
   const search = shopRoute.useSearch();
   const navigate = shopRoute.useNavigate();
@@ -149,10 +148,10 @@ export function ShopPage() {
 
   const indexQueries = useQueries({
     queries: stashList.map((s) => ({
-      queryKey: keys.index(s.server, s.stash),
+      queryKey: keys.index(s.stash),
       queryFn: async () =>
         IndexResponseSchema.parse(
-          await api<unknown>(`/api/v1/index?server=${encodeURIComponent(s.server)}&stash=${encodeURIComponent(s.stash)}`),
+          await api<unknown>(`/api/v1/index?stash=${encodeURIComponent(s.stash)}`),
         ) as IndexResponse,
       enabled: canView,
       staleTime: 5_000,
@@ -161,10 +160,10 @@ export function ShopPage() {
   });
   const orderQueries = useQueries({
     queries: stashList.map((s) => ({
-      queryKey: keys.orders(s.server, s.stash),
+      queryKey: keys.orders(s.stash),
       queryFn: async () =>
         OrdersResponseSchema.parse(
-          await api<unknown>(`/api/v1/orders?server=${encodeURIComponent(s.server)}&stash=${encodeURIComponent(s.stash)}`),
+          await api<unknown>(`/api/v1/orders?stash=${encodeURIComponent(s.stash)}`),
         ) as OrdersResponse,
       enabled: canView,
       staleTime: 2_000,
@@ -176,7 +175,6 @@ export function ShopPage() {
   const slices: StashSlice[] = useMemo(
     () =>
       stashList.map((s, i) => ({
-        server: s.server,
         stash: s.stash,
         online: s.online,
         items: indexQueries[i]?.data?.items ?? [],
@@ -258,10 +256,10 @@ export function ShopPage() {
   const cartLines = cart.lines();
   const cartBad = cart.badLine();
 
-  const packedInCart = (server: string, stash: string, boxKey: string) =>
-    cartLines.filter((l) => l.type === "shulker" && l.server === server && l.stash === stash && l.key === boxKey).reduce((a, l) => a + l.count, 0);
-  const looseInCart = (server: string, stash: string, key: string) =>
-    cartLines.filter((l) => l.type === "item" && l.server === server && l.stash === stash && l.key === key).reduce((a, l) => a + l.count, 0);
+  const packedInCart = (stash: string, boxKey: string) =>
+    cartLines.filter((l) => l.type === "shulker" && l.stash === stash && l.key === boxKey).reduce((a, l) => a + l.count, 0);
+  const looseInCart = (stash: string, key: string) =>
+    cartLines.filter((l) => l.type === "item" && l.stash === stash && l.key === key).reduce((a, l) => a + l.count, 0);
 
   /** Aggregate orderable units of a key across all stashes (for display + button state). */
   function orderableMax(key: string): number {
@@ -271,15 +269,15 @@ export function ShopPage() {
       for (const b of s.shulkers) {
         let perBox = 0;
         for (const c of b.contents ?? []) if (c.key === key) perBox += Math.max(0, c.count);
-        boxed += perBox * Math.max(0, b.count - packedInCart(s.server, s.stash, b.key));
+        boxed += perBox * Math.max(0, b.count - packedInCart(s.stash, b.key));
       }
-      n += Math.max(0, (s.availableItems[key] ?? 0) - looseInCart(s.server, s.stash, key)) + boxed;
+      n += Math.max(0, (s.availableItems[key] ?? 0) - looseInCart(s.stash, key)) + boxed;
     }
     return n;
   }
 
-  function sliceOf(line: { server: string; stash: string }): StashSlice | undefined {
-    return slices.find((s) => s.server === line.server && s.stash === line.stash);
+  function sliceOf(line: { stash: string }): StashSlice | undefined {
+    return slices.find((s) => s.stash === line.stash);
   }
 
   function addToCart(key: string, n: number): boolean {
@@ -289,14 +287,14 @@ export function ShopPage() {
       toast("None left to order.", "err");
       return false;
     }
-    const next: (CartLine & { server?: string; stash?: string })[] = cartLines.map((l) => ({ ...l }));
-    const found = next.find((l) => l.type === "item" && l.key === key && l.server === slice.server && l.stash === slice.stash);
+    const next: (CartLine & { stash?: string })[] = cartLines.map((l) => ({ ...l }));
+    const found = next.find((l) => l.type === "item" && l.key === key && l.stash === slice.stash);
     if (found) found.count += n;
-    else next.push({ type: "item", key, count: n, server: slice.server, stash: slice.stash });
-    const split = splitScopedItemLine(next, key, slice.server, slice.stash, Math.max(0, slice.availableItems[key] ?? 0), slice.shulkers);
+    else next.push({ type: "item", key, count: n, stash: slice.stash });
+    const split = splitScopedItemLine(next, key, slice.stash, Math.max(0, slice.availableItems[key] ?? 0), slice.shulkers);
     if (!split) {
       const boxed = boxedContents(key, slice.shulkers);
-      toast(`Only ${grouped(Math.max(0, slice.availableItems[key] ?? 0))} loose available in ${stashLabel(slice.server, slice.stash)} (${grouped(boxed)} in full shulkers).`, "err");
+      toast(`Only ${grouped(Math.max(0, slice.availableItems[key] ?? 0))} loose available in ${stashLabel(slice.stash)} (${grouped(boxed)} in full shulkers).`, "err");
       return false;
     }
     const need = shulkersNeeded(
@@ -325,10 +323,10 @@ export function ShopPage() {
     const slice = sliceOf(line);
     if (!slice) return;
     const rest = cartLines
-      .filter((l, xi) => xi !== index_ && !(l.type === "item" && l.key === line.key && l.server === line.server && l.stash === line.stash))
+      .filter((l, xi) => xi !== index_ && !(l.type === "item" && l.key === line.key && l.stash === line.stash))
       .map((l) => ({ ...l }));
-    rest.push({ type: "item", key: line.key, count: Math.max(1, n), server: line.server, stash: line.stash });
-    const split = splitScopedItemLine(rest, line.key, line.server, line.stash, Math.max(0, slice.availableItems[line.key] ?? 0), slice.shulkers);
+    rest.push({ type: "item", key: line.key, count: Math.max(1, n), stash: line.stash });
+    const split = splitScopedItemLine(rest, line.key, line.stash, Math.max(0, slice.availableItems[line.key] ?? 0), slice.shulkers);
     if (!split) {
       cart.setBadLine(index_);
       toast(`Only ${grouped(Math.max(0, slice.availableItems[line.key] ?? 0))} loose available for that item.`, "err");
@@ -366,7 +364,7 @@ export function ShopPage() {
       }
       if (l.type === "item" && !merged.items.find((x) => x.key === l.key && isShulkerBoxId(x.id))) {
         const groupTotal = cartLines
-          .filter((x) => x.type === "item" && x.key === l.key && x.server === l.server && x.stash === l.stash)
+          .filter((x) => x.type === "item" && x.key === l.key && x.stash === l.stash)
           .reduce((a, x) => a + x.count, 0);
         if (groupTotal > Math.max(0, s.availableItems[l.key] ?? 0) + boxedContents(l.key, s.shulkers)) bad.push(i);
       } else if (l.count > orderableMaxForLine(l, l.count)) bad.push(i);
@@ -377,21 +375,21 @@ export function ShopPage() {
   function orderableMaxForLine(line: CartLine, exclude: number): number {
     const s = sliceOf(line);
     if (!s) return 0;
-    if (line.type !== "item") return Math.max(0, (s.availableShulkers[line.key] ?? 0) - (cart.countOf(line.type, line.key, line.server, line.stash) - exclude));
+    if (line.type !== "item") return Math.max(0, (s.availableShulkers[line.key] ?? 0) - (cart.countOf(line.type, line.key, line.stash) - exclude));
     let boxed = 0;
     for (const b of s.shulkers) {
       let perBox = 0;
       for (const c of b.contents ?? []) if (c.key === line.key) perBox += Math.max(0, c.count);
-      boxed += perBox * Math.max(0, b.count - packedInCart(s.server, s.stash, b.key));
+      boxed += perBox * Math.max(0, b.count - packedInCart(s.stash, b.key));
     }
-    return Math.max(0, (s.availableItems[line.key] ?? 0) - (cart.countOf(line.type, line.key, line.server, line.stash) - exclude)) + boxed;
+    return Math.max(0, (s.availableItems[line.key] ?? 0) - (cart.countOf(line.type, line.key, line.stash) - exclude)) + boxed;
   }
 
   // ---- checkout form (TanStack Form + Zod) ----
   const form = createCheckoutForm(place);
 
   function cartHash(lines: CartLine[]): string {
-    return JSON.stringify(lines.map((l) => [l.type, l.key, l.count, l.server, l.stash]));
+    return JSON.stringify(lines.map((l) => [l.type, l.key, l.count, l.stash]));
   }
 
   async function place(value: DeliveryValues): Promise<void> {
@@ -404,7 +402,7 @@ export function ShopPage() {
     // One order per stash: group lines, one idempotency key per group (reused on safe retry).
     const groups = new Map<string, CartLine[]>();
     for (const l of cartLines) {
-      const k = `${l.server} ${l.stash}`;
+      const k = l.stash;
       if (!groups.has(k)) groups.set(k, []);
       groups.get(k)!.push(l);
     }
@@ -417,18 +415,15 @@ export function ShopPage() {
     const done: string[] = [];
     const failed: string[] = [];
     let unknown = false;
-    for (const [k, lines] of groups) {
-      const [server, ...stashParts] = k.split(" ");
-      const stash = stashParts.join(" ");
-      const hash = k + "::" + cartHash(lines);
+    for (const [stash, lines] of groups) {
+      const hash = stash + "::" + cartHash(lines);
       if (!pendingKeys.current[hash]) pendingKeys.current[hash] = idempotencyKey();
-      setSubmitState({ status: `Placing order for ${k}…` });
+      setSubmitState({ status: `Placing order for ${stash}…` });
       try {
         const res = await api<{ ok: boolean; order: { id: string } }>(`/api/v1/orders`, {
           method: "POST",
           headers: { "Idempotency-Key": pendingKeys.current[hash] },
           body: {
-            server,
             stash,
             lines: lines.map((l) => ({ type: l.type, key: l.key, count: l.count })),
             names,
@@ -439,27 +434,25 @@ export function ShopPage() {
           },
         });
         delete pendingKeys.current[hash];
-        done.push(`${res.order.id} (${k})`);
+        done.push(`${res.order.id} (${stash})`);
       } catch (e: any) {
         const status: number | undefined = e?.status;
         const line = e?.body?.line;
         if (typeof line === "number") {
-          const idx = cartLines.findIndex((l) => l.server === server && l.stash === stash);
+          const idx = cartLines.findIndex((l) => l.stash === stash);
           if (idx >= 0) cart.setBadLine(idx);
         }
         if (status === 0 || status === undefined) {
           unknown = true;
-          failed.push(`${k}: uncertain outcome — retry reuses the same idempotency key`);
+          failed.push(`${stash}: uncertain outcome — retry reuses the same idempotency key`);
         } else {
           delete pendingKeys.current[hash];
-          failed.push(`${k}: ${e?.message ?? "failed"}`);
+          failed.push(`${stash}: ${e?.message ?? "failed"}`);
         }
       }
     }
-    for (const [srv, st] of [...groups.keys()].map((k) => k.split(" ")) as [string, string][]) {
-      void srv;
-      void st;
-      queryClient.invalidateQueries({ queryKey: keys.orders(srv, st) });
+    for (const stash of [...groups.keys()]) {
+      queryClient.invalidateQueries({ queryKey: keys.orders(stash) });
     }
     if (failed.length === 0) {
       cart.clear();
@@ -535,10 +528,10 @@ export function ShopPage() {
               )}
               <ul className="flex flex-col gap-1">
                 {stashList.map((s) => (
-                  <li key={`${s.server} ${s.stash}`} className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm hover:bg-muted">
+                  <li key={s.stash} className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm hover:bg-muted">
                     <span className={`h-2 w-2 shrink-0 rounded-full ${s.online === false ? "bg-amber-500" : "bg-emerald-500"}`} aria-hidden />
-                    <span className="truncate">{prefs.streamer ? s.stash : `${s.server} / ${s.stash}`}</span>
-                    {perms.can("rescan") && <RescanButton server={s.server} stash={s.stash} compact />}
+                    <span className="truncate">{s.stash}</span>
+                    {perms.can("rescan") && <RescanButton stash={s.stash} compact />}
                   </li>
                 ))}
               </ul>
@@ -650,7 +643,6 @@ export function ShopPage() {
                         key={entry.key}
                         entry={entry}
                         mcVersion={mcVersion}
-                        streamer={prefs.streamer}
                         max={orderableMax(entry.key)}
                         onAdd={(n) => {
                           if (addToCart(entry.key, n)) toast(`Added ${grouped(n)} × ${entry.name ?? entry.id}`);
@@ -794,12 +786,12 @@ function FilterRow({ active, onClick, label, count }: { active: boolean; onClick
   );
 }
 
-function RescanButton({ server, stash, compact }: { server: string; stash: string; compact?: boolean }) {
+function RescanButton({ stash, compact }: { stash: string; compact?: boolean }) {
   const [state, setState] = useState("");
   async function rescan() {
     setState("Requesting…");
     try {
-      await api<{ rescanId: number }>("/api/v1/rescan", { method: "POST", body: { server, stash } });
+      await api<{ rescanId: number }>("/api/v1/rescan", { method: "POST", body: { stash } });
       setState("Rescan requested.");
     } catch (e: any) {
       setState(e?.message ?? "Rescan failed.");
@@ -843,14 +835,12 @@ export function statusVariant(status: string): "success" | "warning" | "destruct
 function ProductCard({
   entry,
   mcVersion,
-  streamer,
   max,
   onAdd,
   onOpen,
 }: {
   entry: MergedItem;
   mcVersion: string | null;
-  streamer: boolean;
   max: number;
   onAdd: (n: number) => void;
   onOpen: () => void;
@@ -881,7 +871,7 @@ function ProductCard({
         <span className="ws-slot h-32 w-full shrink-0">
           <ItemIcon id={entry.id} size={56} contents={entry.contents} label={entry.name ?? undefined} mcVersion={mcVersion} />
         </span>
-        <span className="line-clamp-2 min-h-10 text-[13px] font-semibold leading-snug">{maskServer(entry.name ?? entry.id, streamer)}</span>
+        <span className="line-clamp-2 min-h-10 text-[13px] font-semibold leading-snug">{entry.name ?? entry.id}</span>
         <span className="mt-auto font-mono text-lg font-bold text-emerald-600 dark:text-emerald-300">×{grouped(total)}</span>
         <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
           <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${empty ? "bg-red-500" : low ? "bg-amber-500" : "bg-emerald-500"}`} aria-hidden />
@@ -907,11 +897,11 @@ function ProductCard({
   );
 }
 
-function groupLines(lines: CartLine[]): { server: string; stash: string; lines: CartLine[] }[] {
-  const out = new Map<string, { server: string; stash: string; lines: CartLine[] }>();
+function groupLines(lines: CartLine[]): { stash: string; lines: CartLine[] }[] {
+  const out = new Map<string, { stash: string; lines: CartLine[] }>();
   for (const l of lines) {
-    const k = `${l.server} ${l.stash}`;
-    if (!out.has(k)) out.set(k, { server: l.server, stash: l.stash, lines: [] });
+    const k = l.stash;
+    if (!out.has(k)) out.set(k, { stash: l.stash, lines: [] });
     out.get(k)!.lines.push(l);
   }
   return [...out.values()];
@@ -941,7 +931,6 @@ function CartPanel(props: {
 }) {
   const { lines, badLine, step, setStep } = props;
   const groups = groupLines(lines);
-  const singleServer = new Set(groups.map((g) => g.server)).size <= 1;
   const names = (key: string) => {
     for (const s of props.slices) {
       const it = s.items.find((x) => x.key === key);
@@ -977,13 +966,13 @@ function CartPanel(props: {
               <>
                 <ul id="cart-lines" className="flex max-h-80 flex-col gap-2 overflow-auto">
                   {lines.map((l, i) => (
-                    <li key={`${l.type}:${l.key}:${l.server}/${l.stash}`} className={`cart-line flex items-center gap-2 rounded-lg border p-2 ${badLine === i || props.overLines.includes(i) ? "border-destructive/60" : "border-border/70"}`}>
+                    <li key={`${l.type}:${l.key}:${l.stash}`} className={`cart-line flex items-center gap-2 rounded-lg border p-2 ${badLine === i || props.overLines.includes(i) ? "border-destructive/60" : "border-border/70"}`}>
                       <span className="ws-slot h-11 w-11 shrink-0">
                         <ItemIcon id={l.type === "shulker" ? "minecraft:shulker_box" : (itemIdOf(l.key) ?? "minecraft:stone")} size={30} label={l.type === "shulker" ? undefined : names(l.key)} />
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[13px] font-semibold" title={l.type === "shulker" ? `Packed: ${l.key}` : names(l.key)}>{l.type === "shulker" ? `Packed: ${l.key}` : (names(l.key))}</span>
-                        <span className="block truncate text-[11px] text-muted-foreground" title={`${l.type === "shulker" ? "whole shulker box" : "loose items"} · ${l.server} / ${l.stash}`}>{l.type === "shulker" ? "whole box" : "loose"} · {singleServer ? l.stash : `${l.server} / ${l.stash}`}</span>
+                        <span className="block truncate text-[11px] text-muted-foreground" title={`${l.type === "shulker" ? "whole shulker box" : "loose items"} · ${l.stash}`}>{l.type === "shulker" ? "whole box" : "loose"} · {l.stash}</span>
                       </span>
                       <QtyInput small value={l.count} min={1} onChange={(n) => props.onSetQty(i, n)} />
                       <button type="button" aria-label={`Remove ${l.key}`} className="rounded-md px-1.5 py-1 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => props.onRemove(i)}>✕</button>
@@ -1016,11 +1005,11 @@ function CartPanel(props: {
   );
 }
 
-function DeliveryForm({ form, setStep, groups, canGuild }: { form: CheckoutForm; setStep: (n: 1 | 2 | 3) => void; groups: { server: string; stash: string; lines: CartLine[] }[]; canGuild: boolean }) {
+function DeliveryForm({ form, setStep, groups, canGuild }: { form: CheckoutForm; setStep: (n: 1 | 2 | 3) => void; groups: { stash: string; lines: CartLine[] }[]; canGuild: boolean }) {
   return (
     <div id="cart-step-2" className="flex flex-col gap-3">
       <div className="rounded-lg bg-muted/60 p-2 text-xs text-muted-foreground">
-        Ordering from {groups.length} stash{groups.length > 1 ? "es" : ""}: {groups.map((g) => `${g.server} / ${g.stash}`).join(" · ")}.
+        Ordering from {groups.length} stash{groups.length > 1 ? "es" : ""}: {groups.map((g) => g.stash).join(" · ")}.
         One order is placed per stash.
       </div>
       <form.Field name="purpose">
@@ -1130,14 +1119,14 @@ function EachNames({ form }: { form: CheckoutForm }) {
   );
 }
 
-function ReviewStep(props: Parameters<typeof CartPanel>[0] & { groups: { server: string; stash: string; lines: CartLine[] }[] }) {
+function ReviewStep(props: Parameters<typeof CartPanel>[0] & { groups: { stash: string; lines: CartLine[] }[] }) {
   const v = props.form.state.values;
   return (
     <div id="cart-step-3" className="flex flex-col gap-2">
       <div id="order-review" className="flex min-w-0 flex-col gap-2 break-words rounded-lg bg-muted/60 p-2.5 text-sm">
         {props.groups.map((g) => (
-          <div key={`${g.server} ${g.stash}`}>
-            <p className="font-semibold">{g.server} / {g.stash}</p>
+          <div key={g.stash}>
+            <p className="font-semibold">{g.stash}</p>
             {g.lines.map((l) => (
               <p key={`${l.type}:${l.key}`} className="break-words text-muted-foreground">
                 <span className="font-mono font-bold text-foreground">×{grouped(l.count)}</span> {l.type === "shulker" ? `packed ${l.key}` : l.key}

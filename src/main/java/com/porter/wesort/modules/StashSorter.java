@@ -5825,7 +5825,8 @@ public class StashSorter extends Module {
         com.porter.wesort.compat.InventorySync.expectPlacement(
                 anvilSpot,
                 BuiltInRegistries.ITEM.getKey(inv.getItem(anvilSlot).getItem()).toString());
-        if (placeWithDurableRotation(anvilSpot, new FindItemResult(anvilSlot, inv.getItem(anvilSlot).getCount()))) {
+        if (placeWithDurableRotation(
+                anvilSpot, new FindItemResult(anvilSlot, inv.getItem(anvilSlot).getCount()))) {
             anvilPlaced = true;
             anvilPlacedAt = stepTicks;
             wait = delay.get();

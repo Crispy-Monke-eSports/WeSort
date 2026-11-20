@@ -173,8 +173,8 @@ public final class WorldInteractionGuard {
         // BREAK permit still authorizes finishing that same standing shulker.
         // Once the client predicts air, only a remembered authorized start for
         // the original block can finish it; neither path authorizes a new target.
-        boolean permittedStandingBlock = block.endsWith("_shulker_box")
-                && PERMITS.allows(time, position.asLong(), Operation.BREAK, block, job);
+        boolean permittedStandingBlock =
+                block.endsWith("_shulker_box") && PERMITS.allows(time, position.asLong(), Operation.BREAK, block, job);
         boolean permittedPredictedBreak = previous != null
                 && previous.pos() == position.asLong()
                 && previous.job().equals(job)

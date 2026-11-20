@@ -43,9 +43,11 @@ public abstract class BlockInputMixin {
             at = @At("HEAD"),
             cancellable = true)
     private void wesort$beforeBlockBreak(BlockPos pos, Direction face, CallbackInfoReturnable<Boolean> cir) {
-        wesort$lastBreakTarget = pos == null ? null : pos.immutable();
-        if (!WorldInteractionGuard.allowBreak(pos) || (InventorySync.calledFromWeSort() && !InventorySync.allowInput()))
+        if (!WorldInteractionGuard.allowBreak(pos) || (InventorySync.calledFromWeSort() && !InventorySync.allowInput())) {
             cir.setReturnValue(false);
+            return;
+        }
+        wesort$lastBreakTarget = pos == null ? null : pos.immutable();
     }
 
     private static BlockPos wesort$lastBreakTarget;
@@ -56,7 +58,7 @@ public abstract class BlockInputMixin {
     private void wesort$beforeBlockBreakStop(org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
         BlockPos pos = wesort$lastBreakTarget;
         if (pos != null
-                && (!WorldInteractionGuard.allowBreak(pos)
+                && (!WorldInteractionGuard.allowBreakStop(pos)
                         || (InventorySync.calledFromWeSort() && !InventorySync.allowInput()))) ci.cancel();
     }
 }

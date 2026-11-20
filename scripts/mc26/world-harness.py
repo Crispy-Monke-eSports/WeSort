@@ -221,7 +221,20 @@ class Harness:
             time.sleep(0.5)
         require(self.http('/health/ready')[0] == 200, 'Docker Manager readiness timeout')
         token = self.run(self.compose + ['exec', '-T', 'manager', '/opt/wesort/entrypoint', 'bootstrap']).strip()
-        require(self.http('/api/v1/auth/setup', {'code': token, 'password': secrets.token_urlsafe(32)})[0] == 200, 'Owner bootstrap failed')
+        owner_password = secrets.token_urlsafe(32)
+        require(self.http('/api/v1/auth/setup', {'code': token, 'password': owner_password})[0] == 200, 'Owner bootstrap failed')
+        # The Manager's single-server gate (400 without a server, 404 without a
+        # stash def) is fail-closed by design: a real deployment configures both
+        # before any bot publishes. The owner session (cookie jar) sets the one
+        # Minecraft server to exactly what the test client reports as its
+        # connection address, and defines e2e-fixture over the fixture area.
+        require(self.http('/api/v1/auth/login', {'password': owner_password})[0] == 200, 'Owner login failed')
+        status, srv = self.http('/api/v1/server', {'server': '127.0.0.1:' + str(self.server_port)})
+        require(status == 200 and srv.get('configured'), 'Manager server setup failed: %s %s' % (status, srv))
+        status, _ = self.http('/api/v1/stash-defs', {'action': 'create', 'name': 'e2e-fixture',
+            'dimension': 'minecraft:overworld',
+            'pos1': {'x': -32, 'y': 40, 'z': -32}, 'pos2': {'x': 63, 'y': 90, 'z': 32}})
+        require(status == 200, 'e2e-fixture stash def failed: %s' % status)
         status, link = self.http('/api/v1/link')
         require(status == 200 and 'apiKey' not in link, 'Owner link exposed an agent secret')
         self.key = self.run(self.compose + ['exec', '-T', 'manager', '/opt/wesort/entrypoint', 'agent-key']).strip()

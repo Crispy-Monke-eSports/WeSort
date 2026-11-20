@@ -318,6 +318,12 @@ class HierarchyHarness(stock.StockHarness):
             'agent-issue', foreign_id, 'OtherBot', self.server_name, 'other-stash'
         ]).strip())
         self.run(cli + ['agent-require-scoped'])
+        # The stash-def gate is fail-closed: in-scope heartbeats for a second
+        # stash need its definition (the owner session from start_manager persists).
+        status, _ = self.http('/api/v1/stash-defs', {'action': 'create', 'name': 'secondary-fixture',
+            'dimension': 'minecraft:overworld',
+            'pos1': {'x': -32, 'y': 40, 'z': -32}, 'pos2': {'x': 63, 'y': 90, 'z': 32}})
+        require(status == 200, 'secondary-fixture stash def failed: %s' % status)
         heartbeat = {'server': self.server_name, 'stash': 'e2e-fixture', 'player': self.player}
         require(shared.post('/api/v1/heartbeat', heartbeat)[0] == 401, 'Shared credential survived scoped-only activation')
         require(old.post('/api/v1/heartbeat', heartbeat)[0] == 401, 'Rotated credential could still act')

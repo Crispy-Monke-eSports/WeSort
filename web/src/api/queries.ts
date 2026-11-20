@@ -37,6 +37,14 @@ export const keys = {
   users: ["users"] as const,
   server: ["server"] as const,
   stashDefs: ["stash-defs"] as const,
+  operations: ["operations"] as const,
+  physical: ["physical"] as const,
+  jobs: ["jobs"] as const,
+  handoffs: ["handoffs"] as const,
+  custody: ["custody"] as const,
+  deposits: ["deposits"] as const,
+  boxJobs: ["boxes", "jobs"] as const,
+  auditOrders: ["audit", "orders"] as const,
 };
 
 export function useAuth() {
@@ -223,6 +231,20 @@ export function useInvalidateOrders() {
   return (stash: string) => qc.invalidateQueries({ queryKey: keys.orders(stash) });
 }
 
+export interface OpsList {
+  [key: string]: unknown;
+}
+
+function useOwnerList(key: readonly string[], path: string, enabled: boolean, query = "") {
+  return useQuery({
+    queryKey: [...key, query],
+    queryFn: async () => (await api<unknown>(`${path}${query}`)) as OpsList,
+    enabled,
+    staleTime: 10_000,
+    retry: 1,
+  });
+}
+
 export interface StashOrder {
   stash: string;
   id: string;
@@ -265,6 +287,54 @@ export function useAllOrders(
     .filter((s): s is string => s != null);
   const loading = results.some((r: { isLoading: boolean }) => r.isLoading);
   return { orders, failedStashes, loading };
+}
+
+/** Global operations view: stock/agent/order states plus alerts (activity perm). */
+export function useOperations(enabled: boolean) {
+  return useQuery({
+    queryKey: [...keys.operations],
+    queryFn: async () => (await api<unknown>("/api/v1/operations")) as OpsList,
+    enabled,
+    staleTime: 5_000,
+    retry: 1,
+    refetchInterval: enabled ? 15000 : false,
+  });
+}
+
+/** Owner-only operational lists. Each returns the raw JSON object for table display. */
+export function usePhysicalOps(enabled: boolean) {
+  return useOwnerList([...keys.physical], "/api/v1/physical", enabled);
+}
+export function useJobQueue(enabled: boolean) {
+  return useOwnerList([...keys.jobs], "/api/v1/jobs", enabled);
+}
+export function useHandoffs(enabled: boolean, order = "") {
+  return useOwnerList([...keys.handoffs], "/api/v1/handoffs", enabled, order ? `?order=${encodeURIComponent(order)}` : "");
+}
+export function useCustody(enabled: boolean, order = "") {
+  return useOwnerList([...keys.custody], "/api/v1/custody", enabled, order ? `?order=${encodeURIComponent(order)}` : "");
+}
+export function useDeposits(enabled: boolean, order = "") {
+  return useOwnerList([...keys.deposits], "/api/v1/deposits", enabled, order ? `?order=${encodeURIComponent(order)}` : "");
+}
+export function useBoxJobs(enabled: boolean) {
+  return useOwnerList([...keys.boxJobs], "/api/v1/boxes/jobs", enabled);
+}
+export function useAuditOrders(enabled: boolean, params: { limit?: number; order?: string; person?: string; item?: string; stash?: string }) {
+  const q = new URLSearchParams();
+  if (params.limit) q.set("limit", String(params.limit));
+  if (params.order) q.set("order", params.order);
+  if (params.person) q.set("person", params.person);
+  if (params.item) q.set("item", params.item);
+  if (params.stash) q.set("stash", params.stash);
+  const qs = q.toString();
+  return useQuery({
+    queryKey: [...keys.auditOrders, qs],
+    queryFn: async () => (await api<unknown>(`/api/v1/audit/orders${qs ? `?${qs}` : ""}`)) as OpsList,
+    enabled,
+    staleTime: 10_000,
+    retry: 1,
+  });
 }
 
 /** Clear every cached server response on logout so the next user starts clean. */

@@ -28,8 +28,9 @@ import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import { Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth, useLogout, usePermissions } from "../../api/queries";
+import { ToastHost } from "../ToastHost";
 
 const DRAWER_WIDTH = 240;
 
@@ -55,6 +56,23 @@ export function AppShell() {
 
   const user = auth.data?.user ?? null;
   const visibleNav = NAV.filter((n) => (n.perm === "view" ? perms.can("view") || perms.owner : perms.can(n.perm) || perms.owner));
+
+  // Auth gate: unauthenticated users go to login (except on /login itself).
+  useEffect(() => {
+    if (auth.isSuccess && !auth.data.loggedIn && location.pathname !== "/login") {
+      void navigate({ to: "/login", search: { redirect: location.pathname } });
+    }
+  }, [auth.isSuccess, auth.data, location.pathname, navigate]);
+
+  // The API client fires this on 401: bounce to login.
+  useEffect(() => {
+    const onAuth = () => {
+      const here = window.location.pathname;
+      void navigate({ to: "/login", search: { redirect: here === "/login" ? "/overview" : here } });
+    };
+    window.addEventListener("wesort:unauthorized", onAuth);
+    return () => window.removeEventListener("wesort:unauthorized", onAuth);
+  }, [navigate]);
 
   async function doLogout() {
     setAnchor(null);
@@ -172,6 +190,7 @@ export function AppShell() {
       <Box component="main" sx={{ flexGrow: 1, p: { xs: 2, md: 3 }, width: { md: `calc(100% - ${DRAWER_WIDTH}px)` }, mt: 8 }}>
         <Outlet />
       </Box>
+      <ToastHost />
     </Box>
   );
 }

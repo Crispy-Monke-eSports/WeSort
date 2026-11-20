@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { boxedContents, shulkersNeeded, splitItemLine, takeBoxes } from "../lib/shop";
+import {
+  availabilityOf,
+  boxedContents,
+  isSingleContent,
+  mixedBoxedContents,
+  shulkersNeeded,
+  singleBoxedContents,
+  splitItemLine,
+  takeBoxes,
+} from "../lib/shop";
 
 const diamonds = (key: string, count: number, perBox: number) => ({
   key,
@@ -82,5 +91,54 @@ describe("aggregation", () => {
     const shulkers = [diamonds("a", 1, 1728), diamonds("b", 2, 1728)];
     expect(boxedContents("minecraft:diamond", shulkers)).toBe(1728 + 2 * 1728);
     expect(boxedContents("minecraft:iron_ingot", shulkers)).toBe(0);
+  });
+});
+
+describe("mixed shulkers never over-deliver (P0 2.4)", () => {
+  const mixed = (key: string, count: number) => ({
+    key,
+    id: "minecraft:shulker_box",
+    itemKey: "minecraft:diamond",
+    count,
+    contents: [
+      { slot: 0, key: "minecraft:diamond", count: 64 },
+      { slot: 1, key: "minecraft:netherite_ingot", count: 64 },
+    ],
+  });
+
+  it("single-content detection ignores empty slots but rejects any foreign key", () => {
+    expect(isSingleContent({ key: "a", count: 1, contents: [{ slot: 0, key: "minecraft:diamond", count: 64 }] } as any, "minecraft:diamond")).toBe(true);
+    expect(isSingleContent(mixed("m", 1) as any, "minecraft:diamond")).toBe(false);
+    expect(isSingleContent(mixed("m", 1) as any, "minecraft:netherite_ingot")).toBe(false);
+    expect(isSingleContent({ key: "e", count: 1, contents: [] } as any, "minecraft:diamond")).toBe(false);
+  });
+
+  it("takeBoxes never takes a mixed box whole, even when it holds enough", () => {
+    const shulkers = [mixed("m", 1)];
+    const { took, remainder } = takeBoxes("minecraft:diamond", 64, shulkers, () => 0);
+    expect(took).toEqual([]);
+    expect(remainder).toBe(64);
+  });
+
+  it("splitItemLine does not emit a packed line for a mixed box", () => {
+    const shulkers = [mixed("m", 1)];
+    const ok = splitItemLine(
+      [{ type: "item", key: "minecraft:diamond", count: 64 }],
+      "minecraft:diamond",
+      64,
+      shulkers,
+    );
+    // Satisfiable loose: stays a loose line, no shulker line with hitchhikers.
+    expect(ok).toEqual([{ type: "item", key: "minecraft:diamond", count: 64 }]);
+    expect(ok?.some((l) => l.type === "shulker")).toBe(false);
+  });
+
+  it("availability splits single-boxed, mixed and loose units", () => {
+    const shulkers = [diamonds("a", 1, 1728), mixed("m", 2)];
+    expect(singleBoxedContents("minecraft:diamond", shulkers)).toBe(1728);
+    expect(mixedBoxedContents("minecraft:diamond", shulkers)).toBe(2 * 64);
+    expect(mixedBoxedContents("minecraft:netherite_ingot", shulkers)).toBe(2 * 64);
+    const av = availabilityOf("minecraft:diamond", 10, shulkers);
+    expect(av).toEqual({ loose: 10, boxed: 1728, mixed: 128, orderable: 1738 });
   });
 });

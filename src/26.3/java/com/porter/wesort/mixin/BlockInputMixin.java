@@ -58,8 +58,14 @@ public abstract class BlockInputMixin {
     @Inject(method = "stopDestroyBlock", at = @At("HEAD"), cancellable = true)
     private void wesort$beforeBlockBreakStop(org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
         BlockPos pos = wesort$lastBreakTarget;
-        if (pos != null
-                && (!WorldInteractionGuard.allowBreakStop(pos)
-                        || (InventorySync.calledFromWeSort() && !InventorySync.allowInput()))) ci.cancel();
+        if (pos == null) return;
+        if (!WorldInteractionGuard.allowBreakStop(pos)
+                || (InventorySync.calledFromWeSort() && !InventorySync.allowInput())) {
+            ci.cancel();
+            return;
+        }
+        // Never retain a stale break target after vanilla has been allowed to
+        // finish its STOP. The outgoing packet remains independently guarded.
+        wesort$lastBreakTarget = null;
     }
 }

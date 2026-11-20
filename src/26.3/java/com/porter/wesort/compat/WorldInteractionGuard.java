@@ -32,6 +32,7 @@ public final class WorldInteractionGuard {
     // STOP_DESTROY_BLOCK. Remember only the last successfully authorized start:
     // STOP can finish that precise break, never authorize a new target or job.
     private record AuthorizedBreak(long pos, String block, String job, long at) {}
+
     private static AuthorizedBreak authorizedBreak;
 
     private WorldInteractionGuard() {}
@@ -142,8 +143,7 @@ public final class WorldInteractionGuard {
         long now = now();
         String observed = blockId(position);
         boolean permit = PERMITS.allows(now, position.asLong(), Operation.BREAK, observed, job);
-        if (permit && safeBlock(position))
-            authorizedBreak = new AuthorizedBreak(position.asLong(), observed, job, now);
+        if (permit && safeBlock(position)) authorizedBreak = new AuthorizedBreak(position.asLong(), observed, job, now);
         if (!permit && job != null && !job.isEmpty() && !job.equals("unknown") && safeBlock(position)) {
             String holder = PERMITS.jobOf(now, position.asLong(), Operation.BREAK);
             denied(holder == null ? "break-no-permit-expired" : "break-no-permit-block");
@@ -160,8 +160,7 @@ public final class WorldInteractionGuard {
      */
     public static boolean allowBreakStop(BlockPos position) {
         if (!dedicated()) return true;
-        if (position == null || mc.level == null || !mc.level.isLoaded(position)
-                || PhysicalJournalRuntime.blocked()) {
+        if (position == null || mc.level == null || !mc.level.isLoaded(position) || PhysicalJournalRuntime.blocked()) {
             denied("break-stop-unavailable");
             return false;
         }

@@ -43,7 +43,8 @@ public abstract class BlockInputMixin {
             at = @At("HEAD"),
             cancellable = true)
     private void wesort$beforeBlockBreak(BlockPos pos, Direction face, CallbackInfoReturnable<Boolean> cir) {
-        if (!WorldInteractionGuard.allowBreak(pos) || (InventorySync.calledFromWeSort() && !InventorySync.allowInput())) {
+        if (!WorldInteractionGuard.allowBreak(pos)
+                || (InventorySync.calledFromWeSort() && !InventorySync.allowInput())) {
             cir.setReturnValue(false);
             return;
         }

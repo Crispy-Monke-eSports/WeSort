@@ -346,7 +346,8 @@ public final class InventorySync {
         // Without a matching placement announcement the packet is cancelled below.
         boolean ours = calledFromWeSort();
         if (!ours && event.packet instanceof ServerboundUseItemOnPacket placed) {
-            var target = placed.hitResult().getBlockPos().relative(placed.hitResult().getDirection());
+            var target =
+                    placed.hitResult().getBlockPos().relative(placed.hitResult().getDirection());
             if (WorldInteractionGuard.hasLivePlacePermit(target)) {
                 ours = true;
                 // The regular mixin preflight was deferred with Meteor's rotation.
@@ -355,7 +356,8 @@ public final class InventorySync {
                 var menu = mc.player.containerMenu;
                 actionBefore = frame(new InventoryReadback.Expected(
                         menu.containerId,
-                        fingerprints(menu.slots.stream().map(slot -> slot.getItem()).toList()),
+                        fingerprints(
+                                menu.slots.stream().map(slot -> slot.getItem()).toList()),
                         fingerprint(menu.getCarried())));
                 intentCounted("permit-placement-attribution");
             }

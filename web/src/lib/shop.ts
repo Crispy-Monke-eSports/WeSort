@@ -46,6 +46,27 @@ export function boxedContents(key: string, shulkers: ShulkerEntry[]): number {
   return n;
 }
 
+/** Deterministic JSON: object keys sorted recursively, so equal payloads hash equally. */
+export function stable(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+  if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`;
+  const o = value as Record<string, unknown>;
+  return `{${Object.keys(o).sort().map((k) => `${JSON.stringify(k)}:${stable(o[k])}`).join(",")}}`;
+}
+
+/** Short hex digest (FNV-1a, 64-bit) of a stable payload string: lookup key, not a secret. */
+export function payloadHash(value: unknown): string {
+  const s = stable(value);
+  let h1 = 0xcbf29ce4;
+  let h2 = 0x84222325;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 16777619);
+    h2 = Math.imul(h2 ^ c, 16777619) ^ (h1 >>> 0);
+  }
+  return (h2 >>> 0).toString(16).padStart(8, "0") + (h1 >>> 0).toString(16).padStart(8, "0");
+}
+
 export interface BoxSource {
   key: string;
   perBox: number;

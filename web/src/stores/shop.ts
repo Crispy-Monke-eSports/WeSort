@@ -96,6 +96,84 @@ export function setCartScope(user: string): void {
   useCart.getState().setScope(user);
 }
 
+// ---------- multi-stash checkout: explicit per-group state machine ----------
+
+export type CheckoutStatus = "not_submitted" | "submitting" | "confirmed" | "uncertain" | "rejected";
+
+/** One stash's order: the EXACT request payload plus its Idempotency-Key. */
+export interface OrderBody {
+  stash: string;
+  lines: { type: "item" | "shulker"; key: string; count: number }[];
+  names: { mode: "all"; name: string } | { mode: "each"; names: string[] } | null;
+  packageLabel: null;
+  purpose: "SELF" | "GUILD";
+  recipient: string | null;
+  comment: string | null;
+}
+
+export interface CheckoutGroup {
+  body: OrderBody;
+  /** Hash of the exact body: retries reuse the stored key/body only on exact match. */
+  hash: string;
+  key: string;
+  status: CheckoutStatus;
+  orderId?: string;
+  error?: string;
+  updatedAt: number;
+}
+
+const OrderBodyLineSchema = z.object({
+  type: z.enum(["item", "shulker"]),
+  key: z.string(),
+  count: z.number(),
+});
+const CheckoutGroupSchema = z.object({
+  body: z.object({
+    stash: z.string(),
+    lines: z.array(OrderBodyLineSchema),
+    names: z.unknown().nullable(),
+    packageLabel: z.unknown().nullable(),
+    purpose: z.string(),
+    recipient: z.string().nullable(),
+    comment: z.string().nullable(),
+  }),
+  hash: z.string(),
+  key: z.string(),
+  status: z.enum(["not_submitted", "submitting", "confirmed", "uncertain", "rejected"]),
+  orderId: z.string().optional(),
+  error: z.string().optional(),
+  updatedAt: z.number(),
+});
+const CheckoutPersistedSchema = z.object({
+  pending: z.record(z.string(), z.array(CheckoutGroupSchema)),
+});
+
+interface CheckoutState {
+  /** Per-user pending groups; survives reload so uncertain checkouts can be retried exactly. */
+  pending: Record<string, CheckoutGroup[]>;
+  getPending: (user: string) => CheckoutGroup[];
+  setPending: (user: string, groups: CheckoutGroup[]) => void;
+}
+
+export const useCheckout = create<CheckoutState>()(
+  persist(
+    (set, get) => ({
+      pending: {},
+      getPending: (user) => get().pending[scopeKey(user || "anon")] ?? [],
+      setPending: (user, groups) =>
+        set((s) => ({ pending: { ...s.pending, [scopeKey(user || "anon")]: groups } })),
+    }),
+    {
+      name: "wesort.checkout.v1",
+      partialize: (s) => ({ pending: s.pending }) as CheckoutState,
+      merge: (persisted, current) => {
+        const parsed = CheckoutPersistedSchema.safeParse(persisted);
+        return { ...current, pending: parsed.success ? parsed.data.pending : {} };
+      },
+    },
+  ),
+);
+
 interface PrefsState {
   theme: "modern" | "classic";
   sort: "creative" | "count" | "name" | "id";

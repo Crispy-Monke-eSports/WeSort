@@ -60,6 +60,8 @@ public final class InventorySync {
     private static net.minecraft.world.level.block.state.BlockState readBlock;
     private static final Map<Integer, BlockExpected> blocks = new LinkedHashMap<>();
     private static BlockUse blockUse;
+    private static BlockPos expectSpot;
+    private static String expectBlock;
     private static boolean recoveringWorld, recoveringReceipt;
     private static boolean reopenRequested;
 
@@ -246,6 +248,23 @@ public final class InventorySync {
                                 && !frame.getClassName().startsWith("com.porter.wesort.mixin.")));
     }
 
+    /**
+     * Announce a placement the bot is about to send: the following own UseItemOn against this
+     * empty cell is a durable physical mutation, so its intent (with the placed block) is recorded
+     * before the packet leaves. Set immediately before the interact/place call; consumed by the
+     * next own UseItemOn against the same cell, cleared otherwise, so a stale slot can never
+     * invent an intent.
+     */
+    public static void expectPlacement(BlockPos spot, String block) {
+        expectSpot = spot == null ? null : spot.immutable();
+        expectBlock = block;
+    }
+
+    public static void clearPlacementExpectation() {
+        expectSpot = null;
+        expectBlock = null;
+    }
+
     public static void beginBlockUse(net.minecraft.world.phys.BlockHitResult hit) {
         if (mc.player == null || mc.level == null || !calledFromWeSort()) return;
         BlockPos clicked = hit.getBlockPos().immutable(), adjacent = clicked.relative(hit.getDirection());
@@ -332,6 +351,31 @@ public final class InventorySync {
                             use.sequence(),
                             new BlockExpected(
                                     use.sequence(), changed, blockId(changed), System.nanoTime() + 8_000_000_000L));
+                    mutation = true;
+                }
+                // An announced placement against this exact cell: durable intent with the
+                // placed block before the packet leaves (W-061 journal ordering). The slot
+                // clears on the first own UseItemOn whether it matches or not.
+                BlockPos want = expectSpot;
+                String placing = expectBlock;
+                expectSpot = null;
+                expectBlock = null;
+                if (want != null
+                        && placing != null
+                        && !placing.isEmpty()
+                        && use.hitResult().getBlockPos().relative(use.hitResult().getDirection()).equals(want)) {
+                    blocks.put(
+                            use.sequence(),
+                            new BlockExpected(use.sequence(), want, placing, System.nanoTime() + 8_000_000_000L));
+                    var hand = mc.player.getMainHandItem();
+                    String outcome;
+                    if (hand.getCount() <= 1) outcome = "empty";
+                    else {
+                        var rest = hand.copy();
+                        rest.setCount(rest.getCount() - 1);
+                        outcome = fingerprint(rest);
+                    }
+                    alternatives = Map.of(36 + mc.player.getInventory().getSelectedSlot(), Set.of(outcome));
                     mutation = true;
                 }
             }

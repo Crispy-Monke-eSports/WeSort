@@ -99,11 +99,20 @@ public final class WorldInteractionGuard {
         // Fail-closed: without a live, known job no mutation is authorized,
         // even with a leftover permit (permits themselves also reject unknown).
         String job = currentJob();
-        if (mc.level == null) return false;
+        if (mc.level == null) {
+            denied("use-no-level");
+            return false;
+        }
         var position = hit.getBlockPos();
-        if (!mc.level.isLoaded(position)) return false;
+        if (!mc.level.isLoaded(position)) {
+            denied("use-unloaded");
+            return false;
+        }
         var target = position.relative(hit.getDirection());
-        if (!mc.level.isLoaded(target)) return false;
+        if (!mc.level.isLoaded(target)) {
+            denied("use-target-unloaded");
+            return false;
+        }
         long now = now();
         // Activation: the clicked block itself is authorized for this job.
         boolean usePermit = PERMITS.allows(now, position.asLong(), Operation.USE, blockId(position), job);
@@ -116,7 +125,10 @@ public final class WorldInteractionGuard {
     public static boolean allowBreak(BlockPos position) {
         if (!dedicated()) return true;
         String job = currentJob();
-        if (mc.level == null || !mc.level.isLoaded(position)) return false;
+        if (mc.level == null || !mc.level.isLoaded(position)) {
+            denied("break-unloaded");
+            return false;
+        }
         return breakDecision(
                 job,
                 safeBlock(position),
@@ -175,9 +187,21 @@ public final class WorldInteractionGuard {
     public static boolean allowSign(BlockPos position) {
         if (!dedicated()) return true;
         String job = currentJob();
-        if (job == null || job.isEmpty() || job.equals("unknown")) return false;
-        if (mc.level == null || !mc.level.isLoaded(position)) return false;
-        return PERMITS.allows(now(), position.asLong(), Operation.SIGN, blockId(position), job);
+        if (job == null || job.isEmpty() || job.equals("unknown")) {
+            denied("sign-unknown-job");
+            return false;
+        }
+        if (mc.level == null || !mc.level.isLoaded(position)) {
+            denied("sign-unloaded");
+            return false;
+        }
+        if (!safeBlock(position)) {
+            denied("sign-safety-sensitive");
+            return false;
+        }
+        boolean ok = PERMITS.allows(now(), position.asLong(), Operation.SIGN, blockId(position), job);
+        if (!ok) denied("sign-no-permit");
+        return ok;
     }
 
     /** The authorizing job of the live permit, for deny audit (null when there is none). */

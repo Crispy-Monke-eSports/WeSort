@@ -3780,7 +3780,7 @@ public class StashSorter extends Module {
     private String notInStashWorld() {
         if (stash == null) return "no stash";
         String dim = !stash.dimension.isEmpty() ? stash.dimension : stash.areaDimension;
-        if (!dim.isEmpty()) return dim.equals(Stash.currentDimension()) ? null : "wrong dimension";
+        if (!dim.isEmpty()) return Stash.sameDimension(dim, Stash.currentDimension()) ? null : "wrong dimension";
 
         Vec3 at = mc.player.position();
         for (Box box : stash.boxes) {
@@ -5812,6 +5812,8 @@ public class StashSorter extends Module {
         }
         // W-061: this job places its anvil/table into this empty cell, nothing else.
         com.porter.wesort.compat.WorldInteractionGuard.authorizePlace(anvilSpot);
+        com.porter.wesort.compat.InventorySync.expectPlacement(
+                anvilSpot, BuiltInRegistries.ITEM.getKey(inv.getItem(anvilSlot).getItem()).toString());
         if (BlockUtils.place(
                 anvilSpot,
                 new FindItemResult(anvilSlot, inv.getItem(anvilSlot).getCount()),
@@ -5823,7 +5825,10 @@ public class StashSorter extends Module {
             anvilPlaced = true;
             anvilPlacedAt = stepTicks;
             wait = delay.get();
-        } else anvilSpotFailed();
+        } else {
+            com.porter.wesort.compat.InventorySync.clearPlacementExpectation();
+            anvilSpotFailed();
+        }
     }
 
     /** That spot did not work: not tried again, and another is looked for (a few times). */
@@ -6786,8 +6791,11 @@ public class StashSorter extends Module {
         placedStacks = StackInfo.of(shulker).contents().size();
         // W-061: this job places its own temporary shulker into this empty cell, nothing else.
         com.porter.wesort.compat.WorldInteractionGuard.authorizePlace(spot);
+        com.porter.wesort.compat.InventorySync.expectPlacement(
+                spot, BuiltInRegistries.ITEM.getKey(shulker.getItem()).toString());
         if (!BlockUtils.place(
                 spot, new FindItemResult(hotbar, shulker.getCount()), rotate.get(), 50, true, true, true)) {
+            com.porter.wesort.compat.InventorySync.clearPlacementExpectation();
             placeFailed(spot);
             return;
         }
@@ -10008,7 +10016,7 @@ public class StashSorter extends Module {
     private boolean inStashDimension() {
         if (stash == null || mc.level == null) return false;
         String dim = !stash.areaDimension.isEmpty() ? stash.areaDimension : stash.dimension;
-        return !dim.isEmpty() && dim.equals(Stash.currentDimension());
+        return !dim.isEmpty() && Stash.sameDimension(dim, Stash.currentDimension());
     }
 
     private boolean isContainer(BlockPos pos) {

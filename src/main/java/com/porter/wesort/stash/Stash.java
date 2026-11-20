@@ -282,6 +282,24 @@ public class Stash {
         return cachedDimension;
     }
 
+    /**
+     * Canonical dimension id for comparisons ("minecraft:overworld"). The live level reports the
+     * raw ResourceKey form while directives and records carry the normalized id; comparing raw
+     * strings silently mismatches and (via notInStashWorld) permanently disables driven work.
+     */
+    public static String canonicalDimension(String id) {
+        if (id == null) return "";
+        int slash = id.lastIndexOf(" / ");
+        if (slash >= 0) id = id.substring(slash + 3).replace("]", "");
+        return id;
+    }
+
+    /** Dimension equality across raw and normalized forms. Both sides must be non-empty. */
+    public static boolean sameDimension(String a, String b) {
+        if (a == null || b == null || a.isEmpty() || b.isEmpty()) return false;
+        return canonicalDimension(a).equals(canonicalDimension(b));
+    }
+
     /** Both corners are set, whatever dimension they are in. */
     public boolean hasCorners() {
         return corner1 != null && corner2 != null;
@@ -291,7 +309,7 @@ public class Stash {
     public boolean hasArea() {
         return corner1 != null
                 && corner2 != null
-                && (areaDimension.isEmpty() || areaDimension.equals(currentDimension()));
+                && (areaDimension.isEmpty() || sameDimension(areaDimension, currentDimension()));
     }
 
     public BlockPos areaMin() {

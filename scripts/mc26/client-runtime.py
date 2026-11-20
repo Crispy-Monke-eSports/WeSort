@@ -16,6 +16,15 @@ with logfile.open('w') as log:
         subprocess.run([str(root / 'gradlew'), '--no-daemon', 'build', 'runClient',
             '-Pmc=26.3', '-PwithBaritone=true', '-PruntimeProbe=true'],
             cwd=root, stdout=log, stderr=subprocess.STDOUT, timeout=600, check=True)
+    except subprocess.CalledProcessError as failed:
+        # The probe always stops the client on failure, so a non-zero exit means
+        # the probe itself failed: surface its FAIL payload, not a Gradle traceback.
+        try:
+            failed_result = json.loads(report.read_text())
+        except OSError:
+            failed_result = {}
+        raise RuntimeError('Client runtime probe failed during run: %s' % (
+            failed_result.get('error', 'exit %s; inspect client-runtime.log' % failed.returncode)))
     except subprocess.TimeoutExpired:
         # Stage diagnostics instead of a bare timeout: the probe now always stops
         # the client on failure, so a timeout means a startup, render or shutdown
@@ -35,6 +44,8 @@ with logfile.open('w') as log:
 if re.search(r'\[(?:Render thread|main)/ERROR\].*(?:WeSortAddon|Mixin|wesort)', logfile.read_text()):
     raise RuntimeError('The client logged an error; inspect client-runtime.log')
 result = json.loads(report.read_text())
+if result.get('result') != 'PASS':
+    raise RuntimeError('Client runtime probe reported failure: %s' % result.get('error', result))
 expected = {'minecraft': '26.3', 'fabricloader': '0.19.5', 'meteor-client': '26.3-22',
     'baritone-meteor': '1.4.0-26.3', 'result': 'PASS'}
 for key, value in expected.items():

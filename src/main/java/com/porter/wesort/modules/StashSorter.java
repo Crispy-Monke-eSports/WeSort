@@ -5825,14 +5825,7 @@ public class StashSorter extends Module {
         com.porter.wesort.compat.InventorySync.expectPlacement(
                 anvilSpot,
                 BuiltInRegistries.ITEM.getKey(inv.getItem(anvilSlot).getItem()).toString());
-        if (BlockUtils.place(
-                anvilSpot,
-                new FindItemResult(anvilSlot, inv.getItem(anvilSlot).getCount()),
-                rotate.get(),
-                50,
-                true,
-                true,
-                true)) {
+        if (placeWithDurableRotation(anvilSpot, new FindItemResult(anvilSlot, inv.getItem(anvilSlot).getCount()))) {
             anvilPlaced = true;
             anvilPlacedAt = stepTicks;
             wait = delay.get();
@@ -6684,6 +6677,34 @@ public class StashSorter extends Module {
     }
 
     /**
+     * Keep the WeSort automation scope across Meteor's deferred rotation. Meteor's
+     * BlockUtils.place schedules its own callback, which otherwise loses the
+     * originating WeSort stack before the UseItemOn packet is journaled.
+     * Select the same support face as BlockUtils and let its normal immediate
+     * placement path retain all item swapping, swing and entity checks.
+     */
+    private boolean placeWithDurableRotation(BlockPos spot, FindItemResult item) {
+        if (!rotate.get()) return BlockUtils.place(spot, item, false, 50, true, true, true);
+        if (mc.player == null || !item.isHotbar() || !BlockUtils.canPlace(spot, true)) return false;
+        var side = BlockUtils.getPlaceSide(spot);
+        // Air-place has no support face and cannot identify the exact permitted
+        // placement cell from the outgoing packet. Refuse it, never journal a guess.
+        if (side == null) return false;
+        var hit = net.minecraft.world.phys.Vec3.atCenterOf(spot)
+                .add(side.getStepX() * 0.5, side.getStepY() * 0.5, side.getStepZ() * 0.5);
+        BlockPos target = spot.immutable();
+        Rotations.rotate(
+                Rotations.getYaw(hit),
+                Rotations.getPitch(hit),
+                50,
+                com.porter.wesort.compat.InventorySync.scopedAutomation(() -> {
+                    if (!BlockUtils.place(target, item, false, 50, true, true, true))
+                        com.porter.wesort.compat.InventorySync.clearPlacementExpectation();
+                }));
+        return true;
+    }
+
+    /**
      * One step of repacking a shulker beside us: place, open, move items, break, pick back up.
      */
     private void tickHandling() {
@@ -6811,8 +6832,7 @@ public class StashSorter extends Module {
         com.porter.wesort.compat.WorldInteractionGuard.authorizePlace(spot);
         com.porter.wesort.compat.InventorySync.expectPlacement(
                 spot, BuiltInRegistries.ITEM.getKey(shulker.getItem()).toString());
-        if (!BlockUtils.place(
-                spot, new FindItemResult(hotbar, shulker.getCount()), rotate.get(), 50, true, true, true)) {
+        if (!placeWithDurableRotation(spot, new FindItemResult(hotbar, shulker.getCount()))) {
             com.porter.wesort.compat.InventorySync.clearPlacementExpectation();
             placeFailed(spot);
             return;

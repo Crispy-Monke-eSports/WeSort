@@ -3,6 +3,7 @@ package com.porter.wesort.compat;
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 import com.porter.wesort.modules.StashManager;
+import com.porter.wesort.modules.StashSorter;
 import com.porter.wesort.utils.InteractionPermits;
 import com.porter.wesort.utils.InteractionPermits.Operation;
 import meteordevelopment.meteorclient.systems.modules.Modules;
@@ -42,12 +43,26 @@ public final class WorldInteractionGuard {
         return manager != null && manager.dedicatedProfile();
     }
 
-    /** The job tag authorizing current WeSort work: the active Manager order, else the activity. */
+    /**
+     * A transient transport status (online / awaiting server inventory) must not
+     * rename a live repack job between an authorized block interaction and its
+     * deferred packet or STOP. Keep the UUID of the physical operation stable;
+     * actual Manager order IDs retain precedence.
+     */
     public static String currentJob() {
         var manager = Modules.get().get(StashManager.class);
         if (manager == null) return "unknown";
-        String order = manager.activeOrderId();
-        return order != null && !order.isEmpty() ? order : manager.activeTask();
+        var sorter = Modules.get().get(StashSorter.class);
+        return jobTag(
+                manager.activeOrderId(),
+                sorter == null ? null : sorter.activeRepackJobId(),
+                manager.activeTask());
+    }
+
+    static String jobTag(String order, String repackId, String fallback) {
+        if (order != null && !order.isEmpty()) return order;
+        if (repackId != null && !repackId.isEmpty()) return "repack:" + repackId;
+        return fallback == null || fallback.isEmpty() ? "unknown" : fallback;
     }
 
     /**

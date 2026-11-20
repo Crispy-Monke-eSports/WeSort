@@ -10886,6 +10886,11 @@ public class StashSorter extends Module {
         return orderRunner.mayDepositAutomatically(source);
     }
 
+    /** Stable job identity for world permits throughout one physical repack operation. */
+    public String activeRepackJobId() {
+        return repackWork != null && !repackWork.terminal() ? repackWork.id() : null;
+    }
+
     public com.google.gson.JsonObject physicalJournalContext() {
         var context = new com.google.gson.JsonObject();
         var manager = Modules.get().get(StashManager.class);

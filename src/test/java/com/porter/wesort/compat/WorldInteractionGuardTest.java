@@ -2,6 +2,7 @@ package com.porter.wesort.compat;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
@@ -33,6 +34,16 @@ class WorldInteractionGuardTest {
         assertFalse(WorldInteractionGuard.useDecision("", true, true, true, true));
         assertFalse(WorldInteractionGuard.useDecision(null, true, true, true, true));
         assertFalse(WorldInteractionGuard.breakDecision("unknown", true, true));
+    }
+
+    @Test
+    void repackJobTagDoesNotChangeWhenManagerTransportStatusFlaps() {
+        String before = WorldInteractionGuard.jobTag(null, "physical-123", "online");
+        String after = WorldInteractionGuard.jobTag(null, "physical-123", "awaiting server inventory");
+        assertEquals("repack:physical-123", before);
+        assertEquals(before, after);
+        assertNotEquals(after, WorldInteractionGuard.jobTag(null, "physical-456", "online"));
+        assertEquals("order-1", WorldInteractionGuard.jobTag("order-1", "physical-123", "online"));
     }
 
     @Test

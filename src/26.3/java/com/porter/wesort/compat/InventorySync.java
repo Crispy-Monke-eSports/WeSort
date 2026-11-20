@@ -361,7 +361,15 @@ public final class InventorySync {
         boolean ours = calledFromWeSort();
         if (!ours && event.packet instanceof ServerboundUseItemOnPacket placed) {
             var target = placementTarget(placed.hitResult());
-            if (WorldInteractionGuard.hasLivePlacePermit(target)) {
+            boolean placePermit = WorldInteractionGuard.hasLivePlacePermit(target);
+            if (expectSpot != null && target.equals(expectSpot) && !placePermit) {
+                intentCounted("unattributed-place-without-permit");
+                if (INTENT_AUDIT.getOrDefault("unattributed-place-without-permit", 0L) <= 2)
+                    MeteorClient.LOG.warn(
+                            "WeSort placement at {} has an announcement but no current job-bound permit",
+                            target.toShortString());
+            }
+            if (placePermit) {
                 ours = true;
                 // The regular mixin preflight was deferred with Meteor's rotation.
                 // Capture the current menu as the before-frame, just as allowInput()
@@ -482,7 +490,17 @@ public final class InventorySync {
             // its normal place-failed path with a fresh announcement. Withholding cancels the
             // send, so no phantom read-open is registered below for the cancelled packet.
             var target = placementTarget(use.hitResult());
-            if (expectSpot != null) intentCounted("consume-miss");
+            if (expectSpot != null) {
+                intentCounted("consume-miss");
+                if (INTENT_AUDIT.getOrDefault("consume-miss", 0L) <= 2)
+                    MeteorClient.LOG.warn(
+                            "WeSort placement mismatch: expected {}, clicked {} face {}, resolved target {}, job {}",
+                            expectSpot.toShortString(),
+                            use.hitResult().getBlockPos().toShortString(),
+                            use.hitResult().getDirection(),
+                            target.toShortString(),
+                            WorldInteractionGuard.currentJob());
+            }
             if (com.porter.wesort.compat.WorldInteractionGuard.hasLivePlacePermit(target)) {
                 intentCounted("unmatched-placement-cancelled");
                 event.cancel();

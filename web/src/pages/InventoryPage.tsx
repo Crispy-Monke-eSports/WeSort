@@ -759,11 +759,17 @@ function BuyDialog({ item, slices, mcVersion, canOrder, remaining, onClose, onAd
   remaining: number;
   onClose: () => void; onAdd: (n: number) => void;
 }) {
-  // Max is cart-adjusted: never offer more than the draft can still absorb.
-  const max = Math.max(1, remaining);
+  // Max is cart-adjusted and capacity-clamped: never offer more than the draft
+  // can absorb, and never more than fits in the server's 54-box limit.
+  const maxStack = Math.max(1, item?.maxStack ?? 64);
+  const fitsInLimit = 54 * 27 * maxStack;
+  const max = Math.max(1, Math.min(remaining, fitsInLimit));
   const [n, setN] = useState(max);
   useEffect(() => { setN(max); }, [item?.key]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!item) return null;
+  const estBoxes = item
+    ? shulkersNeeded([{ type: "item", key: item.key, count: n }], () => maxStack, () => false)
+    : 0;
   return (
     <Dialog open={!!item} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>{item.name ?? item.id}</DialogTitle>
@@ -800,11 +806,20 @@ function BuyDialog({ item, slices, mcVersion, canOrder, remaining, onClose, onAd
           slotProps={{ htmlInput: { min: 1, max } }}
           onChange={(e) => setN(Math.max(1, Math.min(max, Number(e.target.value) || 1)))}
         />
+        <Typography variant="caption" color={estBoxes > 54 ? "error" : "text.secondary"} sx={{ display: "block", mt: 0.5 }}>
+          Needs about {estBoxes} box{estBoxes === 1 ? "" : "es"} · at most 54 per order (server-enforced).
+          {remaining > fitsInLimit ? ` Quantity capped at what fits in 54 boxes (${grouped(fitsInLimit)}).` : ""}
+        </Typography>
+        {estBoxes > 54 && (
+          <Alert severity="error" sx={{ mt: 1 }}>
+            This quantity needs more than 54 shulkers. Reduce it — the server rejects oversized orders.
+          </Alert>
+        )}
         {!canOrder && <Alert severity="warning" sx={{ mt: 1 }}>Your account can't place orders.</Alert>}
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Cancel</Button>
-        <Button variant="contained" onClick={() => onAdd(n)} disabled={!canOrder || remaining < 1}>Add to cart</Button>
+        <Button variant="contained" onClick={() => onAdd(n)} disabled={!canOrder || remaining < 1 || estBoxes > 54}>Add to cart</Button>
       </DialogActions>
     </Dialog>
   );

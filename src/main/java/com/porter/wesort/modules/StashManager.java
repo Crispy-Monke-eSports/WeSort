@@ -38,17 +38,25 @@ import net.minecraft.world.item.Item;
 public class StashManager extends Module {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
+    // First entry: opens the connection screen (address, port, masked key, status) from the
+    // normal Meteor menu, so no chat command is needed. The raw settings below stay for
+    // compatibility; the key itself is always rendered masked.
+    private final Setting<?> connectionEntry =
+            sgGeneral.add(com.porter.wesort.commands.ConnectionOpener.setting());
+
     private final Setting<String> serverUrl = sgGeneral.add(new StringSetting.Builder()
             .name("server-url")
             .description(
-                    "Address of the WeSort Manager server, http or https, e.g. http://127.0.0.1:8765. Empty: no server, nothing is sent.")
+                    "Address of the WeSort Manager server, http or https, e.g. http://127.0.0.1:8765. Empty: no server, nothing is sent. Prefer the Connection screen above: it splits address and port and masks the key.")
             .defaultValue("")
             .build());
 
     private final Setting<String> apiKey = sgGeneral.add(new StringSetting.Builder()
             .name("api-key")
-            .description("The agent API key from the Manager host's agent-key command. Keep it private.")
+            .description(
+                    "The agent API key from the Manager host's agent-key command. Keep it private: it is masked here, in the Connection screen and in logs. Prefer the Connection screen above.")
             .defaultValue("")
+            .renderer(com.porter.wesort.manager.gui.widgets.MaskedRenderer.class)
             .build());
 
     private final Setting<Integer> scanInterval = sgGeneral.add(new IntSetting.Builder()

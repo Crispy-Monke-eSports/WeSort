@@ -10,6 +10,7 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import Divider from "@mui/material/Divider";
 import FormControl from "@mui/material/FormControl";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import InputLabel from "@mui/material/InputLabel";
 import LinearProgress from "@mui/material/LinearProgress";
 import List from "@mui/material/List";
@@ -19,6 +20,7 @@ import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import Select from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
+import Switch from "@mui/material/Switch";
 import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
 import TextField from "@mui/material/TextField";
@@ -267,13 +269,17 @@ function StashEditor({ initial, onClose, onSaved }: {
 function UsersSection() {
   const [users, setUsers] = useState<any[]>([]);
   const [presets, setPresets] = useState<string[]>(["viewer", "orderer", "member", "officer", "operator"]);
+  const [presetDefs, setPresetDefs] = useState<Record<string, any>>({});
   const [msg, setMsg] = useState("");
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [preset, setPreset] = useState("member");
   const [editId, setEditId] = useState<string | null>(null);
-  const [editBody, setEditBody] = useState("");
+  const [editFlags, setEditFlags] = useState<Record<string, boolean>>({});
+  const [editDisabled, setEditDisabled] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editPreset, setEditPreset] = useState("");
 
   async function load() {
     setMsg("");
@@ -281,7 +287,10 @@ function UsersSection() {
       const raw = await api<any>("/api/v1/users");
       setUsers(raw?.users ?? []);
       const p = raw?.presets;
-      if (p && typeof p === "object") setPresets(Object.keys(p));
+      if (p && typeof p === "object") {
+        setPresets(Object.keys(p));
+        setPresetDefs(p);
+      }
     } catch (e: any) {
       setMsg(e?.message ?? "User list unavailable.");
     }
@@ -300,17 +309,58 @@ function UsersSection() {
     }
   }
 
-  async function update(id: string) {
-    let body: any;
-    try {
-      body = editBody.trim() ? JSON.parse(editBody) : {};
-    } catch {
-      setMsg("Permissions must be valid JSON.");
+  const FLAG_FIELDS = ["view", "order", "ordersAll", "guildOrders", "positions", "activity", "settings", "rescan", "link"] as const;
+
+  function presetNameOf(perms: any): string {
+    for (const [name, def] of Object.entries(presetDefs)) {
+      const d: any = def;
+      if (FLAG_FIELDS.every((f) => !!d?.[f] === !!perms?.[f])) return name;
+    }
+    return "custom";
+  }
+
+  function startEdit(u: any) {
+    const flags: Record<string, boolean> = {};
+    for (const f of FLAG_FIELDS) flags[f] = !!u.perms?.[f];
+    setEditFlags(flags);
+    setEditDisabled(!!u.disabled);
+    setEditName(u.name ?? "");
+    setEditPreset(presetNameOf(u.perms));
+    setEditId(u.id);
+  }
+
+  /** Only changed fields are sent; privilege changes need explicit confirm. */
+  async function update(id: string, original: any) {
+    const changes: string[] = [];
+    const perms: Record<string, boolean> = {};
+    let permsChanged = false;
+    for (const f of FLAG_FIELDS) {
+      perms[f] = !!editFlags[f];
+      if (!!editFlags[f] !== !!original?.perms?.[f]) {
+        permsChanged = true;
+        changes.push(`${f}: ${!!original?.perms?.[f]} → ${!!editFlags[f]}`);
+      }
+    }
+    const body: any = {};
+    if (permsChanged) body.perms = perms;
+    if (editDisabled !== !!original?.disabled) {
+      body.disabled = editDisabled;
+      changes.push(`disabled: ${!!original?.disabled} → ${editDisabled}`);
+    }
+    if (editName.trim() !== (original?.name ?? "")) {
+      body.name = editName.trim();
+      changes.push(`name: ${original?.name ?? ""} → ${editName.trim()}`);
+    }
+    if (!changes.length) {
+      setMsg("No changes — nothing sent.");
+      setEditId(null);
       return;
     }
+    if (!window.confirm(`Apply to ${original?.name ?? id}?\n${changes.join("\n")}`)) return;
     try {
       await api(`/api/v1/users/${id}`, { method: "POST", body });
       setEditId(null);
+      setMsg(`User updated (${changes.length} change${changes.length === 1 ? "" : "s"}).`);
       await load();
     } catch (e: any) {
       setMsg(e?.message ?? "Update failed.");
@@ -338,7 +388,7 @@ function UsersSection() {
         {users.map((u: any) => (
           <ListItem key={u.id} divider alignItems="flex-start" secondaryAction={
             <Stack direction="row" spacing={1}>
-              <Button size="small" onClick={() => { setEditId(u.id); setEditBody(JSON.stringify({ preset: "member" }, null, 1)); }}>Edit</Button>
+              <Button size="small" onClick={() => startEdit(u)}>Edit</Button>
               <Button size="small" onClick={() => action(u.id, "logout")}>End sessions</Button>
               <Button size="small" onClick={() => action(u.id, "password")}>Reset pw</Button>
               <Button size="small" color="error" onClick={() => action(u.id, "delete")}>Delete</Button>
@@ -368,18 +418,62 @@ function UsersSection() {
         </Stack>
       )}
       <Dialog open={!!editId} onClose={() => setEditId(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>Edit user {editId}</DialogTitle>
+        <DialogTitle>Edit user {users.find((u: any) => u.id === editId)?.name ?? editId}</DialogTitle>
         <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            Send a preset ("viewer", "orderer", "member", "officer", "operator"), a full perms object
-            (view, order, ordersAll, guildOrders, positions, activity, settings, rescan, link, stashes: [{`{stash}`}], bots),
-            "disabled", "name" or "mustChange". Only included fields change.
-          </Typography>
-          <TextField value={editBody} onChange={(e) => setEditBody(e.target.value)} multiline rows={6} fullWidth size="small" sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }} />
+          <Stack spacing={1.5} sx={{ mt: 1 }}>
+            <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+              <Typography variant="body2" color="text.secondary">Current role:</Typography>
+              <Chip size="small" label={presetNameOf(users.find((u: any) => u.id === editId)?.perms)} />
+            </Stack>
+            <FormControl size="small" fullWidth>
+              <InputLabel id="edit-preset-label">Apply role preset</InputLabel>
+              <Select
+                labelId="edit-preset-label" id="edit-preset" label="Apply role preset" value={editPreset}
+                onChange={(e) => {
+                  setEditPreset(e.target.value);
+                  const def: any = presetDefs[e.target.value];
+                  if (def) {
+                    const next: Record<string, boolean> = {};
+                    for (const f of FLAG_FIELDS) next[f] = !!def[f];
+                    setEditFlags(next);
+                  }
+                }}
+              >
+                {presets.map((p) => <MenuItem key={p} value={p}>{p}</MenuItem>)}
+                <MenuItem value="custom">custom (edited below)</MenuItem>
+              </Select>
+            </FormControl>
+            {FLAG_FIELDS.map((f) => (
+              <FormControlLabel
+                key={f}
+                control={
+                  <Switch
+                    size="small"
+                    checked={!!editFlags[f]}
+                    onChange={(e) => {
+                      setEditFlags({ ...editFlags, [f]: e.target.checked });
+                      setEditPreset("custom");
+                    }}
+                  />
+                }
+                label={<Typography variant="body2" sx={{ fontFamily: "monospace" }}>{f}</Typography>}
+              />
+            ))}
+            <FormControlLabel
+              control={
+                <Switch size="small" checked={editDisabled} onChange={(e) => setEditDisabled(e.target.checked)} />
+              }
+              label={<Typography variant="body2">disabled</Typography>}
+            />
+            <TextField label="Account name" value={editName} onChange={(e) => setEditName(e.target.value)} size="small" fullWidth />
+            <Typography variant="caption" color="text.secondary">
+              Only changed fields are sent. Stash/bot scopes are managed server-side and shown read-only in the list.
+            </Typography>
+          </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEditId(null)}>Cancel</Button>
-          <Button variant="contained" onClick={() => editId && update(editId)}>Save</Button>
+          <Button variant="contained" onClick={() => editId && update(editId, users.find((u: any) => u.id === editId))}>Save</Button>
         </DialogActions>
       </Dialog>
     </Stack>

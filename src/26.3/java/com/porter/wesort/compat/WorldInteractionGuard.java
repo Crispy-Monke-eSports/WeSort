@@ -123,9 +123,12 @@ public final class WorldInteractionGuard {
         long now = now();
         // Activation: the clicked block itself is authorized for this job.
         boolean usePermit = PERMITS.allows(now, position.asLong(), Operation.USE, blockId(position), job);
-        // Placement: the click lands on a support while the adjacent cell carries a live PLACE
-        // permit naming the air the job puts its block into.
+        // A support-face click places into the adjacent cell. Meteor can also
+        // click an already-replaceable destination directly (air-place fallback).
+        // Both forms require the same exact, job-bound PLACE permit.
         boolean placePermit = PERMITS.allows(now, target.asLong(), Operation.PLACE, blockId(target), job);
+        if (!placePermit && mc.level.getBlockState(position).canBeReplaced())
+            placePermit = PERMITS.allows(now, position.asLong(), Operation.PLACE, blockId(position), job);
         return useDecision(job, safeBlock(position), safeBlock(target), usePermit, placePermit);
     }
 

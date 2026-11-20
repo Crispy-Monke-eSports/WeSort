@@ -30,7 +30,7 @@ import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { keys, useAllOrders, useAuth, usePermissions, useStashes } from "../api/queries";
 import { OrderStatusChip } from "../components/status";
@@ -129,7 +129,7 @@ export function OrdersPage() {
         <FormControl size="small" sx={{ minWidth: 160 }}>
           <InputLabel id="orders-status-label">Status</InputLabel>
           <Select value={statusFilter} labelId="orders-status-label" id="orders-status" label="Status" onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}>
-            {["all", "pending", "accepted", "in_progress", "completed", "failed", "cancelled"].map((s) => (
+            {["all", "pending", "accepted", "in_progress", "packed", "needs_reconciliation", "delivered", "failed", "cancelled"].map((s) => (
               <MenuItem key={s} value={s}>{s === "all" ? "All statuses" : s}</MenuItem>
             ))}
           </Select>
@@ -230,15 +230,30 @@ export function OrdersPage() {
         </Card>
       )}
 
-      <OrderDialog order={detail} onClose={() => setDetail(null)} canChange={canChange} onAction={act} />
+      <OrderDialog order={detail} onClose={() => setDetail(null)} canChange={canChange} canAudit={perms.can("ordersAll") || perms.owner} onAction={act} />
     </Stack>
   );
 }
 
-function OrderDialog({ order, onClose, canChange, onAction }: {
-  order: any | null; onClose: () => void; canChange: boolean; onAction: (o: any, a: "cancel" | "force-cancel" | "retry") => void;
+function OrderDialog({ order, onClose, canChange, canAudit, onAction }: {
+  order: any | null; onClose: () => void; canChange: boolean; canAudit: boolean; onAction: (o: any, a: "cancel" | "force-cancel" | "retry") => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [audit, setAudit] = useState<any[] | null>(null);
+  const orderId = order?.id;
+  useEffect(() => {
+    setAudit(null);
+    if (!orderId || !canAudit) return;
+    let live = true;
+    api<any>(`/api/v1/audit/orders?order=${encodeURIComponent(String(orderId))}&limit=1`)
+      .then((d) => {
+        if (!live) return;
+        const o = (d.orders ?? [])[0];
+        setAudit(o?.physicalOperations ?? []);
+      })
+      .catch(() => { if (live) setAudit([]); });
+    return () => { live = false; };
+  }, [orderId, canAudit]);
   if (!order) return null;
   const status = String(order.status ?? "unknown").toLowerCase();
   // Retry is for terminal states; cancel actions are for open ones. Never nested in one gate.
@@ -262,10 +277,36 @@ function OrderDialog({ order, onClose, canChange, onAction }: {
             {order.recipient && <Chip size="small" variant="outlined" label={`for ${order.recipient}`} />}
           </Stack>
           <Box>
+            <Typography variant="body2" color="text.secondary">
+              {order.purpose === "GUILD" ? "For the guild" : "For myself"}
+              {order.verifiedRecipient ? ` · verified recipient ${order.verifiedRecipient}` : ""}
+              {` · ${order.deliveryMode ?? "WAREHOUSE_PICKUP"}`}
+              {order.destination?.player ? ` → player ${order.destination.player}` : order.destination?.stash ? ` → stash ${order.destination.stash}` : ""}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Approval: {String(order.approvalState ?? "DIRECT")}
+              {order.decidedBy ? ` by ${order.decidedBy}${order.decidedAt ? ` at ${new Date(order.decidedAt).toLocaleString()}` : ""}` : ""}
+              {order.agent ? ` · bot ${order.agent}` : ""}
+              {order.state && order.state.toLowerCase() !== status ? ` · stage ${order.state}` : ""}
+              {order.packageTotal ? ` · ${order.packageTotal} box${order.packageTotal === 1 ? "" : "es"}` : ""}
+            </Typography>
+            {order.cancelRequested && (
+              <Typography variant="body2" color="warning.main">Cancel requested — waiting for the bot to confirm.</Typography>
+            )}
+            {order.retriedAs && (
+              <Typography variant="body2" color="text.secondary">Retried as {order.retriedAs}.</Typography>
+            )}
+          </Box>
+          <Box>
             <Typography variant="h4" gutterBottom>Items</Typography>
             {lines.map((l: any, i: number) => (
               <Typography key={i} variant="body2">×{l.count} {l.type === "shulker" ? `packed ${l.key}` : l.key}</Typography>
             ))}
+            {order.packageLabel && (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                Box text: {order.packageLabel.mode === "all" ? order.packageLabel.text : (order.packageLabel.texts ?? []).filter(Boolean).join(" / ") || "“Beställning”"} · server numbers every box WeSort (X/Y).
+              </Typography>
+            )}
             {order.message && <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>{order.message}</Typography>}
             {progressText(order) && <Typography variant="body2" color="text.secondary">Progress: {progressText(order)}</Typography>}
           </Box>
@@ -274,10 +315,16 @@ function OrderDialog({ order, onClose, canChange, onAction }: {
             <Typography variant="h4" gutterBottom>Timeline</Typography>
             <Stack spacing={1}>
               {[
-                order.createdAt ? { at: order.createdAt, label: "Placed" } : null,
-                order.claimedAt ? { at: order.claimedAt, label: "Claimed by bot" } : null,
+                order.createdAt ? { at: order.createdAt, label: `Placed by ${order.placedBy?.name ?? order.requestedBy ?? "?"}` } : null,
+                order.claimedAt ? { at: order.claimedAt, label: `Claimed by bot${order.agent ? ` ${order.agent}` : ""}` } : null,
+                ...(audit ?? []).map((e: any) => ({
+                  at: e.at ?? e.time ?? e.createdAt ?? 0,
+                  label: String(e.event ?? e.action ?? e.state ?? JSON.stringify(e)).slice(0, 160),
+                })),
+                order.manifestAcknowledgedAt ? { at: order.manifestAcknowledgedAt, label: "Staging manifest acknowledged" } : null,
+                order.releasedAt ? { at: order.releasedAt, label: "Released" } : null,
                 order.updatedAt ? { at: order.updatedAt, label: `Last update — ${order.status}` } : null,
-              ].filter(Boolean).map((e: any, i: number) => (
+              ].filter((e) => e && e.at).map((e: any, i: number) => (
                 <Stack key={i} direction="row" spacing={1.5} sx={{ alignItems: "baseline" }}>
                   <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: i === 2 ? "primary.main" : "action.disabled", flexShrink: 0, alignSelf: "center" }} />
                   <Typography variant="body2" color="text.secondary" sx={{ minWidth: 150 }}>{new Date(e.at).toLocaleString()}</Typography>
@@ -285,6 +332,7 @@ function OrderDialog({ order, onClose, canChange, onAction }: {
                 </Stack>
               ))}
             </Stack>
+            {canAudit && audit === null && <LinearProgress sx={{ mt: 1 }} />}
           </Box>
           {(order.phase || order.message) && (
             <Alert severity={status === "failed" ? "error" : "info"}>

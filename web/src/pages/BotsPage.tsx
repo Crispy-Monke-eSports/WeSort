@@ -11,7 +11,8 @@ import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
 import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
-import Paper from "@mui/material/Paper";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import Switch from "@mui/material/Switch";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -94,31 +95,6 @@ function BotDetails({ botId, canPosition }: { botId: string; canPosition: boolea
   const bots = useBots(loggedIn);
   const bot = bots.data?.find((b) => b.botId === botId);
   const activity = useBotActivity(botId, loggedIn);
-  const settings = useBotSettings(botId, loggedIn && canPosition);
-  const [changes, setChanges] = useState("");
-  const [msg, setMsg] = useState("");
-
-  async function saveSettings() {
-    setMsg("");
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(changes || "[]");
-    } catch {
-      setMsg("Changes must be JSON: a list of {path, value, expect}.");
-      return;
-    }
-    if (!Array.isArray(parsed) || !parsed.length) {
-      setMsg("Changes must be a non-empty list of {path, value, expect}.");
-      return;
-    }
-    try {
-      await api(`/api/v1/bots/${encodeURIComponent(botId)}/settings`, { method: "POST", body: { scope: "plugin", changes: parsed } });
-      setMsg("Settings sent to the bot.");
-    } catch (e: any) {
-      setMsg(e?.message ?? "Could not update settings.");
-    }
-  }
-
   const events: any[] = Array.isArray(activity.data?.events) ? activity.data.events : [];
   const current: any[] = Array.isArray((activity.data?.activity as any)?.current) ? (activity.data?.activity as any).current : [];
 
@@ -189,30 +165,140 @@ function BotDetails({ botId, canPosition }: { botId: string; canPosition: boolea
       </Card>
 
       {canPosition && (
-        <Card>
-          <CardHeader title="Settings" subheader="scope=plugin — JSON changes are sent to the bot" />
-          <CardContent>
-            <Stack spacing={1.5}>
-              {settings.isLoading && <LinearProgress />}
-              {settings.isError && <Typography color="text.secondary">No settings from this bot yet (or not permitted).</Typography>}
-              {settings.data && (
-                <Paper variant="outlined" sx={{ p: 1.5, maxHeight: 240, overflow: "auto" }}>
-                  <Typography variant="caption" component="pre" sx={{ fontFamily: "monospace", whiteSpace: "pre-wrap" }}>
-                    {JSON.stringify({ schema: settings.data.schema, values: settings.data.values }, null, 1)}
-                  </Typography>
-                </Paper>
-              )}
-              <TextField
-                label='Changes (JSON list of {path, value, expect})' value={changes}
-                onChange={(e) => setChanges(e.target.value)} size="small" multiline rows={2}
-                sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }}
-              />
-              {msg && <Alert severity={msg.startsWith("Settings sent") ? "success" : "info"}>{msg}</Alert>}
-              <Box><Button variant="outlined" onClick={saveSettings}>Send to bot</Button></Box>
-            </Stack>
-          </CardContent>
-        </Card>
+        <BotSettingsCard botId={botId} />
       )}
     </Stack>
+  );
+}
+
+/**
+ * Typed bot settings form generated from the bot's own schema
+ * ([{path, label, type: int|bool, min?, max?}] + values). Loading, offline,
+ * forbidden and empty-schema states are separated; changes show a diff and
+ * need explicit confirm before they are sent with expected values.
+ */
+function BotSettingsCard({ botId }: { botId: string }) {
+  const auth = useAuth();
+  const perms = usePermissions(auth.data);
+  const loggedIn = !!auth.data?.loggedIn && perms.can("activity");
+  const settings = useBotSettings(botId, loggedIn && perms.can("positions"));
+  const [draft, setDraft] = useState<Record<string, number | boolean>>({});
+  const [msg, setMsg] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const schema: any[] = Array.isArray((settings.data as any)?.schema) ? (settings.data as any).schema : [];
+  const values: Record<string, any> = (settings.data as any)?.values ?? {};
+  const errStatus = (settings.error as any)?.status as number | undefined;
+
+  useEffect(() => {
+    const next: Record<string, number | boolean> = {};
+    for (const s of schema) {
+      const v = values[s.path];
+      if (s.type === "bool") next[s.path] = !!v;
+      else if (typeof v === "number") next[s.path] = v;
+    }
+    setDraft(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [botId, (settings.data as any)?.valuesHash]);
+
+  const diff = schema
+    .map((s) => ({ s, from: values[s.path], to: draft[s.path] }))
+    .filter((d) => d.to !== undefined && d.from !== d.to);
+
+  async function send() {
+    if (!diff.length || sending) return;
+    const changes = diff.map((d) => ({ path: d.s.path, value: d.to, expect: d.from ?? null }));
+    if (!window.confirm(`Send ${changes.length} setting${changes.length === 1 ? "" : "s"} to ${botId}?\n${changes.map((c) => `${c.path}: ${JSON.stringify(c.expect)} → ${JSON.stringify(c.value)}`).join("\n")}`)) return;
+    setSending(true);
+    setMsg("");
+    try {
+      await api(`/api/v1/bots/${encodeURIComponent(botId)}/settings`, { method: "POST", body: { scope: "plugin", changes } });
+      setMsg("Settings sent to the bot.");
+      settings.refetch();
+    } catch (e: any) {
+      setMsg(e?.message ?? "Could not update settings.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader title="Settings" subheader="scope=plugin — typed from the bot's own schema" />
+      <CardContent>
+        <Stack spacing={1.5}>
+          {settings.isLoading && (
+            <>
+              <LinearProgress />
+              <Typography color="text.secondary">Asking the bot for its settings…</Typography>
+            </>
+          )}
+          {settings.isError && errStatus === 403 && (
+            <Alert severity="warning">Changing bot settings needs the positions permission.</Alert>
+          )}
+          {settings.isError && errStatus !== 403 && (
+            <Alert severity="info">
+              No settings from this bot right now — it may be offline or never reported any.
+              The panel retries automatically.
+            </Alert>
+          )}
+          {settings.data && schema.length === 0 && (
+            <Typography color="text.secondary">The bot reported no adjustable settings.</Typography>
+          )}
+          {schema.map((s: any) => {
+            const label = String(s.label ?? s.path);
+            if (s.type === "bool") {
+              return (
+                <FormControlLabel
+                  key={String(s.path)}
+                  control={
+                    <Switch
+                      checked={!!draft[s.path]}
+                      onChange={(e) => setDraft({ ...draft, [s.path]: e.target.checked })}
+                    />
+                  }
+                  label={label}
+                />
+              );
+            }
+            if (s.type === "int") {
+              const v = draft[s.path];
+              const bad = typeof v !== "number" || !Number.isInteger(v)
+                || (typeof s.min === "number" && v < s.min)
+                || (typeof s.max === "number" && v > s.max);
+              return (
+                <TextField
+                  key={String(s.path)}
+                  label={label}
+                  type="number"
+                  value={v ?? ""}
+                  size="small"
+                  error={bad}
+                  helperText={bad ? `Integer${typeof s.min === "number" ? ` ≥ ${s.min}` : ""}${typeof s.max === "number" ? ` ≤ ${s.max}` : ""} required` : undefined}
+                  slotProps={{ htmlInput: { step: 1, min: s.min, max: s.max } }}
+                  onChange={(e) => setDraft({ ...draft, [s.path]: e.target.value === "" ? NaN : Number(e.target.value) })}
+                />
+              );
+            }
+            return (
+              <Typography key={String(s.path)} variant="body2" color="text.secondary">
+                {label}: {JSON.stringify(values[s.path])} (read-only type “{String(s.type)}”)
+              </Typography>
+            );
+          })}
+          {diff.length > 0 && (
+            <Alert severity="info">
+              {diff.length} change{diff.length === 1 ? "" : "s"}: {diff.map((d) => `${d.s.path} ${JSON.stringify(d.from)} → ${JSON.stringify(d.to)}`).join("; ")}
+            </Alert>
+          )}
+          {msg && <Alert severity={msg.startsWith("Settings sent") ? "success" : "info"} onClose={() => setMsg("")}>{msg}</Alert>}
+          <Box>
+            <Button variant="outlined" disabled={!diff.length || sending} onClick={send}>
+              {sending ? "Sending…" : "Send to bot"}
+            </Button>
+          </Box>
+        </Stack>
+      </CardContent>
+    </Card>
   );
 }

@@ -168,15 +168,22 @@ public final class WorldInteractionGuard {
         String job = currentJob();
         var previous = authorizedBreak;
         String block = blockId(position);
-        boolean allowed = previous != null
+        // A STOP may be emitted directly by Meteor's mining controller, without
+        // going through the intercepted start/continue methods. The exact live
+        // BREAK permit still authorizes finishing that same standing shulker.
+        // Once the client predicts air, only a remembered authorized start for
+        // the original block can finish it; neither path authorizes a new target.
+        boolean permittedStandingBlock = block.endsWith("_shulker_box")
+                && PERMITS.allows(time, position.asLong(), Operation.BREAK, block, job);
+        boolean permittedPredictedBreak = previous != null
                 && previous.pos() == position.asLong()
                 && previous.job().equals(job)
                 && time >= previous.at()
                 && time - previous.at() < PERMIT_TTL_MS
                 && previous.block().endsWith("_shulker_box")
                 && (block.equals(previous.block()) || block.equals("minecraft:air"))
-                && safeBlock(position)
                 && PERMITS.allows(time, position.asLong(), Operation.BREAK, previous.block(), job);
+        boolean allowed = safeBlock(position) && (permittedStandingBlock || permittedPredictedBreak);
         if (!allowed) denied("break-stop-no-authorized-start");
         return allowed;
     }

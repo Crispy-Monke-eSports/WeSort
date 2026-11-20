@@ -53,14 +53,12 @@ import { keys, useAuth, usePermissions, useStashes } from "../api/queries";
 import { IndexResponseSchema, OrdersResponseSchema, type IndexResponse, type OrdersResponse } from "../api/types";
 import {
   boxedContents,
-  chooseSlice,
   grouped,
   isShulkerBoxId,
   isSingleContent,
   mixedBoxedContents,
   payloadHash,
   singleBoxedContents,
-  splitScopedItemLine,
 } from "../lib/shop";
 import { setCartScope, useCart, useCheckout, type CartLine, type CheckoutGroup, type OrderBody } from "../stores/shop";
 import { ItemIcon } from "../components/minecraft/ItemIcon";
@@ -253,18 +251,53 @@ export function InventoryPage() {
 
   function addToCart(key: string, n: number): boolean {
     if (n < 1 || !canOrder) return false;
-    const slice = chooseSlice(key, slices.map((s) => ({
-      stash: s.stash, online: s.online ?? false, items: s.items, shulkers: s.shulkers,
-      availableItems: s.availableItems, availableShulkers: s.availableShulkers,
-    })), packedInCart, looseInCart);
-    if (!slice) return false;
-    const next = cartLines.map((l) => ({ ...l }));
-    const found = next.find((l) => l.type === "item" && l.key === key && l.stash === slice.stash);
-    if (found) found.count += n;
-    else next.push({ type: "item", key, count: n, stash: slice.stash });
-    const split = splitScopedItemLine(next, key, slice.stash, Math.max(0, slice.availableItems[key] ?? 0), slice.shulkers);
-    if (!split) return false;
-    cart.setLines(split as CartLine[]);
+    // Guild-wide split, committed atomically: loose units first (most-loose stash first),
+    // then whole single-content boxes (biggest first). Mixed boxes are never packed whole.
+    // Anything left over fails instead of over-promising.
+    const next: CartLine[] = cartLines.map((l) => ({ ...l }));
+    let remaining = n;
+    const looseInNext = (stash: string) =>
+      next.filter((l) => l.type === "item" && l.key === key && l.stash === stash).reduce((a, l) => a + l.count, 0);
+    const packedInNext = (stash: string, boxKey: string) =>
+      next.filter((l) => l.type === "shulker" && l.key === boxKey && l.stash === stash).reduce((a, l) => a + l.count, 0);
+    const byLoose = slices
+      .map((s) => ({ s, loose: Math.max(0, (s.availableItems[key] ?? 0) - looseInNext(s.stash)) }))
+      .filter((x) => x.loose > 0)
+      .sort((a, b) => b.loose - a.loose);
+    for (const { s } of byLoose) {
+      if (remaining <= 0) break;
+      const take = Math.min(remaining, Math.max(0, (s.availableItems[key] ?? 0) - looseInNext(s.stash)));
+      if (take <= 0) continue;
+      const found = next.find((l) => l.type === "item" && l.key === key && l.stash === s.stash);
+      if (found) found.count += take;
+      else next.push({ type: "item", key, count: take, stash: s.stash });
+      remaining -= take;
+    }
+    if (remaining > 0) {
+      const cands: { stash: string; boxKey: string; perBox: number; left: number }[] = [];
+      for (const s of slices) {
+        for (const b of s.shulkers) {
+          if (!isSingleContent(b, key)) continue;
+          let perBox = 0;
+          for (const c of b.contents ?? []) perBox += Math.max(0, c?.count ?? 0);
+          const left = Math.max(0, b.count - packedInNext(s.stash, b.key));
+          if (perBox > 0 && left > 0) cands.push({ stash: s.stash, boxKey: b.key, perBox, left });
+        }
+      }
+      cands.sort((a, b) => b.perBox - a.perBox);
+      for (const c of cands) {
+        while (c.left > 0 && c.perBox <= remaining) {
+          const found = next.find((l) => l.type === "shulker" && l.key === c.boxKey && l.stash === c.stash);
+          if (found) found.count += 1;
+          else next.push({ type: "shulker", key: c.boxKey, count: 1, stash: c.stash });
+          c.left -= 1;
+          remaining -= c.perBox;
+        }
+        if (remaining <= 0) break;
+      }
+    }
+    if (remaining > 0) return false;
+    cart.setLines(next);
     return true;
   }
 
@@ -656,12 +689,16 @@ function BuyDialog({ item, slices, mcVersion, canOrder, onClose, onAdd }: {
   item: MergedItem | null; slices: SliceState[]; mcVersion: string | null; canOrder: boolean;
   onClose: () => void; onAdd: (n: number) => void;
 }) {
-  const [n, setN] = useState(1);
-  useEffect(() => { setN(1); }, [item?.key]);
-  if (!item) return null;
-  let orderable = 0;
-  for (const s of slices) orderable += Math.max(0, s.availableItems[item.key] ?? 0) + singleBoxedContents(item.key, s.shulkers);
+  const orderable = useMemo(() => {
+    if (!item) return 0;
+    let n = 0;
+    for (const s of slices) n += Math.max(0, s.availableItems[item.key] ?? 0) + singleBoxedContents(item.key, s.shulkers);
+    return n;
+  }, [item, slices]);
   const max = Math.max(1, orderable);
+  const [n, setN] = useState(max);
+  useEffect(() => { setN(max); }, [item?.key]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!item) return null;
   return (
     <Dialog open={!!item} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>{item.name ?? item.id}</DialogTitle>

@@ -1,17 +1,17 @@
 import { expect, test } from "@playwright/test";
 
-// Shop smoke against the Vite dev server with mocked Manager APIs:
-// unified storefront renders, aggregates loose + boxed counts,
-// quick-add flows into the cart, the wizard walks cart -> delivery ->
-// review -> place, and the Idempotency-Key header is sent (not a body field).
-test("shop aggregates, carts, checks out and places with idempotency header", async ({ page }) => {
+// Inventory + checkout against the Vite dev server with mocked Manager APIs:
+// dashboard renders, aggregates loose + boxed counts, add-to-cart flows into the
+// draft, the stepper walks cart -> details -> review -> confirmation with a
+// per-group state machine, and the Idempotency-Key header is sent (not a body field).
+test("inventory aggregates, drafts, checks out and places with idempotency header", async ({ page }) => {
   await page.route("**/api/v1/auth/state", (r) =>
     r.fulfill({ json: { loggedIn: true, user: { id: "owner", name: "Owner", owner: true, perms: { view: true, order: true } } } }),
   );
   await page.route("**/api/v1/stashes", (r) =>
     r.fulfill({ json: [
-      { server: "test", stash: "fixture", online: false },
-      { server: "test", stash: "depot", online: true },
+      { stash: "fixture", online: false },
+      { stash: "depot", online: true },
     ] }),
   );
   const boxContents = Array.from({ length: 27 }, (_, slot) => ({ slot, key: "minecraft:diamond", count: 64 }));
@@ -30,53 +30,84 @@ test("shop aggregates, carts, checks out and places with idempotency header", as
   await page.route("**/api/v1/orders?*", (r) =>
     r.fulfill({ json: { orders: [], available: { items: { "minecraft:diamond": 64 }, shulkers: {} } } }),
   );
-  let posted: { headers: Record<string, string>; body: any } | null = null;
+  let posted: { headers: Record<string, string>; body: any }[] = [];
   await page.route("**/api/v1/orders", (r) => {
     if (r.request().method() === "POST") {
-      posted = { headers: r.request().headers(), body: r.request().postDataJSON() };
-      return r.fulfill({ json: { ok: true, order: { id: "o-e2e1" } } });
+      posted.push({ headers: r.request().headers(), body: r.request().postDataJSON() });
+      return r.fulfill({ json: { ok: true, order: { id: `o-e2e-${posted.length}` } } });
     }
     return r.continue();
   });
 
-  await page.goto("/shop");
-  await expect(page.getByRole("heading", { name: "Shop the stash" })).toBeVisible();
-  // Aggregated loose (64) + boxed (1728).
-  await expect(page.locator("#item-grid").getByText("×1,792").first()).toBeVisible();
+  await page.goto("/inventory");
+  await expect(page.getByRole("heading", { name: "Inventory" })).toBeVisible();
+  // Aggregated loose (64) + whole-box (1728).
+  await expect(page.getByTestId("item-grid").getByText("1,792").first()).toBeVisible();
 
-  // Search narrows the grid through the URL.
-  await page.getByRole("searchbox", { name: "Search the stash" }).fill("diamond");
-  await expect(page).toHaveURL(/q=diamond/);
-  await expect(page.locator('#item-grid [role="listitem"]')).toHaveCount(1);
-  await page.getByRole("searchbox", { name: "Search the stash" }).fill("");
-  await expect(page.locator('#item-grid [role="listitem"]')).toHaveCount(2);
+  // Search narrows the grid.
+  await page.getByLabel("Search items").first().fill("diamond");
+  await expect(page.getByTestId("item-grid").locator(".MuiCard-root")).toHaveCount(1);
+  await page.getByLabel("Search items").first().fill("");
+  await expect(page.getByTestId("item-grid").locator(".MuiCard-root")).toHaveCount(2);
 
-  // Quick-add one stack via the dialog.
-  await page.locator('#item-grid [role="listitem"]').first().click();
+  // Add one stack via the item dialog.
+  await page.getByTestId("item-grid").locator(".MuiCard-root").first().getByRole("button", { name: "Add" }).click();
   await page.getByRole("button", { name: "Add to cart" }).click();
-  await expect(page.locator("#cart-lines .cart-line")).toHaveCount(1);
-  await expect(page.locator("#cart-totals")).toContainText("64 items");
 
-  // Walk the wizard: cart -> delivery -> review -> place order.
-  await page.getByRole("button", { name: "Continue to delivery" }).click();
-  await page.locator("#order-comment").fill("e2e order");
-  await page.getByRole("button", { name: "Continue to review" }).click();
+  // Open the draft drawer and start checkout.
+  await page.getByRole("button", { name: /cart/i }).first().click();
+  // Guild-wide split: loose + whole box from fixture, loose remainder from depot.
+  await expect(page.locator("#cart-lines .cart-line")).toHaveCount(3);
+  await page.getByRole("button", { name: "Checkout" }).click();
+
+  // Walk the stepper: cart -> details -> review -> place.
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByLabel("Comment (optional)").fill("e2e order");
+  await page.getByRole("button", { name: "Review" }).click();
   await expect(page.locator("#order-review")).toContainText("e2e order");
-  await page.getByRole("button", { name: "Place order", exact: true }).click();
-  // The mocked stash is offline, so the order queues (offline order queue).
-  await expect(page.locator("#cart-status").first()).toContainText(/placed|reconnect/i, { timeout: 10_000 });
+  await page.getByRole("button", { name: "Place orders" }).click();
+  // Both stash groups confirm with their own order ids (one backend order per stash).
+  await expect(page.getByText("Confirmed o-e2e-1")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("Confirmed o-e2e-2")).toBeVisible({ timeout: 10_000 });
 
-  expect(posted).not.toBeNull();
-  expect(posted!.headers["idempotency-key"]).toMatch(/^[A-Za-z0-9_-]{1,128}$/);
-  expect(posted!.body.lines).toEqual([{ type: "item", key: "minecraft:diamond", count: 64 }]);
-  expect(posted!.body).not.toHaveProperty("idempotencyKey");
-  expect(posted!.body).not.toHaveProperty("server");
-  expect(posted!.body.stash).toBe("fixture");
-  expect(posted!.body.purpose).toBe("SELF");
+  // The guild-wide draft (1856 diamonds) split across stashes: loose + whole box
+  // from fixture, loose remainder from depot. Each group has its own idempotency key.
+  expect(posted).toHaveLength(2);
+  const byStash = Object.fromEntries(posted.map((p) => [p.body.stash, p]));
+  expect(byStash["fixture"].body.lines).toEqual([
+    { type: "item", key: "minecraft:diamond", count: 64 },
+    { type: "shulker", key: "diamond-box", count: 1 },
+  ]);
+  expect(byStash["depot"].body.lines).toEqual([{ type: "item", key: "minecraft:diamond", count: 64 }]);
+  for (const p of posted) {
+    expect(p.headers["idempotency-key"]).toMatch(/^[A-Za-z0-9_-]{1,128}$/);
+    expect(p.body).not.toHaveProperty("idempotencyKey");
+    expect(p.body).not.toHaveProperty("server");
+    expect(p.body.purpose).toBe("SELF");
+  }
+  expect(new Set(posted.map((p) => p.headers["idempotency-key"])).size).toBe(2);
 });
 
 test("empty stash and auth redirect", async ({ page }) => {
   await page.route("**/api/v1/auth/state", (r) => r.fulfill({ json: { loggedIn: false } }));
-  await page.goto("/shop");
+  await page.goto("/inventory");
   await expect(page).toHaveURL(/\/login/);
+});
+
+test("failed orders expose retry, partial stash failure is explicit", async ({ page }) => {
+  await page.route("**/api/v1/auth/state", (r) =>
+    r.fulfill({ json: { loggedIn: true, user: { id: "owner", name: "Owner", owner: true, perms: { view: true, order: true, ordersAll: true } } } }),
+  );
+  await page.route("**/api/v1/stashes", (r) =>
+    r.fulfill({ json: [{ stash: "a", online: true }, { stash: "b", online: true }] }),
+  );
+  await page.route("**/api/v1/orders?stash=a", (r) =>
+    r.fulfill({ json: { orders: [{ id: "o-failed1", status: "failed", stash: "a", message: "shortage", lines: [{ type: "item", key: "minecraft:dirt", count: 5 }], createdAt: 1, updatedAt: 2 }], available: { items: {}, shulkers: {} } } }),
+  );
+  await page.route("**/api/v1/orders?stash=b", (r) => r.fulfill({ status: 500, json: { error: "down" } }));
+  await page.goto("/orders");
+  await expect(page.getByText("Could not load orders for b")).toBeVisible();
+  await page.getByTestId("order-card").first().click();
+  // Retry is visible for failed orders (not hidden inside an open-state gate).
+  await expect(page.getByRole("button", { name: "Retry as new order" })).toBeVisible();
 });

@@ -11,7 +11,7 @@ env:
 jobs:
 
   assets:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
@@ -42,7 +42,7 @@ jobs:
           if-no-files-found: ignore
 
   client-runtime:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
@@ -69,7 +69,7 @@ jobs:
           if-no-files-found: ignore
 
   hierarchy:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
@@ -90,7 +90,7 @@ jobs:
           if-no-files-found: ignore
 
   inventory:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
@@ -111,7 +111,7 @@ jobs:
           if-no-files-found: ignore
 
   navigation:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
@@ -132,7 +132,7 @@ jobs:
           if-no-files-found: ignore
 
   sorting:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
@@ -153,7 +153,7 @@ jobs:
           if-no-files-found: ignore
 
   physical-stock:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
@@ -174,7 +174,7 @@ jobs:
           if-no-files-found: ignore
 
   toolchain:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
@@ -198,7 +198,7 @@ jobs:
           if-no-files-found: ignore
 
   world:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
@@ -220,7 +220,7 @@ jobs:
 
   scenario-shards:
     name: '${{ matrix.suite }} / shard ${{ matrix.shard }}'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 110
     strategy:
       fail-fast: false

@@ -75,6 +75,7 @@ public final class InventorySync {
     public static java.util.Map<String, Long> intentAudit() {
         return java.util.Map.copyOf(INTENT_AUDIT);
     }
+
     private static boolean recoveringWorld, recoveringReceipt;
     private static boolean reopenRequested;
 
@@ -466,7 +467,8 @@ public final class InventorySync {
             // cancelled and the journal fenced instead of mutating the world without an intent.
             // The job retries through its normal place-failed path with a fresh announcement.
             if (event.packet instanceof ServerboundUseItemOnPacket use && ours) {
-                var target = use.hitResult().getBlockPos().relative(use.hitResult().getDirection());
+                var target =
+                        use.hitResult().getBlockPos().relative(use.hitResult().getDirection());
                 if (expectSpot != null) intentCounted("consume-miss");
                 if (com.porter.wesort.compat.WorldInteractionGuard.hasLivePlacePermit(target)) {
                     intentCounted("unmatched-placement-cancelled");

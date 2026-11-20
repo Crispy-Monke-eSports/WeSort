@@ -815,8 +815,7 @@ public final class WorldTestDriver {
             denials.addProperty(entry.getKey(), entry.getValue());
         out.add("guardDenials", denials);
         var intents = new JsonObject();
-        for (var entry : InventorySync.intentAudit().entrySet())
-            intents.addProperty(entry.getKey(), entry.getValue());
+        for (var entry : InventorySync.intentAudit().entrySet()) intents.addProperty(entry.getKey(), entry.getValue());
         out.add("intentAudit", intents);
         JsonArray slots = new JsonArray();
         for (var slot : mc.player.containerMenu.slots) {

@@ -308,6 +308,20 @@ public final class InventorySync {
                 .toString();
     }
 
+    /**
+     * Meteor's BlockUtils.place can click the replaceable destination directly
+     * when there is no solid support face. In that case vanilla places into the
+     * clicked cell, not the adjacent cell. Resolve the announced exact cell
+     * before deciding whether this is a durable world mutation.
+     */
+    private static BlockPos placementTarget(net.minecraft.world.phys.BlockHitResult hit) {
+        BlockPos clicked = hit.getBlockPos();
+        if (expectSpot != null
+                && expectSpot.equals(clicked)
+                && mc.level.getBlockState(clicked).canBeReplaced()) return clicked;
+        return clicked.relative(hit.getDirection());
+    }
+
     @EventHandler
     private void sent(PacketEvent.Send event) {
         if (mc.player == null || mc.level == null) return;
@@ -346,8 +360,7 @@ public final class InventorySync {
         // Without a matching placement announcement the packet is cancelled below.
         boolean ours = calledFromWeSort();
         if (!ours && event.packet instanceof ServerboundUseItemOnPacket placed) {
-            var target =
-                    placed.hitResult().getBlockPos().relative(placed.hitResult().getDirection());
+            var target = placementTarget(placed.hitResult());
             if (WorldInteractionGuard.hasLivePlacePermit(target)) {
                 ours = true;
                 // The regular mixin preflight was deferred with Meteor's rotation.
@@ -410,10 +423,7 @@ public final class InventorySync {
                         && placing != null
                         && !placing.isEmpty()
                         && System.nanoTime() - announcedAt < 60_000_000_000L
-                        && use.hitResult()
-                                .getBlockPos()
-                                .relative(use.hitResult().getDirection())
-                                .equals(want)) {
+                        && placementTarget(use.hitResult()).equals(want)) {
                     intentCounted("consume-hit");
                     expectSpot = null;
                     expectBlock = null;
@@ -471,7 +481,7 @@ public final class InventorySync {
             // withheld instead of mutating the world without an intent; the job retries through
             // its normal place-failed path with a fresh announcement. Withholding cancels the
             // send, so no phantom read-open is registered below for the cancelled packet.
-            var target = use.hitResult().getBlockPos().relative(use.hitResult().getDirection());
+            var target = placementTarget(use.hitResult());
             if (expectSpot != null) intentCounted("consume-miss");
             if (com.porter.wesort.compat.WorldInteractionGuard.hasLivePlacePermit(target)) {
                 intentCounted("unmatched-placement-cancelled");

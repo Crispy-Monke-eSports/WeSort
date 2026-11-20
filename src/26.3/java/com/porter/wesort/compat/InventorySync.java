@@ -548,12 +548,23 @@ public final class InventorySync {
             } else if (!reopenRequested && openRecoverySource()) reopenRequested = true;
         }
         if (gate.failed()) return;
-        for (var block : blocks.values())
-            if (!recoveringWorld && System.nanoTime() >= block.deadline) {
-                gate.fail("Block acknowledgement timed out; do not replay the placement or break");
+        // The block ACK is an ordering fence, not proof that a separate world
+        // state update has reached the client on this same callback. Keep the
+        // mutation fenced until the matching world state arrives; if the server
+        // never confirms it, the original eight-second deadline fails closed.
+        for (var block : List.copyOf(blocks.values())) {
+            if (lastBlockAck >= block.sequence
+                    && mc.level != null
+                    && mc.level.isLoaded(block.pos)
+                    && blockId(block.pos).equals(block.block)) {
+                blocks.remove(block.sequence);
+            } else if (!recoveringWorld && System.nanoTime() >= block.deadline) {
+                gate.fail("Block acknowledgement or verified state timed out; do not replay the action");
                 reportFailure();
                 return;
             }
+        }
+        complete();
         gate.expire(System.nanoTime());
         if (gate.failed()) {
             reportFailure();
@@ -710,15 +721,14 @@ public final class InventorySync {
             }
         }
         if (gate.failed()) return;
+        // ACK may precede the matching authoritative block-state packet.
+        // Do not incorrectly fail on its transient old state, and never clear
+        // the pending fence until the expected state is actually visible.
         for (var block : List.copyOf(blocks.values()))
-            if (block.sequence <= sequence) {
-                if (!mc.level.isLoaded(block.pos) || !blockId(block.pos).equals(block.block)) {
-                    gate.fail("Server rejected or changed the predicted block operation");
-                    reportFailure();
-                    return;
-                }
-                blocks.remove(block.sequence);
-            }
+            if (block.sequence <= sequence
+                    && mc.level != null
+                    && mc.level.isLoaded(block.pos)
+                    && blockId(block.pos).equals(block.block)) blocks.remove(block.sequence);
         complete();
     }
 

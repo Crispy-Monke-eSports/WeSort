@@ -88,7 +88,10 @@ final class BrowserRoutes {
                     : null;
             list.add(o);
             if (server == null) {
-                o.add("orders", orders.summaryJson(config.minecraftServer(), stash, who.perms().ordersAll() ? null : who.id()));
+                o.add(
+                        "orders",
+                        orders.summaryJson(
+                                config.minecraftServer(), stash, who.perms().ordersAll() ? null : who.id()));
             } else {
                 o.add("orders", orders.summaryJson(server, stash, who.perms().ordersAll() ? null : who.id()));
             }

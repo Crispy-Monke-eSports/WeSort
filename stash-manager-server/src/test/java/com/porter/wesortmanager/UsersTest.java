@@ -206,8 +206,8 @@ class UsersTest {
         Res r = post(
                 token,
                 "/api/v1/orders",
-                "{\"stash\":\"" + stash + "\",\"lines\":[{\"type\":\"item\",\"key\":\"" + key
-                        + "\",\"count\":" + n + "}]}");
+                "{\"stash\":\"" + stash + "\",\"lines\":[{\"type\":\"item\",\"key\":\"" + key + "\",\"count\":" + n
+                        + "}]}");
         assertEquals(200, r.status, r.raw.body());
         return r.obj().getAsJsonObject("order").get("id").getAsString();
     }
@@ -276,8 +276,7 @@ class UsersTest {
         assertEquals("MinecraftUser", guildOrder.get("recipient").getAsString());
         assertEquals("Projekt Å <test>", guildOrder.get("comment").getAsString());
         assertEquals(profile.get("id"), guildOrder.get("organizationId"));
-        assertFalse(
-                get(viewer, "/api/v1/orders?stash=a").obj().toString().contains("Projekt Å"));
+        assertFalse(get(viewer, "/api/v1/orders?stash=a").obj().toString().contains("Projekt Å"));
         String own = selfOrder.get("id").getAsString();
         assertTrue(audit.newest(30).toString().contains(own + " SELF"));
         assertFalse(audit.newest(30).toString().contains("Projekt Å"));
@@ -310,8 +309,7 @@ class UsersTest {
         request.addProperty("recipient", "BuilderIGN");
         assertEquals(400, post(owner, "/api/v1/orders", request.toString()).status);
         assertEquals(balances, get(viewer, "/api/v1/stock").obj().get("items"));
-        assertTrue(
-                get(owner, "/api/v1/orders?stash=a").obj().toString().contains(own));
+        assertTrue(get(owner, "/api/v1/orders?stash=a").obj().toString().contains(own));
     }
 
     @Test
@@ -429,11 +427,7 @@ class UsersTest {
                         .getAsJsonObject()
                         .get("action")
                         .getAsString());
-        create(
-                owner,
-                "OtherVaultAuditor",
-                "{\"view\":true,\"ordersAll\":true,\"stashes\":[{\"stash\":\"b\"}]}",
-                false);
+        create(owner, "OtherVaultAuditor", "{\"view\":true,\"ordersAll\":true,\"stashes\":[{\"stash\":\"b\"}]}", false);
         assertEquals(
                 0,
                 get(login("OtherVaultAuditor", TEMP_PW), trail)
@@ -536,8 +530,7 @@ class UsersTest {
         assertEquals(200, get(v, "/api/v1/index?stash=a").status);
         assertEquals(200, get(v, "/api/v1/orders?stash=a").status);
 
-        String order =
-                "{\"stash\":\"a\",\"lines\":[{\"type\":\"item\",\"key\":\"minecraft:diamond\",\"count\":1}]}";
+        String order = "{\"stash\":\"a\",\"lines\":[{\"type\":\"item\",\"key\":\"minecraft:diamond\",\"count\":1}]}";
         Res refused = post(v, "/api/v1/orders", order);
         assertEquals(403, refused.status);
         assertEquals("order", refused.obj().get("permission").getAsString());

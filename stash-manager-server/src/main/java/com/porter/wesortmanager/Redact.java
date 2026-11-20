@@ -5,10 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.sun.net.httpserver.HttpExchange;
 import java.nio.charset.StandardCharsets;
-import java.util.Map;
-import java.util.TreeMap;
 
 /**
  * Position redaction for users without the positions permission.
@@ -29,6 +26,7 @@ final class Redact {
             "Auto eat",
             "Auto totem",
             "Delivery");
+
     private Redact() {}
 
     /** Free text from a bot (it can hold positions): always "(hidden)" when present. */

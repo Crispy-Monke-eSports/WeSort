@@ -177,7 +177,12 @@ class StockHierarchyTest {
         var sharedBalance = hiddenStock.getAsJsonArray("items").get(0).getAsJsonObject();
         assertEquals(visibleBalance.get("observed"), sharedBalance.get("observed"));
         assertFalse(sharedBalance.has("server"));
-        var nopos = new Users.Principal("nopos", "NoPos", false, Users.Perms.of(true, false, false, false, false, false, false, null, null), false);
+        var nopos = new Users.Principal(
+                "nopos",
+                "NoPos",
+                false,
+                Users.Perms.of(true, false, false, false, false, false, false, null, null),
+                false);
         assertNull(routes.source(nopos, id));
         assertFalse(routes.view(nopos).toString().contains("slotFingerprint"));
         assertFalse(Redact.index(original.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8))

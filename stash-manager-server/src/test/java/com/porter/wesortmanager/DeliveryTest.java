@@ -271,10 +271,7 @@ class DeliveryTest {
         assertEquals(52, sum.get("freeSlots").getAsInt());
         assertEquals(1, sum.get("unknownChests").getAsInt());
         assertEquals(1767225600000L, sum.get("readAt").getAsLong());
-        assertEquals(
-                "null",
-                get(owner, "/api/v1/delivery?stash=nothing").body.trim(),
-                "no report");
+        assertEquals("null", get(owner, "/api/v1/delivery?stash=nothing").body.trim(), "no report");
         assertEquals(400, get(owner, "/api/v1/delivery").status, "stash is required");
 
         // An explicit null (the delivery container was unset) drops the report.

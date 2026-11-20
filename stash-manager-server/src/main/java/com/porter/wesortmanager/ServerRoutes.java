@@ -1,6 +1,5 @@
 package com.porter.wesortmanager;
 
-import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 
@@ -19,8 +18,7 @@ final class ServerRoutes {
 
     void register(Router router) {
         router.exact(Router.GET, "/api/v1/server", Router.Guard.SESSION, Router.Perm.VIEW, this::get);
-        router.exact(
-                Router.POST, "/api/v1/server", Router.Guard.BROWSER_WRITE, Router.Perm.OWNER, this::set);
+        router.exact(Router.POST, "/api/v1/server", Router.Guard.BROWSER_WRITE, Router.Perm.OWNER, this::set);
     }
 
     private void get(HttpExchange ex) throws IOException {

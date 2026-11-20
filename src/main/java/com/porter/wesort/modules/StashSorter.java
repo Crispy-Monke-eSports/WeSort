@@ -2188,8 +2188,7 @@ public class StashSorter extends Module {
                     && job == null
                     && mc.player.containerMenu == mc.player.inventoryMenu) pickCarrySlots(false);
             // Not taking orders and nothing of an order held: no carry slots
-            else if (!sorting() && !ordersWanted() && orderHeld.isEmpty() && !carry.isEmpty())
-                carry.clear();
+            else if (!sorting() && !ordersWanted() && orderHeld.isEmpty() && !carry.isEmpty()) carry.clear();
             // Scan-only was switched off: there are carry slots to find now
             if (sorting() && carry.isEmpty()) {
                 if (!pickCarrySlots()) {
@@ -10362,9 +10361,7 @@ public class StashSorter extends Module {
     }
 
     private static String str(com.google.gson.JsonElement e) {
-        return e != null && e.isJsonPrimitive() && e.getAsJsonPrimitive().isString()
-                ? e.getAsString()
-                : null;
+        return e != null && e.isJsonPrimitive() && e.getAsJsonPrimitive().isString() ? e.getAsString() : null;
     }
 
     /**
@@ -11518,8 +11515,7 @@ public class StashSorter extends Module {
         }
         // Not sorting, only what an order itself took counts as carried: the rest of the slots are the player's
         if (!sorting())
-            slots.removeIf(slot -> !mc.player.getInventory().getItem(slot).isEmpty()
-                    && !orderHeld.containsKey(slot));
+            slots.removeIf(slot -> !mc.player.getInventory().getItem(slot).isEmpty() && !orderHeld.containsKey(slot));
         return slots;
     }
 

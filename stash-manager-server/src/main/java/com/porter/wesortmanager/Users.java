@@ -88,17 +88,7 @@ final class Users {
 
         Perms withPositions(boolean allowed) {
             return new Perms(
-                    view,
-                    order,
-                    ordersAll,
-                    activity,
-                    settings,
-                    rescan,
-                    link,
-                    stashes,
-                    bots,
-                    guildOrders,
-                    allowed);
+                    view, order, ordersAll, activity, settings, rescan, link, stashes, bots, guildOrders, allowed);
         }
 
         boolean seesStash(String stash) {
@@ -148,8 +138,7 @@ final class Users {
             List<StashRef> stashes = null;
             JsonElement se = o.get("stashes");
             if (se != null && !se.isJsonNull()) {
-                if (!se.isJsonArray())
-                    throw new IllegalArgumentException("stashes must be null or a list of {stash}");
+                if (!se.isJsonArray()) throw new IllegalArgumentException("stashes must be null or a list of {stash}");
                 stashes = new ArrayList<>();
                 for (JsonElement item : se.getAsJsonArray()) {
                     if (!item.isJsonObject())

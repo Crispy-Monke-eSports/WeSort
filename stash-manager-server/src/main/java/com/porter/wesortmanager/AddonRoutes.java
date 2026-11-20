@@ -28,12 +28,7 @@ final class AddonRoutes {
         this(store, link, icons, orders, new DeliveryContents(), null, null);
     }
 
-    AddonRoutes(
-            IndexStore store,
-            LinkState link,
-            IconService icons,
-            OrderStore orders,
-            DeliveryContents delivery) {
+    AddonRoutes(IndexStore store, LinkState link, IconService icons, OrderStore orders, DeliveryContents delivery) {
         this(store, link, icons, orders, delivery, null, null);
     }
 

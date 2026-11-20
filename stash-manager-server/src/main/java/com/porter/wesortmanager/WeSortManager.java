@@ -154,18 +154,7 @@ public final class WeSortManager {
             BotHub hub = new BotHub();
             RuntimeHealth health = new RuntimeHealth(false);
             Routes built = routes(
-                    config,
-                    store,
-                    orders,
-                    icons,
-                    link,
-                    urls,
-                    sessions,
-                    users,
-                    audit,
-                    hub,
-                    new LoginLimiter(),
-                    health);
+                    config, store, orders, icons, link, urls, sessions, users, audit, hub, new LoginLimiter(), health);
             Router router = built.router();
             AuthRoutes authRoutes = built.auth();
             if (!users.list().isEmpty())
@@ -315,8 +304,7 @@ public final class WeSortManager {
         DeliveryContents delivery = new DeliveryContents(); // in memory only
         var stashDefs = new StashDefs(config.dataDir());
         new AddonRoutes(store, link, icons, orders, delivery, config, stashDefs).register(router);
-        new BrowserRoutes(store, config, link, urls, orders, sessions, audit, delivery, credentials)
-                .register(router);
+        new BrowserRoutes(store, config, link, urls, orders, sessions, audit, delivery, credentials).register(router);
         new DeliveryRoutes(delivery, config).register(router);
         var guild = new GuildRoutes(config.dataDir(), audit);
         new OrderRoutes(orders, audit, guild, users, config).register(router);

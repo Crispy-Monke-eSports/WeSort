@@ -382,8 +382,7 @@ public class StashManager extends Module {
         request.addProperty("server", Stash.currentServer());
         request.addProperty("agent", mc.player.getUUID().toString());
         request.addProperty("token", sortingToken);
-        boolean uncertain =
-                InventorySync.failed() || PhysicalJournalRuntime.blocked();
+        boolean uncertain = InventorySync.failed() || PhysicalJournalRuntime.blocked();
         if (uncertain && sortingToken == null) return false;
         request.addProperty("action", uncertain ? "uncertain" : wants ? "acquire" : "release");
         sortingPoll = now + 2_000_000_000L;
@@ -1292,8 +1291,7 @@ public class StashManager extends Module {
         // opened
         // are not read by the bot on their own
         if (rescanning && !sorter.needsReading()) rescanning = false;
-        boolean want =
-                isActive() && sorter.currentStash() != null && (acceptOrders.get() || rescanning);
+        boolean want = isActive() && sorter.currentStash() != null && (acceptOrders.get() || rescanning);
         sorter.drive(want);
     }
 

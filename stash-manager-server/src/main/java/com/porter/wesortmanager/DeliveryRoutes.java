@@ -60,9 +60,6 @@ final class DeliveryRoutes {
         DeliveryContents.Snapshot s = contents.get(server, stash);
         // null: the bot hasn't reported (an older bot, no delivery container, or not yet since the server started).
         boolean positions = Router.user(ex).perms().positions();
-        Http.json(
-                ex,
-                200,
-                s == null || !positions ? JsonNull.INSTANCE : s.json());
+        Http.json(ex, 200, s == null || !positions ? JsonNull.INSTANCE : s.json());
     }
 }

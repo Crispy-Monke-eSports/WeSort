@@ -20,8 +20,7 @@ final class StashDefRoutes {
 
     void register(Router router) {
         router.exact(Router.GET, "/api/v1/stash-defs", Router.Guard.SESSION, Router.Perm.VIEW, this::list);
-        router.exact(
-                Router.POST, "/api/v1/stash-defs", Router.Guard.BROWSER_WRITE, Router.Perm.OWNER, this::change);
+        router.exact(Router.POST, "/api/v1/stash-defs", Router.Guard.BROWSER_WRITE, Router.Perm.OWNER, this::change);
     }
 
     private void list(HttpExchange ex) throws IOException {

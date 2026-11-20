@@ -355,8 +355,7 @@ public final class WorldTestDriver {
                                         java.nio.charset.StandardCharsets.UTF_8)));
                     respond(true, "actual production Sorter observation cache", result);
                 }
-                case "kit-info", "kit-compare" ->
-                    respond(false, "kit system removed", state());
+                case "kit-info", "kit-compare" -> respond(false, "kit system removed", state());
                 case "sort-start", "sort-config" -> {
                     if (stash == null) {
                         respond(false, "Capture fixture containers first", null);

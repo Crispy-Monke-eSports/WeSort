@@ -80,7 +80,8 @@ final class StashDefs {
         if (Files.isSymbolicLink(file)) throw new IOException("Invalid stash definitions location");
         if (!Files.exists(file)) return;
         try {
-            var root = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8)).getAsJsonObject();
+            var root = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8))
+                    .getAsJsonObject();
             if (root.get("schema").getAsBigDecimal().intValueExact() != SCHEMA) throw new IllegalArgumentException();
             for (var e : root.getAsJsonArray("defs")) {
                 var o = e.getAsJsonObject();
@@ -160,12 +161,10 @@ final class StashDefs {
                 ? vec(req.getAsJsonObject("delivery"), "delivery")
                 : null;
         String deliveryDim = str(req, "deliveryDimension");
-        Vec anvil = req.has("anvil") && !req.get("anvil").isJsonNull()
-                ? vec(req.getAsJsonObject("anvil"), "anvil")
-                : null;
-        Vec table = req.has("table") && !req.get("table").isJsonNull()
-                ? vec(req.getAsJsonObject("table"), "table")
-                : null;
+        Vec anvil =
+                req.has("anvil") && !req.get("anvil").isJsonNull() ? vec(req.getAsJsonObject("anvil"), "anvil") : null;
+        Vec table =
+                req.has("table") && !req.get("table").isJsonNull() ? vec(req.getAsJsonObject("table"), "table") : null;
         long rev = revision > 0 ? revision + 1 : 1;
         return new Def(name, dimension, pos1, pos2, delivery, deliveryDim, anvil, table, rev, clock.getAsLong());
     }
@@ -193,9 +192,7 @@ final class StashDefs {
 
     private static String str(JsonObject o, String key) {
         var e = o.get(key);
-        return e != null && e.isJsonPrimitive() && e.getAsJsonPrimitive().isString()
-                ? e.getAsString()
-                : null;
+        return e != null && e.isJsonPrimitive() && e.getAsJsonPrimitive().isString() ? e.getAsString() : null;
     }
 
     private static Def read(JsonObject o) {
@@ -204,12 +201,8 @@ final class StashDefs {
         Vec delivery = o.has("delivery") && !o.get("delivery").isJsonNull()
                 ? vec(o.getAsJsonObject("delivery"), "delivery")
                 : null;
-        Vec anvil = o.has("anvil") && !o.get("anvil").isJsonNull()
-                ? vec(o.getAsJsonObject("anvil"), "anvil")
-                : null;
-        Vec table = o.has("table") && !o.get("table").isJsonNull()
-                ? vec(o.getAsJsonObject("table"), "table")
-                : null;
+        Vec anvil = o.has("anvil") && !o.get("anvil").isJsonNull() ? vec(o.getAsJsonObject("anvil"), "anvil") : null;
+        Vec table = o.has("table") && !o.get("table").isJsonNull() ? vec(o.getAsJsonObject("table"), "table") : null;
         return new Def(
                 o.get("name").getAsString(),
                 o.get("dimension").getAsString(),

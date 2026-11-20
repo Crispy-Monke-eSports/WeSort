@@ -93,8 +93,7 @@ final class DashboardRoutes {
                     String used = s.has("player") && !s.get("player").isJsonNull()
                             ? s.get("player").getAsString()
                             : null;
-                    if (player.equalsIgnoreCase(used == null ? "" : used)
-                            && perms.seesStash(stash)) {
+                    if (player.equalsIgnoreCase(used == null ? "" : used) && perms.seesStash(stash)) {
                         JsonObject ref = new JsonObject();
                         ref.addProperty("stash", stash);
                         mine.add(ref);
@@ -147,12 +146,7 @@ final class DashboardRoutes {
             case "activity" -> {
                 // Read-only status: a login is enough (no sudo).
                 hub.watchActivity(b);
-                Http.json(
-                        ex,
-                        200,
-                        !perms(ex).positions()
-                                ? Redact.activity(hub.activityJson(b))
-                                : hub.activityJson(b));
+                Http.json(ex, 200, !perms(ex).positions() ? Redact.activity(hub.activityJson(b)) : hub.activityJson(b));
             }
             case "settings" -> {
                 String scope = q.getOrDefault("scope", "plugin");

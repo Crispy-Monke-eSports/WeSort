@@ -211,8 +211,7 @@ final class StockRoutes {
                 .filter(s -> !s.status().equals("SUPERSEDED"))
                 .toList();
         var visibleServers = new HashSet<String>();
-        for (var source : sources)
-            if (who.perms().seesStash(source.stash())) visibleServers.add(source.server());
+        for (var source : sources) if (who.perms().seesStash(source.stash())) visibleServers.add(source.server());
         for (String server :
                 sources.stream().map(StockLedger.Source::server).distinct().toList()) {
             var lease = index.automation().current(server);
@@ -356,8 +355,7 @@ final class StockRoutes {
                 result.add("id", item.get("id"));
                 result.addProperty(
                         "name",
-                        !who.perms().positions()
-                                        || !who.perms().seesStash(source.stash())
+                        !who.perms().positions() || !who.perms().seesStash(source.stash())
                                 ? Redact.prettyId(item.get("id").getAsString())
                                 : item.has("name")
                                         ? item.get("name").getAsString()

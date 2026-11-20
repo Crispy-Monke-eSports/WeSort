@@ -64,6 +64,19 @@ final class StashDefs {
             o.addProperty("updatedAt", updatedAt);
             return o;
         }
+
+        /**
+         * Coordinates stripped: what a website user without the positions permission may see.
+         * Name, dimension, revision and timestamp only — no pos1/pos2, delivery, anvil or table.
+         */
+        JsonObject redacted() {
+            JsonObject o = new JsonObject();
+            o.addProperty("name", name);
+            o.addProperty("dimension", dimension);
+            o.addProperty("revision", revision);
+            o.addProperty("updatedAt", updatedAt);
+            return o;
+        }
     }
 
     private final Path file;
@@ -97,6 +110,11 @@ final class StashDefs {
         var out = new JsonArray();
         for (var d : defs.values()) out.add(d.json());
         return out;
+    }
+
+    /** All definitions (for scope-filtered views; the caller decides full vs redacted JSON). */
+    synchronized java.util.List<Def> all() {
+        return java.util.List.copyOf(defs.values());
     }
 
     synchronized Def get(String name) {

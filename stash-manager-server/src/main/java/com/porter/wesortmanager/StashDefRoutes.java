@@ -24,8 +24,15 @@ final class StashDefRoutes {
     }
 
     private void list(HttpExchange ex) throws IOException {
+        var who = Router.user(ex);
+        boolean full = who.owner() || who.perms().positions();
+        var out = new com.google.gson.JsonArray();
+        for (var d : defs.all()) {
+            if (!who.owner() && !who.perms().seesStash(d.name())) continue;
+            out.add(full ? d.json() : d.redacted());
+        }
         var o = Http.ok();
-        o.add("defs", defs.list());
+        o.add("defs", out);
         Http.json(ex, 200, o);
     }
 

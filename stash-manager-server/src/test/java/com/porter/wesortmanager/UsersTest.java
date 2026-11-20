@@ -904,4 +904,72 @@ class UsersTest {
         assertEquals(200, get(owner, "/api/v1/users").status, "the owner stays logged in");
         assertEquals(401, get(k, "/api/v1/stashes").status);
     }
+
+    @Test
+    void stashDefsHideCoordinatesFromUnprivileged() throws Exception {
+        String owner = owner();
+        String defA = "{\"action\":\"create\",\"name\":\"a\",\"dimension\":\"minecraft:overworld\","
+                + "\"pos1\":{\"x\":0,\"y\":-60,\"z\":0},\"pos2\":{\"x\":31,\"y\":20,\"z\":31},"
+                + "\"delivery\":{\"x\":5,\"y\":63,\"z\":5},\"deliveryDimension\":\"minecraft:overworld\","
+                + "\"anvil\":{\"x\":6,\"y\":63,\"z\":6},\"table\":{\"x\":7,\"y\":63,\"z\":7}}";
+        Res created = post(owner, "/api/v1/stash-defs", defA);
+        assertEquals(200, created.status, created.raw.body());
+        String defB = "{\"action\":\"create\",\"name\":\"b\",\"dimension\":\"minecraft:the_nether\","
+                + "\"pos1\":{\"x\":0,\"y\":30,\"z\":0},\"pos2\":{\"x\":15,\"y\":50,\"z\":15}}";
+        assertEquals(200, post(owner, "/api/v1/stash-defs", defB).status);
+
+        // The owner sees full coordinates for every stash.
+        Res full = get(owner, "/api/v1/stash-defs");
+        assertEquals(200, full.status);
+        JsonArray all = full.obj().getAsJsonArray("defs");
+        assertEquals(2, all.size());
+        for (JsonElement e : all) {
+            JsonObject d = e.getAsJsonObject();
+            assertTrue(
+                    d.has("pos1") && d.getAsJsonObject("pos1").has("x") && d.has("pos2"),
+                    "owner sees coordinates: " + d);
+        }
+
+        // A member scoped to "a" without positions sees the name only, and only their stash.
+        create(owner, "erin", "{\"view\":true,\"stashes\":[{\"stash\":\"a\"}]}", false);
+        String e = login("erin", TEMP_PW);
+        Res redacted = get(e, "/api/v1/stash-defs");
+        assertEquals(200, redacted.status);
+        JsonArray mine = redacted.obj().getAsJsonArray("defs");
+        assertEquals(1, mine.size());
+        JsonObject ea = mine.get(0).getAsJsonObject();
+        assertEquals("a", ea.get("name").getAsString());
+        assertEquals("minecraft:overworld", ea.get("dimension").getAsString());
+        assertTrue(ea.has("revision"), "revision stays visible for conflict reloads");
+        for (String coord : List.of("pos1", "pos2", "delivery", "deliveryDimension", "anvil", "table"))
+            assertFalse(ea.has(coord), "member without positions must not see " + coord);
+
+        // A member with the positions permission sees full coordinates, still only in scope.
+        create(owner, "ops", "{\"view\":true,\"positions\":true,\"stashes\":[{\"stash\":\"a\"}]}", false);
+        String o = login("ops", TEMP_PW);
+        Res withPos = get(o, "/api/v1/stash-defs");
+        assertEquals(200, withPos.status);
+        JsonArray scoped = withPos.obj().getAsJsonArray("defs");
+        assertEquals(1, scoped.size(), "stash b stays out of scope");
+        assertTrue(
+                scoped.get(0).getAsJsonObject().has("pos1"), "positions permission reveals coordinates");
+
+        // An empty stash scope sees no definitions at all.
+        create(owner, "vic", "{\"view\":true,\"stashes\":[]}", false);
+        String v = login("vic", TEMP_PW);
+        Res none = get(v, "/api/v1/stash-defs");
+        assertEquals(200, none.status);
+        assertEquals(0, none.obj().getAsJsonArray("defs").size());
+
+        // Non-owners cannot create, update or delete definitions, even in scope.
+        assertEquals(403, post(e, "/api/v1/stash-defs", defA).status, "member cannot write stash defs");
+        assertEquals(
+                403,
+                post(
+                                e,
+                                "/api/v1/stash-defs",
+                                "{\"action\":\"delete\",\"name\":\"a\",\"expectedRevision\":1}")
+                        .status,
+                "member cannot delete stash defs");
+    }
 }

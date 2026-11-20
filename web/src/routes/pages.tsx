@@ -728,7 +728,7 @@ function StashDefsPanel() {
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-mono font-semibold">{d.name}</span>
                 <span className="block truncate font-mono text-xs text-muted-foreground">
-                  {d.dimension} [{d.pos1.x},{d.pos1.y},{d.pos1.z}]–[{d.pos2.x},{d.pos2.y},{d.pos2.z}]
+                  {d.dimension}{d.pos1 && d.pos2 ? ` [${d.pos1.x},${d.pos1.y},${d.pos1.z}]–[${d.pos2.x},${d.pos2.y},${d.pos2.z}]` : ""}
                   {d.delivery ? ` · drop ${d.delivery.x},${d.delivery.y},${d.delivery.z}` : ""}
                   {d.anvil ? ` · anvil ${d.anvil.x},${d.anvil.y},${d.anvil.z}` : ""}
                   {d.table ? ` · bench ${d.table.x},${d.table.y},${d.table.z}` : ""}

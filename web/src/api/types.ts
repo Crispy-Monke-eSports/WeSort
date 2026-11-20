@@ -91,8 +91,9 @@ export type Vec = z.infer<typeof VecSchema>;
 export const StashDefSchema = z.object({
   name: z.string(),
   dimension: z.string().default("minecraft:overworld"),
-  pos1: VecSchema,
-  pos2: VecSchema,
+  // Coordinates are owner/positions-only: redacted responses omit them.
+  pos1: VecSchema.optional(),
+  pos2: VecSchema.optional(),
   delivery: VecSchema.nullable().optional(),
   deliveryDimension: z.string().nullable().optional(),
   anvil: VecSchema.nullable().optional(),

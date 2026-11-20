@@ -314,8 +314,8 @@ public final class InventorySync {
         if ((event.packet instanceof ServerboundUseItemOnPacket use && !WorldInteractionGuard.allowUse(use.hitResult()))
                 || (event.packet instanceof ServerboundPlayerActionPacket action
                         && switch (action.getAction()) {
-                            case START_DESTROY_BLOCK, STOP_DESTROY_BLOCK ->
-                                !WorldInteractionGuard.allowBreak(action.getPos());
+                            case START_DESTROY_BLOCK -> !WorldInteractionGuard.allowBreak(action.getPos());
+                            case STOP_DESTROY_BLOCK -> !WorldInteractionGuard.allowBreakStop(action.getPos());
                             default -> false;
                         })
                 // Sign text travels in its own packet: it needs a live SIGN permit like any mutation.

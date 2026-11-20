@@ -147,8 +147,7 @@ public final class WorldTestDriver {
                         respond(false, "Ambiguity probe requires reachable fixture halves", null);
                         return;
                     }
-                    for (BlockPos part : List.of(pos, other))
-                        WorldInteractionGuard.authorizeUse(part);
+                    for (BlockPos part : List.of(pos, other)) WorldInteractionGuard.authorizeUse(part);
                     for (BlockPos part : List.of(pos, other))
                         meteordevelopment.meteorclient.utils.world.BlockUtils.interact(
                                 new BlockHitResult(Vec3.atCenterOf(part), Direction.UP, part, false),

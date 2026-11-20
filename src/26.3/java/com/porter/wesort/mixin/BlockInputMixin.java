@@ -57,7 +57,6 @@ public abstract class BlockInputMixin {
         BlockPos pos = wesort$lastBreakTarget;
         if (pos != null
                 && (!WorldInteractionGuard.allowBreak(pos)
-                        || (InventorySync.calledFromWeSort() && !InventorySync.allowInput())))
-            ci.cancel();
+                        || (InventorySync.calledFromWeSort() && !InventorySync.allowInput()))) ci.cancel();
     }
 }

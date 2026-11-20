@@ -41,8 +41,7 @@ public class StashManager extends Module {
     // First entry: opens the connection screen (address, port, masked key, status) from the
     // normal Meteor menu, so no chat command is needed. The raw settings below stay for
     // compatibility; the key itself is always rendered masked.
-    private final Setting<?> connectionEntry =
-            sgGeneral.add(com.porter.wesort.commands.ConnectionOpener.setting());
+    private final Setting<?> connectionEntry = sgGeneral.add(com.porter.wesort.commands.ConnectionOpener.setting());
 
     private final Setting<String> serverUrl = sgGeneral.add(new StringSetting.Builder()
             .name("server-url")

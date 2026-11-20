@@ -30,8 +30,7 @@ class OrderPackageLabelTest {
 
     @Test
     void eachModePadsWithDefault() {
-        Order o = order(base(
-                "\"packageLabel\":{\"mode\":\"each\",\"texts\":[\"A\"]},\"packageTotal\":2"));
+        Order o = order(base("\"packageLabel\":{\"mode\":\"each\",\"texts\":[\"A\"]},\"packageTotal\":2"));
         assertEquals("WeSort (1/2) - A", o.names.nameFor(0));
         assertEquals("WeSort (2/2) - Beställning", o.names.nameFor(1));
     }
@@ -44,9 +43,8 @@ class OrderPackageLabelTest {
 
     @Test
     void packageLabelBeatsLegacyNames() {
-        Order o = order(base(
-                "\"names\":{\"mode\":\"all\",\"name\":\"Free\"},"
-                        + "\"packageLabel\":{\"mode\":\"all\",\"text\":\"W\"},\"packageTotal\":1"));
+        Order o = order(base("\"names\":{\"mode\":\"all\",\"name\":\"Free\"},"
+                + "\"packageLabel\":{\"mode\":\"all\",\"text\":\"W\"},\"packageTotal\":1"));
         assertEquals("WeSort (1/1) - W", o.names.nameFor(0));
     }
 

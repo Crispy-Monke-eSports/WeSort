@@ -67,7 +67,8 @@ public final class WorldInteractionGuard {
      * covers the deferred click); synchronous sites may close the scope immediately.
      */
     public static AutoCloseable permitPlace(BlockPos emptyCell) {
-        return PERMITS.permit(emptyCell.asLong(), Operation.PLACE, blockPath(emptyCell), currentJob(), PERMIT_TTL_MS, now());
+        return PERMITS.permit(
+                emptyCell.asLong(), Operation.PLACE, blockPath(emptyCell), currentJob(), PERMIT_TTL_MS, now());
     }
 
     /**
@@ -104,8 +105,7 @@ public final class WorldInteractionGuard {
         // Placement: the click lands on a support while the adjacent cell carries a live PLACE
         // permit naming the air the job puts its block into.
         var target = position.relative(hit.getDirection());
-        return mc.level.isLoaded(target)
-                && PERMITS.allows(now, target.asLong(), Operation.PLACE, blockPath(target));
+        return mc.level.isLoaded(target) && PERMITS.allows(now, target.asLong(), Operation.PLACE, blockPath(target));
     }
 
     public static boolean allowBreak(BlockPos position) {

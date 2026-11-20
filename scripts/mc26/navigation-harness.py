@@ -111,16 +111,31 @@ class NavigationHarness(world.Harness):
                 state["navigation"] == "ARRIVED",
                 "Container route failed: " + state["navigation"],
             )
-            opened = self.command(
-                "open",
-                x=x,
-                y=64,
-                z=3,
-                slots=54,
-                item="minecraft:diamond",
-                count=64,
-                second=x + 1,
+            # Baritone may finish a route while a previous container-open response
+            # is still settling. Reject an incorrect menu unless both server-side
+            # chest halves still exist; then close and retry the read once. An
+            # actual single/missing chest or repeat mismatch still fails E2E.
+            request = dict(
+                x=x, y=64, z=3, slots=54, item="minecraft:diamond",
+                count=64, second=x + 1,
             )
+            opened = self.command("open", **request, allow_failure=True)
+            if not opened["success"]:
+                require(
+                    opened["message"] == "Unexpected container slot count",
+                    "Navigation chest open failed: " + opened["message"],
+                )
+                for half in (x, x + 1):
+                    check = self.rcon.command(
+                        f"execute if block {half} 64 3 minecraft:chest "
+                        "run time query gametime"
+                    )
+                    require(
+                        "time is " in check,
+                        "The real double-chest fixture changed during navigation",
+                    )
+                self.command("close")
+                opened = self.command("open", **request)
             self.command("close")
             self.stable()
             route.append(opened)

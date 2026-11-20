@@ -1222,6 +1222,7 @@ final class StashLabeller {
         sneak(false);
         // Whatever request was still going (the walk) is let go of, so it is not taken for someone else's
         owner.releaseGoal();
+        com.porter.wesort.compat.InventorySync.clearPlacementExpectation();
         restorePending = swapped || heldFrom != -1;
         restoreHand();
 

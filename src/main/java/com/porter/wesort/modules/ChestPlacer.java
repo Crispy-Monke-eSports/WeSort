@@ -203,6 +203,7 @@ final class ChestPlacer {
     private void end(Outcome outcome) {
         sneak(false);
         owner.releaseGoal();
+        com.porter.wesort.compat.InventorySync.clearPlacementExpectation();
         step = null;
         clickIssued = false;
         result = outcome;

@@ -439,6 +439,27 @@ public final class InventorySync {
                 }
             }
         }
+        if (!mutation && event.packet instanceof ServerboundUseItemOnPacket use && ours) {
+            // Fail-closed placement intent (W-061 journal ordering): an own block-use against a
+            // cell carrying a live PLACE permit for this job is an announced placement whose
+            // durable intent must be recorded before the packet leaves. Opens authorize only the
+            // USE permit on the clicked block, so they never take this branch. If the announced
+            // slot did not match (lost, overwritten, expired, or mis-targeted), the packet is
+            // withheld instead of mutating the world without an intent; the job retries through
+            // its normal place-failed path with a fresh announcement. Withholding cancels the
+            // send, so no phantom read-open is registered below for the cancelled packet.
+            var target =
+                    use.hitResult().getBlockPos().relative(use.hitResult().getDirection());
+            if (expectSpot != null) intentCounted("consume-miss");
+            if (com.porter.wesort.compat.WorldInteractionGuard.hasLivePlacePermit(target)) {
+                intentCounted("unmatched-placement-cancelled");
+                event.cancel();
+                MeteorClient.LOG.error(
+                        "WeSort withheld a placement without a durable intent at {}; no packet left the client.",
+                        target.toShortString());
+                return;
+            }
+        }
         if (!mutation && event.packet instanceof ServerboundUseItemOnPacket use) {
             BlockPos pos = use.hitResult().getBlockPos().immutable();
             var block = mc.level.getBlockState(pos).getBlock();
@@ -457,29 +478,9 @@ public final class InventorySync {
                         ambiguous,
                         false);
             }
-        }
-        if (!mutation) {
-            // Fail-closed placement intent (W-061 journal ordering): an own block-use against a
-            // cell carrying a live PLACE permit for this job is an announced placement whose
-            // durable intent must be recorded before the packet leaves. Opens authorize only the
-            // USE permit on the clicked block, so they never take this branch. If the announced
-            // slot did not match (lost, overwritten, expired, or mis-targeted), the packet is
-            // cancelled and the journal fenced instead of mutating the world without an intent.
-            // The job retries through its normal place-failed path with a fresh announcement.
-            if (event.packet instanceof ServerboundUseItemOnPacket use && ours) {
-                var target =
-                        use.hitResult().getBlockPos().relative(use.hitResult().getDirection());
-                if (expectSpot != null) intentCounted("consume-miss");
-                if (com.porter.wesort.compat.WorldInteractionGuard.hasLivePlacePermit(target)) {
-                    intentCounted("unmatched-placement-cancelled");
-                    event.cancel();
-                    gate.fail("Placement without a durable intent was withheld");
-                    reportFailure();
-                    return;
-                }
-            }
             return;
         }
+        if (!mutation) return;
         if (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror()) {
             event.cancel();
             gate.fail("Physical journal withheld an automated mutation");

@@ -27,6 +27,8 @@ import TablePagination from "@mui/material/TablePagination";
 import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import useMediaQuery from "@mui/material/useMediaQuery";
+import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { api } from "../api/client";
@@ -63,6 +65,9 @@ export function OrdersPage() {
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [detail, setDetail] = useState<any | null>(null);
   const [actionMsg, setActionMsg] = useState("");
+  // Genuine mobile view (cards, not a squeezed table): render exactly one variant.
+  const theme = useTheme();
+  const isXs = useMediaQuery(theme.breakpoints.down("sm"));
 
   const canChange = perms.can("order") || perms.owner;
 
@@ -131,7 +136,7 @@ export function OrdersPage() {
         </FormControl>
       </Stack>
 
-      <TableContainer component={Paper} id="order-list">
+      {!isXs && (<TableContainer component={Paper} id="order-list">
         <Table size="small" aria-label="Orders table">
           <TableHead>
             <TableRow>
@@ -147,7 +152,13 @@ export function OrdersPage() {
               <TableRow><TableCell colSpan={5}><LinearProgress /></TableCell></TableRow>
             )}
             {filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((o: any) => (
-              <TableRow hover key={`${o.stash}:${o.id}`} sx={{ cursor: "pointer" }} onClick={() => setDetail(o)} data-testid="order-card">
+              <TableRow
+                hover key={`${o.stash}:${o.id}`} sx={{ cursor: "pointer" }}
+                onClick={() => setDetail(o)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDetail(o); } }}
+                tabIndex={0} role="button" aria-label={`Order ${o.id}`}
+                data-testid="order-card"
+              >
                 <TableCell sx={{ fontFamily: "monospace", fontSize: "0.8rem" }}>{o.id}</TableCell>
                 <TableCell sx={{ fontFamily: "monospace", fontSize: "0.8rem" }}>{o.stash ?? o.stashName ?? o.server}</TableCell>
                 <TableCell>{(o.lines ?? []).map((l: any) => `${l.key} ×${l.count}`).join(", ")}</TableCell>
@@ -166,8 +177,43 @@ export function OrdersPage() {
           onPageChange={(_, p) => setPage(p)}
           onRowsPerPageChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(0); }}
         />
-      </TableContainer>
+      </TableContainer>)}
 
+      {/* Genuine mobile view: order cards instead of a squeezed table. */}
+      {isXs && (<Stack spacing={1} id="order-list-cards">
+        {loading && <LinearProgress />}
+        {filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((o: any) => (
+          <Card
+            key={`${o.stash}:${o.id}`} data-testid="order-card" tabIndex={0} role="button"
+            aria-label={`Order ${o.id}`}
+            onClick={() => setDetail(o)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDetail(o); } }}
+            sx={{ cursor: "pointer" }}
+          >
+            <CardContent sx={{ "&:last-child": { pb: 2 } }}>
+              <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                <Typography variant="body2" sx={{ fontFamily: "monospace", flexGrow: 1, wordBreak: "break-all" }}>{o.id}</Typography>
+                <OrderStatusChip status={String(o.status ?? "unknown")} />
+              </Stack>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                {o.stash ?? o.stashName ?? o.server} · {(o.lines ?? []).map((l: any) => `${l.key} ×${l.count}`).join(", ")}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {o.updatedAt ? new Date(o.updatedAt).toLocaleString() : "—"}
+              </Typography>
+            </CardContent>
+          </Card>
+        ))}
+        {!loading && filtered.length === 0 && (
+          <Typography color="text.secondary">No orders match.</Typography>
+        )}
+        <TablePagination
+          component="div" count={filtered.length} page={page} rowsPerPage={rowsPerPage}
+          rowsPerPageOptions={[10, 25, 50, 100]}
+          onPageChange={(_, p) => setPage(p)}
+          onRowsPerPageChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(0); }}
+        />
+      </Stack>)}
       {perms.can("ordersAll") && (
         <Card>
           <CardContent>

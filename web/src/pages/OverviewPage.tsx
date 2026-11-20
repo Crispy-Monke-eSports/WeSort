@@ -14,8 +14,15 @@ import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import { Link as RouterLink } from "@tanstack/react-router";
-import { useAuth, useBots, usePermissions, useServer, useStashes, useAllOrders } from "../api/queries";
+import { useAuth, useBots, useOperations, usePermissions, useServer, useStashes, useAllOrders } from "../api/queries";
 import { OrderStatusChip, PresenceChip, timeAgo } from "../components/status";
+
+/** One actionable problem, backend-derived, with a direct link to resolve it. */
+interface Attention {
+  severity: "error" | "warning";
+  text: string;
+  to: string;
+}
 
 /**
  * Overview: the system's control center. Answers "does the system work, what are the
@@ -25,9 +32,11 @@ export function OverviewPage() {
   const auth = useAuth();
   const perms = usePermissions(auth.data);
   const loggedIn = !!auth.data?.loggedIn && perms.can("view");
+  const canActivity = loggedIn && (perms.can("activity") || perms.owner);
   const bots = useBots(loggedIn && perms.can("activity"));
   const stashes = useStashes(loggedIn);
   const server = useServer(loggedIn);
+  const ops = useOperations(canActivity);
   const { orders, failedStashes, loading: ordersLoading } = useAllOrders(
     (stashes.data ?? []).filter((s) => perms.seesStash(s.stash)),
     loggedIn,
@@ -48,6 +57,36 @@ export function OverviewPage() {
     ["failed", "needs_reconciliation", "uncertain"].includes((o.status ?? "").toLowerCase()) ||
     (o.message ?? "").length > 0 && (o.status ?? "").toLowerCase() === "failed",
   );
+
+  // Backend-derived health contract: offline agents, failed orders, operator
+  // alerts and stale stock rank by severity. Nothing blocked is only claimed
+  // when every source is quiet.
+  const attention: Attention[] = [];
+  for (const b of botList.filter((b) => !b.online)) {
+    attention.push({
+      severity: "warning",
+      text: `Bot ${b.player ?? b.botId} offline — seen ${timeAgo(b.lastSeen ?? b.activityAt)}. Orders queue until it returns.`,
+      to: "/bots",
+    });
+  }
+  for (const o of needAttention.slice(0, 5)) {
+    attention.push({
+      severity: "error",
+      text: `Order ${String(o.id)} (${o.stash}) needs attention: ${String(o.status ?? "unknown")}${o.message ? ` — ${String(o.message)}` : ""}`,
+      to: "/orders",
+    });
+  }
+  const opsAlerts: { code: string; count: number }[] = Array.isArray((ops.data as any)?.alerts) ? (ops.data as any).alerts : [];
+  for (const a of opsAlerts.slice(0, 5)) {
+    attention.push({ severity: "warning", text: `Operations alert: ${a.code} (${a.count})`, to: "/operations" });
+  }
+  if (failedStashes.length > 0) {
+    attention.push({
+      severity: "error",
+      text: `Order data unavailable for ${failedStashes.join(", ")} — the lists below are partial.`,
+      to: "/orders",
+    });
+  }
 
   return (
     <Stack spacing={2}>
@@ -110,18 +149,40 @@ export function OverviewPage() {
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card>
-            <CardHeader title="Needs attention" subheader="Failed / blocked" />
+            <CardHeader title="Needs attention" subheader="Bots, orders, alerts" />
             <CardContent>
               {ordersLoading ? <CircularProgress size={24} /> : (
-                <Typography variant="h3" color={needAttention.length ? "error" : undefined}>{needAttention.length}</Typography>
+                <Typography variant="h3" color={attention.length ? "error" : undefined}>{attention.length}</Typography>
               )}
               <Typography variant="body2" color="text.secondary">
-                {needAttention.length ? "Open Orders to resolve." : "Nothing blocked."}
+                {attention.length ? "Resolve below — each item links straight there." : "Nothing blocked."}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
+
+      {attention.length > 0 && (
+        <Card>
+          <CardHeader title="Needs attention" subheader="Ranked by severity; each item links straight there" />
+          <CardContent sx={{ pt: 0 }}>
+            <List dense>
+              {attention.slice(0, 8).map((a, i) => (
+                <ListItem key={i} disableGutters>
+                  <ListItemText
+                    primary={
+                      <Link component={RouterLink} to={a.to} underline="hover">
+                        {a.text}
+                      </Link>
+                    }
+                  />
+                  <Chip size="small" color={a.severity === "error" ? "error" : "warning"} label={a.severity} />
+                </ListItem>
+              ))}
+            </List>
+          </CardContent>
+        </Card>
+      )}
 
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 6 }}>

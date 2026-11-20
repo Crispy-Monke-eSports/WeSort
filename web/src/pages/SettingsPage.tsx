@@ -161,13 +161,13 @@ function StashSection() {
       <Stack spacing={1}>
         {(defs.data ?? []).map((d) => (
           <Card key={d.name} variant="outlined">
-            <CardContent sx={{ display: "flex", gap: 1, alignItems: "flex-start" }}>
-              <Box sx={{ flexGrow: 1 }}>
-                <Typography variant="subtitle1" sx={{ fontFamily: "monospace", fontWeight: 700 }}>{d.name}</Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ fontFamily: "monospace" }}>
+            <CardContent sx={{ display: "flex", gap: 1, alignItems: "flex-start", flexDirection: { xs: "column", sm: "row" } }}>
+              <Box sx={{ flexGrow: 1, minWidth: 0, width: "100%" }}>
+                <Typography variant="subtitle1" sx={{ fontFamily: "monospace", fontWeight: 700, wordBreak: "break-all" }}>{d.name}</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ fontFamily: "monospace", wordBreak: "break-all" }}>
                   {d.dimension}{d.pos1 && d.pos2 ? ` [${d.pos1.x},${d.pos1.y},${d.pos1.z}]–[${d.pos2.x},${d.pos2.y},${d.pos2.z}]` : " (coordinates hidden)"}
                 </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ fontFamily: "monospace" }}>
+                <Typography variant="body2" color="text.secondary" sx={{ fontFamily: "monospace", wordBreak: "break-all" }}>
                   {[d.delivery && `drop ${d.delivery.x},${d.delivery.y},${d.delivery.z}${d.deliveryDimension ? ` in ${d.deliveryDimension}` : ""}`,
                     d.anvil && `anvil ${d.anvil.x},${d.anvil.y},${d.anvil.z}`,
                     d.table && `bench ${d.table.x},${d.table.y},${d.table.z}`].filter(Boolean).join(" · ") || "no placements"}

@@ -66,7 +66,7 @@ import {
 } from "../lib/shop";
 import { setCartScope, useCart, useCheckout, type CartLine, type CheckoutGroup, type OrderBody } from "../stores/shop";
 import { ItemIcon } from "../components/minecraft/ItemIcon";
-import { PresenceChip } from "../components/status";
+import { PresenceChip, timeAgo } from "../components/status";
 
 const TAB_ORDER = [
   "building_blocks", "colored_blocks", "natural_blocks", "functional_blocks",
@@ -94,6 +94,7 @@ interface SliceState {
   stash: string;
   online: boolean | null;
   lastSeen?: number | null;
+  indexedAt?: number | null;
   indexOk: boolean;
   indexError: boolean;
   ordersOk: boolean;
@@ -120,6 +121,7 @@ export function InventoryPage() {
   const queryClient = useQueryClient();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  const isXs = useMediaQuery(theme.breakpoints.down("sm"));
   const userId = auth.data?.user?.id ?? "anon";
   const getPending = useCheckout((s) => s.getPending);
   const setPendingStore = useCheckout((s) => s.setPending);
@@ -155,6 +157,7 @@ export function InventoryPage() {
         stash: s.stash,
         online: s.online ?? null,
         lastSeen: s.lastSeen ?? null,
+        indexedAt: s.indexedAt ?? null,
         indexOk: !!indexQueries[i]?.data,
         indexError: !!indexQueries[i]?.isError,
         ordersOk: !!orderQueries[i]?.data,
@@ -489,10 +492,12 @@ export function InventoryPage() {
     <Stack spacing={2}>
       <Stack direction="row" spacing={2}>
         <Typography variant="h1" sx={{ flexGrow: 1 }}>Inventory</Typography>
+        {!isXs && (
         <ToggleButtonGroup value={view} exclusive onChange={(_, v) => v && setView(v)} size="small" aria-label="Inventory view">
           <ToggleButton value="grid" aria-label="Grid view"><GridViewIcon /></ToggleButton>
           <ToggleButton value="table" aria-label="Table view"><TableRowsIcon /></ToggleButton>
         </ToggleButtonGroup>
+        )}
         {isMobile && (
           <IconButton onClick={() => setFilterOpen(true)} aria-label="Open filters"><FilterListIcon /></IconButton>
         )}
@@ -540,7 +545,7 @@ export function InventoryPage() {
             <Grid container spacing={2}>{[0, 1, 2, 3, 4, 5].map((i) => <Grid key={i} size={{ xs: 12, sm: 6, lg: 4 }}><Skeleton variant="rounded" height={180} /></Grid>)}</Grid>
           ) : indexFailed ? (
             <Alert severity="error">Could not load the guild stock. Check that a bot is connected and rescanning.</Alert>
-          ) : view === "grid" ? (
+          ) : (isXs || view === "grid") ? (
             <Grid container spacing={2} data-testid="item-grid">
               {items.slice(0, 120).map((e) => (
                 <Grid key={e.key} size={{ xs: 12, sm: 6, lg: 4, xl: 3 }}>
@@ -646,14 +651,18 @@ function AvailabilityLine({ item, slices, orderable, inCart }: { item: MergedIte
     let boxed = 0;
     let mixed = 0;
     let verified = true;
+    let stale = false;
+    let observedAt = 0;
     for (const s of slices) {
       const it = s.items.find((x) => x.key === item.key);
       if (it) loose += Math.max(0, (s.availableItems[item.key] ?? it.count));
       if (!s.ordersOk) verified = false;
+      if (s.online === false) stale = true;
+      if (s.indexedAt) observedAt = Math.max(observedAt, s.indexedAt);
       boxed += netBoxedContents(item.key, s.shulkers, s.availableShulkers);
       mixed += mixedBoxedContents(item.key, s.shulkers);
     }
-    return { loose, boxed, mixed, verified };
+    return { loose, boxed, mixed, verified, stale, observedAt };
   }, [item, slices]);
   // Headline is cart-adjusted (what you can still add); breakdown is observed stock.
   const headline = orderable ?? av.loose + av.boxed;
@@ -664,6 +673,7 @@ function AvailabilityLine({ item, slices, orderable, inCart }: { item: MergedIte
         {grouped(av.loose)} loose{av.boxed > 0 ? ` · ${grouped(av.boxed)} in whole boxes` : ""}{av.mixed > 0 ? ` · ${grouped(av.mixed)} in mixed boxes` : ""}
         {!av.verified ? " · unverified" : ""}
         {inCart > 0 ? ` · ${grouped(inCart)} in draft` : ""}
+        {av.stale ? ` · bot offline — queues, last seen ${av.observedAt ? timeAgo(av.observedAt) : "unknown"}` : ""}
       </Typography>
     </Typography>
   );
@@ -759,6 +769,7 @@ function BuyDialog({ item, slices, mcVersion, canOrder, remaining, onClose, onAd
   remaining: number;
   onClose: () => void; onAdd: (n: number) => void;
 }) {
+  const isXsDialog = useMediaQuery(useTheme().breakpoints.down("sm"));
   // Max is cart-adjusted and capacity-clamped: never offer more than the draft
   // can absorb, and never more than fits in the server's 54-box limit.
   const maxStack = Math.max(1, item?.maxStack ?? 64);
@@ -784,6 +795,7 @@ function BuyDialog({ item, slices, mcVersion, canOrder, remaining, onClose, onAd
             <Typography variant="caption" color="text.secondary">Stack size {item.maxStack} · one order is placed per stash.</Typography>
           </Box>
         </Stack>
+        {!isXsDialog && (
         <TableContainer component={Paper} variant="outlined">
           <Table size="small" aria-label="Per-stash availability">
             <TableHead>
@@ -801,6 +813,22 @@ function BuyDialog({ item, slices, mcVersion, canOrder, remaining, onClose, onAd
             </TableBody>
           </Table>
         </TableContainer>
+        )}
+        {isXsDialog && (
+        <Stack spacing={1}>
+          {slices.map((s) => (
+            <Paper key={s.stash} variant="outlined" sx={{ p: 1.5 }}>
+              <Typography variant="subtitle2" sx={{ fontFamily: "monospace", wordBreak: "break-all" }}>{s.stash}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {grouped(Math.max(0, s.availableItems[item.key] ?? 0))} loose · {grouped(netBoxedContents(item.key, s.shulkers, s.availableShulkers))} in boxes
+              </Typography>
+              <Box sx={{ mt: 0.5 }}>
+                <PresenceChip online={s.online} label={s.online ? "bot online" : s.online === false ? "bot offline" : "unknown"} />
+              </Box>
+            </Paper>
+          ))}
+        </Stack>
+        )}
         <TextField
           label="Quantity" type="number" value={n} size="small" sx={{ mt: 2, width: 160 }}
           slotProps={{ htmlInput: { min: 1, max } }}
@@ -880,6 +908,7 @@ function CheckoutDialog(props: {
   uncertainCount: number; confirmedCount: number; canOrder: boolean; slices: SliceState[];
 }) {
   const { step, setStep } = props;
+  const isXsStep = useMediaQuery(useTheme().breakpoints.down("sm"));
   const perStash = useMemo(() => {
     const m = new Map<string, CartLine[]>();
     for (const l of props.lines) {
@@ -908,7 +937,7 @@ function CheckoutDialog(props: {
     <Dialog open={props.open} onClose={props.onClose} maxWidth="md" fullWidth>
       <DialogTitle>Checkout — {perStash.length} stash order{perStash.length === 1 ? "" : "s"}</DialogTitle>
       <DialogContent>
-        <Stepper activeStep={step} sx={{ mb: 3 }}>
+        <Stepper activeStep={step} orientation={isXsStep ? "vertical" : "horizontal"} sx={{ mb: 3 }}>
           {["Cart", "Details", "Review", "Confirmation"].map((l) => (
             <Step key={l}><StepLabel>{l}</StepLabel></Step>
           ))}

@@ -19,6 +19,8 @@ import TableRow from "@mui/material/TableRow";
 import Tabs from "@mui/material/Tabs";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import useMediaQuery from "@mui/material/useMediaQuery";
+import { useTheme } from "@mui/material/styles";
 import { useState } from "react";
 import { api } from "../api/client";
 import {
@@ -249,10 +251,14 @@ function StateTable({ states }: { states: Record<string, number> | undefined }) 
 function OpsTable({ loading, error, columns, rows }: {
   loading: boolean; error: boolean; columns: string[]; rows: React.ReactNode[][];
 }) {
+  // Render exactly one variant: dense table on sm+, key-value cards on xs.
+  const isXs = useMediaQuery(useTheme().breakpoints.down("sm"));
   return (
     <Box>
       {loading && <LinearProgress sx={{ mb: 1 }} />}
       {error && <Alert severity="error" sx={{ mb: 1 }}>Could not load this queue.</Alert>}
+      {/* Desktop: dense table. Mobile: key-value cards, no horizontal overflow. */}
+      {!isXs && (
       <TableContainer component={Paper} variant="outlined">
         <Table size="small">
           <TableHead>
@@ -268,6 +274,26 @@ function OpsTable({ loading, error, columns, rows }: {
           </TableBody>
         </Table>
       </TableContainer>
+      )}
+      {isXs && (
+      <Stack spacing={1}>
+        {rows.map((r, i) => (
+          <Paper key={i} variant="outlined" sx={{ p: 1.5 }}>
+            {r.map((c, j) => (
+              <Stack key={j} direction="row" spacing={1} sx={{ py: 0.25 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ minWidth: 88, flexShrink: 0 }}>
+                  {columns[j] ?? ""}
+                </Typography>
+                <Box sx={{ minWidth: 0, wordBreak: "break-word" }}>{c}</Box>
+              </Stack>
+            ))}
+          </Paper>
+        ))}
+        {!loading && rows.length === 0 && (
+          <Typography color="text.secondary">Empty.</Typography>
+        )}
+      </Stack>
+      )}
     </Box>
   );
 }

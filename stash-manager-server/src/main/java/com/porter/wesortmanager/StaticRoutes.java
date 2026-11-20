@@ -23,9 +23,17 @@ final class StaticRoutes {
     static final String NONCE_PLACEHOLDER = "__WESORT_STYLE_NONCE__";
 
     /** React app routes served with index.html (direct navigation + refresh). */
-    private static final Set<String> SPA_ROUTES =
-            Set.of("/", "/overview", "/inventory", "/orders", "/bots", "/operations", "/settings", "/login",
-                    "/shop", "/activity");
+    private static final Set<String> SPA_ROUTES = Set.of(
+            "/",
+            "/overview",
+            "/inventory",
+            "/orders",
+            "/bots",
+            "/operations",
+            "/settings",
+            "/login",
+            "/shop",
+            "/activity");
 
     private final Map<String, byte[]> cache = new ConcurrentHashMap<>();
 
@@ -90,8 +98,7 @@ final class StaticRoutes {
         byte[] nonceBytes = new byte[16];
         new java.security.SecureRandom().nextBytes(nonceBytes);
         String nonce = java.util.Base64.getEncoder().encodeToString(nonceBytes);
-        String html = new String(template, java.nio.charset.StandardCharsets.UTF_8)
-                .replace(NONCE_PLACEHOLDER, nonce);
+        String html = new String(template, java.nio.charset.StandardCharsets.UTF_8).replace(NONCE_PLACEHOLDER, nonce);
         Http.securityHeaders(ex.getResponseHeaders(), nonce);
         Http.send(ex, 200, type("index.html"), html.getBytes(java.nio.charset.StandardCharsets.UTF_8), "no-cache");
     }

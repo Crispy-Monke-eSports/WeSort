@@ -28,6 +28,12 @@ public final class WorldInteractionGuard {
     /** How long an action permit lives past its scope as a failsafe (scopes revoke on close). */
     private static final long PERMIT_TTL_MS = 10_000;
 
+    // A client-predicted break may turn the block into air before vanilla sends
+    // STOP_DESTROY_BLOCK. Remember only the last successfully authorized start:
+    // STOP can finish that precise break, never authorize a new target or job.
+    private record AuthorizedBreak(long pos, String block, String job, long at) {}
+    private static AuthorizedBreak authorizedBreak;
+
     private WorldInteractionGuard() {}
 
     public static boolean dedicated() {
@@ -134,13 +140,46 @@ public final class WorldInteractionGuard {
         // vs server state, or a stale break target). Unknown-job and safety-sensitive denials
         // keep their own counters via breakDecision below.
         long now = now();
-        boolean permit = PERMITS.allows(now, position.asLong(), Operation.BREAK, blockId(position), job);
+        String observed = blockId(position);
+        boolean permit = PERMITS.allows(now, position.asLong(), Operation.BREAK, observed, job);
+        if (permit && safeBlock(position))
+            authorizedBreak = new AuthorizedBreak(position.asLong(), observed, job, now);
         if (!permit && job != null && !job.isEmpty() && !job.equals("unknown") && safeBlock(position)) {
             String holder = PERMITS.jobOf(now, position.asLong(), Operation.BREAK);
             denied(holder == null ? "break-no-permit-expired" : "break-no-permit-block");
             return false;
         }
         return breakDecision(job, safeBlock(position), permit);
+    }
+
+    /**
+     * Finish only a previously permitted break at the very same position and job.
+     * Minecraft may predict AIR before STOP_DESTROY_BLOCK reaches the server.
+     * The original live permit must still name the original shulker block; an
+     * unrelated changed block, expired permission or restart never qualifies.
+     */
+    public static boolean allowBreakStop(BlockPos position) {
+        if (!dedicated()) return true;
+        if (position == null || mc.level == null || !mc.level.isLoaded(position)
+                || PhysicalJournalRuntime.blocked()) {
+            denied("break-stop-unavailable");
+            return false;
+        }
+        long time = now();
+        String job = currentJob();
+        var previous = authorizedBreak;
+        String block = blockId(position);
+        boolean allowed = previous != null
+                && previous.pos() == position.asLong()
+                && previous.job().equals(job)
+                && time >= previous.at()
+                && time - previous.at() < PERMIT_TTL_MS
+                && previous.block().endsWith("_shulker_box")
+                && (block.equals(previous.block()) || block.equals("minecraft:air"))
+                && safeBlock(position)
+                && PERMITS.allows(time, position.asLong(), Operation.BREAK, previous.block(), job);
+        if (!allowed) denied("break-stop-no-authorized-start");
+        return allowed;
     }
 
     /**

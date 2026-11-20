@@ -75,6 +75,16 @@ final class AddonRoutes {
             Http.error(ex, 400, "Invalid automation request");
             return;
         }
+        // A sorting lease is physical work: fail closed before setup and on the wrong server.
+        int serverGate = ServerRoutes.agentServerStatus(config, server);
+        if (serverGate == 400) {
+            Http.error(ex, 400, "set the Minecraft server in Settings first");
+            return;
+        }
+        if (serverGate == 409) {
+            Http.error(ex, 409, "this Manager serves '" + config.minecraftServer() + "'");
+            return;
+        }
         synchronized (store) {
             var gate = store.automation();
             if (!action.equals("acquire")) {
@@ -135,8 +145,18 @@ final class AddonRoutes {
         JsonObject index = json.getAsJsonObject();
         String server = index.get("server").getAsString();
         String stash = index.get("stash").getAsString();
-        if (config != null && !ServerRoutes.accepts(config, server)) {
+        // Fail closed: observations need a configured server, the right server and a defined stash.
+        int gate = ServerRoutes.agentServerStatus(config, server);
+        if (gate == 400) {
+            Http.error(ex, 400, "set the Minecraft server in Settings first");
+            return;
+        }
+        if (gate == 409) {
             Http.error(ex, 409, "this Manager serves '" + config.minecraftServer() + "'");
+            return;
+        }
+        if (ServerRoutes.unknownStash(defs, stash)) {
+            Http.error(ex, 404, "unknown stash '" + stash + "': define it in Settings first");
             return;
         }
         String player = string(index, "player");
@@ -183,8 +203,18 @@ final class AddonRoutes {
             Http.error(ex, 400, "server and stash must be non-empty strings");
             return;
         }
-        if (config != null && !ServerRoutes.accepts(config, server)) {
+        // Fail closed: heartbeats need a configured server, the right server and a defined stash.
+        int gate = ServerRoutes.agentServerStatus(config, server);
+        if (gate == 400) {
+            Http.error(ex, 400, "set the Minecraft server in Settings first");
+            return;
+        }
+        if (gate == 409) {
             Http.error(ex, 409, "this Manager serves '" + config.minecraftServer() + "'");
+            return;
+        }
+        if (ServerRoutes.unknownStash(defs, stash)) {
+            Http.error(ex, 404, "unknown stash '" + stash + "': define it in Settings first");
             return;
         }
         if (badOptionalString(o, "player") || badOptionalString(o, "indexHash")) {

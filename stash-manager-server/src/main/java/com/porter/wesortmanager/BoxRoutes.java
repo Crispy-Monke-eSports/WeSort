@@ -10,12 +10,16 @@ final class BoxRoutes {
     private final IndexStore index;
     private final AuditLog audit;
     private final OrderStore orders;
+    private final Config config;
+    private final StashDefs defs;
     private BoxJobs jobs;
 
-    BoxRoutes(IndexStore index, AuditLog audit, OrderStore orders) {
+    BoxRoutes(IndexStore index, AuditLog audit, OrderStore orders, Config config, StashDefs defs) {
         this.index = index;
         this.audit = audit;
         this.orders = orders;
+        this.config = config;
+        this.defs = defs;
     }
 
     private synchronized BoxJobs jobs() throws IOException {
@@ -70,6 +74,21 @@ final class BoxRoutes {
             if ("claim".equals(action)) {
                 String server = AddonRoutes.string(body, "server");
                 String stash = AddonRoutes.string(body, "stash");
+                // A box job is physical work: fail closed before setup, on the wrong server,
+                // and for stashes the Manager never defined.
+                int gate = ServerRoutes.agentServerStatus(config, server);
+                if (gate == 400) {
+                    Http.error(ex, 400, "set the Minecraft server in Settings first");
+                    return;
+                }
+                if (gate == 409) {
+                    Http.error(ex, 409, "this Manager serves '" + config.minecraftServer() + "'");
+                    return;
+                }
+                if (ServerRoutes.unknownStash(defs, stash)) {
+                    Http.error(ex, 404, "unknown stash '" + stash + "': define it in Settings first");
+                    return;
+                }
                 synchronized (index) {
                     job = jobs().claim(server, stash, agentId);
                 }

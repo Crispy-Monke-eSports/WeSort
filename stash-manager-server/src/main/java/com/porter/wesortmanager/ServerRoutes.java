@@ -57,4 +57,20 @@ final class ServerRoutes {
         String want = config.minecraftServer();
         return want == null || want.isEmpty() || want.equals(server);
     }
+
+    /**
+     * Fail-closed gate for signed agent calls carrying a server string: 400 when no server is
+     * configured yet or the caller sent none, 409 on mismatch, -1 when the call may proceed.
+     * Physical work must never run before first setup or against the wrong Minecraft server.
+     */
+    static int agentServerStatus(Config config, String server) {
+        String want = config == null ? null : config.minecraftServer();
+        if (want == null || want.isEmpty() || server == null || server.isEmpty()) return 400;
+        return want.equals(server) ? -1 : 409;
+    }
+
+    /** True when stash definitions exist and none of them has this name. */
+    static boolean unknownStash(StashDefs defs, String stash) {
+        return defs != null && stash != null && defs.get(stash) == null;
+    }
 }

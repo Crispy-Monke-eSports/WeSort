@@ -17,10 +17,12 @@ import java.util.Map;
 final class DeliveryRoutes {
     private final DeliveryContents contents;
     private final Config config;
+    private final StashDefs defs;
 
-    DeliveryRoutes(DeliveryContents contents, Config config) {
+    DeliveryRoutes(DeliveryContents contents, Config config, StashDefs defs) {
         this.contents = contents;
         this.config = config;
+        this.defs = defs;
     }
 
     void register(Router router) {
@@ -44,8 +46,18 @@ final class DeliveryRoutes {
         }
         String server = s.json().get("server").getAsString();
         String stash = s.json().get("stash").getAsString();
-        if (!ServerRoutes.accepts(config, server)) {
+        // Fail closed: reports need a configured server, the right server and a defined stash.
+        int gate = ServerRoutes.agentServerStatus(config, server);
+        if (gate == 400) {
+            Http.error(ex, 400, "set the Minecraft server in Settings first");
+            return;
+        }
+        if (gate == 409) {
             Http.error(ex, 409, "this Manager serves '" + config.minecraftServer() + "'");
+            return;
+        }
+        if (ServerRoutes.unknownStash(defs, stash)) {
+            Http.error(ex, 404, "unknown stash '" + stash + "': define it in Settings first");
             return;
         }
         contents.put(server, stash, s);

@@ -28,17 +28,19 @@ final class OrderRoutes {
     private final OrderStore orders;
     private final AuditLog audit;
     private final Config config;
+    private final StashDefs defs;
 
     private static final Pattern APPROVAL = Pattern.compile("^/api/v1/orders/(o-[0-9a-f]{12})/approval$");
     private final GuildRoutes guild;
     private final Users users;
 
-    OrderRoutes(OrderStore orders, AuditLog audit, GuildRoutes guild, Users users, Config config) {
+    OrderRoutes(OrderStore orders, AuditLog audit, GuildRoutes guild, Users users, Config config, StashDefs defs) {
         this.users = users;
         this.guild = guild;
         this.orders = orders;
         this.audit = audit;
         this.config = config;
+        this.defs = defs;
     }
 
     /**
@@ -387,6 +389,10 @@ final class OrderRoutes {
         }
         if (sent != null && !sent.isEmpty() && !ServerRoutes.accepts(config, sent)) {
             Http.error(ex, 409, "this Manager serves '" + server + "'");
+            return;
+        }
+        if (ServerRoutes.unknownStash(defs, stash)) {
+            Http.error(ex, 404, "unknown stash '" + stash + "': define it in Settings first");
             return;
         }
         String agent = AddonRoutes.string(o, "agent");

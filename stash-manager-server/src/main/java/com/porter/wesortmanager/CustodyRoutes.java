@@ -8,10 +8,12 @@ import java.io.IOException;
 final class CustodyRoutes {
     private final PackageCustody custody;
     private final AuditLog audit;
+    private final Config config;
 
-    CustodyRoutes(PackageCustody custody, AuditLog audit) {
+    CustodyRoutes(PackageCustody custody, AuditLog audit, Config config) {
         this.custody = custody;
         this.audit = audit;
+        this.config = config;
     }
 
     void register(Router router) {
@@ -36,6 +38,11 @@ final class CustodyRoutes {
         String orderId = AddonRoutes.string(body, "orderId");
         String agent = AddonRoutes.string(body, "agent");
         String action = AddonRoutes.string(body, "action");
+        // Physical work stays fail-closed until the single server is configured.
+        if (config.minecraftServer() == null || config.minecraftServer().isEmpty()) {
+            Http.error(ex, 400, "set the Minecraft server in Settings first");
+            return;
+        }
         if (packageId == null || orderId == null || agent == null || action == null) {
             Http.error(ex, 400, "packageId, orderId, agent and action are required");
             return;

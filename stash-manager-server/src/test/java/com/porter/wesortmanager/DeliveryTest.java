@@ -243,8 +243,24 @@ class DeliveryTest {
 
     // ---------- routes ----------
 
+    /** Defines stash "a" as the owner; bot endpoints now require it. */
+    void defineA() throws Exception {
+        defineStash("a", "minecraft:overworld");
+    }
+
+    void defineStash(String name, String dimension) throws Exception {
+        String owner = login(null, OWNER_PW);
+        Res r = post(
+                owner,
+                "/api/v1/stash-defs",
+                "{\"action\":\"create\",\"name\":\"" + name + "\",\"dimension\":\"" + dimension + "\","
+                        + "\"pos1\":{\"x\":0,\"y\":-60,\"z\":0},\"pos2\":{\"x\":31,\"y\":20,\"z\":31}}");
+        assertEquals(200, r.status, r.body);
+    }
+
     @Test
     void reportIsStoredSummarizedAndServed() throws Exception {
+        defineA();
         assertEquals("false", heartbeat("a", "Bob", null), "an older bot (no deliveryHash): nothing to send");
         assertEquals("true", heartbeat("a", "Bob", "\"" + HASH_A + "\""), "no report yet");
         Res r = botPost("/api/v1/delivery", report("a", "Bob", HASH_A));
@@ -299,6 +315,7 @@ class DeliveryTest {
 
     @Test
     void ownerCheckSizeLimitAndBadBodies() throws Exception {
+        defineA();
         heartbeat("a", "Bob", null);
         // No bot owns a stash: Eve's report for the same stash is stored too.
         Res stored = botPost("/api/v1/delivery", report("a", "Eve", HASH_A));
@@ -313,6 +330,8 @@ class DeliveryTest {
 
     @Test
     void stashScopeAnswers404() throws Exception {
+        defineA();
+        defineStash("b", "minecraft:the_nether");
         heartbeat("a", "Bob", null);
         heartbeat("b", "Al", null);
         botPost("/api/v1/delivery", report("a", "Bob", HASH_A));
@@ -338,6 +357,7 @@ class DeliveryTest {
 
     @Test
     void neverInTheIndexOrTheStock() throws Exception {
+        defineA();
         String index = "{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"player\":\"Bob\",\"items\":["
                 + "{\"key\":\"minecraft:dirt\",\"id\":\"minecraft:dirt\",\"count\":100,\"maxStack\":64}]}";
         assertEquals(200, botPost("/api/v1/index", index).status);

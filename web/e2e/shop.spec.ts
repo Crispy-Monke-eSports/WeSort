@@ -229,3 +229,18 @@ test("network failure, reload, exact retry: no duplicates, no silent loss", asyn
   await expect(page.getByText("may or may not have reached the server")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /cart/i }).first()).toBeDisabled();
 });
+
+test("accounts without order permission cannot draft (buttons inert)", async ({ page }) => {
+  // P1-19: the order perm gates every mutation control, not just the API.
+  await page.route("**/api/v1/auth/state", (r) =>
+    r.fulfill({ json: { loggedIn: true, user: { id: "viewer", name: "Viewer", owner: false, perms: { view: true } } } }),
+  );
+  await page.route("**/api/v1/stashes", (r) => r.fulfill({ json: [{ stash: "a", online: true }] }));
+  await page.route("**/api/v1/index*", (r) => r.fulfill({ json: { mcVersion: "26.3",
+    items: [{ key: "minecraft:dirt", id: "minecraft:dirt", name: "Dirt", count: 10, maxStack: 64, tab: "natural_blocks" }], shulkers: [] } }));
+  await page.route("**/api/v1/orders?*", (r) => r.fulfill({ json: { orders: [], available: { items: { "minecraft:dirt": 10 }, shulkers: {} } } }));
+  await page.goto("/inventory");
+  await expect(page.getByTestId("item-grid").locator(".MuiCard-root")).toHaveCount(1);
+  await expect(page.getByTestId("item-grid").getByRole("button", { name: "Add" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Cart", exact: true })).toBeDisabled();
+});

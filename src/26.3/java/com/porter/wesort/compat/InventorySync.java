@@ -340,7 +340,18 @@ public final class InventorySync {
             }
             return;
         }
+        // Meteor may dispatch a deferred rotation after the initiating WeSort stack
+        // has unwound. A live, exact PLACE permit is authority to identify that
+        // outgoing packet as WeSort automation, not to skip the durable journal.
+        // Without a matching placement announcement the packet is cancelled below.
         boolean ours = calledFromWeSort();
+        if (!ours && event.packet instanceof ServerboundUseItemOnPacket placed) {
+            var target = placed.hitResult().getBlockPos().relative(placed.hitResult().getDirection());
+            if (WorldInteractionGuard.hasLivePlacePermit(target)) {
+                ours = true;
+                intentCounted("permit-placement-attribution");
+            }
+        }
         boolean allowed = ready() || gate.acceptingBatch();
         if (ours
                 && !allowed
@@ -373,6 +384,8 @@ public final class InventorySync {
                                     use.sequence(), changed, blockId(changed), System.nanoTime() + 8_000_000_000L));
                     mutation = true;
                 }
+            }
+            if (ours) {
                 // An announced placement against this exact cell: durable intent with the
                 // placed block before the packet leaves (W-061 journal ordering). The slot
                 // clears only on a matching own UseItemOn: an interleaved use against another

@@ -62,6 +62,9 @@ public final class InventorySync {
     private static BlockUse blockUse;
     private static BlockPos expectSpot;
     private static String expectBlock;
+    // Block ID observed before the announced place. Local prediction may replace air
+    // with a shulker before PacketEvent.Send runs.
+    private static String expectBeforeBlock;
     private static long expectAt;
 
     /** Placement-intent audit counters (exposed to the E2E driver state). */
@@ -275,6 +278,7 @@ public final class InventorySync {
         intentCounted("announce");
         expectSpot = spot == null ? null : spot.immutable();
         expectBlock = block;
+        expectBeforeBlock = mc.level == null || spot == null ? null : blockId(spot);
         expectAt = System.nanoTime();
     }
 
@@ -282,6 +286,7 @@ public final class InventorySync {
         if (expectSpot != null) intentCounted("clear");
         expectSpot = null;
         expectBlock = null;
+        expectBeforeBlock = null;
         expectAt = 0;
     }
 
@@ -316,9 +321,18 @@ public final class InventorySync {
      */
     private static BlockPos placementTarget(net.minecraft.world.phys.BlockHitResult hit) {
         BlockPos clicked = hit.getBlockPos();
-        if (expectSpot != null
-                && expectSpot.equals(clicked)
-                && mc.level.getBlockState(clicked).canBeReplaced()) return clicked;
+        if (expectSpot != null && expectSpot.equals(clicked)) {
+            if (mc.level.getBlockState(clicked).canBeReplaced()) return clicked;
+            // In a direct-cell placement, the client may already predict the
+            // placed block by the time the packet send event is dispatched.
+            // The mixin captured the original clicked block before prediction.
+            // An ordinary later OPEN sees a shulker in that pre-use snapshot
+            // and cannot be mistaken for the announced placement.
+            if (blockUse != null
+                    && blockUse.clicked.equals(clicked)
+                    && expectBeforeBlock != null
+                    && expectBeforeBlock.equals(blockUse.beforeClicked)) return clicked;
+        }
         return clicked.relative(hit.getDirection());
     }
 
@@ -435,6 +449,7 @@ public final class InventorySync {
                     intentCounted("consume-hit");
                     expectSpot = null;
                     expectBlock = null;
+                    expectBeforeBlock = null;
                     expectAt = 0;
                     blocks.put(
                             use.sequence(),

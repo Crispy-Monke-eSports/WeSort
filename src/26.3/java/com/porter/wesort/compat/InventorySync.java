@@ -349,6 +349,14 @@ public final class InventorySync {
             var target = placed.hitResult().getBlockPos().relative(placed.hitResult().getDirection());
             if (WorldInteractionGuard.hasLivePlacePermit(target)) {
                 ours = true;
+                // The regular mixin preflight was deferred with Meteor's rotation.
+                // Capture the current menu as the before-frame, just as allowInput()
+                // does for synchronous automation, before any prediction or send.
+                var menu = mc.player.containerMenu;
+                actionBefore = frame(new InventoryReadback.Expected(
+                        menu.containerId,
+                        fingerprints(menu.slots.stream().map(slot -> slot.getItem()).toList()),
+                        fingerprint(menu.getCarried())));
                 intentCounted("permit-placement-attribution");
             }
         }

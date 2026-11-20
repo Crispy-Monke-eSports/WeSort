@@ -194,8 +194,6 @@ public class StashManager extends Module {
     private String rejectedId, rejectedWhy, rejectedStatus = "failed";
     // The order whose full status report was refused, so its short form is sent
     private String minimalFor;
-    // The owner of the stash name last warned about
-    private String warnedOwner;
     private String ordersNote = "";
 
     // What the last heartbeat said about delivery.
@@ -282,7 +280,6 @@ public class StashManager extends Module {
         resetDelivery();
         rescanDone = -1;
         rescanning = false;
-        warnedOwner = null;
         StashIndex.clearCache();
     }
 
@@ -640,6 +637,15 @@ public class StashManager extends Module {
                                 controlEpoch = epoch;
                                 controlRegistered = true;
                                 sentControlValues = null;
+                            }
+                            // Clean client: adopt the first Manager-announced stash when no
+                            // local stash is configured, so .wesort-connect alone is enough.
+                            if (hello.has("stashes") && hello.get("stashes").isJsonArray()) {
+                                for (var el : hello.getAsJsonArray("stashes")) {
+                                    if (!el.isJsonPrimitive() || !el.getAsJsonPrimitive().isString()) continue;
+                                    StashSorter sorter = Modules.get().get(StashSorter.class);
+                                    if (sorter != null && sorter.adoptAnnouncedStash(el.getAsString())) break;
+                                }
                             }
                         }
                         if (!controlRegistered) nextControlAt = now + 15_000;
@@ -1210,6 +1216,15 @@ public class StashManager extends Module {
             long rev = d.has("revision") && d.get("revision").isJsonPrimitive()
                     ? d.get("revision").getAsLong()
                     : -1;
+            // Never move the physical workspace or delivery position mid-uncertainty: pause
+            // and require reconciliation first. The directive is revision-pinned, so the next
+            // heartbeat after recovery applies exactly what was skipped.
+            if (com.porter.wesort.compat.PhysicalJournalRuntime.blocked() || !InventorySync.ready()) {
+                info(
+                        "Manager directive (revision %d) deferred: physical reconciliation required first.",
+                        rev);
+                return;
+            }
             sorter.applyDirective(d, rev);
         } catch (RuntimeException ex) {
             WeSortAddon.LOG.warn("wesort-stash-manager: couldn't read the Manager directive", ex);
@@ -1613,15 +1628,18 @@ public class StashManager extends Module {
                 inFlight = false;
 
                 if (isolated) {
-                    // No signature check failure, 404 or conflict here may reach the shared backoff or the status
-                    String conflict = stashOwner(finalCode, finalText);
-                    if (finalBad) {
-                        reply.done(-2, "");
-                        return;
-                    }
-                    if (conflict != null) {
+                    // No signature check failure, 404 or server refusal here may reach the shared backoff or the status
+                    if (finalCode == 409) {
                         deliverySync.forget();
                         deliverySync.retryLater(System.currentTimeMillis());
+                        if (isWrongServer(finalText))
+                            warning(
+                                    "This Manager serves another Minecraft server: %s. Set server-url to the right Manager.",
+                                    finalText);
+                        return;
+                    }
+                    if (finalBad) {
+                        reply.done(-2, "");
                         return;
                     }
                     try {
@@ -1642,24 +1660,20 @@ public class StashManager extends Module {
                     return;
                 }
 
-                // Another bot owns this stash name (not the 409 of an order that is already finished): stop for a
-                // minute, then
-                // try again, so a release on the website takes effect
-                String owner = stashOwner(finalCode, finalText);
-                if (owner != null) {
+                // A 409 names a real conflict: the wrong Minecraft server, an unknown stash,
+                // or a physical conflict. A wrong server waits a minute (reconfiguration needs
+                // no hot retry loop); anything else flows through the reply handler.
+                if (finalCode == 409) {
                     deliverySync.forget();
-                    backoff = 0;
-                    nextAttemptAt = System.currentTimeMillis() + 60_000;
-                    if (!owner.equals(warnedOwner)) {
-                        warnedOwner = owner;
-                        StashSorter sorter = Modules.get().get(StashSorter.class);
-                        Stash stash = sorter == null ? null : sorter.currentStash();
+                    if (isWrongServer(finalText)) {
+                        backoff = 0;
+                        nextAttemptAt = System.currentTimeMillis() + 60_000;
                         warning(
-                                "Stash name '%s' is already used by %s on this server. Pick another stash name in wesort-stash-sorter's stash-name setting (each bot needs its own).",
-                                stash == null ? "?" : stash.name, owner);
+                                "This Manager serves another Minecraft server: %s. Set server-url to the right Manager.",
+                                finalText);
+                        setStatus("wrong server");
+                        return;
                     }
-                    setStatus("stash name taken by " + owner);
-                    return;
                 }
 
                 boolean ok;
@@ -1670,7 +1684,6 @@ public class StashManager extends Module {
                     ok = false;
                 }
                 if (ok) {
-                    warnedOwner = null;
                     backoff = 0;
                     nextAttemptAt = 0;
                 } else {
@@ -1757,19 +1770,17 @@ public class StashManager extends Module {
                     "wesort-stash-manager: request signing self-check FAILED: got {}, expected {}", got, expected);
     }
 
-    /** The owner named in a "stash name in use" refusal, or null if the reply is not one. */
-    private static String stashOwner(int code, String body) {
-        if (code != 409) return null;
+    /** A "this Manager serves ..." refusal: the bot talks to the Manager of another Minecraft server. */
+    private static boolean isWrongServer(String body) {
+        if (body == null) return false;
         try {
             JsonElement e = JsonParser.parseString(body);
-            if (!e.isJsonObject()) return null;
+            if (!e.isJsonObject()) return false;
             JsonObject o = e.getAsJsonObject();
-            if (!o.has("error") || !"stash name in use".equals(o.get("error").getAsString())) return null;
-            return o.has("owner") && !o.get("owner").isJsonNull()
-                    ? o.get("owner").getAsString()
-                    : "another player";
+            if (!o.has("error") || !o.get("error").isJsonPrimitive()) return false;
+            return o.get("error").getAsString().startsWith("this Manager serves");
         } catch (RuntimeException ex) {
-            return null;
+            return false;
         }
     }
 

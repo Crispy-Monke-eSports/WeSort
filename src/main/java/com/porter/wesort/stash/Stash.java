@@ -218,6 +218,9 @@ public class Stash {
     public static final int MAX_X = 256, MAX_Y = 128, MAX_Z = 256;
 
     public String areaDimension = "";
+    // The last Manager directive revision applied to this stash (-1: none pinned yet).
+    // Persisted so a restart never re-applies a stale region over newer local state.
+    public long directiveRev = -1;
     // The delivery container, kept on the stash itself so that no pruning of the box list (a perimeter that leaves it
     // out,
     // say) can lose it. It stays until the user clears it
@@ -649,6 +652,7 @@ public class Stash {
         if (corner1 != null) root.put("corner1", positions(List.of(corner1)));
         if (corner2 != null) root.put("corner2", positions(List.of(corner2)));
         if (!areaDimension.isEmpty()) root.putString("areaDimension", areaDimension);
+        if (directiveRev >= 0) root.putLong("directiveRev", directiveRev);
         if (deliveryPos != null) root.put("deliveryPos", positions(List.of(deliveryPos)));
         if (anvilPos != null) root.put("anvilPos", positions(List.of(anvilPos)));
         if (anvilPos != null && !anvilSource.isEmpty()) root.putString("anvilSource", anvilSource);
@@ -794,6 +798,7 @@ public class Stash {
             }
             String areaDim = string(root.get("areaDimension"));
             if (areaDim != null) stash.areaDimension = areaDim;
+            if (root.contains("directiveRev")) stash.directiveRev = longNumber(root.get("directiveRev"));
             if (root.get("deliveryPos") instanceof ListTag dp) {
                 List<BlockPos> at = readPositions(dp);
                 if (!at.isEmpty()) stash.deliveryPos = at.getFirst();

@@ -183,13 +183,26 @@ public class StashSorter extends Module {
     private final Setting<String> stashName = sgGeneral.add(new StringSetting.Builder()
             .name("stash-name")
             .description(
-                    "The name the stash is saved under. Each name on each server is its own stash, scanned once and then kept up to date.")
+                    "The name the stash is saved under. Each name on each server is its own stash, scanned once and then kept up to date. Leave the default on a clean client: the first stash the Manager announces is adopted automatically.")
             .defaultValue("stash")
             .onChanged(name -> {
                 stash = null;
                 triedKey = null;
             })
             .build());
+
+    /**
+     * Clean-client bootstrap: adopt a Manager-announced stash name when nothing local is
+     * configured (the setting is still the default and no local stash has any containers).
+     * Never overwrites local work. The region itself always comes from the Manager directive.
+     */
+    boolean adoptAnnouncedStash(String name) {
+        if (name == null || name.isEmpty() || !"stash".equals(stashName.get())) return false;
+        if (stash != null && !stash.boxes.isEmpty()) return false;
+        stashName.set(name);
+        info("Adopted Manager stash '%s': no local stash was configured.", name);
+        return true;
+    }
 
     private final Setting<Boolean> sortItems = sgGeneral.add(new BoolSetting.Builder()
             .name("sort-items")
@@ -10283,7 +10296,18 @@ public class StashSorter extends Module {
      */
     boolean applyDirective(com.google.gson.JsonObject d, long revision) {
         if (ensureStash() == null || d == null) return false;
-        if (revision >= 0 && revision == lastDirectiveRev) return false;
+        // Monotonic per-stash revisions, surviving restarts via the stash file: the same
+        // revision is a no-op (already applied), a lower one is rejected outright (stale or
+        // replayed), and only a higher one is applied. Unknown revisions (-1) are applied
+        // once, then pinned.
+        long seen = stash.directiveRev;
+        if (revision >= 0 && revision == seen) return false;
+        if (revision >= 0 && seen >= 0 && revision < seen) {
+            warning(
+                    "Ignoring stale Manager directive (revision %d < applied %d) for stash '%s'.",
+                    revision, seen, stash.name);
+            return false;
+        }
         boolean changed = false;
         net.minecraft.core.BlockPos p1 = vec(d.get("pos1"));
         net.minecraft.core.BlockPos p2 = vec(d.get("pos2"));
@@ -10330,18 +10354,18 @@ public class StashSorter extends Module {
         }
         if (changed) {
             stash.markDirty();
+            stash.directiveRev = revision;
             stash.save();
             version++;
-            lastDirectiveRev = revision;
             if (stash.hasArea()) areaChanged();
             info("Manager directive applied (revision %d).", revision);
         } else if (revision >= 0) {
-            lastDirectiveRev = revision;
+            stash.directiveRev = revision;
+            stash.markDirty();
+            stash.save();
         }
         return changed;
     }
-
-    private long lastDirectiveRev = -1;
 
     private static net.minecraft.core.BlockPos vec(com.google.gson.JsonElement e) {
         if (e == null || !e.isJsonObject()) return null;

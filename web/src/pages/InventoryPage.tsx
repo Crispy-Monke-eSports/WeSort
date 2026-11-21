@@ -53,9 +53,12 @@ import { keys, ordersQueryOptions, useAuth, usePermissions, useStashes } from ".
 import { IndexResponseSchema, type IndexResponse } from "../api/types";
 import {
   boxedContents,
+  BuyUnit,
+  buyMaxUnits,
   grouped,
   isShulkerBoxId,
   isSingleContent,
+  itemsPerBuyUnit,
   labelTextError,
   LABEL_MAX_TEXT,
   MAX_SHULKERS,
@@ -850,10 +853,31 @@ function BuyDialog({ item, slices, mcVersion, canOrder, remaining, onClose, onAd
   const maxStack = Math.max(1, item?.maxStack ?? 64);
   const fitsInLimit = 54 * 27 * maxStack;
   const max = Math.max(1, Math.min(remaining, fitsInLimit));
+  // Quantity in loose items, plus the unit it is entered in (items, whole
+  // stacks, or full shulker boxes) so 6 stacks or 1 box can be picked directly.
   const [n, setN] = useState(max);
+  const [unit, setUnit] = useState<BuyUnit>("items");
   const [addError, setAddError] = useState("");
-  useEffect(() => { setN(max); setAddError(""); }, [item?.key]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setN(max); setUnit("items"); setAddError(""); }, [item?.key]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!item) return null;
+  const perUnit = itemsPerBuyUnit(unit, maxStack);
+  const unitLabel = unit === "stacks" ? "stacks" : unit === "boxes" ? "boxes" : "items";
+  const maxUnit = buyMaxUnits(max, unit, maxStack);
+  const shown = unit === "items" ? n : Math.max(1, Math.round(n / perUnit));
+  const items = unit === "items" ? n : Math.min(shown * perUnit, max);
+  function setShownQty(v: number) {
+    const q = Math.max(1, Math.min(maxUnit, Math.floor(v) || 1));
+    setN(unit === "items" ? q : Math.min(q * perUnit, max));
+  }
+  function chooseUnit(u: BuyUnit) {
+    if (u === unit) return;
+    const nextPer = itemsPerBuyUnit(u, maxStack);
+    const nextMax = buyMaxUnits(max, u, maxStack);
+    // Keep the same amount, snapped to whole units.
+    const snapped = Math.max(nextPer, Math.round(n / nextPer) * nextPer);
+    setUnit(u);
+    setN(Math.max(1, Math.min(max, Math.min(snapped, nextMax * nextPer))));
+  }
   const estBoxes = item
     ? shulkersNeeded([{ type: "item", key: item.key, count: n }], () => maxStack, () => false)
     : 0;
@@ -905,11 +929,23 @@ function BuyDialog({ item, slices, mcVersion, canOrder, remaining, onClose, onAd
           ))}
         </Stack>
         )}
-        <TextField
-          label="Quantity" type="number" value={n} size="small" sx={{ mt: 2, width: 160 }}
-          slotProps={{ htmlInput: { min: 1, max } }}
-          onChange={(e) => setN(Math.max(1, Math.min(max, Number(e.target.value) || 1)))}
-        />
+        <Stack direction="row" spacing={1} sx={{ mt: 2, alignItems: "center", flexWrap: "wrap", rowGap: 1 }}>
+          <ToggleButtonGroup value={unit} exclusive onChange={(_, u: BuyUnit | null) => u && chooseUnit(u)} size="small" aria-label="Quantity unit">
+            <ToggleButton value="items" aria-label="Single items">Items</ToggleButton>
+            <ToggleButton value="stacks" aria-label="Stacks">Stacks</ToggleButton>
+            <ToggleButton value="boxes" aria-label="Shulker boxes">Boxes</ToggleButton>
+          </ToggleButtonGroup>
+          <TextField
+            label={`Quantity (${unitLabel})`} type="number" value={shown} size="small" sx={{ width: 170 }}
+            slotProps={{ htmlInput: { min: 1, max: maxUnit } }}
+            onChange={(e) => setShownQty(Number(e.target.value))}
+          />
+        </Stack>
+        {unit !== "items" && (
+          <Typography variant="body2" sx={{ mt: 0.5 }}>
+            = <strong>{grouped(items)}</strong> items ({grouped(shown)} {unit === "stacks" ? `stack${shown === 1 ? "" : "s"}` : `box${shown === 1 ? "" : "es"}`} × {grouped(perUnit)})
+          </Typography>
+        )}
         <Typography variant="caption" color={estBoxes > 54 ? "error" : "text.secondary"} sx={{ display: "block", mt: 0.5 }}>
           Needs about {estBoxes} box{estBoxes === 1 ? "" : "es"} · at most 54 per order (server-enforced).
           {remaining > fitsInLimit ? ` Quantity capped at what fits in 54 boxes (${grouped(fitsInLimit)}).` : ""}

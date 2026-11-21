@@ -49,6 +49,7 @@ class RepackHarness(world.Harness):
         self.command('sort-mark',x=0,y=64,z=3,dropOff=True)
         self.teleport(.5,0)
         self.rcon.command(f'clear {self.player}')
+        # Deliberately omit the pickaxe in no-tool to prove hand-breaking works.
         if self.scenario!='no-tool':self.give(8,'diamond_pickaxe')
         if self.scenario in ['mixed','no-tool','full-stash','blocked','abort','lag','reserved','full-inventory','named']:
             self.give(0,'shulker_box[minecraft:container=[{slot:0,item:{id:"minecraft:diamond",count:32}},{slot:13,item:{id:"minecraft:dirt",count:16}},{slot:26,item:{id:"minecraft:diamond_sword",count:1,components:{"minecraft:damage":4,"minecraft:custom_name":{text:"Keep exact"}}}}]]')
@@ -171,7 +172,8 @@ class RepackHarness(world.Harness):
                     require('Replaced' in reply,'Full inventory injector failed');injected+=64
                     incoming_counts['minecraft:bedrock|{}']=incoming_counts.get('minecraft:bedrock|{}',0)+64
                 self.proxy.hold_up=False
-            failure=self.scenario in ['no-tool','no-empty','blocked']
+            # Shulkers are breakable by hand: no-tool is a success path, not a failure.
+            failure=self.scenario in ['no-empty','blocked']
             terminal='NEEDS_RECONCILIATION' if self.scenario in ['full-stash','abort','full-inventory'] else 'FAILED' if failure else 'COMPLETED'
             state=self.wait(lambda s:s.get('repackProgress',{}).get('phase')==terminal,'Repack phase did not reach verified completion or explicit precondition failure')
             if self.scenario=='abort':
@@ -198,7 +200,7 @@ class RepackHarness(world.Harness):
             if failure or self.scenario in ['full-stash','abort','full-inventory']:
                 require('reason' in state['repackProgress'] and state['repackProgress']['reason'],'Blocked operation has no diagnostic')
                 if failure:require(not any(e['phase'] in ['PLACE','TRANSFER','BREAK'] for e in state['repackProgress']['events']), 'Precondition failure reached physical work')
-                if self.scenario in ['no-tool','blocked']:
+                if self.scenario=='blocked':
                     original=next(s for text in before.values() for s in snbt.items(text) if s['id']=='minecraft:shulker_box' and not s.get('components',{}).get('minecraft:custom_name'))
                     candidates=[s for text in after.values() for s in snbt.items(text)]
                     require(any(s['id']==original['id'] and s.get('components',{})==original.get('components',{}) for s in candidates),'Blocked shulker contents were changed')

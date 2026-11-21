@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ORDER_STATUSES, orderUiState } from "../lib/orderStatus";
+import { ORDER_STATUSES, isSuperseded, needsAttentionNow, orderUiState } from "../lib/orderStatus";
 
 // P2-17: the frontend status mapping must follow the backend contract
 // (OrderStore OPEN/FINISHED, OrderStage, retry gate) — not hand-written drift.
@@ -46,5 +46,24 @@ describe("order status contract (P2-17)", () => {
   it("never hides unknown statuses", () => {
     expect(orderUiState("something-new").severity).toBe("default");
     expect(orderUiState(null).severity).toBe("default");
+  });
+});
+
+describe("attention lists (superseded retries)", () => {
+  it("a retried order stands for its successor and needs nothing on its own", () => {
+    expect(isSuperseded({ status: "failed", retriedAs: "o-new" })).toBe(true);
+    expect(isSuperseded({ status: "failed" })).toBe(false);
+    expect(isSuperseded({ status: "failed", retriedAs: null })).toBe(false);
+    expect(isSuperseded(null)).toBe(false);
+  });
+
+  it("superseded failures are hidden from the attention list by default", () => {
+    expect(needsAttentionNow("failed", { retriedAs: "o-new" })).toBe(false);
+    expect(needsAttentionNow("cancelled", { retriedAs: "o-new" })).toBe(false);
+    expect(needsAttentionNow("failed", { retriedAs: null })).toBe(true);
+    expect(needsAttentionNow("failed", null)).toBe(true);
+    expect(needsAttentionNow("needs_reconciliation", null)).toBe(true);
+    expect(needsAttentionNow("packed", { retriedAs: "o-new" })).toBe(false);
+    expect(needsAttentionNow("uncertain", null)).toBe(true);
   });
 });

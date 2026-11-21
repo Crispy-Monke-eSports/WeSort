@@ -172,6 +172,9 @@ export const OrderStatusSchema = z.object({
   decidedBy: z.string().nullable().optional(),
   packageTotal: z.number().nullable().optional(),
   cancelRequested: z.boolean().default(false),
+  // Set when a terminal order was placed again: it stands for its successor (OrderStore.statusOf
+  // follows the chain). Present in backend toJson; parsed here so lists can hide superseded orders.
+  retriedAs: z.string().nullable().optional(),
   requestedBy: z.string().nullable().optional(),
   placedBy: z.object({ id: z.string().nullable().optional(), name: z.string().nullable().optional() }).nullable().optional(),
   names: z.unknown().nullable().optional(),

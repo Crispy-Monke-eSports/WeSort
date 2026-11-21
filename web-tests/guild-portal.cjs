@@ -51,7 +51,7 @@ async function main() {
     const notes = ['Portal building order', 'Portal mining order'];
     for (const [i, page] of pages.entries()) {
       await page.getByTestId('item-grid').locator('.MuiCard-root').first().getByRole('button', { name: 'Add' }).click();
-      await page.getByLabel('Quantity').fill('64');
+      await page.getByRole('spinbutton', { name: 'Quantity (items)', exact: true }).fill('64');
       await page.getByRole('button', { name: 'Add to cart' }).click();
       await page.getByRole('button', { name: /cart/i }).click();
       await expectCartLines(page, 1);

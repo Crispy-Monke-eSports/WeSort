@@ -417,6 +417,11 @@ public class StashManager extends Module {
         return isActive() && dedicatedProfile() && sortEnabled.get();
     }
 
+    /** Orders waiting to be claimed: the sorter names no UUIDs while any wait, so packed orders keep matching. */
+    public int pendingOrders() {
+        return pendingOrders;
+    }
+
     public boolean sortingAllowed() {
         // Only the isolated, marker-protected Minecraft E2E harness can run the legacy local sorter.
         if (Boolean.getBoolean("wesort.e2e") && serverUrl.get().isBlank()) return true;
@@ -1588,6 +1593,13 @@ public class StashManager extends Module {
         progress.addProperty("total", r.total());
         o.add("progress", progress);
         o.addProperty("message", StashIndex.clamp(r.message(), 300));
+        // UUIDs of delivered shulkers that carried one when taken: they left the system
+        JsonArray deliveredUuids = new JsonArray();
+        for (String uuid : r.deliveredUuids()) {
+            if (deliveredUuids.size() >= 64 || uuid == null) continue;
+            deliveredUuids.add(uuid);
+        }
+        o.add("deliveredUuids", deliveredUuids);
         if (r.terminal() && !r.status().equals("cancelled")) {
             JsonObject result = new JsonObject();
             result.addProperty("shulkers", r.shulkers());

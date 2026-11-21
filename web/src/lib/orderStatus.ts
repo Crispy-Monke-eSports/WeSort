@@ -75,3 +75,28 @@ export function orderUiState(status: string | null | undefined): OrderUiState {
   const key = String(status ?? "unknown").toLowerCase();
   return STATES[key] ?? FALLBACK;
 }
+
+/**
+ * A terminal order placed again as a new order (backend `retriedAs`) stands for
+ * its successor: on its own it no longer requires anything. The attention lists
+ * hide these by default so they show current errors only; the successor still
+ * shows if it needs attention.
+ */
+type AttentionOrder = { status?: unknown; retriedAs?: unknown } | null | undefined;
+
+export function isSuperseded(order: AttentionOrder): boolean {
+  return !!order?.retriedAs;
+}
+
+/**
+ * Attention-list membership: a mapped attention state (or the frontend
+ * `uncertain` checkout state) that is not superseded by a retry.
+ */
+export function needsAttentionNow(
+  status: string | null | undefined,
+  order?: AttentionOrder,
+): boolean {
+  const s = String(status ?? "unknown").toLowerCase();
+  if (!orderUiState(s).needsAttention && s !== "uncertain") return false;
+  return !isSuperseded(order);
+}

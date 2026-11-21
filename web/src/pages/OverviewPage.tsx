@@ -6,6 +6,7 @@ import CardHeader from "@mui/material/CardHeader";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
 import ErrorIcon from "@mui/icons-material/Error";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import Grid from "@mui/material/Grid";
 import LinearProgress from "@mui/material/LinearProgress";
 import Link from "@mui/material/Link";
@@ -14,11 +15,13 @@ import ListItem from "@mui/material/ListItem";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
+import Switch from "@mui/material/Switch";
 import Typography from "@mui/material/Typography";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import { Link as RouterLink } from "@tanstack/react-router";
+import { useState } from "react";
 import { useAuth, useBots, useOperations, usePermissions, useServer, useStashes, useAllOrders } from "../api/queries";
-import { orderUiState } from "../lib/orderStatus";
+import { isSuperseded, orderUiState } from "../lib/orderStatus";
 import { OrderStatusChip, PresenceChip, timeAgo } from "../components/status";
 
 /** One actionable problem, backend-derived, with a direct link to resolve it. */
@@ -45,6 +48,8 @@ export function OverviewPage() {
     (stashes.data ?? []).filter((s) => perms.seesStash(s.stash)),
     loggedIn,
   );
+  // Hooks must run in the same order, including the initial unauthenticated render.
+  const [showResolved, setShowResolved] = useState(false);
 
   if (!loggedIn) {
     return (
@@ -57,11 +62,12 @@ export function OverviewPage() {
   const botList = (bots.data ?? []).filter((b) => perms.seesBot(b.botId));
   const onlineBots = botList.filter((b) => b.online);
   const openOrders = orders.filter((o) => orderUiState(String(o.status ?? "unknown")).open);
+  // Retried orders stand for their successor and no longer require anything: hidden by default
+  // so the list shows current errors only. The toggle reveals the resolved history.
   const needAttention = orders.filter((o) => {
     const s = String(o.status ?? "unknown").toLowerCase();
-    // Backend attention states from the tested mapping, plus the frontend
-    // checkout state for groups whose outcome is still unknown.
-    return orderUiState(s).needsAttention || s === "uncertain";
+    if (!orderUiState(s).needsAttention && s !== "uncertain") return false;
+    return showResolved || !isSuperseded(o);
   });
 
   // Backend-derived health contract: offline agents, failed orders, operator
@@ -182,7 +188,16 @@ export function OverviewPage() {
 
       {attention.length > 0 && (
         <Card>
-          <CardHeader title="Needs attention" subheader="Ranked by severity; each item links straight there" />
+          <CardHeader
+            title="Needs attention"
+            subheader="Ranked by severity; each item links straight there"
+            action={
+              <FormControlLabel
+                control={<Switch size="small" checked={showResolved} onChange={(e) => setShowResolved(e.target.checked)} />}
+                label="Show resolved"
+              />
+            }
+          />
           <CardContent sx={{ pt: 0 }}>
             <List dense>
               {attention.slice(0, 8).map((a, i) => (

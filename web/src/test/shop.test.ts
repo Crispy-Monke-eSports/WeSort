@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   availabilityOf,
   boxedContents,
+  buyMaxUnits,
+  buyUnitsToItems,
   isSingleContent,
+  itemsPerBuyUnit,
   mixedBoxedContents,
   netBoxedContents,
   netBoxes,
@@ -85,6 +88,27 @@ describe("capacity", () => {
     expect(shulkersNeeded([{ type: "shulker", key: "b", count: 10 }], () => 64, () => false)).toBe(10);
     expect(shulkersNeeded([{ type: "item", key: "d", count: 64 }], () => 64, () => false)).toBe(1);
     expect(shulkersNeeded([{ type: "item", key: "d", count: 64 * 27 + 1 }], () => 64, () => false)).toBe(2);
+  });
+});
+
+describe("buy units (items / stacks / boxes)", () => {
+  it("converts units to items with the item's max stack", () => {
+    expect(itemsPerBuyUnit("items", 64)).toBe(1);
+    expect(itemsPerBuyUnit("stacks", 64)).toBe(64);
+    expect(itemsPerBuyUnit("boxes", 64)).toBe(27 * 64);
+    expect(itemsPerBuyUnit("stacks", 16)).toBe(16);
+    expect(itemsPerBuyUnit("boxes", 16)).toBe(27 * 16);
+    expect(buyUnitsToItems(6, "stacks", 64)).toBe(384);
+    expect(buyUnitsToItems(1, "boxes", 64)).toBe(1728);
+  });
+
+  it("clamps whole units to the item budget", () => {
+    expect(buyMaxUnits(100, "items", 64)).toBe(100);
+    expect(buyMaxUnits(384, "stacks", 64)).toBe(6);
+    expect(buyMaxUnits(400, "stacks", 64)).toBe(6);
+    expect(buyMaxUnits(1728, "boxes", 64)).toBe(1);
+    expect(buyMaxUnits(10, "stacks", 64)).toBe(1);
+    expect(buyMaxUnits(0, "stacks", 64)).toBe(1);
   });
 });
 

@@ -43,6 +43,7 @@ class AgentScopeTest {
     String agentA;
     byte[] agentKeyA;
     AgentCredentials credentials;
+    BotHub hub;
     /** Example Minecraft UUID, never an authorization identity. */
     static final String PLAYER_A = "11111111-2222-4333-8444-555555555555";
 
@@ -80,6 +81,7 @@ class AgentScopeTest {
         sessions.load();
         Users users = new Users(data);
         users.load();
+        hub = new BotHub();
         WeSortManager.Routes r = WeSortManager.routes(
                 config,
                 store,
@@ -90,7 +92,7 @@ class AgentScopeTest {
                 sessions,
                 users,
                 new AuditLog(data),
-                new BotHub(),
+                hub,
                 new LoginLimiter());
         credentials = r.agentCredentials();
         server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 16);
@@ -423,6 +425,23 @@ class AgentScopeTest {
         heartbeat.addProperty("server", serverId);
         heartbeat.addProperty("stash", "undefined");
         assertEquals(404, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat.toString()).status);
+    }
+
+    @Test
+    void revokedKeyImmediatelyRetiresItsOnlineBotSession() throws Exception {
+        String owner = login(null, OWNER_PW);
+        setServer(owner, "s");
+        defineStash(owner, "a");
+        Res hello = agentPost(agentA, agentKeyA, "/api/v1/bot/hello", helloBootstrap(agentA));
+        assertEquals(200, hello.status, hello.body);
+        assertTrue(hub.online(hub.bot(agentA)), "The signed agent must register as online");
+
+        assertTrue(credentials.revoke(agentA));
+        assertEquals(null, hub.bot(agentA), "A revoked key must not leave a ghost online bot");
+        assertEquals(
+                401,
+                agentPost(agentA, agentKeyA, "/api/v1/bot/hello", helloBootstrap(agentA)).status,
+                "A revoked key must not register again");
     }
 
     @Test

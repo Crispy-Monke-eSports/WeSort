@@ -295,6 +295,7 @@ public final class WeSortManager {
             RuntimeHealth health)
             throws IOException {
         var credentials = new AgentCredentials(config.dataDir());
+        credentials.onRevocation(hub::retire);
         Router router = new Router(new AccessControl(config), sessions, config, users, credentials, orders);
         health.register(router);
         AuthRoutes authRoutes = new AuthRoutes(config, sessions, limiter, users, audit);

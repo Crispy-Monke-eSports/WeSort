@@ -31,6 +31,12 @@ final class AgentCredentials {
     private final LongSupplier clock;
     private final Map<String, Slot> entries = new TreeMap<>();
     private boolean scopedOnly;
+    private java.util.function.Consumer<String> revocationListener = id -> {};
+
+    /** Notify the in-memory fleet when the key behind an active session is revoked. */
+    synchronized void onRevocation(java.util.function.Consumer<String> listener) {
+        revocationListener = java.util.Objects.requireNonNull(listener);
+    }
 
     /** Latest signed request's reported player; not a security identity. */
     record Binding(String playerName, long lastSeen) {}
@@ -157,6 +163,9 @@ final class AgentCredentials {
         if (current == null || !current.active()) return false;
         entries.put(id, current.withKey(null).withBinding(null));
         save(scopedOnly);
+        // A valid key no longer authorizes this bot. Remove its cached online
+        // presence immediately, not after the long-poll online grace period.
+        revocationListener.accept(id);
         return true;
     }
 

@@ -223,6 +223,28 @@ final class BotHub {
         return true;
     }
 
+    /**
+     * Revoke the cached control session when its signing key is revoked.
+     * Retiring the bot also wakes in-flight long-polls and prevents queued
+     * physical work from being handed to a now-unauthorized session.
+     */
+    void retire(String botId) {
+        Bot bot;
+        synchronized (this) {
+            bot = bots.remove(botId);
+        }
+        if (bot == null) return;
+        synchronized (bot) {
+            for (Job job : bot.jobs.values()) {
+                if (job.status.equals("queued") || job.status.equals("sent"))
+                    job.status = "unknown";
+            }
+            bot.queue.clear();
+            bot.helloGen++;
+            bot.notifyAll();
+        }
+    }
+
     synchronized Bot bot(String botId) {
         return botId == null ? null : bots.get(botId);
     }

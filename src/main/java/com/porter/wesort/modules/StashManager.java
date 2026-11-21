@@ -124,7 +124,8 @@ public class StashManager extends Module {
             .visible(() -> false)
             .build());
 
-    private final SettingGroup sgDelivery = settings.createGroup("Delivery");
+    // Legacy operational preferences are internal state; only the connection entry is visible in Meteor.
+    private final SettingGroup sgDelivery = settings.getDefaultGroup();
 
     private final Setting<Boolean> autoExpandDelivery = sgDelivery.add(new BoolSetting.Builder()
             .name("auto-expand-delivery")
@@ -134,7 +135,7 @@ public class StashManager extends Module {
             .visible(() -> false)
             .build());
 
-    private final SettingGroup sgCrafting = settings.createGroup("Crafting");
+    private final SettingGroup sgCrafting = settings.getDefaultGroup();
 
     private final Setting<Boolean> enableCrafting = sgCrafting.add(new BoolSetting.Builder()
             .name("enable-crafting")
@@ -176,6 +177,14 @@ public class StashManager extends Module {
             .name("craft-never-use")
             .description("Items crafting never uses as ingredients, whatever the stash holds.")
             .defaultValue(List.of())
+            .visible(() -> false)
+            .build());
+
+    // Persist Manager-issued engine settings with the one registered module; never show or edit them in Meteor.
+    private final Setting<String> enginePreferences = sgGeneral.add(new StringSetting.Builder()
+            .name("manager-engine-settings")
+            .description("Cached operational settings issued by WeSort Manager web.")
+            .defaultValue("{}")
             .visible(() -> false)
             .build());
 
@@ -254,7 +263,24 @@ public class StashManager extends Module {
     @Override
     public void onActivate() {
         selfCheck();
+        restoreEnginePreferences();
         reset();
+    }
+
+    private void restoreEnginePreferences() {
+        StashSorter engine = WeSortAddon.sorter();
+        if (engine == null) return;
+        try {
+            String saved = enginePreferences.get();
+            if (saved.length() > 8192) return;
+            JsonObject values = JsonParser.parseString(saved).getAsJsonObject();
+            for (var entry : values.entrySet()) {
+                if (entry.getValue() instanceof JsonPrimitive value)
+                    engine.applyManagerSetting(entry.getKey(), null, value);
+            }
+        } catch (RuntimeException badCache) {
+            WeSortAddon.LOG.warn("Ignoring malformed cached Manager engine settings");
+        }
     }
 
     public boolean dedicatedProfile() {
@@ -985,6 +1011,7 @@ public class StashManager extends Module {
         else if (path.startsWith("sorter.")) {
             var engine = WeSortAddon.sorter();
             applied = engine != null && engine.applyManagerSetting(path, job.get("expect"), value);
+            if (applied) enginePreferences.set(engine.managerValues().toString());
         } else applied = false;
         result.addProperty("ok", applied);
         if (applied) result.add("value", value);

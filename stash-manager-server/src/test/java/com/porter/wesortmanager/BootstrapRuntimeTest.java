@@ -56,7 +56,7 @@ class BootstrapRuntimeTest {
     }
 
     @Test
-    void keySlotsMigrateBindAndRotateIndependently() throws Exception {
+    void keySlotsMigrateReportPresenceAndRotateIndependently() throws Exception {
         var id = java.util.UUID.randomUUID().toString();
         var file = data.resolve("agent-credentials.json");
         var key = java.util.Base64.getEncoder().encodeToString(new byte[32]);
@@ -65,22 +65,22 @@ class BootstrapRuntimeTest {
             """.formatted(id, key));
         var clock = new AtomicLong(1_000_000);
         var credentials = new AgentCredentials(data, clock::get);
-        // Legacy v1 rows migrate to unbound slots: the id stays, bindings are dropped.
+        // Legacy v1 rows retain their key slot, not a Minecraft player binding.
         assertEquals(id, credentials.find(id).id());
         assertEquals("Agent0", credentials.find(id).label());
         assertNull(credentials.find(id).binding());
-        // Any player may connect with the slot; the first one binds it.
-        var player = "11111111-2222-4333-8444-555555555555";
-        assertEquals(AgentCredentials.Touch.BOUND, credentials.touch(id, player, "Agent0"));
+        // Any valid signed request may update display-only presence.
+        credentials.notePlayer(id, "Agent0");
         assertEquals("Agent0", credentials.find(id).binding().playerName());
-        // Same player refreshes the claim; another player is refused while it is live.
-        assertEquals(AgentCredentials.Touch.BOUND, credentials.touch(id, player, "Renamed"));
-        assertEquals(
-                AgentCredentials.Touch.CONFLICT, credentials.touch(id, "66666666-7777-4888-8999-000000000000", "Eve"));
-        // After the window the slot is free: a new player rebinds it.
-        clock.addAndGet(AgentCredentials.BIND_WINDOW_MS + 1);
-        assertEquals(
-                AgentCredentials.Touch.REBOUND, credentials.touch(id, "66666666-7777-4888-8999-000000000000", "Eve"));
+        clock.addAndGet(500);
+        credentials.notePlayer(id, "Renamed");
+        assertEquals("Renamed", credentials.find(id).binding().playerName());
+        assertEquals(1_000_500, credentials.find(id).binding().lastSeen());
+        // No UUID claim, exclusivity or rebind timeout: another name is immediate.
+        credentials.notePlayer(id, "Eve");
+        assertEquals("Eve", credentials.find(id).binding().playerName());
+        credentials.notePlayer(id, "bad name");
+        assertEquals("Eve", credentials.find(id).binding().playerName());
         // Labels, not bindings, distinguish new slots.
         String anotherKey = credentials.issue("agent0");
         String anotherId = anotherKey.substring(0, anotherKey.indexOf('.'));
@@ -94,9 +94,9 @@ class BootstrapRuntimeTest {
         assertTrue(credentials.revoke(anotherId));
         assertNull(credentials.find(anotherId));
         assertNotNull(credentials.issue("Agent5"));
-        // Slots persist across restarts, bindings included.
+        // Only credentials persist across restarts, not transient player presence.
         var reopened = new AgentCredentials(data, clock::get);
-        assertEquals("Eve", reopened.find(id).binding().playerName());
+        assertNull(reopened.find(id).binding());
         assertTrue(reopened.scopedOnly());
     }
 

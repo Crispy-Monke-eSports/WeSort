@@ -192,6 +192,20 @@ public class StashSorter extends Module {
     }
 
     /**
+     * Bind the isolated Minecraft 26.3 E2E fixture without adding a user-configurable
+     * stash setting back to Meteor. The filesystem test driver itself is marker-gated.
+     * This method is unavailable in production and accepts no arbitrary warehouse.
+     */
+    public void selectE2eFixtureStash(String name) {
+        if (!Boolean.getBoolean("wesort.e2e") || !"e2e-fixture".equals(name))
+            throw new IllegalStateException("Fixture stash assignment requires isolated E2E");
+        if (name.equals(assignedStash)) return;
+        assignedStash = name;
+        stash = null;
+        triedKey = null;
+    }
+
+    /**
      * Adopt a Manager-announced stash name when no local stash has any containers. Never
      * overwrites local work. The region itself always comes from the Manager directive.
      */

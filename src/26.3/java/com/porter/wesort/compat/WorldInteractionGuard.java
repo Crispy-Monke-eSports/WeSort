@@ -191,8 +191,7 @@ public final class WorldInteractionGuard {
      * unrelated changed block, expired permission or restart never qualifies.
      */
     static boolean isShulkerBlockId(String block) {
-        return block != null
-                && (block.equals("minecraft:shulker_box") || block.endsWith("_shulker_box"));
+        return block != null && (block.equals("minecraft:shulker_box") || block.endsWith("_shulker_box"));
     }
 
     public static boolean allowBreakStop(BlockPos position) {

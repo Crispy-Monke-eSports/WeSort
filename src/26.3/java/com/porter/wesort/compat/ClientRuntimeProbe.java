@@ -33,9 +33,13 @@ public final class ClientRuntimeProbe {
                     // purpose; requiring it here would fail every run.
                     for (var type :
                             java.util.List.<Class<? extends meteordevelopment.meteorclient.systems.modules.Module>>of(
-                                    StashSorter.class, StashManager.class)) {
+                                    StashManager.class)) {
                         if (Modules.get().get(type) == null) throw new IllegalStateException("Missing module " + type);
                     }
+                    if (com.porter.wesort.WeSortAddon.sorter() == null)
+                        throw new IllegalStateException("Internal sorter service missing");
+                    if (Modules.get().get(StashSorter.class) != null)
+                        throw new IllegalStateException("Legacy sorter must not be registered in Meteor");
                     if (Modules.get().get(StashOverlay.class) != null)
                         throw new IllegalStateException("Headless overlay registered in production");
                     if (BaritoneAPI.getProvider().getPrimaryBaritone() == null)
@@ -69,7 +73,7 @@ public final class ClientRuntimeProbe {
                         result.put("result", "PASS");
                         result.put(
                                 "checks",
-                                "WeSort modules, packet mixin audit, Baritone linkage, legacy readback fixture, member window disabled in production");
+                                "One WeSort Agent module and internal sorter, packet mixin audit, Baritone linkage, legacy readback fixture, member window disabled in production");
                         result.put("limits", "No connected world, physical inventory or pathfinding tested.");
                         Files.writeString(
                                 loader.getGameDir().resolve("runtime-result.json"),

@@ -14,7 +14,6 @@ import meteordevelopment.meteorclient.events.render.Render3DEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
-import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.utils.Utils;
 import meteordevelopment.meteorclient.utils.render.NametagUtils;
 import meteordevelopment.orbit.EventHandler;
@@ -118,13 +117,13 @@ public class StashOverlay extends Module {
     }
 
     private Stash stash() {
-        return Modules.get().get(StashSorter.class).currentStash();
+        return com.porter.wesort.WeSortAddon.sorter().currentStash();
     }
 
     @EventHandler
     private void onRender3D(Render3DEvent event) {
         // wesort-stash-sorter draws it itself while it is on
-        StashSorter sorter = Modules.get().get(StashSorter.class);
+        StashSorter sorter = com.porter.wesort.WeSortAddon.sorter();
         if (!sorter.isActive()) sorter.drawArea(event);
     }
 

@@ -3,9 +3,7 @@ package com.porter.wesort.commands;
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
-import com.porter.wesort.modules.StashSorter;
 import meteordevelopment.meteorclient.commands.Command;
-import meteordevelopment.meteorclient.systems.modules.Modules;
 import net.minecraft.commands.SharedSuggestionProvider;
 
 /** Explains the held variant without exposing coordinates to a server log or moving any items. */
@@ -21,7 +19,7 @@ public final class SortWhyCommand extends Command {
                 info("Hold the item variant to inspect.");
                 return SINGLE_SUCCESS;
             }
-            var report = Modules.get().get(StashSorter.class).explainSort(mc.player.getMainHandItem());
+            var report = com.porter.wesort.WeSortAddon.sorter().explainSort(mc.player.getMainHandItem());
             info(
                     "%s: %s; sorting %s",
                     report.get("item").getAsString(),

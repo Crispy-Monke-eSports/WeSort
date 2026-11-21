@@ -36,6 +36,21 @@ Gradle-bygget, CI, E2E och Manager-index/ikoner är riktade till exakt 26.3.
 Minecraft 1.21.4 och 1.21.11 är historiska Qwerte-baslinjer, **inte**
 stödda installationer eller byggen. De äldre käll-/versionsmålen är borttagna.
 
+## Meteor: WeSort Agent
+
+I Meteor visas **endast en WeSort-modul: WeSort Agent**. Den enda inställningen öppnar en
+anslutningsdialog med **Manager-adress, port och maskerad API-nyckel**. Alternativt kan
+`.wesort-connect` öppna samma dialog. Den gamla `StashSorter`-modulen är inte
+registrerad i Meteors modullista: dess Minecraft-exekvering körs internt av agenten.
+
+Konfigurera sortering, scanning, orderintag, crafting, shulker-repack och övriga
+agentinställningar i **WeSortManager → Agents → Settings**. Ändringar skickas som
+signerade kommandon till agenten och kontrolleras mot förväntat värde; en godkänd
+uppdatering av sorteringsmotorn sparas i agentens dolda tillstånd för omstart.
+Serverdefinierade lagerområden och platser kommer fortfarande via verifierade
+Manager-direktiv. Fysisk sortering kräver ett giltigt Manager-utfärdat tillstånd;
+den interna motorn får inte kringgå inventarie- och journalspärrar.
+
 ## Bygga och testa
 
 Klienten kräver **Temurin Java 25.0.5+8**, Gradle **9.6.0** via

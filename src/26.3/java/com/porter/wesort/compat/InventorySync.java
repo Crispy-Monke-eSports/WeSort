@@ -136,8 +136,7 @@ public final class InventorySync {
 
     public static boolean allowInput() {
         if (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror()) return false;
-        var sorter = meteordevelopment.meteorclient.systems.modules.Modules.get()
-                .get(com.porter.wesort.modules.StashSorter.class);
+        var sorter = com.porter.wesort.WeSortAddon.sorter();
         if (sorter != null && !sorter.sortingPermitted()) return false;
         if (sorter != null
                 && readSource != null
@@ -172,8 +171,7 @@ public final class InventorySync {
 
     public static boolean allowClick(int slot, ContainerInput input) {
         if (!allowInput()) return false;
-        var sorter = meteordevelopment.meteorclient.systems.modules.Modules.get()
-                .get(com.porter.wesort.modules.StashSorter.class);
+        var sorter = com.porter.wesort.WeSortAddon.sorter();
         if (sorter == null || mc.player == null || mc.level == null) return true;
         var menu = mc.player.containerMenu;
         if (!sorter.hasPhysicalOrder()

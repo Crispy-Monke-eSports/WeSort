@@ -366,7 +366,7 @@ public final class WorldTestDriver {
                     respond(true, "production Manager agent resumed", state());
                 }
                 case "engine-index" -> {
-                    var current = Modules.get().get(StashSorter.class).currentStash();
+                    var current = com.porter.wesort.WeSortAddon.sorter().currentStash();
                     var result = state();
                     if (current != null)
                         result.add(
@@ -383,7 +383,7 @@ public final class WorldTestDriver {
                         return;
                     }
                     stash.save();
-                    var sorter = Modules.get().get(StashSorter.class);
+                    var sorter = com.porter.wesort.WeSortAddon.sorter();
                     ((Setting<String>) sorter.settings.get("stash-name")).set(stash.name);
                     ((Setting<Boolean>) sorter.settings.get("sort-items")).set(true);
                     if (command.has("repack"))
@@ -422,13 +422,13 @@ public final class WorldTestDriver {
                     respond(true, "actual StashSorter configured", state());
                 }
                 case "sort-stop" -> {
-                    var sorter = Modules.get().get(StashSorter.class);
+                    var sorter = com.porter.wesort.WeSortAddon.sorter();
                     if (sorter.isActive()) sorter.toggle();
                     respond(true, "actual StashSorter stopped", state());
                 }
                 case "sort-mark" -> {
                     BlockPos pos = position(command);
-                    var current = Modules.get().get(StashSorter.class).currentStash();
+                    var current = com.porter.wesort.WeSortAddon.sorter().currentStash();
                     for (var source : new Stash[] {stash, current}) {
                         if (source == null) continue;
                         var box = source.boxAt(pos);
@@ -454,7 +454,7 @@ public final class WorldTestDriver {
                 }
                 case "sort-explain" -> {
                     var report = new JsonObject();
-                    var sorter = Modules.get().get(StashSorter.class);
+                    var sorter = com.porter.wesort.WeSortAddon.sorter();
                     JsonArray probes = new JsonArray();
                     for (var slot : mc.player.containerMenu.slots) {
                         if (slot.index >= mc.player.containerMenu.slots.size() - 36
@@ -491,7 +491,7 @@ public final class WorldTestDriver {
                     respond(true, "configured actual production order staging", state());
                 }
                 case "stock-scan-settings" -> {
-                    var sorter = Modules.get().get(StashSorter.class);
+                    var sorter = com.porter.wesort.WeSortAddon.sorter();
                     ((Setting<Boolean>) sorter.settings.get("sort-items")).set(false);
                     ((Setting<Boolean>) sorter.settings.get("barrels")).set(true);
                     ((Setting<Boolean>) sorter.settings.get("walk")).set(true);
@@ -729,7 +729,7 @@ public final class WorldTestDriver {
             return;
         }
         stash.save();
-        StashSorter sorter = Modules.get().get(StashSorter.class);
+        StashSorter sorter = com.porter.wesort.WeSortAddon.sorter();
         ((Setting<String>) sorter.settings.get("stash-name")).set(stash.name);
         StashManager manager = Modules.get().get(StashManager.class);
         ((Setting<String>) manager.settings.get("server-url"))
@@ -747,7 +747,7 @@ public final class WorldTestDriver {
 
     private JsonObject state() {
         JsonObject out = new JsonObject();
-        var actualSorter = Modules.get().get(StashSorter.class);
+        var actualSorter = com.porter.wesort.WeSortAddon.sorter();
         JsonArray storage = new JsonArray();
         var actualStash = actualSorter.currentStash();
         if (actualStash != null)
@@ -773,7 +773,12 @@ public final class WorldTestDriver {
             position.add(p.getZ());
             out.add("repackPosition", position);
         }
-        out.addProperty("sortingPermitted", Modules.get().get(StashSorter.class).sortingPermitted());
+        // Test-only observability: separate requested sorting, durable recovery fencing,
+        // and effective permission so a journal regression can be diagnosed per phase.
+        out.addProperty("sortingPermitRequired", actualSorter.requiresSortingPermit());
+        out.addProperty("journalBlocked", PhysicalJournalRuntime.blocked());
+        out.addProperty("journalAwaitingMirror", PhysicalJournalRuntime.awaitingMirror());
+        out.addProperty("sortingPermitted", actualSorter.sortingPermitted());
         out.addProperty("server", Stash.currentServer());
         out.addProperty("player", mc.player.getName().getString());
         out.addProperty("playerUuid", mc.player.getUUID().toString());

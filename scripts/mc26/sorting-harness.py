@@ -120,6 +120,30 @@ class SortingHarness(world.Harness):
             self.ok('actual production Signs engine routes mixed items by labels/slang, preserves metadata and partial stacks, uses overflow and leaves excluded/protected kit/outbound stock unchanged')
             self.wait(lambda: not self.stock()['automation'],'Verified sorting did not release its exclusion',timeout=30)
             self.command('manager-unlink-test')
+            # Manager may have issued its final index-open before deactivation.
+            # A late server-side menu response must not be mistaken for this
+            # fixture's protected barrel. Stop the scanner, explicitly close
+            # any residual menu, and require a stable, safe inventory before
+            # asserting the *real* protected QUICK_MOVE fence.
+            baseline = self.command('state')['state']['attemptedClicks']
+            quiet_since = None
+            settle_deadline = time.monotonic() + 25
+            while time.monotonic() < settle_deadline:
+                observed = self.command('state')['state']
+                require(observed['physicalJournal'] == 'READY'
+                        and not observed['inventoryFailure']
+                        and observed['attemptedClicks'] == baseline,
+                        'Manager scanner stop left an unsafe inventory or replayed a click')
+                if observed['containerId'] != 0:
+                    self.command('close')
+                    quiet_since = None
+                else:
+                    if quiet_since is None: quiet_since = time.monotonic()
+                    if time.monotonic() - quiet_since >= 3:
+                        break
+                time.sleep(.25)
+            else:
+                raise RuntimeError('Manager scanner did not release its container menu safely')
             self.teleport(15.5,2); self.command('open',x=15,y=64,z=3,slots=27,item='minecraft:diamond',count=7)
             self.command('attempt-protected'); self.command('close')
             require(self.nbt(15)==protected,'Low-level guard changed protected stock')

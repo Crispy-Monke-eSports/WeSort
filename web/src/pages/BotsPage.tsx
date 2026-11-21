@@ -7,6 +7,7 @@ import CardHeader from "@mui/material/CardHeader";
 import Chip from "@mui/material/Chip";
 import Grid from "@mui/material/Grid";
 import LinearProgress from "@mui/material/LinearProgress";
+import MenuItem from "@mui/material/MenuItem";
 import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
 import ListItemButton from "@mui/material/ListItemButton";
@@ -183,7 +184,7 @@ function BotSettingsCard({ botId }: { botId: string }) {
   const perms = usePermissions(auth.data);
   const loggedIn = !!auth.data?.loggedIn && perms.can("activity");
   const settings = useBotSettings(botId, loggedIn && perms.can("positions"));
-  const [draft, setDraft] = useState<Record<string, number | boolean>>({});
+  const [draft, setDraft] = useState<Record<string, number | boolean | string>>({});
   const [msg, setMsg] = useState("");
   const [sending, setSending] = useState(false);
   const confirm = useConfirm();
@@ -193,11 +194,11 @@ function BotSettingsCard({ botId }: { botId: string }) {
   const errStatus = (settings.error as any)?.status as number | undefined;
 
   useEffect(() => {
-    const next: Record<string, number | boolean> = {};
+    const next: Record<string, number | boolean | string> = {};
     for (const s of schema) {
       const v = values[s.path];
       if (s.type === "bool") next[s.path] = !!v;
-      else if (typeof v === "number") next[s.path] = v;
+      else if (typeof v === "number" || typeof v === "string") next[s.path] = v;
     }
     setDraft(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -274,9 +275,9 @@ function BotSettingsCard({ botId }: { botId: string }) {
                 />
               );
             }
-            if (s.type === "int") {
+            if (s.type === "int" || s.type === "double") {
               const v = draft[s.path];
-              const bad = typeof v !== "number" || !Number.isInteger(v)
+              const bad = typeof v !== "number" || !Number.isFinite(v) || (s.type === "int" && !Number.isInteger(v))
                 || (typeof s.min === "number" && v < s.min)
                 || (typeof s.max === "number" && v > s.max);
               return (
@@ -287,9 +288,34 @@ function BotSettingsCard({ botId }: { botId: string }) {
                   value={v ?? ""}
                   size="small"
                   error={bad}
-                  helperText={bad ? `Integer${typeof s.min === "number" ? ` ≥ ${s.min}` : ""}${typeof s.max === "number" ? ` ≤ ${s.max}` : ""} required` : undefined}
-                  slotProps={{ htmlInput: { step: 1, min: s.min, max: s.max } }}
+                  helperText={bad ? `${s.type === "int" ? "Integer" : "Number"}${typeof s.min === "number" ? ` ≥ ${s.min}` : ""}${typeof s.max === "number" ? ` ≤ ${s.max}` : ""} required` : undefined}
+                  slotProps={{ htmlInput: { step: s.type === "int" ? 1 : "any", min: s.min, max: s.max } }}
                   onChange={(e) => setDraft({ ...draft, [s.path]: e.target.value === "" ? NaN : Number(e.target.value) })}
+                />
+              );
+            }
+            if (s.type === "enum" && Array.isArray(s.options)) {
+              return (
+                <TextField
+                  key={String(s.path)}
+                  select
+                  size="small"
+                  label={label}
+                  value={draft[s.path] ?? ""}
+                  onChange={(e) => setDraft({ ...draft, [s.path]: e.target.value })}
+                >
+                  {s.options.map((option: string) => <MenuItem key={option} value={option}>{option}</MenuItem>)}
+                </TextField>
+              );
+            }
+            if (s.type === "string" && !s.secret) {
+              return (
+                <TextField
+                  key={String(s.path)}
+                  size="small"
+                  label={label}
+                  value={draft[s.path] ?? ""}
+                  onChange={(e) => setDraft({ ...draft, [s.path]: e.target.value })}
                 />
               );
             }

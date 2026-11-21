@@ -1694,6 +1694,136 @@ public class StashSorter extends Module {
         RightClick.listen(this::onRightClick);
     }
 
+    // Manager-only operational settings. The sorter is never added to Meteor's module registry,
+    // so these values are exposed through the signed bot settings protocol and its web form.
+    private record RemoteControl(String name, String label, String type, double min, double max) {}
+
+    private static final List<RemoteControl> REMOTE_CONTROLS = List.of(
+            new RemoteControl("safe-walk", "Safe walking", "bool", 0, 0),
+            new RemoteControl("mode", "Sort mode", "enum", 0, 0),
+            new RemoteControl("radius", "Search radius", "int", 2, 32),
+            new RemoteControl("height", "Search height", "int", 0, 16),
+            new RemoteControl("barrels", "Include barrels", "bool", 0, 0),
+            new RemoteControl("reach", "Interaction reach", "double", 1, 6),
+            new RemoteControl("delay", "Inventory click delay", "int", 0, 20),
+            new RemoteControl("container-delay", "Container open delay", "int", 0, 100),
+            new RemoteControl("quiet", "Interruption quiet time", "int", 0, 60),
+            new RemoteControl("walk", "Allow navigation", "bool", 0, 0),
+            new RemoteControl("rotate", "Rotate while interacting", "bool", 0, 0),
+            new RemoteControl("unsigned-overflow", "Handle unsigned overflow", "bool", 0, 0),
+            new RemoteControl("log-level", "Log level", "enum", 0, 0),
+            new RemoteControl("stay-on", "Stay on when idle", "bool", 0, 0),
+            new RemoteControl("recheck", "Recheck interval", "int", 5, 600),
+            new RemoteControl("smart-recheck", "Smart recheck", "bool", 0, 0),
+            new RemoteControl("collect-ground", "Collect ground items", "bool", 0, 0),
+            new RemoteControl("collect-range", "Ground collection range", "int", 0, 64),
+            new RemoteControl("auto-label", "Auto-label containers", "bool", 0, 0),
+            new RemoteControl("label-gap", "Label gap", "int", 0, 300),
+            new RemoteControl("watch", "Watch inventory", "bool", 0, 0),
+            new RemoteControl("watch-delay", "Watch delay", "int", 0, 60),
+            new RemoteControl("watch-signs", "Watch signs", "bool", 0, 0),
+            new RemoteControl("sign-delay", "Sign delay", "int", 0, 60),
+            new RemoteControl("compact", "Compact stacks", "bool", 0, 0),
+            new RemoteControl("compact-top-up-at", "Compaction top-up threshold", "int", 1, 26),
+            new RemoteControl("repack", "Repack shulkers", "bool", 0, 0),
+            new RemoteControl("new-bulk-at", "Bulk packing threshold", "int", 0, 27),
+            new RemoteControl("carry-slots", "Carry inventory slots", "string", 0, 0),
+            new RemoteControl("keep-slots", "Reserved inventory slots", "string", 0, 0),
+            new RemoteControl("whisper-search", "Whisper search", "bool", 0, 0),
+            new RemoteControl("prefix", "Search prefix", "string", 0, 0));
+
+    public JsonObject managerValues() {
+        var result = new JsonObject();
+        for (var control : REMOTE_CONTROLS) {
+            Object value = settings.get(control.name()).get();
+            String path = "sorter." + control.name();
+            if (value instanceof Boolean flag) result.addProperty(path, flag);
+            else if (value instanceof Number number) result.addProperty(path, number);
+            else if (value instanceof Enum<?> choice) result.addProperty(path, choice.name());
+            else if (value instanceof String string) result.addProperty(path, string);
+        }
+        return result;
+    }
+
+    public JsonArray managerSchema() {
+        var result = new JsonArray();
+        for (var control : REMOTE_CONTROLS) {
+            var row = new JsonObject();
+            row.addProperty("path", "sorter." + control.name());
+            row.addProperty("label", control.label());
+            row.addProperty("type", control.type());
+            row.addProperty("section", "Warehouse engine");
+            if (control.type().equals("int") || control.type().equals("double")) {
+                row.addProperty("min", control.min());
+                row.addProperty("max", control.max());
+            }
+            if (control.type().equals("enum")) {
+                var choices = new JsonArray();
+                if (control.name().equals("mode")) {
+                    for (var option : Mode.values()) choices.add(option.name());
+                } else if (control.name().equals("log-level")) {
+                    for (var option : LogLevel.values()) choices.add(option.name());
+                }
+                row.add("options", choices);
+            }
+            result.add(row);
+        }
+        return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    public boolean applyManagerSetting(String path, JsonElement expected, JsonPrimitive value) {
+        if (path == null || !path.startsWith("sorter.")) return false;
+        String name = path.substring("sorter.".length());
+        RemoteControl control = REMOTE_CONTROLS.stream()
+                .filter(option -> option.name().equals(name))
+                .findFirst()
+                .orElse(null);
+        if (control == null) return false;
+        var old = managerValues().get(path);
+        if (expected != null && !expected.equals(old)) return false;
+        Setting<?> setting = settings.get(name);
+        try {
+            return switch (control.type()) {
+                case "bool" -> value.isBoolean() && ((Setting<Boolean>) setting).set(value.getAsBoolean());
+                case "int" -> {
+                    if (!value.isNumber()) yield false;
+                    int number = value.getAsBigDecimal().intValueExact();
+                    yield number >= control.min()
+                            && number <= control.max()
+                            && ((Setting<Integer>) setting).set(number);
+                }
+                case "double" -> {
+                    if (!value.isNumber()) yield false;
+                    double number = value.getAsDouble();
+                    yield Double.isFinite(number)
+                            && number >= control.min()
+                            && number <= control.max()
+                            && ((Setting<Double>) setting).set(number);
+                }
+                case "enum" -> {
+                    if (!value.isString()) yield false;
+                    yield switch (name) {
+                        case "mode" -> ((Setting<Mode>) setting).set(Mode.valueOf(value.getAsString()));
+                        case "log-level" -> ((Setting<LogLevel>) setting).set(LogLevel.valueOf(value.getAsString()));
+                        default -> false;
+                    };
+                }
+                case "string" -> {
+                    if (!value.isString()) yield false;
+                    String string = value.getAsString();
+                    if (string.length() > 100 || string.chars().anyMatch(Character::isISOControl)) yield false;
+                    if ((name.equals("keep-slots") || name.equals("carry-slots")) && !string.matches("[0-9, \\-]*"))
+                        yield false;
+                    yield ((Setting<String>) setting).set(string);
+                }
+                default -> false;
+            };
+        } catch (IllegalArgumentException | ArithmeticException rejected) {
+            return false;
+        }
+    }
+
     // Turning on and off
 
     @Override
@@ -2114,15 +2244,17 @@ public class StashSorter extends Module {
 
     @EventHandler
     private void onTick(TickEvent.Pre event) {
+        // Reconcile the *reported* physical operation even if the durable journal
+        // has already fenced input. The permission gate below must never prevent
+        // an in-flight repack from recording NEEDS_RECONCILIATION.
+        if (repackWork != null && !repackWork.terminal()) {
+            if (InventorySync.failed()) blockRepack("Physical readback failed: " + InventorySync.reason());
+            else if (repackWork.expired(System.nanoTime())) blockRepack("Physical phase deadline expired");
+        }
         if (!sortingPermitted()) {
             step("sorting paused: Manager must exclude reservations before physical moves.");
             ledgeGuard(false);
             return;
-        }
-        if (repackWork != null
-                && !repackWork.terminal()
-                && (InventorySync.failed() || repackWork.expired(System.nanoTime()))) {
-            blockRepack("Physical readback failed or phase deadline expired");
         }
         if (repackWork != null
                 && repackWork.phase() == com.porter.wesort.inventory.PhysicalWork.Phase.NEEDS_RECONCILIATION) {
@@ -2311,7 +2443,7 @@ public class StashSorter extends Module {
      * Collecting from the ground is on and possible: the setting, not scan-only, Baritone there, the module running.
      */
     private boolean groundOn() {
-        return isActive() && sorting() && collectGround.get() && BARITONE;
+        return sorting() && collectGround.get() && BARITONE;
     }
 
     /**
@@ -2996,7 +3128,7 @@ public class StashSorter extends Module {
 
         // With a perimeter, its chunks are loaded first, so its containers are known before anything is sorted
         if (explorePending && exploreRan && !exploring) explorePending = false;
-        if ((isActive() || explorePending) && startExplore()) return true;
+        if ((sorting() || explorePending) && startExplore()) return true;
         if (!running()) return false;
 
         Box unread = nearest(stash.boxes.stream()
@@ -3685,20 +3817,28 @@ public class StashSorter extends Module {
         return isActive() || driven;
     }
 
+    /** The internal engine may sort only when its Manager agent enables sorting (or in the isolated E2E harness). */
+    private boolean sorting() {
+        if (!sortItems.get()) return false;
+        var manager =
+                meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
+        return isActive() || manager != null && manager.sortingEnabled() && !manager.takingOrders();
+    }
+
     public boolean requiresSortingPermit() {
-        return isActive() && sortItems.get();
+        return sorting();
     }
 
     public boolean sortingPermitted() {
+        // A recovered physical operation must remain fenced even when the internal sorter
+        // is idle or Manager has disabled sorting. A missing sorting request does not
+        // authorize an inventory mutation. DIRECT clicks retain their normal path only
+        // when the durable journal is safe and its last receipt has been mirrored.
+        if (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror()) return false;
         if (!requiresSortingPermit()) return true;
         var manager =
                 meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
         return manager != null && manager.sortingAllowed();
-    }
-
-    /** Sorting, compacting, labelling and ground pickup: only when the module itself is on and sort-items is. */
-    private boolean sorting() {
-        return isActive() && sortItems.get();
     }
 
     // An order run by this client from the Stash Window (LocalOrders), no server: orders are wanted like
@@ -11010,7 +11150,7 @@ public class StashSorter extends Module {
 
         @EventHandler
         private void onOpenScreen(OpenScreenEvent event) {
-            if (isActive() && job == Job.Label) labeller.onScreen(event);
+            if (sorting() && job == Job.Label) labeller.onScreen(event);
         }
 
         @EventHandler
@@ -11235,7 +11375,7 @@ public class StashSorter extends Module {
             deliveryWatch.tickLids(stash, clock, 20L * 5, this::openedByUs, this::deliveryTouched);
         }
 
-        if (isActive() && signsWatched() && clock % SIGN_POLL_TICKS == 0) {
+        if (sorting() && signsWatched() && clock % SIGN_POLL_TICKS == 0) {
             stashWatch.pollSigns(stash, clock, b -> job == Job.Label && b == target);
         }
     }
@@ -11526,7 +11666,7 @@ public class StashSorter extends Module {
 
     private String groundStatus() {
         if (!sortItems.get()) return "off (scan only)";
-        if (!collectGround.get() || !isActive()) return "off";
+        if (!collectGround.get() || !sorting()) return "off";
         if (!BARITONE) return "off, Baritone isn't installed";
         return ground.status();
     }

@@ -198,12 +198,12 @@ class Harness:
             require('[' in value and ']' in value, 'No authoritative server item list for ' + pos + ': ' + value)
         return result
 
-    def http(self, path, body=None, *, headers=None):
+    def http(self, path, body=None, *, headers=None, timeout=10):
         headers = {'Content-Type': 'application/json', 'X-Stash-Manager': '1', **(headers or {})}
         request = urllib.request.Request('http://127.0.0.1:' + str(self.manager_port) + path,
             data=None if body is None else json.dumps(body).encode(), headers=headers)
         try:
-            response = self.browser.open(request, timeout=10)
+            response = self.browser.open(request, timeout=timeout)
         except urllib.error.HTTPError as e:
             response = e
         with response:
@@ -215,24 +215,71 @@ class Harness:
         return '127.0.0.1:' + str(self.server_port)
 
     def start_manager(self):
-        self.run(self.compose + ['up', '-d', '--no-build'])
-        for _ in range(240):
+        # Docker readiness and Owner bootstrap are real requirements, not fixed sleeps.
+        # Preserve bounded diagnostics from the *compose up* command only: generic
+        # run() can return tokens/keys for bootstrap and must never log those values.
+        command = self.compose + ['up', '-d', '--no-build']
+        started = subprocess.run(command, cwd=ROOT, env=self.env, text=True,
+                                 capture_output=True, timeout=180)
+        if started.returncode:
+            (self.evidence / 'manager-startup.json').write_text(json.dumps({
+                'stage': 'compose-up', 'exit_code': started.returncode,
+                'compose_stdout_tail': started.stdout[-1500:],
+                'compose_stderr_tail': started.stderr[-3000:],
+            }, indent=2) + '\n')
+            raise RuntimeError('Docker Manager compose startup failed; see manager-startup.json')
+
+        deadline = time.monotonic() + 150
+        last = 'No response'
+        while time.monotonic() < deadline:
             try:
-                if self.http('/health/ready')[0] == 200:
+                code, _ = self.http('/health/ready', timeout=5)
+                if code == 200:
                     break
-            except (OSError, urllib.error.URLError):
-                pass
-            time.sleep(0.5)
-        require(self.http('/health/ready')[0] == 200, 'Docker Manager readiness timeout')
+                last = 'HTTP %d' % code
+            except (OSError, urllib.error.URLError) as failed:
+                last = type(failed).__name__
+            time.sleep(.5)
+        else:
+            # Docker container state is useful evidence and does not contain
+            # bootstrap tokens, account passwords or API keys.
+            ps = subprocess.run(self.compose + ['ps', '--format', 'json'],
+                                cwd=ROOT, env=self.env, text=True,
+                                capture_output=True, timeout=15)
+            (self.evidence / 'manager-startup.json').write_text(json.dumps({
+                'stage': 'health-ready', 'last_probe': last,
+                'compose_ps_exit_code': ps.returncode,
+                'compose_ps_tail': ps.stdout[-3000:],
+                'compose_error_tail': ps.stderr[-1000:],
+            }, indent=2) + '\n')
+            raise RuntimeError('Docker Manager readiness timeout (%s); see manager-startup.json' % last)
+
         token = self.run(self.compose + ['exec', '-T', 'manager', '/opt/wesort/entrypoint', 'bootstrap']).strip()
         owner_password = secrets.token_urlsafe(32)
-        require(self.http('/api/v1/auth/setup', {'code': token, 'password': owner_password})[0] == 200, 'Owner bootstrap failed')
+        require(self.http('/api/v1/auth/setup',
+                          {'code': token, 'password': owner_password}, timeout=30)[0] == 200,
+                'Owner bootstrap failed')
         # The Manager's single-server gate (400 without a server, 404 without a
         # stash def) is fail-closed by design: a real deployment configures both
         # before any bot publishes. The owner session (cookie jar) sets the one
         # Minecraft server to exactly what the test client reports as its
         # connection address, and defines e2e-fixture over the fixture area.
-        require(self.http('/api/v1/auth/login', {'password': owner_password})[0] == 200, 'Owner login failed')
+        # Password verification may be delayed by a cold Docker/SQLite bootstrap.
+        # Retry only transport failures of the same correct Owner credentials;
+        # HTTP auth rejection is never retried or accepted.
+        login_deadline = time.monotonic() + 75
+        while True:
+            try:
+                login_status, _ = self.http('/api/v1/auth/login',
+                                            {'password': owner_password}, timeout=25)
+                require(login_status == 200, 'Owner login failed (HTTP %d)' % login_status)
+                break
+            except (OSError, urllib.error.URLError) as failed:
+                if time.monotonic() >= login_deadline:
+                    raise RuntimeError(
+                        'Manager Owner login transport failed after readiness: %s'
+                        % type(failed).__name__) from failed
+                time.sleep(1)
         status, srv = self.http('/api/v1/server', {'server': self.manager_server_name()})
         require(status == 200 and srv.get('configured'), 'Manager server setup failed: %s %s' % (status, srv))
         status, _ = self.http('/api/v1/stash-defs', {'action': 'create', 'name': 'e2e-fixture',

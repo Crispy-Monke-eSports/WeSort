@@ -1,6 +1,10 @@
 name: WeSort full Minecraft 26.3 E2E
 on:
   workflow_call:
+    inputs:
+      journal_repeats:
+        type: string
+        default: '1'
 permissions:
   contents: read
 env:
@@ -247,7 +251,14 @@ jobs:
       - uses: ./.github/actions/setup-mc26
       - uses: ./.github/actions/load-manager-image
       - name: Run every scenario in the shard
-        run: xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/ci/run-e2e-shard.py --suite "${{ matrix.suite }}" --shard "${{ matrix.shard }}" --manager-image wesort-manager:ci
+        env:
+          JOURNAL_REPEATS: ${{ inputs.journal_repeats }}
+        run: |
+          repeats=1
+          if [[ "${{ matrix.suite }}" == journal ]]; then
+            repeats="${JOURNAL_REPEATS:-1}"
+          fi
+          xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/ci/run-e2e-shard.py --suite "${{ matrix.suite }}" --shard "${{ matrix.shard }}" --manager-image wesort-manager:ci --repeat "$repeats"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: always()
         with:

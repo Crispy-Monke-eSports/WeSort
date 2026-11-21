@@ -244,8 +244,7 @@ public final class ObservationRuntime {
 
     public static void invalidate(net.minecraft.core.BlockPos position) {
         if (position == null) return;
-        var sorter = meteordevelopment.meteorclient.systems.modules.Modules.get()
-                .get(com.porter.wesort.modules.StashSorter.class);
+        var sorter = com.porter.wesort.WeSortAddon.sorter();
         var stash = sorter == null ? null : sorter.currentStash();
         if (stash != null)
             for (var box : stash.boxes)

@@ -3,7 +3,6 @@ package com.porter.wesort.compat;
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 import com.porter.wesort.modules.StashManager;
-import com.porter.wesort.modules.StashSorter;
 import com.porter.wesort.utils.InteractionPermits;
 import com.porter.wesort.utils.InteractionPermits.Operation;
 import meteordevelopment.meteorclient.systems.modules.Modules;
@@ -52,7 +51,7 @@ public final class WorldInteractionGuard {
     public static String currentJob() {
         var manager = Modules.get().get(StashManager.class);
         if (manager == null) return "unknown";
-        var sorter = Modules.get().get(StashSorter.class);
+        var sorter = com.porter.wesort.WeSortAddon.sorter();
         return jobTag(
                 manager.activeOrderId(), sorter == null ? null : sorter.activeRepackJobId(), manager.activeTask());
     }

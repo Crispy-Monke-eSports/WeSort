@@ -26,7 +26,6 @@ import meteordevelopment.meteorclient.events.game.GameLeftEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
-import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.world.item.Item;
 
@@ -38,9 +37,8 @@ import net.minecraft.world.item.Item;
 public class StashManager extends Module {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
-    // First entry: opens the connection screen (address, port, masked key, status) from the
-    // normal Meteor menu, so no chat command is needed. The raw settings below stay for
-    // compatibility; the key itself is always rendered masked.
+    // The sole visible Meteor setting opens the Manager connection screen. All remaining
+    // settings are hidden implementation state, changed by authenticated Manager commands.
     private final Setting<?> connectionEntry = sgGeneral.add(com.porter.wesort.commands.ConnectionOpener.setting());
 
     private final Setting<String> serverUrl = sgGeneral.add(new StringSetting.Builder()
@@ -48,6 +46,7 @@ public class StashManager extends Module {
             .description(
                     "Address of the WeSort Manager server, http or https, e.g. http://127.0.0.1:8765. Empty: no server, nothing is sent. Prefer the Connection screen above: it splits address and port and masks the key.")
             .defaultValue("")
+            .visible(() -> false)
             .build());
 
     private final Setting<String> apiKey = sgGeneral.add(new StringSetting.Builder()
@@ -56,6 +55,7 @@ public class StashManager extends Module {
                     "The agent API key from the Manager host's agent-key command. Keep it private: it is masked here, in the Connection screen and in logs. Prefer the Connection screen above.")
             .defaultValue("")
             .renderer(com.porter.wesort.manager.gui.widgets.MaskedRenderer.class)
+            .visible(() -> false)
             .build());
 
     private final Setting<Integer> scanInterval = sgGeneral.add(new IntSetting.Builder()
@@ -64,12 +64,14 @@ public class StashManager extends Module {
             .defaultValue(10)
             .min(2)
             .sliderRange(2, 60)
+            .visible(() -> false)
             .build());
 
     private final Setting<Boolean> includeExcluded = sgGeneral.add(new BoolSetting.Builder()
             .name("include-excluded")
             .description("Also list containers excluded from sorting.")
             .defaultValue(false)
+            .visible(() -> false)
             .build());
 
     private final Setting<Boolean> acceptOrders = sgGeneral.add(new BoolSetting.Builder()
@@ -77,6 +79,15 @@ public class StashManager extends Module {
             .description(
                     "Let the bot take orders from the web page: it builds shulkers from the stash and delivers them to the delivery container (wesort-stash-sorter pick: Delivery). wesort-stash-sorter does not need to be on: while this module is on it reads containers, takes orders and puts leftovers back by itself, using wesort-stash-sorter's settings (stash-name, area, safe-walk...), and never sorts. Needs a free inventory slot and enough empty shulkers. Loose items an order took out and did not deliver go back to the container they came from, or the nearest one with room when that is not known; shulkers it unpacked go back where they came from. To stop the bot, turn off accept-orders or wesort-stash-manager. Turning wesort-stash-sorter off hands control back to wesort-stash-manager while accept-orders is on.")
             .defaultValue(false)
+            .visible(() -> false)
+            .build());
+
+    // The server controls when the internal engine may sort; never configured in Meteor.
+    private final Setting<Boolean> sortEnabled = sgGeneral.add(new BoolSetting.Builder()
+            .name("sort-enabled")
+            .description("Manager-controlled physical sorting. Requires a current server-issued sorting permit.")
+            .defaultValue(false)
+            .visible(() -> false)
             .build());
 
     private final Setting<Boolean> orderIntakePaused = sgGeneral.add(new BoolSetting.Builder()
@@ -91,6 +102,7 @@ public class StashManager extends Module {
             .description(
                     "Orders may take items out of shulkers that have a custom name. Off: named shulkers are left alone, as the sorter does.")
             .defaultValue(true)
+            .visible(() -> false)
             .build());
 
     private final Setting<Integer> freshMinutes = sgGeneral.add(new IntSetting.Builder()
@@ -100,30 +112,35 @@ public class StashManager extends Module {
             .defaultValue(5)
             .min(0)
             .sliderRange(0, 30)
+            .visible(() -> false)
             .build());
 
     private final Setting<Boolean> orderChat = sgGeneral.add(new BoolSetting.Builder()
             .name("order-messages")
             .description("Tell you in chat when an order is taken, delivered or fails.")
             .defaultValue(true)
+            .visible(() -> false)
             .build());
 
-    private final SettingGroup sgDelivery = settings.createGroup("Delivery");
+    // Legacy operational preferences are internal state; only the connection entry is visible in Meteor.
+    private final SettingGroup sgDelivery = settings.getDefaultGroup();
 
     private final Setting<Boolean> autoExpandDelivery = sgDelivery.add(new BoolSetting.Builder()
             .name("auto-expand-delivery")
             .description(
                     "When every chest of the delivery storage is full, put another double chest up one block above the highest one (taken from the stash, or crafted when enable-crafting is on) and keep filling the lowest chest with room. A chest a player emptied is used again. Off: an order waits for space (paused for up to 2 hours, then it ends). It goes up for as long as the new chests could be opened and the bot can reach them: from the floor the first row above the delivery container, higher ones need something to stand on beside the stack. The chests are never sorted into or listed.")
             .defaultValue(false)
+            .visible(() -> false)
             .build());
 
-    private final SettingGroup sgCrafting = settings.createGroup("Crafting");
+    private final SettingGroup sgCrafting = settings.getDefaultGroup();
 
     private final Setting<Boolean> enableCrafting = sgCrafting.add(new BoolSetting.Builder()
             .name("enable-crafting")
             .description(
                     "Orders and compaction may craft a plain Shulker Box when no empty one is left: shulker shells and a chest (made of planks, made of logs) are taken from the stash and crafted at the crafting table below. Shulker shells can't be crafted, so they have to be in the stash. Needs a crafting table: the one set below, else one is found in the stash area, taken from the stash and placed, or crafted in the inventory grid from 4 planks (or logs) and placed. Kits never craft.")
             .defaultValue(false)
+            .visible(() -> false)
             .build());
 
     private final Setting<Integer> craftMaxPerOrder = sgCrafting.add(new IntSetting.Builder()
@@ -132,6 +149,7 @@ public class StashManager extends Module {
             .defaultValue(27)
             .min(1)
             .sliderRange(1, 54)
+            .visible(() -> false)
             .build());
 
     private final Setting<Integer> craftMaxOpsPerTask = sgCrafting.add(new IntSetting.Builder()
@@ -141,6 +159,7 @@ public class StashManager extends Module {
             .defaultValue(128)
             .min(8)
             .sliderRange(8, 512)
+            .visible(() -> false)
             .build());
 
     private final Setting<Integer> craftMaxPerHour = sgCrafting.add(new IntSetting.Builder()
@@ -149,12 +168,22 @@ public class StashManager extends Module {
             .defaultValue(54)
             .min(1)
             .sliderRange(1, 216)
+            .visible(() -> false)
             .build());
 
     private final Setting<List<Item>> craftNeverUse = sgCrafting.add(new ItemListSetting.Builder()
             .name("craft-never-use")
             .description("Items crafting never uses as ingredients, whatever the stash holds.")
             .defaultValue(List.of())
+            .visible(() -> false)
+            .build());
+
+    // Persist Manager-issued engine settings with the one registered module; never show or edit them in Meteor.
+    private final Setting<String> enginePreferences = sgGeneral.add(new StringSetting.Builder()
+            .name("manager-engine-settings")
+            .description("Cached operational settings issued by WeSort Manager web.")
+            .defaultValue("{}")
+            .visible(() -> false)
             .build());
 
     private static final long HEARTBEAT_MS = 15_000;
@@ -225,14 +254,31 @@ public class StashManager extends Module {
     public StashManager() {
         super(
                 WeSortAddon.CATEGORY,
-                "wesort-stash-manager",
-                "Sends what's in your saved stash to the WeSort Manager web server on your network, which shows it. Uses the stash saved by wesort-stash-sorter. With accept-orders on, or during a website rescan, it moves the bot by itself; to stop that, turn off accept-orders or this module. Turning wesort-stash-sorter off hands control back to this module while accept-orders is on.");
+                "WeSort-Agent",
+                "WeSort Manager agent. Configure only the Manager address, port and API key here; manage warehouse jobs, scans, sorting and all other settings in the Manager web UI.");
     }
 
     @Override
     public void onActivate() {
         selfCheck();
+        restoreEnginePreferences();
         reset();
+    }
+
+    private void restoreEnginePreferences() {
+        StashSorter engine = WeSortAddon.sorter();
+        if (engine == null) return;
+        try {
+            String saved = enginePreferences.get();
+            if (saved.length() > 8192) return;
+            JsonObject values = JsonParser.parseString(saved).getAsJsonObject();
+            for (var entry : values.entrySet()) {
+                if (entry.getValue() instanceof JsonPrimitive value)
+                    engine.applyManagerSetting(entry.getKey(), null, value);
+            }
+        } catch (RuntimeException badCache) {
+            WeSortAddon.LOG.warn("Ignoring malformed cached Manager engine settings");
+        }
     }
 
     public boolean dedicatedProfile() {
@@ -245,7 +291,7 @@ public class StashManager extends Module {
      */
     public String activeOrderId() {
         try {
-            var sorter = Modules.get().get(com.porter.wesort.modules.StashSorter.class);
+            var sorter = WeSortAddon.sorter();
             if (sorter == null) return null;
             var orders = sorter.orders();
             return orders == null ? null : orders.orderId();
@@ -272,7 +318,7 @@ public class StashManager extends Module {
     public void onDeactivate() {
         sortingUntil = 0;
         // Nobody is left to tell the server how an order is going: park it so a later claim carries on
-        StashSorter sorter = Modules.get().get(StashSorter.class);
+        StashSorter sorter = WeSortAddon.sorter();
         if (sorter != null) {
             sorter.orders().park();
             sorter.drive(false);
@@ -367,8 +413,13 @@ public class StashManager extends Module {
     private String sortingToken, sortingScope = "";
     private long sortingUntil, sortingPoll;
 
+    public boolean sortingEnabled() {
+        return isActive() && dedicatedProfile() && sortEnabled.get();
+    }
+
     public boolean sortingAllowed() {
-        if (serverUrl.get().isBlank()) return true;
+        // Only the isolated, marker-protected Minecraft E2E harness can run the legacy local sorter.
+        if (Boolean.getBoolean("wesort.e2e") && serverUrl.get().isBlank()) return true;
         return isActive()
                 && mc.player != null
                 && sortingToken != null
@@ -394,8 +445,7 @@ public class StashManager extends Module {
                 || inFlight) return false;
         long now = System.nanoTime();
         if (now < sortingPoll) return false;
-        var sorter =
-                meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashSorter.class);
+        var sorter = WeSortAddon.sorter();
         boolean wants = isActive() && sorter != null && sorter.requiresSortingPermit();
         if (!wants && sortingToken == null) return false;
         if (!wants && (PhysicalJournalRuntime.awaitingMirror() || !InventorySync.ready() && !InventorySync.failed()))
@@ -526,7 +576,7 @@ public class StashManager extends Module {
             lastHeartbeat = now;
             send(base, "/api/v1/index", built.json(), key, (code, body) -> {
                 if (com.porter.wesort.compat.ObservationRuntime.reply(code, body)) {
-                    StashSorter sorter = Modules.get().get(StashSorter.class);
+                    StashSorter sorter = WeSortAddon.sorter();
                     int count = sorter == null ? -1 : sorter.rescan();
                     rescanning = count >= 0;
                     current = null;
@@ -576,7 +626,7 @@ public class StashManager extends Module {
 
     private void serviceBlockedControl() {
         if (inFlight || current == null || mc.player == null || mc.level == null) return;
-        var sorter = Modules.get().get(StashSorter.class);
+        var sorter = WeSortAddon.sorter();
         var stash = sorter == null ? null : sorter.currentStash();
         if (stash == null
                 || !current.server().equals(stash.server)
@@ -680,7 +730,7 @@ public class StashManager extends Module {
                                 for (var el : hello.getAsJsonArray("stashes")) {
                                     if (!el.isJsonPrimitive()
                                             || !el.getAsJsonPrimitive().isString()) continue;
-                                    StashSorter sorter = Modules.get().get(StashSorter.class);
+                                    StashSorter sorter = WeSortAddon.sorter();
                                     if (sorter != null && sorter.adoptAnnouncedStash(el.getAsString())) break;
                                 }
                             }
@@ -773,14 +823,39 @@ public class StashManager extends Module {
         }
 
         var values = new JsonObject();
+        var engine = WeSortAddon.sorter();
+        if (engine != null) {
+            for (var entry : engine.managerValues().entrySet()) values.add(entry.getKey(), entry.getValue());
+        }
         values.addProperty(scanInterval.name, scanInterval.get());
+        values.addProperty(sortEnabled.name, sortEnabled.get());
+        values.addProperty(acceptOrders.name, acceptOrders.get());
+        values.addProperty(includeExcluded.name, includeExcluded.get());
+        values.addProperty(useNamedShulkers.name, useNamedShulkers.get());
+        values.addProperty(autoExpandDelivery.name, autoExpandDelivery.get());
+        values.addProperty(enableCrafting.name, enableCrafting.get());
+        values.addProperty(craftMaxPerOrder.name, craftMaxPerOrder.get());
+        values.addProperty(craftMaxOpsPerTask.name, craftMaxOpsPerTask.get());
+        values.addProperty(craftMaxPerHour.name, craftMaxPerHour.get());
         values.addProperty(freshMinutes.name, freshMinutes.get());
         values.addProperty(orderChat.name, orderChat.get());
         values.addProperty(orderIntakePaused.name, orderIntakePaused.get());
         String valuesHash = sha256Hex(values.toString().getBytes(StandardCharsets.UTF_8));
         if (!valuesHash.equals(sentControlValues)) {
             var schema = new JsonArray();
+            if (engine != null) {
+                for (var entry : engine.managerSchema()) schema.add(entry);
+            }
             schema.add(controlSetting(scanInterval.name, "Scan interval (seconds)", "int", 2, 60));
+            schema.add(controlSetting(sortEnabled.name, "Enable physical sorting", "bool", null, null));
+            schema.add(controlSetting(acceptOrders.name, "Accept warehouse orders", "bool", null, null));
+            schema.add(controlSetting(includeExcluded.name, "Index excluded containers", "bool", null, null));
+            schema.add(controlSetting(useNamedShulkers.name, "Allow named shulkers in orders", "bool", null, null));
+            schema.add(controlSetting(autoExpandDelivery.name, "Expand delivery storage", "bool", null, null));
+            schema.add(controlSetting(enableCrafting.name, "Enable crafting", "bool", null, null));
+            schema.add(controlSetting(craftMaxPerOrder.name, "Crafting boxes per order", "int", 1, 54));
+            schema.add(controlSetting(craftMaxOpsPerTask.name, "Crafting operations per task", "int", 8, 512));
+            schema.add(controlSetting(craftMaxPerHour.name, "Crafting boxes per hour", "int", 1, 216));
             schema.add(controlSetting(freshMinutes.name, "Stock freshness (minutes)", "int", 0, 30));
             schema.add(controlSetting(orderChat.name, "Order chat messages", "bool", null, null));
             schema.add(controlSetting(orderIntakePaused.name, "Pause new warehouse orders", "bool", null, null));
@@ -852,7 +927,7 @@ public class StashManager extends Module {
     }
 
     private JsonObject controlActivity() {
-        var sorter = Modules.get().get(StashSorter.class);
+        var sorter = WeSortAddon.sorter();
         var runner = sorter == null ? null : sorter.orders();
         boolean needsReconciliation = InventorySync.failed() || PhysicalJournalRuntime.blocked();
         String incident = null;
@@ -920,7 +995,26 @@ public class StashManager extends Module {
                                 ? "Manager paused new warehouse orders."
                                 : "Manager resumed new warehouse orders.");
             }
-        } else applied = changeBoolean(orderChat, job.get("expect"), value);
+        } else if (path.equals(sortEnabled.name)) applied = changeBoolean(sortEnabled, job.get("expect"), value);
+        else if (path.equals(acceptOrders.name)) applied = changeBoolean(acceptOrders, job.get("expect"), value);
+        else if (path.equals(includeExcluded.name)) applied = changeBoolean(includeExcluded, job.get("expect"), value);
+        else if (path.equals(useNamedShulkers.name))
+            applied = changeBoolean(useNamedShulkers, job.get("expect"), value);
+        else if (path.equals(autoExpandDelivery.name))
+            applied = changeBoolean(autoExpandDelivery, job.get("expect"), value);
+        else if (path.equals(enableCrafting.name)) applied = changeBoolean(enableCrafting, job.get("expect"), value);
+        else if (path.equals(craftMaxPerOrder.name))
+            applied = changeInteger(craftMaxPerOrder, job.get("expect"), value, 1, 54);
+        else if (path.equals(craftMaxOpsPerTask.name))
+            applied = changeInteger(craftMaxOpsPerTask, job.get("expect"), value, 8, 512);
+        else if (path.equals(craftMaxPerHour.name))
+            applied = changeInteger(craftMaxPerHour, job.get("expect"), value, 1, 216);
+        else if (path.equals(orderChat.name)) applied = changeBoolean(orderChat, job.get("expect"), value);
+        else if (path.startsWith("sorter.")) {
+            var engine = WeSortAddon.sorter();
+            applied = engine != null && engine.applyManagerSetting(path, job.get("expect"), value);
+            if (applied) enginePreferences.set(engine.managerValues().toString());
+        } else applied = false;
         result.addProperty("ok", applied);
         if (applied) result.add("value", value);
         else result.addProperty("error", "Setting changed or value is invalid");
@@ -990,7 +1084,7 @@ public class StashManager extends Module {
      * sent when its hash differs from the last one the server took, or the server asked. Client thread. Never touches the index.
      */
     private void updateDelivery(long now, String player) {
-        StashSorter sorter = Modules.get().get(StashSorter.class);
+        StashSorter sorter = WeSortAddon.sorter();
         Stash stash = sorter == null ? null : sorter.currentStash();
         // No world or no stash yet: nothing is known, so nothing changes
         if (stash == null || mc.level == null) return;
@@ -1068,7 +1162,7 @@ public class StashManager extends Module {
      * @return true when a request was sent
      */
     private boolean orderStep(URI base, String key, long now) {
-        StashSorter sorter = Modules.get().get(StashSorter.class);
+        StashSorter sorter = WeSortAddon.sorter();
         if (sorter == null) return false;
         OrderRunner runner = sorter.orders();
         runner.chat(orderChat.get());
@@ -1177,39 +1271,39 @@ public class StashManager extends Module {
     }
 
     private int[] deliveryPos() {
-        StashSorter sorter = Modules.get().get(StashSorter.class);
+        StashSorter sorter = WeSortAddon.sorter();
         Stash.Box d = sorter == null ? null : sorter.orders().deliveryBox();
         return d == null ? null : new int[] {d.pos.getX(), d.pos.getY(), d.pos.getZ()};
     }
 
     /** What the heartbeat says about naming: whether an anvil is ready, and the bot's XP level (-1: unknown). */
     private int[] namingInfo() {
-        StashSorter sorter = Modules.get().get(StashSorter.class);
+        StashSorter sorter = WeSortAddon.sorter();
         if (sorter == null) return new int[] {0, -1};
         return new int[] {sorter.anvilReady() ? 1 : 0, sorter.xpLevels()};
     }
 
     /** Where the anvil in use came from, for the heartbeat: "set", "found", "placed" or "none". */
     private String anvilSource() {
-        StashSorter sorter = Modules.get().get(StashSorter.class);
+        StashSorter sorter = WeSortAddon.sorter();
         return sorter == null ? "none" : sorter.anvilSource();
     }
 
     /** Where the crafting table in use came from, for the heartbeat: "set", "found", "placed", "crafted" or "none". */
     private String tableSource() {
-        StashSorter sorter = Modules.get().get(StashSorter.class);
+        StashSorter sorter = WeSortAddon.sorter();
         return sorter == null ? "none" : sorter.craftingTableSource();
     }
 
     /** What the heartbeat says about crafting: whether it is on, and whether a crafting table is ready. */
     private int[] craftingInfo() {
-        StashSorter sorter = Modules.get().get(StashSorter.class);
+        StashSorter sorter = WeSortAddon.sorter();
         return new int[] {enableCrafting.get() ? 1 : 0, sorter != null && sorter.craftingTableReady() ? 1 : 0};
     }
 
     /** Why a rescan can't start yet, or null. */
     private String rescanBlocked() {
-        StashSorter sorter = Modules.get().get(StashSorter.class);
+        StashSorter sorter = WeSortAddon.sorter();
         return sorter == null || sorter.currentStash() == null ? "no stash" : null;
     }
 
@@ -1229,7 +1323,7 @@ public class StashManager extends Module {
             lastRescanId = id;
             lastRescanAt = System.currentTimeMillis();
 
-            StashSorter sorter = Modules.get().get(StashSorter.class);
+            StashSorter sorter = WeSortAddon.sorter();
             int count = sorter == null ? -1 : sorter.rescan();
             rescanning = count >= 0;
             if (count < 0) warning("Rescan requested from the website, but no stash is loaded.");
@@ -1244,7 +1338,7 @@ public class StashManager extends Module {
         try {
             if (!in.has("directive") || in.get("directive").isJsonNull()) return;
             JsonObject d = in.getAsJsonObject("directive");
-            StashSorter sorter = Modules.get().get(StashSorter.class);
+            StashSorter sorter = WeSortAddon.sorter();
             if (sorter == null || sorter.currentStash() == null) return;
             String name = d.has("stash") && d.get("stash").isJsonPrimitive()
                     ? d.get("stash").getAsString()
@@ -1270,7 +1364,7 @@ public class StashManager extends Module {
     private String orderBlocker() {
         if (!acceptOrders.get()) return "accept-orders off";
         if (orderIntakePaused.get()) return "new warehouse orders paused by Manager";
-        StashSorter sorter = Modules.get().get(StashSorter.class);
+        StashSorter sorter = WeSortAddon.sorter();
         return sorter == null ? "sorter off" : sorter.orderBlocker();
     }
 
@@ -1309,7 +1403,7 @@ public class StashManager extends Module {
 
     /** What the heartbeat says about the delivery storage, or null when no delivery container is set. */
     private StashIndex.DeliveryStorage deliveryStorage() {
-        StashSorter sorter = Modules.get().get(StashSorter.class);
+        StashSorter sorter = WeSortAddon.sorter();
         return sorter == null ? null : sorter.deliveryStorage();
     }
 
@@ -1335,19 +1429,22 @@ public class StashManager extends Module {
 
     /** Starts or stops the sorter's loop for this module: when it takes orders, or containers wait to be read. */
     private void driveSorter() {
-        StashSorter sorter = Modules.get().get(StashSorter.class);
+        StashSorter sorter = WeSortAddon.sorter();
         if (sorter == null) return;
         // The bot walks only when asked: orders are accepted, or a website rescan is under way. Containers a player
         // opened
         // are not read by the bot on their own
         if (rescanning && !sorter.needsReading()) rescanning = false;
-        boolean want = isActive() && sorter.currentStash() != null && (acceptOrders.get() || rescanning);
+        boolean want = isActive()
+                && dedicatedProfile()
+                && sorter.currentStash() != null
+                && (acceptOrders.get() || rescanning || sortEnabled.get());
         sorter.drive(want);
     }
 
     /** The order progress, or why no order is taken, for the info string. Every tick. */
     private void updateOrdersNote() {
-        StashSorter sorter = Modules.get().get(StashSorter.class);
+        StashSorter sorter = WeSortAddon.sorter();
         if (sorter == null) {
             ordersNote = "";
             return;
@@ -1435,7 +1532,7 @@ public class StashManager extends Module {
             }
             JsonObject orders = e.getAsJsonObject().getAsJsonObject("orders");
             pendingOrders = orders.has("pending") ? orders.get("pending").getAsInt() : 0;
-            StashSorter sorter = Modules.get().get(StashSorter.class);
+            StashSorter sorter = WeSortAddon.sorter();
             if (sorter != null && orders.has("cancel") && orders.get("cancel").isJsonArray()) {
                 for (JsonElement id : orders.getAsJsonArray("cancel")) {
                     String cancelled = id.getAsString();
@@ -1513,7 +1610,7 @@ public class StashManager extends Module {
     /** Looks at the stash and rebuilds the index only if something changed, or it's been a while. */
     private void scan() {
         Stash stash = null;
-        StashSorter sorter = Modules.get().get(StashSorter.class);
+        StashSorter sorter = WeSortAddon.sorter();
         if (sorter != null) stash = sorter.currentStash();
         if (stash == null) {
             current = null;

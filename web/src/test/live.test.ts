@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseUpdate, prefixesForChannels } from "../api/live";
+import { AUTH_CHECK_THROTTLE_MS, authCheckDue, parseUpdate, prefixesForChannels } from "../api/live";
 
 describe("live channel mapping (SSE update → TanStack Query keys)", () => {
   it("parses update payloads, tolerating junk", () => {
@@ -51,5 +51,18 @@ describe("live channel mapping (SSE update → TanStack Query keys)", () => {
     expect(prefixes).toContainEqual(["orders"]);
     expect(prefixes).toContainEqual(["index"]);
     expect(prefixes).toContainEqual(["bots"]);
+  });
+});
+
+describe("session revalidation on stream errors (throttled)", () => {
+  it("checks auth after a quiet stretch", () => {
+    expect(authCheckDue(0, AUTH_CHECK_THROTTLE_MS)).toBe(true);
+    expect(authCheckDue(1000, 1000 + AUTH_CHECK_THROTTLE_MS + 1)).toBe(true);
+  });
+
+  it("skips routine reconnects inside the throttle window", () => {
+    // Stream rotations (~50 s) and retry bursts must not refetch auth every time.
+    expect(authCheckDue(1000, 1000 + AUTH_CHECK_THROTTLE_MS - 1)).toBe(false);
+    expect(authCheckDue(1000, 1000)).toBe(false);
   });
 });

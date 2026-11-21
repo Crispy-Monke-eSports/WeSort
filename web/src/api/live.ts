@@ -1,6 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { create } from "zustand";
+import { keys } from "./queries";
 
 /**
  * Live updates: one Server-Sent Events stream (GET /api/v1/events) per tab,
@@ -106,12 +107,25 @@ export function parseUpdate(data: string): string[] {
 }
 
 /**
+ * Minimum time between session revalidations triggered by stream errors.
+ * The server rotates every stream (~50 s, a routine reconnect), so an
+ * unthrottled check would refetch auth on every rotation for no reason.
+ */
+export const AUTH_CHECK_THROTTLE_MS = 30_000;
+
+/** Whether a stream error should revalidate the session (throttled). Pure for tests. */
+export function authCheckDue(lastCheck: number, now: number): boolean {
+  return now - lastCheck >= AUTH_CHECK_THROTTLE_MS;
+}
+
+/**
  * Opens the live stream while `enabled` and keeps TanStack Query current.
  * On (re)connect the live set resyncs, so a dropped connection can only
  * delay updates — never strand stale data on screen.
  */
 export function useLiveUpdates(enabled: boolean, streamUrl = "/api/v1/events") {
   const client = useQueryClient();
+  const lastAuthCheck = useRef(0);
   useEffect(() => {
     if (!enabled || typeof EventSource === "undefined") return;
     setLive({ status: "connecting" });
@@ -150,6 +164,15 @@ export function useLiveUpdates(enabled: boolean, streamUrl = "/api/v1/events") {
       // EventSource retries by itself; only mark offline when it gives up.
       if (source.readyState === EventSource.CLOSED) setLive({ status: "offline" });
       else setLive({ status: "connecting" });
+      // The stream dying can mean the session is gone (revoked, disabled,
+      // logged out elsewhere): revalidate auth so a 401 bounces to login
+      // promptly instead of stranding a stale-looking session. Throttled —
+      // routine ~50 s stream rotations must not refetch auth every time.
+      const now = Date.now();
+      if (authCheckDue(lastAuthCheck.current, now)) {
+        lastAuthCheck.current = now;
+        void client.invalidateQueries({ queryKey: keys.auth });
+      }
     };
     return () => {
       if (timer !== null) clearTimeout(timer);

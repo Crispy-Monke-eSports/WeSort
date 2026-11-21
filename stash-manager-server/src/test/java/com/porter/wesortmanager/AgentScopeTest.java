@@ -358,6 +358,74 @@ class AgentScopeTest {
     }
 
     @Test
+    void proxyOfflineAndFloodgateNamesAreNeverAuthenticationRequirements() throws Exception {
+        String owner = login(null, OWNER_PW);
+        setServer(owner, "proxy.example.net:25565");
+        defineStash(owner, "a");
+        String serverId = "proxy.example.net:25565";
+
+        // Offline-mode Java uses a name-derived version-3 UUID, not a Mojang UUID.
+        String offlineUuid = UUID.nameUUIDFromBytes(
+                "OfflinePlayer:OfflineAgent".getBytes(StandardCharsets.UTF_8)).toString();
+        assertEquals(3, UUID.fromString(offlineUuid).version());
+
+        JsonObject heartbeat = new JsonObject();
+        heartbeat.addProperty("server", serverId);
+        heartbeat.addProperty("stash", "a");
+        heartbeat.addProperty("player", ".Bedrock Gamer"); // Floodgate default prefix, spaces in Bedrock names
+        heartbeat.addProperty("agent", offlineUuid);
+        assertEquals(200, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat.toString()).status);
+        assertEquals(".Bedrock Gamer", credentials.find(agentA).binding().playerName());
+
+        // Velocity forwarding may produce another UUID; no premium lookup or key rebind is allowed.
+        heartbeat.addProperty("agent", UUID.randomUUID().toString());
+        heartbeat.addProperty("player", "*Bedrock Tester");
+        assertEquals(200, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat.toString()).status);
+        assertEquals("*Bedrock Tester", credentials.find(agentA).binding().playerName());
+
+        // Unicode display names must be handled as data, not account authentication.
+        heartbeat.addProperty("player", "玩家_Bedrock");
+        assertEquals(200, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat.toString()).status);
+        assertEquals("玩家_Bedrock", credentials.find(agentA).binding().playerName());
+
+        // Even absent/unparseable player metadata cannot invalidate a signed API key.
+        heartbeat.remove("player");
+        heartbeat.addProperty("agent", "not-a-premium-uuid");
+        assertEquals(200, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat.toString()).status);
+        assertEquals("玩家_Bedrock", credentials.find(agentA).binding().playerName());
+
+        // The physical manifest context still uses a syntactically valid UUID for the
+        // current execution, but its name is not restricted to 16 ASCII characters.
+        JsonObject scope = new JsonObject();
+        scope.addProperty("server", serverId);
+        scope.addProperty("stash", "a");
+        scope.addProperty("dimension", "minecraft:overworld");
+        scope.addProperty("agent", offlineUuid);
+        JsonObject hello = new JsonObject();
+        hello.addProperty("botId", agentA);
+        hello.addProperty("controlSession", "3".repeat(64));
+        hello.addProperty("player", ".Bedrock Gamer");
+        hello.add("manifestScope", scope);
+        hello.add("caps", new JsonArray());
+        Res response = agentPost(agentA, agentKeyA, "/api/v1/bot/hello", hello.toString());
+        assertEquals(200, response.status, response.body);
+        assertEquals(".Bedrock Gamer", credentials.find(agentA).binding().playerName());
+
+        // No player name at all is also accepted for the same signed bot session.
+        hello.remove("player");
+        Res nameless = agentPost(agentA, agentKeyA, "/api/v1/bot/hello", hello.toString());
+        assertEquals(200, nameless.status, nameless.body);
+        assertEquals(".Bedrock Gamer", credentials.find(agentA).binding().playerName());
+
+        // Physical server/stash verification remains enforced in proxy mode.
+        heartbeat.addProperty("server", "another-proxy.example.net:25565");
+        assertEquals(409, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat.toString()).status);
+        heartbeat.addProperty("server", serverId);
+        heartbeat.addProperty("stash", "undefined");
+        assertEquals(404, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat.toString()).status);
+    }
+
+    @Test
     void helloBindingIsVerifiedAndStashesAnnounced() throws Exception {
         String owner = login(null, OWNER_PW);
         setServer(owner, "s");

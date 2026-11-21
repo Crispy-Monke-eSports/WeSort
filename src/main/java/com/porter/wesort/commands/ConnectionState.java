@@ -18,8 +18,6 @@ public enum ConnectionState {
     ONLINE("Online", "Authenticated: the Manager accepts this key and replies."),
     /** The server refused the key (HTTP 401). */
     WRONG_KEY("Wrong key", "The Manager rejected the API key. Ask the owner for a fresh one."),
-    /** The slot is held by another player (HTTP 409): one player at a time per key. */
-    KEY_IN_USE("Key in use", "Another player holds this API key. Use a free key or wait for the slot to release."),
     /** No reply at all (network down, wrong port, Manager stopped). */
     UNREACHABLE("Cannot reach Manager", "No reply. Check the address, port and that the Manager is running."),
     /** The Manager serves a different Minecraft server (409). */
@@ -58,7 +56,6 @@ public enum ConnectionState {
             case "error 401" -> WRONG_KEY;
             case "offline" -> UNREACHABLE;
             case "wrong server" -> WRONG_SERVER;
-            case "key in use" -> KEY_IN_USE;
             case "server signature invalid" -> SIGNATURE_INVALID;
             case "online" -> ONLINE;
             default -> CONTACTING;

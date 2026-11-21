@@ -32,8 +32,20 @@ final class AgentCredentials {
     private final Map<String, Slot> entries = new TreeMap<>();
     private boolean scopedOnly;
 
-    /** Latest signed request\u0027s reported player; not a security identity. */
+    /** Latest signed request's reported player; not a security identity. */
     record Binding(String playerName, long lastSeen) {}
+
+    /**
+     * Proxy/Floodgate/offline names can contain dots, spaces, stars or Unicode. Treat
+     * these as untrusted display data, not as Java-account names or credentials.
+     */
+    static String displayName(String reported) {
+        if (reported == null) return null;
+        String name = reported.strip();
+        if (name.isEmpty() || name.length() > 64 || name.codePoints().anyMatch(cp ->
+                Character.isISOControl(cp) || Character.getType(cp) == Character.FORMAT)) return null;
+        return name;
+    }
 
     record Slot(String id, String label, String signingKey, Binding binding) {
         Slot {
@@ -130,7 +142,8 @@ final class AgentCredentials {
      * name is ignored, never denied. This is transient presence, not a key claim.
      */
     synchronized void notePlayer(String id, String name) {
-        if (name == null || !name.matches("[A-Za-z0-9_]{1,16}")) return;
+        name = displayName(name);
+        if (name == null) return;
         var slot = entries.get(id);
         if (slot == null || !slot.active()) return;
         entries.put(id, slot.withBinding(new Binding(name, clock.getAsLong())));
@@ -173,10 +186,9 @@ final class AgentCredentials {
         if (agent == null || !agent.equals(UUID.fromString(agent).toString())) {
             throw new IllegalArgumentException("Invalid agent id");
         }
-        String player = field(row, "player");
-        if (player == null || !player.matches("[A-Za-z0-9_]{1,16}")) {
-            throw new IllegalArgumentException("Invalid player");
-        }
+        // Old records might contain Floodgate prefixes or names from offline-mode
+        // servers. The legacy player is only a suggested label, never a key binding.
+        String player = displayName(field(row, "player"));
         String server = field(row, "server");
         if (!validServer(server)) throw new IllegalArgumentException("Invalid server");
         if (singleStash) {
@@ -196,7 +208,7 @@ final class AgentCredentials {
             }
         }
         // The legacy row validated: the slot keeps only its id and a human label.
-        String label = !player.isBlank() ? player : "agent-" + agent.substring(0, 8);
+        String label = player == null ? "agent-" + agent.substring(0, 8) : player;
         return new Slot(agent, label, null, null);
     }
 

@@ -102,6 +102,41 @@ omedelbart. `agent-require-scoped` stänger av delad autentisering när
 agenterna har fått sina individuella nycklar. Upp till fem nycklar kan vara aktiva
 samtidigt; varje nyckel hålls av högst en spelare i taget.
 
+### Offline-mode, Velocity och Geyser/Floodgate
+
+WeSort Agent är en **Minecraft Java/Fabric-klientmod**. Den kan användas av
+en Java-klient på en server med `online-mode=false` eller via Velocity/
+BungeeCord och liknande proxyer. Ingen Mojang-session, premium-UUID eller
+Minecraft-användarnamn används som behörighetskontroll: **Managers aktiva,
+signerade API-nyckel är autentiseringen**. Offline-mode-UUID, forwarded UUID
+och olika Java-/Bedrock-namn är enbart sessions-/journal- och visningsmetadata.
+
+Floodgate kan prefixa namn med `.` eller andra tecken, och Bedrock-namn kan
+innehålla mellanslag/Unicode. Manager accepterar sådana rapporterade namn som
+**visningstext** (max 64 tecken, utan kontroll-/formattecken) och kräver inte
+att ett namn eller UUID matchar någon API-nyckel. Avsaknad eller felaktig
+visningstext ska inte blockera en giltig signerad nyckel. Fysiska manifest
+behåller ett UUID-format för **den aktuella exekveringskontexten**, inte som
+en ägarkontroll mot Mojang eller nyckelregistret. Samtidiga kontrollsessioner
+med exakt samma nyckelplats är fortfarande separata från autentiseringen:
+Manager låter dem inte överta varandras pågående fysiska jobb.
+
+**Viktigt för proxyservrar:** Manager ska i Settings → Server konfigureras
+med exakt det server-ID som Java-agenten rapporterar (normalt den adress,
+inklusive eventuell port, som klienten anslöt till). Managers kontroller av
+**fel server, odefinierat lager och fysisk journal** försvagas inte för att
+en installation kör offline-mode. Konfigurera också Velocity/Papers
+player-information-forwarding och dess hemlighet korrekt och hindra
+direktanslutning till bakservrar. WeSort ersätter inte proxyns egen
+autentisering och förhindrar inte namnspoofing på en oskyddad cracked server.
+
+**Geyser-avgränsning:** Bedrock-klienter kan ansluta till servern via
+Geyser/Floodgate men kan inte köra en Fabric/Meteor-mod direkt. Själva WeSort
+Agent måste köras på en kompatibel Java-klient. Kombinationer med
+Geyser/Floodgate verifieras genom protokolltester för deras namn/UUID-format;
+ett fullständigt riktigt Bedrock→Geyser→Velocity→Java E2E-flöde ingår inte
+i nuvarande CI.
+
 Under migrering kan `agent-key` lämna ut den delade äldre nyckeln på värden.
 Owner kan starta dess rotation i Link-vyn. Äldre lageranrop har ett
 övergångsfönster på tio minuter när delad autentisering är aktiv.

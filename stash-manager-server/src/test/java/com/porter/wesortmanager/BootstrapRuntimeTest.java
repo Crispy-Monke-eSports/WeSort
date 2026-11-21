@@ -61,13 +61,13 @@ class BootstrapRuntimeTest {
         var file = data.resolve("agent-credentials.json");
         var key = java.util.Base64.getEncoder().encodeToString(new byte[32]);
         Files.writeString(file, """
-            {"version":1,"scopedOnly":true,"agents":[{"agent":"%s","player":"Agent0","server":"srv","stash":"old","key":"%s"}]}
+            {"version":1,"scopedOnly":true,"agents":[{"agent":"%s","player":".Bedrock Gamer","server":"srv","stash":"old","key":"%s"}]}
             """.formatted(id, key));
         var clock = new AtomicLong(1_000_000);
         var credentials = new AgentCredentials(data, clock::get);
         // Legacy v1 rows retain their key slot, not a Minecraft player binding.
         assertEquals(id, credentials.find(id).id());
-        assertEquals("Agent0", credentials.find(id).label());
+        assertEquals(".Bedrock Gamer", credentials.find(id).label());
         assertNull(credentials.find(id).binding());
         // Any valid signed request may update display-only presence.
         credentials.notePlayer(id, "Agent0");
@@ -79,8 +79,10 @@ class BootstrapRuntimeTest {
         // No UUID claim, exclusivity or rebind timeout: another name is immediate.
         credentials.notePlayer(id, "Eve");
         assertEquals("Eve", credentials.find(id).binding().playerName());
-        credentials.notePlayer(id, "bad name");
-        assertEquals("Eve", credentials.find(id).binding().playerName());
+        credentials.notePlayer(id, ".Bedrock Gamer");
+        assertEquals(".Bedrock Gamer", credentials.find(id).binding().playerName());
+        credentials.notePlayer(id, "bad\nname");
+        assertEquals(".Bedrock Gamer", credentials.find(id).binding().playerName());
         // Labels, not bindings, distinguish new slots.
         String anotherKey = credentials.issue("agent0");
         String anotherId = anotherKey.substring(0, anotherKey.indexOf('.'));

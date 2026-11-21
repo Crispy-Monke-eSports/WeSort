@@ -1851,7 +1851,6 @@ public class StashManager extends Module {
                 String next;
                 if (ok) next = "online";
                 else if (finalCode < 0) next = "offline";
-                else if (finalCode == 409 && isKeyInUse(finalText)) next = "key in use";
                 else next = "error " + finalCode;
                 setStatus(next);
             });
@@ -1931,20 +1930,6 @@ public class StashManager extends Module {
         else
             WeSortAddon.LOG.error(
                     "wesort-stash-manager: request signing self-check FAILED: got {}, expected {}", got, expected);
-    }
-
-    /** The slot is held by another player: exactly one player may use an API key at a time. */
-    private static boolean isKeyInUse(String body) {
-        if (body == null) return false;
-        try {
-            JsonElement e = JsonParser.parseString(body);
-            if (!e.isJsonObject()) return false;
-            JsonObject o = e.getAsJsonObject();
-            if (!o.has("error") || !o.get("error").isJsonPrimitive()) return false;
-            return o.get("error").getAsString().startsWith("API key slot is held by another player");
-        } catch (RuntimeException ex) {
-            return false;
-        }
     }
 
     /** A "this Manager serves ..." refusal: the bot talks to the Manager of another Minecraft server. */

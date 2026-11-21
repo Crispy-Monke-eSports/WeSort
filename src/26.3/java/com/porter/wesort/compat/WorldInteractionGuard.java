@@ -207,8 +207,8 @@ public final class WorldInteractionGuard {
         // the original block can finish it; neither path authorizes a new target.
         boolean permittedStandingBlock =
                 block.endsWith("_shulker_box") && PERMITS.allows(time, position.asLong(), Operation.BREAK, block, job);
-        boolean permitForPrevious = previous != null
-                && PERMITS.allows(time, position.asLong(), Operation.BREAK, previous.block(), job);
+        boolean permitForPrevious =
+                previous != null && PERMITS.allows(time, position.asLong(), Operation.BREAK, previous.block(), job);
         boolean permittedPredictedBreak = previous != null
                 && previous.pos() == position.asLong()
                 && previous.job().equals(job)

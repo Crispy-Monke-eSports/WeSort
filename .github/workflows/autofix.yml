@@ -28,7 +28,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '25.0.5+8'
-      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
         with:
           cache-read-only: true
       - uses: ./.github/actions/configure-gradle-mirror
@@ -67,7 +67,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '25.0.5+8'
-      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
         with:
           cache-read-only: true
       - uses: ./.github/actions/configure-gradle-mirror

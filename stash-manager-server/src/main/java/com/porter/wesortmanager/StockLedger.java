@@ -695,7 +695,8 @@ final class StockLedger {
             UUID uuid = ShulkerUuid.boxUuid(row.get("components").getAsString());
             if (uuid != null)
                 boxes.putIfAbsent(
-                        uuid.toString(), new ObservedBox(path, row.get("itemFingerprint").getAsString()));
+                        uuid.toString(),
+                        new ObservedBox(path, row.get("itemFingerprint").getAsString()));
         }
     }
 
@@ -717,11 +718,7 @@ final class StockLedger {
      * original record as duplicates.
      */
     private void reconcileObservedBoxUuids(
-            Connection c,
-            String server,
-            Map<String, Map<String, ObservedBox>> fresh,
-            long revision,
-            long now)
+            Connection c, String server, Map<String, Map<String, ObservedBox>> fresh, long revision, long now)
             throws SQLException {
         for (var bySource : fresh.entrySet()) {
             String source = bySource.getKey();
@@ -730,8 +727,7 @@ final class StockLedger {
                 ObservedBox at = seen.getValue();
                 String[] where = findBoxUuid(c, uuid);
                 if (where == null) {
-                    try (var insert = c.prepareStatement(
-                            "INSERT INTO box_uuids VALUES(?,?,?,?,'IN_STOCK',?,?,?,?)")) {
+                    try (var insert = c.prepareStatement("INSERT INTO box_uuids VALUES(?,?,?,?,'IN_STOCK',?,?,?,?)")) {
                         insert.setString(1, uuid);
                         insert.setString(2, server);
                         insert.setString(3, source);

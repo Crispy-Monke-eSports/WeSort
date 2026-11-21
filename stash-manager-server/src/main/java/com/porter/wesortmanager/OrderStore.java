@@ -1757,13 +1757,10 @@ final class OrderStore {
             // doesn't expect them back. Idempotent: repeats and unknown UUIDs are no-ops.
             if (deliveredUuids != null) {
                 for (var element : deliveredUuids) {
-                    if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) continue;
+                    if (!element.isJsonPrimitive()
+                            || !element.getAsJsonPrimitive().isString()) continue;
                     try {
-                        index.stock()
-                                .deregisterBoxUuid(
-                                        o.server,
-                                        element.getAsString(),
-                                        "DEREGISTERED_FOR_ORDER");
+                        index.stock().deregisterBoxUuid(o.server, element.getAsString(), "DEREGISTERED_FOR_ORDER");
                     } catch (IllegalArgumentException invalid) {
                         // Not a UUID: ignore, the bot inventory is never trusted blindly
                     }

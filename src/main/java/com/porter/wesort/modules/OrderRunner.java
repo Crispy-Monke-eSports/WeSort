@@ -246,11 +246,13 @@ final class OrderRunner {
     private static final long RETRY_WAIT_MS = 60_000L;
     /** One shulker waits at most this long in total before it is skipped so the rest of the order can deliver. */
     private static final long UNIT_WAIT_MAX_MS = 2 * 60 * 60 * 1000L;
+
     private static final String SHULKER_BOX = "minecraft:shulker_box";
     /** Bottles of enchanting are thrown for the XP a rename costs: top up to this level when short. */
     static final int XP_TARGET_LEVELS = 3;
     /** Below this the sorter tops up XP before renaming; an anvil rename costs at least one level. */
     static final int XP_MIN_LEVELS = 1;
+
     static final String XP_BOTTLE_ID = "minecraft:experience_bottle";
     /** The server keeps this much of an order's message. */
     private static final int MESSAGE_MAX = 300;
@@ -299,6 +301,7 @@ final class OrderRunner {
     private long lastForwardAt;
     /** An order with no forward progress at all still lets go after this long, so it can't block the queue forever. */
     private static final long ORDER_STALL_MAX_MS = 2 * 60 * 60 * 1000L;
+
     private Survey lastSurvey;
     private int lastSurveyTick = -1;
     private Set<String> lastSurveyWanted;
@@ -1166,7 +1169,8 @@ final class OrderRunner {
             Box delivery = deliveryBox();
             if (delivery == null || delivery.unreachable) {
                 // The delivery spot may come back (set anew, re-read, lag): wait for it, don't fail the order
-                return waitRetry(delivery == null ? "the delivery container is gone" : "couldn't reach the delivery container");
+                return waitRetry(
+                        delivery == null ? "the delivery container is gone" : "couldn't reach the delivery container");
             }
 
             Unit u = units.get(index);

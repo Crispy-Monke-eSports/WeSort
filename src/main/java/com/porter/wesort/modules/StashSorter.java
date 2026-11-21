@@ -2453,7 +2453,8 @@ public class StashSorter extends Module {
         }
         stepTicks++;
 
-        // A container job that has run 4 minutes of its own time (giving way is not counted, nothing runs then) is over.
+        // A container job that has run 4 minutes of its own time (giving way is not counted, nothing runs then) is
+        // over.
         // While the server hasn't answered outstanding inventory actions (bad TPS), the clock pauses: the job gets
         // the same amount of answered time, not the same amount of wall ticks.
         if (target != null
@@ -5760,7 +5761,8 @@ public class StashSorter extends Module {
     private int xpBottlesCarried() {
         if (mc.player == null) return 0;
         int n = 0;
-        for (int s = 0; s < 36; s++) if (xpBottleUsable(s)) n += mc.player.getInventory().getItem(s).getCount();
+        for (int s = 0; s < 36; s++)
+            if (xpBottleUsable(s)) n += mc.player.getInventory().getItem(s).getCount();
         return n;
     }
 
@@ -5813,13 +5815,16 @@ public class StashSorter extends Module {
     private boolean uuidNaming;
     /** The UUID being renamed right now (set when fetched): the carried copy is renamed even mid-scan. */
     private String uuidTarget;
+
     private long uuidTargetAt;
     /** UUIDs seen on more than one box: one copy keeps it, the rest are renamed. Recomputed on every stash scan. */
     private Set<String> uuidDupes = new HashSet<>();
+
     private long uuidScanAt;
     private long uuidAnvilAt = -1000000;
     /** Boxes (by content key) a UUID rename gave up on: tried again later, not every tick. */
     private final Map<String, Long> uuidCooldown = new HashMap<>();
+
     private static final long UUID_SCAN_EVERY = 20 * 10L;
     private static final long UUID_ANVIL_RETRY = 20 * 60 * 5L;
     private static final long UUID_RETRY_COOLDOWN = 20 * 60 * 10L;
@@ -6175,8 +6180,7 @@ public class StashSorter extends Module {
                 // A 3x3 craft needs a table: one is ensured first, then the anvil is crafted and placed.
                 if (tableMissing()) {
                     // The craft itself must be possible before a table is put in the world for it
-                    var preview = crafter.preview(
-                            AnvilFinder.ANVIL_ID, 1, 0, orderRunner.craftPool(), false);
+                    var preview = crafter.preview(AnvilFinder.ANVIL_ID, 1, 0, orderRunner.craftPool(), false);
                     if (!preview.ok()) {
                         warning("No anvil to craft: %s.", preview.refusal());
                         orderRunner.anvilFound(false);
@@ -9997,8 +10001,7 @@ public class StashSorter extends Module {
         if (!anyPartLoaded(target)) return false;
 
         List<BlockPos> now = currentParts(target);
-        if (new HashSet<>(now).equals(new HashSet<>(target.parts)) && now.size() == target.parts.size())
-            return false;
+        if (new HashSet<>(now).equals(new HashSet<>(target.parts)) && now.size() == target.parts.size()) return false;
 
         if (now.size() != target.parts.size()) target.contents = null;
         target.parts.clear();
@@ -10801,7 +10804,8 @@ public class StashSorter extends Module {
         if (stash == null || stash.hasArea() || !inStashDimension()) return;
         List<StashSafety.Spot> spots = new ArrayList<>();
         for (Box b : stash.boxes)
-            spots.add(new StashSafety.Spot(new StashSafety.Pt(b.pos.getX(), b.pos.getZ()), !b.neverRead(), b.delivery || b.input));
+            spots.add(new StashSafety.Spot(
+                    new StashSafety.Pt(b.pos.getX(), b.pos.getZ()), !b.neverRead(), b.delivery || b.input));
         List<Integer> idx = StashSafety.strays(spots);
         if (idx.isEmpty()) return;
         if (!stash.backUpFile("Removing stray containers from the stash file")) {
@@ -10914,10 +10918,7 @@ public class StashSorter extends Module {
         Box box = stash.boxAt(pos);
         if (box == null) {
             // The delivery and input chests may be outside the area; anything else out there isn't added
-            if (stash.hasArea()
-                    && pick.get() != Pick.Delivery
-                    && pick.get() != Pick.Input
-                    && !stash.inArea(pos)) {
+            if (stash.hasArea() && pick.get() != Pick.Delivery && pick.get() != Pick.Input && !stash.inArea(pos)) {
                 notice("%s is outside the stash area, it isn't added.", pos.toShortString());
                 return true;
             }
@@ -11015,8 +11016,7 @@ public class StashSorter extends Module {
         // A chest put up for the delivery storage: gone when it is no chest (syncDelivery takes it out of the storage)
         // Any half standing keeps it.
         for (BlockPos part : box.parts) {
-            if (mc.level.isLoaded(part)
-                    && mc.level.getBlockEntity(part) instanceof ChestBlockEntity) return false;
+            if (mc.level.isLoaded(part) && mc.level.getBlockEntity(part) instanceof ChestBlockEntity) return false;
         }
 
         // The delivery container counts as long as it is a chest or barrel, whatever the barrels setting says

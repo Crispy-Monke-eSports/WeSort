@@ -482,7 +482,9 @@ final class OrderRoutes {
         JsonArray out = new JsonArray();
         if (e == null || !e.isJsonArray()) return out;
         for (JsonElement v : e.getAsJsonArray()) {
-            if (out.size() >= 64 || !v.isJsonPrimitive() || !v.getAsJsonPrimitive().isString()) continue;
+            if (out.size() >= 64
+                    || !v.isJsonPrimitive()
+                    || !v.getAsJsonPrimitive().isString()) continue;
             String uuid = v.getAsString();
             try {
                 java.util.UUID.fromString(uuid);

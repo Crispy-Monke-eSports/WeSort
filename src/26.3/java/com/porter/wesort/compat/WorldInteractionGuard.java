@@ -190,6 +190,11 @@ public final class WorldInteractionGuard {
      * The original live permit must still name the original shulker block; an
      * unrelated changed block, expired permission or restart never qualifies.
      */
+    static boolean isShulkerBlockId(String block) {
+        return block != null
+                && (block.equals("minecraft:shulker_box") || block.endsWith("_shulker_box"));
+    }
+
     public static boolean allowBreakStop(BlockPos position) {
         if (!dedicated()) return true;
         if (position == null || mc.level == null || PhysicalJournalRuntime.blocked()) {
@@ -213,12 +218,12 @@ public final class WorldInteractionGuard {
         boolean posMatch = previous != null && previous.pos() == position.asLong();
         boolean jobMatch = previous != null && previous.job().equals(job);
         boolean fresh = previous != null && time >= previous.at() && time - previous.at() < PERMIT_TTL_MS;
-        boolean wasShulker = previous != null && previous.block().endsWith("_shulker_box");
+        boolean wasShulker = previous != null && isShulkerBlockId(previous.block());
         boolean blockMatch = previous != null && (block.equals(previous.block()) || block.equals("minecraft:air"));
         boolean permitForPrevious =
                 previous != null && PERMITS.allows(time, position.asLong(), Operation.BREAK, previous.block(), job);
         boolean permittedStandingBlock =
-                block.endsWith("_shulker_box") && PERMITS.allows(time, position.asLong(), Operation.BREAK, block, job);
+                isShulkerBlockId(block) && PERMITS.allows(time, position.asLong(), Operation.BREAK, block, job);
         boolean permittedPredictedBreak =
                 posMatch && jobMatch && fresh && wasShulker && blockMatch && permitForPrevious;
         boolean allowed = safe && (permittedStandingBlock || permittedPredictedBreak);

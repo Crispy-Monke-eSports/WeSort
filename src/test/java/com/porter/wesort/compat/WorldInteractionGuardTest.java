@@ -47,6 +47,17 @@ class WorldInteractionGuardTest {
     }
 
     @Test
+    void plainAndDyedShulkersQualifyForAuthorizedBreakStop() {
+        // Vanilla's undyed block is minecraft:shulker_box, not *_shulker_box.
+        // A predicted-air STOP must retain the exact original permit for both.
+        assertTrue(WorldInteractionGuard.isShulkerBlockId("minecraft:shulker_box"));
+        assertTrue(WorldInteractionGuard.isShulkerBlockId("minecraft:blue_shulker_box"));
+        assertFalse(WorldInteractionGuard.isShulkerBlockId("minecraft:air"));
+        assertFalse(WorldInteractionGuard.isShulkerBlockId("minecraft:chest"));
+        assertFalse(WorldInteractionGuard.isShulkerBlockId(null));
+    }
+
+    @Test
     void noPermitDenies() {
         assertFalse(WorldInteractionGuard.useDecision("order-1", true, true, false, false));
         assertFalse(WorldInteractionGuard.breakDecision("order-1", true, false));

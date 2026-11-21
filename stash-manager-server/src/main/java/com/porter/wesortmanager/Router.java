@@ -440,16 +440,11 @@ final class Router implements HttpHandler {
         String player = AddonRoutes.string(body, "player");
         String agent = AddonRoutes.string(body, "agent");
         return switch (path) {
-            case "/api/v1/index", "/api/v1/heartbeat", "/api/v1/delivery" ->
-                scope.matchesLocation(server, stash);
+            case "/api/v1/index", "/api/v1/heartbeat", "/api/v1/delivery" -> scope.matchesLocation(server, stash);
             case "/api/v1/orders/claim", "/api/v1/boxes/agent", "/api/v1/custody/agent", "/api/v1/deposits/agent" ->
-                scope.matchesLocation(server, stash)
-                        && scope.agent().equals(agent)
-;
+                scope.matchesLocation(server, stash) && scope.agent().equals(agent);
             case "/api/v1/automation" ->
-                scope.server().equals(server)
-                        && scope.agent().equals(agent)
-;
+                scope.server().equals(server) && scope.agent().equals(agent);
             case "/api/v1/jobs/agent" -> scope.agent().equals(agent);
             case "/api/v1/handoffs/agent" -> scope.agent().equals(agent);
             case "/api/v1/physical/agent" -> {
@@ -465,7 +460,6 @@ final class Router implements HttpHandler {
                 var binding = object(body, "manifestScope");
                 yield binding != null
                         && scope.botId().equals(AddonRoutes.string(body, "botId"))
-
                         && scope.agent().equals(AddonRoutes.string(binding, "agent"))
                         && scope.matchesLocation(
                                 AddonRoutes.string(binding, "server"), AddonRoutes.string(binding, "stash"));
@@ -482,8 +476,7 @@ final class Router implements HttpHandler {
                 var where = orderStore.stashOf(match.group(1));
                 yield where != null
                         && scope.matchesLocation(where.server(), where.stash())
-                        && scope.agent().equals(agent)
-;
+                        && scope.agent().equals(agent);
             }
         };
     }

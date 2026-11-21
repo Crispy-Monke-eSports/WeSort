@@ -394,6 +394,8 @@ public class StashManager extends Module {
     }
 
     public boolean sortingAllowed() {
+        // Only the isolated, marker-protected Minecraft E2E harness can run the legacy local sorter.
+        if (Boolean.getBoolean("wesort.e2e") && serverUrl.get().isBlank()) return true;
         return isActive()
                 && mc.player != null
                 && sortingToken != null

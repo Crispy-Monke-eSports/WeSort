@@ -313,7 +313,25 @@ class DirectHarness(JournalHarness):
                 state = self.command('state')['state']
             require(sum('[]' in value for value in inv.chest_halves(self)) == 1 and 'count: 64' in inv.player_items(self),
                     'Exact native source and player totals changed during inspection')
-            # A new, explicitly requested move proves the same agent can operate again.
+            # The Manager's index rescan can still own a *different* container
+            # screen after the journal receipt is READY. Finish the Manager
+            # recovery proof first, then explicitly pause only its background
+            # scanner before testing the next direct user-driven inventory move.
+            # Otherwise a racing scanner menu (27 slots) can be mistaken for
+            # the explicitly requested double chest (54 slots).
+            self.command('manager-pause')
+            self.command('close')
+            isolated = self.command('state')['state']
+            require(isolated['attemptedClicks'] == 0 and isolated['physicalJournal'] == 'READY',
+                    'Recovery changed before the independent direct move: ' + str(isolated['physicalJournal']))
+            require(isolated['containerId'] == 0,
+                    'Manager background scanner still owns an inventory screen')
+            (self.evidence / 'direct-before-resumed-click.json').write_text(
+                json.dumps({'physicalJournal': isolated['physicalJournal'],
+                            'attemptedClicks': isolated['attemptedClicks'],
+                            'screen': isolated['screen']}, indent=2) + '\n')
+            # A new, explicitly requested move proves the same agent can operate
+            # again after Owner inspection, with no competing Manager scanner.
             menu = self.command('open', x=0, y=64, z=3, slots=54, item='minecraft:air', count=0, second=1)['state']
             carry = inv.carry_slot(menu, 54, 'minecraft:diamond', 64)
             inv.click(self, menu, carry)

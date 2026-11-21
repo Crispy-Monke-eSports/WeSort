@@ -1,7 +1,7 @@
 import java.util.Properties
 
 plugins {
-    id("net.fabricmc.fabric-loom") version "1.19.3"
+    id("net.fabricmc.fabric-loom") version "1.19.4"
     id("com.diffplug.spotless") version "8.11.0"
 }
 

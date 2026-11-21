@@ -547,7 +547,11 @@ public final class InventorySync {
             }
         }
         if (event.packet instanceof ServerboundPlayerActionPacket action && ours) {
-            lastBlockSequence = action.getSequence();
+            // ABORT carries sequence 0 and is never journaled or ack-tracked: only
+            // sequenced START/STOP advance the block fence. Clobbering the sequence
+            // with 0 would fake-acknowledge every in-flight mutation.
+            if (action.getAction() != ServerboundPlayerActionPacket.Action.ABORT_DESTROY_BLOCK)
+                lastBlockSequence = action.getSequence();
             if (action.getAction() == ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK
                     || (action.getAction() == ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK
                             && mc.level.getBlockState(action.getPos()).isAir())) {

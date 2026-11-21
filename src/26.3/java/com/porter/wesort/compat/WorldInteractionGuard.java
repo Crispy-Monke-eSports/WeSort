@@ -192,53 +192,75 @@ public final class WorldInteractionGuard {
      */
     public static boolean allowBreakStop(BlockPos position) {
         if (!dedicated()) return true;
-        if (position == null || mc.level == null || !mc.level.isLoaded(position) || PhysicalJournalRuntime.blocked()) {
+        if (position == null || mc.level == null || PhysicalJournalRuntime.blocked()) {
+            denied("break-stop-unavailable");
+            return false;
+        }
+        // One atomic chunk read for the whole verdict: loaded state, live block and
+        // safety classification all come from the same lookup, so a chunk-map change
+        // between a separate isLoaded check and a later block read can never split
+        // this decision. A missing/unreadable chunk fails closed as unavailable.
+        net.minecraft.world.level.block.state.BlockState live = snapshotState(position);
+        if (live == null) {
             denied("break-stop-unavailable");
             return false;
         }
         long time = now();
         String job = currentJob();
         var previous = authorizedBreak;
-        String block = blockId(position);
-        // A STOP may be emitted directly by Meteor's mining controller, without
-        // going through the intercepted start/continue methods. The exact live
-        // BREAK permit still authorizes finishing that same standing shulker.
-        // Once the client predicts air, only a remembered authorized start for
-        // the original block can finish it; neither path authorizes a new target.
-        boolean permittedStandingBlock =
-                block.endsWith("_shulker_box") && PERMITS.allows(time, position.asLong(), Operation.BREAK, block, job);
-        boolean permitForPrevious =
-                previous != null && PERMITS.allows(time, position.asLong(), Operation.BREAK, previous.block(), job);
-        boolean permittedPredictedBreak = previous != null
-                && previous.pos() == position.asLong()
-                && previous.job().equals(job)
-                && time >= previous.at()
-                && time - previous.at() < PERMIT_TTL_MS
-                && previous.block().endsWith("_shulker_box")
-                && (block.equals(previous.block()) || block.equals("minecraft:air"))
-                && permitForPrevious;
-        boolean allowed = safeBlock(position) && (permittedStandingBlock || permittedPredictedBreak);
+        String block = BuiltInRegistries.BLOCK.getKey(live.getBlock()).toString();
+        boolean safe = !com.porter.wesort.data.BlockSafety.safetySensitive(block);
+        boolean posMatch = previous != null && previous.pos() == position.asLong();
+        boolean jobMatch = previous != null && previous.job().equals(job);
+        boolean fresh = previous != null && time >= previous.at() && time - previous.at() < PERMIT_TTL_MS;
+        boolean wasShulker = previous != null && previous.block().endsWith("_shulker_box");
+        boolean blockMatch = previous != null && (block.equals(previous.block()) || block.equals("minecraft:air"));
+        boolean permitForPrevious = previous != null
+                && PERMITS.allows(time, position.asLong(), Operation.BREAK, previous.block(), job);
+        boolean permittedStandingBlock = block.endsWith("_shulker_box")
+                && PERMITS.allows(time, position.asLong(), Operation.BREAK, block, job);
+        boolean permittedPredictedBreak =
+                posMatch && jobMatch && fresh && wasShulker && blockMatch && permitForPrevious;
+        boolean allowed = safe && (permittedStandingBlock || permittedPredictedBreak);
         if (!allowed) {
             denied("break-stop-no-authorized-start");
             if (BREAK_STOP_TRACE.incrementAndGet() <= 4)
                 meteordevelopment.meteorclient.MeteorClient.LOG.warn(
                         "WeSort break stop denied at {} live {} previous {} permitExpected {} permitForPrevious {}"
-                                + " jobMatch {} fresh {} holder {} job {} blocked {} safe {} loaded {} standing {}",
+                                + " jobMatch {} fresh {} holder {} job {} blocked {} safe {} standing {} predicted {}"
+                                + " thread {}",
                         position.toShortString(),
                         block,
                         previous,
                         breakPermitExpected(position),
                         permitForPrevious,
-                        previous != null && previous.job().equals(job),
-                        previous != null && time >= previous.at() && time - previous.at() < PERMIT_TTL_MS,
+                        jobMatch,
+                        fresh,
                         PERMITS.jobOf(time, position.asLong(), Operation.BREAK),
                         job,
                         PhysicalJournalRuntime.blocked(),
-                        safeBlock(position),
-                        mc.level != null && mc.level.isLoaded(position),
-                        permittedStandingBlock);
+                        safe,
+                        permittedStandingBlock,
+                        permittedPredictedBreak,
+                        Thread.currentThread().getName());
         }
         return allowed;
+    }
+
+    /** One atomic chunk read for guard verdicts (null when missing, out of bounds or unreadable). */
+    static net.minecraft.world.level.block.state.BlockState snapshotState(BlockPos position) {
+        if (position == null || mc.level == null) return null;
+        try {
+            var chunk = mc.level.getChunkSource().getChunk(
+                    net.minecraft.core.SectionPos.blockToSectionCoord(position.getX()),
+                    net.minecraft.core.SectionPos.blockToSectionCoord(position.getZ()),
+                    net.minecraft.world.level.chunk.status.ChunkStatus.FULL,
+                    false);
+            if (chunk == null) return null;
+            return chunk.getBlockState(position);
+        } catch (RuntimeException crashed) {
+            return null;
+        }
     }
 
     /** Expected block of the live BREAK permit for diagnostics (null when there is none). */

@@ -115,6 +115,15 @@ public final class WorldInteractionGuard {
     }
 
     public static boolean allowUse(BlockHitResult hit) {
+        return allowUse(hit, null, null);
+    }
+
+    /**
+     * The client may predict a placement before PacketEvent.Send. Only the exact
+     * preflight snapshot from this same useItemOn invocation may be used to
+     * re-check its PLACE permit; no guessed air or generic shulker exception.
+     */
+    public static boolean allowUse(BlockHitResult hit, String beforeClicked, String beforeAdjacent) {
         if (!dedicated()) return true;
         // Fail-closed: without a live, known job no mutation is authorized,
         // even with a leftover permit (permits themselves also reject unknown).
@@ -140,8 +149,12 @@ public final class WorldInteractionGuard {
         // click an already-replaceable destination directly (air-place fallback).
         // Both forms require the same exact, job-bound PLACE permit.
         boolean placePermit = PERMITS.allows(now, target.asLong(), Operation.PLACE, blockId(target), job);
-        if (!placePermit && mc.level.getBlockState(position).canBeReplaced())
-            placePermit = PERMITS.allows(now, position.asLong(), Operation.PLACE, blockId(position), job);
+        if (!placePermit && beforeAdjacent != null)
+            placePermit = PERMITS.allows(now, target.asLong(), Operation.PLACE, beforeAdjacent, job);
+        if (!placePermit && (mc.level.getBlockState(position).canBeReplaced() || beforeClicked != null))
+            placePermit = PERMITS.allows(
+                    now, position.asLong(), Operation.PLACE,
+                    beforeClicked == null ? blockId(position) : beforeClicked, job);
         return useDecision(job, safeBlock(position), safeBlock(target), usePermit, placePermit);
     }
 
@@ -260,10 +273,18 @@ public final class WorldInteractionGuard {
      * mismatch there is a lost intent, never a read.
      */
     public static boolean hasLivePlacePermit(BlockPos target) {
+        return hasLivePlacePermit(target, null);
+    }
+
+    /** Use a captured preflight block identity only for the same pending interaction. */
+    public static boolean hasLivePlacePermit(BlockPos target, String beforeBlock) {
         if (!dedicated() || mc.level == null || !mc.level.isLoaded(target)) return false;
         String job = currentJob();
         if (job == null || job.isEmpty() || job.equals("unknown")) return false;
-        return PERMITS.allows(now(), target.asLong(), Operation.PLACE, blockId(target), job);
+        long now = now();
+        return PERMITS.allows(now, target.asLong(), Operation.PLACE, blockId(target), job)
+                || (beforeBlock != null
+                        && PERMITS.allows(now, target.asLong(), Operation.PLACE, beforeBlock, job));
     }
 
     /** Sign text goes in its own packet: it needs its own permit, like any other mutation. */

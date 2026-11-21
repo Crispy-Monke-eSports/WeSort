@@ -307,6 +307,19 @@ public final class InventorySync {
         blockUse = null;
     }
 
+    /**
+     * Only reuse the exact target identity observed at the mixin preflight of
+     * this packet. A later open or unrelated interaction cannot borrow it.
+     */
+    private static String preflightBlock(BlockPos target, net.minecraft.world.phys.BlockHitResult hit) {
+        if (blockUse == null || !blockUse.clicked.equals(hit.getBlockPos())) return null;
+        if (target.equals(blockUse.clicked)) return blockUse.beforeClicked;
+        if (target.equals(blockUse.adjacent)
+                && blockUse.adjacent.equals(hit.getBlockPos().relative(hit.getDirection())))
+            return blockUse.beforeAdjacent;
+        return null;
+    }
+
     private static String blockId(BlockPos pos) {
         return BuiltInRegistries.BLOCK
                 .getKey(mc.level.getBlockState(pos).getBlock())
@@ -386,7 +399,15 @@ public final class InventorySync {
     private void sent(PacketEvent.Send event) {
         if (mc.player == null || mc.level == null) return;
         if (event.packet instanceof ServerboundUseItemOnPacket use) tracePlaceSend(use);
-        if ((event.packet instanceof ServerboundUseItemOnPacket use && !WorldInteractionGuard.allowUse(use.hitResult()))
+        if ((event.packet instanceof ServerboundUseItemOnPacket use
+                        && !WorldInteractionGuard.allowUse(
+                                use.hitResult(),
+                                blockUse != null && blockUse.clicked.equals(use.hitResult().getBlockPos())
+                                        ? blockUse.beforeClicked : null,
+                                blockUse != null && blockUse.clicked.equals(use.hitResult().getBlockPos())
+                                        && blockUse.adjacent.equals(
+                                                use.hitResult().getBlockPos().relative(use.hitResult().getDirection()))
+                                        ? blockUse.beforeAdjacent : null))
                 || (event.packet instanceof ServerboundPlayerActionPacket action
                         && switch (action.getAction()) {
                             case START_DESTROY_BLOCK -> !WorldInteractionGuard.allowBreak(action.getPos());
@@ -424,7 +445,8 @@ public final class InventorySync {
         boolean ours = calledFromWeSort();
         if (!ours && event.packet instanceof ServerboundUseItemOnPacket placed) {
             var target = placementTarget(placed.hitResult());
-            boolean placePermit = WorldInteractionGuard.hasLivePlacePermit(target);
+            boolean placePermit = WorldInteractionGuard.hasLivePlacePermit(
+                    target, preflightBlock(target, placed.hitResult()));
             if (expectSpot != null && target.equals(expectSpot) && !placePermit) {
                 intentCounted("unattributed-place-without-permit");
                 if (INTENT_AUDIT.getOrDefault("unattributed-place-without-permit", 0L) <= 2)
@@ -565,7 +587,7 @@ public final class InventorySync {
                             target.toShortString(),
                             WorldInteractionGuard.currentJob());
             }
-            if (com.porter.wesort.compat.WorldInteractionGuard.hasLivePlacePermit(target)) {
+            if (WorldInteractionGuard.hasLivePlacePermit(target, preflightBlock(target, use.hitResult()))) {
                 intentCounted("unmatched-placement-cancelled");
                 event.cancel();
                 MeteorClient.LOG.error(

@@ -1677,6 +1677,20 @@ final class OrderStore {
             String agent,
             String reportId)
             throws OrderException, IOException {
+        return status(id, status, phase, progress, message, new JsonArray(), result, agent, reportId);
+    }
+
+    Order status(
+            String id,
+            String status,
+            String phase,
+            JsonObject progress,
+            String message,
+            JsonArray deliveredUuids,
+            JsonObject result,
+            String agent,
+            String reportId)
+            throws OrderException, IOException {
         synchronized (index) {
             var report = new JsonObject();
             report.addProperty("status", status);
@@ -1689,7 +1703,8 @@ final class OrderStore {
                     receiptKey("report:" + id, agent, reportId == null ? "content:" + fingerprint : "id:" + reportId);
             var saved = previouslyReceived(key);
             if (saved != null) return replay(saved, fingerprint);
-            return statusWithObservationLock(id, status, phase, progress, message, result, agent, key, fingerprint);
+            return statusWithObservationLock(
+                    id, status, phase, progress, message, deliveredUuids, result, agent, key, fingerprint);
         }
     }
 
@@ -1699,6 +1714,7 @@ final class OrderStore {
             String phase,
             JsonObject progress,
             String message,
+            JsonArray deliveredUuids,
             JsonObject result,
             String agent,
             String key,
@@ -1736,6 +1752,19 @@ final class OrderStore {
             } catch (IOException failure) {
                 b.receipts.remove(key);
                 throw failure;
+            }
+            // Delivered shulkers left the stash: their UUIDs are deregistered, so the registry
+            // doesn't expect them back. Idempotent: repeats and unknown UUIDs are no-ops.
+            if (deliveredUuids != null) {
+                for (var element : deliveredUuids) {
+                    if (!element.isJsonPrimitive()
+                            || !element.getAsJsonPrimitive().isString()) continue;
+                    try {
+                        index.stock().deregisterBoxUuid(o.server, element.getAsString(), "DEREGISTERED_FOR_ORDER");
+                    } catch (IllegalArgumentException invalid) {
+                        // Not a UUID: ignore, the bot inventory is never trusted blindly
+                    }
+                }
             }
             return o;
         }

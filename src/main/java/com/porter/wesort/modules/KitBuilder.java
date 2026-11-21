@@ -300,7 +300,9 @@ final class KitBuilder {
             screen = screen * 31 + (s.isEmpty() ? 0 : s.getItem().hashCode() * 64L + s.getCount());
         }
         if (screen == lastScreen) {
-            if (++sameScreen >= STUCK_ACTIONS) {
+            // Bad TPS also looks like an unchanged screen: the server hasn't answered yet, so this
+            // action hasn't had a chance to land. Don't count it as the server undoing our clicks.
+            if (com.porter.wesort.compat.InventorySync.ready() && ++sameScreen >= STUCK_ACTIONS) {
                 suspend("the server keeps undoing my clicks.");
                 return true;
             }
@@ -639,6 +641,12 @@ final class KitBuilder {
         return "";
     }
 
+    /** The fetched shulker turned out to be the wrong one: don't fetch it again. */
+    void rejectLastFetch() {
+        if (lastBase != null) badBases.add(lastBase);
+        if (lastPacked != null) badPacked.add(lastPacked);
+    }
+
     // The next step
 
     /**
@@ -702,7 +710,9 @@ final class KitBuilder {
 
             ItemStack s = mc.player.getInventory().getItem(baseSlot);
             if (!baseLike(s)) {
-                // Not the shulker we went for: the stash moved on. It's put away like anything else carried.
+                // Not the shulker we went for: the stash moved on. It's put away like anything else
+                // carried, and where it came from isn't fetched again.
+                if (lastBase != null) badBases.add(lastBase);
                 baseSlot = -1;
                 return new Abort("the shulker I took wasn't an empty one or part of the kit");
             }
@@ -756,6 +766,13 @@ final class KitBuilder {
 
         Live live = live();
         if (live.layoutOk) return new Done();
+
+        // Bad TPS looks like no progress: the server hasn't answered the last clicks yet. Don't count
+        // that as stuck; wait for the answer instead of aborting the build.
+        if (!com.porter.wesort.compat.InventorySync.ready()) {
+            stalls = 0;
+            return new Abort("waiting for the server to answer");
+        }
 
         // Two steps in a row that changed nothing: stuck
         long signature = (long) live.placed * 100_000 + live.useful;

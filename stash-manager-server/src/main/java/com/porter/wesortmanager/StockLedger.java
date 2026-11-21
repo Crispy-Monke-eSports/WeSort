@@ -308,6 +308,8 @@ final class StockLedger {
                 long before = revision(c), next = Math.addExact(before, 1);
                 long now = clock.getAsLong();
                 Map<String, Long> memberTimes = new HashMap<>();
+                // Root-level box UUIDs seen in fresh snapshots this batch: source -> uuid -> box.
+                Map<String, Map<String, ObservedBox>> freshBoxes = new LinkedHashMap<>();
                 for (JsonObject source : sources) {
                     String id = source.get("id").getAsString(),
                             dimension = source.get("dimension").getAsString();
@@ -429,7 +431,7 @@ final class StockLedger {
                         p.executeUpdate();
                     }
                     if (fresh) saveSlots(c, id, snapshot, sourceRevision);
-                    if (fresh) reconcileBoxUuids(c, server, id, snapshot, sourceRevision);
+                    if (snapshot != null && fresh) collectObservedBoxUuids(snapshot, id, freshBoxes);
                     for (var item : source.getAsJsonArray("parts")) {
                         var pos = item.getAsJsonArray();
                         if (physicalFailure) {
@@ -478,6 +480,8 @@ final class StockLedger {
                     p.setString(2, stash);
                     p.executeUpdate();
                 }
+                reconcileObservedBoxUuids(c, server, freshBoxes, next, now);
+                sweepMissingBoxUuids(c, server, freshBoxes, next, now);
                 for (var source : sources)
                     try (var p = c.prepareStatement(
                             "INSERT INTO stock_members VALUES(?,?,?,1,?,?,?) ON CONFLICT(server,stash,source) DO UPDATE SET present=1,payload=excluded.payload,revision=excluded.revision,verified_at=excluded.verified_at")) {
@@ -672,56 +676,17 @@ final class StockLedger {
         }
         return decisions;
     }
-    /** Registers or refreshes one observed box UUID. Duplicates are detected, never re-registered. */
-    private void registerObservedBoxUuid(
-            Connection c, String server, String source, String path, String uuid, String fingerprint, long revision)
-            throws SQLException {
-        try (var read = c.prepareStatement("SELECT source,path FROM box_uuids WHERE uuid=?")) {
-            read.setString(1, uuid);
-            try (var rows = read.executeQuery()) {
-                if (rows.next()) {
-                    // Same physical location: refresh verification and fingerprint; the box stays IN_STOCK.
-                    if (rows.getString(1).equals(source) && rows.getString(2).equals(path)) {
-                        try (var refresh = c.prepareStatement(
-                                "UPDATE box_uuids SET verified_at=?,revision=?,item_fingerprint=? WHERE uuid=?")) {
-                            refresh.setLong(1, clock.getAsLong());
-                            refresh.setLong(2, revision);
-                            refresh.setString(3, fingerprint);
-                            refresh.setString(4, uuid);
-                            refresh.executeUpdate();
-                        }
-                    }
-                    // Else: the same UUID is registered elsewhere. Leave the original record untouched; it is a
-                    // duplicate.
-                    return;
-                }
-            }
-        }
-        // Historical UUIDs are never reused.
-        try (var read = c.prepareStatement("SELECT 1 FROM box_uuid_history WHERE uuid=? LIMIT 1")) {
-            read.setString(1, uuid);
-            try (var rows = read.executeQuery()) {
-                if (rows.next()) return;
-            }
-        }
-        long now = clock.getAsLong();
-        try (var insert = c.prepareStatement("INSERT INTO box_uuids VALUES(?,?,?,?,'IN_STOCK',?,?,?,?)")) {
-            insert.setString(1, uuid);
-            insert.setString(2, server);
-            insert.setString(3, source);
-            insert.setString(4, path);
-            insert.setString(5, fingerprint);
-            insert.setLong(6, now);
-            insert.setLong(7, now);
-            insert.setLong(8, revision);
-            insert.executeUpdate();
-        }
-    }
+    /** One observed root-level shulker box UUID in a fresh snapshot. */
+    private record ObservedBox(String path, String fingerprint) {}
 
-    /** Reconciles the root-level shulker boxes of a fresh snapshot against the UUID registry. */
-    private void reconcileBoxUuids(Connection c, String server, String source, JsonObject snapshot, long revision)
-            throws SQLException {
+    /**
+     * Folds one fresh snapshot's root-level shulker box UUIDs into the batch view: source id to UUID
+     * to box. Only UUID-carrying names count; the registry assigns nothing on its own.
+     */
+    private static void collectObservedBoxUuids(
+            JsonObject snapshot, String source, Map<String, Map<String, ObservedBox>> into) {
         if (snapshot == null || !snapshot.has("positions")) return;
+        Map<String, ObservedBox> boxes = into.computeIfAbsent(source, k -> new LinkedHashMap<>());
         for (var value : snapshot.getAsJsonArray("positions")) {
             var row = value.getAsJsonObject();
             if (!"SHULKER".equals(row.get("kind").getAsString())) continue;
@@ -729,14 +694,148 @@ final class StockLedger {
             if (path.indexOf('/') >= 0) continue; // only root boxes, never shulkers nested inside other shulkers
             UUID uuid = ShulkerUuid.boxUuid(row.get("components").getAsString());
             if (uuid != null)
-                registerObservedBoxUuid(
-                        c,
-                        server,
-                        source,
-                        path,
+                boxes.putIfAbsent(
                         uuid.toString(),
-                        row.get("itemFingerprint").getAsString(),
-                        revision);
+                        new ObservedBox(path, row.get("itemFingerprint").getAsString()));
+        }
+    }
+
+    /** The registered location of a UUID, or null. */
+    private static String[] findBoxUuid(Connection c, String uuid) throws SQLException {
+        try (var read = c.prepareStatement("SELECT source,path FROM box_uuids WHERE uuid=?")) {
+            read.setString(1, uuid);
+            try (var rows = read.executeQuery()) {
+                if (rows.next()) return new String[] {rows.getString(1), rows.getString(2)};
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Reconciles the batch's observed box UUIDs against the registry: new ones are registered (a box
+     * found again keeps its UUID and is registered again), ones still where they were are refreshed,
+     * ones that moved chests follow the box, and ones seen in two places at once stay on the
+     * original record as duplicates.
+     */
+    private void reconcileObservedBoxUuids(
+            Connection c, String server, Map<String, Map<String, ObservedBox>> fresh, long revision, long now)
+            throws SQLException {
+        for (var bySource : fresh.entrySet()) {
+            String source = bySource.getKey();
+            for (var seen : bySource.getValue().entrySet()) {
+                String uuid = seen.getKey();
+                ObservedBox at = seen.getValue();
+                String[] where = findBoxUuid(c, uuid);
+                if (where == null) {
+                    try (var insert = c.prepareStatement("INSERT INTO box_uuids VALUES(?,?,?,?,'IN_STOCK',?,?,?,?)")) {
+                        insert.setString(1, uuid);
+                        insert.setString(2, server);
+                        insert.setString(3, source);
+                        insert.setString(4, at.path());
+                        insert.setString(5, at.fingerprint());
+                        insert.setLong(6, now);
+                        insert.setLong(7, now);
+                        insert.setLong(8, revision);
+                        insert.executeUpdate();
+                    }
+                    continue;
+                }
+                if (where[0].equals(source) && where[1].equals(at.path())) {
+                    try (var refresh = c.prepareStatement(
+                            "UPDATE box_uuids SET verified_at=?,revision=?,item_fingerprint=? WHERE uuid=?")) {
+                        refresh.setLong(1, now);
+                        refresh.setLong(2, revision);
+                        refresh.setString(3, at.fingerprint());
+                        refresh.setString(4, uuid);
+                        refresh.executeUpdate();
+                    }
+                    continue;
+                }
+                // Registered elsewhere: a box that moved chests follows its UUID, but one seen in two
+                // places at once is a duplicate and the original record is left untouched. Moves are only
+                // followed when the old source was fully observed without the box; otherwise it may sit
+                // in an unloaded chunk and nothing changes.
+                Map<String, ObservedBox> old = fresh.get(where[0]);
+                if (old != null && !atObservedAt(old, where[1], uuid)) {
+                    try (var move = c.prepareStatement(
+                            "UPDATE box_uuids SET source=?,path=?,item_fingerprint=?,verified_at=?,revision=? WHERE uuid=?")) {
+                        move.setString(1, source);
+                        move.setString(2, at.path());
+                        move.setString(3, at.fingerprint());
+                        move.setLong(4, now);
+                        move.setLong(5, revision);
+                        move.setString(6, uuid);
+                        move.executeUpdate();
+                    }
+                }
+            }
+        }
+    }
+
+    /** Whether the UUID is still observed at its registered path in a fresh batch source. */
+    private static boolean atObservedAt(Map<String, ObservedBox> boxes, String path, String uuid) {
+        ObservedBox at = boxes.get(uuid);
+        return at != null && at.path().equals(path);
+    }
+
+    /**
+     * Deregisters registry rows that are in no storage chest any more: their last-known source was
+     * fully observed in this batch without them. Sources that were not observed (or not fresh) keep
+     * their rows: those boxes may sit in an unloaded chunk.
+     */
+    private void sweepMissingBoxUuids(
+            Connection c, String server, Map<String, Map<String, ObservedBox>> fresh, long revision, long now)
+            throws SQLException {
+        Set<String> seen = new HashSet<>();
+        for (var boxes : fresh.values()) seen.addAll(boxes.keySet());
+        try (var read = c.prepareStatement("SELECT uuid,source,status FROM box_uuids WHERE server=?")) {
+            read.setString(1, server);
+            try (var rows = read.executeQuery()) {
+                while (rows.next()) {
+                    String uuid = rows.getString(1);
+                    if (seen.contains(uuid)) continue;
+                    if (!fresh.containsKey(rows.getString(2))) continue;
+                    deregisterInTx(
+                            c,
+                            server,
+                            uuid,
+                            rows.getString(3),
+                            rows.getString(1),
+                            rows.getString(2),
+                            "VANISHED",
+                            revision,
+                            now);
+                }
+            }
+        }
+    }
+
+    /** Appends the active UUID row to history and removes it, inside the caller's transaction. */
+    private static void deregisterInTx(
+            Connection c,
+            String server,
+            String uuid,
+            String status,
+            String source,
+            String path,
+            String reason,
+            long revision,
+            long now)
+            throws SQLException {
+        try (var insert = c.prepareStatement("INSERT INTO box_uuid_history VALUES(?,?,?,?,?,?,?,?)")) {
+            insert.setString(1, uuid);
+            insert.setString(2, server);
+            insert.setString(3, status);
+            insert.setString(4, reason);
+            insert.setString(5, source);
+            insert.setString(6, path);
+            insert.setLong(7, now);
+            insert.setLong(8, revision);
+            insert.executeUpdate();
+        }
+        try (var del = c.prepareStatement("DELETE FROM box_uuids WHERE uuid=?")) {
+            del.setString(1, uuid);
+            del.executeUpdate();
         }
     }
 
@@ -787,7 +886,7 @@ final class StockLedger {
         return "UNREGISTERED";
     }
 
-    /** Appends the active box UUID to history and removes it from the registry. Idempotent; no historical reuse. */
+    /** Appends the active box UUID to history and removes it from the registry. Idempotent. */
     synchronized void deregisterBoxUuid(String server, String uuid, String reason) throws IOException {
         UUID.fromString(uuid);
         try (var c = open();
@@ -804,21 +903,16 @@ final class StockLedger {
                             return;
                         }
                         long revision = revision(c);
-                        try (var insert = c.prepareStatement("INSERT INTO box_uuid_history VALUES(?,?,?,?,?,?,?,?)")) {
-                            insert.setString(1, uuid);
-                            insert.setString(2, server);
-                            insert.setString(3, rows.getString(3));
-                            insert.setString(4, reason == null ? "DEREGISTERED" : reason);
-                            insert.setString(5, rows.getString(1));
-                            insert.setString(6, rows.getString(2));
-                            insert.setLong(7, clock.getAsLong());
-                            insert.setLong(8, revision);
-                            insert.executeUpdate();
-                        }
-                        try (var del = c.prepareStatement("DELETE FROM box_uuids WHERE uuid=?")) {
-                            del.setString(1, uuid);
-                            del.executeUpdate();
-                        }
+                        deregisterInTx(
+                                c,
+                                server,
+                                uuid,
+                                rows.getString(3),
+                                rows.getString(1),
+                                rows.getString(2),
+                                reason == null ? "DEREGISTERED" : reason,
+                                revision,
+                                clock.getAsLong());
                     }
                 }
                 tx.execute("COMMIT");

@@ -446,11 +446,13 @@ final class OrderRoutes {
         String phase;
         String message;
         JsonObject progress;
+        JsonArray deliveredUuids;
         JsonObject result;
         try {
             phase = optString(o, "phase", OrderStore.MAX_PHASE);
             message = optString(o, "message", OrderStore.MAX_MESSAGE);
             progress = progress(o.get("progress"));
+            deliveredUuids = deliveredUuids(o.get("deliveredUuids"));
             result = result(o.get("result"));
         } catch (IllegalArgumentException e) {
             Http.error(ex, 400, e.getMessage());
@@ -458,13 +460,40 @@ final class OrderRoutes {
         }
         try {
             OrderStore.Order order = orders.status(
-                    m.group(1), status, phase, progress, message, result, AddonRoutes.string(o, "agent"), reportId(o));
+                    m.group(1),
+                    status,
+                    phase,
+                    progress,
+                    message,
+                    deliveredUuids,
+                    result,
+                    AddonRoutes.string(o, "agent"),
+                    reportId(o));
             JsonObject out = Http.ok();
             out.add("order", shown(ex, order.toJson()));
             Http.json(ex, 200, out);
         } catch (OrderStore.OrderException e) {
             Http.error(ex, e.status, e.getMessage());
         }
+    }
+
+    /** UUIDs of delivered shulkers that carried one when taken: validated, capped, never trusted blindly. */
+    private static JsonArray deliveredUuids(JsonElement e) {
+        JsonArray out = new JsonArray();
+        if (e == null || !e.isJsonArray()) return out;
+        for (JsonElement v : e.getAsJsonArray()) {
+            if (out.size() >= 64
+                    || !v.isJsonPrimitive()
+                    || !v.getAsJsonPrimitive().isString()) continue;
+            String uuid = v.getAsString();
+            try {
+                java.util.UUID.fromString(uuid);
+            } catch (IllegalArgumentException invalid) {
+                continue;
+            }
+            out.add(uuid.toLowerCase(java.util.Locale.ROOT));
+        }
+        return out;
     }
 
     // ---------- validation helpers ----------

@@ -48,6 +48,8 @@ export function OverviewPage() {
     (stashes.data ?? []).filter((s) => perms.seesStash(s.stash)),
     loggedIn,
   );
+  // Hooks must run in the same order, including the initial unauthenticated render.
+  const [showResolved, setShowResolved] = useState(false);
 
   if (!loggedIn) {
     return (
@@ -62,7 +64,6 @@ export function OverviewPage() {
   const openOrders = orders.filter((o) => orderUiState(String(o.status ?? "unknown")).open);
   // Retried orders stand for their successor and no longer require anything: hidden by default
   // so the list shows current errors only. The toggle reveals the resolved history.
-  const [showResolved, setShowResolved] = useState(false);
   const needAttention = orders.filter((o) => {
     const s = String(o.status ?? "unknown").toLowerCase();
     if (!orderUiState(s).needsAttention && s !== "uncertain") return false;

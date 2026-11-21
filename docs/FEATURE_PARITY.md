@@ -26,7 +26,7 @@ The product is an operations dashboard, not a storefront: Overview, Inventory
 | Item grid with counts | same | MUI cards, real 26.3 icons, full-catalog paging with visible count (no silent cap) | e2e + screenshots | ✅ |
 | Table view (dense) | same | MUI table + pagination (25/50/100) | screenshot | ✅ |
 | Loose + whole-box + mixed breakdown | `orderCounts` (index) | per-item + per-stash breakdown, mixed never auto-packed | unit + e2e + screenshots | ✅ |
-| Availability states (orderable/empty/stale/unverified) | `available` + `online` + query health | error-aware verification (stale data after failed refetch is Unverified, never 0/confirmed; unknown stock not draftable), presence polling, chips with text (not color-only), unknown ≠ empty | e2e (offline-after-load) + screenshot | ✅ |
+| Availability states (orderable/empty/stale/unverified) | `available` + `online` + query health | error-aware verification (stale data after failed refetch is Unverified, never 0/confirmed; unknown stock not draftable), live presence, chips with text (not color-only), unknown ≠ empty | e2e (offline-after-load) + screenshot | ✅ |
 | Category filtering (creative tabs) | `tab` field in index bytes | filter drawer + desktop panel | screenshot | ✅ |
 | Availability filter + sorting | same | availability, sort | screenshot | ✅ |
 | Item details + quantity | — (client) | MUI dialog, per-stash table, stack size | e2e + screenshot | ✅ |
@@ -45,7 +45,7 @@ The product is an operations dashboard, not a storefront: Overview, Inventory
 
 | Existing feature | Java endpoint | React implementation | Test | Status |
 |---|---|---|---|---|
-| Order history + polling (15s) | `GET /api/v1/orders` | MUI table/cards, search + backend-vocabulary status filter, pagination; actions gated by the tested status mapping (`orderUiState`) | e2e + screenshot + vitest contract | ✅ |
+| Order history + live updates | `GET /api/v1/orders` + `GET /api/v1/events` (SSE) | MUI table/cards, search + backend-vocabulary status filter, pagination; server pushes channel signals, TanStack Query invalidates (no polling); actions gated by the tested status mapping (`orderUiState`) | e2e + screenshot + vitest contract | ✅ |
 | Partial stash failure | same | explicit error, never silent-empty | e2e | ✅ |
 | Order details + timeline | same | MUI dialog, items/recipient/message + timeline | e2e + screenshot | ✅ |
 | Retry for failed/cancelled | `POST .../retry` | reachable button (was hidden behind open-state gate) | e2e | ✅ |

@@ -323,6 +323,7 @@ public final class WeSortManager {
         new PhysicalRoutes(store, audit, config).register(router);
         new BotRoutes(hub, audit, orders, config, stashDefs).register(router);
         new DashboardRoutes(hub, store, sessions, audit).register(router);
+        new LiveRoutes(hub, store).register(router);
         new UserRoutes(users, sessions, audit).register(router);
         guild.register(router);
         new IconRoutes(icons).register(router);

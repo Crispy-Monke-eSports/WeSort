@@ -52,7 +52,7 @@ public final class WorldInteractionGuard {
     public static String currentJob() {
         var manager = Modules.get().get(StashManager.class);
         if (manager == null) return "unknown";
-        var sorter = Modules.get().get(StashSorter.class);
+        var sorter = com.porter.wesort.WeSortAddon.sorter();
         return jobTag(
                 manager.activeOrderId(), sorter == null ? null : sorter.activeRepackJobId(), manager.activeTask());
     }

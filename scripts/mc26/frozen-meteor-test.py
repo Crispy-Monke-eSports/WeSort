@@ -2,6 +2,7 @@
 """Resolve the original Meteor dependency offline with a genuinely empty dependency cache."""
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -27,14 +28,21 @@ def project(folder, vendor):
 
 def main():
     home = Path(os.environ.get('GRADLE_USER_HOME', Path.home() / '.gradle'))
-    pattern = 'wrapper/dists/gradle-9.6.0-bin/*/gradle-9.6.0/bin/gradle'
+    # Read the exact pinned wrapper version, rather than maintaining a second stale version.
+    # The wrapper bootstrap still enforces distributionSha256Sum before any offline proof.
+    wrapper = (ROOT / 'gradle/wrapper/gradle-wrapper.properties').read_text()
+    match = re.search(r'(?m)^distributionUrl=.*?/gradle-([0-9]+(?:\.[0-9]+)+)-(bin|all)\.zip\s*$', wrapper)
+    if match is None:
+        raise RuntimeError('Unsupported pinned Gradle wrapper distribution')
+    version, archive_type = match.groups()
+    pattern = f'wrapper/dists/gradle-{version}-{archive_type}/*/gradle-{version}/bin/gradle'
     executables = list(home.glob(pattern))
     if not executables:
         # Bootstrap Gradle itself separately; the dependency proof below is strictly offline.
         subprocess.run([str(ROOT / 'gradlew'), '--version'], cwd=ROOT, check=True, capture_output=True)
         executables = list(home.glob(pattern))
     if not executables:
-        raise RuntimeError('Gradle 9.6.0 distribution was not installed')
+        raise RuntimeError(f'Pinned Gradle {version} distribution was not installed')
     with tempfile.TemporaryDirectory(prefix='wesort-frozen-meteor-') as raw:
         folder = Path(raw)
         valid = folder / 'valid'

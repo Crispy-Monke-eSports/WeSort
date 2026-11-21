@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fresh 26.3 scan, component variants, Docker icons, real web API/DOM and in-game Stash Window."""
+"""Fresh 26.3 scan, component variants, Docker icons, real web API/DOM and signed Manager web UI."""
 import argparse
 from collections import Counter
 import hashlib
@@ -95,42 +95,26 @@ class AssetsHarness(world.Harness):
         require(result.returncode == 0, 'Real web UI failed: ' + result.stderr[-2000:])
         self.ok('actual Docker-served web app executes against real API and renders variant, damage, enchantment and filled shulker DOM')
 
-    def window(self, expected):
-        state = self.command('window-open')['state']
-        counts = Counter()
-        for item in state['windowItems']: counts[item['id']] += item['count']
-        require(counts == expected, 'Passive Stash Window scan totals differ: ' + str(dict(counts)))
-        require(len(state['windowShulkers']) == 3, 'Client window merged filled shulker groups')
-        self.command('screenshot')
-        world.shutil.copyfile(self.game_dir / 'screenshots/fixture.png', self.evidence / 'stash-window.png')
-        (self.evidence / 'window-index.json').write_text(json.dumps({'items': state['windowItems'], 'shulkers': state['windowShulkers']}, indent=2) + '\n')
-        self.ok('real Stash Window renders passive fresh 26.3 captures with matching totals, variants and shulker contents')
-
     def execute(self):
         try:
             # Explicit integration-test consent, rather than relying on a production default.
             # This private, disposable Docker instance only; no Minecraft game assets enter the image.
             self.env['WESORT_EULA'] = 'true'
             self.start_server(); self.fixture(); before = self.physical_snapshot()
-            self.start_manager(); self.start_client(); self.command('component-identity'); self.ok('actual item CODEC distinguishes NBT byte/int custom data while canonicalizing compound order'); self.command('window-capture')
-            source = self.observe(); expected = self.verify_index(source)
+            self.start_manager(); self.start_client(); self.command('component-identity'); self.ok('actual item CODEC distinguishes NBT byte/int custom data while canonicalizing compound order')
+            source = self.observe(); self.verify_index(source)
             index = self.manager_index(source); self.icons(index); self.web()
-            # The signed Manager publish deliberately starts a production rescan. That
-            # scan opens/closes Minecraft container screens asynchronously, so it can
-            # replace the passive Stash Window before the GUI assertion observes it.
-            # The Manager index and live web checks are already complete; isolate the
-            # read-only GUI check from the independent mutating scan controller.
+            # Quiesce the real rescan before asserting that observations and web access leave stock untouched.
             self.command('manager-pause')
             self.command('sort-stop')
-            self.window(expected)
             require(before == self.physical_snapshot(), 'Read-only resource/UI verification changed server inventory')
             log = (self.evidence / 'client.log').read_text()
-            require(not re.search(r'\[(?:Render thread|main)/ERROR\].*(?:WeSortAddon|Mixin|wesort)', log), 'Real window logged an error')
-            result = {'result': 'PASS', 'scope': 'W-017 fresh 26.3 scan, real Docker icons/web API and actual in-game Stash Window',
+            require(not re.search(r'\[(?:Render thread|main)/ERROR\].*(?:WeSortAddon|Mixin|wesort)', log), 'Real client logged an error')
+            result = {'result': 'PASS', 'scope': 'W-017 fresh 26.3 scan, real Docker icons/web API and signed Manager web UI',
                 'checks': self.checks, 'manager_image': self.env['WESORT_IMAGE'],
                 'source_commit': world.subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=world.ROOT, text=True).strip(),
                 'dirty_worktree': bool(world.subprocess.check_output(['git', 'status', '--porcelain'], cwd=world.ROOT, text=True).strip()),
-                'limits': 'Web DOM execution uses JSDOM; Minecraft rendering is a real native client screenshot. Full guild engine remains later stages.'}
+                'limits': 'Web DOM execution uses JSDOM; Item/content checks use actual Minecraft observations, Manager index and browser DOM. Full guild engine remains later stages.'}
             (self.evidence / 'assets-result.json').write_text(json.dumps(result, indent=2) + '\n')
             print('Evidence: ' + str(self.evidence), flush=True)
         finally: self.close()

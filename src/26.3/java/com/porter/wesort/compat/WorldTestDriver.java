@@ -500,17 +500,6 @@ public final class WorldTestDriver {
                     ((Setting<Integer>) sorter.settings.get("container-delay")).set(0);
                     respond(true, "configured production scan-only settings", state());
                 }
-                case "window-capture" -> {
-                    var window = com.porter.wesort.modules.StashWindow.get();
-                    if (window == null) {
-                        window = new com.porter.wesort.modules.StashWindow();
-                        Modules.get().add(window);
-                    }
-                    if (!window.isActive()) window.toggle();
-                    respond(true, "enabled actual passive Stash Window capture", state());
-                }
-                case "window-open" ->
-                    com.porter.wesort.modules.StashWindow.get().openNow();
                 case "component-identity" -> {
                     var item = new ItemStack(net.minecraft.world.item.Items.DIAMOND);
                     var first = new net.minecraft.nbt.CompoundTag();
@@ -579,22 +568,6 @@ public final class WorldTestDriver {
     private void finishPending() throws Exception {
         if (mc.level == null || mc.player == null) return;
         String action = pending.get("action").getAsString();
-        if (action.equals("window-open")) {
-            if (!(mc.gui.screen() instanceof com.porter.wesort.manager.gui.StashManagerScreen)) return;
-            var hub = com.porter.wesort.modules.StashWindow.get().hub();
-            var store = hub.store();
-            if (store == null || !store.loaded()) return;
-            var entries = store.snapshot();
-            hub.prepare(entries, 200_000_000L);
-            var built = hub.build(entries);
-            if (built == null || built.index().containersKnown() != entries.size()) return;
-            if (++stable < 20) return; // Let the real GUI build and render from the captured index.
-            var output = state();
-            output.add("windowItems", new Gson().toJsonTree(built.index().items()));
-            output.add("windowShulkers", new Gson().toJsonTree(built.index().shulkers()));
-            respond(true, "actual Stash Window rendered passive 26.3 scan", output);
-            return;
-        }
         if (action.equals("sign")) {
             BlockPos pos = position(pending);
             if (signSlot == null) return;
@@ -740,6 +713,15 @@ public final class WorldTestDriver {
         respond(true, "production signed module enabled; verify Manager separately", state());
     }
 
+    private static boolean legacyMemberWindowClassPresent() {
+        try {
+            Class.forName("com.porter.wesort.modules.StashWindow");
+            return true;
+        } catch (ClassNotFoundException missing) {
+            return false;
+        }
+    }
+
     private static BlockPos position(JsonObject o) {
         return new BlockPos(
                 o.get("x").getAsInt(), o.get("y").getAsInt(), o.get("z").getAsInt());
@@ -782,7 +764,7 @@ public final class WorldTestDriver {
         out.addProperty("server", Stash.currentServer());
         out.addProperty("player", mc.player.getName().getString());
         out.addProperty("playerUuid", mc.player.getUUID().toString());
-        out.addProperty("legacyMemberWindowRegistered", com.porter.wesort.modules.StashWindow.get() != null);
+        out.addProperty("legacyMemberWindowClassPresent", legacyMemberWindowClassPresent());
         out.addProperty("dimension", StashIndex.dimension());
         out.addProperty("x", mc.player.getX());
         out.addProperty("y", mc.player.getY());

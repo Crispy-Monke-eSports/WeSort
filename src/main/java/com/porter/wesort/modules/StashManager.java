@@ -54,7 +54,7 @@ public class StashManager extends Module {
             .description(
                     "The agent API key from the Manager host's agent-key command. Keep it private: it is masked here, in the Connection screen and in logs. Prefer the Connection screen above.")
             .defaultValue("")
-            .renderer(com.porter.wesort.manager.gui.widgets.MaskedRenderer.class)
+            .renderer(com.porter.wesort.commands.MaskedRenderer.class)
             .visible(() -> false)
             .build());
 

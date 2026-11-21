@@ -68,11 +68,13 @@ class BootstrapRuntimeTest {
         // No ownership, no per-stash scope: every bot may use every stash.
         assertTrue(credentials.find(id).scope().matchesLocation("srv", "new"));
         var scope = new AgentCredentials.Scope(id, "Agent0", "srv", java.util.Set.of("old", "new"));
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> credentials.issue(
-                        new AgentCredentials.Scope(java.util.UUID.randomUUID().toString(), "agent0", "srv", "new")));
-        for (int i = 1; i < AgentCredentials.MAX_ACTIVE_AGENTS; i++) {
+        // Agent API keys are not bound to Minecraft usernames. Two independently
+        // signed agents using the same player name may coexist on this server.
+        var anotherAgent = java.util.UUID.randomUUID().toString();
+        String anotherKey = credentials.issue(new AgentCredentials.Scope(anotherAgent, "agent0", "srv", "new"));
+        assertTrue(anotherKey.startsWith(anotherAgent + "."));
+        assertNotNull(credentials.find(anotherAgent));
+        for (int i = 2; i < AgentCredentials.MAX_ACTIVE_AGENTS; i++) {
             credentials.issue(new AgentCredentials.Scope(
                     java.util.UUID.randomUUID().toString(), "Agent" + i, "srv", "stash" + i));
         }

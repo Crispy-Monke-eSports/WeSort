@@ -28,7 +28,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * P0: the agent trust boundary. Every bot may work in every stash, but the Manager still verifies,
  * separately, the connected Minecraft server (409 on mismatch, fail-closed 400 before first setup),
- * the signed agent identity and Minecraft account, and that the stash is authoritatively defined
+ * the signed agent identity (independent of player name), and that the stash is authoritatively defined
  * (404 otherwise). Forged servers, stashes, agents and work contexts are refused.
  */
 class AgentScopeTest {
@@ -284,14 +284,14 @@ class AgentScopeTest {
     }
 
     @Test
-    void namedAgentIdentityIsStillEnforced() throws Exception {
+    void namedAgentIdentityIsEnforcedWithoutPlayerBinding() throws Exception {
         String owner = login(null, OWNER_PW);
         setServer(owner, "s");
         defineStash(owner, "a");
         defineStash(owner, "b");
-        // Forged Minecraft account on a valid credential: 403.
+        // The signed agent key is portable across Minecraft usernames.
         assertEquals(
-                403,
+                200,
                 agentPost(
                                 agentA,
                                 agentKeyA,

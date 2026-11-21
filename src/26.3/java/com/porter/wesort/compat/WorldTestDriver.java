@@ -773,8 +773,12 @@ public final class WorldTestDriver {
             position.add(p.getZ());
             out.add("repackPosition", position);
         }
-        out.addProperty(
-                "sortingPermitted", com.porter.wesort.WeSortAddon.sorter().sortingPermitted());
+        // Test-only observability: separate requested sorting, durable recovery fencing,
+        // and effective permission so a journal regression can be diagnosed per phase.
+        out.addProperty("sortingPermitRequired", actualSorter.requiresSortingPermit());
+        out.addProperty("journalBlocked", PhysicalJournalRuntime.blocked());
+        out.addProperty("journalAwaitingMirror", PhysicalJournalRuntime.awaitingMirror());
+        out.addProperty("sortingPermitted", actualSorter.sortingPermitted());
         out.addProperty("server", Stash.currentServer());
         out.addProperty("player", mc.player.getName().getString());
         out.addProperty("playerUuid", mc.player.getUUID().toString());

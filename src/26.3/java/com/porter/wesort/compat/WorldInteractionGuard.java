@@ -215,10 +215,10 @@ public final class WorldInteractionGuard {
         boolean fresh = previous != null && time >= previous.at() && time - previous.at() < PERMIT_TTL_MS;
         boolean wasShulker = previous != null && previous.block().endsWith("_shulker_box");
         boolean blockMatch = previous != null && (block.equals(previous.block()) || block.equals("minecraft:air"));
-        boolean permitForPrevious = previous != null
-                && PERMITS.allows(time, position.asLong(), Operation.BREAK, previous.block(), job);
-        boolean permittedStandingBlock = block.endsWith("_shulker_box")
-                && PERMITS.allows(time, position.asLong(), Operation.BREAK, block, job);
+        boolean permitForPrevious =
+                previous != null && PERMITS.allows(time, position.asLong(), Operation.BREAK, previous.block(), job);
+        boolean permittedStandingBlock =
+                block.endsWith("_shulker_box") && PERMITS.allows(time, position.asLong(), Operation.BREAK, block, job);
         boolean permittedPredictedBreak =
                 posMatch && jobMatch && fresh && wasShulker && blockMatch && permitForPrevious;
         boolean allowed = safe && (permittedStandingBlock || permittedPredictedBreak);
@@ -251,11 +251,13 @@ public final class WorldInteractionGuard {
     static net.minecraft.world.level.block.state.BlockState snapshotState(BlockPos position) {
         if (position == null || mc.level == null) return null;
         try {
-            var chunk = mc.level.getChunkSource().getChunk(
-                    net.minecraft.core.SectionPos.blockToSectionCoord(position.getX()),
-                    net.minecraft.core.SectionPos.blockToSectionCoord(position.getZ()),
-                    net.minecraft.world.level.chunk.status.ChunkStatus.FULL,
-                    false);
+            var chunk = mc.level
+                    .getChunkSource()
+                    .getChunk(
+                            net.minecraft.core.SectionPos.blockToSectionCoord(position.getX()),
+                            net.minecraft.core.SectionPos.blockToSectionCoord(position.getZ()),
+                            net.minecraft.world.level.chunk.status.ChunkStatus.FULL,
+                            false);
             if (chunk == null) return null;
             return chunk.getBlockState(position);
         } catch (RuntimeException crashed) {

@@ -153,8 +153,11 @@ public final class WorldInteractionGuard {
             placePermit = PERMITS.allows(now, target.asLong(), Operation.PLACE, beforeAdjacent, job);
         if (!placePermit && (mc.level.getBlockState(position).canBeReplaced() || beforeClicked != null))
             placePermit = PERMITS.allows(
-                    now, position.asLong(), Operation.PLACE,
-                    beforeClicked == null ? blockId(position) : beforeClicked, job);
+                    now,
+                    position.asLong(),
+                    Operation.PLACE,
+                    beforeClicked == null ? blockId(position) : beforeClicked,
+                    job);
         return useDecision(job, safeBlock(position), safeBlock(target), usePermit, placePermit);
     }
 
@@ -283,8 +286,7 @@ public final class WorldInteractionGuard {
         if (job == null || job.isEmpty() || job.equals("unknown")) return false;
         long now = now();
         return PERMITS.allows(now, target.asLong(), Operation.PLACE, blockId(target), job)
-                || (beforeBlock != null
-                        && PERMITS.allows(now, target.asLong(), Operation.PLACE, beforeBlock, job));
+                || (beforeBlock != null && PERMITS.allows(now, target.asLong(), Operation.PLACE, beforeBlock, job));
     }
 
     /** Sign text goes in its own packet: it needs its own permit, like any other mutation. */

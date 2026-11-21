@@ -402,12 +402,20 @@ public final class InventorySync {
         if ((event.packet instanceof ServerboundUseItemOnPacket use
                         && !WorldInteractionGuard.allowUse(
                                 use.hitResult(),
-                                blockUse != null && blockUse.clicked.equals(use.hitResult().getBlockPos())
-                                        ? blockUse.beforeClicked : null,
-                                blockUse != null && blockUse.clicked.equals(use.hitResult().getBlockPos())
-                                        && blockUse.adjacent.equals(
-                                                use.hitResult().getBlockPos().relative(use.hitResult().getDirection()))
-                                        ? blockUse.beforeAdjacent : null))
+                                blockUse != null
+                                                && blockUse.clicked.equals(
+                                                        use.hitResult().getBlockPos())
+                                        ? blockUse.beforeClicked
+                                        : null,
+                                blockUse != null
+                                                && blockUse.clicked.equals(
+                                                        use.hitResult().getBlockPos())
+                                                && blockUse.adjacent.equals(use.hitResult()
+                                                        .getBlockPos()
+                                                        .relative(
+                                                                use.hitResult().getDirection()))
+                                        ? blockUse.beforeAdjacent
+                                        : null))
                 || (event.packet instanceof ServerboundPlayerActionPacket action
                         && switch (action.getAction()) {
                             case START_DESTROY_BLOCK -> !WorldInteractionGuard.allowBreak(action.getPos());
@@ -445,8 +453,8 @@ public final class InventorySync {
         boolean ours = calledFromWeSort();
         if (!ours && event.packet instanceof ServerboundUseItemOnPacket placed) {
             var target = placementTarget(placed.hitResult());
-            boolean placePermit = WorldInteractionGuard.hasLivePlacePermit(
-                    target, preflightBlock(target, placed.hitResult()));
+            boolean placePermit =
+                    WorldInteractionGuard.hasLivePlacePermit(target, preflightBlock(target, placed.hitResult()));
             if (expectSpot != null && target.equals(expectSpot) && !placePermit) {
                 intentCounted("unattributed-place-without-permit");
                 if (INTENT_AUDIT.getOrDefault("unattributed-place-without-permit", 0L) <= 2)

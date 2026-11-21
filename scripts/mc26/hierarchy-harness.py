@@ -154,6 +154,36 @@ class HierarchyHarness(stock.StockHarness):
         self.rcon.command('setblock 8 64 -3 minecraft:chest')
         self.read(8, 'minecraft:air', 0)
         self.command('order-staging-settings', x=8, y=64, z=-3)
+        # Delivery locations are Manager-owned. The isolated driver has its own
+        # Stash object; writing the position there does not configure the running
+        # sorter's Stash after the signed-key bootstrap/assignment. Issue the
+        # real Owner directive and require it to arrive through signed heartbeat.
+        status, definitions = self.http('/api/v1/stash-defs')
+        require(status == 200, 'Owner could not read Manager stash definitions')
+        definition = next((d for d in definitions['defs'] if d['name'] == 'e2e-fixture'), None)
+        require(definition is not None, 'Manager did not define the fixture warehouse')
+        status, updated = self.http('/api/v1/stash-defs', {
+            'action': 'update', 'name': definition['name'],
+            'dimension': definition['dimension'],
+            'pos1': definition['pos1'], 'pos2': definition['pos2'],
+            'delivery': {'x': 8, 'y': 64, 'z': -3},
+            'expectedRevision': definition['revision'],
+        })
+        require(status == 200 and updated['def']['revision'] > definition['revision'],
+                'Owner could not publish the production Manager delivery directive')
+
+        def delivery_visible(_):
+            status, stashes = self.http('/api/v1/stashes')
+            return status == 200 and any(
+                s.get('stash') == 'e2e-fixture'
+                and s.get('server') == self.server_name
+                and (s.get('delivery') or {}).get('x') == 8
+                and (s.get('delivery') or {}).get('y') == 64
+                and (s.get('delivery') or {}).get('z') == -3
+                for s in stashes)
+
+        self.wait(delivery_visible, 'Manager delivery directive did not reach the real Fabric agent')
+        self.ok('Manager-defined delivery position reached the actual Fabric stash via signed heartbeat')
         root = '20' if self.approval else '0'
         group = next(slot['group'] for slot in row['snapshot']['positions'] if slot['path'] == root)
         draft = {'server': self.server_name, 'stash': 'e2e-fixture',

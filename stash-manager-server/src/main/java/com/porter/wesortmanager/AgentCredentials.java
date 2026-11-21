@@ -42,8 +42,11 @@ final class AgentCredentials {
     static String displayName(String reported) {
         if (reported == null) return null;
         String name = reported.strip();
-        if (name.isEmpty() || name.length() > 64 || name.codePoints().anyMatch(cp ->
-                Character.isISOControl(cp) || Character.getType(cp) == Character.FORMAT)) return null;
+        if (name.isEmpty()
+                || name.length() > 64
+                || name.codePoints()
+                        .anyMatch(cp -> Character.isISOControl(cp) || Character.getType(cp) == Character.FORMAT))
+            return null;
         return name;
     }
 

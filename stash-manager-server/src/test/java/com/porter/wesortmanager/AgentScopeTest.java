@@ -365,8 +365,8 @@ class AgentScopeTest {
         String serverId = "proxy.example.net:25565";
 
         // Offline-mode Java uses a name-derived version-3 UUID, not a Mojang UUID.
-        String offlineUuid = UUID.nameUUIDFromBytes(
-                "OfflinePlayer:OfflineAgent".getBytes(StandardCharsets.UTF_8)).toString();
+        String offlineUuid = UUID.nameUUIDFromBytes("OfflinePlayer:OfflineAgent".getBytes(StandardCharsets.UTF_8))
+                .toString();
         assertEquals(3, UUID.fromString(offlineUuid).version());
 
         JsonObject heartbeat = new JsonObject();

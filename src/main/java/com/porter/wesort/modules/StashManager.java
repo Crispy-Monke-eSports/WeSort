@@ -38,9 +38,8 @@ import net.minecraft.world.item.Item;
 public class StashManager extends Module {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
-    // First entry: opens the connection screen (address, port, masked key, status) from the
-    // normal Meteor menu, so no chat command is needed. The raw settings below stay for
-    // compatibility; the key itself is always rendered masked.
+    // The sole visible Meteor setting opens the Manager connection screen. All remaining
+    // settings are hidden implementation state, changed by authenticated Manager commands.
     private final Setting<?> connectionEntry = sgGeneral.add(com.porter.wesort.commands.ConnectionOpener.setting());
 
     private final Setting<String> serverUrl = sgGeneral.add(new StringSetting.Builder()
@@ -257,7 +256,7 @@ public class StashManager extends Module {
         super(
                 WeSortAddon.CATEGORY,
                 "WeSort Agent",
-                "Sends what's in your saved stash to the WeSort Manager web server on your network, which shows it. Uses the stash saved by wesort-stash-sorter. With accept-orders on, or during a website rescan, it moves the bot by itself; to stop that, turn off accept-orders or this module. Turning wesort-stash-sorter off hands control back to this module while accept-orders is on.");
+                "WeSort Manager agent. Configure only the Manager address, port and API key here; manage warehouse jobs, scans, sorting and all other settings in the Manager web UI.");
     }
 
     @Override

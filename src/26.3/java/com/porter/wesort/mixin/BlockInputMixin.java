@@ -22,7 +22,9 @@ public abstract class BlockInputMixin {
             InteractionHand hand,
             BlockHitResult hit,
             CallbackInfoReturnable<InteractionResult> cir) {
-        if (!WorldInteractionGuard.allowUse(hit) || (InventorySync.calledFromWeSort() && !InventorySync.allowInput())) {
+        boolean worldAllowed = WorldInteractionGuard.allowUse(hit);
+        InventorySync.tracePlacePreflight(hit, worldAllowed);
+        if (!worldAllowed || (InventorySync.calledFromWeSort() && !InventorySync.allowInput())) {
             cir.setReturnValue(InteractionResult.FAIL);
             return;
         }

@@ -336,9 +336,56 @@ public final class InventorySync {
         return clicked.relative(hit.getDirection());
     }
 
+    /**
+     * Bounded diagnostic at the native preflight boundary. The first outbound
+     * packet may not retain the initiating Java stack, so log the actual
+     * pre-interaction target rather than inferring it from later OPEN clicks.
+     */
+    public static void tracePlacePreflight(net.minecraft.world.phys.BlockHitResult hit, boolean allowed) {
+        if (expectSpot == null || mc.level == null || hit == null) return;
+        BlockPos clicked = hit.getBlockPos();
+        BlockPos adjacent = clicked.relative(hit.getDirection());
+        if (!expectSpot.equals(clicked) && !expectSpot.equals(adjacent)) return;
+        intentCounted("place-mixin-entry");
+        if (INTENT_AUDIT.getOrDefault("place-mixin-entry", 0L) <= 4)
+            MeteorClient.LOG.warn(
+                    "WeSort place preflight: expected {}, clicked {} face {}, adjacent {}, before {}, live {}, allowed {}, context {}, job {}",
+                    expectSpot.toShortString(),
+                    clicked.toShortString(),
+                    hit.getDirection(),
+                    adjacent.toShortString(),
+                    expectBeforeBlock,
+                    blockId(expectSpot),
+                    allowed,
+                    calledFromWeSort(),
+                    WorldInteractionGuard.currentJob());
+    }
+
+    private static void tracePlaceSend(ServerboundUseItemOnPacket use) {
+        if (expectSpot == null || mc.level == null) return;
+        BlockPos clicked = use.hitResult().getBlockPos();
+        BlockPos adjacent = clicked.relative(use.hitResult().getDirection());
+        if (!expectSpot.equals(clicked) && !expectSpot.equals(adjacent)) return;
+        intentCounted("place-packet-send");
+        if (INTENT_AUDIT.getOrDefault("place-packet-send", 0L) <= 4)
+            MeteorClient.LOG.warn(
+                    "WeSort place packet: expected {}, clicked {} face {}, adjacent {}, before {}, live {}, own {}, rotated {}, internal {}, job {}",
+                    expectSpot.toShortString(),
+                    clicked.toShortString(),
+                    use.hitResult().getDirection(),
+                    adjacent.toShortString(),
+                    expectBeforeBlock,
+                    blockId(expectSpot),
+                    calledFromWeSort(),
+                    rotatedInput,
+                    internal,
+                    WorldInteractionGuard.currentJob());
+    }
+
     @EventHandler
     private void sent(PacketEvent.Send event) {
         if (mc.player == null || mc.level == null) return;
+        if (event.packet instanceof ServerboundUseItemOnPacket use) tracePlaceSend(use);
         if ((event.packet instanceof ServerboundUseItemOnPacket use && !WorldInteractionGuard.allowUse(use.hitResult()))
                 || (event.packet instanceof ServerboundPlayerActionPacket action
                         && switch (action.getAction()) {
@@ -349,6 +396,8 @@ public final class InventorySync {
                 // Sign text travels in its own packet: it needs a live SIGN permit like any mutation.
                 || (event.packet instanceof ServerboundSignUpdatePacket sign
                         && !WorldInteractionGuard.allowSign(sign.pos()))) {
+            if (event.packet instanceof ServerboundUseItemOnPacket && expectSpot != null)
+                intentCounted("place-packet-guard-denied");
             event.cancel();
             return;
         }

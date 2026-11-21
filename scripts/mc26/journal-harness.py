@@ -285,6 +285,17 @@ class DirectHarness(JournalHarness):
                 state = self.command('state')['state']
             require(sum('[]' in value for value in inv.chest_halves(self)) == 1 and 'count: 64' in inv.player_items(self),
                     'Exact native source and player totals changed during inspection')
+            # The Manager's asynchronous index rescan can own a different
+            # container menu even after the physical receipt is READY. The
+            # Owner inspection proof above is complete: explicitly pause the
+            # Manager scanner so it cannot race the next independent direct click.
+            self.command('manager-pause')
+            self.command('close')
+            isolated = self.command('state')['state']
+            require(isolated['attemptedClicks'] == 0 and isolated['physicalJournal'] == 'READY',
+                    'Recovery changed before the next direct move')
+            require(isolated['containerId'] == 0,
+                    'Manager background scanner still owns an inventory screen')
             # A new, explicitly requested move proves the same agent can operate again.
             menu = self.command('open', x=0, y=64, z=3, slots=54, item='minecraft:air', count=0, second=1)['state']
             carry = inv.carry_slot(menu, 54, 'minecraft:diamond', 64)

@@ -333,19 +333,21 @@ class HierarchyHarness(stock.StockHarness):
         require(current.post('/api/v1/heartbeat', heartbeat)[0] == 200, 'Current credential could not read its warehouse heartbeat')
         require(current.post('/api/v1/heartbeat', dict(heartbeat, stash='secondary-fixture'))[0] == 200,
                 'One credential could not reach its second stash')
-        # No per-stash ownership: every authorized bot may work in every DEFINED stash.
-        # An undefined stash name is fail-closed 404, never silently accepted (and never 200
-        # with an empty directive). The 403s in this suite are identity mismatches, not location.
+        # No per-stash or Minecraft-username ownership: every signed agent
+        # credential may operate with any player name in every DEFINED stash.
+        # Undefined stash names must still fail closed (404), and a different
+        # configured Minecraft server is rejected (409).
         require(current.post('/api/v1/heartbeat', dict(heartbeat, stash='unassigned-fixture'))[0] == 404,
                 'Undefined stash was not refused with 404')
         require(current.post('/api/v1/heartbeat', dict(heartbeat, server='evil-server'))[0] == 409,
                 'Heartbeat from a foreign server was not refused with 409')
-        require(foreign.post('/api/v1/heartbeat', heartbeat)[0] == 403, 'Agent accessed another stash')
+        require(foreign.post('/api/v1/heartbeat', heartbeat)[0] == 200,
+                'Valid agent credential was rejected for another Minecraft username')
         unauthorized = {'server': self.server_name, 'stash': 'other-stash', 'player': 'OtherBot'}
         require(foreign.post('/api/v1/heartbeat', unauthorized)[0] == 200, 'Second credential was unusable in its own scope')
         self.run(cli + ['agent-revoke', foreign_id])
         require(foreign.post('/api/v1/heartbeat', unauthorized)[0] == 401, 'Revoked agent continued to authenticate')
-        self.ok('two local credentials have isolated warehouse access; scoped-only, rotation and revocation take effect immediately')
+        self.ok('two signed credentials support different Minecraft usernames; scoped-only, rotation and revocation remain enforced')
 
     def verify_fleet_sessions(self):
         native = None

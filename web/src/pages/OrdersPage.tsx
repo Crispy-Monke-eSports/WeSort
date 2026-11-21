@@ -5,6 +5,7 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
+import Checkbox from "@mui/material/Checkbox";
 import Chip from "@mui/material/Chip";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
@@ -12,6 +13,7 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import Divider from "@mui/material/Divider";
 import FormControl from "@mui/material/FormControl";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import InputLabel from "@mui/material/InputLabel";
 import LinearProgress from "@mui/material/LinearProgress";
 import MenuItem from "@mui/material/MenuItem";
@@ -35,7 +37,7 @@ import { api } from "../api/client";
 import { keys, useAllOrders, useAuth, usePermissions, useStashes } from "../api/queries";
 import { ConfirmDialog } from "../components/dialogs";
 import { OrderStatusChip } from "../components/status";
-import { ORDER_STATUSES, orderUiState } from "../lib/orderStatus";
+import { ORDER_STATUSES, isSuperseded, orderUiState } from "../lib/orderStatus";
 
 function progressText(o: any): string {
   const p = o?.progress;
@@ -62,6 +64,7 @@ export function OrdersPage() {
   const { orders, failedStashes, loading } = useAllOrders(visible, loggedIn);
 
   const [statusFilter, setStatusFilter] = useState("all");
+  const [hideSuperseded, setHideSuperseded] = useState(true);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
@@ -84,6 +87,8 @@ export function OrdersPage() {
       const me = auth.data?.user?.id;
       list = list.filter((o: any) => o.placedBy?.id === me || o.userId === me || o.placedBy?.name === auth.data?.user?.name);
     }
+    // Retried orders stand for their successor: hidden by default so the table shows current orders.
+    if (hideSuperseded) list = list.filter((o: any) => !isSuperseded(o));
     if (statusFilter !== "all") list = list.filter((o: any) => (o.status ?? "").toLowerCase() === statusFilter);
     if (query.trim()) {
       const t = query.trim().toLowerCase();
@@ -94,7 +99,7 @@ export function OrdersPage() {
         String(o.recipient ?? "").toLowerCase().includes(t));
     }
     return list;
-  }, [orders, statusFilter, query, perms, auth.data]);
+  }, [orders, statusFilter, hideSuperseded, query, perms, auth.data]);
 
   function act(order: any, action: "cancel" | "force-cancel" | "retry") {
     setActionMsg("");
@@ -166,6 +171,10 @@ export function OrdersPage() {
             ))}
           </Select>
         </FormControl>
+        <FormControlLabel
+          control={<Checkbox size="small" checked={hideSuperseded} onChange={(e) => { setHideSuperseded(e.target.checked); setPage(0); }} />}
+          label="Hide superseded"
+        />
       </Stack>
 
       {!isXs && (<TableContainer component={Paper} id="order-list">

@@ -3,11 +3,14 @@ package com.porter.wesort.craft;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.function.Predicate;
 
 /**
  * Which anvil the naming uses, without the user having to set one: the one selected by hand, then a remembered one (found
- * or placed earlier), then a placed anvil found in the stash area, then an anvil taken from the stash and placed. When none
+ * or placed earlier), then a placed anvil found in the stash area, then an anvil taken from the stash and placed, then one
+ * crafted from iron and placed. When none
  * of that works the rename fails with {@link #NONE} and the order goes on unnamed. Pure: the world comes in through
  * {@link World}, so the choices are tested without the game. The same order of preference as the proxy plugin.
  */
@@ -16,6 +19,8 @@ public final class AnvilFinder {
 
     /** The reason a shulker goes unnamed when no anvil can be had. */
     public static final String NONE = "no anvils available to rename with";
+
+    public static final String ANVIL_ID = "minecraft:anvil";
 
     /** Where the anvil in use came from: set by hand, found placed, or placed from the stash. */
     public enum Source {
@@ -55,12 +60,16 @@ public final class AnvilFinder {
 
         /** An anvil item the stash can give: not reserved for an order line. */
         boolean stockHasAnvil();
+
+        /** The stash's iron crafts an anvil (3 blocks, 4 ingots): a worn-out or broken one is replaced. */
+        boolean craftableAnvil();
     }
 
     public enum Step {
         USE,
         FOUND,
         PLACE_FROM_STOCK,
+        CRAFT,
         FAIL
     }
 
@@ -85,7 +94,16 @@ public final class AnvilFinder {
         Pos found = world.search();
         if (found != null) return new Decision(Step.FOUND, found, Source.FOUND, null, forget);
         if (world.stockHasAnvil()) return new Decision(Step.PLACE_FROM_STOCK, null, Source.PLACED, null, forget);
+        if (world.craftableAnvil()) return new Decision(Step.CRAFT, null, Source.PLACED, null, forget);
         return new Decision(Step.FAIL, null, Source.NONE, NONE, forget);
+    }
+
+    /** Whether the pool crafts an anvil (3 iron blocks, 4 iron ingots) by the game version's recipes. */
+    public static boolean craftable(Recipes recipes, Map<String, Long> pool, Set<String> never) {
+        if (recipes == null) return false;
+        CraftPlanner.Result r =
+                CraftPlanner.plan(recipes, ANVIL_ID, 1, pool, never, CraftPlanner.Caps.NONE, 0, 0);
+        return r.ok() && r.plan().count() >= 1;
     }
 
     /** The nearest of these anvil cells to {@code from} that are inside the area (null: nothing). */

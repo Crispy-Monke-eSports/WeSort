@@ -86,9 +86,18 @@ final class OrderRunner {
 
         /** The delivery chest the next shulker goes into: the lowest with room; with {@code verify} the one the last went into. */
         Box deliveryChest(boolean verify);
+
+        /** The bot's XP level, or -1. */
+        int xpLevel();
+
+        /** Experience bottles carried that the bot took from the stash, for an XP top-up. */
+        int xpBottlesCarried();
+
+        /** Loose experience bottles in the stash to top up XP with, or null. */
+        XpBottles xpBottleSource();
     }
 
-    sealed interface Intent permits Idle, Build, Fetch, Deliver, Rename, Craft, FindAnvil, Expand, Recheck {}
+    sealed interface Intent permits Idle, Build, Fetch, Deliver, Rename, Craft, FindAnvil, Expand, Recheck, XpBottles {}
 
     /** Nothing for the sorter to do for the order now. */
     record Idle() implements Intent {}
@@ -98,6 +107,9 @@ final class OrderRunner {
 
     /** Take this shulker out of the container. */
     record Fetch(Box box, int slot) implements Intent {}
+
+    /** Take these bottles of enchanting out of the container, to buy XP for a rename. */
+    record XpBottles(Box box, int slot) implements Intent {}
 
     /** Open the delivery container and put the order's shulkers in. */
     record Deliver(Box box) implements Intent {}
@@ -124,6 +136,19 @@ final class OrderRunner {
         Cancelled
     }
 
+    /** The WeSort UUID carried by a shulker stack, or null. */
+    private static String boxUuidOf(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) return null;
+        var custom = stack.get(DataComponents.CUSTOM_NAME);
+        if (custom == null) return null;
+        try {
+            java.util.UUID uuid = com.porter.wesort.data.ShulkerUuid.parse(custom.getString());
+            return uuid == null ? null : uuid.toString();
+        } catch (RuntimeException invalid) {
+            return null;
+        }
+    }
+
     /** A snapshot of the order for the server. */
     record Report(
             String id,
@@ -133,7 +158,8 @@ final class OrderRunner {
             int total,
             String message,
             int shulkers,
-            Map<String, Integer> delivered) {
+            Map<String, Integer> delivered,
+            List<String> deliveredUuids) {
         boolean terminal() {
             return !status.equals("in_progress");
         }
@@ -166,11 +192,15 @@ final class OrderRunner {
         int anvilTries;
         // The shulker's own name before it was renamed (null: it had none), to recognise it afterwards
         net.minecraft.network.chat.Component origName;
+        // The WeSort UUID the shulker carried when it was taken (null: none): deregistered on delivery
+        String boxUuid;
         // The key the shulker has with its new name (packed and empty shulkers), kept in the saved plan
         String namedKey;
         Map<String, Integer> content = Map.of();
         // Lot totals by key, to recognise a finished shulker before the kit exists
         Map<String, Integer> lotTotals;
+        // When this unit first started waiting for a retry (0: not waiting); bounds one bad unit
+        long waitSince;
 
         Unit(Kind kind, String key, List<Order.Lot> lots) {
             this.kind = kind;
@@ -201,8 +231,8 @@ final class OrderRunner {
     private record RawKey(
             net.minecraft.world.item.Item item, net.minecraft.core.component.DataComponentMap components) {}
 
-    private static final long PAUSE_TIMEOUT_MS = 10 * 60 * 1000L;
-    private static final long REREAD_TIMEOUT_MS = 10 * 60 * 1000L;
+    private static final long PAUSE_TIMEOUT_MS = 2 * 60 * 60 * 1000L;
+    private static final long REREAD_TIMEOUT_MS = 30 * 60 * 1000L;
     private static final int MAX_FULL_TRIES = 2;
     /** Times one shulker asks the delivery storage to grow before the order waits instead. */
     private static final int MAX_EXPANDS = 6;
@@ -212,7 +242,16 @@ final class OrderRunner {
     private static final int MAX_STARTS = 8;
     private static final int MAX_NAME_TRIES = 2;
     private static final int MAX_CRAFT_TRIES = 2;
+    /** Transient hiccups (lag, a container that opens slowly, items still being re-read) wait this long and try again. */
+    private static final long RETRY_WAIT_MS = 60_000L;
+    /** One shulker waits at most this long in total before it is skipped so the rest of the order can deliver. */
+    private static final long UNIT_WAIT_MAX_MS = 2 * 60 * 60 * 1000L;
     private static final String SHULKER_BOX = "minecraft:shulker_box";
+    /** Bottles of enchanting are thrown for the XP a rename costs: top up to this level when short. */
+    static final int XP_TARGET_LEVELS = 3;
+    /** Below this the sorter tops up XP before renaming; an anvil rename costs at least one level. */
+    static final int XP_MIN_LEVELS = 1;
+    static final String XP_BOTTLE_ID = "minecraft:experience_bottle";
     /** The server keeps this much of an order's message. */
     private static final int MESSAGE_MAX = 300;
 
@@ -225,6 +264,8 @@ final class OrderRunner {
     private int index;
     private int shulkersDelivered;
     private final Map<String, Integer> delivered = new LinkedHashMap<>();
+    // UUIDs of delivered shulkers that carried one when taken: the registry deregisters them on delivery
+    private final List<String> deliveredUuids = new ArrayList<>();
     private final List<String> problems = new ArrayList<>();
     // Shulkers delivered without the name they were meant to get, and the distinct reasons
     private int unnamed;
@@ -239,6 +280,8 @@ final class OrderRunner {
     private boolean cancelRequested, parked;
     private long pausedSince;
     private boolean full;
+    // Bottles of enchanting are being held for the XP a rename costs
+    private boolean xpReserved;
     // The wait for room in the delivery storage
     private final SpaceWait spaceWait = new SpaceWait();
     private long spinHoldUntil;
@@ -247,6 +290,15 @@ final class OrderRunner {
     private boolean planned;
     private long offeredAt, rereadProgressAt;
     private int lastStale = Integer.MAX_VALUE;
+    // A transient problem is being waited out instead of failing the order: retry after this time
+    private long retryWaitUntil;
+    private String retryWaitWhy = "";
+    // Planning waits: first planning attempt that found nothing doable (0: not waiting), and the last
+    // time the order moved forward at all. An order that never moves still lets go after a backstop.
+    private long planWaitSince;
+    private long lastForwardAt;
+    /** An order with no forward progress at all still lets go after this long, so it can't block the queue forever. */
+    private static final long ORDER_STALL_MAX_MS = 2 * 60 * 60 * 1000L;
     private Survey lastSurvey;
     private int lastSurveyTick = -1;
     private Set<String> lastSurveyWanted;
@@ -295,6 +347,7 @@ final class OrderRunner {
         index = 0;
         shulkersDelivered = 0;
         delivered.clear();
+        deliveredUuids.clear();
         problems.clear();
         unnamed = 0;
         unnamedReasons.clear();
@@ -307,9 +360,14 @@ final class OrderRunner {
         parked = false;
         pausedSince = 0;
         full = false;
+        xpReserved = false;
         spaceWait.reset();
         lastSurvey = null;
         planned = false;
+        retryWaitUntil = 0;
+        retryWaitWhy = "";
+        planWaitSince = 0;
+        lastForwardAt = 0;
         state = State.Running;
         epoch++;
     }
@@ -340,6 +398,7 @@ final class OrderRunner {
         index = 0;
         shulkersDelivered = 0;
         delivered.clear();
+        deliveredUuids.clear();
         problems.clear();
         unnamed = 0;
         unnamedReasons.clear();
@@ -351,9 +410,14 @@ final class OrderRunner {
         parked = false;
         pausedSince = 0;
         full = false;
+        xpReserved = false;
         spaceWait.reset();
         planned = false;
+        retryWaitUntil = 0;
+        retryWaitWhy = "";
+        planWaitSince = 0;
         offeredAt = System.currentTimeMillis();
+        lastForwardAt = offeredAt;
         rereadProgressAt = offeredAt;
         lastStale = Integer.MAX_VALUE;
         phase = "re-reading containers";
@@ -362,17 +426,31 @@ final class OrderRunner {
         if (!owner.rereading()) {
             String why = completePlan();
             if (why != null) {
-                order = null;
-                units.clear();
-                problems.clear();
-                delivered.clear();
-                shulkersDelivered = 0;
-                unnamed = 0;
-                unnamedReasons.clear();
-                return why;
+                if (isPermanentPlanRefusal(why)) {
+                    order = null;
+                    units.clear();
+                    problems.clear();
+                    delivered.clear();
+                    deliveredUuids.clear();
+                    shulkersDelivered = 0;
+                    unnamed = 0;
+                    unnamedReasons.clear();
+                    return why;
+                }
+                // Transient (stock moved, no empty shulkers right now, crafting blocked, lag): take the
+                // order anyway instead of failing it at claim time. next() plans again and waits/retries.
+                planWaitSince = System.currentTimeMillis();
+                lastForwardAt = planWaitSince;
+                say("Taking order " + o.id + " (planning deferred: " + why + ").");
+                return null;
             }
         }
         return null;
+    }
+
+    /** Only refusals that can never resolve by waiting (too big for any stock) fail the order at once. */
+    private static boolean isPermanentPlanRefusal(String why) {
+        return why.startsWith("too big");
     }
 
     /**
@@ -681,8 +759,9 @@ final class OrderRunner {
                 ? craftFailure
                 : u.craftTries >= MAX_CRAFT_TRIES ? "tries used up" : owner.craftBlocker();
         if (why != null) {
-            skip("no empty shulker; couldn't craft one: " + why);
-            return new Idle();
+            // Materials may be re-read or restocked: wait and try crafting again rather than failing the unit
+            u.craftTries = 0;
+            return waitRetry(u, "no empty shulker; couldn't craft one: " + why);
         }
         u.craftTries++;
         phase = "crafting " + (index + 1) + "/" + units.size();
@@ -778,7 +857,8 @@ final class OrderRunner {
                 units.size(),
                 message,
                 shulkersDelivered,
-                new LinkedHashMap<>(delivered));
+                new LinkedHashMap<>(delivered),
+                List.copyOf(deliveredUuids));
     }
 
     /** What the server asked for, per line key. */
@@ -802,7 +882,10 @@ final class OrderRunner {
      * with ingredients must stay usable.
      */
     boolean claims(ItemStack stack) {
-        if (!running() || index >= units.size() || stack.isEmpty() || !Utils.isShulker(stack.getItem())) return false;
+        if (!running() || index >= units.size() || stack.isEmpty()) return false;
+        // Bottles of enchanting fetched for an XP top-up are the order's until naming stops needing XP
+        if (xpReserved && idOf(stack).equals(XP_BOTTLE_ID)) return true;
+        if (!Utils.isShulker(stack.getItem())) return false;
 
         int tick = mc.player == null ? 0 : mc.player.tickCount;
         if (tick != claimTick || epoch != claimEpoch) {
@@ -1024,6 +1107,20 @@ final class OrderRunner {
         }
         pausedSince = 0;
 
+        // Backstop: an order that never moves forward at all still lets go, so it can't block the
+        // queue forever. Normal progress (planning, advancing units, delivering) resets the clock.
+        long nowMs = System.currentTimeMillis();
+        if (lastForwardAt != 0 && nowMs - lastForwardAt > ORDER_STALL_MAX_MS) {
+            finish(State.Failed, "no forward progress for 2 hours (" + phase + "), giving up");
+            return new Idle();
+        }
+
+        // A transient problem is waited out, not failed: try the same step again afterwards
+        if (nowMs < retryWaitUntil) {
+            phase = "waiting: " + retryWaitWhy;
+            return new Idle();
+        }
+
         // Not planned yet: waits until the stash is read again, then plans from what is really there
         if (!planned) {
             if (owner.rereading()) {
@@ -1032,9 +1129,17 @@ final class OrderRunner {
             }
             String why = completePlan();
             if (why != null) {
-                finish(shulkersDelivered > 0 ? State.Delivered : State.Failed, why);
-                return new Idle();
+                // Truly impossible sizes fail; anything else (stash still settling, stock moved,
+                // lag) waits and plans again rather than cancelling the order
+                if (isPermanentPlanRefusal(why)) {
+                    finish(shulkersDelivered > 0 ? State.Delivered : State.Failed, why);
+                    return new Idle();
+                }
+                if (planWaitSince == 0) planWaitSince = nowMs;
+                return waitRetry(why);
             }
+            planWaitSince = 0;
+            lastForwardAt = nowMs;
         }
 
         // A saved kit being built has the kit builder; the order waits for it
@@ -1060,10 +1165,8 @@ final class OrderRunner {
 
             Box delivery = deliveryBox();
             if (delivery == null || delivery.unreachable) {
-                finish(
-                        shulkersDelivered > 0 ? State.Delivered : State.Failed,
-                        delivery == null ? "the delivery container is gone" : "couldn't reach the delivery container");
-                return new Idle();
+                // The delivery spot may come back (set anew, re-read, lag): wait for it, don't fail the order
+                return waitRetry(delivery == null ? "the delivery container is gone" : "couldn't reach the delivery container");
             }
 
             Unit u = units.get(index);
@@ -1073,6 +1176,7 @@ final class OrderRunner {
                 if (!u.have) {
                     u.have = true;
                     u.content = tally(u, mc.player.getInventory().getItem(slot));
+                    u.boxUuid = boxUuidOf(mc.player.getInventory().getItem(slot));
                 }
                 // Back in the inventory: whatever was seen in the container was not it
                 u.confirmed = false;
@@ -1143,17 +1247,17 @@ final class OrderRunner {
                     return new Idle();
                 }
                 if (u.fullTries >= MAX_FULL_TRIES + Math.max(0, owner.deliveryChests() - 1)) {
-                    finish(
-                            shulkersDelivered > 0 ? State.Delivered : State.Failed,
-                            "delivery container full (" + shulkersDelivered + "/" + units.size() + ")");
-                    return new Idle();
+                    // Delivery looks full but may be emptied or re-read: wait and try putting it in again
+                    u.fullTries = 0;
+                    return waitRetry(u, "delivery container full (" + shulkersDelivered + "/" + units.size() + ")");
                 }
                 if (++u.starts > MAX_STARTS) {
-                    finish(
-                            shulkersDelivered > 0 ? State.Delivered : State.Failed,
+                    // Staging is flaky under lag: wait a while and try delivering again rather than failing
+                    u.starts = 0;
+                    return waitRetry(
+                            u,
                             "couldn't put the shulker into the delivery container (" + shulkersDelivered + "/"
                                     + units.size() + " staged)");
-                    return new Idle();
                 }
                 phase = "delivering " + (index + 1) + "/" + units.size();
                 Box chest = owner.deliveryChest(false);
@@ -1165,6 +1269,8 @@ final class OrderRunner {
                 if (u.confirmed) {
                     for (var e : u.content.entrySet()) delivered.merge(e.getKey(), e.getValue(), Integer::sum);
                     shulkersDelivered++;
+                    // A delivered shulker leaves the system: its UUID is deregistered, so it isn't expected back
+                    if (u.boxUuid != null && !deliveredUuids.contains(u.boxUuid)) deliveredUuids.add(u.boxUuid);
                     if (u.name != null && !u.named) {
                         unnamed++;
                         String reason = u.unnamedReason == null ? "naming didn't finish" : u.unnamedReason;
@@ -1179,15 +1285,19 @@ final class OrderRunner {
                     Box chest = owner.deliveryChest(true);
                     return new Deliver(chest != null ? chest : delivery);
                 } else {
-                    skip("a shulker left my inventory but wasn't seen in the delivery container");
+                    // The shulker left the inventory but wasn't seen in the delivery container yet (lag,
+                    // a re-read in between): look again rather than skipping it
+                    u.verified = false;
+                    u.verifying = false;
+                    return waitRetry(u, "a shulker left my inventory but wasn't seen in the delivery container");
                 }
                 continue;
             }
 
             if (u.kind == Kind.Bin) {
                 if (u.built) {
-                    skip("lost a finished shulker");
-                    continue;
+                    // A finished shulker that is gone from where it was (picked up, lag): wait and look again
+                    return waitRetry(u, "lost a finished shulker");
                 }
                 if (!kits.active()) {
                     // No empty shulker to build in: one is crafted, when crafting is on
@@ -1201,12 +1311,15 @@ final class OrderRunner {
                     if (u.kit == null) u.kit = buildKit(u);
                     epoch++;
                     if (u.kit == null) {
-                        skip("the items for a shulker are no longer in the stash");
-                        continue;
+                        // The stock may be in containers still being re-read, or lag hid it: wait, don't skip
+                        return waitRetry(u, "the items for a shulker are no longer in the stash");
                     }
                     if (++u.begins > 3 || !kits.beginOrder(u.kit)) {
-                        skip("couldn't start building a shulker (" + u.kit.name + ")");
-                        continue;
+                        // Starting the build is flaky (shulker taken by a parallel job, lag): wait and try again
+                        String kitName = u.kit.name;
+                        u.begins = 0;
+                        u.kit = null;
+                        return waitRetry(u, "couldn't start building a shulker (" + kitName + ")");
                     }
                 } else if (kits.kit() != u.kit) {
                     // Left over from another unit
@@ -1225,6 +1338,8 @@ final class OrderRunner {
                     kits.suspend(abort.reason());
                     // A base that could not be taken: another is tried (a few times), nothing is given up on yet
                     if (abort.reason().startsWith("couldn't take a shulker")) continue;
+                    // The server is just slow (bad TPS): wait for the answer, don't replan or skip
+                    if (abort.reason().startsWith("waiting for the server")) return waitRetry(u, abort.reason());
                     // Containers still to be read again may hold what is missing: wait for them
                     if (owner.rereading()) {
                         u.kit = null;
@@ -1234,43 +1349,71 @@ final class OrderRunner {
                     }
                     // Items missing from where they were saved (the containers were read again since): planned once
                     // more from
-                    // what the stash holds now, trimmed to it, before the unit is given up on
+                    // what the stash holds now, trimmed to it, then waited out before the unit is given up on
                     if (!u.replanned) {
                         u.replanned = true;
                         u.kit = null;
                         u.begins = 0;
-                        problems.add("replanned a shulker: " + abort.reason());
+                        noteProblem("replanned a shulker: " + abort.reason());
                         epoch++;
                         continue;
                     }
-                    skip(abort.reason());
-                    continue;
+                    // Still missing after a replan (lag, someone else moving stock): wait and try again
+                    return waitRetry(u, abort.reason());
                 }
                 return new Build(step);
             }
 
             if (u.fetches >= 2) {
-                skip("couldn't take the shulker out of the stash");
-                continue;
+                // Taking the shulker is flaky (someone else opened the chest, lag): wait and try again
+                u.fetches = 0;
+                return waitRetry(u, "couldn't take the shulker out of the stash");
             }
             Fetch fetch = locate(u);
             if (fetch == null && u.kind == Kind.Empty && u.key.equals(SHULKER_BOX)) {
                 Intent craft = craftFor(u, pendingEmpties());
-                if (craft instanceof Idle) continue;
+                if (craft instanceof Idle) return craft;
                 if (craft != null) return craft;
             }
             if (fetch == null) {
-                skip(
+                // The shulker may be in a container still being re-read, or lag hid it: wait, don't skip
+                return waitRetry(
+                        u,
                         u.kind == Kind.Shulker
                                 ? "a packed shulker is no longer in the stash"
                                 : "no empty shulker of that kind is left");
-                continue;
             }
             u.fetches++;
             phase = "fetching " + (index + 1) + "/" + units.size();
             return fetch;
         }
         return new Idle();
+    }
+
+    /**
+     * Bottles of enchanting from the stash for the XP a rename costs. Fetched like anything else
+     * the order needs; the sorter throws the carried ones before renaming. Only when short on XP;
+     * when none can be had the rename goes unnamed as before.
+     */
+    private Intent xpTopUp(Unit u) {
+        if (u.name == null || !Order.valid(u.name)) return null;
+        if (mc.player != null && mc.player.hasInfiniteMaterials()) return null;
+        if (owner.xpLevel() >= XP_TARGET_LEVELS) {
+            xpReserved = false;
+            return null;
+        }
+        // Carried bottles are the order's until the rename no longer needs XP; the sorter throws them
+        if (owner.xpBottlesCarried() > 0) {
+            xpReserved = true;
+            return null;
+        }
+        // Enough for this rename: no fetch for buffer
+        if (owner.xpLevel() >= XP_MIN_LEVELS) return null;
+        XpBottles fetch = owner.xpBottleSource();
+        if (fetch == null) return null;
+        xpReserved = true;
+        phase = "fetching XP bottles " + (index + 1) + "/" + units.size();
+        return fetch;
     }
 
     /**
@@ -1287,6 +1430,10 @@ final class OrderRunner {
             noteNamed(u, stack);
             return null;
         }
+        // Short on XP for the rename: fetch bottles of enchanting first (the sorter throws them).
+        // When none can be had the rename goes unnamed with the anvil's reason as before.
+        Intent xp = xpTopUp(u);
+        if (xp != null) return xp;
         String why = !Order.valid(u.name) ? "a name that breaks the rules" : null;
         // No anvil set or remembered, or it is gone: one is found in the area, or taken from the stash and placed (once
         // per
@@ -1445,13 +1592,65 @@ final class OrderRunner {
 
     private void skip(String why) {
         skips++;
-        problems.add(why);
+        noteProblem(why);
         advance();
+    }
+
+    private static void noteProblem(List<String> problems, String why) {
+        if (!problems.isEmpty() && problems.get(problems.size() - 1).equals(why)) return;
+        problems.add(why);
+    }
+
+    private void noteProblem(String why) {
+        noteProblem(problems, why);
+    }
+
+    /**
+     * Don't fail the order for a transient problem (lag, a container that opens slowly, items still
+     * being moved by someone else): wait a while and try the same unit again. A unit that never gets
+     * anywhere is skipped after {@link #UNIT_WAIT_MAX_MS} so the rest of the order can still deliver.
+     */
+    private Intent waitRetry(Unit u, String why) {
+        long now = System.currentTimeMillis();
+        if (u.waitSince == 0) u.waitSince = now;
+        if (now - u.waitSince > UNIT_WAIT_MAX_MS) {
+            u.waitSince = 0;
+            skip(why + " (gave up waiting)");
+            return new Idle();
+        }
+        noteProblem(why + " (trying again)");
+        // A blip must not accumulate into a permanent failure: the next try starts fresh
+        u.fullTries = 0;
+        u.starts = 0;
+        u.fetches = 0;
+        u.begins = 0;
+        u.spins = 0;
+        u.verified = false;
+        u.verifying = false;
+        u.replanned = false;
+        u.kit = null;
+        retryWaitUntil = now + RETRY_WAIT_MS;
+        retryWaitWhy = why;
+        phase = "waiting: " + why;
+        epoch++;
+        return new Idle();
+    }
+
+    /** Wait and try again, without any one unit to blame (planning, delivery storage, no delivery set). */
+    private Intent waitRetry(String why) {
+        noteProblem(why + " (trying again)");
+        retryWaitUntil = System.currentTimeMillis() + RETRY_WAIT_MS;
+        retryWaitWhy = why;
+        phase = "waiting: " + why;
+        epoch++;
+        return new Idle();
     }
 
     private void advance() {
         index++;
         epoch++;
+        xpReserved = false;
+        lastForwardAt = System.currentTimeMillis();
         Stash stash = owner.stash();
         if (stash != null && stash.activeOrder != null && order != null && stash.activeOrder.id.equals(order.id)) {
             stash.activeOrder.done = index;

@@ -28,10 +28,10 @@ class BoxUuidRegistryTest {
                 "minecraft:shulker_box",
                 "minecraft:shulker_box",
                 1,
-                namedComponents(boxName),
+                boxName == null ? "{}" : namedComponents(boxName),
                 PhysicalSlots.Kind.SHULKER,
                 27,
-                List.of(new PhysicalSlots.Slot(26, 32, diamond)),
+                boxName == null ? List.of() : List.of(new PhysicalSlots.Slot(26, 32, diamond)),
                 "kit");
         return new PhysicalSlots.Snapshot(27, List.of(new PhysicalSlots.Slot(0, 1, box)));
     }
@@ -74,7 +74,8 @@ class BoxUuidRegistryTest {
             source.addProperty("size", 27);
             source.addProperty("state", "FRESH");
             source.addProperty("session", "00000000-0000-0000-0000-000000000001");
-            source.addProperty("sequence", i + 1);
+            // A new heartbeat gets a new sequence, or a rescan looks like a conflicting replay.
+            source.addProperty("sequence", ledger.revision() + i + 1);
             source.addProperty("epoch", ledger.epoch());
             source.addProperty("baseRevision", ledger.revision());
             source.addProperty("observedAt", System.currentTimeMillis());
@@ -139,7 +140,7 @@ class BoxUuidRegistryTest {
     }
 
     @Test
-    void deregisteredUuidMovesToHistoryAndIsNeverReused() throws Exception {
+    void deregisteredUuidMovesToHistoryAndIsRegisteredAgainWhenSeen() throws Exception {
         var ledger = new StockLedger(data);
         var index = indexes(ledger, new String[] {"WeSort-" + V4}, new int[] {0});
         ledger.accept(index);
@@ -150,14 +151,55 @@ class BoxUuidRegistryTest {
         assertEquals(
                 "DEREGISTERED_FOR_ORDER",
                 ledger.boxUuidHistory().get(0).getAsJsonObject().get("reason").getAsString());
-        // The same UUID observed again is a reused historical UUID, never active.
+        // The same box found again in a chest keeps its UUID: historical UUIDs are registered again.
+        ledger.accept(indexes(ledger, new String[] {"WeSort-" + V4}, new int[] {0}));
+        assertEquals(1, ledger.boxUuids().size());
         assertEquals(
-                "DUPLICATE",
+                id, ledger.boxUuids().get(0).getAsJsonObject().get("source").getAsString());
+        assertEquals(
+                "REGISTERED",
                 ledger.boxIdentities(id)
                         .get(0)
                         .getAsJsonObject()
                         .get("identityStatus")
                         .getAsString());
+        assertEquals(1, ledger.boxUuidHistory().size());
+    }
+
+    @Test
+    void movedBoxFollowsItsUuidToTheNewChest() throws Exception {
+        var ledger = new StockLedger(data);
+        ledger.accept(indexes(ledger, new String[] {"WeSort-" + V4}, new int[] {0}));
+        assertEquals(1, ledger.boxUuids().size());
+        // Same box observed at another chest while the old chest, re-read fresh, no longer shows it.
+        var moved = indexes(ledger, new String[] {null, "WeSort-" + V4}, new int[] {0, 1});
+        ledger.accept(moved);
+        assertEquals(1, ledger.boxUuids().size());
+        var row = ledger.boxUuids().get(0).getAsJsonObject();
+        String movedId = moved.getAsJsonArray("physicalSources")
+                .get(1)
+                .getAsJsonObject()
+                .get("id")
+                .getAsString();
+        assertEquals(movedId, row.get("source").getAsString());
+        assertTrue(ledger.boxUuidHistory().isEmpty());
+    }
+
+    @Test
+    void boxGoneFromEveryChestIsDeregisteredAsVanished() throws Exception {
+        var ledger = new StockLedger(data);
+        ledger.accept(indexes(ledger, new String[] {"WeSort-" + V4}, new int[] {0}));
+        assertEquals(1, ledger.boxUuids().size());
+        // The same chest re-read fresh holding only an unnamed box: the UUID box left, deregistered.
+        ledger.accept(indexes(ledger, new String[] {null}, new int[] {0}));
+        assertTrue(ledger.boxUuids().isEmpty());
+        assertEquals(1, ledger.boxUuidHistory().size());
+        assertEquals(
+                "VANISHED",
+                ledger.boxUuidHistory().get(0).getAsJsonObject().get("reason").getAsString());
+        // ...and registered again if the same box shows up again with its name intact.
+        ledger.accept(indexes(ledger, new String[] {"WeSort-" + V4}, new int[] {1}));
+        assertEquals(1, ledger.boxUuids().size());
     }
 
     @Test

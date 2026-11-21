@@ -219,6 +219,27 @@ export function perStashBoxUsage(
   return out;
 }
 
+/** Units the buy dialog offers a quantity in: single items, whole stacks, or full shulker boxes (27 stacks). */
+export type BuyUnit = "items" | "stacks" | "boxes";
+
+/** Loose items in one buy unit for an item with this max stack size. */
+export function itemsPerBuyUnit(unit: BuyUnit, maxStack: number): number {
+  const stack = Math.max(1, Math.floor(maxStack) || 64);
+  if (unit === "stacks") return stack;
+  if (unit === "boxes") return SHULKER_SLOTS * stack;
+  return 1;
+}
+
+/** Whole-unit quantity converted to loose items (whole units only, at least one item). */
+export function buyUnitsToItems(n: number, unit: BuyUnit, maxStack: number): number {
+  return Math.max(1, Math.floor(n)) * itemsPerBuyUnit(unit, maxStack);
+}
+
+/** How many whole units of this kind fit in an item budget (at least one). */
+export function buyMaxUnits(maxItems: number, unit: BuyUnit, maxStack: number): number {
+  return Math.max(1, Math.floor(Math.max(1, Math.floor(maxItems)) / itemsPerBuyUnit(unit, maxStack)));
+}
+
 /** Display total for a shelf item: loose plus boxed (non-box keys only). */
 export function shelfCount(item: IndexItem, shulkers: ShulkerEntry[]): number {
   if (isShulkerBoxId(item.id)) return item.count;

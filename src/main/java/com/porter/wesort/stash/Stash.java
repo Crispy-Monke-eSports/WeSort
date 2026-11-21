@@ -37,6 +37,10 @@ public class Stash {
         public ItemStack[] contents;
         public boolean excluded;
         public boolean dropOff;
+        // An input chest: players dump items and shulkers they no longer want here, and the bot empties it
+        // into the stash. May be outside the stash area, like the delivery container. Always emptied like
+        // a drop-off, so nothing is ever filed into it.
+        public boolean input;
         // Where finished orders are delivered. Also excluded, so nothing is ever sorted into or out of it
         public boolean delivery;
         // A chest the bot put up above the delivery container for the delivery storage (0.4.0-dev.5): also delivery and
@@ -225,6 +229,11 @@ public class Stash {
     // out,
     // say) can lose it. It stays until the user clears it
     public BlockPos deliveryPos;
+    // The input chest: unwanted items and shulkers are left here for the bot to sort into the stash. Kept on the
+    // stash itself so it survives pruning, and may be outside the stash area. It stays until the user clears it
+    public BlockPos inputPos;
+    // How the input chest came to be marked: "set" (picked by hand). "" counts as set
+    public String inputSource = "";
     // The anvil orders are named at. Not a container: never a box, never indexed. Stays until the user clears it
     public BlockPos anvilPos;
     // How the anvil came to be remembered: "set" (picked by hand), "found" (placed, found in the area) or "placed"
@@ -254,6 +263,27 @@ public class Stash {
         Box box = new Box(deliveryPos, new ArrayList<>(List.of(deliveryPos)));
         box.delivery = true;
         box.excluded = true;
+        boxes.add(box);
+        dirty = true;
+    }
+
+    /**
+     * Makes sure the input chest is among the boxes: the box flagged as one gives the position, else the saved
+     * position is made a box again. Like a drop-off it is emptied, never filed into.
+     */
+    public void ensureInput() {
+        for (Box b : boxes) {
+            if (b.input) {
+                b.dropOff = true;
+                inputPos = b.pos;
+                return;
+            }
+        }
+        if (inputPos == null) return;
+
+        Box box = new Box(inputPos, new ArrayList<>(List.of(inputPos)));
+        box.input = true;
+        box.dropOff = true;
         boxes.add(box);
         dirty = true;
     }
@@ -530,6 +560,7 @@ public class Stash {
             tag.putBoolean("excluded", box.excluded);
             tag.putBoolean("protectedStorage", box.protectedStorage);
             tag.putBoolean("dropOff", box.dropOff);
+            if (box.input) tag.putBoolean("input", true);
             if (box.lastRead > 0) tag.putLong("readAt", box.lastRead);
             tag.putString("observationSession", box.observationSession);
             tag.putString("observationDimension", box.observationDimension);
@@ -672,6 +703,8 @@ public class Stash {
         if (!areaDimension.isEmpty()) root.putString("areaDimension", areaDimension);
         if (directiveRev >= 0) root.putLong("directiveRev", directiveRev);
         if (deliveryPos != null) root.put("deliveryPos", positions(List.of(deliveryPos)));
+        if (inputPos != null) root.put("inputPos", positions(List.of(inputPos)));
+        if (inputPos != null && !inputSource.isEmpty()) root.putString("inputSource", inputSource);
         if (anvilPos != null) root.put("anvilPos", positions(List.of(anvilPos)));
         if (anvilPos != null && !anvilSource.isEmpty()) root.putString("anvilSource", anvilSource);
         if (craftingTablePos != null) root.put("craftingTablePos", positions(List.of(craftingTablePos)));
@@ -821,6 +854,12 @@ public class Stash {
                 List<BlockPos> at = readPositions(dp);
                 if (!at.isEmpty()) stash.deliveryPos = at.getFirst();
             }
+            if (root.get("inputPos") instanceof ListTag ip) {
+                List<BlockPos> at = readPositions(ip);
+                if (!at.isEmpty()) stash.inputPos = at.getFirst();
+            }
+            String inputSource = string(root.get("inputSource"));
+            if (inputSource != null && stash.inputPos != null) stash.inputSource = inputSource;
             if (root.get("anvilPos") instanceof ListTag ap) {
                 List<BlockPos> at = readPositions(ap);
                 if (!at.isEmpty()) stash.anvilPos = at.getFirst();
@@ -919,6 +958,7 @@ public class Stash {
             ListTag list = (ListTag) root.get("boxes");
             if (list == null) {
                 stash.ensureDelivery();
+                stash.ensureInput();
                 return stash;
             }
 
@@ -932,6 +972,8 @@ public class Stash {
                     Box box = new Box(parts.getFirst(), parts);
                     box.excluded = flag(tag, "excluded");
                     box.dropOff = flag(tag, "dropOff");
+                    box.input = flag(tag, "input");
+                    if (box.input) box.dropOff = true;
                     box.protectedStorage = flag(tag, "protectedStorage");
                     // Saved before read times existed: no tag, which counts as read long ago
                     box.lastRead = longNumber(tag.get("readAt"));
@@ -1004,6 +1046,7 @@ public class Stash {
         if (errors[0]) backUp(path, "Stash file had errors", ".bak-");
 
         stash.ensureDelivery();
+        stash.ensureInput();
         return stash;
     }
 

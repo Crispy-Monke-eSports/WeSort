@@ -12,12 +12,17 @@ import com.porter.wesort.craft.AnvilFinder.Source;
 import com.porter.wesort.craft.AnvilFinder.Step;
 import com.porter.wesort.stash.Order;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class AnvilFinderTest {
     /** A world with these placed anvils, a stash with or without an anvil item. */
     private static AnvilFinder.World world(Set<Pos> anvils, Pos found, boolean stock) {
+        return world(anvils, found, stock, false);
+    }
+
+    private static AnvilFinder.World world(Set<Pos> anvils, Pos found, boolean stock, boolean craftable) {
         return new AnvilFinder.World() {
             @Override
             public boolean isAnvil(Pos p) {
@@ -32,6 +37,11 @@ class AnvilFinderTest {
             @Override
             public boolean stockHasAnvil() {
                 return stock;
+            }
+
+            @Override
+            public boolean craftableAnvil() {
+                return craftable;
             }
         };
     }
@@ -61,6 +71,39 @@ class AnvilFinderTest {
         Decision d = AnvilFinder.decide(null, world(Set.of(), null, true));
         assertEquals(Step.PLACE_FROM_STOCK, d.step());
         assertEquals(Source.PLACED, d.source());
+    }
+
+    @Test
+    void craftsFromIronWhenTheStashHasNoAnvil() {
+        Decision d = AnvilFinder.decide(null, world(Set.of(), null, false, true));
+        assertEquals(Step.CRAFT, d.step());
+    }
+
+    @Test
+    void placesFromStockBeforeCrafting() {
+        Decision d = AnvilFinder.decide(null, world(Set.of(), null, true, true));
+        assertEquals(Step.PLACE_FROM_STOCK, d.step());
+    }
+
+    @Test
+    void craftableNeedsThreeBlocksAndFourIngots() {
+        Recipes r = Recipes.load("26.3");
+        assertTrue(r != null, "26.3");
+        Map<String, Long> full = Map.of("minecraft:iron_block", 3L, "minecraft:iron_ingot", 4L);
+        assertTrue(AnvilFinder.craftable(r, full, Set.of()));
+        assertFalse(AnvilFinder.craftable(r, Map.of("minecraft:iron_block", 2L, "minecraft:iron_ingot", 4L), Set.of()));
+        assertFalse(AnvilFinder.craftable(r, Map.of("minecraft:iron_block", 3L, "minecraft:iron_ingot", 3L), Set.of()));
+        assertFalse(AnvilFinder.craftable(r, Map.of("minecraft:cobblestone", 64L), Set.of()));
+        assertFalse(AnvilFinder.craftable(r, full, Set.of("minecraft:iron_block")));
+        assertFalse(AnvilFinder.craftable(null, full, Set.of()));
+    }
+
+    @Test
+    void craftsAReplacementWhenTheRememberedAnvilIsGone() {
+        Pos old = new Pos(1, 64, 1);
+        Decision d = AnvilFinder.decide(new Memory(old, Source.PLACED), world(Set.of(), null, false, true));
+        assertTrue(d.forget());
+        assertEquals(Step.CRAFT, d.step());
     }
 
     @Test

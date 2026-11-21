@@ -496,6 +496,10 @@ class HierarchyHarness(stock.StockHarness):
             if self.order_lifecycle or self.approval:
                 if self.scoped_agent:
                     self.require_scoped_agent()
+                # The physical mutation check stopped the agent. Restart it with the
+                # currently issued key (the shared key is invalid in scoped-only mode)
+                # before asserting that a Manager pause reaches its live heartbeat.
+                self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key)
                 self.verify_order_lifecycle(detail)
                 if self.scoped_agent:
                     self.verify_fleet_sessions()

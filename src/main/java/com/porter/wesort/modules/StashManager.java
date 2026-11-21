@@ -576,7 +576,7 @@ public class StashManager extends Module {
 
         if (needIndex || !id.equals(lastPushed)) {
             lastHeartbeat = now;
-            send(base, "/api/v1/index", scopedBody(built.json()), key, (code, body) -> {
+            send(base, "/api/v1/index", built.json(), key, (code, body) -> {
                 if (com.porter.wesort.compat.ObservationRuntime.reply(code, body)) {
                     StashSorter sorter = WeSortAddon.sorter();
                     int count = sorter == null ? -1 : sorter.rescan();
@@ -598,7 +598,7 @@ public class StashManager extends Module {
             send(
                     base,
                     "/api/v1/heartbeat",
-                    scopedBody(StashIndex.heartbeat(
+                    StashIndex.heartbeat(
                             built,
                             deliveryPos(),
                             orderBlocker(),
@@ -609,7 +609,7 @@ public class StashManager extends Module {
                             anvilSource(),
                             deliveryStorage(),
                             tableSource(),
-                            deliveryHash)),
+                            deliveryHash),
                     key,
                     (code, body) -> {
                         if (code != 200) return false;
@@ -1619,14 +1619,6 @@ public class StashManager extends Module {
                 "reportId",
                 com.porter.wesort.data.ContainerIdentity.hash(com.porter.wesort.data.CanonicalJson.stringify(report)));
         return bytes(report);
-    }
-
-    /** Attach the live player's UUID to index/heartbeat JSON before signing. The
-     * immutable index itself deliberately has no per-connection identity; the
-     * server's scoped key guard must see it in every signed request. */
-    private byte[] scopedBody(byte[] payload) {
-        return bytes(JsonParser.parseString(new String(payload, StandardCharsets.UTF_8))
-                .getAsJsonObject());
     }
 
     private byte[] bytes(JsonObject o) {

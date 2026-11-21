@@ -8,7 +8,6 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.UUID;
 import java.util.regex.Pattern;
 
 /**
@@ -408,12 +407,7 @@ final class Router implements HttpHandler {
             if (named) {
                 int scope = agentScope(ex, path, credential);
                 if (scope != 200) {
-                    Http.error(
-                            ex,
-                            scope,
-                            scope == 409
-                                    ? "API key slot is held by another player, or not bound to a player yet"
-                                    : "Agent slot does not authorize this request");
+                    Http.error(ex, scope, "Agent key does not authorize this bot session");
                     return false;
                 }
             }
@@ -439,80 +433,52 @@ final class Router implements HttpHandler {
     }
 
     /**
-     * Whether a signed bot request may run: the key slot must be valid, must name itself, and
-     * exactly one player may hold the slot at a time. Returns 200, 403 or 409 (slot held by
-     * another player, or not bound to a player yet for session calls).
+     * Authentication was already established by the HMAC signing key. Neither a
+     * Minecraft UUID nor a username may restrict that key. botId must still match
+     * the signed slot for session isolation; physical/warehouse routes retain
+     * their own validation and safety gates.
      */
     private int agentScope(HttpExchange ex, String path, AgentCredentials.Slot slot) throws IOException {
-        if (path.equals("/api/v1/bot/next") && ex.getRequestMethod().equals("GET")) {
-            if (!slot.id().equals(Http.query(ex).get("botId"))) return 403;
-            return slot.bound() ? 200 : 409;
-        }
+        if (path.equals("/api/v1/bot/next") && ex.getRequestMethod().equals("GET"))
+            return slot.id().equals(Http.query(ex).get("botId")) ? 200 : 403;
         var request = AddonRoutes.readJson(ex);
         if (request == null || !request.isJsonObject()) return 403;
         var body = request.getAsJsonObject();
-        String player = AddonRoutes.string(body, "player");
-        String agent = AddonRoutes.string(body, "agent");
         return switch (path) {
-            case "/api/v1/index", "/api/v1/heartbeat" -> bindOrCheck(slot, agent, player);
-            // Delivery reports carry no identity of their own: they only run on a bound slot.
-            case "/api/v1/delivery" -> slot.bound() ? 200 : 409;
-            case "/api/v1/orders/claim", "/api/v1/boxes/agent", "/api/v1/custody/agent", "/api/v1/deposits/agent" ->
-                bindOrCheck(slot, agent, player);
-            case "/api/v1/automation" -> bindOrCheck(slot, agent, player);
-            case "/api/v1/jobs/agent" -> bindOrCheck(slot, agent, player);
-            case "/api/v1/handoffs/agent" -> bindOrCheck(slot, agent, player);
+            case "/api/v1/index", "/api/v1/heartbeat" -> {
+                agentCredentials.notePlayer(slot.id(), AddonRoutes.string(body, "player"));
+                yield 200;
+            }
+            case "/api/v1/delivery",
+                    "/api/v1/orders/claim",
+                    "/api/v1/boxes/agent",
+                    "/api/v1/custody/agent",
+                    "/api/v1/deposits/agent",
+                    "/api/v1/automation",
+                    "/api/v1/jobs/agent",
+                    "/api/v1/handoffs/agent" -> 200;
             case "/api/v1/physical/agent" -> {
                 var record = object(body, "record");
-                var context = record == null ? null : object(record, "context");
-                if (context == null) yield 403;
-                yield bindOrCheck(slot, AddonRoutes.string(context, "agent"), AddonRoutes.string(context, "player"));
+                yield record != null && object(record, "context") != null ? 200 : 403;
             }
             case "/api/v1/bot/hello" -> {
-                var binding = object(body, "manifestScope");
-                if (binding != null && !slot.id().equals(AddonRoutes.string(body, "botId"))) yield 403;
-                String scopeAgent = binding == null ? agent : AddonRoutes.string(binding, "agent");
-                String scopePlayer = binding == null ? player : AddonRoutes.string(binding, "player");
-                yield bindOrCheck(slot, scopeAgent, scopePlayer);
+                if (!slot.id().equals(AddonRoutes.string(body, "botId"))) yield 403;
+                agentCredentials.notePlayer(slot.id(), AddonRoutes.string(body, "player"));
+                yield 200;
             }
             case "/api/v1/bot/state",
                     "/api/v1/bot/next",
                     "/api/v1/bot/results",
                     "/api/v1/bot/activity",
                     "/api/v1/bot/manifest",
-                    "/api/v1/bot/manifest/ack" -> {
-                if (!slot.id().equals(AddonRoutes.string(body, "botId"))) yield 403;
-                yield slot.bound() ? 200 : 409;
-            }
+                    "/api/v1/bot/manifest/ack" ->
+                slot.id().equals(AddonRoutes.string(body, "botId")) ? 200 : 403;
             default -> {
                 var match = SCOPED_ORDER_STATUS.matcher(path);
-                if (!match.matches()) yield 403;
-                var where = orderStore.stashOf(match.group(1));
-                if (where == null) yield 403;
-                yield bindOrCheck(slot, agent, player);
+                if (!match.matches() || orderStore.stashOf(match.group(1)) == null) yield 403;
+                yield 200;
             }
         };
-    }
-
-    /**
-     * Binds the slot to the player UUID, or checks the live binding. 403 when the identity is
-     * missing or malformed, 409 when another player holds the slot. A refused claim never extends
-     * the live binding.
-     */
-    private int bindOrCheck(AgentCredentials.Slot slot, String agentUuid, String playerName) throws IOException {
-        if (agentUuid == null) return 403;
-        try {
-            UUID.fromString(agentUuid);
-        } catch (IllegalArgumentException bad) {
-            return 403;
-        }
-        String name = playerName == null || playerName.isBlank() ? "player" : playerName;
-        try {
-            var touch = agentCredentials.touch(slot.id(), agentUuid, name);
-            return touch == AgentCredentials.Touch.CONFLICT ? 409 : 200;
-        } catch (IllegalArgumentException bad) {
-            return 403;
-        }
     }
 
     private static final Pattern SCOPED_ORDER_STATUS = Pattern.compile("^/api/v1/orders/(o-[0-9a-f]{12})/status$");

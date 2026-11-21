@@ -64,7 +64,7 @@ final class BrowserRoutes {
 
     private static final Pattern AGENT_REVOKE = Pattern.compile("^/api/v1/agents/([A-Za-z0-9_-]{1,64})/revoke$");
 
-    /** GET /api/v1/agents (owner): every key slot with its label, live binding and activity. */
+    /** GET /api/v1/agents (owner): key slots with recent display-only player activity. */
     private void listAgents(HttpExchange ex) throws IOException {
         JsonArray slots = new JsonArray();
         for (AgentCredentials.Slot slot : credentials.all()) {
@@ -72,7 +72,8 @@ final class BrowserRoutes {
             row.addProperty("id", slot.id());
             row.addProperty("label", slot.label());
             row.addProperty("active", slot.active());
-            if (slot.binding() != null) {
+            if (slot.binding() != null
+                    && System.currentTimeMillis() - slot.binding().lastSeen() <= BotHub.ONLINE_MS) {
                 JsonObject binding = new JsonObject();
                 binding.addProperty("name", slot.binding().playerName());
                 binding.addProperty("seen", slot.binding().lastSeen());

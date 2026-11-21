@@ -26,11 +26,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * P0: the agent trust boundary. A key slot carries no server, stash or player binding: any
- * player may connect with it, but only one player at a time. The Manager still verifies,
- * separately, the connected Minecraft server (409 on mismatch, fail-closed 400 before setup),
- * the signed agent identity, and that the stash is authoritatively defined (404 otherwise).
- * Forged servers, stashes, players and work contexts are refused.
+ * The named API key's signature alone grants agent access. Minecraft name/UUID
+ * are optional presence information. Server, stash, bot session, key revocation
+ * and physical safety policies remain separately enforced.
  */
 class AgentScopeTest {
     static final String OWNER_PW = "owner-password-123";
@@ -45,7 +43,7 @@ class AgentScopeTest {
     String agentA;
     byte[] agentKeyA;
     AgentCredentials credentials;
-    /** The stable Minecraft player UUID used for the bound slot. */
+    /** Example Minecraft UUID, never an authorization identity. */
     static final String PLAYER_A = "11111111-2222-4333-8444-555555555555";
 
     static final String PLAYER_B = "66666666-7777-4888-8999-000000000000";
@@ -309,58 +307,42 @@ class AgentScopeTest {
     }
 
     @Test
-    void namedAgentIdentityBindsOnePlayerAtATime() throws Exception {
+    void signedKeyWorksForDifferentPlayersAndReportsTheirNames() throws Exception {
         String owner = login(null, OWNER_PW);
         setServer(owner, "s");
         defineStash(owner, "a");
         defineStash(owner, "b");
-        // Any player may connect with the key, with any username: the first one binds the slot.
-        assertEquals(
-                200,
-                agentPost(
-                                agentA,
-                                agentKeyA,
-                                "/api/v1/heartbeat",
-                                heartbeat("s", "a").replace("Bot", "Eve"))
-                        .status);
-        // A different player on the same key is refused while the claim is live: 409, not 403.
-        assertEquals(409, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat("s", "a", PLAYER_B)).status);
-        // Claim and work calls bind the same way: a foreign agent on a bound slot is refused.
-        assertEquals(
-                409,
-                agentPost(
-                                agentA,
-                                agentKeyA,
-                                "/api/v1/orders/claim",
-                                "{\"server\":\"s\",\"stash\":\"a\",\"player\":\"Bot\",\"agent\":\"" + UUID.randomUUID()
-                                        + "\"}")
-                        .status);
-        // A forged server is refused even for a signed agent: 409.
+        assertEquals(200, agentPost(agentA, agentKeyA, "/api/v1/heartbeat",
+                heartbeat("s", "a", PLAYER_A).replace("Bot", "Eve")).status);
+        assertEquals("Eve", credentials.find(agentA).binding().playerName());
+        assertEquals(200, agentPost(agentA, agentKeyA, "/api/v1/heartbeat",
+                heartbeat("s", "a", PLAYER_B).replace("Bot", "OtherBot")).status);
+        assertEquals("OtherBot", credentials.find(agentA).binding().playerName());
+        JsonObject claim = new JsonObject();
+        claim.addProperty("server", "s");
+        claim.addProperty("stash", "a");
+        claim.addProperty("player", "OtherBot");
+        claim.addProperty("agent", PLAYER_B);
+        assertEquals(204, agentPost(agentA, agentKeyA, "/api/v1/orders/claim", claim.toString()).status);
         assertEquals(409, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat("evil", "a")).status);
-        // Every bound bot may work in every defined stash: agent A heartbeats "b" successfully.
-        // No ownership, no per-stash confinement.
+        assertEquals(404, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat("s", "missing")).status);
         assertEquals(200, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat("s", "b")).status);
-        assertEquals(200, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat("s", "a")).status);
-        // Session calls name the slot id: a foreign key id is refused even when signed correctly.
-        assertEquals(
-                403,
-                agentPost(
-                                agentA,
-                                agentKeyA,
-                                "/api/v1/bot/state",
-                                "{\"botId\":\"00000000-0000-4000-8000-000000000000\",\"controlSession\":\""
-                                        + "1".repeat(64) + "\"}")
-                        .status);
+        JsonObject foreignSession = new JsonObject();
+        foreignSession.addProperty("botId", "00000000-0000-4000-8000-000000000000");
+        foreignSession.addProperty("controlSession", "1".repeat(64));
+        assertEquals(403, agentPost(agentA, agentKeyA, "/api/v1/bot/state", foreignSession.toString()).status);
     }
 
     @Test
-    void namedAgentCallsRequireAnIdentity() throws Exception {
+    void signedKeyDoesNotRequireMinecraftIdentity() throws Exception {
         String owner = login(null, OWNER_PW);
         setServer(owner, "s");
         defineStash(owner, "a");
-        // A signed call without any player identity is refused, never silently accepted.
-        assertEquals(
-                403, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", "{\"server\":\"s\",\"stash\":\"a\"}").status);
+        JsonObject heartbeat = new JsonObject();
+        heartbeat.addProperty("server", "s");
+        heartbeat.addProperty("stash", "a");
+        assertEquals(200, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat.toString()).status);
+        assertEquals(null, credentials.find(agentA).binding());
     }
 
     @Test
@@ -401,7 +383,7 @@ class AgentScopeTest {
                         && stashes.size() == 1
                         && stashes.get(0).getAsString().equals("a"),
                 "bootstrap hello announces defined stash names: " + ok.body);
-        // The bootstrap binds the slot: session calls now work with the key id.
+        // The bootstrap registers a key-id bot session with no player restriction.
         // POST /bot/next answers immediately (GET long-polls); the session must match hello.
         assertEquals(
                 200,
@@ -421,7 +403,7 @@ class AgentScopeTest {
                                 "{\"botId\":\"00000000-0000-4000-8000-000000000000\",\"controlSession\":\""
                                         + "1".repeat(64) + "\"}")
                         .status);
-        // An unbound slot is refused on session calls (409), without ever reaching a handler.
+        // A valid unused key still cannot poll an unregistered bot session (409).
         String freshToken = credentials.issue("spare");
         String freshId = freshToken.substring(0, freshToken.indexOf('.'));
         byte[] freshKey = Signer.deriveKey(freshToken.substring(freshToken.indexOf('.') + 1));

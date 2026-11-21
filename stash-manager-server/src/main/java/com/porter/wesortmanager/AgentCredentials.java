@@ -19,34 +19,21 @@ import java.util.function.LongSupplier;
  * Installation-local API key slots for Minecraft agents.
  *
  * <p>A slot is an unbound connection place, not an identity: it carries no Minecraft server,
- * stash or player binding. Any player may connect with a slot's key, but only one player at a
- * time. The first player to use the key claims the slot; a different player is refused while the
- * claim is live. The Manager is the source of truth for server, stash and work; the key only
- * proves the connection is allowed.
+ * stash or player restriction. A valid signing key authorizes any player, independent
+ * of username and UUID. The last reported username is non-authoritative display data.
+ * Manager still enforces server, stash, session, revocation and physical safety guards.
  */
 final class AgentCredentials {
     private static final SecureRandom RANDOM = new SecureRandom();
     static final int MAX_ACTIVE_SLOTS = 5;
     private static final int MAX_ENTRIES = 64;
-    /** A live player claim holds the slot this long without any signed request. */
-    static final long BIND_WINDOW_MS = 120_000;
-
     private final Path file;
     private final LongSupplier clock;
     private final Map<String, Slot> entries = new TreeMap<>();
     private boolean scopedOnly;
 
-    /** The player currently holding a slot, with when it was last seen. */
-    record Binding(String playerUuid, String playerName, long lastSeen) {
-        Binding {
-            if (playerUuid == null
-                    || !playerUuid.equals(UUID.fromString(playerUuid).toString())
-                    || playerName == null
-                    || !playerName.matches("[A-Za-z0-9_]{1,16}")) {
-                throw new IllegalArgumentException("Invalid player binding");
-            }
-        }
-    }
+    /** Latest signed request\u0027s reported player; not a security identity. */
+    record Binding(String playerName, long lastSeen) {}
 
     record Slot(String id, String label, String signingKey, Binding binding) {
         Slot {
@@ -58,10 +45,6 @@ final class AgentCredentials {
 
         boolean active() {
             return signingKey != null;
-        }
-
-        boolean bound() {
-            return binding != null;
         }
 
         Slot withKey(String key) {
@@ -78,18 +61,11 @@ final class AgentCredentials {
         }
     }
 
-    /** The outcome of claiming (or re-checking) a slot for a player. */
-    enum Touch {
-        BOUND,
-        REBOUND,
-        CONFLICT
-    }
-
     AgentCredentials(Path data) throws IOException {
         this(data, System::currentTimeMillis);
     }
 
-    /** Test-only clock: bindings expire against it, so rebinding is testable without sleeping. */
+    /** Test-only clock for display-only presence timestamps. */
     AgentCredentials(Path data, LongSupplier clock) throws IOException {
         file = data.resolve("agent-credentials.json");
         this.clock = clock;
@@ -150,22 +126,14 @@ final class AgentCredentials {
     }
 
     /**
-     * Claims the slot for a player, or checks the live claim. {@link Touch#CONFLICT} when another
-     * player holds the slot; the failed claim never extends the live one. A persisted bind/rebind
-     * is saved; a same-player refresh only touches memory.
+     * Remember only the last reported username for Manager's UI. An invalid or absent
+     * name is ignored, never denied. This is transient presence, not a key claim.
      */
-    synchronized Touch touch(String id, String playerUuid, String playerName) throws IOException {
-        var saved = entries.get(id);
-        if (saved == null || !saved.active()) throw new IllegalArgumentException("No active agent credential");
-        var current = saved.binding();
-        long now = clock.getAsLong();
-        if (current != null && !current.playerUuid().equals(playerUuid) && now - current.lastSeen() < BIND_WINDOW_MS) {
-            return Touch.CONFLICT;
-        }
-        boolean changed = current == null || !current.playerUuid().equals(playerUuid);
-        entries.put(id, saved.withBinding(new Binding(playerUuid, playerName, now)));
-        if (changed) save(scopedOnly);
-        return changed ? (current == null ? Touch.BOUND : Touch.REBOUND) : Touch.BOUND;
+    synchronized void notePlayer(String id, String name) {
+        if (name == null || !name.matches("[A-Za-z0-9_]{1,16}")) return;
+        var slot = entries.get(id);
+        if (slot == null || !slot.active()) return;
+        entries.put(id, slot.withBinding(new Binding(name, clock.getAsLong())));
     }
 
     synchronized boolean revoke(String id) throws IOException {
@@ -191,13 +159,6 @@ final class AgentCredentials {
             var row = new JsonObject();
             row.addProperty("id", entry.id());
             row.addProperty("label", entry.label());
-            if (entry.binding() != null) {
-                var binding = new JsonObject();
-                binding.addProperty("uuid", entry.binding().playerUuid());
-                binding.addProperty("name", entry.binding().playerName());
-                binding.addProperty("seen", entry.binding().lastSeen());
-                row.add("binding", binding);
-            }
             row.addProperty("key", entry.signingKey());
             slots.add(row);
         }
@@ -240,13 +201,8 @@ final class AgentCredentials {
     }
 
     private static Slot readSlot(JsonObject row) {
-        Binding binding = null;
-        if (row.has("binding") && row.get("binding").isJsonObject()) {
-            var b = row.getAsJsonObject("binding");
-            binding = new Binding(
-                    field(b, "uuid"), field(b, "name"), b.get("seen").getAsLong());
-        }
-        return new Slot(field(row, "id"), field(row, "label"), null, binding);
+        // Discard old persisted UUID/player claims; only live, signed requests set presence.
+        return new Slot(field(row, "id"), field(row, "label"), null, null);
     }
 
     static boolean validLabel(String label) {

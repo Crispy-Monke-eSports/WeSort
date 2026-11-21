@@ -854,8 +854,8 @@ function ApiKeysSection() {
   return (
     <Stack spacing={1.5}>
       <Typography color="text.secondary">
-        Key slots are unbound connection places: any player may connect with a key, but only one player at a time.
-        The Manager assigns the stash and work — the key carries no bindings. A new key is shown once.
+        The API key authorizes the agent, independently of Minecraft username or UUID.
+        The last reported player name is only presence information. A new key is shown once.
       </Typography>
       {msg && <Alert severity="info" onClose={() => setMsg("")}>{msg}</Alert>}
       {freshKey && (
@@ -880,7 +880,7 @@ function ApiKeysSection() {
                 {!s.active && <Chip size="small" label="revoked" sx={{ ml: 1 }} />}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                {s.bound ? `held by ${s.bound.name} (last seen ${new Date(s.bound.seen).toLocaleString()})` : "unbound — no player connected yet"}
+                {s.bound ? `player: ${s.bound.name} (seen ${new Date(s.bound.seen).toLocaleString()})` : "no active player reported"}
               </Typography>
             </Stack>
             {s.active && <Button variant="outlined" color="error" onClick={() => revoke(s)}>Revoke</Button>}

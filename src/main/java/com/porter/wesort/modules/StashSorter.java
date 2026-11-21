@@ -2244,15 +2244,19 @@ public class StashSorter extends Module {
 
     @EventHandler
     private void onTick(TickEvent.Pre event) {
+        // Reconcile the *reported* physical operation even if the durable journal
+        // has already fenced input. The permission gate below must never prevent
+        // an in-flight repack from recording NEEDS_RECONCILIATION.
+        if (repackWork != null && !repackWork.terminal()) {
+            if (InventorySync.failed())
+                blockRepack("Physical readback failed: " + InventorySync.reason());
+            else if (repackWork.expired(System.nanoTime()))
+                blockRepack("Physical phase deadline expired");
+        }
         if (!sortingPermitted()) {
             step("sorting paused: Manager must exclude reservations before physical moves.");
             ledgeGuard(false);
             return;
-        }
-        if (repackWork != null
-                && !repackWork.terminal()
-                && (InventorySync.failed() || repackWork.expired(System.nanoTime()))) {
-            blockRepack("Physical readback failed or phase deadline expired");
         }
         if (repackWork != null
                 && repackWork.phase() == com.porter.wesort.inventory.PhysicalWork.Phase.NEEDS_RECONCILIATION) {

@@ -79,7 +79,7 @@ public final class PhysicalJournalRuntime {
     }
 
     private static JsonObject context() {
-        var sorter = Modules.get().get(StashSorter.class);
+        var sorter = com.porter.wesort.WeSortAddon.sorter();
         if (sorter != null) return sorter.physicalJournalContext();
         var out = new JsonObject();
         out.addProperty("server", Stash.currentServer());
@@ -170,7 +170,7 @@ public final class PhysicalJournalRuntime {
                     return;
                 }
                 inspectedSource = frame.deepCopy();
-                var sorter = Modules.get().get(StashSorter.class);
+                var sorter = com.porter.wesort.WeSortAddon.sorter();
                 if (sorter != null) sorter.capturePhysicalInspection(InventorySync.inspectionSource());
                 // Empty cursor was proved by the original postcondition; closing a storage menu moves no items.
                 mc.player.closeContainer();

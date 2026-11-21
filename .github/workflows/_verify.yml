@@ -136,7 +136,8 @@ jobs:
       - run: npm test --prefix web-tests
 
   manager-image:
-    needs: manager
+    # Built from source inside Docker (frontend + Gradle stages), so no
+    # artifact from the manager job is needed: start with the rest.
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
@@ -171,7 +172,10 @@ jobs:
           if-no-files-found: error
 
   docker:
-    needs: [manager-image, web]
+    # Needs the exact image the manager-image job exported (load-manager-image
+    # downloads its artifact), so this is the only ordering left. web no longer
+    # blocks it: every job still gates E2E through the reusable workflow result.
+    needs: manager-image
     runs-on: ubuntu-26.04
     timeout-minutes: 35
     steps:

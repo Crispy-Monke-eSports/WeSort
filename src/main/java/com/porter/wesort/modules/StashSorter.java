@@ -3820,7 +3820,7 @@ public class StashSorter extends Module {
         if (!sortItems.get()) return false;
         var manager =
                 meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
-        return isActive() || manager != null && manager.sortingEnabled();
+        return isActive() || manager != null && manager.sortingEnabled() && !manager.takingOrders();
     }
 
     public boolean requiresSortingPermit() {

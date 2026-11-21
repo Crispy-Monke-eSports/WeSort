@@ -137,9 +137,12 @@ jobs:
 
   manager-image:
     # Built from source inside Docker (frontend + Gradle stages), so no
-    # artifact from the manager job is needed: start with the rest.
+    # artifact from the manager job is needed: starts with the rest.
+    # Also runs the Docker smoke test on the image it just built, so the
+    # former docker job's artifact dependency is internal and all verify
+    # jobs start simultaneously after the format gate.
     runs-on: ubuntu-26.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
@@ -170,19 +173,6 @@ jobs:
           retention-days: 7
           overwrite: true
           if-no-files-found: error
-
-  docker:
-    # Needs the exact image the manager-image job exported (load-manager-image
-    # downloads its artifact), so this is the only ordering left. web no longer
-    # blocks it: every job still gates E2E through the reusable workflow result.
-    needs: manager-image
-    runs-on: ubuntu-26.04
-    timeout-minutes: 35
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/load-manager-image
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: '26'

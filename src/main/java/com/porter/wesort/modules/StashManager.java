@@ -254,7 +254,7 @@ public class StashManager extends Module {
     public StashManager() {
         super(
                 WeSortAddon.CATEGORY,
-                "WeSort Agent",
+                "WeSort-Agent",
                 "WeSort Manager agent. Configure only the Manager address, port and API key here; manage warehouse jobs, scans, sorting and all other settings in the Manager web UI.");
     }
 

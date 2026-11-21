@@ -251,7 +251,9 @@ class HierarchyHarness(stock.StockHarness):
             nonlocal agent_route, schema
             status, bots = self.http('/api/v1/bots')
             require(status == 200, 'Owner could not list agents')
-            agent = next((bot for bot in bots if bot.get('player') == self.player), None)
+            # Bot ids follow the API key now, so a re-keyed agent leaves a stale
+            # offline entry behind: only the live one can take the settings job.
+            agent = next((bot for bot in bots if bot.get('player') == self.player and bot.get('online')), None)
             if agent is None:
                 return False
             agent_route = '/api/v1/bots/' + agent['botId']

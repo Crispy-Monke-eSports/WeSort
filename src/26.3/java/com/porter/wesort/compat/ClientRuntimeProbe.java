@@ -1,6 +1,5 @@
 package com.porter.wesort.compat;
 
-import baritone.api.BaritoneAPI;
 import com.google.gson.GsonBuilder;
 import com.porter.wesort.modules.StashManager;
 import com.porter.wesort.modules.StashSorter;

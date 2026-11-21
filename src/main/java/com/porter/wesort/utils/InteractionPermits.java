@@ -77,6 +77,13 @@ public final class InteractionPermits {
         return p == null || now >= p.expiresAt() ? null : p.job();
     }
 
+    /** The expected block of the live permit, or null when there is none (for deny audit). */
+    public String expected(long now, long pos, Operation op) {
+        prune(now);
+        Permit p = permits.get(new Key(pos, op));
+        return p == null || now >= p.expiresAt() ? null : p.expectedBlock();
+    }
+
     public int live(long now) {
         prune(now);
         return permits.size();

@@ -207,6 +207,8 @@ public final class WorldInteractionGuard {
         // the original block can finish it; neither path authorizes a new target.
         boolean permittedStandingBlock =
                 block.endsWith("_shulker_box") && PERMITS.allows(time, position.asLong(), Operation.BREAK, block, job);
+        boolean permitForPrevious = previous != null
+                && PERMITS.allows(time, position.asLong(), Operation.BREAK, previous.block(), job);
         boolean permittedPredictedBreak = previous != null
                 && previous.pos() == position.asLong()
                 && previous.job().equals(job)
@@ -214,21 +216,31 @@ public final class WorldInteractionGuard {
                 && time - previous.at() < PERMIT_TTL_MS
                 && previous.block().endsWith("_shulker_box")
                 && (block.equals(previous.block()) || block.equals("minecraft:air"))
-                && PERMITS.allows(time, position.asLong(), Operation.BREAK, previous.block(), job);
+                && permitForPrevious;
         boolean allowed = safeBlock(position) && (permittedStandingBlock || permittedPredictedBreak);
         if (!allowed) {
             denied("break-stop-no-authorized-start");
             if (BREAK_STOP_TRACE.incrementAndGet() <= 4)
                 meteordevelopment.meteorclient.MeteorClient.LOG.warn(
-                        "WeSort break stop denied at {} live {} previous {} holder {} job {} blocked {}",
+                        "WeSort break stop denied at {} live {} previous {} permitExpected {} permitForPrevious {}"
+                                + " jobMatch {} fresh {} holder {} job {} blocked {}",
                         position.toShortString(),
                         block,
                         previous,
+                        breakPermitExpected(position),
+                        permitForPrevious,
+                        previous != null && previous.job().equals(job),
+                        previous != null && time >= previous.at() && time - previous.at() < PERMIT_TTL_MS,
                         PERMITS.jobOf(time, position.asLong(), Operation.BREAK),
                         job,
                         PhysicalJournalRuntime.blocked());
         }
         return allowed;
+    }
+
+    /** Expected block of the live BREAK permit for diagnostics (null when there is none). */
+    static String breakPermitExpected(BlockPos position) {
+        return PERMITS.expected(now(), position.asLong(), Operation.BREAK);
     }
 
     /**

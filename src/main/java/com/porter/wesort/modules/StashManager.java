@@ -1625,7 +1625,8 @@ public class StashManager extends Module {
      * immutable index itself deliberately has no per-connection identity; the
      * server's scoped key guard must see it in every signed request. */
     private byte[] scopedBody(byte[] payload) {
-        return bytes(JsonParser.parseString(new String(payload, StandardCharsets.UTF_8)).getAsJsonObject());
+        return bytes(JsonParser.parseString(new String(payload, StandardCharsets.UTF_8))
+                .getAsJsonObject());
     }
 
     private byte[] bytes(JsonObject o) {

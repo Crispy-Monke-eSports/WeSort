@@ -422,7 +422,7 @@ public class StashManager extends Module {
         long now = System.nanoTime();
         if (now < sortingPoll) return false;
         var sorter =
-                meteordevelopment.meteorclient.systems.modules.WeSortAddon.sorter();
+                WeSortAddon.sorter();
         boolean wants = isActive() && sorter != null && sorter.requiresSortingPermit();
         if (!wants && sortingToken == null) return false;
         if (!wants && (PhysicalJournalRuntime.awaitingMirror() || !InventorySync.ready() && !InventorySync.failed()))

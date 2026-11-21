@@ -52,7 +52,7 @@ public class StashManager extends Module {
     private final Setting<String> apiKey = sgGeneral.add(new StringSetting.Builder()
             .name("api-key")
             .description(
-                    "The agent API key from the Manager host's agent-key command. Keep it private: it is masked here, in the Connection screen and in logs. Prefer the Connection screen above.")
+                    "The agent API key from the Manager owner (web UI or agent-issue on the Manager host). Keep it private: it is masked here, in the Connection screen and in logs. Prefer the Connection screen above.")
             .defaultValue("")
             .renderer(com.porter.wesort.commands.MaskedRenderer.class)
             .visible(() -> false)
@@ -77,7 +77,7 @@ public class StashManager extends Module {
     private final Setting<Boolean> acceptOrders = sgGeneral.add(new BoolSetting.Builder()
             .name("accept-orders")
             .description(
-                    "Let the bot take orders from the web page: it builds shulkers from the stash and delivers them to the delivery container (wesort-stash-sorter pick: Delivery). wesort-stash-sorter does not need to be on: while this module is on it reads containers, takes orders and puts leftovers back by itself, using wesort-stash-sorter's settings (stash-name, area, safe-walk...), and never sorts. Needs a free inventory slot and enough empty shulkers. Loose items an order took out and did not deliver go back to the container they came from, or the nearest one with room when that is not known; shulkers it unpacked go back where they came from. To stop the bot, turn off accept-orders or wesort-stash-manager. Turning wesort-stash-sorter off hands control back to wesort-stash-manager while accept-orders is on.")
+                    "Let the bot take orders from the web page: it builds shulkers from the stash and delivers them to the delivery container (wesort-stash-sorter pick: Delivery). wesort-stash-sorter does not need to be on: while this module is on it reads containers, takes orders and puts leftovers back by itself, using the Manager-assigned stash and region, and never sorts. Needs a free inventory slot and enough empty shulkers. Loose items an order took out and did not deliver go back to the container they came from, or the nearest one with room when that is not known; shulkers it unpacked go back where they came from. To stop the bot, turn off accept-orders or wesort-stash-manager. Turning wesort-stash-sorter off hands control back to wesort-stash-manager while accept-orders is on.")
             .defaultValue(false)
             .visible(() -> false)
             .build());
@@ -532,7 +532,7 @@ public class StashManager extends Module {
             setStatus("no key");
             if (!warnedKey) {
                 warnedKey = true;
-                warning("No API key set. Retrieve it with agent-key on the Manager host and set it here.");
+                warning("No API key set. Ask the Manager owner for one and set it here.");
             }
             return;
         }
@@ -566,8 +566,10 @@ public class StashManager extends Module {
         // Orders come first: the server should hear how the bot is doing, and a claim is cheap
         if (orderStep(base, key, now)) return;
 
-        if (current == null) return;
+        // Control (hello/state/next) runs without a local stash too: a clean client adopts the
+        // Manager-assigned stash over this link instead of configuring one.
         if (serviceControl(base, key, now)) return;
+        if (current == null) return;
         StashIndex.Built built = current;
         String id = built.server() + "|" + built.stash() + "|" + built.hash();
         updateDelivery(now, built.player());
@@ -638,19 +640,26 @@ public class StashManager extends Module {
         if (base != null && !key.isEmpty() && now >= nextAttemptAt) serviceControl(base, key, now);
     }
 
-    private record ControlScope(URI manager, String server, String stash, String dimension, java.util.UUID player) {
+    private record ControlScope(
+            URI manager, String server, String stash, String dimension, java.util.UUID player, String keyId) {
+        /** The bot id is the API key id: the Manager binds the player, never the other way around. */
         String botId() {
-            return java.util
-                    .UUID
-                    .nameUUIDFromBytes((server + "\u0000" + player).getBytes(StandardCharsets.UTF_8))
-                    .toString();
+            return keyId;
         }
+    }
+
+    /** The API key id (before the dot): the only client identity the Manager knows. */
+    static String keyId(String key) {
+        int dot = key.indexOf('.');
+        return dot < 0 ? key : key.substring(0, dot);
     }
 
     private record PendingManifest(
             String order, String server, String stash, String dimension, int packages, String hash) {
         boolean matches(ControlScope scope) {
-            return server.equals(scope.server()) && stash.equals(scope.stash()) && dimension.equals(scope.dimension());
+            return server.equals(scope.server())
+                    && java.util.Objects.equals(stash, scope.stash())
+                    && dimension.equals(scope.dimension());
         }
 
         PendingManifest withHash(String value) {
@@ -659,8 +668,13 @@ public class StashManager extends Module {
     }
 
     private boolean serviceControl(URI base, String key, long now) {
-        var observed =
-                new ControlScope(base, current.server(), current.stash(), StashIndex.dimension(), mc.player.getUUID());
+        var observed = new ControlScope(
+                base,
+                current == null ? Stash.currentServer() : current.server(),
+                current == null ? null : current.stash(),
+                StashIndex.dimension(),
+                mc.player.getUUID(),
+                keyId(key));
         if (!observed.equals(controlScope)) {
             if (controlScope == null
                     || !observed.manager().equals(controlScope.manager())
@@ -679,14 +693,18 @@ public class StashManager extends Module {
         var request = new JsonObject();
         request.addProperty("botId", observed.botId());
         request.addProperty("controlSession", controlSession);
+        request.addProperty("agent", observed.player().toString());
         if (!controlRegistered) {
-            request.addProperty("player", current.player());
-            var binding = new JsonObject();
-            binding.addProperty("server", observed.server());
-            binding.addProperty("stash", observed.stash());
-            binding.addProperty("dimension", observed.dimension());
-            binding.addProperty("agent", observed.player().toString());
-            request.add("manifestScope", binding);
+            request.addProperty(
+                    "player", current == null ? mc.player.getName().getString() : current.player());
+            if (observed.stash() != null) {
+                var binding = new JsonObject();
+                binding.addProperty("server", observed.server());
+                binding.addProperty("stash", observed.stash());
+                binding.addProperty("dimension", observed.dimension());
+                binding.addProperty("agent", observed.player().toString());
+                request.add("manifestScope", binding);
+            }
             var plugin = new JsonObject();
             plugin.addProperty("id", "wesort");
             net.fabricmc.loader.api.FabricLoader.getInstance()
@@ -724,14 +742,19 @@ public class StashManager extends Module {
                                 controlRegistered = true;
                                 sentControlValues = null;
                             }
-                            // Clean client: adopt the first Manager-announced stash when no
-                            // local stash is configured, so .wesort-connect alone is enough.
+                            // Clean client: adopt the first Manager-announced stash and
+                            // materialize it locally, so .wesort-connect alone is enough. The
+                            // region itself arrives with the Manager directive on heartbeat.
                             if (hello.has("stashes") && hello.get("stashes").isJsonArray()) {
                                 for (var el : hello.getAsJsonArray("stashes")) {
                                     if (!el.isJsonPrimitive()
                                             || !el.getAsJsonPrimitive().isString()) continue;
                                     StashSorter sorter = WeSortAddon.sorter();
-                                    if (sorter != null && sorter.adoptAnnouncedStash(el.getAsString())) break;
+                                    if (sorter == null) break;
+                                    if (sorter.adoptAnnouncedStash(el.getAsString())) {
+                                        sorter.materializeAssignment();
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -898,6 +921,7 @@ public class StashManager extends Module {
                             || !observed.player().equals(mc.player.getUUID())
                             || !observed.server().equals(Stash.currentServer())
                             || current == null
+                            || observed.stash() == null
                             || !observed.stash().equals(current.stash())
                             || !observed.dimension().equals(StashIndex.dimension())) return false;
                     var poll = JsonParser.parseString(body).getAsJsonObject();
@@ -1611,7 +1635,10 @@ public class StashManager extends Module {
     private void scan() {
         Stash stash = null;
         StashSorter sorter = WeSortAddon.sorter();
-        if (sorter != null) stash = sorter.currentStash();
+        if (sorter != null) {
+            stash = sorter.currentStash();
+            if (stash == null) stash = sorter.materializeAssignment();
+        }
         if (stash == null) {
             current = null;
             setStatus("no stash");
@@ -1822,7 +1849,12 @@ public class StashManager extends Module {
                     backoff = backoff == 0 ? BACKOFF_MIN_MS : Math.min(BACKOFF_MAX_MS, backoff * 2);
                     nextAttemptAt = System.currentTimeMillis() + backoff;
                 }
-                setStatus(ok ? "online" : finalCode < 0 ? "offline" : "error " + finalCode);
+                String next;
+                if (ok) next = "online";
+                else if (finalCode < 0) next = "offline";
+                else if (finalCode == 409 && isKeyInUse(finalText)) next = "key in use";
+                else next = "error " + finalCode;
+                setStatus(next);
             });
         });
     }
@@ -1900,6 +1932,20 @@ public class StashManager extends Module {
         else
             WeSortAddon.LOG.error(
                     "wesort-stash-manager: request signing self-check FAILED: got {}, expected {}", got, expected);
+    }
+
+    /** The slot is held by another player: exactly one player may use an API key at a time. */
+    private static boolean isKeyInUse(String body) {
+        if (body == null) return false;
+        try {
+            JsonElement e = JsonParser.parseString(body);
+            if (!e.isJsonObject()) return false;
+            JsonObject o = e.getAsJsonObject();
+            if (!o.has("error") || !o.get("error").isJsonPrimitive()) return false;
+            return o.get("error").getAsString().startsWith("API key slot is held by another player");
+        } catch (RuntimeException ex) {
+            return false;
+        }
     }
 
     /** A "this Manager serves ..." refusal: the bot talks to the Manager of another Minecraft server. */

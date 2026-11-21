@@ -2,7 +2,6 @@
 """W-020: native 26.3 component/slot hierarchy, independent server snapshots and signed Docker persistence."""
 import argparse
 from concurrent.futures import ThreadPoolExecutor
-import hashlib
 import uuid
 import importlib.util
 import json
@@ -306,17 +305,18 @@ class HierarchyHarness(stock.StockHarness):
     def require_scoped_agent(self):
         state = self.command('state')['state']
         require(state['legacyMemberWindowClassPresent'] is False, 'Legacy member portal class must not be shipped in production')
-        scope = [state['playerUuid'], self.player, self.server_name, 'e2e-fixture']
+        # Key slots carry no bindings: any player may connect with a key, but only one at a time.
+        player = state['playerUuid']
         cli = self.compose + ['exec', '-T', 'manager', '/opt/wesort/entrypoint']
         endpoint = f'http://127.0.0.1:{self.manager_port}'
         shared = stock.signed.Client(endpoint, self.key)
-        old = stock.signed.Client(endpoint, self.run(cli + ['agent-issue', *scope]).strip())
-        self.key = self.run(cli + ['agent-issue', *scope, 'secondary-fixture']).strip()
+        old_token = self.run(cli + ['agent-issue', 'e2e-primary']).strip()
+        old = stock.signed.Client(endpoint, old_token)
+        self.key = self.run(cli + ['agent-issue', 'e2e-native']).strip()
         current = stock.signed.Client(endpoint, self.key)
-        foreign_id = str(uuid.uuid4())
-        foreign = stock.signed.Client(endpoint, self.run(cli + [
-            'agent-issue', foreign_id, 'OtherBot', self.server_name, 'other-stash'
-        ]).strip())
+        foreign_player = str(uuid.uuid4())
+        foreign_token = self.run(cli + ['agent-issue', 'e2e-foreign']).strip()
+        foreign = stock.signed.Client(endpoint, foreign_token)
         self.run(cli + ['agent-require-scoped'])
         # The stash-def gate is fail-closed: in-scope heartbeats for a second
         # stash need its definition (the owner session from start_manager persists).
@@ -327,27 +327,32 @@ class HierarchyHarness(stock.StockHarness):
                 'dimension': 'minecraft:overworld',
                 'pos1': {'x': -32, 'y': 40, 'z': -32}, 'pos2': {'x': 63, 'y': 90, 'z': 32}})
             require(status == 200, '%s stash def failed: %s' % (name, status))
-        heartbeat = {'server': self.server_name, 'stash': 'e2e-fixture', 'player': self.player}
+        heartbeat = {'server': self.server_name, 'stash': 'e2e-fixture', 'player': self.player, 'agent': player}
         require(shared.post('/api/v1/heartbeat', heartbeat)[0] == 401, 'Shared credential survived scoped-only activation')
-        require(old.post('/api/v1/heartbeat', heartbeat)[0] == 401, 'Rotated credential could still act')
+        # Rotation is revoke + reissue: a revoked key stops authenticating at once.
+        self.run(cli + ['agent-revoke', old_token.split('.')[0]])
+        require(old.post('/api/v1/heartbeat', heartbeat)[0] == 401, 'Revoked credential could still act')
         require(current.post('/api/v1/heartbeat', heartbeat)[0] == 200, 'Current credential could not read its warehouse heartbeat')
         require(current.post('/api/v1/heartbeat', dict(heartbeat, stash='secondary-fixture'))[0] == 200,
-                'One credential could not reach its second stash')
-        # No per-stash or Minecraft-username ownership: every signed agent
-        # credential may operate with any player name in every DEFINED stash.
-        # Undefined stash names must still fail closed (404), and a different
-        # configured Minecraft server is rejected (409).
+                'One key slot could not reach a second defined stash')
+        # One player at a time: the same key with another player is refused (409),
+        # while any username works once the slot is free (covered with distinct keys here).
+        require(current.post('/api/v1/heartbeat', dict(heartbeat, agent=foreign_player, player='OtherBot'))[0] == 409,
+                'A second player was not refused on a held key slot')
+        # No per-stash or Minecraft-username ownership: every key slot may operate
+        # in every DEFINED stash. Undefined stash names must still fail closed (404),
+        # and a different configured Minecraft server is rejected (409).
         require(current.post('/api/v1/heartbeat', dict(heartbeat, stash='unassigned-fixture'))[0] == 404,
                 'Undefined stash was not refused with 404')
         require(current.post('/api/v1/heartbeat', dict(heartbeat, server='evil-server'))[0] == 409,
                 'Heartbeat from a foreign server was not refused with 409')
-        require(foreign.post('/api/v1/heartbeat', heartbeat)[0] == 200,
-                'Valid agent credential was rejected for another Minecraft username')
-        unauthorized = {'server': self.server_name, 'stash': 'other-stash', 'player': 'OtherBot'}
-        require(foreign.post('/api/v1/heartbeat', unauthorized)[0] == 200, 'Second credential was unusable in its own scope')
-        self.run(cli + ['agent-revoke', foreign_id])
+        require(foreign.post('/api/v1/heartbeat', dict(heartbeat, agent=foreign_player, player='OtherBot'))[0] == 200,
+                'Valid key slot was rejected for another Minecraft player')
+        unauthorized = {'server': self.server_name, 'stash': 'other-stash', 'player': 'OtherBot', 'agent': foreign_player}
+        require(foreign.post('/api/v1/heartbeat', unauthorized)[0] == 200, 'Second key slot was unusable in its own scope')
+        self.run(cli + ['agent-revoke', foreign_token.split('.')[0]])
         require(foreign.post('/api/v1/heartbeat', unauthorized)[0] == 401, 'Revoked agent continued to authenticate')
-        self.ok('two signed credentials support different Minecraft usernames; scoped-only, rotation and revocation remain enforced')
+        self.ok('unbound key slots bind one player at a time; scoped-only, revocation and fail-closed gates remain enforced')
 
     def verify_fleet_sessions(self):
         native = None
@@ -379,10 +384,11 @@ class HierarchyHarness(stock.StockHarness):
             require(status == 200, 'fleet-peer-%d stash def failed: %s' % (i, status))
         for i in range(1, 5):
             ident, player, stash = str(uuid.uuid4()), f'FleetPeer{i}', f'fleet-peer-{i}'
-            token = self.run(cli + ['agent-issue', ident, player, self.server_name, stash]).strip()
+            token = self.run(cli + ['agent-issue', f'fleet-peer-{i}']).strip()
+            key_id = token.split('.')[0]
             agent = stock.signed.Client(endpoint, token)
-            bot_id = str(uuid.UUID(bytes=hashlib.md5((self.server_name + '\0' + ident).encode()).digest(), version=3))
-            hello = {'botId': bot_id, 'player': player, 'controlSession': secrets.token_hex(32),
+            bot_id = key_id
+            hello = {'botId': bot_id, 'player': player, 'agent': ident, 'controlSession': secrets.token_hex(32),
                      'manifestScope': {'server': self.server_name, 'stash': stash,
                                        'dimension': 'minecraft:overworld', 'agent': ident}}
             code, reply = agent.post('/api/v1/bot/hello', hello)
@@ -399,16 +405,26 @@ class HierarchyHarness(stock.StockHarness):
             require(agent.post('/api/v1/bot/next', {'botId': native['botId'], 'controlSession': hello['controlSession']})[0] == 403,
                     'A fleet member polled another agent')
             expected.add(bot_id)
-            credentials.append((ident, player, stash, hello))
+            credentials.append((ident, player, stash, hello, token))
             status, connected = self.http('/api/v1/bots')
             require(status == 200 and {b['botId'] for b in connected if b['online']} == expected,
                     'Manager mixed sessions while expanding the fleet')
-        ident, player, stash, hello = credentials[0]
-        replacement = self.run(cli + ['agent-issue', ident, player, self.server_name, stash]).strip()
+        ident, player, stash, hello, token = credentials[0]
+        # Rotation is revoke + reissue: the old key stops authenticating, the new
+        # key takes over the same player with a fresh slot identity.
+        self.run(cli + ['agent-revoke', token.split('.')[0]])
+        retired = stock.signed.Client(endpoint, token)
+        require(retired.post('/api/v1/bot/hello', hello)[0] == 401,
+                'Revoked key still registered a fleet session')
+        replacement = self.run(cli + ['agent-issue', 'fleet-peer-1-again']).strip()
         rotated = stock.signed.Client(endpoint, replacement)
-        code, reply = rotated.post('/api/v1/bot/hello', hello)
-        require(code == 200,
-                'Key rotation caused the signed fleet session to lose its identity')
+        new_hello = dict(hello, botId=replacement.split('.')[0])
+        code, reply = rotated.post('/api/v1/bot/hello', new_hello)
+        require(code == 200 and (reply or {}).get('controlEpoch'),
+                'Reissued key could not register the same player again')
+        expected.discard(hello['botId'])
+        expected.add(new_hello['botId'])
+        hello = new_hello
         self.ok('one native 26.3 agent and up to four signed endpoint fixtures retain independent online identities and sessions')
         status, metrics = self.http('/api/v1/operations')
         require(status == 200 and metrics['agents']['ONLINE'] == 5 and metrics['stock']['FRESH'] > 0,

@@ -6,6 +6,7 @@ import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /** The website's API: stash list, index, and the "Link addon" panel. No login; the access check applies. */
 final class BrowserRoutes {
@@ -55,7 +56,93 @@ final class BrowserRoutes {
                         Router.Guard.BROWSER_WRITE,
                         Router.Perm.OWNER,
                         this::regenerate)
-                .exact(Router.POST, "/api/v1/rescan", Router.Guard.BROWSER_WRITE, Router.Perm.RESCAN, this::rescan);
+                .exact(Router.POST, "/api/v1/rescan", Router.Guard.BROWSER_WRITE, Router.Perm.RESCAN, this::rescan)
+                .exact(Router.GET, "/api/v1/agents", Router.Guard.SESSION, Router.Perm.OWNER, this::listAgents)
+                .exact(Router.POST, "/api/v1/agents", Router.Guard.BROWSER_WRITE, Router.Perm.OWNER, this::issueAgent)
+                .pattern(
+                        Router.POST,
+                        AGENT_REVOKE,
+                        Router.Guard.BROWSER_WRITE,
+                        Router.Perm.OWNER,
+                        this::revokeAgent);
+    }
+
+    private static final Pattern AGENT_REVOKE =
+            Pattern.compile("^/api/v1/agents/([A-Za-z0-9_-]{1,64})/revoke$");
+
+    /** GET /api/v1/agents (owner): every key slot with its label, live binding and activity. */
+    private void listAgents(HttpExchange ex) throws IOException {
+        JsonArray slots = new JsonArray();
+        for (AgentCredentials.Slot slot : credentials.all()) {
+            JsonObject row = new JsonObject();
+            row.addProperty("id", slot.id());
+            row.addProperty("label", slot.label());
+            row.addProperty("active", slot.active());
+            if (slot.binding() != null) {
+                JsonObject binding = new JsonObject();
+                binding.addProperty("name", slot.binding().playerName());
+                binding.addProperty("seen", slot.binding().lastSeen());
+                row.add("bound", binding);
+            }
+            slots.add(row);
+        }
+        JsonObject out = Http.ok();
+        out.add("slots", slots);
+        Http.json(ex, 200, out);
+    }
+
+    /** POST /api/v1/agents {label?} (owner, elevated): issues an unbound key slot, secret shown once. */
+    private void issueAgent(HttpExchange ex) throws IOException {
+        if (!sessions.elevated((String) Http.attr(ex, Router.SESSION_TOKEN))) {
+            Http.error(ex, 403, "confirm password");
+            return;
+        }
+        com.google.gson.JsonElement json = AddonRoutes.readJson(ex);
+        JsonObject o = json != null && json.isJsonObject() ? json.getAsJsonObject() : null;
+        String label = o == null ? null : AddonRoutes.string(o, "label");
+        if (label == null || label.isBlank()) label = "bot";
+        if (!AgentCredentials.validLabel(label)) {
+            Http.error(ex, 400, "label must be 1-64 characters without controls");
+            return;
+        }
+        String token;
+        try {
+            token = credentials.issue(label);
+        } catch (IllegalArgumentException invalid) {
+            Http.error(ex, 409, invalid.getMessage());
+            return;
+        } catch (IOException failed) {
+            Http.error(ex, 500, "could not store the agent credential");
+            return;
+        }
+        audit.add(Router.user(ex), "agent.credential.issue", label, AuthRoutes.address(ex));
+        JsonObject out = Http.ok();
+        out.addProperty("id", token.substring(0, token.indexOf('.')));
+        out.addProperty("key", token);
+        Http.json(ex, 200, out);
+    }
+
+    /** POST /api/v1/agents/{id}/revoke (owner, elevated): revokes the slot, releasing its player. */
+    private void revokeAgent(HttpExchange ex) throws IOException {
+        if (!sessions.elevated((String) Http.attr(ex, Router.SESSION_TOKEN))) {
+            Http.error(ex, 403, "confirm password");
+            return;
+        }
+        String path = ex.getRequestURI().getRawPath();
+        String id = path.substring("/api/v1/agents/".length(), path.length() - "/revoke".length());
+        boolean revoked;
+        try {
+            revoked = credentials.revoke(id);
+        } catch (IOException failed) {
+            Http.error(ex, 500, "could not store the agent credential");
+            return;
+        }
+        if (!revoked) {
+            Http.error(ex, 404, "no active agent credential");
+            return;
+        }
+        audit.add(Router.user(ex), "agent.credential.revoke", id, AuthRoutes.address(ex));
+        Http.json(ex, 200, Http.ok());
     }
 
     /** POST /api/v1/rescan {stash}: asks the bot to re-read every container (PROTOCOL.md, "manual rescan"). */

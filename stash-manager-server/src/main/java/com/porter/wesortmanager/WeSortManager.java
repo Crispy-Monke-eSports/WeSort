@@ -45,22 +45,20 @@ public final class WeSortManager {
             case "agent-key" -> "AGENT_KEY";
             case "agent-require-scoped" -> "AGENT_REQUIRE_SCOPED";
             case "agent-revoke" -> {
-                if (args.length < 2) usage("agent-revoke needs an agent UUID");
+                if (args.length < 2) usage("agent-revoke needs an agent key id");
                 firstOption = 2;
                 yield "AGENT_REVOKE " + args[1];
             }
             case "agent-issue" -> {
-                if (args.length < 5 || args[4].startsWith("--"))
-                    usage("agent-issue needs agent UUID, player, Minecraft server and at least one stash");
+                // Key slots carry no bindings: an optional human label is all there is.
+                String label = "bot";
+                if (args.length > 1 && !args[1].startsWith("-")) {
+                    label = args[1];
+                    firstOption = 2;
+                }
+                if (!AgentCredentials.validLabel(label)) usage("agent-issue label is invalid: " + label);
                 var row = new com.google.gson.JsonObject();
-                row.addProperty("agent", args[1]);
-                row.addProperty("player", args[2]);
-                row.addProperty("server", args[3]);
-                var stashes = new com.google.gson.JsonArray();
-                firstOption = 4;
-                while (firstOption < args.length && !args[firstOption].startsWith("-"))
-                    stashes.add(args[firstOption++]);
-                row.add("stashes", stashes);
+                row.addProperty("label", label);
                 yield "AGENT_ISSUE "
                         + java.util.Base64.getEncoder()
                                 .encodeToString(row.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -342,8 +340,8 @@ public final class WeSortManager {
         if (error != null) System.err.println(error);
         System.err.println(
                 "Usage: java -jar wesort-manager.jar [serve|bootstrap|healthcheck|agent-key|agent-require-scoped] [--data <dir>]");
-        System.err.println("       agent-issue <uuid> <player> <server> <stash> [<stash> ...] [--data <dir>]");
-        System.err.println("       agent-revoke <uuid> [--data <dir>]");
+        System.err.println("       agent-issue [label] [--data <dir>]");
+        System.err.println("       agent-revoke <key-id> [--data <dir>]");
         System.exit(error == null ? 0 : 2);
     }
 

@@ -146,14 +146,7 @@ final class BotHub {
         return register(botId, player, plugin, runtime, caps, scopes, controlSession, null);
     }
 
-    record ManifestScope(String server, String stash, String dimension, String agent, String player) {
-        String botId() {
-            return java.util
-                    .UUID
-                    .nameUUIDFromBytes((server + "\u0000" + agent).getBytes(java.nio.charset.StandardCharsets.UTF_8))
-                    .toString();
-        }
-    }
+    record ManifestScope(String botId, String server, String stash, String dimension, String agent, String player) {}
 
     int register(
             String botId,

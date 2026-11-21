@@ -36,6 +36,7 @@ class ConnectionStateTest {
         assertEquals(ConnectionState.WRONG_KEY, ConnectionState.of(true, "http://h:1", "k", "error 401"));
         assertEquals(ConnectionState.UNREACHABLE, ConnectionState.of(true, "http://h:1", "k", "offline"));
         assertEquals(ConnectionState.WRONG_SERVER, ConnectionState.of(true, "http://h:1", "k", "wrong server"));
+        assertEquals(ConnectionState.KEY_IN_USE, ConnectionState.of(true, "http://h:1", "k", "key in use"));
         assertEquals(
                 ConnectionState.SIGNATURE_INVALID,
                 ConnectionState.of(true, "http://h:1", "k", "server signature invalid"));

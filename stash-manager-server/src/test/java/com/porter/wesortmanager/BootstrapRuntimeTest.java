@@ -56,36 +56,50 @@ class BootstrapRuntimeTest {
     }
 
     @Test
-    void fleetScopesMigrateAndRotateIndependently() throws Exception {
+    void keySlotsMigrateBindAndRotateIndependently() throws Exception {
         var id = java.util.UUID.randomUUID().toString();
         var file = data.resolve("agent-credentials.json");
         var key = java.util.Base64.getEncoder().encodeToString(new byte[32]);
         Files.writeString(file, """
             {"version":1,"scopedOnly":true,"agents":[{"agent":"%s","player":"Agent0","server":"srv","stash":"old","key":"%s"}]}
             """.formatted(id, key));
-        var credentials = new AgentCredentials(data);
-        assertTrue(credentials.find(id).scope().matchesLocation("srv", "old"));
-        // No ownership, no per-stash scope: every bot may use every stash.
-        assertTrue(credentials.find(id).scope().matchesLocation("srv", "new"));
-        var scope = new AgentCredentials.Scope(id, "Agent0", "srv", java.util.Set.of("old", "new"));
-        // Agent API keys are not bound to Minecraft usernames. Two independently
-        // signed agents using the same player name may coexist on this server.
-        var anotherAgent = java.util.UUID.randomUUID().toString();
-        String anotherKey = credentials.issue(new AgentCredentials.Scope(anotherAgent, "agent0", "srv", "new"));
-        assertTrue(anotherKey.startsWith(anotherAgent + "."));
-        assertNotNull(credentials.find(anotherAgent));
-        for (int i = 2; i < AgentCredentials.MAX_ACTIVE_AGENTS; i++) {
-            credentials.issue(new AgentCredentials.Scope(
-                    java.util.UUID.randomUUID().toString(), "Agent" + i, "srv", "stash" + i));
+        var clock = new AtomicLong(1_000_000);
+        var credentials = new AgentCredentials(data, clock::get);
+        // Legacy v1 rows migrate to unbound slots: the id stays, bindings are dropped.
+        assertEquals(id, credentials.find(id).id());
+        assertEquals("Agent0", credentials.find(id).label());
+        assertNull(credentials.find(id).binding());
+        // Any player may connect with the slot; the first one binds it.
+        var player = "11111111-2222-4333-8444-555555555555";
+        assertEquals(AgentCredentials.Touch.BOUND, credentials.touch(id, player, "Agent0"));
+        assertEquals("Agent0", credentials.find(id).binding().playerName());
+        // Same player refreshes the claim; another player is refused while it is live.
+        assertEquals(AgentCredentials.Touch.BOUND, credentials.touch(id, player, "Renamed"));
+        assertEquals(
+                AgentCredentials.Touch.CONFLICT,
+                credentials.touch(id, "66666666-7777-4888-8999-000000000000", "Eve"));
+        // After the window the slot is free: a new player rebinds it.
+        clock.addAndGet(AgentCredentials.BIND_WINDOW_MS + 1);
+        assertEquals(
+                AgentCredentials.Touch.REBOUND,
+                credentials.touch(id, "66666666-7777-4888-8999-000000000000", "Eve"));
+        // Labels, not bindings, distinguish new slots.
+        String anotherKey = credentials.issue("agent0");
+        String anotherId = anotherKey.substring(0, anotherKey.indexOf('.'));
+        assertTrue(anotherKey.startsWith(anotherId + "."));
+        assertNotNull(credentials.find(anotherId));
+        for (int i = 2; i < AgentCredentials.MAX_ACTIVE_SLOTS; i++) {
+            credentials.issue("Agent" + i);
         }
-        var sixth = new AgentCredentials.Scope(java.util.UUID.randomUUID().toString(), "Agent5", "srv", "stash5");
-        assertThrows(IllegalArgumentException.class, () -> credentials.issue(sixth));
-        credentials.issue(scope);
-        var reopened = new AgentCredentials(data);
-        assertEquals(scope, reopened.find(id).scope());
-        assertTrue(reopened.find(id).scope().matchesLocation("other", "new"));
-        assertTrue(reopened.revoke(id));
-        assertNotNull(reopened.issue(sixth));
+        assertThrows(IllegalArgumentException.class, () -> credentials.issue("Agent5"));
+        assertThrows(IllegalArgumentException.class, () -> credentials.issue(""));
+        assertTrue(credentials.revoke(anotherId));
+        assertNull(credentials.find(anotherId));
+        assertNotNull(credentials.issue("Agent5"));
+        // Slots persist across restarts, bindings included.
+        var reopened = new AgentCredentials(data, clock::get);
+        assertEquals("Eve", reopened.find(id).binding().playerName());
+        assertTrue(reopened.scopedOnly());
     }
 
     @Test
@@ -174,25 +188,21 @@ class BootstrapRuntimeTest {
                     http.send(request, HttpResponse.BodyHandlers.ofString()).statusCode());
             assertThrows(IOException.class, () -> LocalControl.request(data, "BOOTSTRAP"));
             assertFalse(JsonParser.parseString(success.body()).getAsJsonObject().has("apiKey"));
-            String agent = java.util.UUID.randomUUID().toString();
-            var scope = new AgentCredentials.Scope(agent, "TestAgent", "server", "stash");
             var credentials = routes.agentCredentials();
-            String first = credentials.issue(scope);
-            String replacement = credentials.issue(scope);
-            assertNotEquals(first, replacement);
-            assertFalse(Files.readString(data.resolve("agent-credentials.json")).contains(replacement.substring(37)));
-            assertThrows(
-                    IllegalArgumentException.class,
-                    () -> credentials.issue(new AgentCredentials.Scope(agent, "TestAgent", "other-server", "stash")));
+            String first = credentials.issue("bot");
+            String id = first.substring(0, first.indexOf('.'));
+            assertNotNull(credentials.find(id));
+            assertThrows(IllegalArgumentException.class, () -> credentials.issue(""));
+            assertFalse(Files.readString(data.resolve("agent-credentials.json")).contains(first.substring(37)));
             credentials.requireScoped();
             assertThrows(IOException.class, () -> LocalControl.request(data, "AGENT_KEY"));
             var reopened = new AgentCredentials(data);
             assertTrue(reopened.scopedOnly());
             assertArrayEquals(
-                    Signer.deriveKey(replacement.substring(37)),
-                    reopened.find(agent).key());
-            assertTrue(credentials.revoke(agent));
-            assertNull(new AgentCredentials(data).find(agent));
+                    Signer.deriveKey(first.substring(37)),
+                    java.util.Base64.getDecoder().decode(reopened.find(id).signingKey()));
+            assertTrue(credentials.revoke(id));
+            assertNull(new AgentCredentials(data).find(id));
             health.ready(false);
             assertEquals(
                     503,

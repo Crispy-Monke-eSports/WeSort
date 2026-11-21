@@ -85,14 +85,16 @@ final class LocalControl implements AutoCloseable {
                         java.util.Base64.getDecoder().decode(command.substring("AGENT_ISSUE ".length())),
                         StandardCharsets.UTF_8);
                 var row = com.google.gson.JsonParser.parseString(raw).getAsJsonObject();
-                var scope = AgentCredentials.readScope(row, !row.has("stashes"));
+                String label = row.has("label") && row.get("label").isJsonPrimitive()
+                        ? row.get("label").getAsString()
+                        : "bot";
                 String token;
                 try {
-                    token = credentials.issue(scope);
+                    token = credentials.issue(label);
                 } catch (IllegalArgumentException invalid) {
                     return "ERR " + invalid.getMessage();
                 }
-                audit.add("local", "Manager host administrator", "agent.credential.issue", scope.agent(), "local");
+                audit.add("local", "Manager host administrator", "agent.credential.issue", label, "local");
                 return "OK " + token;
             }
             if (command.startsWith("AGENT_REVOKE ")) {

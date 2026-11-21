@@ -383,7 +383,7 @@ class StockHierarchyTest {
         assertEquals(
                 ready.manifest,
                 restarted.status(order.id, "delivered", null, null, null, result, agent, "staging-ok").manifest);
-        var scope = new BotHub.ManifestScope("s", "a", "minecraft:overworld", agent, "TestAgent");
+        var scope = new BotHub.ManifestScope("test-bot", "s", "a", "minecraft:overworld", agent, "TestAgent");
         var manifest = restarted.manifest(order.id, scope);
         assertEquals(order.id, restarted.pendingManifest(scope).get("orderId").getAsString());
         assertEquals(ready.manifest.get("hash"), manifest.get("hash"));
@@ -391,13 +391,13 @@ class StockHierarchyTest {
         assertNotNull(UUID.fromString(publicEntry.get("packageId").getAsString()));
         assertFalse(publicEntry.has("staging"));
         assertNull(restarted.manifest(
-                order.id, new BotHub.ManifestScope("s", "a", "minecraft:the_nether", agent, "TestAgent")));
+                order.id, new BotHub.ManifestScope("test-bot", "s", "a", "minecraft:the_nether", agent, "TestAgent")));
         assertNull(restarted.manifest(
-                order.id, new BotHub.ManifestScope("different", "a", "minecraft:overworld", agent, "TestAgent")));
+                order.id, new BotHub.ManifestScope("test-bot", "different", "a", "minecraft:overworld", agent, "TestAgent")));
         assertNull(restarted.manifest(
                 order.id,
                 new BotHub.ManifestScope(
-                        "s", "a", "minecraft:overworld", UUID.randomUUID().toString(), "TestAgent")));
+                        "test-bot", "s", "a", "minecraft:overworld", UUID.randomUUID().toString(), "TestAgent")));
         String hash = manifest.get("hash").getAsString();
         assertEquals(
                 409,

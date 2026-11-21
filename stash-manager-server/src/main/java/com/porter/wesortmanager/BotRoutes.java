@@ -141,7 +141,7 @@ final class BotRoutes {
         }
         BotHub.ManifestScope manifestScope = null;
         if (o.has("manifestScope")) {
-            manifestScope = manifestScope(o.get("manifestScope"), player);
+            manifestScope = manifestScope(o.get("manifestScope"), player, botId);
             if (controlSession == null || manifestScope == null || !botId.equals(manifestScope.botId())) {
                 Http.error(ex, 400, "Invalid manifest scope");
                 return;
@@ -190,7 +190,7 @@ final class BotRoutes {
         Http.json(ex, 200, out);
     }
 
-    private static BotHub.ManifestScope manifestScope(JsonElement input, String player) {
+    private static BotHub.ManifestScope manifestScope(JsonElement input, String player, String botId) {
         if (!input.isJsonObject() || player == null || !player.matches("[A-Za-z0-9_]{1,16}")) return null;
         var scope = input.getAsJsonObject();
         String server = AddonRoutes.string(scope, "server");
@@ -208,7 +208,7 @@ final class BotRoutes {
                 || !dimension.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")
                 || agent == null
                 || !agent.matches("[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")) return null;
-        return new BotHub.ManifestScope(server, stash, dimension, agent, player);
+        return new BotHub.ManifestScope(botId, server, stash, dimension, agent, player);
     }
 
     private void manifest(HttpExchange ex) throws IOException {

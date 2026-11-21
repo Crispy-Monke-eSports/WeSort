@@ -26,10 +26,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * P0: the agent trust boundary. Every bot may work in every stash, but the Manager still verifies,
- * separately, the connected Minecraft server (409 on mismatch, fail-closed 400 before first setup),
- * the signed agent identity (independent of player name), and that the stash is authoritatively defined
- * (404 otherwise). Forged servers, stashes, agents and work contexts are refused.
+ * P0: the agent trust boundary. A key slot carries no server, stash or player binding: any
+ * player may connect with it, but only one player at a time. The Manager still verifies,
+ * separately, the connected Minecraft server (409 on mismatch, fail-closed 400 before setup),
+ * the signed agent identity, and that the stash is authoritatively defined (404 otherwise).
+ * Forged servers, stashes, players and work contexts are refused.
  */
 class AgentScopeTest {
     static final String OWNER_PW = "owner-password-123";
@@ -43,6 +44,10 @@ class AgentScopeTest {
     final HttpClient http = HttpClient.newHttpClient();
     String agentA;
     byte[] agentKeyA;
+    AgentCredentials credentials;
+    /** The stable Minecraft player UUID used for the bound slot. */
+    static final String PLAYER_A = "11111111-2222-4333-8444-555555555555";
+    static final String PLAYER_B = "66666666-7777-4888-8999-000000000000";
 
     @BeforeAll
     static void fastHashes() {
@@ -60,11 +65,11 @@ class AgentScopeTest {
         config.setDashboardPassword(Auth.hash(OWNER_PW));
         // Deliberately no Minecraft server yet: physical work must fail closed before first setup.
         k = Signer.deriveKey(config.apiKey());
-        // A named agent credential (agent A, player Bot, server s, stash a), issued before the
-        // routes load so the Router's own AgentCredentials sees it.
+        // A named key slot, issued without any binding, before the routes load so the
+        // Router's own AgentCredentials sees it.
         var issued = new AgentCredentials(data);
-        agentA = UUID.randomUUID().toString();
-        String token = issued.issue(new AgentCredentials.Scope(agentA, "Bot", "s", "a"));
+        String token = issued.issue("Bot");
+        agentA = token.substring(0, token.indexOf('.'));
         agentKeyA = Signer.deriveKey(token.substring(token.indexOf('.') + 1));
         IndexStore store = new IndexStore(data, CreativeTabs.NONE);
         store.load();
@@ -88,6 +93,7 @@ class AgentScopeTest {
                 new AuditLog(data),
                 new BotHub(),
                 new LoginLimiter());
+        credentials = r.agentCredentials();
         server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 16);
         server.setExecutor(Executors.newFixedThreadPool(4));
         server.createContext("/", r.router());
@@ -139,6 +145,22 @@ class AgentScopeTest {
         return new Res(r.statusCode(), r.body());
     }
 
+    /** Named-agent-signed bot GET: the X-SM-Auth botId is the credential's key id. */
+    Res agentGet(String path) throws Exception {
+        byte[] b = new byte[0];
+        long ts = System.currentTimeMillis();
+        String nonce = UUID.randomUUID().toString().replace("-", "");
+        HttpRequest req = HttpRequest.newBuilder(URI.create(base + path))
+                .header(
+                        Signer.REQUEST_HEADER,
+                        "v1 " + agentA + " " + ts + " " + nonce + " "
+                                + Signer.requestSig(agentKeyA, "GET", path, ts, nonce, b))
+                .GET()
+                .build();
+        HttpResponse<String> r = http.send(req, HttpResponse.BodyHandlers.ofString());
+        return new Res(r.statusCode(), r.body());
+    }
+
     Res post(String token, String path, String body) throws Exception {
         HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(base + path))
                 .header("X-Stash-Manager", "1")
@@ -179,32 +201,33 @@ class AgentScopeTest {
     }
 
     static String heartbeat(String server, String stash) {
-        return "{\"server\":\"" + server + "\",\"stash\":\"" + stash + "\",\"player\":\"Bot\"}";
+        return heartbeat(server, stash, PLAYER_A);
+    }
+
+    static String heartbeat(String server, String stash, String agent) {
+        return "{\"server\":\"" + server + "\",\"stash\":\"" + stash + "\",\"player\":\"Bot\",\"agent\":\"" + agent + "\"}";
     }
 
     static String index(String server, String stash) {
         return "{\"version\":1,\"server\":\"" + server + "\",\"stash\":\"" + stash
-                + "\",\"player\":\"Bot\",\"items\":[]}";
+                + "\",\"player\":\"Bot\",\"agent\":\"" + PLAYER_A + "\",\"items\":[]}";
     }
 
     static String claim(String server, String stash) {
-        return "{\"server\":\"" + server + "\",\"stash\":\"" + stash + "\",\"agent\":\"" + UUID.randomUUID() + "\"}";
+        return "{\"server\":\"" + server + "\",\"stash\":\"" + stash + "\",\"agent\":\"" + PLAYER_A + "\"}";
     }
 
-    /**
-     * The hello botId for a binding: nameUUID over server + NUL + agent, like Scope.botId().
-     * Built without a NUL literal in source: Character.toString(0).
-     */
-    static String scopeBotId(String srv, String agent) {
-        return UUID.nameUUIDFromBytes((srv + Character.toString(0) + agent).getBytes(StandardCharsets.UTF_8))
-                .toString();
-    }
-
-    static String helloFor(String session, String srv, String stash, String agent) {
+    static String helloFor(String session, String srv, String stash, String botId) {
         String binding = "{\"server\":\"" + srv + "\",\"stash\":\"" + stash
-                + "\",\"dimension\":\"minecraft:overworld\"," + "\"agent\":\"" + agent + "\",\"player\":\"Bot\"}";
-        return "{\"botId\":\"" + scopeBotId(srv, agent) + "\",\"player\":\"Bot\",\"controlSession\":\"" + session
+                + "\",\"dimension\":\"minecraft:overworld\"," + "\"agent\":\"" + PLAYER_A + "\",\"player\":\"Bot\"}";
+        return "{\"botId\":\"" + botId + "\",\"agent\":\"" + PLAYER_A
+                + "\",\"player\":\"Bot\",\"controlSession\":\"" + session
                 + "\",\"manifestScope\":" + binding + ",\"caps\":[]}";
+    }
+
+    static String helloBootstrap(String botId) {
+        return "{\"botId\":\"" + botId + "\",\"agent\":\"" + PLAYER_A
+                + "\",\"player\":\"Bot\",\"controlSession\":\"" + "1".repeat(64) + "\",\"caps\":[]}";
     }
 
     @Test
@@ -284,12 +307,12 @@ class AgentScopeTest {
     }
 
     @Test
-    void namedAgentIdentityIsEnforcedWithoutPlayerBinding() throws Exception {
+    void namedAgentIdentityBindsOnePlayerAtATime() throws Exception {
         String owner = login(null, OWNER_PW);
         setServer(owner, "s");
         defineStash(owner, "a");
         defineStash(owner, "b");
-        // The signed agent key is portable across Minecraft usernames.
+        // Any player may connect with the key, with any username: the first one binds the slot.
         assertEquals(
                 200,
                 agentPost(
@@ -298,9 +321,13 @@ class AgentScopeTest {
                                 "/api/v1/heartbeat",
                                 heartbeat("s", "a").replace("Bot", "Eve"))
                         .status);
-        // Forged agent id on a valid credential: 403.
+        // A different player on the same key is refused while the claim is live: 409, not 403.
         assertEquals(
-                403,
+                409,
+                agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat("s", "a", PLAYER_B)).status);
+        // Claim and work calls bind the same way: a foreign agent on a bound slot is refused.
+        assertEquals(
+                409,
                 agentPost(
                                 agentA,
                                 agentKeyA,
@@ -310,10 +337,31 @@ class AgentScopeTest {
                         .status);
         // A forged server is refused even for a signed agent: 409.
         assertEquals(409, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat("evil", "a")).status);
-        // Every authorized bot may work in every defined stash: agent A (scoped "a" at
-        // issuance) heartbeats "b" successfully. No ownership, no per-stash confinement.
+        // Every bound bot may work in every defined stash: agent A heartbeats "b" successfully.
+        // No ownership, no per-stash confinement.
         assertEquals(200, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat("s", "b")).status);
         assertEquals(200, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat("s", "a")).status);
+        // Session calls name the slot id: a foreign key id is refused even when signed correctly.
+        assertEquals(
+                403,
+                agentPost(
+                                agentA,
+                                agentKeyA,
+                                "/api/v1/bot/state",
+                                "{\"botId\":\"00000000-0000-4000-8000-000000000000\",\"controlSession\":\""
+                                        + "1".repeat(64) + "\"}")
+                        .status);
+    }
+
+    @Test
+    void namedAgentCallsRequireAnIdentity() throws Exception {
+        String owner = login(null, OWNER_PW);
+        setServer(owner, "s");
+        defineStash(owner, "a");
+        // A signed call without any player identity is refused, never silently accepted.
+        assertEquals(
+                403,
+                agentPost(agentA, agentKeyA, "/api/v1/heartbeat", "{\"server\":\"s\",\"stash\":\"a\"}").status);
     }
 
     @Test
@@ -338,5 +386,58 @@ class AgentScopeTest {
                         && stashes.get(0).getAsString().equals("a"),
                 "hello announces defined stash names: " + ok.body);
         assertTrue(!ok.body.contains("\"pos1\""), "coordinates are never announced in hello: " + ok.body);
+    }
+
+    @Test
+    void helloBootstrapsWithoutALocalStash() throws Exception {
+        String owner = login(null, OWNER_PW);
+        setServer(owner, "s");
+        defineStash(owner, "a");
+        // No work scope at all: a clean client that only knows address, port and key.
+        Res ok = agentPost(agentA, agentKeyA, "/api/v1/bot/hello", helloBootstrap(agentA));
+        assertEquals(200, ok.status, ok.body);
+        JsonArray stashes = ok.obj().getAsJsonArray("stashes");
+        assertTrue(
+                stashes != null
+                        && stashes.size() == 1
+                        && stashes.get(0).getAsString().equals("a"),
+                "bootstrap hello announces defined stash names: " + ok.body);
+        // The bootstrap binds the slot: session calls now work with the key id.
+        // POST /bot/next answers immediately (GET long-polls); the session must match hello.
+        assertEquals(
+                200,
+                agentPost(
+                                agentA,
+                                agentKeyA,
+                                "/api/v1/bot/next",
+                                "{\"botId\":\"" + agentA + "\",\"controlSession\":\"" + "1".repeat(64) + "\"}")
+                        .status);
+        // A foreign key id is refused even when signed correctly.
+        assertEquals(
+                403,
+                agentPost(
+                                agentA,
+                                agentKeyA,
+                                "/api/v1/bot/state",
+                                "{\"botId\":\"00000000-0000-4000-8000-000000000000\",\"controlSession\":\""
+                                        + "1".repeat(64) + "\"}")
+                        .status);
+        // An unbound slot is refused on session calls (409), without ever reaching a handler.
+        String freshToken = credentials.issue("spare");
+        String freshId = freshToken.substring(0, freshToken.indexOf('.'));
+        byte[] freshKey = Signer.deriveKey(freshToken.substring(freshToken.indexOf('.') + 1));
+        byte[] b = new byte[0];
+        long ts = System.currentTimeMillis();
+        String nonce = UUID.randomUUID().toString().replace("-", "");
+        String path = "/api/v1/bot/next?botId=" + freshId;
+        HttpRequest req = HttpRequest.newBuilder(URI.create(base + path))
+                .header(
+                        Signer.REQUEST_HEADER,
+                        "v1 " + freshId + " " + ts + " " + nonce + " "
+                                + Signer.requestSig(freshKey, "GET", path, ts, nonce, b))
+                .GET()
+                .build();
+        HttpResponse<String> unbound = http.send(req, HttpResponse.BodyHandlers.ofString());
+        assertEquals(409, unbound.statusCode());
     }
 }

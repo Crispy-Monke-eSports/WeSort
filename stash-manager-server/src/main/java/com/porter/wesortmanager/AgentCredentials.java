@@ -13,7 +13,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
 
-/** Installation-local credentials for one Minecraft account and its authorized stashes. */
+/** Installation-local signed credentials for Minecraft agents and their authorized server. */
 final class AgentCredentials {
     private static final SecureRandom RANDOM = new SecureRandom();
     static final int MAX_ACTIVE_AGENTS = 5;
@@ -59,7 +59,7 @@ final class AgentCredentials {
         }
 
         boolean matchesAccount(Scope other) {
-            return server.equals(other.server) && player.equalsIgnoreCase(other.player);
+            return server.equals(other.server);
         }
 
         String botId() {
@@ -117,18 +117,13 @@ final class AgentCredentials {
     synchronized String issue(Scope scope) throws IOException {
         var existing = entries.get(scope.agent());
         if (existing != null && !existing.scope().matchesAccount(scope))
-            throw new IllegalArgumentException("Agent ID is bound to a different account");
+            throw new IllegalArgumentException("Agent ID is bound to a different Minecraft server");
         if (existing == null && entries.size() >= MAX_ENTRIES)
             throw new IllegalArgumentException("Agent credential registry is full");
         var active =
                 entries.values().stream().filter(c -> c.signingKey() != null).toList();
         if ((existing == null || existing.signingKey() == null) && active.size() >= MAX_ACTIVE_AGENTS) {
             throw new IllegalArgumentException("Only five agent credentials may be active");
-        }
-        if (active.stream()
-                .anyMatch(c ->
-                        !c.scope().agent().equals(scope.agent()) && c.scope().matchesAccount(scope))) {
-            throw new IllegalArgumentException("Minecraft account already has an agent credential on this server");
         }
         var random = new byte[32];
         RANDOM.nextBytes(random);

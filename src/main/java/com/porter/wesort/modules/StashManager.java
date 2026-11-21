@@ -26,7 +26,6 @@ import meteordevelopment.meteorclient.events.game.GameLeftEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
-import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.world.item.Item;
 
@@ -446,8 +445,7 @@ public class StashManager extends Module {
                 || inFlight) return false;
         long now = System.nanoTime();
         if (now < sortingPoll) return false;
-        var sorter =
-                WeSortAddon.sorter();
+        var sorter = WeSortAddon.sorter();
         boolean wants = isActive() && sorter != null && sorter.requiresSortingPermit();
         if (!wants && sortingToken == null) return false;
         if (!wants && (PhysicalJournalRuntime.awaitingMirror() || !InventorySync.ready() && !InventorySync.failed()))
@@ -1000,12 +998,17 @@ public class StashManager extends Module {
         } else if (path.equals(sortEnabled.name)) applied = changeBoolean(sortEnabled, job.get("expect"), value);
         else if (path.equals(acceptOrders.name)) applied = changeBoolean(acceptOrders, job.get("expect"), value);
         else if (path.equals(includeExcluded.name)) applied = changeBoolean(includeExcluded, job.get("expect"), value);
-        else if (path.equals(useNamedShulkers.name)) applied = changeBoolean(useNamedShulkers, job.get("expect"), value);
-        else if (path.equals(autoExpandDelivery.name)) applied = changeBoolean(autoExpandDelivery, job.get("expect"), value);
+        else if (path.equals(useNamedShulkers.name))
+            applied = changeBoolean(useNamedShulkers, job.get("expect"), value);
+        else if (path.equals(autoExpandDelivery.name))
+            applied = changeBoolean(autoExpandDelivery, job.get("expect"), value);
         else if (path.equals(enableCrafting.name)) applied = changeBoolean(enableCrafting, job.get("expect"), value);
-        else if (path.equals(craftMaxPerOrder.name)) applied = changeInteger(craftMaxPerOrder, job.get("expect"), value, 1, 54);
-        else if (path.equals(craftMaxOpsPerTask.name)) applied = changeInteger(craftMaxOpsPerTask, job.get("expect"), value, 8, 512);
-        else if (path.equals(craftMaxPerHour.name)) applied = changeInteger(craftMaxPerHour, job.get("expect"), value, 1, 216);
+        else if (path.equals(craftMaxPerOrder.name))
+            applied = changeInteger(craftMaxPerOrder, job.get("expect"), value, 1, 54);
+        else if (path.equals(craftMaxOpsPerTask.name))
+            applied = changeInteger(craftMaxOpsPerTask, job.get("expect"), value, 8, 512);
+        else if (path.equals(craftMaxPerHour.name))
+            applied = changeInteger(craftMaxPerHour, job.get("expect"), value, 1, 216);
         else if (path.equals(orderChat.name)) applied = changeBoolean(orderChat, job.get("expect"), value);
         else if (path.startsWith("sorter.")) {
             var engine = WeSortAddon.sorter();

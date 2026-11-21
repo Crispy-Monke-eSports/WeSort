@@ -773,7 +773,8 @@ public final class WorldTestDriver {
             position.add(p.getZ());
             out.add("repackPosition", position);
         }
-        out.addProperty("sortingPermitted", com.porter.wesort.WeSortAddon.sorter().sortingPermitted());
+        out.addProperty(
+                "sortingPermitted", com.porter.wesort.WeSortAddon.sorter().sortingPermitted());
         out.addProperty("server", Stash.currentServer());
         out.addProperty("player", mc.player.getName().getString());
         out.addProperty("playerUuid", mc.player.getUUID().toString());

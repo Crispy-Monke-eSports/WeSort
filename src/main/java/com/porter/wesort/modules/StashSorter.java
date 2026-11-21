@@ -1694,7 +1694,6 @@ public class StashSorter extends Module {
         RightClick.listen(this::onRightClick);
     }
 
-
     // Manager-only operational settings. The sorter is never added to Meteor's module registry,
     // so these values are exposed through the signed bot settings protocol and its web form.
     private record RemoteControl(String name, String label, String type, double min, double max) {}
@@ -1790,7 +1789,8 @@ public class StashSorter extends Module {
                 case "int" -> {
                     if (!value.isNumber()) yield false;
                     int number = value.getAsBigDecimal().intValueExact();
-                    yield number >= control.min() && number <= control.max()
+                    yield number >= control.min()
+                            && number <= control.max()
                             && ((Setting<Integer>) setting).set(number);
                 }
                 case "double" -> {
@@ -1813,8 +1813,8 @@ public class StashSorter extends Module {
                     if (!value.isString()) yield false;
                     String string = value.getAsString();
                     if (string.length() > 100 || string.chars().anyMatch(Character::isISOControl)) yield false;
-                    if ((name.equals("keep-slots") || name.equals("carry-slots"))
-                            && !string.matches("[0-9, \\-]*")) yield false;
+                    if ((name.equals("keep-slots") || name.equals("carry-slots")) && !string.matches("[0-9, \\-]*"))
+                        yield false;
                     yield ((Setting<String>) setting).set(string);
                 }
                 default -> false;

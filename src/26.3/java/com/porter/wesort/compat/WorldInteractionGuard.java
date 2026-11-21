@@ -3,7 +3,6 @@ package com.porter.wesort.compat;
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 import com.porter.wesort.modules.StashManager;
-import com.porter.wesort.modules.StashSorter;
 import com.porter.wesort.utils.InteractionPermits;
 import com.porter.wesort.utils.InteractionPermits.Operation;
 import meteordevelopment.meteorclient.systems.modules.Modules;

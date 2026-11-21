@@ -6,7 +6,6 @@ import com.google.gson.*;
 import com.porter.wesort.data.DataDirectory;
 import com.porter.wesort.inventory.PhysicalJournal;
 import com.porter.wesort.modules.StashManager;
-import com.porter.wesort.modules.StashSorter;
 import com.porter.wesort.stash.Stash;
 import com.porter.wesort.stash.StashIndex;
 import java.util.*;

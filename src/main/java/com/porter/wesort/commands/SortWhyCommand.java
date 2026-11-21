@@ -3,9 +3,7 @@ package com.porter.wesort.commands;
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
-import com.porter.wesort.modules.StashSorter;
 import meteordevelopment.meteorclient.commands.Command;
-import meteordevelopment.meteorclient.systems.modules.Modules;
 import net.minecraft.commands.SharedSuggestionProvider;
 
 /** Explains the held variant without exposing coordinates to a server log or moving any items. */

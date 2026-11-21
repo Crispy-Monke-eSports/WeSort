@@ -236,8 +236,7 @@ final class BotHub {
         if (bot == null) return;
         synchronized (bot) {
             for (Job job : bot.jobs.values()) {
-                if (job.status.equals("queued") || job.status.equals("sent"))
-                    job.status = "unknown";
+                if (job.status.equals("queued") || job.status.equals("sent")) job.status = "unknown";
             }
             bot.queue.clear();
             bot.helloGen++;

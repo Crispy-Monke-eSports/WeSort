@@ -471,8 +471,7 @@ final class Router implements HttpHandler {
                     "/api/v1/bot/results",
                     "/api/v1/bot/activity",
                     "/api/v1/bot/manifest",
-                    "/api/v1/bot/manifest/ack" ->
-                slot.id().equals(AddonRoutes.string(body, "botId")) ? 200 : 403;
+                    "/api/v1/bot/manifest/ack" -> slot.id().equals(AddonRoutes.string(body, "botId")) ? 200 : 403;
             default -> {
                 var match = SCOPED_ORDER_STATUS.matcher(path);
                 if (!match.matches() || orderStore.stashOf(match.group(1)) == null) yield 403;

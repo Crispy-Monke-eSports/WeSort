@@ -312,11 +312,23 @@ class AgentScopeTest {
         setServer(owner, "s");
         defineStash(owner, "a");
         defineStash(owner, "b");
-        assertEquals(200, agentPost(agentA, agentKeyA, "/api/v1/heartbeat",
-                heartbeat("s", "a", PLAYER_A).replace("Bot", "Eve")).status);
+        assertEquals(
+                200,
+                agentPost(
+                                agentA,
+                                agentKeyA,
+                                "/api/v1/heartbeat",
+                                heartbeat("s", "a", PLAYER_A).replace("Bot", "Eve"))
+                        .status);
         assertEquals("Eve", credentials.find(agentA).binding().playerName());
-        assertEquals(200, agentPost(agentA, agentKeyA, "/api/v1/heartbeat",
-                heartbeat("s", "a", PLAYER_B).replace("Bot", "OtherBot")).status);
+        assertEquals(
+                200,
+                agentPost(
+                                agentA,
+                                agentKeyA,
+                                "/api/v1/heartbeat",
+                                heartbeat("s", "a", PLAYER_B).replace("Bot", "OtherBot"))
+                        .status);
         assertEquals("OtherBot", credentials.find(agentA).binding().playerName());
         JsonObject claim = new JsonObject();
         claim.addProperty("server", "s");

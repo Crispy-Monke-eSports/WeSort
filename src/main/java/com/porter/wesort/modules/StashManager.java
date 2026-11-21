@@ -800,6 +800,10 @@ public class StashManager extends Module {
         }
 
         var values = new JsonObject();
+        var engine = WeSortAddon.sorter();
+        if (engine != null) {
+            for (var entry : engine.managerValues().entrySet()) values.add(entry.getKey(), entry.getValue());
+        }
         values.addProperty(scanInterval.name, scanInterval.get());
         values.addProperty(sortEnabled.name, sortEnabled.get());
         values.addProperty(acceptOrders.name, acceptOrders.get());
@@ -816,6 +820,9 @@ public class StashManager extends Module {
         String valuesHash = sha256Hex(values.toString().getBytes(StandardCharsets.UTF_8));
         if (!valuesHash.equals(sentControlValues)) {
             var schema = new JsonArray();
+            if (engine != null) {
+                for (var entry : engine.managerSchema()) schema.add(entry);
+            }
             schema.add(controlSetting(scanInterval.name, "Scan interval (seconds)", "int", 2, 60));
             schema.add(controlSetting(sortEnabled.name, "Enable physical sorting", "bool", null, null));
             schema.add(controlSetting(acceptOrders.name, "Accept warehouse orders", "bool", null, null));
@@ -975,7 +982,10 @@ public class StashManager extends Module {
         else if (path.equals(craftMaxOpsPerTask.name)) applied = changeInteger(craftMaxOpsPerTask, job.get("expect"), value, 8, 512);
         else if (path.equals(craftMaxPerHour.name)) applied = changeInteger(craftMaxPerHour, job.get("expect"), value, 1, 216);
         else if (path.equals(orderChat.name)) applied = changeBoolean(orderChat, job.get("expect"), value);
-        else applied = false;
+        else if (path.startsWith("sorter.")) {
+            var engine = WeSortAddon.sorter();
+            applied = engine != null && engine.applyManagerSetting(path, job.get("expect"), value);
+        } else applied = false;
         result.addProperty("ok", applied);
         if (applied) result.add("value", value);
         else result.addProperty("error", "Setting changed or value is invalid");

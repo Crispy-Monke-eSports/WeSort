@@ -305,7 +305,7 @@ class HierarchyHarness(stock.StockHarness):
     def require_scoped_agent(self):
         state = self.command('state')['state']
         require(state['legacyMemberWindowClassPresent'] is False, 'Legacy member portal class must not be shipped in production')
-        # Key slots carry no bindings: any player may connect with a key, but only one at a time.
+        # A valid signing key authorizes any player; names and UUIDs are display-only metadata.
         player = state['playerUuid']
         cli = self.compose + ['exec', '-T', 'manager', '/opt/wesort/entrypoint']
         endpoint = f'http://127.0.0.1:{self.manager_port}'
@@ -335,10 +335,11 @@ class HierarchyHarness(stock.StockHarness):
         require(current.post('/api/v1/heartbeat', heartbeat)[0] == 200, 'Current credential could not read its warehouse heartbeat')
         require(current.post('/api/v1/heartbeat', dict(heartbeat, stash='secondary-fixture'))[0] == 200,
                 'One key slot could not reach a second defined stash')
-        # One player at a time: the same key with another player is refused (409),
-        # while any username works once the slot is free (covered with distinct keys here).
-        require(current.post('/api/v1/heartbeat', dict(heartbeat, agent=foreign_player, player='OtherBot'))[0] == 409,
-                'A second player was not refused on a held key slot')
+        # The same valid signing key works for a different player without a binding or cooldown.
+        require(current.post('/api/v1/heartbeat', dict(heartbeat, agent=foreign_player, player='OtherBot'))[0] == 200,
+                'A valid signing key unexpectedly required a matching player UUID')
+        require(current.post('/api/v1/heartbeat', {'server': self.server_name, 'stash': 'e2e-fixture'})[0] == 200,
+                'A signed heartbeat unexpectedly required Minecraft identity metadata')
         # No per-stash or Minecraft-username ownership: every key slot may operate
         # in every DEFINED stash. Undefined stash names must still fail closed (404),
         # and a different configured Minecraft server is rejected (409).
@@ -352,7 +353,7 @@ class HierarchyHarness(stock.StockHarness):
         require(foreign.post('/api/v1/heartbeat', unauthorized)[0] == 200, 'Second key slot was unusable in its own scope')
         self.run(cli + ['agent-revoke', foreign_token.split('.')[0]])
         require(foreign.post('/api/v1/heartbeat', unauthorized)[0] == 401, 'Revoked agent continued to authenticate')
-        self.ok('unbound key slots bind one player at a time; scoped-only, revocation and fail-closed gates remain enforced')
+        self.ok('signed key allows any player without UUID/name matching; revocation and server/stash gates stay enforced')
 
     def verify_fleet_sessions(self):
         native = None

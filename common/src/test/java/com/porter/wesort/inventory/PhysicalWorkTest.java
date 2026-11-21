@@ -20,6 +20,18 @@ class PhysicalWorkTest {
     }
 
     @Test
+    void physicalOperationJobIdentityDoesNotChangeWithPhase() {
+        var work = new PhysicalWork("Clean", 0);
+        String id = work.id();
+        work.enter(PhysicalWork.Phase.PLACE, 1);
+        work.enter(PhysicalWork.Phase.OPEN, 2);
+        work.enter(PhysicalWork.Phase.TRANSFER, 3);
+        work.enter(PhysicalWork.Phase.BREAK, 4);
+        assertEquals(id, work.id());
+        assertNotEquals(id, new PhysicalWork("Clean", 5).id());
+    }
+
+    @Test
     void absoluteDeadlineSurvivesPhaseChanges() {
         var work = new PhysicalWork("bulk", 0);
         work.enter(PhysicalWork.Phase.PLACE, 59_000_000_000L);

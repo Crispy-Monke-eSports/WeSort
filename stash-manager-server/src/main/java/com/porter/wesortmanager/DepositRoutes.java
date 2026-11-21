@@ -10,10 +10,12 @@ import java.util.List;
 final class DepositRoutes {
     private final Deposits deposits;
     private final AuditLog audit;
+    private final Config config;
 
-    DepositRoutes(Deposits deposits, AuditLog audit) {
+    DepositRoutes(Deposits deposits, AuditLog audit, Config config) {
         this.deposits = deposits;
         this.audit = audit;
+        this.config = config;
     }
 
     void register(Router router) {
@@ -22,10 +24,6 @@ final class DepositRoutes {
     }
 
     private void list(HttpExchange ex) throws IOException {
-        if (Redact.forced(Router.user(ex))) {
-            Http.error(ex, 404, "not found");
-            return;
-        }
         var out = new JsonObject();
         out.add("deposits", deposits.list(Http.query(ex).get("order")));
         Http.json(ex, 200, out);
@@ -41,6 +39,11 @@ final class DepositRoutes {
         String action = AddonRoutes.string(body, "action");
         String packageId = AddonRoutes.string(body, "packageId");
         String agent = AddonRoutes.string(body, "agent");
+        // Physical work stays fail-closed until the single server is configured.
+        if (config.minecraftServer() == null || config.minecraftServer().isEmpty()) {
+            Http.error(ex, 400, "set the Minecraft server in Settings first");
+            return;
+        }
         if (action == null
                 || packageId == null
                 || agent == null

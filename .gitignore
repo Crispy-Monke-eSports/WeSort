@@ -54,6 +54,10 @@ logs/
 # Web regression tools
 node_modules/
 
+# Vite build output (rebuilt by web/ build and the Dockerfile frontend stage)
+stash-manager-server/src/main/resources/web/assets/
+
 # Isolated WeSort runtime data (keys, sessions, users, orders)
 wesort-manager-data/
 stash-manager-server/wesort-manager-data/
+web/test-results/

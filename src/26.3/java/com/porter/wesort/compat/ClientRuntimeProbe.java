@@ -22,15 +22,22 @@ public final class ClientRuntimeProbe {
         NavigationRuntime.initialize();
         WorldTestDriver.initialize();
         if (!Boolean.getBoolean("wesort.runtime.probe")) return;
+        MeteorClient.LOG.info("WESORT_CLIENT_RUNTIME_START");
         Thread.ofPlatform().name("wesort-runtime-probe").daemon().start(() -> {
             try {
                 Thread.sleep(10_000);
+                MeteorClient.LOG.info("WESORT_CLIENT_RUNTIME_PROBE_OPEN");
                 MeteorClient.mc.execute(() -> {
+                    // Headless contract (no overlay/select/show UI, no kit polling): only the
+                    // headless executors are registered. StashOverlay was unregistered on
+                    // purpose; requiring it here would fail every run.
                     for (var type :
                             java.util.List.<Class<? extends meteordevelopment.meteorclient.systems.modules.Module>>of(
-                                    StashSorter.class, StashOverlay.class, StashManager.class)) {
+                                    StashSorter.class, StashManager.class)) {
                         if (Modules.get().get(type) == null) throw new IllegalStateException("Missing module " + type);
                     }
+                    if (Modules.get().get(StashOverlay.class) != null)
+                        throw new IllegalStateException("Headless overlay registered in production");
                     if (BaritoneAPI.getProvider().getPrimaryBaritone() == null)
                         throw new IllegalStateException("No Baritone");
                     if (StashWindow.get() != null)
@@ -38,6 +45,7 @@ public final class ClientRuntimeProbe {
                     new StashWindow().openNow();
                 });
                 Thread.sleep(8_000);
+                MeteorClient.LOG.info("WESORT_CLIENT_RUNTIME_PROBE_CHECK");
                 MeteorClient.mc.execute(() -> {
                     try {
                         if (!(MeteorClient.mc.gui.screen()
@@ -68,9 +76,27 @@ public final class ClientRuntimeProbe {
                                 new GsonBuilder().setPrettyPrinting().create().toJson(result));
                         MeteorClient.mc.gui.setScreen(null);
                         MeteorClient.LOG.info("WESORT_CLIENT_RUNTIME_PASS");
-                        MeteorClient.mc.stop();
                     } catch (Exception e) {
+                        var loader = FabricLoader.getInstance();
+                        var failure = new LinkedHashMap<String, Object>();
+                        failure.put("result", "FAIL");
+                        failure.put("error", e.toString());
+                        try {
+                            Files.writeString(
+                                    loader.getGameDir().resolve("runtime-result.json"),
+                                    new GsonBuilder()
+                                            .setPrettyPrinting()
+                                            .create()
+                                            .toJson(failure));
+                        } catch (Exception ignored) {
+                            // The game directory may be unavailable; the log below still diagnoses.
+                        }
+                        MeteorClient.LOG.error("WESORT_CLIENT_RUNTIME_FAIL", e);
                         throw new IllegalStateException("WeSort runtime probe failed", e);
+                    } finally {
+                        // A failed probe must still terminate the client: otherwise the
+                        // harness only sees a 600s timeout instead of the real error.
+                        MeteorClient.mc.stop();
                     }
                 });
             } catch (InterruptedException e) {

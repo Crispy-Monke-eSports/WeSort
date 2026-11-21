@@ -34,6 +34,11 @@ public final class PhysicalWork {
         event("selected");
     }
 
+    /** One immutable identity for every phase and permit in this physical operation. */
+    public String id() {
+        return id;
+    }
+
     public Phase phase() {
         return phase;
     }

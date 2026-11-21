@@ -20,10 +20,6 @@ final class QuotaRoutes {
     }
 
     private void policy(HttpExchange ex) throws IOException {
-        if (Redact.forced(Router.user(ex))) {
-            Http.error(ex, 404, "not found");
-            return;
-        }
         Http.json(ex, 200, quotas.policy());
     }
 

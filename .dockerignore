@@ -17,3 +17,17 @@
 !stash-manager-server/settings.gradle.kts
 !stash-manager-server/src/
 !stash-manager-server/src/**
+!web/
+!web/package.json
+!web/bun.lock
+!web/index.html
+!web/vite.config.ts
+!web/tsconfig.json
+!web/tailwind.config.js
+!web/postcss.config.js
+!web/vitest.config.ts
+!web/playwright.config.ts
+!web/src/
+!web/src/**
+!web/e2e/
+!web/e2e/**

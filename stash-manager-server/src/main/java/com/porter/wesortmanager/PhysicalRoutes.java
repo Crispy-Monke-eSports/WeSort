@@ -7,11 +7,13 @@ import java.io.IOException;
 final class PhysicalRoutes {
     private final IndexStore index;
     private final AuditLog audit;
+    private final Config config;
     private PhysicalOperations operations;
 
-    PhysicalRoutes(IndexStore index, AuditLog audit) {
+    PhysicalRoutes(IndexStore index, AuditLog audit, Config config) {
         this.index = index;
         this.audit = audit;
+        this.config = config;
     }
 
     private synchronized PhysicalOperations operations() throws IOException {
@@ -27,20 +29,12 @@ final class PhysicalRoutes {
     }
 
     private void list(HttpExchange ex) throws IOException {
-        if (Redact.forced(Router.user(ex))) {
-            Http.error(ex, 404, "not found");
-            return;
-        }
         var response = new JsonObject();
         response.add("operations", operations().list());
         Http.json(ex, 200, response);
     }
 
     private void inspect(HttpExchange ex) throws IOException {
-        if (Redact.forced(Router.user(ex))) {
-            Http.error(ex, 404, "not found");
-            return;
-        }
         var raw = AddonRoutes.readJson(ex);
         if (raw == null) return;
         try {
@@ -67,6 +61,20 @@ final class PhysicalRoutes {
         try {
             var body = raw.getAsJsonObject();
             var agent = body.get("agent").getAsString();
+            // Physical work stays fail-closed until the single server is configured,
+            // and the record's server must be the configured one.
+            String want = config.minecraftServer();
+            if (want == null || want.isEmpty()) {
+                Http.error(ex, 400, "set the Minecraft server in Settings first");
+                return;
+            }
+            var record = body.getAsJsonObject("record");
+            var context = record == null ? null : record.getAsJsonObject("context");
+            String at = context == null ? null : AddonRoutes.string(context, "server");
+            if (at != null && !at.isEmpty() && !want.equals(at)) {
+                Http.error(ex, 409, "this Manager serves '" + want + "'");
+                return;
+            }
             var store = operations();
             var receipt = store.accept(agent, body.getAsJsonObject("record"));
             if (body.has("result")) {

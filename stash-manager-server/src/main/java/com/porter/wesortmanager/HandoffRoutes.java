@@ -10,10 +10,12 @@ import java.util.List;
 final class HandoffRoutes {
     private final Handoffs handoffs;
     private final AuditLog audit;
+    private final Config config;
 
-    HandoffRoutes(Handoffs handoffs, AuditLog audit) {
+    HandoffRoutes(Handoffs handoffs, AuditLog audit, Config config) {
         this.handoffs = handoffs;
         this.audit = audit;
+        this.config = config;
     }
 
     void register(Router router) {
@@ -23,10 +25,6 @@ final class HandoffRoutes {
     }
 
     private void list(HttpExchange ex) throws IOException {
-        if (Redact.forced(Router.user(ex))) {
-            Http.error(ex, 404, "not found");
-            return;
-        }
         var out = new JsonObject();
         out.add("handoffs", handoffs.list(Http.query(ex).get("order")));
         Http.json(ex, 200, out);
@@ -81,6 +79,11 @@ final class HandoffRoutes {
         var body = raw.getAsJsonObject();
         String action = AddonRoutes.string(body, "action");
         String agent = AddonRoutes.string(body, "agent");
+        // Physical work stays fail-closed until the single server is configured.
+        if (config.minecraftServer() == null || config.minecraftServer().isEmpty()) {
+            Http.error(ex, 400, "set the Minecraft server in Settings first");
+            return;
+        }
         if (action == null
                 || agent == null
                 || !List.of("arrive", "no-show", "drop").contains(action)) {

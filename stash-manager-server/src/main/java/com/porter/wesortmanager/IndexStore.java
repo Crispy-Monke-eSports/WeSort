@@ -831,6 +831,21 @@ public final class IndexStore {
 
     /** Order availability data for a stash's current index, or null when it has none. */
     public OrderCounts orderCounts(String server, String stash) {
+        return countsFor(server, stash, false);
+    }
+
+    /**
+     * Last-verified counts, including stale-but-untouched sources (FRESH, STALE_AGE, STALE_STARTUP).
+     * For queueing orders while no bot is online: verified counts read zero then, but the last
+     * observation is still the best estimate. Explicitly invalidated (STALE), withdrawn, missing,
+     * unreachable, protected and shared sources stay excluded, like topology-changed ones.
+     * Ported from PR #89 (offline order queue).
+     */
+    public OrderCounts orderCountsIncludingStale(String server, String stash) {
+        return countsFor(server, stash, true);
+    }
+
+    private OrderCounts countsFor(String server, String stash, boolean includeStale) {
         Stash s = stashes.get(new StashKey(server, stash));
         if (s == null) return null;
         Prepared p;
@@ -846,7 +861,7 @@ public final class IndexStore {
             for (var source : stock().sources()) {
                 if (!source.server().equals(server)
                         || !source.stash().equals(stash)
-                        || !source.status().equals("FRESH")
+                        || !counted(source.status(), includeStale)
                         || source.shared()) continue;
                 for (var e : source.value().getAsJsonArray("items")) {
                     var item = e.getAsJsonObject();
@@ -873,6 +888,14 @@ public final class IndexStore {
         } catch (IOException | ArithmeticException e) {
             return null;
         }
+    }
+
+    /** Verified stock, plus — for offline queueing only — last-verified stock nothing has touched. */
+    private static boolean counted(String status, boolean includeStale) {
+        if (status.equals("FRESH")) return true;
+        // STALE is written when a physical operation voids the observation; only aged-out
+        // (STALE_AGE) or restart-fenced (STALE_STARTUP) observations are still last-known-good.
+        return includeStale && (status.equals("STALE_AGE") || status.equals("STALE_STARTUP"));
     }
 
     /**

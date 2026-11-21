@@ -1,14 +1,33 @@
 # Manager API efter steg 0
 
-Alla aktiva routes registreras av WeSortManager.routes; Route-regressionen
-klassificerar varje inloggad route för permission och sekretess.
+Alla aktiva routes registreras av WeSortManager.routes.
 Detta protokoll är den bevarade baslinjen, inte framtida guildordermotor.
+
+## En server, inget ägarskap, inga kit
+
+- Managern betjänar alltid exakt EN Minecraft-server, satt av ägaren i webb-UI:t
+  (`GET/POST /api/v1/server`). Bot-anrop från en annan server avvisas med 409.
+  Webbläsar-anrop tar bara `stash` (aldrig `server`); behörighetsscopet
+  `stashes` är en lista av `{stash}`.
+- Ingen bot äger en stash: ägarskap (`Owners`, `stashes/release`,
+  ägar-/konfliktfält, 409 "stash name in use") är borttaget. Alla bottar kan
+  använda alla stashes.
+- Kitsystemet är borttaget: `KitRoutes/KitCatalog/KitJobs`,
+  `POST /api/v1/kits/*` och Manager-tilldelning av kit finns inte längre.
+  Lokal shulker-packning för ordrar (KitBuilder i modden) är orörd.
+- Streamer-läget är borttaget: ingen `streamer`-permission, ingen maskering
+  med opaka id:n. Positions-skydd via `positions`-permissionen finns kvar.
+- Varje stash skapas av ägaren i webb-UI:t (`GET/POST /api/v1/stash-defs`)
+  med Position 1 + Position 2 (kuben dem emellan är stashet) samt
+  leveranspunkt, städ och arbetsbänk. Boten får sitt direktiv
+  (`{stash, dimension, pos1, pos2, delivery(+Dimension), anvil, table, revision}`)
+  i heartbeat-svaret och exekverar headless.
 
 | Område | Aktiva routes |
 |---|---|
 | Browser-auth | GET auth/state; POST auth/setup, auth/login, auth/logout, auth/logout-all, auth/password, auth/confirm, auth/lock |
 | Agent | POST index, heartbeat, orders/claim, orders/:id/status, delivery |
-| Lager/webb | GET stashes, index, orders, delivery, link; POST stashes/release, rescan, link/regenerate |
+| Lager/webb | GET stashes, index, orders, delivery, link, server, stash-defs; POST server, stash-defs, rescan, link/regenerate |
 | Order/webb | POST orders, orders/clear, orders/:id/cancel, orders/:id/force-cancel, orders/:id/retry, orders/:id/approval |
 | Drift/agent | POST bot/hello, bot/state, bot/results, bot/activity; GET bot/next |
 | Drift/webb | GET bots, bots/:id/settings, bots/:id/jobs, bots/:id/activity; POST bots/:id/settings |
@@ -27,9 +46,7 @@ Agentanrop signeras genom Signer; replay/skew/key-generation kontrolleras.
 SignerTest och HTTP-regressionerna är protokollets körbara exempel.
 
 Aktiva permissions: view, order, ordersAll, activity, settings, rescan, link,
-streamer samt stash-/bot-scope. Planner/proxy/console/viewer ger ingen åtkomst.
-Servern maskerar känsliga positions-/identitetsfält för forced streamer;
-webbens blur är ett extra skydd. Nycklar lämnas inte ut till sub-users.
+guildOrders, positions samt stash-/bot-scope. Nycklar lämnas inte ut till sub-users.
 
 IndexStore är observerat lager med heartbeat, OrderStore är befintliga orders.
 DeliveryContents är observation av leveranskistans innehåll; dess data läggs
@@ -159,9 +176,9 @@ The packing agent can read a completed staging manifest via signed
 with the server, stash, dimension and Minecraft agent UUID. When that
 binding changes, Manager rotates the control epoch and invalidates queued
 control jobs. Reads take `botId`, `controlSession`, `controlEpoch` and
-`orderId`. The live binding must match the current stash owner, the
-agent that staged the order and the dimensions in the proof. An
-unavailable or out-of-scope manifest returns 404.
+`orderId`. The live binding must match the agent that staged the order
+and the dimensions in the proof (no stash ownership exists: every bot
+may use every stash). An unavailable or out-of-scope manifest returns 404.
 
 The reply includes the internal manifest hash and a stable `packageId`
 for each journaled shulker. It carries the operation ID, revision,
@@ -185,12 +202,12 @@ restart. The hint uses the same scope checks as the manifest endpoint.
 The local Manager CLI issues a credential in the form
 `<minecraft UUID>.<secret>`. The addon uses the UUID as the identifier
 in `X-SM-Auth` and derives the signing key from the secret. A request
-signed this way must match the credential's player, server, authorized stash and
-agent or dashboard identity as required by the route. Agent credentials
+signed this way must match the credential's player and agent or dashboard
+identity as required by the route (location always matches: no ownership,
+no per-stash scope — every bot may use every stash). Agent credentials
 use the same HMAC request, response and replay checks as the v1 protocol.
 
-The host can rotate a credential for the same Minecraft account and server,
-including replacing the full list of authorized stashes,
+The host can rotate a credential for the same Minecraft account,
 revoke it, and make scoped credentials mandatory. In that mode the
 legacy identifier `-` and legacy Bearer credentials are denied. The
 credential registry, scoped-only mode and revocations persist in the

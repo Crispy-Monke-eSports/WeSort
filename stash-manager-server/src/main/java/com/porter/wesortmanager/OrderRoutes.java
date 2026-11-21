@@ -26,19 +26,21 @@ final class OrderRoutes {
     private static final int MAX_RESULT_LINES = 400;
 
     private final OrderStore orders;
-    private final Owners owners;
     private final AuditLog audit;
+    private final Config config;
+    private final StashDefs defs;
 
     private static final Pattern APPROVAL = Pattern.compile("^/api/v1/orders/(o-[0-9a-f]{12})/approval$");
     private final GuildRoutes guild;
     private final Users users;
 
-    OrderRoutes(OrderStore orders, Owners owners, AuditLog audit, GuildRoutes guild, Users users) {
+    OrderRoutes(OrderStore orders, AuditLog audit, GuildRoutes guild, Users users, Config config, StashDefs defs) {
         this.users = users;
         this.guild = guild;
         this.orders = orders;
-        this.owners = owners;
         this.audit = audit;
+        this.config = config;
+        this.defs = defs;
     }
 
     /**
@@ -46,21 +48,25 @@ final class OrderRoutes {
      * exist, so a scoped user learns nothing about others.
      */
     /**
-     * A stash named by a request, checked: the real server address (an opaque id from a user in forced streamer mode
-     * is mapped back; a raw address from them is refused) when it is in the user's scope, else null after 404.
+     * A stash named by a request, checked: the single configured server when the stash is in the
+     * user's scope, else null after 404. Single-server: the request names only the stash.
      */
-    static String scoped(HttpExchange ex, String server, String stash) throws IOException {
-        String real = Router.serverParam(ex, server);
-        if (real == null) {
-            Http.error(ex, 404, "no such stash");
+    static String scoped(Config config, HttpExchange ex, String stash) throws IOException {
+        String server = config.minecraftServer();
+        if (server == null || server.isEmpty()) {
+            Http.error(ex, 400, "set the Minecraft server in Settings first");
             return null;
         }
-        return inScope(ex, real, stash) ? real : null;
+        if (stash == null || stash.isEmpty()) {
+            Http.error(ex, 400, "stash is required");
+            return null;
+        }
+        return inScope(ex, stash) ? server : null;
     }
 
-    static boolean inScope(HttpExchange ex, String server, String stash) throws IOException {
+    static boolean inScope(HttpExchange ex, String stash) throws IOException {
         Users.Principal p = Router.user(ex);
-        if (p == null || p.perms().seesStash(server, stash)) return true;
+        if (p == null || p.perms().seesStash(stash)) return true;
         Http.error(ex, 404, "no such stash");
         return false;
     }
@@ -72,7 +78,7 @@ final class OrderRoutes {
     private boolean mayChange(HttpExchange ex, String id) throws IOException {
         IndexStore.StashKey where = orders.stashOf(id);
         Users.Principal p = Router.user(ex);
-        if (where == null || !p.perms().seesStash(where.server(), where.stash())) {
+        if (where == null || !p.perms().seesStash(where.stash())) {
             Http.error(ex, 404, "no such order");
             return false;
         }
@@ -115,13 +121,8 @@ final class OrderRoutes {
             return;
         }
         JsonObject o = json.getAsJsonObject();
-        String server = AddonRoutes.string(o, "server");
         String stash = AddonRoutes.string(o, "stash");
-        if (server == null || server.isEmpty() || stash == null || stash.isEmpty()) {
-            Http.error(ex, 400, "server and stash are required");
-            return;
-        }
-        server = scoped(ex, server, stash);
+        String server = scoped(config, ex, stash);
         if (server == null) return;
         Users.Principal who = Router.user(ex);
         OrderIntent intent;
@@ -152,6 +153,18 @@ final class OrderRoutes {
         if (!o.has("lines") || !o.get("lines").isJsonArray()) {
             Http.error(ex, 400, "lines must be an array");
             return;
+        }
+        // Explicit offline queue: only a requester that opts in may reserve against
+        // last-verified counts when verified stock falls short. Absent or false, an
+        // expired source fails with the original shortage (400/409, no order row).
+        boolean queueWhenStale = false;
+        if (o.has("queueWhenStale")) {
+            var flag = o.get("queueWhenStale");
+            if (!flag.isJsonPrimitive() || !flag.getAsJsonPrimitive().isBoolean()) {
+                Http.error(ex, 400, "queueWhenStale must be a boolean");
+                return;
+            }
+            queueWhenStale = flag.getAsBoolean();
         }
         JsonArray raw = o.getAsJsonArray("lines");
         if (raw.size() > OrderStore.MAX_LINES) {
@@ -196,7 +209,8 @@ final class OrderRoutes {
                     intent,
                     idempotencyKey(ex),
                     profile.approvalPolicy().requiresApproval(intent),
-                    draft -> resolveRecipient(who, draft));
+                    draft -> resolveRecipient(who, draft),
+                    queueWhenStale);
             OrderStore.Order order = submission.order();
             if (submission.created())
                 audit.add(who, "order.place", order.id + " " + intent.purpose().name(), AuthRoutes.address(ex));
@@ -208,34 +222,24 @@ final class OrderRoutes {
         }
     }
 
-    /** POST /api/v1/orders/clear {server, stash}: drops the stash's finished orders; open ones stay. */
+    /** POST /api/v1/orders/clear {stash}: drops the stash's finished orders; open ones stay. */
     private void clear(HttpExchange ex) throws IOException {
         JsonElement json = AddonRoutes.readJson(ex);
         JsonObject o = json != null && json.isJsonObject() ? json.getAsJsonObject() : null;
-        String server = o == null ? null : AddonRoutes.string(o, "server");
         String stash = o == null ? null : AddonRoutes.string(o, "stash");
-        if (server == null || server.isEmpty() || stash == null || stash.isEmpty()) {
-            Http.error(ex, 400, "server and stash are required");
-            return;
-        }
-        server = scoped(ex, server, stash);
+        String server = scoped(config, ex, stash);
         if (server == null) return;
         JsonObject out = Http.ok();
         int removed = orders.clearFinished(server, stash);
         out.addProperty("removed", removed);
-        audit.add(Router.user(ex), "orders.clear", server + " / " + stash + ": " + removed, AuthRoutes.address(ex));
+        audit.add(Router.user(ex), "orders.clear", stash + ": " + removed, AuthRoutes.address(ex));
         Http.json(ex, 200, out);
     }
 
     private void list(HttpExchange ex) throws IOException {
         Map<String, String> q = Http.query(ex);
-        String server = q.get("server");
         String stash = q.get("stash");
-        if (server == null || stash == null) {
-            Http.error(ex, 400, "server and stash are required");
-            return;
-        }
-        server = scoped(ex, server, stash);
+        String server = scoped(config, ex, stash);
         if (server == null) return;
         JsonObject list = orders.listJson(server, stash);
         var viewer = Router.user(ex);
@@ -251,7 +255,7 @@ final class OrderRoutes {
         Http.json(ex, 200, list);
     }
 
-    /** An order as this user may see it (forced streamer mode: other users' names and position-like text hidden). */
+    /** An order as this user may see it (position-like text hidden without the positions permission). */
     private static JsonObject shown(HttpExchange ex, JsonObject order) {
         if (order.remove("manifest") instanceof JsonObject manifest) {
             order.addProperty(
@@ -268,7 +272,6 @@ final class OrderRoutes {
             order.remove("destination");
             order.remove("comment");
         }
-        if (Redact.on(ex)) Redact.order(order, viewer.id());
         return order;
     }
 
@@ -386,15 +389,23 @@ final class OrderRoutes {
     private void claim(HttpExchange ex) throws IOException {
         JsonElement json = AddonRoutes.readJson(ex);
         JsonObject o = json != null && json.isJsonObject() ? json.getAsJsonObject() : null;
-        String server = o == null ? null : AddonRoutes.string(o, "server");
         String stash = o == null ? null : AddonRoutes.string(o, "stash");
-        if (server == null || server.isEmpty() || stash == null || stash.isEmpty()) {
-            Http.error(ex, 400, "server and stash are required");
+        if (stash == null || stash.isEmpty()) {
+            Http.error(ex, 400, "stash is required");
             return;
         }
-        String owner = owners.check(server, stash, AddonRoutes.string(o, "player"), false);
-        if (owner != null) {
-            AddonRoutes.conflict(ex, owner);
+        String sent = o == null ? null : AddonRoutes.string(o, "server");
+        String server = config.minecraftServer();
+        if (server == null || server.isEmpty()) {
+            Http.error(ex, 400, "set the Minecraft server in Settings first");
+            return;
+        }
+        if (sent != null && !sent.isEmpty() && !ServerRoutes.accepts(config, sent)) {
+            Http.error(ex, 409, "this Manager serves '" + server + "'");
+            return;
+        }
+        if (ServerRoutes.unknownStash(defs, stash)) {
+            Http.error(ex, 404, "unknown stash '" + stash + "': define it in Settings first");
             return;
         }
         String agent = AddonRoutes.string(o, "agent");
@@ -424,14 +435,6 @@ final class OrderRoutes {
             return;
         }
         JsonObject o = json.getAsJsonObject();
-        IndexStore.StashKey where = orders.stashOf(m.group(1));
-        if (where != null) {
-            String owner = owners.check(where.server(), where.stash(), AddonRoutes.string(o, "player"), false);
-            if (owner != null) {
-                AddonRoutes.conflict(ex, owner);
-                return;
-            }
-        }
         String status = AddonRoutes.string(o, "status");
         if (status == null
                 || !(status.equals("accepted")

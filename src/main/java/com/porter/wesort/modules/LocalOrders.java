@@ -155,7 +155,7 @@ public final class LocalOrders {
     /** The sorter's own check before it can be driven (StashSorter.notInStashWorld, which is private): another dimension, or too far. */
     private static String notInStashWorld(Stash st) {
         String dim = !st.dimension.isEmpty() ? st.dimension : st.areaDimension;
-        if (!dim.isEmpty()) return dim.equals(Stash.currentDimension()) ? null : "wrong dimension";
+        if (!dim.isEmpty()) return Stash.sameDimension(dim, Stash.currentDimension()) ? null : "wrong dimension";
         net.minecraft.world.phys.Vec3 at = mc.player.position();
         for (Stash.Box box : st.boxes) {
             if (box.known()

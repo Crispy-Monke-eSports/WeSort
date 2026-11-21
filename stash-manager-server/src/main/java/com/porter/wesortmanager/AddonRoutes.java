@@ -20,11 +20,16 @@ final class AddonRoutes {
     private final LinkState link;
     private final IconService icons;
     private final OrderStore orders;
-    private final Owners owners;
     private final DeliveryContents delivery;
+    private final Config config;
+    private final StashDefs defs;
 
-    AddonRoutes(IndexStore store, LinkState link, IconService icons, OrderStore orders, Owners owners) {
-        this(store, link, icons, orders, owners, new DeliveryContents());
+    AddonRoutes(IndexStore store, LinkState link, IconService icons, OrderStore orders) {
+        this(store, link, icons, orders, new DeliveryContents(), null, null);
+    }
+
+    AddonRoutes(IndexStore store, LinkState link, IconService icons, OrderStore orders, DeliveryContents delivery) {
+        this(store, link, icons, orders, delivery, null, null);
     }
 
     AddonRoutes(
@@ -32,14 +37,16 @@ final class AddonRoutes {
             LinkState link,
             IconService icons,
             OrderStore orders,
-            Owners owners,
-            DeliveryContents delivery) {
+            DeliveryContents delivery,
+            Config config,
+            StashDefs defs) {
         this.delivery = delivery;
         this.orders = orders;
-        this.owners = owners;
         this.icons = icons;
         this.store = store;
         this.link = link;
+        this.config = config;
+        this.defs = defs;
     }
 
     void register(Router router) {
@@ -66,6 +73,16 @@ final class AddonRoutes {
                 || !agent.matches("[0-9a-f-]{36}")
                 || !java.util.Set.of("acquire", "release", "uncertain").contains(action == null ? "" : action)) {
             Http.error(ex, 400, "Invalid automation request");
+            return;
+        }
+        // A sorting lease is physical work: fail closed before setup and on the wrong server.
+        int serverGate = ServerRoutes.agentServerStatus(config, server);
+        if (serverGate == 400) {
+            Http.error(ex, 400, "set the Minecraft server in Settings first");
+            return;
+        }
+        if (serverGate == 409) {
+            Http.error(ex, 409, "this Manager serves '" + config.minecraftServer() + "'");
             return;
         }
         synchronized (store) {
@@ -128,12 +145,21 @@ final class AddonRoutes {
         JsonObject index = json.getAsJsonObject();
         String server = index.get("server").getAsString();
         String stash = index.get("stash").getAsString();
-        String player = string(index, "player");
-        String owner = owners.check(server, stash, player, true, Http.attr(ex, Router.SCOPED_AGENT) == null);
-        if (owner != null) {
-            conflict(ex, owner);
+        // Fail closed: observations need a configured server, the right server and a defined stash.
+        int gate = ServerRoutes.agentServerStatus(config, server);
+        if (gate == 400) {
+            Http.error(ex, 400, "set the Minecraft server in Settings first");
             return;
         }
+        if (gate == 409) {
+            Http.error(ex, 409, "this Manager serves '" + config.minecraftServer() + "'");
+            return;
+        }
+        if (ServerRoutes.unknownStash(defs, stash)) {
+            Http.error(ex, 404, "unknown stash '" + stash + "': define it in Settings first");
+            return;
+        }
+        String player = string(index, "player");
         try {
             synchronized (store) {
                 store.putIndex(index);
@@ -177,6 +203,20 @@ final class AddonRoutes {
             Http.error(ex, 400, "server and stash must be non-empty strings");
             return;
         }
+        // Fail closed: heartbeats need a configured server, the right server and a defined stash.
+        int gate = ServerRoutes.agentServerStatus(config, server);
+        if (gate == 400) {
+            Http.error(ex, 400, "set the Minecraft server in Settings first");
+            return;
+        }
+        if (gate == 409) {
+            Http.error(ex, 409, "this Manager serves '" + config.minecraftServer() + "'");
+            return;
+        }
+        if (ServerRoutes.unknownStash(defs, stash)) {
+            Http.error(ex, 404, "unknown stash '" + stash + "': define it in Settings first");
+            return;
+        }
         if (badOptionalString(o, "player") || badOptionalString(o, "indexHash")) {
             Http.error(ex, 400, "player and indexHash must be strings");
             return;
@@ -203,12 +243,6 @@ final class AddonRoutes {
             Http.error(ex, 400, e.getMessage());
             return;
         }
-        String owner =
-                owners.check(server, stash, string(o, "player"), true, Http.attr(ex, Router.SCOPED_AGENT) == null);
-        if (owner != null) {
-            conflict(ex, owner);
-            return;
-        }
         IndexStore.HeartbeatResult result;
         try {
             result = store.heartbeat(server, stash, string(o, "player"), string(o, "indexHash"), status);
@@ -224,6 +258,11 @@ final class AddonRoutes {
         out.addProperty("needDelivery", delivery.needed(server, stash, deliveryHash));
         out.add("orders", orders.heartbeatJson(server, stash));
         if (result.rescan() != null) out.addProperty("rescan", result.rescan());
+        // Manager-owned directive: region cube, delivery, anvil and workbench. The bot executes headlessly.
+        if (defs != null) {
+            JsonObject directive = defs.directive(stash);
+            if (directive != null) out.add("directive", directive);
+        }
         Http.json(ex, 200, out);
     }
 
@@ -384,15 +423,6 @@ final class AddonRoutes {
         } catch (ArithmeticException | NumberFormatException ex) {
             return null;
         }
-    }
-
-    /** 409 for a player using a stash another bot owns (PROTOCOL.md, "multiple bots, stash ownership"). */
-    static void conflict(HttpExchange ex, String owner) throws IOException {
-        JsonObject o = new JsonObject();
-        o.addProperty("ok", false);
-        o.addProperty("error", "stash name in use");
-        o.addProperty("owner", owner);
-        Http.json(ex, 409, o);
     }
 
     private static long generation(HttpExchange ex) {

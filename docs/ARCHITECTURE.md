@@ -43,6 +43,21 @@ betrodd; klientens spoofbara forwardingheaders ger aldrig Owner-bootstrap.
 Agentnycklar och medlemscookies är separata identiteter. En agent får aldrig
 själv ändra en medlems kvot, roll eller bekräfta mottagning för en annan aktör.
 
+### Rättighets- och interaktionsgränser (PR #94)
+
+- Behörighetsuppdateringar är PATCH-lika för scopes: frånvarande
+  `stashes`/`bots`-nycklar behåller befintlig scope; explicit `null` betyder
+  obegränsad, `[]` betyder ingen åtkomst (`UserRoutes.update`,
+  `Users.Perms.withStashes/withBots`). En rutinmässig flaggändring kan därför
+  aldrig vidga åtkomst tyst. Webbläsarens kontroller är aldrig auktoritativa.
+- Världsinteraktion kräver exakta tillstånd (position + operation + fullständigt
+  namespaced block-ID + auktoriserande jobb + utgång). Jobbet är en verifierad
+  gräns: jobbbyte ogiltigförklarar gamla tillstånd, `unknown` auktoriserar
+  aldrig, och tillstånd konsumeras inte (samma logiska handling kontrolleras
+  flera gånger: mixin, paketgrind, stopDestroy-återkontroll).
+  Destruktiva operationer ogiltigförklarar sig själva via blockmatchning
+  (break lämnar luft, placering upptar cellen).
+
 ## Fysisk källa och global stock
 
 Fysisk nyckel: `(minecraftServerId, dimensionId, stashId, containerId, slot)`.
@@ -96,7 +111,7 @@ separata validerade fält, inte härledda ur fri kommentar.
 | Manager OrderStore/OrderRoutes | Befintlig stashorder; får inte parallellt äga framtida guildreservationer |
 | Users/AuthRoutes/Signer/AccessControl/AuditLog | Bevara konton, signing, sessioner, scopes och sekretess; framtida roller/audit via samma backend |
 | BotHub/BotRoutes | Nuvarande settings/status; hållbara jobbleases införs senare enligt kontraktet |
-| StaticRoutes och web/ | Obligatorisk medlems-/administrationsportal, samma process och API |
+| StaticRoutes och web/ | React/TypeScript-storefronten (se docs/WEB_ARCHITECTURE.md), samma process och API |
 
 JSON AtomicFiles gör en enskild filersättning atomisk, men ger inte en
 transaktion över order + quota + reservation + journal. Därför väljs en

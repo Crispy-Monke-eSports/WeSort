@@ -1,4 +1,12 @@
 # Standalone dev/CI file, not a production override. Never mounts a source tree or existing Qwerte data.
+#
+# Frontend development (React/TypeScript storefront in web/):
+#   1. Start the backend: ./gradlew --no-daemon -p stash-manager-server build, then run the
+#      Manager (or `docker compose -f compose.dev.yaml up --build manager`) on 127.0.0.1:8765.
+#   2. In web/: `bun install --frozen-lockfile && bun run dev` (Vite HMR on :5173).
+#   Vite proxies /api, /dirt.png and /icons* to the Manager, preserving Host/Origin/CSRF
+#   behavior. No permissive production CORS is introduced. Production serves the
+#   compiled bundle from Java (single container, see Dockerfile + docs/WEB_ARCHITECTURE.md).
 name: wesort-dev
 services:
   manager:

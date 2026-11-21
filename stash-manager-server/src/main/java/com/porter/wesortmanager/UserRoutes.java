@@ -97,15 +97,6 @@ final class UserRoutes {
         return p;
     }
 
-    /** Whether the body's perms object names "streamer" (true or false) itself. */
-    private static boolean explicitStreamer(JsonObject o) {
-        JsonElement pe = o.get("perms");
-        return pe != null
-                && pe.isJsonObject()
-                && pe.getAsJsonObject().has("streamer")
-                && !pe.getAsJsonObject().get("streamer").isJsonNull();
-    }
-
     private static Boolean optBool(JsonObject o, String key) {
         JsonElement e = o.get(key);
         if (e == null || e.isJsonNull()) return null;
@@ -181,16 +172,19 @@ final class UserRoutes {
             return;
         }
         Users.User before = users.byId(m.group(1));
-        // Force streamer mode is only changed by an explicit "streamer" key: a preset, or perms from an older page
-        // without the key, keep the stored flag (nobody gets un-forced by accident).
-        if (perms != null && before != null && !explicitStreamer(o))
-            perms = perms.withStreamer(before.perms().streamer());
-        if (perms != null
-                && before != null
-                && o.has("perms")
-                && o.get("perms").isJsonObject()
-                && !o.getAsJsonObject("perms").has("guildOrders")) {
-            perms = perms.withGuildOrders(before.perms().guildOrders());
+        if (perms != null && before != null && o.has("perms") && o.get("perms").isJsonObject()) {
+            // PATCH-like merge: absent keys keep the existing scope instead of
+            // widening to unlimited. A routine flag edit must never silently
+            // grant more stashes or bots (P0-01). Explicit null narrows nothing
+            // (unlimited) and [] narrows to no access; both are honored because
+            // the key is then present.
+            JsonObject sent = o.getAsJsonObject("perms");
+            if (!sent.has("guildOrders"))
+                perms = perms.withGuildOrders(before.perms().guildOrders());
+            if (!sent.has("positions"))
+                perms = perms.withPositions(before.perms().positions());
+            if (!sent.has("stashes")) perms = perms.withStashes(before.perms().stashes());
+            if (!sent.has("bots")) perms = perms.withBots(before.perms().bots());
         }
         Users.User u;
         try {
@@ -213,9 +207,6 @@ final class UserRoutes {
         if (before != null && !before.name().equals(u.name()))
             what.append(", renamed from ").append(before.name());
         if (before != null && before.disabled() != u.disabled()) what.append(u.disabled() ? ", disabled" : ", enabled");
-        if (before != null && before.perms().streamer() != u.perms().streamer()) {
-            what.append(u.perms().streamer() ? ", forced streamer mode ON" : ", forced streamer mode OFF");
-        }
         if (before != null && !before.perms().equals(u.perms()))
             what.append(", permissions: ").append(describe(u.perms()));
         audit.add(Router.user(ex), "user.update", what.toString(), AuthRoutes.address(ex));
@@ -363,7 +354,6 @@ final class UserRoutes {
         if (p.settings()) add.accept("settings");
         if (p.rescan()) add.accept("rescan");
         if (p.link()) add.accept("link");
-        if (p.streamer()) add.accept("forced streamer mode");
         if (p.stashes() != null) add.accept(p.stashes().size() + " stash(es)");
         if (p.bots() != null) add.accept(p.bots().size() + " bot(s)");
         return sb.isEmpty() ? "nothing" : sb.toString();

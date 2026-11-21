@@ -60,6 +60,25 @@ public final class InventorySync {
     private static net.minecraft.world.level.block.state.BlockState readBlock;
     private static final Map<Integer, BlockExpected> blocks = new LinkedHashMap<>();
     private static BlockUse blockUse;
+    private static BlockPos expectSpot;
+    private static String expectBlock;
+    // Block ID observed before the announced place. Local prediction may replace air
+    // with a shulker before PacketEvent.Send runs.
+    private static String expectBeforeBlock;
+    private static long expectAt;
+
+    /** Placement-intent audit counters (exposed to the E2E driver state). */
+    private static final java.util.concurrent.ConcurrentHashMap<String, Long> INTENT_AUDIT =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static void intentCounted(String reason) {
+        INTENT_AUDIT.merge(reason, 1L, Long::sum);
+    }
+
+    public static java.util.Map<String, Long> intentAudit() {
+        return java.util.Map.copyOf(INTENT_AUDIT);
+    }
+
     private static boolean recoveringWorld, recoveringReceipt;
     private static boolean reopenRequested;
 
@@ -246,6 +265,31 @@ public final class InventorySync {
                                 && !frame.getClassName().startsWith("com.porter.wesort.mixin.")));
     }
 
+    /**
+     * Announce a placement the bot is about to send: the following own UseItemOn against this
+     * empty cell is a durable physical mutation, so its intent (with the placed block) is recorded
+     * before the packet leaves. Set immediately before the interact/place call. The slot is
+     * single-entry and bounded: consumed on a matching own UseItemOn, overwritten by the next
+     * announce, cleared explicitly on failure/abort paths, and ignored once older than a minute
+     * (well beyond any rotation deferral), so a stale slot can never invent an intent.
+     */
+    public static void expectPlacement(BlockPos spot, String block) {
+        if (expectSpot != null && (spot == null || !expectSpot.equals(spot))) intentCounted("announce-overwrite");
+        intentCounted("announce");
+        expectSpot = spot == null ? null : spot.immutable();
+        expectBlock = block;
+        expectBeforeBlock = mc.level == null || spot == null ? null : blockId(spot);
+        expectAt = System.nanoTime();
+    }
+
+    public static void clearPlacementExpectation() {
+        if (expectSpot != null) intentCounted("clear");
+        expectSpot = null;
+        expectBlock = null;
+        expectBeforeBlock = null;
+        expectAt = 0;
+    }
+
     public static void beginBlockUse(net.minecraft.world.phys.BlockHitResult hit) {
         if (mc.player == null || mc.level == null || !calledFromWeSort()) return;
         BlockPos clicked = hit.getBlockPos().immutable(), adjacent = clicked.relative(hit.getDirection());
@@ -263,22 +307,126 @@ public final class InventorySync {
         blockUse = null;
     }
 
+    /**
+     * Only reuse the exact target identity observed at the mixin preflight of
+     * this packet. A later open or unrelated interaction cannot borrow it.
+     */
+    private static String preflightBlock(BlockPos target, net.minecraft.world.phys.BlockHitResult hit) {
+        if (blockUse == null || !blockUse.clicked.equals(hit.getBlockPos())) return null;
+        if (target.equals(blockUse.clicked)) return blockUse.beforeClicked;
+        if (target.equals(blockUse.adjacent)
+                && blockUse.adjacent.equals(hit.getBlockPos().relative(hit.getDirection())))
+            return blockUse.beforeAdjacent;
+        return null;
+    }
+
     private static String blockId(BlockPos pos) {
         return BuiltInRegistries.BLOCK
                 .getKey(mc.level.getBlockState(pos).getBlock())
                 .toString();
     }
 
+    /**
+     * Meteor's BlockUtils.place can click the replaceable destination directly
+     * when there is no solid support face. In that case vanilla places into the
+     * clicked cell, not the adjacent cell. Resolve the announced exact cell
+     * before deciding whether this is a durable world mutation.
+     */
+    private static BlockPos placementTarget(net.minecraft.world.phys.BlockHitResult hit) {
+        BlockPos clicked = hit.getBlockPos();
+        if (expectSpot != null && expectSpot.equals(clicked)) {
+            if (mc.level.getBlockState(clicked).canBeReplaced()) return clicked;
+            // In a direct-cell placement, the client may already predict the
+            // placed block by the time the packet send event is dispatched.
+            // The mixin captured the original clicked block before prediction.
+            // An ordinary later OPEN sees a shulker in that pre-use snapshot
+            // and cannot be mistaken for the announced placement.
+            if (blockUse != null
+                    && blockUse.clicked.equals(clicked)
+                    && expectBeforeBlock != null
+                    && expectBeforeBlock.equals(blockUse.beforeClicked)) return clicked;
+        }
+        return clicked.relative(hit.getDirection());
+    }
+
+    /**
+     * Bounded diagnostic at the native preflight boundary. The first outbound
+     * packet may not retain the initiating Java stack, so log the actual
+     * pre-interaction target rather than inferring it from later OPEN clicks.
+     */
+    public static void tracePlacePreflight(net.minecraft.world.phys.BlockHitResult hit, boolean allowed) {
+        if (expectSpot == null || mc.level == null || hit == null) return;
+        BlockPos clicked = hit.getBlockPos();
+        BlockPos adjacent = clicked.relative(hit.getDirection());
+        if (!expectSpot.equals(clicked) && !expectSpot.equals(adjacent)) return;
+        intentCounted("place-mixin-entry");
+        if (INTENT_AUDIT.getOrDefault("place-mixin-entry", 0L) <= 4)
+            MeteorClient.LOG.warn(
+                    "WeSort place preflight: expected {}, clicked {} face {}, adjacent {}, before {}, live {}, allowed {}, context {}, job {}",
+                    expectSpot.toShortString(),
+                    clicked.toShortString(),
+                    hit.getDirection(),
+                    adjacent.toShortString(),
+                    expectBeforeBlock,
+                    blockId(expectSpot),
+                    allowed,
+                    calledFromWeSort(),
+                    WorldInteractionGuard.currentJob());
+    }
+
+    private static void tracePlaceSend(ServerboundUseItemOnPacket use) {
+        if (expectSpot == null || mc.level == null) return;
+        BlockPos clicked = use.hitResult().getBlockPos();
+        BlockPos adjacent = clicked.relative(use.hitResult().getDirection());
+        if (!expectSpot.equals(clicked) && !expectSpot.equals(adjacent)) return;
+        intentCounted("place-packet-send");
+        if (INTENT_AUDIT.getOrDefault("place-packet-send", 0L) <= 4)
+            MeteorClient.LOG.warn(
+                    "WeSort place packet: expected {}, clicked {} face {}, adjacent {}, before {}, live {}, own {}, rotated {}, internal {}, job {}",
+                    expectSpot.toShortString(),
+                    clicked.toShortString(),
+                    use.hitResult().getDirection(),
+                    adjacent.toShortString(),
+                    expectBeforeBlock,
+                    blockId(expectSpot),
+                    calledFromWeSort(),
+                    rotatedInput,
+                    internal,
+                    WorldInteractionGuard.currentJob());
+    }
+
     @EventHandler
     private void sent(PacketEvent.Send event) {
         if (mc.player == null || mc.level == null) return;
-        if ((event.packet instanceof ServerboundUseItemOnPacket use && !WorldInteractionGuard.allowUse(use.hitResult()))
+        if (event.packet instanceof ServerboundUseItemOnPacket use) tracePlaceSend(use);
+        if ((event.packet instanceof ServerboundUseItemOnPacket use
+                        && !WorldInteractionGuard.allowUse(
+                                use.hitResult(),
+                                blockUse != null
+                                                && blockUse.clicked.equals(
+                                                        use.hitResult().getBlockPos())
+                                        ? blockUse.beforeClicked
+                                        : null,
+                                blockUse != null
+                                                && blockUse.clicked.equals(
+                                                        use.hitResult().getBlockPos())
+                                                && blockUse.adjacent.equals(use.hitResult()
+                                                        .getBlockPos()
+                                                        .relative(
+                                                                use.hitResult().getDirection()))
+                                        ? blockUse.beforeAdjacent
+                                        : null))
                 || (event.packet instanceof ServerboundPlayerActionPacket action
                         && switch (action.getAction()) {
-                            case START_DESTROY_BLOCK, STOP_DESTROY_BLOCK ->
-                                !WorldInteractionGuard.allowBreak(action.getPos());
+                            case START_DESTROY_BLOCK -> !WorldInteractionGuard.allowBreak(action.getPos());
+                            case STOP_DESTROY_BLOCK -> !WorldInteractionGuard.allowBreakStop(action.getPos());
                             default -> false;
-                        })) {
+                        })
+                // Sign text travels in its own packet: it needs a live SIGN permit like any mutation.
+                || (event.packet instanceof ServerboundSignUpdatePacket sign
+                        && !WorldInteractionGuard.allowSign(sign.pos()))) {
+            if (event.packet instanceof ServerboundUseItemOnPacket && expectSpot != null)
+                intentCounted("place-packet-guard-denied");
             event.cancel();
             return;
         }
@@ -298,7 +446,36 @@ public final class InventorySync {
             }
             return;
         }
+        // Meteor may dispatch a deferred rotation after the initiating WeSort stack
+        // has unwound. A live, exact PLACE permit is authority to identify that
+        // outgoing packet as WeSort automation, not to skip the durable journal.
+        // Without a matching placement announcement the packet is cancelled below.
         boolean ours = calledFromWeSort();
+        if (!ours && event.packet instanceof ServerboundUseItemOnPacket placed) {
+            var target = placementTarget(placed.hitResult());
+            boolean placePermit =
+                    WorldInteractionGuard.hasLivePlacePermit(target, preflightBlock(target, placed.hitResult()));
+            if (expectSpot != null && target.equals(expectSpot) && !placePermit) {
+                intentCounted("unattributed-place-without-permit");
+                if (INTENT_AUDIT.getOrDefault("unattributed-place-without-permit", 0L) <= 2)
+                    MeteorClient.LOG.warn(
+                            "WeSort placement at {} has an announcement but no current job-bound permit",
+                            target.toShortString());
+            }
+            if (placePermit) {
+                ours = true;
+                // The regular mixin preflight was deferred with Meteor's rotation.
+                // Capture the current menu as the before-frame, just as allowInput()
+                // does for synchronous automation, before any prediction or send.
+                var menu = mc.player.containerMenu;
+                actionBefore = frame(new InventoryReadback.Expected(
+                        menu.containerId,
+                        fingerprints(
+                                menu.slots.stream().map(slot -> slot.getItem()).toList()),
+                        fingerprint(menu.getCarried())));
+                intentCounted("permit-placement-attribution");
+            }
+        }
         boolean allowed = ready() || gate.acceptingBatch();
         if (ours
                 && !allowed
@@ -332,9 +509,49 @@ public final class InventorySync {
                     mutation = true;
                 }
             }
+            if (ours) {
+                // An announced placement against this exact cell: durable intent with the
+                // placed block before the packet leaves (W-061 journal ordering). The slot
+                // clears only on a matching own UseItemOn: an interleaved use against another
+                // cell (survey open, sign click, recovery reopen) must not eat another job's
+                // announced placement. Stale slots are still bounded: every announce site
+                // clears explicitly when its place call fails, and only a placement into the
+                // announced cell can consume it.
+                BlockPos want = expectSpot;
+                String placing = expectBlock;
+                long announcedAt = expectAt;
+                if (want != null
+                        && placing != null
+                        && !placing.isEmpty()
+                        && System.nanoTime() - announcedAt < 60_000_000_000L
+                        && placementTarget(use.hitResult()).equals(want)) {
+                    intentCounted("consume-hit");
+                    expectSpot = null;
+                    expectBlock = null;
+                    expectBeforeBlock = null;
+                    expectAt = 0;
+                    blocks.put(
+                            use.sequence(),
+                            new BlockExpected(use.sequence(), want, placing, System.nanoTime() + 8_000_000_000L));
+                    var hand = mc.player.getMainHandItem();
+                    String outcome;
+                    if (hand.getCount() <= 1) outcome = "empty";
+                    else {
+                        var rest = hand.copy();
+                        rest.setCount(rest.getCount() - 1);
+                        outcome = fingerprint(rest);
+                    }
+                    alternatives = Map.of(36 + mc.player.getInventory().getSelectedSlot(), Set.of(outcome));
+                    mutation = true;
+                }
+            }
         }
         if (event.packet instanceof ServerboundPlayerActionPacket action && ours) {
-            lastBlockSequence = action.getSequence();
+            // ABORT carries sequence 0 and is never journaled or ack-tracked: only
+            // sequenced START/STOP advance the block fence. Clobbering the sequence
+            // with 0 would fake-acknowledge every in-flight mutation.
+            if (action.getAction() != ServerboundPlayerActionPacket.Action.ABORT_DESTROY_BLOCK)
+                lastBlockSequence = action.getSequence();
             if (action.getAction() == ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK
                     || (action.getAction() == ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK
                             && mc.level.getBlockState(action.getPos()).isAir())) {
@@ -361,6 +578,36 @@ public final class InventorySync {
                 }
             }
         }
+        if (!mutation && event.packet instanceof ServerboundUseItemOnPacket use && ours) {
+            // Fail-closed placement intent (W-061 journal ordering): an own block-use against a
+            // cell carrying a live PLACE permit for this job is an announced placement whose
+            // durable intent must be recorded before the packet leaves. Opens authorize only the
+            // USE permit on the clicked block, so they never take this branch. If the announced
+            // slot did not match (lost, overwritten, expired, or mis-targeted), the packet is
+            // withheld instead of mutating the world without an intent; the job retries through
+            // its normal place-failed path with a fresh announcement. Withholding cancels the
+            // send, so no phantom read-open is registered below for the cancelled packet.
+            var target = placementTarget(use.hitResult());
+            if (expectSpot != null) {
+                intentCounted("consume-miss");
+                if (INTENT_AUDIT.getOrDefault("consume-miss", 0L) <= 2)
+                    MeteorClient.LOG.warn(
+                            "WeSort placement mismatch: expected {}, clicked {} face {}, resolved target {}, job {}",
+                            expectSpot.toShortString(),
+                            use.hitResult().getBlockPos().toShortString(),
+                            use.hitResult().getDirection(),
+                            target.toShortString(),
+                            WorldInteractionGuard.currentJob());
+            }
+            if (WorldInteractionGuard.hasLivePlacePermit(target, preflightBlock(target, use.hitResult()))) {
+                intentCounted("unmatched-placement-cancelled");
+                event.cancel();
+                MeteorClient.LOG.error(
+                        "WeSort withheld a placement without a durable intent at {}; no packet left the client.",
+                        target.toShortString());
+                return;
+            }
+        }
         if (!mutation && event.packet instanceof ServerboundUseItemOnPacket use) {
             BlockPos pos = use.hitResult().getBlockPos().immutable();
             var block = mc.level.getBlockState(pos).getBlock();
@@ -379,6 +626,7 @@ public final class InventorySync {
                         ambiguous,
                         false);
             }
+            return;
         }
         if (!mutation) return;
         if (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror()) {
@@ -436,12 +684,27 @@ public final class InventorySync {
             } else if (!reopenRequested && openRecoverySource()) reopenRequested = true;
         }
         if (gate.failed()) return;
-        for (var block : blocks.values())
-            if (!recoveringWorld && System.nanoTime() >= block.deadline) {
-                gate.fail("Block acknowledgement timed out; do not replay the placement or break");
+        // The block ACK is an ordering fence, not proof that a separate world
+        // state update has reached the client on this same callback. Keep the
+        // mutation fenced until the matching world state arrives; if the server
+        // never confirms it, the original eight-second deadline fails closed.
+        boolean confirmedBlock = false;
+        for (var block : List.copyOf(blocks.values())) {
+            if (lastBlockAck >= block.sequence
+                    && mc.level != null
+                    && mc.level.isLoaded(block.pos)
+                    && blockId(block.pos).equals(block.block)) {
+                blocks.remove(block.sequence);
+                confirmedBlock = true;
+            } else if (!recoveringWorld && System.nanoTime() >= block.deadline) {
+                gate.fail("Block acknowledgement or verified state timed out; do not replay the action");
                 reportFailure();
                 return;
             }
+        }
+        // Only finalize after a pending block has been confirmed; otherwise
+        // complete() would fsync the journal directory on every client tick.
+        if (confirmedBlock) complete();
         gate.expire(System.nanoTime());
         if (gate.failed()) {
             reportFailure();
@@ -598,15 +861,14 @@ public final class InventorySync {
             }
         }
         if (gate.failed()) return;
+        // ACK may precede the matching authoritative block-state packet.
+        // Do not incorrectly fail on its transient old state, and never clear
+        // the pending fence until the expected state is actually visible.
         for (var block : List.copyOf(blocks.values()))
-            if (block.sequence <= sequence) {
-                if (!mc.level.isLoaded(block.pos) || !blockId(block.pos).equals(block.block)) {
-                    gate.fail("Server rejected or changed the predicted block operation");
-                    reportFailure();
-                    return;
-                }
-                blocks.remove(block.sequence);
-            }
+            if (block.sequence <= sequence
+                    && mc.level != null
+                    && mc.level.isLoaded(block.pos)
+                    && blockId(block.pos).equals(block.block)) blocks.remove(block.sequence);
         complete();
     }
 
@@ -659,6 +921,8 @@ public final class InventorySync {
         recoveryOpening = true;
         try {
             lastInteracted = pos;
+            // W-061: recovery reopens the exact container being recovered, nothing else.
+            WorldInteractionGuard.authorizeUse(pos);
             meteordevelopment.meteorclient.utils.world.BlockUtils.interact(
                     new net.minecraft.world.phys.BlockHitResult(
                             net.minecraft.world.phys.Vec3.atCenterOf(pos), net.minecraft.core.Direction.UP, pos, false),

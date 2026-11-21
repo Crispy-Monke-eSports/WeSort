@@ -49,7 +49,7 @@ final class OperationsRoutes {
         if (perms.view()) {
             var seen = new HashSet<String>();
             for (var source : index.stock().sources()) {
-                if (!perms.seesStash(source.server(), source.stash())
+                if (!perms.seesStash(source.stash())
                         || !seen.add(source.value().get("id").getAsString())) continue;
                 String state = source.status();
                 count(stock, state);

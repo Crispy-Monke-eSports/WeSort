@@ -218,6 +218,9 @@ public class Stash {
     public static final int MAX_X = 256, MAX_Y = 128, MAX_Z = 256;
 
     public String areaDimension = "";
+    // The last Manager directive revision applied to this stash (-1: none pinned yet).
+    // Persisted so a restart never re-applies a stale region over newer local state.
+    public long directiveRev = -1;
     // The delivery container, kept on the stash itself so that no pruning of the box list (a perimeter that leaves it
     // out,
     // say) can lose it. It stays until the user clears it
@@ -279,6 +282,24 @@ public class Stash {
         return cachedDimension;
     }
 
+    /**
+     * Canonical dimension id for comparisons ("minecraft:overworld"). The live level reports the
+     * raw ResourceKey form while directives and records carry the normalized id; comparing raw
+     * strings silently mismatches and (via notInStashWorld) permanently disables driven work.
+     */
+    public static String canonicalDimension(String id) {
+        if (id == null) return "";
+        int slash = id.lastIndexOf(" / ");
+        if (slash >= 0) id = id.substring(slash + 3).replace("]", "");
+        return id;
+    }
+
+    /** Dimension equality across raw and normalized forms. Both sides must be non-empty. */
+    public static boolean sameDimension(String a, String b) {
+        if (a == null || b == null || a.isEmpty() || b.isEmpty()) return false;
+        return canonicalDimension(a).equals(canonicalDimension(b));
+    }
+
     /** Both corners are set, whatever dimension they are in. */
     public boolean hasCorners() {
         return corner1 != null && corner2 != null;
@@ -288,7 +309,7 @@ public class Stash {
     public boolean hasArea() {
         return corner1 != null
                 && corner2 != null
-                && (areaDimension.isEmpty() || areaDimension.equals(currentDimension()));
+                && (areaDimension.isEmpty() || sameDimension(areaDimension, currentDimension()));
     }
 
     public BlockPos areaMin() {
@@ -649,6 +670,7 @@ public class Stash {
         if (corner1 != null) root.put("corner1", positions(List.of(corner1)));
         if (corner2 != null) root.put("corner2", positions(List.of(corner2)));
         if (!areaDimension.isEmpty()) root.putString("areaDimension", areaDimension);
+        if (directiveRev >= 0) root.putLong("directiveRev", directiveRev);
         if (deliveryPos != null) root.put("deliveryPos", positions(List.of(deliveryPos)));
         if (anvilPos != null) root.put("anvilPos", positions(List.of(anvilPos)));
         if (anvilPos != null && !anvilSource.isEmpty()) root.putString("anvilSource", anvilSource);
@@ -794,6 +816,7 @@ public class Stash {
             }
             String areaDim = string(root.get("areaDimension"));
             if (areaDim != null) stash.areaDimension = areaDim;
+            if (root.contains("directiveRev")) stash.directiveRev = longNumber(root.get("directiveRev"));
             if (root.get("deliveryPos") instanceof ListTag dp) {
                 List<BlockPos> at = readPositions(dp);
                 if (!at.isEmpty()) stash.deliveryPos = at.getFirst();

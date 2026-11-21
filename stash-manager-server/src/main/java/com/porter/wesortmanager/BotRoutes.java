@@ -38,13 +38,15 @@ final class BotRoutes {
     private final BotHub hub;
     private final AuditLog audit;
     private final OrderStore orders;
-    private final Owners owners;
+    private final Config config;
+    private final StashDefs defs;
 
-    BotRoutes(BotHub hub, AuditLog audit, OrderStore orders, Owners owners) {
+    BotRoutes(BotHub hub, AuditLog audit, OrderStore orders, Config config, StashDefs defs) {
         this.hub = hub;
         this.audit = audit;
         this.orders = orders;
-        this.owners = owners;
+        this.config = config;
+        this.defs = defs;
     }
 
     void register(Router router) {
@@ -144,6 +146,21 @@ final class BotRoutes {
                 Http.error(ex, 400, "Invalid manifest scope");
                 return;
             }
+            // The binding names the Minecraft server and stash the bot works in: both are verified.
+            // A bot from another server is refused; an undefined stash cannot take work.
+            int gate = ServerRoutes.agentServerStatus(config, manifestScope.server());
+            if (gate == 400) {
+                Http.error(ex, 400, "set the Minecraft server in Settings first");
+                return;
+            }
+            if (gate == 409) {
+                Http.error(ex, 409, "this Manager serves '" + config.minecraftServer() + "'");
+                return;
+            }
+            if (ServerRoutes.unknownStash(defs, manifestScope.stash())) {
+                Http.error(ex, 404, "unknown stash '" + manifestScope.stash() + "': define it in Settings first");
+                return;
+            }
         }
         int status = hub.register(botId, player, plugin, runtime, caps, scopes, controlSession, manifestScope);
         if (status != 200) {
@@ -162,6 +179,13 @@ final class BotRoutes {
             synchronized (bot) {
                 out.addProperty("controlEpoch", bot.controlEpoch);
             }
+        }
+        // Announce the Manager-defined stashes so a clean client can adopt one
+        // without any local stash selection (names only; coordinates stay in the directive).
+        if (defs != null) {
+            var names = new com.google.gson.JsonArray();
+            for (var d : defs.all()) names.add(d.name());
+            out.add("stashes", names);
         }
         Http.json(ex, 200, out);
     }
@@ -218,10 +242,7 @@ final class BotRoutes {
     }
 
     private BotHub.ManifestScope currentManifestScope(BotHub.Bot bot, String session, String epoch) {
-        var scope = hub.manifestScope(bot, session, epoch);
-        return scope != null && scope.player().equalsIgnoreCase(owners.owner(scope.server(), scope.stash()))
-                ? scope
-                : null;
+        return hub.manifestScope(bot, session, epoch);
     }
 
     private void acknowledgeManifest(HttpExchange ex) throws IOException {

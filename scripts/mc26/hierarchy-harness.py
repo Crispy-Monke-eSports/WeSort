@@ -318,14 +318,28 @@ class HierarchyHarness(stock.StockHarness):
             'agent-issue', foreign_id, 'OtherBot', self.server_name, 'other-stash'
         ]).strip())
         self.run(cli + ['agent-require-scoped'])
+        # The stash-def gate is fail-closed: in-scope heartbeats for a second
+        # stash need its definition (the owner session from start_manager persists).
+        # other-stash is likewise defined so the second credential's own-scope
+        # heartbeat is meaningful; unassigned-fixture stays undefined on purpose.
+        for name in ('secondary-fixture', 'other-stash'):
+            status, _ = self.http('/api/v1/stash-defs', {'action': 'create', 'name': name,
+                'dimension': 'minecraft:overworld',
+                'pos1': {'x': -32, 'y': 40, 'z': -32}, 'pos2': {'x': 63, 'y': 90, 'z': 32}})
+            require(status == 200, '%s stash def failed: %s' % (name, status))
         heartbeat = {'server': self.server_name, 'stash': 'e2e-fixture', 'player': self.player}
         require(shared.post('/api/v1/heartbeat', heartbeat)[0] == 401, 'Shared credential survived scoped-only activation')
         require(old.post('/api/v1/heartbeat', heartbeat)[0] == 401, 'Rotated credential could still act')
         require(current.post('/api/v1/heartbeat', heartbeat)[0] == 200, 'Current credential could not read its warehouse heartbeat')
         require(current.post('/api/v1/heartbeat', dict(heartbeat, stash='secondary-fixture'))[0] == 200,
                 'One credential could not reach its second stash')
-        require(current.post('/api/v1/heartbeat', dict(heartbeat, stash='unassigned-fixture'))[0] == 403,
-                'One credential could reach an unassigned stash')
+        # No per-stash ownership: every authorized bot may work in every DEFINED stash.
+        # An undefined stash name is fail-closed 404, never silently accepted (and never 200
+        # with an empty directive). The 403s in this suite are identity mismatches, not location.
+        require(current.post('/api/v1/heartbeat', dict(heartbeat, stash='unassigned-fixture'))[0] == 404,
+                'Undefined stash was not refused with 404')
+        require(current.post('/api/v1/heartbeat', dict(heartbeat, server='evil-server'))[0] == 409,
+                'Heartbeat from a foreign server was not refused with 409')
         require(foreign.post('/api/v1/heartbeat', heartbeat)[0] == 403, 'Agent accessed another stash')
         unauthorized = {'server': self.server_name, 'stash': 'other-stash', 'player': 'OtherBot'}
         require(foreign.post('/api/v1/heartbeat', unauthorized)[0] == 200, 'Second credential was unusable in its own scope')
@@ -352,6 +366,15 @@ class HierarchyHarness(stock.StockHarness):
         endpoint = f'http://127.0.0.1:{self.manager_port}'
         expected = {native['botId']}
         credentials = []
+        # Fleet peers bind their own stashes: bot/hello fail-closes 404 on an undefined
+        # stash (BotRoutes unknownStash gate). Define all four up front so registration
+        # tests session independence, not setup. Adding definitions is not ownership:
+        # every authorized bot may still use every defined stash.
+        for i in range(1, 5):
+            status, _ = self.http('/api/v1/stash-defs', {'action': 'create', 'name': f'fleet-peer-{i}',
+                'dimension': 'minecraft:overworld',
+                'pos1': {'x': -32, 'y': 40, 'z': -32}, 'pos2': {'x': 63, 'y': 90, 'z': 32}})
+            require(status == 200, 'fleet-peer-%d stash def failed: %s' % (i, status))
         for i in range(1, 5):
             ident, player, stash = str(uuid.uuid4()), f'FleetPeer{i}', f'fleet-peer-{i}'
             token = self.run(cli + ['agent-issue', ident, player, self.server_name, stash]).strip()
@@ -361,7 +384,14 @@ class HierarchyHarness(stock.StockHarness):
                      'manifestScope': {'server': self.server_name, 'stash': stash,
                                        'dimension': 'minecraft:overworld', 'agent': ident}}
             code, reply = agent.post('/api/v1/bot/hello', hello)
-            require(code == 200 and reply.get('controlEpoch'), 'Independent fleet member could not register')
+            if code != 200 or not (reply or {}).get('controlEpoch'):
+                status, defs = self.http('/api/v1/stash-defs')
+                names = sorted(d['name'] for d in defs.get('defs', [])) if status == 200 else defs
+                raise RuntimeError(
+                    'Independent fleet member could not register: hello=%s body=%s stash=%s defined=%s' % (
+                        code,
+                        {k: (v if k != 'controlSession' else '<redacted>') for k, v in (reply or {}).items()},
+                        stash, names))
             require(agent.post('/api/v1/bot/hello', dict(hello, controlSession=secrets.token_hex(32)))[0] == 409,
                     'A concurrent control session displaced an online agent')
             require(agent.post('/api/v1/bot/next', {'botId': native['botId'], 'controlSession': hello['controlSession']})[0] == 403,

@@ -78,6 +78,9 @@ jobs:
           java-version: '21'
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c
       - uses: ./.github/actions/configure-gradle-mirror
+      - uses: oven-sh/setup-bun@v2
+      - name: Build React storefront into the Manager resources
+        run: cd web && bun install --frozen-lockfile && bun run test && bun run build
       - name: Build and test Manager
         run: ./gradlew --no-daemon -p stash-manager-server build
       - name: Verify fresh installation, restart and data isolation
@@ -123,6 +126,12 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: web-tests/package-lock.json
+      - uses: oven-sh/setup-bun@v2
+      # The static regression tests the production bundle served from the
+      # Manager resources (assets/ is git-ignored build output, never checked
+      # in). Build it first so referenced hashed assets always exist.
+      - name: Build React storefront into the Manager resources
+        run: cd web && bun install --frozen-lockfile && bun run build
       - run: npm ci --prefix web-tests
       - run: npm test --prefix web-tests
 

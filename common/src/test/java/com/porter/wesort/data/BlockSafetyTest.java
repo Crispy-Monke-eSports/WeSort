@@ -40,6 +40,27 @@ class BlockSafetyTest {
     }
 
     @Test
+    void namespacedIdsMatchOnPath() {
+        // The guard passes full namespaced ids (minecraft:lever); classification
+        // strips the namespace so namespaced dangerous blocks stay denied and
+        // namespaced ordinary blocks stay allowed.
+        assertTrue(BlockSafety.safetySensitive("minecraft:oak_door"));
+        assertTrue(BlockSafety.safetySensitive("minecraft:lever"));
+        assertTrue(BlockSafety.safetySensitive("minecraft:tripwire"));
+        assertTrue(BlockSafety.safetySensitive("minecraft:redstone_wire"));
+        assertTrue(BlockSafety.safetySensitive("minecraft:stone_button"));
+        assertTrue(BlockSafety.passiveTrigger("minecraft:stone_pressure_plate"));
+        assertTrue(BlockSafety.passiveTrigger("minecraft:tripwire"));
+        assertFalse(BlockSafety.safetySensitive("minecraft:stone"));
+        assertFalse(BlockSafety.safetySensitive("minecraft:chest"));
+        assertFalse(BlockSafety.passiveTrigger("minecraft:stone"));
+        // Other namespaces classify the same way (syntactic, path-based).
+        assertTrue(BlockSafety.safetySensitive("othermod:oak_door"));
+        assertTrue(BlockSafety.safetySensitive("othermod:lever"));
+        assertFalse(BlockSafety.safetySensitive("othermod:stone"));
+    }
+
+    @Test
     void ordinaryStorageAndBuildingBlocksAreAllowed() {
         assertFalse(BlockSafety.safetySensitive("chest"));
         assertFalse(BlockSafety.safetySensitive("barrel"));

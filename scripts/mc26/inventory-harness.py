@@ -90,6 +90,12 @@ class InventoryHarness(world.Harness):
         try: super().start_client()
         finally: self.server_port = target
 
+    def manager_server_name(self):
+        # The client connects through the interfering proxy, so it reports the
+        # proxy address as its server: the Manager must be configured with
+        # exactly that string or every agent call 409s as the wrong server.
+        return '127.0.0.1:' + str(self.proxy.port)
+
     def close(self):
         try: super().close()
         finally: self.proxy.close()

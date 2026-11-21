@@ -14,7 +14,6 @@ final class BrowserRoutes {
     private final LinkState link;
     private final List<String> urls;
     private final OrderStore orders;
-    private final Owners owners;
     private final SessionStore sessions;
     private final AuditLog audit;
     private final DeliveryContents delivery;
@@ -26,7 +25,6 @@ final class BrowserRoutes {
             LinkState link,
             List<String> urls,
             OrderStore orders,
-            Owners owners,
             SessionStore sessions,
             AuditLog audit,
             DeliveryContents delivery,
@@ -36,7 +34,6 @@ final class BrowserRoutes {
         this.sessions = sessions;
         this.audit = audit;
         this.orders = orders;
-        this.owners = owners;
         this.store = store;
         this.config = config;
         this.link = link;
@@ -50,12 +47,6 @@ final class BrowserRoutes {
                         Router.Guard.SESSION,
                         Router.Perm.VIEW,
                         ex -> Http.json(ex, 200, stashes(Router.user(ex))))
-                .exact(
-                        Router.POST,
-                        "/api/v1/stashes/release",
-                        Router.Guard.BROWSER_WRITE,
-                        Router.Perm.LINK,
-                        this::release)
                 .exact(Router.GET, "/api/v1/index", Router.Guard.SESSION, Router.Perm.VIEW, this::getIndex)
                 .exact(Router.GET, "/api/v1/link", Router.Guard.SESSION, Router.Perm.LINK, this::getLink)
                 .exact(
@@ -67,17 +58,12 @@ final class BrowserRoutes {
                 .exact(Router.POST, "/api/v1/rescan", Router.Guard.BROWSER_WRITE, Router.Perm.RESCAN, this::rescan);
     }
 
-    /** POST /api/v1/rescan {server, stash}: asks the bot to re-read every container (PROTOCOL.md, "manual rescan"). */
+    /** POST /api/v1/rescan {stash}: asks the bot to re-read every container (PROTOCOL.md, "manual rescan"). */
     private void rescan(HttpExchange ex) throws IOException {
         com.google.gson.JsonElement json = AddonRoutes.readJson(ex);
         JsonObject o = json != null && json.isJsonObject() ? json.getAsJsonObject() : null;
-        String server = o == null ? null : AddonRoutes.string(o, "server");
         String stash = o == null ? null : AddonRoutes.string(o, "stash");
-        if (server == null || server.isEmpty() || stash == null || stash.isEmpty()) {
-            Http.error(ex, 400, "server and stash are required");
-            return;
-        }
-        server = OrderRoutes.scoped(ex, server, stash);
+        String server = OrderRoutes.scoped(config, ex, stash);
         if (server == null) return;
         long id = store.requestRescan(server, stash);
         if (id < 0) {
@@ -93,80 +79,45 @@ final class BrowserRoutes {
     private JsonArray stashes(Users.Principal who) {
         JsonArray all = store.listJson();
         JsonArray list = new JsonArray();
-        boolean forced = Redact.forced(who);
         for (com.google.gson.JsonElement e : all) {
             JsonObject o = e.getAsJsonObject();
-            String server = o.get("server").getAsString();
             String stash = o.get("stash").getAsString();
-            if (!who.perms().seesStash(server, stash)) continue;
+            if (!who.perms().seesStash(stash)) continue;
+            String server = o.has("server") && o.get("server").isJsonPrimitive()
+                    ? o.get("server").getAsString()
+                    : null;
             list.add(o);
-            o.addProperty("owner", owners.owner(server, stash));
-            Owners.Conflict c = owners.conflict(server, stash);
-            if (c != null) {
-                JsonObject co = new JsonObject();
-                co.addProperty("player", c.player());
-                co.addProperty("at", c.at());
-                o.add("conflict", co);
+            if (server == null) {
+                o.add(
+                        "orders",
+                        orders.summaryJson(
+                                config.minecraftServer(), stash, who.perms().ordersAll() ? null : who.id()));
             } else {
-                o.add("conflict", com.google.gson.JsonNull.INSTANCE);
+                o.add("orders", orders.summaryJson(server, stash, who.perms().ordersAll() ? null : who.id()));
             }
-            o.add("orders", orders.summaryJson(server, stash, who.perms().ordersAll() ? null : who.id()));
-            // What is already in the delivery storage (the full report: GET /api/v1/delivery). Never in the index.
-            DeliveryContents.Snapshot dc = delivery.get(server, stash);
-            o.add("deliveryContents", dc == null ? com.google.gson.JsonNull.INSTANCE : dc.summary());
-            if (forced) Redact.stash(o);
-            else if (!who.perms().positions()) Redact.stashLocations(o);
-        }
-        // "Server 1": what a page in streamer mode shows instead of the address (numbered over the visible stashes).
-        java.util.Map<String, String> labels = Redact.serverLabels(list);
-        for (com.google.gson.JsonElement e : list) {
-            JsonObject o = e.getAsJsonObject();
-            o.addProperty("serverLabel", labels.get(o.get("server").getAsString()));
+            if (server == null) {
+                o.add("deliveryContents", com.google.gson.JsonNull.INSTANCE);
+            } else {
+                // What is already in the delivery storage (the full report: GET /api/v1/delivery). Never in the index.
+                DeliveryContents.Snapshot dc = delivery.get(server, stash);
+                o.add("deliveryContents", dc == null ? com.google.gson.JsonNull.INSTANCE : dc.summary());
+            }
+            if (!who.perms().positions()) Redact.stashLocations(o);
         }
         return list;
     }
 
-    /** POST /api/v1/stashes/release {server, stash}: clears the owner so another bot can take the stash. */
-    private void release(HttpExchange ex) throws IOException {
-        com.google.gson.JsonElement json = AddonRoutes.readJson(ex);
-        JsonObject o = json != null && json.isJsonObject() ? json.getAsJsonObject() : null;
-        String server = o == null ? null : AddonRoutes.string(o, "server");
-        String stash = o == null ? null : AddonRoutes.string(o, "stash");
-        if (server == null || server.isEmpty() || stash == null || stash.isEmpty()) {
-            Http.error(ex, 400, "server and stash are required");
-            return;
-        }
-        server = OrderRoutes.scoped(ex, server, stash);
-        if (server == null) return;
-        boolean had = owners.owner(server, stash) != null;
-        if (!had && !store.has(server, stash)) {
-            Http.error(ex, 404, "no such stash");
-            return;
-        }
-        owners.release(server, stash);
-        audit.add(Router.user(ex), "stash.release", server + " / " + stash, AuthRoutes.address(ex));
-        JsonObject out = Http.ok();
-        out.addProperty("released", had);
-        Http.json(ex, 200, out);
-    }
-
     private void getIndex(HttpExchange ex) throws IOException {
         Map<String, String> q = Http.query(ex);
-        String server = q.get("server");
         String stash = q.get("stash");
-        if (server == null || stash == null) {
-            Http.error(ex, 400, "server and stash are required");
-            return;
-        }
-        server = OrderRoutes.scoped(ex, server, stash);
+        String server = OrderRoutes.scoped(config, ex, stash);
         if (server == null) return;
         IndexStore.IndexBytes index = store.index(server, stash);
         if (index == null) {
             Http.error(ex, 404, "no index for that stash");
             return;
         }
-        if (Redact.on(ex) || !Router.user(ex).perms().positions()) {
-            // Forced streamer mode: without the player and dimension (and no shared ETag with the full form).
+        if (!Router.user(ex).perms().positions()) {
             Http.json(ex, 200, Redact.index(index.bytes()));
             return;
         }
@@ -198,7 +149,7 @@ final class BrowserRoutes {
         o.add("urls", list);
         Users.Perms perms = Router.user(ex).perms();
         LinkState.Linked l = link.get();
-        if (l != null && !perms.seesStash(l.server(), l.stash())) l = null;
+        if (l != null && !perms.seesStash(l.stash())) l = null;
         if (l == null) {
             o.add("linked", null);
         } else {
@@ -211,7 +162,7 @@ final class BrowserRoutes {
         }
         JsonArray bots = new JsonArray();
         for (LinkState.Linked b : link.bots()) {
-            if (!perms.seesStash(b.server(), b.stash())) continue;
+            if (!perms.seesStash(b.stash())) continue;
             JsonObject bo = new JsonObject();
             bo.addProperty("player", b.player());
             bo.addProperty("server", b.server());
@@ -220,7 +171,6 @@ final class BrowserRoutes {
             bots.add(bo);
         }
         o.add("bots", bots);
-        if (Redact.on(ex)) Redact.link(o);
         Http.json(ex, 200, o);
     }
 

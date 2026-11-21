@@ -51,6 +51,7 @@ class UsersTest {
     OrderStore orders;
     AuditLog audit;
     Router router;
+    BotHub hub;
     final HttpClient http = HttpClient.newHttpClient();
 
     @BeforeAll
@@ -70,6 +71,7 @@ class UsersTest {
     void start() throws Exception {
         Config config = Config.load(data);
         config.setDashboardPassword(Auth.hash(OWNER_PW));
+        config.setMinecraftServer("s");
         SessionStore old = new SessionStore(data);
         legacyOwnerSession = old.create();
         // Strip the user field, as an older server wrote it.
@@ -92,8 +94,6 @@ class UsersTest {
                         + "{\"key\":\"minecraft:dirt\",\"id\":\"minecraft:dirt\",\"count\":1000,\"maxStack\":64}]}"));
         orders = new OrderStore(data, store);
         orders.load();
-        Owners owners = new Owners(data);
-        owners.load();
         IconService icons = new IconService(
                 data, id -> null, v -> false, new GameIcons(data.resolve("icons"), false, false), false);
         sessions = new SessionStore(data);
@@ -102,18 +102,18 @@ class UsersTest {
         users.load();
         audit = new AuditLog(data);
         audit.load();
+        hub = new BotHub();
         WeSortManager.Routes r = WeSortManager.routes(
                 config,
                 store,
                 orders,
-                owners,
                 icons,
                 new LinkState(config.keyState().generation()),
                 List.of(),
                 sessions,
                 users,
                 audit,
-                new BotHub(),
+                hub,
                 new LoginLimiter());
         router = r.router();
         server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 16);
@@ -208,8 +208,8 @@ class UsersTest {
         Res r = post(
                 token,
                 "/api/v1/orders",
-                "{\"server\":\"s\",\"stash\":\"" + stash + "\",\"lines\":[{\"type\":\"item\",\"key\":\"" + key
-                        + "\",\"count\":" + n + "}]}");
+                "{\"stash\":\"" + stash + "\",\"lines\":[{\"type\":\"item\",\"key\":\"" + key + "\",\"count\":" + n
+                        + "}]}");
         assertEquals(200, r.status, r.raw.body());
         return r.obj().getAsJsonObject("order").get("id").getAsString();
     }
@@ -248,7 +248,7 @@ class UsersTest {
                 get(member, "/api/v1/stock").obj().get("items"),
                 get(viewer, "/api/v1/stock").obj().get("items"));
         var request = json("""
-            {"server":"s","stash":"a","lines":[{"type":"item","key":"minecraft:diamond","count":2}]}
+            {"stash":"a","lines":[{"type":"item","key":"minecraft:diamond","count":2}]}
             """);
         assertEquals(403, post(viewer, "/api/v1/orders", request.toString()).status);
         String memberBinding = "/api/v1/users/" + memberId + "/minecraft";
@@ -278,22 +278,21 @@ class UsersTest {
         assertEquals("MinecraftUser", guildOrder.get("recipient").getAsString());
         assertEquals("Projekt Å <test>", guildOrder.get("comment").getAsString());
         assertEquals(profile.get("id"), guildOrder.get("organizationId"));
-        assertFalse(
-                get(viewer, "/api/v1/orders?server=s&stash=a").obj().toString().contains("Projekt Å"));
+        assertFalse(get(viewer, "/api/v1/orders?stash=a").obj().toString().contains("Projekt Å"));
         String own = selfOrder.get("id").getAsString();
         assertTrue(audit.newest(30).toString().contains(own + " SELF"));
         assertFalse(audit.newest(30).toString().contains("Projekt Å"));
         String other = guildOrder.get("id").getAsString();
-        var memberHistory = get(member, "/api/v1/orders?server=s&stash=a").obj().getAsJsonArray("orders");
+        var memberHistory = get(member, "/api/v1/orders?stash=a").obj().getAsJsonArray("orders");
         assertEquals(1, memberHistory.size());
         assertEquals(own, memberHistory.get(0).getAsJsonObject().get("id").getAsString());
-        assertTrue(get(viewer, "/api/v1/orders?server=s&stash=a")
+        assertTrue(get(viewer, "/api/v1/orders?stash=a")
                 .obj()
                 .getAsJsonArray("orders")
                 .isEmpty());
         assertEquals(
                 2,
-                get(officer, "/api/v1/orders?server=s&stash=a")
+                get(officer, "/api/v1/orders?stash=a")
                         .obj()
                         .getAsJsonArray("orders")
                         .size());
@@ -302,25 +301,24 @@ class UsersTest {
         assertEquals(403, post(officer, "/api/v1/orders/" + other + "/retry", "{}").status);
         assertEquals(
                 1,
-                get(officer, "/api/v1/orders?server=s&stash=a")
+                get(officer, "/api/v1/orders?stash=a")
                         .obj()
                         .getAsJsonArray("orders")
                         .size());
         var balances = get(viewer, "/api/v1/stock").obj().get("items");
         assertEquals(200, post(owner, "/api/v1/users/" + memberId, "{\"disabled\":true}").status);
-        assertEquals(401, get(member, "/api/v1/orders?server=s&stash=a").status);
+        assertEquals(401, get(member, "/api/v1/orders?stash=a").status);
         request.addProperty("recipient", "BuilderIGN");
         assertEquals(400, post(owner, "/api/v1/orders", request.toString()).status);
         assertEquals(balances, get(viewer, "/api/v1/stock").obj().get("items"));
-        assertTrue(
-                get(owner, "/api/v1/orders?server=s&stash=a").obj().toString().contains(own));
+        assertTrue(get(owner, "/api/v1/orders?stash=a").obj().toString().contains(own));
     }
 
     @Test
     void concurrentOrderReplayPersistsAcrossRestartAndArchive() throws Exception {
         String owner = owner();
         String body = """
-            {"server":"s","stash":"a","lines":[{"type":"item","key":"minecraft:diamond","count":2}]}
+            {"stash":"a","lines":[{"type":"item","key":"minecraft:diamond","count":2}]}
             """;
         var gate = new java.util.concurrent.CountDownLatch(1);
         String id;
@@ -351,7 +349,7 @@ class UsersTest {
         assertEquals(200, post(owner, "/api/v1/orders/" + id + "/cancel", "{}").status);
         assertEquals(
                 1,
-                post(owner, "/api/v1/orders/clear", "{\"server\":\"s\",\"stash\":\"a\"}")
+                post(owner, "/api/v1/orders/clear", "{\"stash\":\"a\"}")
                         .obj()
                         .get("removed")
                         .getAsInt());
@@ -396,7 +394,7 @@ class UsersTest {
         assertEquals(403, post(officer, "/api/v1/guild", policy).status);
         assertEquals(200, post(owner, "/api/v1/guild", policy).status);
         var draft = """
-            {"server":"s","stash":"a","lines":[{"type":"item","key":"minecraft:diamond","count":2}]}
+            {"stash":"a","lines":[{"type":"item","key":"minecraft:diamond","count":2}]}
             """;
         var placed = post(member, "/api/v1/orders", draft);
         assertEquals(200, placed.status);
@@ -431,11 +429,7 @@ class UsersTest {
                         .getAsJsonObject()
                         .get("action")
                         .getAsString());
-        create(
-                owner,
-                "OtherVaultAuditor",
-                "{\"view\":true,\"ordersAll\":true,\"stashes\":[{\"server\":\"s\",\"stash\":\"b\"}]}",
-                false);
+        create(owner, "OtherVaultAuditor", "{\"view\":true,\"ordersAll\":true,\"stashes\":[{\"stash\":\"b\"}]}", false);
         assertEquals(
                 0,
                 get(login("OtherVaultAuditor", TEMP_PW), trail)
@@ -535,20 +529,19 @@ class UsersTest {
         String v = login("viewer1", TEMP_PW);
 
         assertEquals(200, get(v, "/api/v1/stashes").status);
-        assertEquals(200, get(v, "/api/v1/index?server=s&stash=a").status);
-        assertEquals(200, get(v, "/api/v1/orders?server=s&stash=a").status);
+        assertEquals(200, get(v, "/api/v1/index?stash=a").status);
+        assertEquals(200, get(v, "/api/v1/orders?stash=a").status);
 
-        String order =
-                "{\"server\":\"s\",\"stash\":\"a\",\"lines\":[{\"type\":\"item\",\"key\":\"minecraft:diamond\",\"count\":1}]}";
+        String order = "{\"stash\":\"a\",\"lines\":[{\"type\":\"item\",\"key\":\"minecraft:diamond\",\"count\":1}]}";
         Res refused = post(v, "/api/v1/orders", order);
         assertEquals(403, refused.status);
         assertEquals("order", refused.obj().get("permission").getAsString());
         assertEquals(403, post(v, "/api/v1/orders/" + ownerOrder + "/cancel", null).status);
         assertEquals(403, post(v, "/api/v1/orders/" + ownerOrder + "/retry", null).status);
         assertEquals(403, post(v, "/api/v1/orders/" + ownerOrder + "/force-cancel", null).status);
-        assertEquals(403, post(v, "/api/v1/orders/clear", "{\"server\":\"s\",\"stash\":\"a\"}").status);
-        assertEquals(403, post(v, "/api/v1/rescan", "{\"server\":\"s\",\"stash\":\"a\"}").status);
-        assertEquals(403, post(v, "/api/v1/stashes/release", "{\"server\":\"s\",\"stash\":\"a\"}").status);
+        assertEquals(403, post(v, "/api/v1/orders/clear", "{\"stash\":\"a\"}").status);
+        assertEquals(403, post(v, "/api/v1/rescan", "{\"stash\":\"a\"}").status);
+        assertEquals(404, post(v, "/api/v1/stashes/release", "{\"stash\":\"a\"}").status, "release is removed");
         assertEquals(403, get(v, "/api/v1/link").status);
         assertEquals(403, post(v, "/api/v1/link/regenerate", null).status);
         assertEquals(403, get(v, "/api/v1/bots").status);
@@ -572,7 +565,7 @@ class UsersTest {
         String c = login("carol", TEMP_PW);
         String mine = placeOrder(c, "a", "minecraft:diamond", 5);
 
-        JsonArray list = get(c, "/api/v1/orders?server=s&stash=a").obj().getAsJsonArray("orders");
+        JsonArray list = get(c, "/api/v1/orders?stash=a").obj().getAsJsonArray("orders");
         boolean sawMine = false;
         for (JsonElement e : list) {
             JsonObject o = e.getAsJsonObject();
@@ -598,7 +591,7 @@ class UsersTest {
                         .getAsJsonObject("placedBy")
                         .get("name")
                         .getAsString());
-        assertEquals(403, post(c, "/api/v1/orders/clear", "{\"server\":\"s\",\"stash\":\"a\"}").status);
+        assertEquals(403, post(c, "/api/v1/orders/clear", "{\"stash\":\"a\"}").status);
         assertEquals(403, get(c, "/api/v1/bots").status);
         // The owner may change anyone's.
         assertEquals(
@@ -621,9 +614,9 @@ class UsersTest {
         create(owner, "dave", "operator", false);
         String d = login("dave", TEMP_PW);
         assertEquals(200, post(d, "/api/v1/orders/" + ownerOrder + "/cancel", null).status);
-        assertEquals(200, post(d, "/api/v1/orders/clear", "{\"server\":\"s\",\"stash\":\"a\"}").status);
+        assertEquals(200, post(d, "/api/v1/orders/clear", "{\"stash\":\"a\"}").status);
         assertEquals(200, get(d, "/api/v1/bots").status);
-        assertEquals(200, post(d, "/api/v1/rescan", "{\"server\":\"s\",\"stash\":\"a\"}").status);
+        assertEquals(200, post(d, "/api/v1/rescan", "{\"stash\":\"a\"}").status);
         assertEquals(403, get(d, "/api/v1/link").status);
         assertEquals(403, get(d, "/api/v1/users").status);
         // Console is "none" for an operator: refused before the password check.
@@ -638,7 +631,7 @@ class UsersTest {
         create(
                 owner,
                 "erin",
-                "{\"view\":true,\"order\":true,\"ordersAll\":true,\"rescan\":true,\"stashes\":[{\"server\":\"s\",\"stash\":\"a\"}]}",
+                "{\"view\":true,\"order\":true,\"ordersAll\":true,\"rescan\":true,\"stashes\":[{\"stash\":\"a\"}]}",
                 false);
         String e = login("erin", TEMP_PW);
 
@@ -647,23 +640,95 @@ class UsersTest {
         assertEquals("a", stashes.get(0).getAsJsonObject().get("stash").getAsString());
         assertEquals(2, get(owner, "/api/v1/stashes").body.getAsJsonArray().size());
 
-        assertEquals(200, get(e, "/api/v1/index?server=s&stash=a").status);
-        assertEquals(404, get(e, "/api/v1/index?server=s&stash=b").status);
-        assertEquals(404, get(e, "/api/v1/orders?server=s&stash=b").status);
+        assertEquals(200, get(e, "/api/v1/index?stash=a").status);
+        assertEquals(404, get(e, "/api/v1/index?stash=b").status);
+        assertEquals(404, get(e, "/api/v1/orders?stash=b").status);
         assertEquals(
                 404,
                 post(
                                 e,
                                 "/api/v1/orders",
-                                "{\"server\":\"s\",\"stash\":\"b\",\"lines\":[{\"type\":\"item\",\"key\":\"minecraft:dirt\",\"count\":1}]}")
+                                "{\"stash\":\"b\",\"lines\":[{\"type\":\"item\",\"key\":\"minecraft:dirt\",\"count\":1}]}")
                         .status);
         assertEquals(
                 404,
                 post(e, "/api/v1/orders/" + otherOrder + "/cancel", null).status,
                 "even with ordersAll, out of scope");
-        assertEquals(404, post(e, "/api/v1/orders/clear", "{\"server\":\"s\",\"stash\":\"b\"}").status);
-        assertEquals(404, post(e, "/api/v1/rescan", "{\"server\":\"s\",\"stash\":\"b\"}").status);
-        assertEquals(200, post(e, "/api/v1/rescan", "{\"server\":\"s\",\"stash\":\"a\"}").status);
+        assertEquals(404, post(e, "/api/v1/orders/clear", "{\"stash\":\"b\"}").status);
+        assertEquals(404, post(e, "/api/v1/rescan", "{\"stash\":\"b\"}").status);
+        assertEquals(200, post(e, "/api/v1/rescan", "{\"stash\":\"a\"}").status);
+    }
+
+    @Test
+    void editingOneFlagKeepsStashAndBotScopes() throws Exception {
+        // P0-01: a routine flag edit that omits the scope keys must not widen
+        // the user to all stashes/bots. Two stashes (a/b) and two bots exist;
+        // erin may use only the first of each.
+        String owner = owner();
+        String otherOrder = placeOrder(owner, "b", "minecraft:dirt", 10);
+        hub.hello("bot-a", "BotA", new JsonObject(), new JsonObject(), List.of(), List.of());
+        hub.hello("bot-b", "BotB", new JsonObject(), new JsonObject(), List.of(), List.of());
+        String id = create(
+                owner,
+                "erin",
+                "{\"view\":true,\"order\":true,\"activity\":true,\"stashes\":[{\"stash\":\"a\"}],\"bots\":[\"bot-a\"]}",
+                false);
+        String e = login("erin", TEMP_PW);
+        assertEquals(200, get(e, "/api/v1/index?stash=a").status);
+        assertEquals(404, get(e, "/api/v1/index?stash=b").status);
+        assertEquals(200, get(e, "/api/v1/bots/bot-a/activity").status);
+        assertEquals(404, get(e, "/api/v1/bots/bot-b/activity").status);
+
+        // The old UI payload: only boolean flags, no stashes/bots keys.
+        // (order:true kept: dropping it would 403 on permission before scope.)
+        Res edited = post(owner, "/api/v1/users/" + id, "{\"perms\":{\"view\":true,\"order\":true,\"activity\":true}}");
+        assertEquals(200, edited.status, edited.raw.body());
+        JsonObject perms = edited.obj().getAsJsonObject("user").getAsJsonObject("perms");
+        assertEquals(
+                "a",
+                perms.getAsJsonArray("stashes")
+                        .get(0)
+                        .getAsJsonObject()
+                        .get("stash")
+                        .getAsString());
+        assertEquals("bot-a", perms.getAsJsonArray("bots").get(0).getAsString());
+
+        // Scopes still enforced after the flag edit.
+        assertEquals(200, get(e, "/api/v1/index?stash=a").status);
+        assertEquals(404, get(e, "/api/v1/index?stash=b").status);
+        assertEquals(
+                404,
+                post(
+                                e,
+                                "/api/v1/orders",
+                                "{\"stash\":\"b\",\"lines\":[{\"type\":\"item\",\"key\":\"minecraft:dirt\",\"count\":1}]}")
+                        .status);
+        assertEquals(404, post(e, "/api/v1/orders/" + otherOrder + "/cancel", null).status, "still out of scope");
+        assertEquals(200, get(e, "/api/v1/bots/bot-a/activity").status);
+        assertEquals(404, get(e, "/api/v1/bots/bot-b/activity").status);
+
+        // Explicit null widens to all; explicit [] narrows to none.
+        Res widened = post(
+                owner,
+                "/api/v1/users/" + id,
+                "{\"perms\":{\"view\":true,\"order\":true,\"activity\":true,\"stashes\":null,\"bots\":null}}");
+        assertEquals(200, widened.status, widened.raw.body());
+        assertTrue(widened.obj()
+                .getAsJsonObject("user")
+                .getAsJsonObject("perms")
+                .get("stashes")
+                .isJsonNull());
+        assertEquals(200, get(e, "/api/v1/index?stash=b").status);
+        assertEquals(200, get(e, "/api/v1/bots/bot-b/activity").status);
+        Res narrowed = post(
+                owner,
+                "/api/v1/users/" + id,
+                "{\"perms\":{\"view\":true,\"order\":true,\"activity\":true,\"stashes\":[],\"bots\":[]}}");
+        assertEquals(200, narrowed.status, narrowed.raw.body());
+        assertEquals(0, get(e, "/api/v1/stashes").body.getAsJsonArray().size());
+        assertEquals(0, get(e, "/api/v1/bots").body.getAsJsonArray().size());
+        assertEquals(404, get(e, "/api/v1/index?stash=a").status);
+        assertEquals(404, get(e, "/api/v1/bots/bot-a/activity").status);
     }
 
     @Test
@@ -817,7 +882,7 @@ class UsersTest {
     @Test
     void theLinkPanelListsOnlyStashesInScope() throws Exception {
         String owner = owner();
-        create(owner, "oz", "{\"link\":true,\"stashes\":[{\"server\":\"s\",\"stash\":\"a\"}]}", false);
+        create(owner, "oz", "{\"link\":true,\"stashes\":[{\"stash\":\"a\"}]}", false);
         String o = login("oz", TEMP_PW);
         Res link = get(o, "/api/v1/link");
         assertEquals(200, link.status);
@@ -827,10 +892,10 @@ class UsersTest {
         assertFalse(get(owner, "/api/v1/link").obj().has("apiKey"));
         assertFalse(post(owner, "/api/v1/link/regenerate", "{}").obj().has("apiKey"));
         assertEquals(
-                200,
-                post(o, "/api/v1/stashes/release", "{\"server\":\"s\",\"stash\":\"a\"}").status,
-                "release in scope is allowed");
-        assertEquals(404, post(o, "/api/v1/stashes/release", "{\"server\":\"s\",\"stash\":\"b\"}").status);
+                404,
+                post(o, "/api/v1/stashes/release", "{\"stash\":\"a\"}").status,
+                "release is removed: no bot owns a stash");
+        assertEquals(404, post(o, "/api/v1/stashes/release", "{\"stash\":\"b\"}").status);
     }
 
     @Test
@@ -912,5 +977,68 @@ class UsersTest {
         assertEquals(1, r.obj().get("ended").getAsInt());
         assertEquals(200, get(owner, "/api/v1/users").status, "the owner stays logged in");
         assertEquals(401, get(k, "/api/v1/stashes").status);
+    }
+
+    @Test
+    void stashDefsHideCoordinatesFromUnprivileged() throws Exception {
+        String owner = owner();
+        String defA = "{\"action\":\"create\",\"name\":\"a\",\"dimension\":\"minecraft:overworld\","
+                + "\"pos1\":{\"x\":0,\"y\":-60,\"z\":0},\"pos2\":{\"x\":31,\"y\":20,\"z\":31},"
+                + "\"delivery\":{\"x\":5,\"y\":63,\"z\":5},\"deliveryDimension\":\"minecraft:overworld\","
+                + "\"anvil\":{\"x\":6,\"y\":63,\"z\":6},\"table\":{\"x\":7,\"y\":63,\"z\":7}}";
+        Res created = post(owner, "/api/v1/stash-defs", defA);
+        assertEquals(200, created.status, created.raw.body());
+        String defB = "{\"action\":\"create\",\"name\":\"b\",\"dimension\":\"minecraft:the_nether\","
+                + "\"pos1\":{\"x\":0,\"y\":30,\"z\":0},\"pos2\":{\"x\":15,\"y\":50,\"z\":15}}";
+        assertEquals(200, post(owner, "/api/v1/stash-defs", defB).status);
+
+        // The owner sees full coordinates for every stash.
+        Res full = get(owner, "/api/v1/stash-defs");
+        assertEquals(200, full.status);
+        JsonArray all = full.obj().getAsJsonArray("defs");
+        assertEquals(2, all.size());
+        for (JsonElement e : all) {
+            JsonObject d = e.getAsJsonObject();
+            assertTrue(
+                    d.has("pos1") && d.getAsJsonObject("pos1").has("x") && d.has("pos2"),
+                    "owner sees coordinates: " + d);
+        }
+
+        // A member scoped to "a" without positions sees the name only, and only their stash.
+        create(owner, "erin", "{\"view\":true,\"stashes\":[{\"stash\":\"a\"}]}", false);
+        String e = login("erin", TEMP_PW);
+        Res redacted = get(e, "/api/v1/stash-defs");
+        assertEquals(200, redacted.status);
+        JsonArray mine = redacted.obj().getAsJsonArray("defs");
+        assertEquals(1, mine.size());
+        JsonObject ea = mine.get(0).getAsJsonObject();
+        assertEquals("a", ea.get("name").getAsString());
+        assertEquals("minecraft:overworld", ea.get("dimension").getAsString());
+        assertTrue(ea.has("revision"), "revision stays visible for conflict reloads");
+        for (String coord : List.of("pos1", "pos2", "delivery", "deliveryDimension", "anvil", "table"))
+            assertFalse(ea.has(coord), "member without positions must not see " + coord);
+
+        // A member with the positions permission sees full coordinates, still only in scope.
+        create(owner, "ops", "{\"view\":true,\"positions\":true,\"stashes\":[{\"stash\":\"a\"}]}", false);
+        String o = login("ops", TEMP_PW);
+        Res withPos = get(o, "/api/v1/stash-defs");
+        assertEquals(200, withPos.status);
+        JsonArray scoped = withPos.obj().getAsJsonArray("defs");
+        assertEquals(1, scoped.size(), "stash b stays out of scope");
+        assertTrue(scoped.get(0).getAsJsonObject().has("pos1"), "positions permission reveals coordinates");
+
+        // An empty stash scope sees no definitions at all.
+        create(owner, "vic", "{\"view\":true,\"stashes\":[]}", false);
+        String v = login("vic", TEMP_PW);
+        Res none = get(v, "/api/v1/stash-defs");
+        assertEquals(200, none.status);
+        assertEquals(0, none.obj().getAsJsonArray("defs").size());
+
+        // Non-owners cannot create, update or delete definitions, even in scope.
+        assertEquals(403, post(e, "/api/v1/stash-defs", defA).status, "member cannot write stash defs");
+        assertEquals(
+                403,
+                post(e, "/api/v1/stash-defs", "{\"action\":\"delete\",\"name\":\"a\",\"expectedRevision\":1}").status,
+                "member cannot delete stash defs");
     }
 }

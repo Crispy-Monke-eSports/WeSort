@@ -203,6 +203,7 @@ final class ChestPlacer {
     private void end(Outcome outcome) {
         sneak(false);
         owner.releaseGoal();
+        com.porter.wesort.compat.InventorySync.clearPlacementExpectation();
         step = null;
         clickIssued = false;
         result = outcome;
@@ -392,6 +393,13 @@ final class ChestPlacer {
                 clickIssued = false;
                 return;
             }
+            // W-061: this job places its chest half into this empty cell, nothing else.
+            com.porter.wesort.compat.WorldInteractionGuard.authorizePlace(want);
+            com.porter.wesort.compat.InventorySync.expectPlacement(
+                    want,
+                    net.minecraft.core.registries.BuiltInRegistries.ITEM
+                            .getKey(mc.player.getMainHandItem().getItem())
+                            .toString());
             mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, hit);
             mc.player.swing(InteractionHand.MAIN_HAND);
             clickIssued = false;

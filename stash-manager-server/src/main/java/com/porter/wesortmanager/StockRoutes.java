@@ -28,10 +28,6 @@ final class StockRoutes {
     }
 
     private void boxes(HttpExchange ex) throws IOException {
-        if (Redact.forced(Router.user(ex))) {
-            Http.error(ex, 404, "not found");
-            return;
-        }
         synchronized (index) {
             var response = new JsonObject();
             response.add("active", index.stock().boxUuids());
@@ -51,12 +47,12 @@ final class StockRoutes {
     }
 
     JsonObject source(Users.Principal who, String id) throws IOException {
-        if (Redact.forced(who) || !who.perms().positions()) return null;
+        if (!who.perms().positions()) return null;
         synchronized (index) {
             var ledger = index.stock();
             // Authorize the membership before loading potentially sensitive component data.
             var visible = ledger.sources().stream()
-                    .filter(s -> who.perms().seesStash(s.server(), s.stash())
+                    .filter(s -> who.perms().seesStash(s.stash())
                             && !s.status().equals("SUPERSEDED")
                             && s.value().get("id").getAsString().equals(id))
                     .findFirst();
@@ -116,10 +112,6 @@ final class StockRoutes {
 
     private void returnIntake(HttpExchange ex, AuditLog audit) throws IOException {
         var who = Router.user(ex);
-        if (Redact.on(ex)) {
-            Http.error(ex, 404, "No return source in this scope");
-            return;
-        }
         var raw = AddonRoutes.readJson(ex);
         if (raw == null || !raw.isJsonObject()) {
             Http.error(ex, 400, "Expected a return decision");
@@ -159,7 +151,7 @@ final class StockRoutes {
             var ledger = index.stock();
             var source = ledger.sources().stream()
                     .filter(s -> id.equals(s.value().get("id").getAsString())
-                            && who.perms().seesStash(s.server(), s.stash())
+                            && who.perms().seesStash(s.stash())
                             && !s.status().equals("SUPERSEDED"))
                     .findFirst()
                     .orElse(null);
@@ -219,8 +211,7 @@ final class StockRoutes {
                 .filter(s -> !s.status().equals("SUPERSEDED"))
                 .toList();
         var visibleServers = new HashSet<String>();
-        for (var source : sources)
-            if (who.perms().seesStash(source.server(), source.stash())) visibleServers.add(source.server());
+        for (var source : sources) if (who.perms().seesStash(source.stash())) visibleServers.add(source.server());
         for (String server :
                 sources.stream().map(StockLedger.Source::server).distinct().toList()) {
             var lease = index.automation().current(server);
@@ -266,12 +257,11 @@ final class StockRoutes {
                     typed.available(roots, id).forEach((ref, count) -> totals.merge(ref, count, Math::addExact));
                 }
             }
-            if (!who.perms().seesStash(source.server(), source.stash())) continue;
+            if (!who.perms().seesStash(source.stash())) continue;
             addItems(stashItems.computeIfAbsent(book, key -> new TreeMap<>()), source, who);
-            if (!who.perms().positions() && !Redact.forced(who)) continue;
+            if (!who.perms().positions()) continue;
             if (details.containsKey(id)) {
-                if (!Redact.forced(who))
-                    details.get(id).getAsJsonArray("stashes").add(source.stash());
+                details.get(id).getAsJsonArray("stashes").add(source.stash());
                 continue;
             }
             var detail = source.value().deepCopy();
@@ -289,7 +279,7 @@ final class StockRoutes {
             detail.remove("session");
             detail.remove("sequence");
             detail.remove("baseRevision");
-            if (source.value().has("slotFingerprint") && !Redact.forced(who)) {
+            if (source.value().has("slotFingerprint")) {
                 var held = new TreeMap<String, Long>();
                 for (var reservation : orders.physicalHolds(source.server())) {
                     var allocation = reservation.allocation();
@@ -305,20 +295,6 @@ final class StockRoutes {
                 detail.add("reserved", JsonNull.INSTANCE);
                 detail.add("available", JsonNull.INSTANCE);
             }
-            if (Redact.forced(who)) {
-                for (String field : List.of(
-                        "parts",
-                        "dimension",
-                        "id",
-                        "fingerprint",
-                        "items",
-                        "shulkers",
-                        "stashes",
-                        "slotSchema",
-                        "slotFingerprint",
-                        "slotCount")) detail.remove(field);
-                detail.addProperty("stash", Redact.HIDDEN);
-            }
             details.put(id, detail);
         }
         JsonArray stashes = new JsonArray();
@@ -327,7 +303,7 @@ final class StockRoutes {
             var stash = new JsonObject();
             stash.addProperty("server", book.server());
             stash.addProperty("serverLabel", serverLabel(book.server(), who));
-            stash.addProperty("stash", Redact.forced(who) ? Redact.HIDDEN : book.stash());
+            stash.addProperty("stash", book.stash());
             stash.add(
                     "items",
                     balances(
@@ -365,7 +341,7 @@ final class StockRoutes {
     }
 
     private static String serverLabel(String server, Users.Principal who) {
-        return Redact.forced(who) ? Redact.HIDDEN : server;
+        return server;
     }
 
     private static void addItems(Map<String, JsonObject> rows, StockLedger.Source source, Users.Principal who) {
@@ -379,9 +355,7 @@ final class StockRoutes {
                 result.add("id", item.get("id"));
                 result.addProperty(
                         "name",
-                        Redact.forced(who)
-                                        || !who.perms().positions()
-                                        || !who.perms().seesStash(source.server(), source.stash())
+                        !who.perms().positions() || !who.perms().seesStash(source.stash())
                                 ? Redact.prettyId(item.get("id").getAsString())
                                 : item.has("name")
                                         ? item.get("name").getAsString()

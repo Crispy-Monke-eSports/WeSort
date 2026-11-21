@@ -50,7 +50,12 @@ final class AgentCredentials {
         }
 
         boolean matchesLocation(String server, String stash) {
-            return this.server.equals(server) && stash != null && stashes.contains(stash);
+            // Single-server, no ownership: every authorized bot may use every stash.
+            // This is the identity check only. The connected server (fail-closed 400 before
+            // setup, 409 on mismatch) and the authoritatively defined stash (404 when
+            // unknown) are verified separately at each agent endpoint (AddonRoutes,
+            // DeliveryRoutes, OrderRoutes, BoxRoutes, PhysicalRoutes, BotRoutes).
+            return true;
         }
 
         boolean matchesAccount(Scope other) {

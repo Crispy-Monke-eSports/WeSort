@@ -65,7 +65,8 @@ class BootstrapRuntimeTest {
             """.formatted(id, key));
         var credentials = new AgentCredentials(data);
         assertTrue(credentials.find(id).scope().matchesLocation("srv", "old"));
-        assertFalse(credentials.find(id).scope().matchesLocation("srv", "new"));
+        // No ownership, no per-stash scope: every bot may use every stash.
+        assertTrue(credentials.find(id).scope().matchesLocation("srv", "new"));
         var scope = new AgentCredentials.Scope(id, "Agent0", "srv", java.util.Set.of("old", "new"));
         assertThrows(
                 IllegalArgumentException.class,
@@ -80,7 +81,7 @@ class BootstrapRuntimeTest {
         credentials.issue(scope);
         var reopened = new AgentCredentials(data);
         assertEquals(scope, reopened.find(id).scope());
-        assertFalse(reopened.find(id).scope().matchesLocation("other", "new"));
+        assertTrue(reopened.find(id).scope().matchesLocation("other", "new"));
         assertTrue(reopened.revoke(id));
         assertNotNull(reopened.issue(sixth));
     }
@@ -88,10 +89,10 @@ class BootstrapRuntimeTest {
     @Test
     void controlCapabilityIsRequiredForHttpSetupAndCannotBeReplayed() throws Exception {
         Config config = Config.load(data);
+        config.setMinecraftServer("s");
         RuntimeHealth health = new RuntimeHealth(false);
         IndexStore index = new IndexStore(data, CreativeTabs.NONE);
         OrderStore orders = new OrderStore(data, index);
-        Owners owners = new Owners(data);
         SessionStore sessions = new SessionStore(data);
         Users users = new Users(data);
         IconService icons = new IconService(
@@ -101,7 +102,6 @@ class BootstrapRuntimeTest {
                 config,
                 index,
                 orders,
-                owners,
                 icons,
                 new LinkState(0),
                 List.of(),

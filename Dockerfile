@@ -1,4 +1,15 @@
 # syntax=docker/dockerfile:1
+# Stage 1: React/TypeScript storefront. Bun installs and builds the Vite app
+# straight into the Manager's /web resources (index.html + hashed assets/).
+FROM oven/bun:1 AS frontend
+WORKDIR /workspace
+COPY web/package.json web/bun.lock web/
+COPY web/index.html web/vite.config.ts web/tsconfig.json web/vitest.config.ts web/playwright.config.ts web/
+COPY web/src/ web/src/
+COPY web/e2e/ web/e2e/
+COPY stash-manager-server/src/main/resources/web/ stash-manager-server/src/main/resources/web/
+RUN cd web && bun install --frozen-lockfile && bun run clean && bun run build
+
 FROM eclipse-temurin:25.0.4.1_1-jdk-jammy@sha256:917e4ad2363fb761904f2e515237171bb6867521f03b1ab2cbf466c8ebd92399 AS build
 WORKDIR /workspace
 COPY gradlew ./
@@ -8,6 +19,8 @@ COPY gradle/ci-maven-central-mirror.init.gradle gradle/ci-maven-central-mirror.i
 COPY stash-manager-server/build.gradle.kts stash-manager-server/settings.gradle.kts stash-manager-server/
 COPY common/ common/
 COPY stash-manager-server/src/ stash-manager-server/src/
+COPY --from=frontend /workspace/stash-manager-server/src/main/resources/web/index.html stash-manager-server/src/main/resources/web/index.html
+COPY --from=frontend /workspace/stash-manager-server/src/main/resources/web/assets/ stash-manager-server/src/main/resources/web/assets/
 COPY LICENSE ./
 RUN --mount=type=cache,target=/root/.gradle ./gradlew --no-daemon --init-script /workspace/gradle/ci-maven-central-mirror.init.gradle -p stash-manager-server clean build
 

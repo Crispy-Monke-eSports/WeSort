@@ -923,7 +923,7 @@ final class OrderRunner {
     }
 
     /** The id of the order in hand, or null. */
-    String orderId() {
+    public String orderId() {
         return order == null ? null : order.id;
     }
 

@@ -95,20 +95,31 @@ class StockAvailabilityTest {
     }
 
     @Test
-    void expiredSourceIsUnknownAndRejectsReservationAndClaim() throws Exception {
+    void expiredSourceQueuesTheOrderAndClaimWaitsForFresh() throws Exception {
         observe("a", 64, 0);
         order(10);
-        assertNotNull(orders.claim("s", "a"));
+        var first = orders.claim("s", "a");
+        assertNotNull(first);
         time.set(1100);
         assertEquals(0, available());
         assertNull(orders.claim("s", "a"));
-        assertThrows(OrderStore.OrderException.class, () -> order(1));
+        // No verified stock, but an explicit offline-queue request queues against the last
+        // observation instead of failing. (The running order is cancelled first: only one
+        // physical order runs at a time.)
+        orders.cancel(first.id);
+        orders.forceCancel(first.id);
+        var queued = orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 1)), null, true);
+        assertEquals("pending", queued.status);
+        assertTrue(queued.queuedOffline);
+        assertNull(orders.claim("s", "a"));
         var row = balance(owner);
         assertEquals(64, row.get("observed").getAsLong());
         assertEquals(64, row.get("unknown").getAsLong());
         assertEquals(0, row.get("available").getAsLong());
         observe("a", 64, 0);
-        assertNotNull(orders.claim("s", "a"));
+        var claimed = orders.claim("s", "a");
+        assertNotNull(claimed);
+        assertEquals(queued.id, claimed.id);
     }
 
     @Test
@@ -185,7 +196,7 @@ class StockAvailabilityTest {
                                 false,
                                 false,
                                 false,
-                                List.of(new Users.StashRef("s", "a")),
+                                List.of(new Users.StashRef("a")),
                                 List.of())
                         .withPositions(true),
                 false);

@@ -114,7 +114,15 @@ class AssetsHarness(world.Harness):
             self.start_server(); self.fixture(); before = self.physical_snapshot()
             self.start_manager(); self.start_client(); self.command('component-identity'); self.ok('actual item CODEC distinguishes NBT byte/int custom data while canonicalizing compound order'); self.command('window-capture')
             source = self.observe(); expected = self.verify_index(source)
-            index = self.manager_index(source); self.icons(index); self.web(); self.window(expected)
+            index = self.manager_index(source); self.icons(index); self.web()
+            # The signed Manager publish deliberately starts a production rescan. That
+            # scan opens/closes Minecraft container screens asynchronously, so it can
+            # replace the passive Stash Window before the GUI assertion observes it.
+            # The Manager index and live web checks are already complete; isolate the
+            # read-only GUI check from the independent mutating scan controller.
+            self.command('manager-pause')
+            self.command('sort-stop')
+            self.window(expected)
             require(before == self.physical_snapshot(), 'Read-only resource/UI verification changed server inventory')
             log = (self.evidence / 'client.log').read_text()
             require(not re.search(r'\[(?:Render thread|main)/ERROR\].*(?:WeSortAddon|Mixin|wesort)', log), 'Real window logged an error')

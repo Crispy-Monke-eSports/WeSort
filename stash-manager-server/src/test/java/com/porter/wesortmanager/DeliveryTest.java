@@ -62,13 +62,12 @@ class DeliveryTest {
     void start() throws Exception {
         Config config = Config.load(data);
         config.setDashboardPassword(Auth.hash(OWNER_PW));
+        config.setMinecraftServer("s");
         k = Signer.deriveKey(config.apiKey());
         IndexStore store = new IndexStore(data, CreativeTabs.NONE);
         store.load();
         OrderStore orders = new OrderStore(data, store);
         orders.load();
-        Owners owners = new Owners(data);
-        owners.load();
         IconService icons = new IconService(
                 data, id -> null, v -> false, new GameIcons(data.resolve("icons"), false, false), false);
         SessionStore sessions = new SessionStore(data);
@@ -79,7 +78,6 @@ class DeliveryTest {
                 config,
                 store,
                 orders,
-                owners,
                 icons,
                 new LinkState(config.keyState().generation()),
                 List.of(),
@@ -245,8 +243,24 @@ class DeliveryTest {
 
     // ---------- routes ----------
 
+    /** Defines stash "a" as the owner; bot endpoints now require it. */
+    void defineA() throws Exception {
+        defineStash("a", "minecraft:overworld");
+    }
+
+    void defineStash(String name, String dimension) throws Exception {
+        String owner = login(null, OWNER_PW);
+        Res r = post(
+                owner,
+                "/api/v1/stash-defs",
+                "{\"action\":\"create\",\"name\":\"" + name + "\",\"dimension\":\"" + dimension + "\","
+                        + "\"pos1\":{\"x\":0,\"y\":-60,\"z\":0},\"pos2\":{\"x\":31,\"y\":20,\"z\":31}}");
+        assertEquals(200, r.status, r.body);
+    }
+
     @Test
     void reportIsStoredSummarizedAndServed() throws Exception {
+        defineA();
         assertEquals("false", heartbeat("a", "Bob", null), "an older bot (no deliveryHash): nothing to send");
         assertEquals("true", heartbeat("a", "Bob", "\"" + HASH_A + "\""), "no report yet");
         Res r = botPost("/api/v1/delivery", report("a", "Bob", HASH_A));
@@ -255,7 +269,7 @@ class DeliveryTest {
         assertEquals("true", heartbeat("a", "Bob", "\"" + HASH_B + "\""), "a different hash");
 
         String owner = login(null, OWNER_PW);
-        JsonObject d = get(owner, "/api/v1/delivery?server=s&stash=a").obj();
+        JsonObject d = get(owner, "/api/v1/delivery?stash=a").obj();
         assertEquals(HASH_A, d.get("hash").getAsString());
         assertEquals(
                 "Gems",
@@ -273,11 +287,8 @@ class DeliveryTest {
         assertEquals(52, sum.get("freeSlots").getAsInt());
         assertEquals(1, sum.get("unknownChests").getAsInt());
         assertEquals(1767225600000L, sum.get("readAt").getAsLong());
-        assertEquals(
-                "null",
-                get(owner, "/api/v1/delivery?server=s&stash=nothing").body.trim(),
-                "no report");
-        assertEquals(400, get(owner, "/api/v1/delivery?server=s").status);
+        assertEquals("null", get(owner, "/api/v1/delivery?stash=nothing").body.trim(), "no report");
+        assertEquals(400, get(owner, "/api/v1/delivery").status, "stash is required");
 
         // An explicit null (the delivery container was unset) drops the report.
         assertEquals("false", heartbeat("a", "Bob", "null"));
@@ -304,10 +315,11 @@ class DeliveryTest {
 
     @Test
     void ownerCheckSizeLimitAndBadBodies() throws Exception {
-        heartbeat("a", "Bob", null); // Bob owns s/a
-        Res conflict = botPost("/api/v1/delivery", report("a", "Eve", HASH_A));
-        assertEquals(409, conflict.status);
-        assertEquals("Bob", conflict.obj().get("owner").getAsString());
+        defineA();
+        heartbeat("a", "Bob", null);
+        // No bot owns a stash: Eve's report for the same stash is stored too.
+        Res stored = botPost("/api/v1/delivery", report("a", "Eve", HASH_A));
+        assertEquals(200, stored.status, stored.body);
         StringBuilder big = new StringBuilder(report("a", "Bob", HASH_A));
         big.insert(big.length() - 1, ",\"pad\":\"" + "x".repeat(257 * 1024) + "\"");
         assertEquals(413, botPost("/api/v1/delivery", big.toString()).status);
@@ -318,6 +330,8 @@ class DeliveryTest {
 
     @Test
     void stashScopeAnswers404() throws Exception {
+        defineA();
+        defineStash("b", "minecraft:the_nether");
         heartbeat("a", "Bob", null);
         heartbeat("b", "Al", null);
         botPost("/api/v1/delivery", report("a", "Bob", HASH_A));
@@ -326,23 +340,24 @@ class DeliveryTest {
                 owner,
                 "/api/v1/users",
                 "{\"name\":\"sam\",\"password\":\"" + TEMP_PW + "\",\"mustChange\":false,"
-                        + "\"perms\":{\"view\":true,\"stashes\":[{\"server\":\"s\",\"stash\":\"b\"}]}}");
+                        + "\"perms\":{\"view\":true,\"stashes\":[{\"stash\":\"b\"}]}}");
         assertEquals(200, made.status, made.body);
         String sam = login("sam", TEMP_PW);
-        assertEquals(404, get(sam, "/api/v1/delivery?server=s&stash=a").status);
-        assertEquals(200, get(sam, "/api/v1/delivery?server=s&stash=b").status);
-        assertEquals(401, get(null, "/api/v1/delivery?server=s&stash=a").status);
+        assertEquals(404, get(sam, "/api/v1/delivery?stash=a").status);
+        assertEquals(200, get(sam, "/api/v1/delivery?stash=b").status);
+        assertEquals(401, get(null, "/api/v1/delivery?stash=a").status);
         Res viewerOnly = post(
                 owner,
                 "/api/v1/users",
                 "{\"name\":\"vic\",\"password\":\"" + TEMP_PW
                         + "\",\"mustChange\":false,\"perms\":{\"activity\":true}}");
         assertEquals(200, viewerOnly.status);
-        assertEquals(403, get(login("vic", TEMP_PW), "/api/v1/delivery?server=s&stash=a").status, "needs view");
+        assertEquals(403, get(login("vic", TEMP_PW), "/api/v1/delivery?stash=a").status, "needs view");
     }
 
     @Test
     void neverInTheIndexOrTheStock() throws Exception {
+        defineA();
         String index = "{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"player\":\"Bob\",\"items\":["
                 + "{\"key\":\"minecraft:dirt\",\"id\":\"minecraft:dirt\",\"count\":100,\"maxStack\":64}]}";
         assertEquals(200, botPost("/api/v1/index", index).status);
@@ -351,11 +366,11 @@ class DeliveryTest {
         JsonObject s = stashEntry(owner, "a");
         assertEquals(100, s.get("itemTotal").getAsLong());
         assertEquals(1, s.get("itemTypes").getAsInt());
-        String idx = get(owner, "/api/v1/index?server=s&stash=a").body;
+        String idx = get(owner, "/api/v1/index?stash=a").body;
         assertFalse(idx.contains("minecraft:diamond") || idx.contains("Gems") || idx.contains("red_shulker_box"), idx);
         JsonArray items = JsonParser.parseString(idx).getAsJsonObject().getAsJsonArray("items");
         assertEquals(1, items.size());
-        assertNotNull(get(owner, "/api/v1/delivery?server=s&stash=a").obj().get("chests"));
+        assertNotNull(get(owner, "/api/v1/delivery?stash=a").obj().get("chests"));
     }
 
     @Test

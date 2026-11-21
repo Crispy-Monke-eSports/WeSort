@@ -166,7 +166,7 @@ class StockHierarchyTest {
                         false,
                         false,
                         false,
-                        List.of(new Users.StashRef("s", "other")),
+                        List.of(new Users.StashRef("other")),
                         List.of()),
                 false);
         assertNull(routes.source(hidden, id));
@@ -177,9 +177,14 @@ class StockHierarchyTest {
         var sharedBalance = hiddenStock.getAsJsonArray("items").get(0).getAsJsonObject();
         assertEquals(visibleBalance.get("observed"), sharedBalance.get("observed"));
         assertFalse(sharedBalance.has("server"));
-        var forced = new Users.Principal("forced", "Forced", false, Users.Perms.ALL.withStreamer(true), false);
-        assertNull(routes.source(forced, id));
-        assertFalse(routes.view(forced).toString().contains("slotFingerprint"));
+        var nopos = new Users.Principal(
+                "nopos",
+                "NoPos",
+                false,
+                Users.Perms.of(true, false, false, false, false, false, false, null, null),
+                false);
+        assertNull(routes.source(nopos, id));
+        assertFalse(routes.view(nopos).toString().contains("slotFingerprint"));
         assertFalse(Redact.index(original.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8))
                 .has("slotVariants"));
     }

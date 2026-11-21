@@ -178,6 +178,26 @@ public final class Order {
     /** The order's names, or null when it has none or they can't be read (then nothing is named). */
     private static Names parseNames(JsonObject o) {
         try {
+            // W-064 first: the server's frozen packageLabel + packageTotal generate the exact
+            // `WeSort (X/Y) - text` names. Legacy free names are only a fallback.
+            if (o.has("packageLabel")
+                    && o.get("packageLabel").isJsonObject()
+                    && o.has("packageTotal")
+                    && o.get("packageTotal").isJsonPrimitive()) {
+                int total = o.get("packageTotal").getAsInt();
+                if (total >= 1 && total <= MAX_NAMES) {
+                    try {
+                        var generated =
+                                com.porter.wesort.data.PackageLabel.generate(o.getAsJsonObject("packageLabel"), total);
+                        List<String> list = new ArrayList<>();
+                        for (JsonElement e : generated) list.add(e.getAsString());
+                        Names w = Names.of(Names.EACH, "", list);
+                        if (w != null) return w;
+                    } catch (RuntimeException ignored) {
+                        // Unreadable label: fall through to legacy names, then unnamed.
+                    }
+                }
+            }
             if (!o.has("names") || !o.get("names").isJsonObject()) return null;
             JsonObject n = o.getAsJsonObject("names");
             String mode = n.has("mode") && n.get("mode").isJsonPrimitive()

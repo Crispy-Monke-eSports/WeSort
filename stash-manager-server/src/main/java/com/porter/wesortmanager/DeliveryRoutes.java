@@ -10,17 +10,19 @@ import java.util.Map;
  * Delivery storage contents (PROTOCOL.md, "Additions: delivery storage contents"):
  * <ul>
  *   <li>POST /api/v1/delivery: the bot's report (signed, the index's owner check, at most 256 KiB);</li>
- *   <li>GET /api/v1/delivery?server=&stash=: the report for the Orders tab (view permission, stash scope).</li>
+ *   <li>GET /api/v1/delivery?stash=: the report for the Orders tab (view permission, stash scope).</li>
  * </ul>
  * Kept in memory only and never logged.
  */
 final class DeliveryRoutes {
     private final DeliveryContents contents;
-    private final Owners owners;
+    private final Config config;
+    private final StashDefs defs;
 
-    DeliveryRoutes(DeliveryContents contents, Owners owners) {
+    DeliveryRoutes(DeliveryContents contents, Config config, StashDefs defs) {
         this.contents = contents;
-        this.owners = owners;
+        this.config = config;
+        this.defs = defs;
     }
 
     void register(Router router) {
@@ -44,11 +46,18 @@ final class DeliveryRoutes {
         }
         String server = s.json().get("server").getAsString();
         String stash = s.json().get("stash").getAsString();
-        JsonElement player = s.json().get("player");
-        String owner =
-                owners.check(server, stash, player == null || player.isJsonNull() ? null : player.getAsString(), true);
-        if (owner != null) {
-            AddonRoutes.conflict(ex, owner);
+        // Fail closed: reports need a configured server, the right server and a defined stash.
+        int gate = ServerRoutes.agentServerStatus(config, server);
+        if (gate == 400) {
+            Http.error(ex, 400, "set the Minecraft server in Settings first");
+            return;
+        }
+        if (gate == 409) {
+            Http.error(ex, 409, "this Manager serves '" + config.minecraftServer() + "'");
+            return;
+        }
+        if (ServerRoutes.unknownStash(defs, stash)) {
+            Http.error(ex, 404, "unknown stash '" + stash + "': define it in Settings first");
             return;
         }
         contents.put(server, stash, s);
@@ -57,20 +66,12 @@ final class DeliveryRoutes {
 
     private void get(HttpExchange ex) throws IOException {
         Map<String, String> q = Http.query(ex);
-        String server = q.get("server");
         String stash = q.get("stash");
-        if (server == null || server.isEmpty() || stash == null || stash.isEmpty()) {
-            Http.error(ex, 400, "server and stash are required");
-            return;
-        }
-        server = OrderRoutes.scoped(ex, server, stash);
+        String server = OrderRoutes.scoped(config, ex, stash);
         if (server == null) return;
         DeliveryContents.Snapshot s = contents.get(server, stash);
         // null: the bot hasn't reported (an older bot, no delivery container, or not yet since the server started).
         boolean positions = Router.user(ex).perms().positions();
-        Http.json(
-                ex,
-                200,
-                s == null || !positions ? JsonNull.INSTANCE : Redact.on(ex) ? Redact.delivery(s.json()) : s.json());
+        Http.json(ex, 200, s == null || !positions ? JsonNull.INSTANCE : s.json());
     }
 }

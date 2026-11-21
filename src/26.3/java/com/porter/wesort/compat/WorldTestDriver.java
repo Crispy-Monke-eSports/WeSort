@@ -66,7 +66,15 @@ public final class WorldTestDriver {
 
     static void physicalPhasePersisted(String phase) {
         var driver = instance;
-        if (driver == null || !phase.equals(driver.crashPhysicalPhase)) return;
+        if (driver == null) return;
+        try {
+            // Every durable phase leaves a stamped marker, so a missed arming window still
+            // names the last durable phase instead of timing out blindly.
+            Files.writeString(driver.control.resolve("physical-crash-" + phase), phase);
+        } catch (java.io.IOException ignored) {
+            // Marker files are diagnostics only; the journal itself is already durable.
+        }
+        if (!phase.equals(driver.crashPhysicalPhase)) return;
         try {
             Files.writeString(driver.control.resolve("physical-crash-ready"), phase);
             // The isolated harness kills this process after observing the marker.
@@ -126,6 +134,8 @@ public final class WorldTestDriver {
                         respond(false, "Unloaded target", null);
                         return;
                     }
+                    // Test-only hook: the harness authorizes its own explicit open like production code does.
+                    WorldInteractionGuard.authorizeUse(pos);
                     if (mc.player.distanceToSqr(Vec3.atCenterOf(pos)) > 25) {
                         respond(false, "Target outside interaction range", null);
                         return;
@@ -145,6 +155,7 @@ public final class WorldTestDriver {
                         respond(false, "Ambiguity probe requires reachable fixture halves", null);
                         return;
                     }
+                    for (BlockPos part : List.of(pos, other)) WorldInteractionGuard.authorizeUse(part);
                     for (BlockPos part : List.of(pos, other))
                         meteordevelopment.meteorclient.utils.world.BlockUtils.interact(
                                 new BlockHitResult(Vec3.atCenterOf(part), Direction.UP, part, false),
@@ -300,6 +311,15 @@ public final class WorldTestDriver {
                         respond(false, "Placement target is not loaded, empty and reachable", state());
                         return;
                     }
+                    WorldInteractionGuard.authorizePlace(pos);
+                    // The driver places through the same deferred rotation path: announce the
+                    // placement so the fail-closed intent gate records it (same as production).
+                    String placing = command.has("block")
+                            ? command.get("block").getAsString()
+                            : net.minecraft.core.registries.BuiltInRegistries.ITEM
+                                    .getKey(mc.player.getMainHandItem().getItem())
+                                    .toString();
+                    InventorySync.expectPlacement(pos, placing);
                     meteordevelopment.meteorclient.utils.world.BlockUtils.interact(
                             new BlockHitResult(Vec3.atBottomCenterOf(pos), Direction.UP, pos.below(), false),
                             InteractionHand.MAIN_HAND,
@@ -315,6 +335,7 @@ public final class WorldTestDriver {
                         respond(false, "Break target not loaded/reachable", state());
                         return;
                     }
+                    WorldInteractionGuard.authorizeBreak(pos);
                     meteordevelopment.meteorclient.utils.world.BlockUtils.breakBlock(pos, true);
                 }
                 case "forget" -> {
@@ -355,42 +376,7 @@ public final class WorldTestDriver {
                                         java.nio.charset.StandardCharsets.UTF_8)));
                     respond(true, "actual production Sorter observation cache", result);
                 }
-                case "kit-info" ->
-                    respond(
-                            true,
-                            "actual kit template and exact supply",
-                            Modules.get()
-                                    .get(StashSorter.class)
-                                    .kitReport(command.get("name").getAsString()));
-                case "kit-compare" -> {
-                    var kit = com.porter.wesort.stash.Kits.byName(
-                            command.get("name").getAsString());
-                    var menu = mc.player.containerMenu;
-                    if (kit == null || !InventorySync.confirmedMenu()) {
-                        respond(false, "Need a server-confirmed kit container menu", state());
-                        break;
-                    }
-                    ItemStack[] contents;
-                    if (menu instanceof net.minecraft.world.inventory.ShulkerBoxMenu) {
-                        contents = new ItemStack[27];
-                        for (int i = 0; i < 27; i++)
-                            contents[i] = menu.getSlot(i).getItem().copy();
-                    } else if (command.has("slot")
-                            && command.get("slot").getAsInt() >= 0
-                            && command.get("slot").getAsInt() < menu.slots.size() - 36) {
-                        contents = com.porter.wesort.stash.Kits.inside(
-                                menu.getSlot(command.get("slot").getAsInt()).getItem());
-                    } else {
-                        respond(false, "Select an actual server-observed kit item slot", state());
-                        break;
-                    }
-                    var report = new JsonObject();
-                    report.addProperty("matches", kit.exactLayout(contents));
-                    report.addProperty("finished", kit.matchesFinished(contents));
-                    report.add("actual", SlotRuntime.snapshot(contents).json());
-                    report.add("expected", KitRuntime.export(kit).json());
-                    respond(true, "exact 27-slot server comparison", report);
-                }
+                case "kit-info", "kit-compare" -> respond(false, "kit system removed", state());
                 case "sort-start", "sort-config" -> {
                     if (stash == null) {
                         respond(false, "Capture fixture containers first", null);
@@ -428,6 +414,11 @@ public final class WorldTestDriver {
                     ((Setting<Integer>) sorter.settings.get("delay")).set(1);
                     ((Setting<Integer>) sorter.settings.get("container-delay")).set(0);
                     if (command.get("action").getAsString().equals("sort-start") && !sorter.isActive()) sorter.toggle();
+                    // An explicit sort-start is an operator authorization to work: it releases a
+                    // crash-recovery fence (no-op when none is held). Mirror round-trips,
+                    // inspection results and automatic restores never release it.
+                    if (command.get("action").getAsString().equals("sort-start"))
+                        com.porter.wesort.compat.PhysicalJournalRuntime.releaseReconciled();
                     respond(true, "actual StashSorter configured", state());
                 }
                 case "sort-stop" -> {
@@ -610,6 +601,7 @@ public final class WorldTestDriver {
             List<String> lines = new ArrayList<>();
             pending.getAsJsonArray("lines").forEach(line -> lines.add(line.getAsString()));
             if (!signSent) {
+                WorldInteractionGuard.authorizeSign(pos);
                 signEpoch = blockEntities.getOrDefault(pos, 0L);
                 mc.player.connection.send(
                         new net.minecraft.network.protocol.game.ServerboundSignUpdatePacket(pos, lines, signSlot));
@@ -647,8 +639,12 @@ public final class WorldTestDriver {
                             .equals(pending.get("block").getAsString());
             if (done && InventorySync.lastBlockAck() >= InventorySync.lastBlockSequence()) {
                 respond(true, "native server block acknowledgement and inventory readback verified", state());
-            } else if (action.equals("break"))
+            } else if (action.equals("break")) {
+                // Re-authorize every poll iteration: the fire-and-forget permit lives 10 s and
+                // the poll may run longer. Same exact position/block/job match, no weakening.
+                WorldInteractionGuard.authorizeBreak(pos);
                 meteordevelopment.meteorclient.utils.world.BlockUtils.breakBlock(pos, true);
+            }
             return;
         }
         if (action.equals("click")) {
@@ -769,7 +765,6 @@ public final class WorldTestDriver {
         out.addProperty("sorterActive", actualSorter.isActive());
         out.add("repackProgress", actualSorter.repackProgress());
         out.addProperty("shulkerPhase", actualSorter.shulkerPhase());
-        out.addProperty("kitCatalog", Modules.get().get(StashManager.class).kitCatalogStatus());
         if (actualSorter.repackPosition() != null) {
             var p = actualSorter.repackPosition();
             var position = new JsonArray();
@@ -815,6 +810,13 @@ public final class WorldTestDriver {
         out.addProperty("lastBlockAck", InventorySync.lastBlockAck());
         out.addProperty("lastBlockSequence", InventorySync.lastBlockSequence());
         out.addProperty("attemptedClicks", InventorySync.attemptedClicks());
+        var denials = new JsonObject();
+        for (var entry : WorldInteractionGuard.denialCounts().entrySet())
+            denials.addProperty(entry.getKey(), entry.getValue());
+        out.add("guardDenials", denials);
+        var intents = new JsonObject();
+        for (var entry : InventorySync.intentAudit().entrySet()) intents.addProperty(entry.getKey(), entry.getValue());
+        out.add("intentAudit", intents);
         JsonArray slots = new JsonArray();
         for (var slot : mc.player.containerMenu.slots) {
             JsonObject value = new JsonObject();

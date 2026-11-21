@@ -84,7 +84,7 @@ public final class Kits {
     private static String currentScope() {
         var manager = meteordevelopment.meteorclient.systems.modules.Modules.get()
                 .get(com.porter.wesort.modules.StashManager.class);
-        return manager == null ? "" : manager.kitScope();
+        return manager == null ? "" : manager.linkScope();
     }
 
     public static boolean isShared(Kit kit) {

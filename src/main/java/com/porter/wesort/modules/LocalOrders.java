@@ -117,7 +117,7 @@ public final class LocalOrders {
     }
 
     private static StashSorter sorter() {
-        return Modules.get().get(StashSorter.class);
+        return com.porter.wesort.WeSortAddon.sorter();
     }
 
     private static StashManager manager() {

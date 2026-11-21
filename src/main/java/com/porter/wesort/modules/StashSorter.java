@@ -2311,7 +2311,7 @@ public class StashSorter extends Module {
      * Collecting from the ground is on and possible: the setting, not scan-only, Baritone there, the module running.
      */
     private boolean groundOn() {
-        return isActive() && sorting() && collectGround.get() && BARITONE;
+        return sorting() && collectGround.get() && BARITONE;
     }
 
     /**
@@ -2996,7 +2996,7 @@ public class StashSorter extends Module {
 
         // With a perimeter, its chunks are loaded first, so its containers are known before anything is sorted
         if (explorePending && exploreRan && !exploring) explorePending = false;
-        if ((isActive() || explorePending) && startExplore()) return true;
+        if ((sorting() || explorePending) && startExplore()) return true;
         if (!running()) return false;
 
         Box unread = nearest(stash.boxes.stream()
@@ -3685,8 +3685,16 @@ public class StashSorter extends Module {
         return isActive() || driven;
     }
 
+    /** The internal engine may sort only when its Manager agent enables sorting (or in the isolated E2E harness). */
+    private boolean sorting() {
+        if (!sortItems.get()) return false;
+        var manager =
+                meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
+        return isActive() || manager != null && manager.sortingEnabled();
+    }
+
     public boolean requiresSortingPermit() {
-        return isActive() && sortItems.get();
+        return sorting();
     }
 
     public boolean sortingPermitted() {
@@ -3694,11 +3702,6 @@ public class StashSorter extends Module {
         var manager =
                 meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
         return manager != null && manager.sortingAllowed();
-    }
-
-    /** Sorting, compacting, labelling and ground pickup: only when the module itself is on and sort-items is. */
-    private boolean sorting() {
-        return isActive() && sortItems.get();
     }
 
     // An order run by this client from the Stash Window (LocalOrders), no server: orders are wanted like
@@ -11010,7 +11013,7 @@ public class StashSorter extends Module {
 
         @EventHandler
         private void onOpenScreen(OpenScreenEvent event) {
-            if (isActive() && job == Job.Label) labeller.onScreen(event);
+            if (sorting() && job == Job.Label) labeller.onScreen(event);
         }
 
         @EventHandler
@@ -11235,7 +11238,7 @@ public class StashSorter extends Module {
             deliveryWatch.tickLids(stash, clock, 20L * 5, this::openedByUs, this::deliveryTouched);
         }
 
-        if (isActive() && signsWatched() && clock % SIGN_POLL_TICKS == 0) {
+        if (sorting() && signsWatched() && clock % SIGN_POLL_TICKS == 0) {
             stashWatch.pollSigns(stash, clock, b -> job == Job.Label && b == target);
         }
     }
@@ -11526,7 +11529,7 @@ public class StashSorter extends Module {
 
     private String groundStatus() {
         if (!sortItems.get()) return "off (scan only)";
-        if (!collectGround.get() || !isActive()) return "off";
+        if (!collectGround.get() || !sorting()) return "off";
         if (!BARITONE) return "off, Baritone isn't installed";
         return ground.status();
     }

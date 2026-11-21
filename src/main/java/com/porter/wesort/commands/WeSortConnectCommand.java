@@ -66,7 +66,7 @@ public final class WeSortConnectCommand extends Command {
         }
         if (port < 1 || port > 65535) return "Port must be a number 1-65535.";
         String apiKey = key == null ? "" : key.trim();
-        if (apiKey.isEmpty()) return "API key must not be empty. Ask the Manager host for it (agent-key).";
+        if (apiKey.isEmpty()) return "API key must not be empty. Ask the Manager owner for one.";
         String url = scheme + "://" + host + ":" + port;
         if (!setString(manager, "server-url", url) || !setString(manager, "api-key", apiKey)) {
             return "Could not store the connection on wesort-stash-manager.";

@@ -146,14 +146,7 @@ final class BotHub {
         return register(botId, player, plugin, runtime, caps, scopes, controlSession, null);
     }
 
-    record ManifestScope(String server, String stash, String dimension, String agent, String player) {
-        String botId() {
-            return java.util
-                    .UUID
-                    .nameUUIDFromBytes((server + "\u0000" + agent).getBytes(java.nio.charset.StandardCharsets.UTF_8))
-                    .toString();
-        }
-    }
+    record ManifestScope(String botId, String server, String stash, String dimension, String agent, String player) {}
 
     int register(
             String botId,
@@ -228,6 +221,27 @@ final class BotHub {
         if (oldest == null) return false;
         bots.remove(oldest.botId);
         return true;
+    }
+
+    /**
+     * Revoke the cached control session when its signing key is revoked.
+     * Retiring the bot also wakes in-flight long-polls and prevents queued
+     * physical work from being handed to a now-unauthorized session.
+     */
+    void retire(String botId) {
+        Bot bot;
+        synchronized (this) {
+            bot = bots.remove(botId);
+        }
+        if (bot == null) return;
+        synchronized (bot) {
+            for (Job job : bot.jobs.values()) {
+                if (job.status.equals("queued") || job.status.equals("sent")) job.status = "unknown";
+            }
+            bot.queue.clear();
+            bot.helloGen++;
+            bot.notifyAll();
+        }
     }
 
     synchronized Bot bot(String botId) {

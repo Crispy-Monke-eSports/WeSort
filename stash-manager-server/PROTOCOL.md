@@ -200,19 +200,21 @@ restart. The hint uses the same scope checks as the manifest endpoint.
 ## W-042 individually scoped agent authentication
 
 The local Manager CLI issues a credential in the form
-`<minecraft UUID>.<secret>`. The addon uses the UUID as the identifier
-in `X-SM-Auth` and derives the signing key from the secret. A request
-signed this way must match the credential's player and agent or dashboard
-identity as required by the route (location always matches: no ownership,
-no per-stash scope — every bot may use every stash). Agent credentials
-use the same HMAC request, response and replay checks as the v1 protocol.
+`<key-slot-id>.<secret>`. The slot ID is not a Minecraft UUID and has no
+player ownership. The addon sends it in `X-SM-Auth` and derives its HMAC
+signing key from the secret. **Only a valid, non-revoked signing key
+authorizes agent access**; the reported Minecraft username and UUID are
+not authentication factors. The latest valid username may be shown as
+transient presence metadata in the Manager UI, not as a binding.
+Configured server, defined stashes, control sessions, signed physical
+work, journal and replay protection remain independently enforced.
 
-The host can rotate a credential for the same Minecraft account,
-revoke it, and make scoped credentials mandatory. In that mode the
-legacy identifier `-` and legacy Bearer credentials are denied. The
-credential registry, scoped-only mode and revocations persist in the
-Manager volume. Web responses contain connection and permission
-metadata. Provisioning returns its secret through the local CLI.
+The host can issue, rotate and revoke key slots and make scoped
+credentials mandatory. In that mode the legacy identifier `-` and
+legacy Bearer credentials are denied. The credential registry,
+scoped-only mode and revocations persist in the Manager volume. Names
+are display-only and are not persisted as credential ownership.
+Provisioning returns each secret once through the local CLI.
 
 `POST /api/v1/stock/return-intake` records an Owner's return decision
 for a freshly verified root shulker in an ordinary visible chest or

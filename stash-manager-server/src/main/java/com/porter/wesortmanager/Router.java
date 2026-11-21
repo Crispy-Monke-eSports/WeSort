@@ -4,6 +4,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
@@ -392,7 +393,7 @@ final class Router implements HttpHandler {
                             : "?" + ex.getRequestURI().getRawQuery());
             Config.KeyState current = config.keyState();
             Config.KeyState previous = dashboard ? null : config.previousKey();
-            byte[] kCurrent = named ? credential.key() : current.signingKey();
+            byte[] kCurrent = named ? Base64.getDecoder().decode(credential.signingKey()) : current.signingKey();
             byte[] kPrevious = named || previous == null ? null : previous.signingKey();
             Signer.Auth a = Signer.Auth.parse(header);
             int which = signer.verify(a, ex.getRequestMethod(), raw, body, kCurrent, kPrevious);
@@ -403,11 +404,14 @@ final class Router implements HttpHandler {
             Http.attr(ex, KEY_GENERATION, which == 0 ? current.generation() : previous.generation());
             Http.attr(ex, Http.SIGN_KEY, which == 0 ? kCurrent : kPrevious);
             Http.attr(ex, Http.SIGN_NONCE, a.nonce());
-            if (named && !agentScopeAllowed(ex, path, credential.scope())) {
-                Http.error(ex, 403, "Agent scope does not authorize this request");
-                return false;
+            if (named) {
+                int scope = agentScope(ex, path, credential);
+                if (scope != 200) {
+                    Http.error(ex, scope, "Agent key does not authorize this bot session");
+                    return false;
+                }
             }
-            if (named) Http.attr(ex, SCOPED_AGENT, credential.scope());
+            if (named) Http.attr(ex, SCOPED_AGENT, credential);
             return true;
         }
         if (!dashboard && config.allowBearer && !agentCredentials.scopedOnly()) {
@@ -428,55 +432,50 @@ final class Router implements HttpHandler {
         return false;
     }
 
-    private boolean agentScopeAllowed(HttpExchange ex, String path, AgentCredentials.Scope scope) throws IOException {
-        if (path.equals("/api/v1/bot/next") && ex.getRequestMethod().equals("GET")) {
-            return scope.botId().equals(Http.query(ex).get("botId"));
-        }
+    /**
+     * Authentication was already established by the HMAC signing key. Neither a
+     * Minecraft UUID nor a username may restrict that key. botId must still match
+     * the signed slot for session isolation; physical/warehouse routes retain
+     * their own validation and safety gates.
+     */
+    private int agentScope(HttpExchange ex, String path, AgentCredentials.Slot slot) throws IOException {
+        if (path.equals("/api/v1/bot/next") && ex.getRequestMethod().equals("GET"))
+            return slot.id().equals(Http.query(ex).get("botId")) ? 200 : 403;
         var request = AddonRoutes.readJson(ex);
-        if (request == null || !request.isJsonObject()) return false;
+        if (request == null || !request.isJsonObject()) return 403;
         var body = request.getAsJsonObject();
-        String server = AddonRoutes.string(body, "server");
-        String stash = AddonRoutes.string(body, "stash");
-        String player = AddonRoutes.string(body, "player");
-        String agent = AddonRoutes.string(body, "agent");
         return switch (path) {
-            case "/api/v1/index", "/api/v1/heartbeat", "/api/v1/delivery" -> scope.matchesLocation(server, stash);
-            case "/api/v1/orders/claim", "/api/v1/boxes/agent", "/api/v1/custody/agent", "/api/v1/deposits/agent" ->
-                scope.matchesLocation(server, stash) && scope.agent().equals(agent);
-            case "/api/v1/automation" ->
-                scope.server().equals(server) && scope.agent().equals(agent);
-            case "/api/v1/jobs/agent" -> scope.agent().equals(agent);
-            case "/api/v1/handoffs/agent" -> scope.agent().equals(agent);
+            case "/api/v1/index", "/api/v1/heartbeat" -> {
+                agentCredentials.notePlayer(slot.id(), AddonRoutes.string(body, "player"));
+                yield 200;
+            }
+            case "/api/v1/delivery",
+                    "/api/v1/orders/claim",
+                    "/api/v1/boxes/agent",
+                    "/api/v1/custody/agent",
+                    "/api/v1/deposits/agent",
+                    "/api/v1/automation",
+                    "/api/v1/jobs/agent",
+                    "/api/v1/handoffs/agent" -> 200;
             case "/api/v1/physical/agent" -> {
                 var record = object(body, "record");
-                var context = record == null ? null : object(record, "context");
-                yield context != null
-                        && scope.agent().equals(agent)
-                        && scope.agent().equals(AddonRoutes.string(context, "agent"))
-                        && scope.matchesLocation(
-                                AddonRoutes.string(context, "server"), AddonRoutes.string(context, "stash"));
+                yield record != null && object(record, "context") != null ? 200 : 403;
             }
             case "/api/v1/bot/hello" -> {
-                var binding = object(body, "manifestScope");
-                yield binding != null
-                        && scope.botId().equals(AddonRoutes.string(body, "botId"))
-                        && scope.agent().equals(AddonRoutes.string(binding, "agent"))
-                        && scope.matchesLocation(
-                                AddonRoutes.string(binding, "server"), AddonRoutes.string(binding, "stash"));
+                if (!slot.id().equals(AddonRoutes.string(body, "botId"))) yield 403;
+                agentCredentials.notePlayer(slot.id(), AddonRoutes.string(body, "player"));
+                yield 200;
             }
             case "/api/v1/bot/state",
                     "/api/v1/bot/next",
                     "/api/v1/bot/results",
                     "/api/v1/bot/activity",
                     "/api/v1/bot/manifest",
-                    "/api/v1/bot/manifest/ack" -> scope.botId().equals(AddonRoutes.string(body, "botId"));
+                    "/api/v1/bot/manifest/ack" -> slot.id().equals(AddonRoutes.string(body, "botId")) ? 200 : 403;
             default -> {
                 var match = SCOPED_ORDER_STATUS.matcher(path);
-                if (!match.matches()) yield false;
-                var where = orderStore.stashOf(match.group(1));
-                yield where != null
-                        && scope.matchesLocation(where.server(), where.stash())
-                        && scope.agent().equals(agent);
+                if (!match.matches() || orderStore.stashOf(match.group(1)) == null) yield 403;
+                yield 200;
             }
         };
     }

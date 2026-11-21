@@ -91,11 +91,8 @@ final class BotRoutes {
             Http.error(ex, 400, "botId must be 1-64 letters, digits, - or _");
             return;
         }
-        String player = AddonRoutes.string(o, "player");
-        if (o.has("player") && !o.get("player").isJsonNull() && (player == null || player.length() > 64)) {
-            Http.error(ex, 400, "player must be a string of at most 64 characters");
-            return;
-        }
+        // Player names are advisory presence only; bad metadata never invalidates a signed key.
+        String player = AgentCredentials.displayName(AddonRoutes.string(o, "player"));
         JsonObject plugin = smallObject(o, "plugin", "id", "version");
         JsonObject runtime = smallObject(o, "runtime", "version", "mc");
         if (plugin == null || runtime == null) {
@@ -141,7 +138,7 @@ final class BotRoutes {
         }
         BotHub.ManifestScope manifestScope = null;
         if (o.has("manifestScope")) {
-            manifestScope = manifestScope(o.get("manifestScope"), player);
+            manifestScope = manifestScope(o.get("manifestScope"), player, botId);
             if (controlSession == null || manifestScope == null || !botId.equals(manifestScope.botId())) {
                 Http.error(ex, 400, "Invalid manifest scope");
                 return;
@@ -190,8 +187,8 @@ final class BotRoutes {
         Http.json(ex, 200, out);
     }
 
-    private static BotHub.ManifestScope manifestScope(JsonElement input, String player) {
-        if (!input.isJsonObject() || player == null || !player.matches("[A-Za-z0-9_]{1,16}")) return null;
+    private static BotHub.ManifestScope manifestScope(JsonElement input, String player, String botId) {
+        if (!input.isJsonObject()) return null;
         var scope = input.getAsJsonObject();
         String server = AddonRoutes.string(scope, "server");
         String stash = AddonRoutes.string(scope, "stash");
@@ -208,7 +205,9 @@ final class BotRoutes {
                 || !dimension.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")
                 || agent == null
                 || !agent.matches("[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")) return null;
-        return new BotHub.ManifestScope(server, stash, dimension, agent, player);
+        // No Minecraft username/UUID equivalence requirement. The agent UUID above is
+        // physical work context within this session, not the key's owner.
+        return new BotHub.ManifestScope(botId, server, stash, dimension, agent, player == null ? "" : player);
     }
 
     private void manifest(HttpExchange ex) throws IOException {

@@ -180,28 +180,56 @@ public class StashSorter extends Module {
 
     // General
 
-    private final Setting<String> stashName = sgGeneral.add(new StringSetting.Builder()
-            .name("stash-name")
-            .description(
-                    "The name the stash is saved under. Each name on each server is its own stash, scanned once and then kept up to date. Leave the default on a clean client: the first stash the Manager announces is adopted automatically.")
-            .defaultValue("stash")
-            .onChanged(name -> {
-                stash = null;
-                triedKey = null;
-            })
-            .build());
+    /**
+     * The stash this client works in. Only the Manager assigns it (announced over an
+     * authenticated link and adopted below); nothing in the game configures it. Without an
+     * assignment the local default "stash" is used, exactly like a fresh client before.
+     */
+    private String assignedStash = null;
+
+    String stashName() {
+        return assignedStash != null ? assignedStash : "stash";
+    }
 
     /**
-     * Clean-client bootstrap: adopt a Manager-announced stash name when nothing local is
-     * configured (the setting is still the default and no local stash has any containers).
-     * Never overwrites local work. The region itself always comes from the Manager directive.
+     * Bind the isolated Minecraft 26.3 E2E fixture without adding a user-configurable
+     * stash setting back to Meteor. The filesystem test driver itself is marker-gated.
+     * This method is unavailable in production and accepts no arbitrary warehouse.
+     */
+    public void selectE2eFixtureStash(String name) {
+        if (!Boolean.getBoolean("wesort.e2e") || !"e2e-fixture".equals(name))
+            throw new IllegalStateException("Fixture stash assignment requires isolated E2E");
+        if (name.equals(assignedStash)) return;
+        assignedStash = name;
+        stash = null;
+        triedKey = null;
+    }
+
+    /**
+     * Adopt a Manager-announced stash name when no local stash has any containers. Never
+     * overwrites local work. The region itself always comes from the Manager directive.
      */
     boolean adoptAnnouncedStash(String name) {
-        if (name == null || name.isEmpty() || !"stash".equals(stashName.get())) return false;
+        if (name == null || name.isEmpty()) return false;
         if (stash != null && !stash.boxes.isEmpty()) return false;
-        stashName.set(name);
-        info("Adopted Manager stash '%s': no local stash was configured.", name);
+        if (name.equals(assignedStash)) return true;
+        assignedStash = name;
+        stash = null;
+        triedKey = null;
+        info("Adopted Manager stash '%s'.", name);
         return true;
+    }
+
+    /**
+     * Materialize the assigned stash as a local shell (no containers yet) so the link can push
+     * a first index and the Manager directive can then fill in the region. Null when nothing is
+     * assigned: a clean client waits for the Manager instead of inventing a stash.
+     */
+    Stash materializeAssignment() {
+        if (stash != null) return stash;
+        if (assignedStash == null || mc.level == null || mc.player == null) return null;
+        stash = new Stash(assignedStash, Stash.currentServer());
+        return stash;
     }
 
     private final Setting<Boolean> sortItems = sgGeneral.add(new BoolSetting.Builder()
@@ -1935,7 +1963,7 @@ public class StashSorter extends Module {
         }
 
         boolean existed = ensureStash() != null;
-        if (stash == null) stash = new Stash(stashName.get(), Stash.currentServer());
+        if (stash == null) stash = new Stash(stashName(), Stash.currentServer());
 
         // A shulker step that was under way is finished first
         pendingResume = stash.inFlight;
@@ -10266,7 +10294,7 @@ public class StashSorter extends Module {
 
         // A refused delivery spot leaves no box behind
         if (pick.get() == Pick.Delivery && !deliverySpotSettable(pos)) return true;
-        if (ensureStash() == null) stash = new Stash(stashName.get(), Stash.currentServer());
+        if (ensureStash() == null) stash = new Stash(stashName(), Stash.currentServer());
         Box box = stash.boxAt(pos);
         if (box == null) {
             if (stash.hasArea() && pick.get() != Pick.Delivery && !stash.inArea(pos)) {
@@ -10446,7 +10474,7 @@ public class StashSorter extends Module {
      * Makes the block the corner of the stash perimeter. The perimeter only applies once both corners are set.
      */
     private void setCorner(int which, BlockPos pos) {
-        if (ensureStash() == null) stash = new Stash(stashName.get(), Stash.currentServer());
+        if (ensureStash() == null) stash = new Stash(stashName(), Stash.currentServer());
         // Corners set in another dimension don't go with this one
         String dimension = Stash.currentDimension();
         if (stash.hasCorners() || stash.corner1 != null || stash.corner2 != null) {
@@ -10994,13 +11022,13 @@ public class StashSorter extends Module {
         if (mc.level == null) return null;
 
         String server = Stash.currentServer();
-        if (stash != null && stash.name.equals(stashName.get()) && stash.server.equals(server)) return stash;
+        if (stash != null && stash.name.equals(stashName()) && stash.server.equals(server)) return stash;
 
         // Only try the disk once per name and server, a missing stash isn't looked for again every tick
-        String key = server + "/" + stashName.get();
+        String key = server + "/" + stashName();
         if (!key.equals(triedKey)) {
             triedKey = key;
-            stash = Stash.load(stashName.get());
+            stash = Stash.load(stashName());
             pruneForeign("load");
             pruneStrays("load");
             // Another stash, name or server: its exploration and what failed with the last one don't carry over
@@ -11620,7 +11648,7 @@ public class StashSorter extends Module {
         WButton forget = buttons.add(theme.button("Forget stash")).widget();
         forget.tooltip = "Deletes the saved stash, including excluded and drop-off marks.";
         forget.action = () -> {
-            Stash.delete(stashName.get());
+            Stash.delete(stashName());
             stash = null;
             triedKey = null;
             status.set(statusText());
@@ -11649,7 +11677,7 @@ public class StashSorter extends Module {
     private String statusText() {
         if (mc.level == null) return "Join a server to see its stashes.";
         if (ensureStash() == null)
-            return String.format("No stash called \"%s\" here yet. Turn the module on to scan one.", stashName.get());
+            return String.format("No stash called \"%s\" here yet. Turn the module on to scan one.", stashName());
 
         long excluded = stash.boxes.stream().filter(b -> b.excluded).count();
         long dropOffs = stash.boxes.stream().filter(b -> b.dropOff).count();

@@ -17,7 +17,7 @@ public enum ConnectionState {
     /** Verified two-way communication. */
     ONLINE("Online", "Authenticated: the Manager accepts this key and replies."),
     /** The server refused the key (HTTP 401). */
-    WRONG_KEY("Wrong key", "The Manager rejected the API key. Reissue it with agent-key on the Manager host."),
+    WRONG_KEY("Wrong key", "The Manager rejected the API key. Ask the owner for a fresh one."),
     /** No reply at all (network down, wrong port, Manager stopped). */
     UNREACHABLE("Cannot reach Manager", "No reply. Check the address, port and that the Manager is running."),
     /** The Manager serves a different Minecraft server (409). */

@@ -43,7 +43,7 @@ public final class WeSortConnectScreen extends WidgetScreen {
 
         addressBox = field(list, "Address (host or IP, no scheme needed)");
         portBox = field(list, "Port (1-65535)");
-        keyBox = secret(list, "API key (from agent-key on the Manager host)");
+        keyBox = secret(list, "API key (from the Manager owner)");
         fillCurrent();
 
         status = list.add(theme.label("")).expandX().widget();

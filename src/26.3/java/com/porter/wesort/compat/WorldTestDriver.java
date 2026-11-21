@@ -384,7 +384,7 @@ public final class WorldTestDriver {
                     }
                     stash.save();
                     var sorter = com.porter.wesort.WeSortAddon.sorter();
-                    ((Setting<String>) sorter.settings.get("stash-name")).set(stash.name);
+                    sorter.selectE2eFixtureStash(stash.name);
                     ((Setting<Boolean>) sorter.settings.get("sort-items")).set(true);
                     if (command.has("repack"))
                         ((Setting<Boolean>) sorter.settings.get("repack"))
@@ -703,7 +703,7 @@ public final class WorldTestDriver {
         }
         stash.save();
         StashSorter sorter = com.porter.wesort.WeSortAddon.sorter();
-        ((Setting<String>) sorter.settings.get("stash-name")).set(stash.name);
+        sorter.selectE2eFixtureStash(stash.name);
         StashManager manager = Modules.get().get(StashManager.class);
         ((Setting<String>) manager.settings.get("server-url"))
                 .set(command.get("url").getAsString());

@@ -59,6 +59,7 @@ export function SettingsPage() {
           <Tab label="Server" />
           <Tab label="Stashes" />
           {perms.owner && <Tab label="Users" />}
+          {perms.owner && <Tab label="API keys" />}
           <Tab label="Guild" />
           <Tab label="Security" />
           {perms.can("link") && <Tab label="Connection" />}
@@ -67,9 +68,10 @@ export function SettingsPage() {
           {tab === 0 && <ServerSection />}
           {tab === 1 && <StashSection />}
           {tab === 2 && perms.owner && <UsersSection />}
-          {tab === (perms.owner ? 3 : 2) && <GuildSection />}
-          {tab === (perms.owner ? 4 : 3) && <SecuritySection />}
-          {tab === (perms.owner ? 5 : 4) && perms.can("link") && <LinkSection />}
+          {tab === 3 && perms.owner && <ApiKeysSection />}
+          {tab === (perms.owner ? 4 : 2) && <GuildSection />}
+          {tab === (perms.owner ? 5 : 3) && <SecuritySection />}
+          {tab === (perms.owner ? 6 : 4) && perms.can("link") && <LinkSection />}
         </CardContent>
       </Card>
     </Stack>
@@ -796,6 +798,96 @@ function SecuritySection() {
         </Stack>
       )}
       {msg && <Alert severity="info" onClose={() => setMsg("")}>{msg}</Alert>}
+    </Stack>
+  );
+}
+
+function ApiKeysSection() {
+  const [slots, setSlots] = useState<any[]>([]);
+  const [label, setLabel] = useState("");
+  const [freshKey, setFreshKey] = useState("");
+  const [msg, setMsg] = useState("");
+  const confirm = useConfirm();
+  async function load() {
+    try {
+      setMsg("");
+      const res = await api<any>("/api/v1/agents");
+      setSlots(res?.slots ?? []);
+    } catch (e: any) {
+      setMsg(e?.message ?? "API keys unavailable.");
+    }
+  }
+  useEffect(() => { void load(); }, []);
+  function errText(e: any): string {
+    if (e?.status === 403 && /confirm password/i.test(e?.body?.error ?? "")) {
+      return "Confirm your password in the Security tab first, then try again.";
+    }
+    return e?.message ?? "Request failed.";
+  }
+  async function issue() {
+    try {
+      setMsg("");
+      const res = await api<any>("/api/v1/agents", { method: "POST", body: { label: label.trim() || "bot" } });
+      setFreshKey(res?.key ?? "");
+      setLabel("");
+      await load();
+    } catch (e: any) {
+      setMsg(errText(e));
+    }
+  }
+  function revoke(slot: any) {
+    confirm.ask({
+      title: `Revoke API key "${slot.label}"?`,
+      intro: "The bot using this key is disconnected immediately and must use a new key.",
+      confirmLabel: "Revoke",
+      danger: true,
+      run: async () => {
+        try {
+          await api(`/api/v1/agents/${slot.id}/revoke`, { method: "POST", body: {} });
+          await load();
+        } catch (e: any) {
+          setMsg(errText(e));
+        }
+      },
+    });
+  }
+  return (
+    <Stack spacing={1.5}>
+      <Typography color="text.secondary">
+        The API key authorizes the agent, independently of Minecraft username or UUID.
+        The last reported player name is only presence information. A new key is shown once.
+      </Typography>
+      {msg && <Alert severity="info" onClose={() => setMsg("")}>{msg}</Alert>}
+      {freshKey && (
+        <Paper variant="outlined" sx={{ p: 1.5 }}>
+          <Typography variant="subtitle2">New API key (copy it now — it is never shown again):</Typography>
+          <Typography variant="caption" component="pre" sx={{ fontFamily: "monospace", whiteSpace: "pre-wrap", m: 0 }}>
+            {freshKey}
+          </Typography>
+          <Box><Button variant="outlined" onClick={() => setFreshKey("")}>I saved it</Button></Box>
+        </Paper>
+      )}
+      <Stack direction="row" spacing={1}>
+        <TextField size="small" label="Label" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="bot" />
+        <Button variant="contained" onClick={issue}>Issue key</Button>
+      </Stack>
+      <List>
+        {slots.map((s) => (
+          <ListItem key={s.id} divider>
+            <Stack spacing={0.5} sx={{ flex: 1 }}>
+              <Typography>
+                {s.label} <Typography variant="caption" component="span" color="text.secondary">{s.id}</Typography>
+                {!s.active && <Chip size="small" label="revoked" sx={{ ml: 1 }} />}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {s.bound ? `player: ${s.bound.name} (seen ${new Date(s.bound.seen).toLocaleString()})` : "no active player reported"}
+              </Typography>
+            </Stack>
+            {s.active && <Button variant="outlined" color="error" onClick={() => revoke(s)}>Revoke</Button>}
+          </ListItem>
+        ))}
+      </List>
+      {confirm.dialog}
     </Stack>
   );
 }

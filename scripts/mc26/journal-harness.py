@@ -23,6 +23,23 @@ class JournalHarness(repack.RepackHarness):
         self.phase = phase
         self.journal = self.game_dir / 'meteor-client/wesort/physical-journal/active.json'
 
+    def record_fence_state(self, stage, state):
+        # Common evidence for SELECT/PLACE/OPEN, TRANSFER/VERIFY/BREAK and
+        # PICKUP/STORE: distinguish disabled sorting, missing Manager lease,
+        # durable journal fencing and an unmirrored receipt. No API keys.
+        keys = (
+            'physicalJournal', 'journalBlocked', 'journalAwaitingMirror',
+            'sortingPermitRequired', 'sortingPermitted', 'sorterActive',
+            'attemptedClicks', 'inventoryReady', 'inventoryFailure',
+            'lastBlockAck', 'lastBlockSequence', 'guardDenials',
+        )
+        detail = {'phase': self.phase, 'stage': stage}
+        detail.update({key: state[key] for key in keys if key in state})
+        (self.evidence / f'journal-{self.phase.lower()}-{stage}.json').write_text(
+            json.dumps(detail, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+        )
+        return detail
+
     def wait_for_review(self, operation):
         end = time.monotonic() + 35
         last = None
@@ -150,8 +167,11 @@ class JournalHarness(repack.RepackHarness):
             self.run(self.compose + ['restart', 'manager'])
             self.start_client()
             initial = self.command('state')['state']
+            initial_detail = self.record_fence_state('restart', initial)
             require(initial['physicalJournal'] == 'NEEDS_RECONCILIATION' and initial['attemptedClicks'] == 0,
-                    'Restart reopened automation or replayed a click')
+                    'Restart reopened automation or replayed a click: ' + json.dumps(initial_detail))
+            require(initial['sortingPermitted'] is False,
+                    'Restart exposed an unsafe sorting permit: ' + json.dumps(initial_detail))
             self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key)
             row = self.wait_for_review(crashed['id'])
             require(row['interruptedPhase'] == self.phase, 'Manager omitted the interrupted phase')
@@ -183,18 +203,26 @@ class JournalHarness(repack.RepackHarness):
             # release (off-to-on toggle, explicit sort-start) resumes automation — never a
             # mirror round-trip, inspection result, publish or rescan.
             fenced = self.command('state')['state']
+            fenced_detail = self.record_fence_state('reconciled', fenced)
             require(fenced['physicalJournal'] in ('NEEDS_RECONCILIATION', 'WAITING_MANAGER_RECEIPT'),
-                    'Client left the recovery fence without an explicit operator release: %s'
-                    % fenced['physicalJournal'])
-            require(fenced.get('sortingPermitted', False) is False,
-                    'Sorter re-armed without an explicit operator release')
-            require(fenced['attemptedClicks'] == 0, 'Client replayed an inventory click')
+                    'Client left the recovery fence without an explicit operator release: '
+                    + json.dumps(fenced_detail))
+            require(fenced['sortingPermitted'] is False,
+                    'Sorter re-armed without an explicit operator release: ' + json.dumps(fenced_detail))
+            require(fenced['attemptedClicks'] == 0,
+                    'Client replayed an inventory click: ' + json.dumps(fenced_detail))
             after = self.snapshot_after_restart(row)
             # Soak past the 5s automation-permit window: any re-armed sorting would move
             # the world here, and the canonical comparison below would name the delta.
             time.sleep(8)
             self.require_same_world(after, self.snapshot_after_restart(row))
-            require(self.command('state')['state']['attemptedClicks'] == 0, 'Client replayed an inventory click')
+            soaked = self.command('state')['state']
+            soaked_detail = self.record_fence_state('after-soak', soaked)
+            require(soaked['sortingPermitted'] is False,
+                    'Sorting was re-authorized without an operator release during soak: '
+                    + json.dumps(soaked_detail))
+            require(soaked['attemptedClicks'] == 0,
+                    'Client replayed an inventory click: ' + json.dumps(soaked_detail))
             require(self.totals(before) == self.totals(after), 'Crash changed authoritative recursive totals or metadata')
             self.ok(self.phase + ' survived client and Manager restart without a duplicate physical mutation')
             (self.evidence / 'result.json').write_text(json.dumps({

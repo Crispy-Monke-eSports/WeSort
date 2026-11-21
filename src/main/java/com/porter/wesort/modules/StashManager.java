@@ -695,8 +695,7 @@ public class StashManager extends Module {
         request.addProperty("controlSession", controlSession);
         request.addProperty("agent", observed.player().toString());
         if (!controlRegistered) {
-            request.addProperty(
-                    "player", current == null ? mc.player.getName().getString() : current.player());
+            request.addProperty("player", current == null ? mc.player.getName().getString() : current.player());
             if (observed.stash() != null) {
                 var binding = new JsonObject();
                 binding.addProperty("server", observed.server());

@@ -76,13 +76,11 @@ class BootstrapRuntimeTest {
         // Same player refreshes the claim; another player is refused while it is live.
         assertEquals(AgentCredentials.Touch.BOUND, credentials.touch(id, player, "Renamed"));
         assertEquals(
-                AgentCredentials.Touch.CONFLICT,
-                credentials.touch(id, "66666666-7777-4888-8999-000000000000", "Eve"));
+                AgentCredentials.Touch.CONFLICT, credentials.touch(id, "66666666-7777-4888-8999-000000000000", "Eve"));
         // After the window the slot is free: a new player rebinds it.
         clock.addAndGet(AgentCredentials.BIND_WINDOW_MS + 1);
         assertEquals(
-                AgentCredentials.Touch.REBOUND,
-                credentials.touch(id, "66666666-7777-4888-8999-000000000000", "Eve"));
+                AgentCredentials.Touch.REBOUND, credentials.touch(id, "66666666-7777-4888-8999-000000000000", "Eve"));
         // Labels, not bindings, distinguish new slots.
         String anotherKey = credentials.issue("agent0");
         String anotherId = anotherKey.substring(0, anotherKey.indexOf('.'));

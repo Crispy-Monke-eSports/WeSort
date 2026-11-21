@@ -47,6 +47,7 @@ class AgentScopeTest {
     AgentCredentials credentials;
     /** The stable Minecraft player UUID used for the bound slot. */
     static final String PLAYER_A = "11111111-2222-4333-8444-555555555555";
+
     static final String PLAYER_B = "66666666-7777-4888-8999-000000000000";
 
     @BeforeAll
@@ -205,7 +206,8 @@ class AgentScopeTest {
     }
 
     static String heartbeat(String server, String stash, String agent) {
-        return "{\"server\":\"" + server + "\",\"stash\":\"" + stash + "\",\"player\":\"Bot\",\"agent\":\"" + agent + "\"}";
+        return "{\"server\":\"" + server + "\",\"stash\":\"" + stash + "\",\"player\":\"Bot\",\"agent\":\"" + agent
+                + "\"}";
     }
 
     static String index(String server, String stash) {
@@ -226,8 +228,8 @@ class AgentScopeTest {
     }
 
     static String helloBootstrap(String botId) {
-        return "{\"botId\":\"" + botId + "\",\"agent\":\"" + PLAYER_A
-                + "\",\"player\":\"Bot\",\"controlSession\":\"" + "1".repeat(64) + "\",\"caps\":[]}";
+        return "{\"botId\":\"" + botId + "\",\"agent\":\"" + PLAYER_A + "\",\"player\":\"Bot\",\"controlSession\":\""
+                + "1".repeat(64) + "\",\"caps\":[]}";
     }
 
     @Test
@@ -322,9 +324,7 @@ class AgentScopeTest {
                                 heartbeat("s", "a").replace("Bot", "Eve"))
                         .status);
         // A different player on the same key is refused while the claim is live: 409, not 403.
-        assertEquals(
-                409,
-                agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat("s", "a", PLAYER_B)).status);
+        assertEquals(409, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat("s", "a", PLAYER_B)).status);
         // Claim and work calls bind the same way: a foreign agent on a bound slot is refused.
         assertEquals(
                 409,
@@ -360,8 +360,7 @@ class AgentScopeTest {
         defineStash(owner, "a");
         // A signed call without any player identity is refused, never silently accepted.
         assertEquals(
-                403,
-                agentPost(agentA, agentKeyA, "/api/v1/heartbeat", "{\"server\":\"s\",\"stash\":\"a\"}").status);
+                403, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", "{\"server\":\"s\",\"stash\":\"a\"}").status);
     }
 
     @Test

@@ -59,16 +59,10 @@ final class BrowserRoutes {
                 .exact(Router.POST, "/api/v1/rescan", Router.Guard.BROWSER_WRITE, Router.Perm.RESCAN, this::rescan)
                 .exact(Router.GET, "/api/v1/agents", Router.Guard.SESSION, Router.Perm.OWNER, this::listAgents)
                 .exact(Router.POST, "/api/v1/agents", Router.Guard.BROWSER_WRITE, Router.Perm.OWNER, this::issueAgent)
-                .pattern(
-                        Router.POST,
-                        AGENT_REVOKE,
-                        Router.Guard.BROWSER_WRITE,
-                        Router.Perm.OWNER,
-                        this::revokeAgent);
+                .pattern(Router.POST, AGENT_REVOKE, Router.Guard.BROWSER_WRITE, Router.Perm.OWNER, this::revokeAgent);
     }
 
-    private static final Pattern AGENT_REVOKE =
-            Pattern.compile("^/api/v1/agents/([A-Za-z0-9_-]{1,64})/revoke$");
+    private static final Pattern AGENT_REVOKE = Pattern.compile("^/api/v1/agents/([A-Za-z0-9_-]{1,64})/revoke$");
 
     /** GET /api/v1/agents (owner): every key slot with its label, live binding and activity. */
     private void listAgents(HttpExchange ex) throws IOException {

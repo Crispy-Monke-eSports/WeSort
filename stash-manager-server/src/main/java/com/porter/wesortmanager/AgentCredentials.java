@@ -30,6 +30,7 @@ final class AgentCredentials {
     private static final int MAX_ENTRIES = 64;
     /** A live player claim holds the slot this long without any signed request. */
     static final long BIND_WINDOW_MS = 120_000;
+
     private final Path file;
     private final LongSupplier clock;
     private final Map<String, Slot> entries = new TreeMap<>();
@@ -158,9 +159,7 @@ final class AgentCredentials {
         if (saved == null || !saved.active()) throw new IllegalArgumentException("No active agent credential");
         var current = saved.binding();
         long now = clock.getAsLong();
-        if (current != null
-                && !current.playerUuid().equals(playerUuid)
-                && now - current.lastSeen() < BIND_WINDOW_MS) {
+        if (current != null && !current.playerUuid().equals(playerUuid) && now - current.lastSeen() < BIND_WINDOW_MS) {
             return Touch.CONFLICT;
         }
         boolean changed = current == null || !current.playerUuid().equals(playerUuid);
@@ -244,7 +243,8 @@ final class AgentCredentials {
         Binding binding = null;
         if (row.has("binding") && row.get("binding").isJsonObject()) {
             var b = row.getAsJsonObject("binding");
-            binding = new Binding(field(b, "uuid"), field(b, "name"), b.get("seen").getAsLong());
+            binding = new Binding(
+                    field(b, "uuid"), field(b, "name"), b.get("seen").getAsLong());
         }
         return new Slot(field(row, "id"), field(row, "label"), null, binding);
     }

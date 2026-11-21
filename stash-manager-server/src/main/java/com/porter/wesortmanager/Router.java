@@ -466,8 +466,7 @@ final class Router implements HttpHandler {
                 var record = object(body, "record");
                 var context = record == null ? null : object(record, "context");
                 if (context == null) yield 403;
-                yield bindOrCheck(
-                        slot, AddonRoutes.string(context, "agent"), AddonRoutes.string(context, "player"));
+                yield bindOrCheck(slot, AddonRoutes.string(context, "agent"), AddonRoutes.string(context, "player"));
             }
             case "/api/v1/bot/hello" -> {
                 var binding = object(body, "manifestScope");

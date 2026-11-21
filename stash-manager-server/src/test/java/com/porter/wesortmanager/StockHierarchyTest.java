@@ -393,11 +393,17 @@ class StockHierarchyTest {
         assertNull(restarted.manifest(
                 order.id, new BotHub.ManifestScope("test-bot", "s", "a", "minecraft:the_nether", agent, "TestAgent")));
         assertNull(restarted.manifest(
-                order.id, new BotHub.ManifestScope("test-bot", "different", "a", "minecraft:overworld", agent, "TestAgent")));
+                order.id,
+                new BotHub.ManifestScope("test-bot", "different", "a", "minecraft:overworld", agent, "TestAgent")));
         assertNull(restarted.manifest(
                 order.id,
                 new BotHub.ManifestScope(
-                        "test-bot", "s", "a", "minecraft:overworld", UUID.randomUUID().toString(), "TestAgent")));
+                        "test-bot",
+                        "s",
+                        "a",
+                        "minecraft:overworld",
+                        UUID.randomUUID().toString(),
+                        "TestAgent")));
         String hash = manifest.get("hash").getAsString();
         assertEquals(
                 409,

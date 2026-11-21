@@ -57,7 +57,9 @@ class LiveEventsTest {
             assertEquals(Set.of("orders", "operations", "stashes"), take(queue).channels());
 
             LiveEvents.routeChanged("/api/v1/index", "POST");
-            assertEquals(Set.of("index", "stock", "stashes", "operations"), take(queue).channels());
+            assertEquals(
+                    Set.of("index", "stock", "stashes", "operations"),
+                    take(queue).channels());
 
             LiveEvents.routeChanged("/api/v1/bot/activity", "POST");
             assertEquals(Set.of("bots", "operations"), take(queue).channels());
@@ -104,9 +106,8 @@ class LiveEventsTest {
 
     HttpServer server;
     String base;
-    final HttpClient http = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(5))
-            .build();
+    final HttpClient http =
+            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 
     @BeforeAll
     static void fastHashes() {
@@ -232,8 +233,7 @@ class LiveEventsTest {
                     .header("Cookie", SessionStore.COOKIE + "=" + session)
                     .GET()
                     .build();
-            HttpResponse<java.io.InputStream> response =
-                    http.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            HttpResponse<java.io.InputStream> response = http.send(request, HttpResponse.BodyHandlers.ofInputStream());
             if (response.statusCode() != 200) {
                 frames.offer("HTTP " + response.statusCode());
                 return;
@@ -243,8 +243,8 @@ class LiveEventsTest {
                 frames.offer("BAD CONTENT TYPE " + contentType);
                 return;
             }
-            java.io.BufferedReader reader = new java.io.BufferedReader(
-                    new java.io.InputStreamReader(response.body(), StandardCharsets.UTF_8));
+            java.io.BufferedReader reader =
+                    new java.io.BufferedReader(new java.io.InputStreamReader(response.body(), StandardCharsets.UTF_8));
             StringBuilder frame = new StringBuilder();
             String line;
             while ((line = reader.readLine()) != null) {

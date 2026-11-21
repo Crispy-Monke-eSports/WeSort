@@ -159,7 +159,8 @@ final class LiveRoutes {
     private static void send(OutputStream out, String event, String data) throws IOException {
         StringBuilder frame = new StringBuilder();
         frame.append("event: ").append(event).append('\n');
-        for (String line : data.split("\n", -1)) frame.append("data: ").append(line).append('\n');
+        for (String line : data.split("\n", -1))
+            frame.append("data: ").append(line).append('\n');
         frame.append('\n');
         out.write(frame.toString().getBytes(StandardCharsets.UTF_8));
         out.flush();

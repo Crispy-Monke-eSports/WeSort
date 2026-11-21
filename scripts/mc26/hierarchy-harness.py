@@ -490,7 +490,7 @@ class HierarchyHarness(stock.StockHarness):
             require(new_slots['0/0']['count']==31 and new_slots['0/0']['revision'] > old_slots['0/0']['revision'], 'Changed inner stack did not advance its physical revision')
             require(new_slots['20']['revision'] == old_slots['20']['revision'], 'Unchanged identical sibling acquired another slot identity/revision')
             replay = stock.signed.Client(f'http://127.0.0.1:{self.manager_port}', self.key)
-            code, _ = replay.post('/api/v1/index', initial)
+            code, _ = replay.post('/api/v1/index', dict(initial, agent=self.command('state')['state']['playerUuid']))
             require(code == 409, 'Older actual snapshot accepted after changed content')
             self.ok('real server-side inner-content delta invalidates old box fingerprint and advances affected slot revisions; captured old signed observation rejected 409')
             if self.order_lifecycle or self.approval:

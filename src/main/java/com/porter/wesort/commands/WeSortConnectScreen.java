@@ -2,7 +2,7 @@ package com.porter.wesort.commands;
 
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
-import com.porter.wesort.manager.gui.widgets.MaskedRenderer;
+import com.porter.wesort.commands.MaskedRenderer;
 import com.porter.wesort.modules.StashManager;
 import meteordevelopment.meteorclient.gui.GuiThemes;
 import meteordevelopment.meteorclient.gui.WidgetScreen;

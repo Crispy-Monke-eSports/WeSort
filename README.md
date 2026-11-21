@@ -61,7 +61,7 @@ Sätt JAVA_HOME till JDK 25. En enda klient-JAR byggs:
 ```sh
 ./gradlew --no-daemon clean build
 python3 scripts/test-summary.py build
-# Verklig 26.3-klient och Stash Window (kräver desktop eller Xvfb/Mesa):
+# Verklig 26.3-klient och Agent-runtime (kräver desktop eller Xvfb/Mesa):
 python3 scripts/mc26/client-runtime.py
 ```
 

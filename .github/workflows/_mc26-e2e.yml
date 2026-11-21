@@ -56,7 +56,7 @@ jobs:
 
       - name: Check frozen Meteor against empty dependency cache
         run: python3 scripts/mc26/frozen-meteor-test.py
-      - name: Start real Minecraft 26.3 client and Stash Window
+      - name: Start real Minecraft 26.3 client and verify Agent runtime
         run: xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/mc26/client-runtime.py
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: always()

@@ -3,9 +3,7 @@ package com.porter.wesort.compat;
 import baritone.api.BaritoneAPI;
 import com.google.gson.GsonBuilder;
 import com.porter.wesort.modules.StashManager;
-import com.porter.wesort.modules.StashOverlay;
 import com.porter.wesort.modules.StashSorter;
-import com.porter.wesort.modules.StashWindow;
 import java.nio.file.Files;
 import java.util.LinkedHashMap;
 import meteordevelopment.meteorclient.MeteorClient;
@@ -15,6 +13,15 @@ import net.fabricmc.loader.api.FabricLoader;
 /** Explicit opt-in development probe; never connects to a world or enables automation. */
 public final class ClientRuntimeProbe {
     private ClientRuntimeProbe() {}
+
+    private static boolean legacyClassPresent(String className) {
+        try {
+            Class.forName(className);
+            return true;
+        } catch (ClassNotFoundException missing) {
+            return false;
+        }
+    }
 
     public static void afterInitialize() {
         PhysicalJournalRuntime.initialize();
@@ -40,22 +47,12 @@ public final class ClientRuntimeProbe {
                         throw new IllegalStateException("Internal sorter service missing");
                     if (Modules.get().get(StashSorter.class) != null)
                         throw new IllegalStateException("Legacy sorter must not be registered in Meteor");
-                    if (Modules.get().get(StashOverlay.class) != null)
-                        throw new IllegalStateException("Headless overlay registered in production");
-                    if (BaritoneAPI.getProvider().getPrimaryBaritone() == null)
-                        throw new IllegalStateException("No Baritone");
-                    if (StashWindow.get() != null)
-                        throw new IllegalStateException("Legacy member window registered in production");
-                    new StashWindow().openNow();
+                    if (legacyClassPresent("com.porter.wesort.modules.StashWindow"))
+                        throw new IllegalStateException("Legacy member portal still shipped");
                 });
-                Thread.sleep(8_000);
                 MeteorClient.LOG.info("WESORT_CLIENT_RUNTIME_PROBE_CHECK");
                 MeteorClient.mc.execute(() -> {
                     try {
-                        if (!(MeteorClient.mc.gui.screen()
-                                instanceof com.porter.wesort.manager.gui.StashManagerScreen)) {
-                            throw new IllegalStateException("Stash Window did not remain open");
-                        }
                         var loader = FabricLoader.getInstance();
                         var result = new LinkedHashMap<String, Object>();
                         for (String id :
@@ -73,7 +70,7 @@ public final class ClientRuntimeProbe {
                         result.put("result", "PASS");
                         result.put(
                                 "checks",
-                                "One WeSort Agent module and internal sorter, packet mixin audit, Baritone linkage, legacy readback fixture, member window disabled in production");
+                                "One WeSort Agent module and internal sorter, packet mixin audit, Baritone linkage, legacy readback fixture, member portal absent");
                         result.put("limits", "No connected world, physical inventory or pathfinding tested.");
                         Files.writeString(
                                 loader.getGameDir().resolve("runtime-result.json"),

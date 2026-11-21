@@ -305,7 +305,7 @@ class HierarchyHarness(stock.StockHarness):
 
     def require_scoped_agent(self):
         state = self.command('state')['state']
-        require(state['legacyMemberWindowRegistered'] is False, 'Production Fabric registered the legacy member order window')
+        require(state['legacyMemberWindowClassPresent'] is False, 'Legacy member portal class must not be shipped in production')
         scope = [state['playerUuid'], self.player, self.server_name, 'e2e-fixture']
         cli = self.compose + ['exec', '-T', 'manager', '/opt/wesort/entrypoint']
         endpoint = f'http://127.0.0.1:{self.manager_port}'

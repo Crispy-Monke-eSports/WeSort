@@ -1,4 +1,4 @@
-package com.porter.wesort.manager.gui.widgets;
+package com.porter.wesort.commands;
 
 import meteordevelopment.meteorclient.gui.renderer.GuiRenderer;
 import meteordevelopment.meteorclient.gui.utils.CharFilter;

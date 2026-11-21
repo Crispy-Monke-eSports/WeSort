@@ -14,13 +14,19 @@ import org.slf4j.Logger;
 public class WeSortAddon extends MeteorAddon {
     public static final Logger LOG = LogUtils.getLogger();
     public static final Category CATEGORY = new Category("WeSort");
+    // Internal physical executor. Not registered with Meteor; only WeSort Agent is a user-facing module.
+    private static StashSorter sorter;
+
+    public static StashSorter sorter() {
+        return sorter;
+    }
 
     @Override
     public void onInitialize() {
         LOG.info("Initializing WeSort");
 
-        // Modules: headless executors only. No visual interface: the bot logs to chat (Meteor chat, never server chat).
-        Modules.get().add(new StashSorter());
+        // Keep the physical executor alive for scanning and Manager-directed jobs without a second Meteor module.
+        sorter = new StashSorter();
         Modules.get().add(new StashManager());
 
         // Commands: connection only (address, port, API key). The Manager owns regions, planning and settings.

@@ -216,7 +216,18 @@ public final class WorldInteractionGuard {
                 && (block.equals(previous.block()) || block.equals("minecraft:air"))
                 && PERMITS.allows(time, position.asLong(), Operation.BREAK, previous.block(), job);
         boolean allowed = safeBlock(position) && (permittedStandingBlock || permittedPredictedBreak);
-        if (!allowed) denied("break-stop-no-authorized-start");
+        if (!allowed) {
+            denied("break-stop-no-authorized-start");
+            if (BREAK_STOP_TRACE.incrementAndGet() <= 4)
+                meteordevelopment.meteorclient.MeteorClient.LOG.warn(
+                        "WeSort break stop denied at {} live {} previous {} holder {} job {} blocked {}",
+                        position.toShortString(),
+                        block,
+                        previous,
+                        PERMITS.jobOf(time, position.asLong(), Operation.BREAK),
+                        job,
+                        PhysicalJournalRuntime.blocked());
+        }
         return allowed;
     }
 
@@ -314,6 +325,10 @@ public final class WorldInteractionGuard {
     public static String jobOfUse(BlockPos position) {
         return PERMITS.jobOf(now(), position.asLong(), Operation.USE);
     }
+
+    /** Bounded native break-stop diagnostic (first four denials per client). */
+    private static final java.util.concurrent.atomic.AtomicLong BREAK_STOP_TRACE =
+            new java.util.concurrent.atomic.AtomicLong();
 
     static boolean safeBlock(BlockPos position) {
         if (mc.level == null || !mc.level.isLoaded(position)) return false;

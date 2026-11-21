@@ -48,6 +48,7 @@ public class StashManager extends Module {
             .description(
                     "Address of the WeSort Manager server, http or https, e.g. http://127.0.0.1:8765. Empty: no server, nothing is sent. Prefer the Connection screen above: it splits address and port and masks the key.")
             .defaultValue("")
+            .visible(() -> false)
             .build());
 
     private final Setting<String> apiKey = sgGeneral.add(new StringSetting.Builder()
@@ -56,6 +57,7 @@ public class StashManager extends Module {
                     "The agent API key from the Manager host's agent-key command. Keep it private: it is masked here, in the Connection screen and in logs. Prefer the Connection screen above.")
             .defaultValue("")
             .renderer(com.porter.wesort.manager.gui.widgets.MaskedRenderer.class)
+            .visible(() -> false)
             .build());
 
     private final Setting<Integer> scanInterval = sgGeneral.add(new IntSetting.Builder()
@@ -64,12 +66,14 @@ public class StashManager extends Module {
             .defaultValue(10)
             .min(2)
             .sliderRange(2, 60)
+            .visible(() -> false)
             .build());
 
     private final Setting<Boolean> includeExcluded = sgGeneral.add(new BoolSetting.Builder()
             .name("include-excluded")
             .description("Also list containers excluded from sorting.")
             .defaultValue(false)
+            .visible(() -> false)
             .build());
 
     private final Setting<Boolean> acceptOrders = sgGeneral.add(new BoolSetting.Builder()
@@ -77,6 +81,7 @@ public class StashManager extends Module {
             .description(
                     "Let the bot take orders from the web page: it builds shulkers from the stash and delivers them to the delivery container (wesort-stash-sorter pick: Delivery). wesort-stash-sorter does not need to be on: while this module is on it reads containers, takes orders and puts leftovers back by itself, using wesort-stash-sorter's settings (stash-name, area, safe-walk...), and never sorts. Needs a free inventory slot and enough empty shulkers. Loose items an order took out and did not deliver go back to the container they came from, or the nearest one with room when that is not known; shulkers it unpacked go back where they came from. To stop the bot, turn off accept-orders or wesort-stash-manager. Turning wesort-stash-sorter off hands control back to wesort-stash-manager while accept-orders is on.")
             .defaultValue(false)
+            .visible(() -> false)
             .build());
 
     private final Setting<Boolean> orderIntakePaused = sgGeneral.add(new BoolSetting.Builder()
@@ -91,6 +96,7 @@ public class StashManager extends Module {
             .description(
                     "Orders may take items out of shulkers that have a custom name. Off: named shulkers are left alone, as the sorter does.")
             .defaultValue(true)
+            .visible(() -> false)
             .build());
 
     private final Setting<Integer> freshMinutes = sgGeneral.add(new IntSetting.Builder()
@@ -100,12 +106,14 @@ public class StashManager extends Module {
             .defaultValue(5)
             .min(0)
             .sliderRange(0, 30)
+            .visible(() -> false)
             .build());
 
     private final Setting<Boolean> orderChat = sgGeneral.add(new BoolSetting.Builder()
             .name("order-messages")
             .description("Tell you in chat when an order is taken, delivered or fails.")
             .defaultValue(true)
+            .visible(() -> false)
             .build());
 
     private final SettingGroup sgDelivery = settings.createGroup("Delivery");
@@ -115,6 +123,7 @@ public class StashManager extends Module {
             .description(
                     "When every chest of the delivery storage is full, put another double chest up one block above the highest one (taken from the stash, or crafted when enable-crafting is on) and keep filling the lowest chest with room. A chest a player emptied is used again. Off: an order waits for space (paused for up to 2 hours, then it ends). It goes up for as long as the new chests could be opened and the bot can reach them: from the floor the first row above the delivery container, higher ones need something to stand on beside the stack. The chests are never sorted into or listed.")
             .defaultValue(false)
+            .visible(() -> false)
             .build());
 
     private final SettingGroup sgCrafting = settings.createGroup("Crafting");
@@ -124,6 +133,7 @@ public class StashManager extends Module {
             .description(
                     "Orders and compaction may craft a plain Shulker Box when no empty one is left: shulker shells and a chest (made of planks, made of logs) are taken from the stash and crafted at the crafting table below. Shulker shells can't be crafted, so they have to be in the stash. Needs a crafting table: the one set below, else one is found in the stash area, taken from the stash and placed, or crafted in the inventory grid from 4 planks (or logs) and placed. Kits never craft.")
             .defaultValue(false)
+            .visible(() -> false)
             .build());
 
     private final Setting<Integer> craftMaxPerOrder = sgCrafting.add(new IntSetting.Builder()
@@ -132,6 +142,7 @@ public class StashManager extends Module {
             .defaultValue(27)
             .min(1)
             .sliderRange(1, 54)
+            .visible(() -> false)
             .build());
 
     private final Setting<Integer> craftMaxOpsPerTask = sgCrafting.add(new IntSetting.Builder()
@@ -141,6 +152,7 @@ public class StashManager extends Module {
             .defaultValue(128)
             .min(8)
             .sliderRange(8, 512)
+            .visible(() -> false)
             .build());
 
     private final Setting<Integer> craftMaxPerHour = sgCrafting.add(new IntSetting.Builder()
@@ -149,12 +161,14 @@ public class StashManager extends Module {
             .defaultValue(54)
             .min(1)
             .sliderRange(1, 216)
+            .visible(() -> false)
             .build());
 
     private final Setting<List<Item>> craftNeverUse = sgCrafting.add(new ItemListSetting.Builder()
             .name("craft-never-use")
             .description("Items crafting never uses as ingredients, whatever the stash holds.")
             .defaultValue(List.of())
+            .visible(() -> false)
             .build());
 
     private static final long HEARTBEAT_MS = 15_000;
@@ -225,7 +239,7 @@ public class StashManager extends Module {
     public StashManager() {
         super(
                 WeSortAddon.CATEGORY,
-                "wesort-stash-manager",
+                "WeSort Agent",
                 "Sends what's in your saved stash to the WeSort Manager web server on your network, which shows it. Uses the stash saved by wesort-stash-sorter. With accept-orders on, or during a website rescan, it moves the bot by itself; to stop that, turn off accept-orders or this module. Turning wesort-stash-sorter off hands control back to this module while accept-orders is on.");
     }
 

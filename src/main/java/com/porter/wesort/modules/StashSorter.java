@@ -3828,6 +3828,11 @@ public class StashSorter extends Module {
     }
 
     public boolean sortingPermitted() {
+        // A recovered physical operation must remain fenced even when the internal sorter
+        // is idle or Manager has disabled sorting. A missing sorting request does not
+        // authorize an inventory mutation. DIRECT clicks retain their normal path only
+        // when the durable journal is safe and its last receipt has been mirrored.
+        if (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror()) return false;
         if (!requiresSortingPermit()) return true;
         var manager =
                 meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);

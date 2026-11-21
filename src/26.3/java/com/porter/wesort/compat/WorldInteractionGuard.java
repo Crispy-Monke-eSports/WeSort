@@ -223,7 +223,7 @@ public final class WorldInteractionGuard {
             if (BREAK_STOP_TRACE.incrementAndGet() <= 4)
                 meteordevelopment.meteorclient.MeteorClient.LOG.warn(
                         "WeSort break stop denied at {} live {} previous {} permitExpected {} permitForPrevious {}"
-                                + " jobMatch {} fresh {} holder {} job {} blocked {}",
+                                + " jobMatch {} fresh {} holder {} job {} blocked {} safe {} loaded {} standing {}",
                         position.toShortString(),
                         block,
                         previous,
@@ -233,7 +233,10 @@ public final class WorldInteractionGuard {
                         previous != null && time >= previous.at() && time - previous.at() < PERMIT_TTL_MS,
                         PERMITS.jobOf(time, position.asLong(), Operation.BREAK),
                         job,
-                        PhysicalJournalRuntime.blocked());
+                        PhysicalJournalRuntime.blocked(),
+                        safeBlock(position),
+                        mc.level != null && mc.level.isLoaded(position),
+                        permittedStandingBlock);
         }
         return allowed;
     }

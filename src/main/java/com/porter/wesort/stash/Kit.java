@@ -45,6 +45,11 @@ public final class Kit {
     public final String name;
     /** A transient kit made for an order: items match exactly, damage and repair cost included. Not a saved kit. */
     public final boolean orderKit;
+    /**
+     * Exact slot-for-slot placement (from a Manager kit template). An exact order kit is only
+     * finished when the box holds the right stacks in the right slots — never a totals match.
+     */
+    public final boolean exact;
 
     private final ItemStack[] layout = new ItemStack[SLOTS];
     private final Key[] keys = new Key[SLOTS];
@@ -53,16 +58,26 @@ public final class Kit {
     private final int[] order;
 
     public Kit(String name, ItemStack[] stacks) {
-        this(name, stacks, false);
+        this(name, stacks, false, false);
     }
 
     public Kit(String name, ItemStack[] stacks, boolean orderKit) {
+        this(name, stacks, orderKit, false);
+    }
+
+    /** An on-demand kit from a Manager template: order semantics with exact slot placement. */
+    public static Kit template(String name, ItemStack[] stacks) {
+        return new Kit(name, stacks, true, true);
+    }
+
+    public Kit(String name, ItemStack[] stacks, boolean orderKit, boolean exact) {
         if (stacks.length > SLOTS || !orderKit && stacks.length != SLOTS)
             throw new IllegalArgumentException("A saved WeSort kit has exactly 27 slots");
         if (!orderKit && (name == null || name.isBlank() || name.length() > 64))
             throw new IllegalArgumentException("Invalid WeSort kit name");
         this.name = name;
         this.orderKit = orderKit;
+        this.exact = exact && orderKit;
 
         for (int i = 0; i < SLOTS; i++) {
             ItemStack stack = i < stacks.length && stacks[i] != null ? stacks[i] : ItemStack.EMPTY;
@@ -197,9 +212,11 @@ public final class Kit {
     // Matching shulkers
 
     /**
-     * Saved templates require exact slots/components/counts. Transient order manifests retain their total-based layout.
+     * Saved templates require exact slots/components/counts. Transient order manifests retain their total-based layout,
+     * unless they come from a kit template (exact placement).
      */
     public boolean matchesFinished(ItemStack[] contents) {
+        if (exact) return exactLayout(contents);
         if (!orderKit) return exactLayout(contents);
         Map<Key, Integer> have = totalsOf(contents);
         if (have.size() != needs.size()) return false;
@@ -223,16 +240,16 @@ public final class Kit {
             if (need == null || entry.getValue() > need.total) return false;
             if (entry.getValue() != need.total) complete = false;
         }
-        return orderKit ? !complete : !exactLayout(contents);
+        return orderKit && !exact ? !complete : !exactLayout(contents);
     }
 
     /**
-     * Slot for slot, count for count.
+     * Slot for slot, count for count. Template order kits are done only with the exact placement.
      */
     public boolean exactLayout(ItemStack[] contents) {
         if (contents.length != SLOTS) return false;
-        // An order kit is done when it holds the right totals, in whatever slots
-        if (orderKit) return matchesFinished(contents);
+        // An order kit is done when it holds the right totals, in whatever slots — unless exact.
+        if (orderKit && !exact) return matchesFinished(contents);
         for (int i = 0; i < SLOTS; i++) {
             ItemStack stack = i < contents.length && contents[i] != null ? contents[i] : ItemStack.EMPTY;
             if (keys[i] == null) {

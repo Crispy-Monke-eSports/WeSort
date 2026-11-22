@@ -302,6 +302,7 @@ public final class WeSortManager {
         authRoutes.register(router);
         DeliveryContents delivery = new DeliveryContents(); // in memory only
         var stashDefs = new StashDefs(config.dataDir());
+        var kits = orders.kits(); // the shared catalog: routes and reservations see the same templates
         new AddonRoutes(store, link, icons, orders, delivery, config, stashDefs).register(router);
         new BrowserRoutes(store, config, link, urls, orders, sessions, audit, delivery, credentials).register(router);
         new DeliveryRoutes(delivery, config, stashDefs).register(router);
@@ -317,6 +318,7 @@ public final class WeSortManager {
         new DeliveryPointRoutes(new DeliveryPoints(config.dataDir()), audit).register(router);
         new ServerRoutes(config, audit).register(router);
         new StashDefRoutes(stashDefs, audit).register(router);
+        new KitTemplateRoutes(kits, audit).register(router);
         new DepositRoutes(new Deposits(config.dataDir()), audit, config).register(router);
         new JobRoutes(new JobScheduler(config.dataDir()), audit, config).register(router);
         new HandoffRoutes(new Handoffs(config.dataDir()), audit, config).register(router);

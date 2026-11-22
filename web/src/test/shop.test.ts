@@ -89,6 +89,17 @@ describe("capacity", () => {
     expect(shulkersNeeded([{ type: "item", key: "d", count: 64 }], () => 64, () => false)).toBe(1);
     expect(shulkersNeeded([{ type: "item", key: "d", count: 64 * 27 + 1 }], () => 64, () => false)).toBe(2);
   });
+
+  it("counts one box per kit, however many slots it fills", () => {
+    expect(shulkersNeeded([{ type: "kit", key: "starter", count: 3 }], () => 64, () => false)).toBe(3);
+    expect(
+      shulkersNeeded(
+        [{ type: "kit", key: "starter", count: 2 }, { type: "item", key: "d", count: 64 }],
+        () => 64,
+        () => false,
+      ),
+    ).toBe(3);
+  });
 });
 
 describe("buy units (items / stacks / boxes)", () => {

@@ -17,7 +17,7 @@ import java.util.TreeMap;
  * into shulker loads. Nothing here touches Minecraft types, so it can be tested and ported on its own.
  */
 public final class Order {
-    public static final String ITEM = "item", SHULKER = "shulker";
+    public static final String ITEM = "item", SHULKER = "shulker", KIT = "kit";
     /** The most shulkers one order may need. */
     public static final int MAX_BINS = 54;
 
@@ -94,6 +94,12 @@ public final class Order {
     /** Null: no naming. */
     public final Names names;
 
+    /** One pinned kit template slot: 0-based box slot, exact item variant key, count. */
+    public record TemplateSlot(int slot, String key, int count) {}
+
+    /** Pinned kit templates by kit name (slot layouts the bot packs exactly). */
+    public final Map<String, List<TemplateSlot>> kits;
+
     public final Map<String, Set<Integer>> protectedRoots;
     public final Map<String, Set<Integer>> allocatedRoots;
 
@@ -102,18 +108,20 @@ public final class Order {
     }
 
     public Order(String id, List<Line> lines, Names names) {
-        this(id, lines, names, Map.of(), Map.of());
+        this(id, lines, names, Map.of(), Map.of(), Map.of());
     }
 
     private Order(
             String id,
             List<Line> lines,
             Names names,
+            Map<String, List<TemplateSlot>> kits,
             Map<String, Set<Integer>> protectedRoots,
             Map<String, Set<Integer>> allocatedRoots) {
         this.id = id;
         this.lines = lines;
         this.names = names;
+        this.kits = kits;
         this.protectedRoots = protectedRoots;
         this.allocatedRoots = allocatedRoots;
     }
@@ -132,7 +140,7 @@ public final class Order {
                 String type = l.get("type").getAsString();
                 String key = l.get("key").getAsString();
                 int count = l.get("count").getAsInt();
-                if ((type.equals(ITEM) || type.equals(SHULKER)) && !key.isEmpty() && count >= 1)
+                if ((type.equals(ITEM) || type.equals(SHULKER) || type.equals(KIT)) && !key.isEmpty() && count >= 1)
                     lines.add(new Line(type, key, count));
             } catch (RuntimeException ex) {
                 // A broken line is left out and shows up as undelivered
@@ -168,7 +176,29 @@ public final class Order {
             if (allocated.isEmpty()) throw new IllegalArgumentException("Empty physical allocation");
         }
         allocated.replaceAll((source, slots) -> Set.copyOf(slots));
-        return new Order(id, lines, parseNames(o), Map.copyOf(guards), Map.copyOf(allocated));
+        var kits = new LinkedHashMap<String, List<TemplateSlot>>();
+        if (o.has("kits") && o.get("kits").isJsonObject()) {
+            for (var entry : o.getAsJsonObject("kits").entrySet()) {
+                try {
+                    var slots = new ArrayList<TemplateSlot>();
+                    for (var se : entry.getValue().getAsJsonObject().getAsJsonArray("slots")) {
+                        var s = se.getAsJsonObject();
+                        int slot = s.get("slot").getAsBigDecimal().intValueExact();
+                        String key = s.get("key").getAsString();
+                        int count = s.get("count").getAsBigDecimal().intValueExact();
+                        if (slot < 0 || slot >= 27 || key.isEmpty() || count < 1)
+                            throw new IllegalArgumentException("Invalid kit template slot");
+                        slots.add(new TemplateSlot(slot, key, count));
+                    }
+                    if (slots.isEmpty()) throw new IllegalArgumentException("Empty kit template");
+                    slots.sort(java.util.Comparator.comparingInt(TemplateSlot::slot));
+                    kits.put(entry.getKey(), List.copyOf(slots));
+                } catch (RuntimeException invalid) {
+                    // A broken template is left out; its kit lines report the missing template.
+                }
+            }
+        }
+        return new Order(id, lines, parseNames(o), Map.copyOf(kits), Map.copyOf(guards), Map.copyOf(allocated));
     }
 
     private static boolean isText(JsonElement e) {

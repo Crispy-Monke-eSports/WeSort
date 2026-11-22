@@ -175,6 +175,8 @@ public class Stash {
             public String key = "";
             public final List<String> lotKeys = new ArrayList<>();
             public final List<Integer> lotCounts = new ArrayList<>();
+            /** Exact box slot per lot (-1: totals-packed, not template-placed). Parallel to lotKeys/lotCounts. */
+            public final List<Integer> lotSlots = new ArrayList<>();
             /** How naming went: done (named or given up on), named, why not, and the key it has with its name. */
             public boolean nameDone, named;
 
@@ -663,6 +665,7 @@ public class Stash {
                     CompoundTag lot = new CompoundTag();
                     lot.putString("key", u.lotKeys.get(i));
                     lot.putInt("count", u.lotCounts.get(i));
+                    if (i < u.lotSlots.size() && u.lotSlots.get(i) >= 0) lot.putInt("slot", u.lotSlots.get(i));
                     lots.add(lot);
                 }
                 unit.put("lots", lots);
@@ -922,6 +925,8 @@ public class Stash {
                                 if (lt instanceof CompoundTag lot) {
                                     u.lotKeys.add(text(lot, "key"));
                                     u.lotCounts.add(number(lot.get("count"), 0));
+                                    u.lotSlots.add(
+                                            lot.contains("slot") ? number(lot.get("slot"), -1) : -1);
                                 }
                             }
                         }

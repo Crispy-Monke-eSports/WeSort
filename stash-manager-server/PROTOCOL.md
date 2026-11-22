@@ -3,7 +3,7 @@
 Alla aktiva routes registreras av WeSortManager.routes.
 Detta protokoll är den bevarade baslinjen, inte framtida guildordermotor.
 
-## En server, inget ägarskap, inga kit
+## En server, inget ägarskap, inga lagrade kit
 
 - Managern betjänar alltid exakt EN Minecraft-server, satt av ägaren i webb-UI:t
   (`GET/POST /api/v1/server`). Bot-anrop från en annan server avvisas med 409.
@@ -12,9 +12,12 @@ Detta protokoll är den bevarade baslinjen, inte framtida guildordermotor.
 - Ingen bot äger en stash: ägarskap (`Owners`, `stashes/release`,
   ägar-/konfliktfält, 409 "stash name in use") är borttaget. Alla bottar kan
   använda alla stashes.
-- Kitsystemet är borttaget: `KitRoutes/KitCatalog/KitJobs`,
-  `POST /api/v1/kits/*` och Manager-tilldelning av kit finns inte längre.
-  Lokal shulker-packning för ordrar (KitBuilder i modden) är orörd.
+- Kit är on demand: ett kit är exakt en shulkerbox, packad vid beställning med
+  mallens exakta slotplacering. Ägaren hanterar mallar (`GET/POST /api/v1/kits`,
+  revisionsskyddade som stash-defs); ordrar tar `{"type":"kit","key":namn,"count":n}`
+  vars komponenter reserveras från löst lager och vars layout pin_nas på ordern.
+  Färdiga kitboxar lagras aldrig. Lokal shulker-packning för ordrar (KitBuilder
+  i modden) packar exakt efter mall.
 - Streamer-läget är borttaget: ingen `streamer`-permission, ingen maskering
   med opaka id:n. Positions-skydd via `positions`-permissionen finns kvar.
 - Varje stash skapas av ägaren i webb-UI:t (`GET/POST /api/v1/stash-defs`)
@@ -27,8 +30,8 @@ Detta protokoll är den bevarade baslinjen, inte framtida guildordermotor.
 |---|---|
 | Browser-auth | GET auth/state; POST auth/setup, auth/login, auth/logout, auth/logout-all, auth/password, auth/confirm, auth/lock |
 | Agent | POST index, heartbeat, orders/claim, orders/:id/status, delivery |
-| Lager/webb | GET stashes, index, orders, delivery, link, server, stash-defs; POST server, stash-defs, rescan, link/regenerate |
-| Order/webb | POST orders, orders/clear, orders/:id/cancel, orders/:id/force-cancel, orders/:id/retry, orders/:id/approval |
+| Lager/webb | GET stashes, index, orders, delivery, link, server, stash-defs, kits; POST server, stash-defs, kits, rescan, link/regenerate |
+| Order/webb | POST orders (lines: item, shulker eller kit), orders/clear, orders/:id/cancel, orders/:id/force-cancel, orders/:id/retry, orders/:id/approval |
 | Drift/agent | POST bot/hello, bot/state, bot/results, bot/activity; GET bot/next |
 | Drift/webb | GET bots, bots/:id/settings, bots/:id/jobs, bots/:id/activity; POST bots/:id/settings |
 | Administration | GET/POST users; POST users/owner, users/:id, users/:id/actions enligt UserRoutes; GET audit |

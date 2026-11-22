@@ -1139,7 +1139,8 @@ final class KitBuilder {
         if (kit == null || menu.slots.size() != 27 + 36 || stuck(menu)) return false;
         if (continuePending(menu)) return true;
         if (!menu.getCarried().isEmpty()) return settleCursor(menu);
-        if (kit.orderKit) return fillOneExact(menu);
+        // Template kits pack exact slots, like saved kits; totals-based order kits use first-fit.
+        if (kit.orderKit && !kit.exact) return fillOneExact(menu);
 
         Inventory inv = mc.player.getInventory();
 

@@ -366,8 +366,8 @@ public final class WorldTestDriver {
                     // The live Manager must remain enabled for fail-closed guard tests,
                     // but its autonomous sorter would immediately override RCON teleports.
                     // Apply the fixture-only hold in this same client tick as activation.
-                    if (command.has("inspectionHold") && command.get("inspectionHold").getAsBoolean())
-                        manager.e2eHoldAutonomousWork(true);
+                    if (command.has("inspectionHold")
+                            && command.get("inspectionHold").getAsBoolean()) manager.e2eHoldAutonomousWork(true);
                     respond(true, "production Manager agent resumed", state());
                 }
                 case "manager-inspection-hold" -> {

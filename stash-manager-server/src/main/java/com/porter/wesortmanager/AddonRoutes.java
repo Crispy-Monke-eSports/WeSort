@@ -356,7 +356,7 @@ final class AddonRoutes {
                 anvilSource = src.isJsonPrimitive() && src.getAsJsonPrimitive().isString() ? src.getAsString() : null;
                 if (anvilSource == null || !IndexStore.Naming.ANVIL_SOURCES.contains(anvilSource)) {
                     throw new IllegalArgumentException(
-                            "naming.anvilSource must be \"set\", \"found\", \"placed\" or \"none\"");
+                            "naming.anvilSource must be \"manager\", \"set\", \"found\", \"placed\" or \"none\"");
                 }
             }
             naming = new IndexStore.Naming(anvil.getAsBoolean(), xp, anvilSource);

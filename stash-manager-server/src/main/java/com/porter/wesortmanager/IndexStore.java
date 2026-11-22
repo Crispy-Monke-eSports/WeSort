@@ -159,7 +159,7 @@ public final class IndexStore {
      * its anvil comes from ("set", "found", "placed" or "none"; null for an older bot that doesn't report it).
      */
     public record Naming(boolean anvil, int xpLevels, String anvilSource) {
-        public static final java.util.Set<String> ANVIL_SOURCES = java.util.Set.of("set", "found", "placed", "none");
+        public static final java.util.Set<String> ANVIL_SOURCES = java.util.Set.of("set", "manager", "found", "placed", "none");
 
         public Naming(boolean anvil, int xpLevels) {
             this(anvil, xpLevels, null);

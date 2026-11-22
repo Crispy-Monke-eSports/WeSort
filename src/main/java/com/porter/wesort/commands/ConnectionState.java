@@ -54,6 +54,8 @@ public enum ConnectionState {
     public static ConnectionState ofVerified(
             boolean active, String serverUrl, String apiKey, String status, boolean recentlyVerified) {
         ConnectionState raw = of(active, serverUrl, apiKey, status);
+        // A previous "online" status must also expire when no verified replies arrive.
+        if (raw == ONLINE) return recentlyVerified ? ONLINE : CONTACTING;
         return raw == CONTACTING && recentlyVerified ? ONLINE : raw;
     }
 

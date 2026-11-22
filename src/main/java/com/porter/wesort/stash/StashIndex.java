@@ -297,8 +297,41 @@ public final class StashIndex {
             DeliveryStorage storage,
             String tableSource,
             String deliveryHash) {
+        return heartbeat(
+                b,
+                delivery,
+                orderBlocker,
+                rescanDone,
+                rescanBlocked,
+                naming,
+                crafting,
+                anvilSource,
+                storage,
+                tableSource,
+                deliveryHash,
+                null);
+    }
+
+    /**
+     * As above, with {@code chests} sent as the agent's chest report ([{x, y, z, readAt}];
+     * the Manager answers positions to re-read), or left out when null.
+     */
+    public static byte[] heartbeat(
+            Built b,
+            int[] delivery,
+            String orderBlocker,
+            long rescanDone,
+            String rescanBlocked,
+            int[] naming,
+            int[] crafting,
+            String anvilSource,
+            DeliveryStorage storage,
+            String tableSource,
+            String deliveryHash,
+            JsonArray chests) {
         JsonObject o = new JsonObject();
         if (deliveryHash != null) o.addProperty("deliveryHash", deliveryHash);
+        if (chests != null) o.add("chests", chests);
         if (storage != null) {
             JsonObject d = new JsonObject();
             d.addProperty("autoExpand", storage.autoExpand());
@@ -363,6 +396,29 @@ public final class StashIndex {
 
     /** The delivery chests of the stash in fill order, as far as the book and the boxes tell; empty when no delivery container is set. */
     private record DChest(Box box, boolean full) {}
+
+    /**
+     * The chests the agent knows, with when each was last read (inversion of control: the agent
+     * reports, the Manager decides what to re-check). Delivery, foreign and excluded chests are
+     * never read back, so they are left out. Capped, so a huge stash fits one heartbeat.
+     */
+    public static JsonArray chestsReport(Stash stash) {
+        JsonArray arr = new JsonArray();
+        if (stash == null) return arr;
+        int n = 0;
+        for (Box box : com.porter.wesort.compat.ObservationRuntime.boxes(stash)) {
+            if (box.delivery || box.foreign || box.excluded) continue;
+            if (n >= 4096) break;
+            JsonObject c = new JsonObject();
+            c.addProperty("x", box.pos.getX());
+            c.addProperty("y", box.pos.getY());
+            c.addProperty("z", box.pos.getZ());
+            c.addProperty("readAt", Math.max(0, box.lastRead));
+            arr.add(c);
+            n++;
+        }
+        return arr;
+    }
 
     private static List<DChest> deliveryChests(Stash stash) {
         List<DChest> out = new ArrayList<>();

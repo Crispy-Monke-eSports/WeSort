@@ -165,8 +165,8 @@ function StashSection() {
   return (
     <Stack spacing={2}>
       <Typography color="text.secondary">
-        Each stash is a cube between Position 1 and Position 2. Delivery point, anvil and workbench are optional
-        placements the bot executes headlessly. {perms.owner ? "" : "Only the owner can change definitions."}
+        Each stash is a cube between Position 1 and Position 2. Drop-off chest, delivery point, anvil and workbench are optional
+        placements the bot executes headlessly. The drop-off chest is where members leave items for sorting into the stash — set it here, never in the game. {perms.owner ? "" : "Only the owner can change definitions."}
       </Typography>
       {defs.isLoading && <LinearProgress />}
       {defs.isError && <Alert severity="error">Could not load stash definitions.</Alert>}
@@ -181,7 +181,8 @@ function StashSection() {
                   {d.dimension}{d.pos1 && d.pos2 ? ` [${d.pos1.x},${d.pos1.y},${d.pos1.z}]–[${d.pos2.x},${d.pos2.y},${d.pos2.z}]` : " (coordinates hidden)"}
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ fontFamily: "monospace", wordBreak: "break-all" }}>
-                  {[d.delivery && `drop ${d.delivery.x},${d.delivery.y},${d.delivery.z}${d.deliveryDimension ? ` in ${d.deliveryDimension}` : ""}`,
+                  {[d.dropoff && `drop-off ${d.dropoff.x},${d.dropoff.y},${d.dropoff.z}${d.dropoffDimension ? ` in ${d.dropoffDimension}` : ""}`,
+                    d.delivery && `drop ${d.delivery.x},${d.delivery.y},${d.delivery.z}${d.deliveryDimension ? ` in ${d.deliveryDimension}` : ""}`,
                     d.anvil && `anvil ${d.anvil.x},${d.anvil.y},${d.anvil.z}`,
                     d.table && `bench ${d.table.x},${d.table.y},${d.table.z}`].filter(Boolean).join(" · ") || "no placements"}
                   {` · rev ${d.revision}`}
@@ -222,6 +223,8 @@ function StashEditor({ initial, onClose, onSaved }: {
   const [dimension, setDimension] = useState(initial.dimension ?? "minecraft:overworld");
   const [pos1, setPos1] = useState(vecText(initial.pos1));
   const [pos2, setPos2] = useState(vecText(initial.pos2));
+  const [dropoff, setDropoff] = useState(vecText(initial.dropoff));
+  const [dropoffDimension, setDropoffDimension] = useState(initial.dropoffDimension ?? "");
   const [delivery, setDelivery] = useState(vecText(initial.delivery));
   const [deliveryDimension, setDeliveryDimension] = useState(initial.deliveryDimension ?? "");
   const [anvil, setAnvil] = useState(vecText(initial.anvil));
@@ -242,6 +245,8 @@ function StashEditor({ initial, onClose, onSaved }: {
       dimension: dimension.trim() || "minecraft:overworld",
       pos1: p1,
       pos2: p2,
+      dropoff: parseVec(dropoff),
+      dropoffDimension: dropoffDimension.trim() || null,
       delivery: parseVec(delivery),
       deliveryDimension: deliveryDimension.trim() || null,
       anvil: parseVec(anvil),
@@ -266,6 +271,8 @@ function StashEditor({ initial, onClose, onSaved }: {
           <TextField label="Dimension" value={dimension} onChange={(e) => setDimension(e.target.value)} size="small" sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }} />
           <TextField label="Position 1 (x, y, z)" value={pos1} onChange={(e) => setPos1(e.target.value)} size="small" sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }} />
           <TextField label="Position 2 (x, y, z)" value={pos2} onChange={(e) => setPos2(e.target.value)} size="small" sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }} />
+          <TextField label="Drop-off (x, y, z, optional)" value={dropoff} onChange={(e) => setDropoff(e.target.value)} size="small" sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }} helperText="Members leave items here for sorting in. Never set in the game." />
+          <TextField label="Drop-off dimension (optional, defaults to stash dimension)" value={dropoffDimension} onChange={(e) => setDropoffDimension(e.target.value)} size="small" sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }} />
           <TextField label="Delivery (x, y, z, optional)" value={delivery} onChange={(e) => setDelivery(e.target.value)} size="small" sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }} />
           <TextField label="Delivery dimension (optional, defaults to stash dimension)" value={deliveryDimension} onChange={(e) => setDeliveryDimension(e.target.value)} size="small" sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }} />
           <TextField label="Anvil (x, y, z, optional)" value={anvil} onChange={(e) => setAnvil(e.target.value)} size="small" sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }} />

@@ -10,6 +10,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 /** The endpoints the addon calls with its bearer key: POST /api/v1/index and /api/v1/heartbeat. */
 final class AddonRoutes {
@@ -21,6 +22,7 @@ final class AddonRoutes {
     private final IconService icons;
     private final OrderStore orders;
     private final DeliveryContents delivery;
+    private final ChestStates chests;
     private final Config config;
     private final StashDefs defs;
 
@@ -29,7 +31,7 @@ final class AddonRoutes {
     }
 
     AddonRoutes(IndexStore store, LinkState link, IconService icons, OrderStore orders, DeliveryContents delivery) {
-        this(store, link, icons, orders, delivery, null, null);
+        this(store, link, icons, orders, delivery, null, null, null);
     }
 
     AddonRoutes(
@@ -40,7 +42,20 @@ final class AddonRoutes {
             DeliveryContents delivery,
             Config config,
             StashDefs defs) {
+        this(store, link, icons, orders, delivery, config, defs, new ChestStates());
+    }
+
+    AddonRoutes(
+            IndexStore store,
+            LinkState link,
+            IconService icons,
+            OrderStore orders,
+            DeliveryContents delivery,
+            Config config,
+            StashDefs defs,
+            ChestStates chests) {
         this.delivery = delivery;
+        this.chests = chests;
         this.orders = orders;
         this.icons = icons;
         this.store = store;
@@ -253,12 +268,18 @@ final class AddonRoutes {
         link.seen(generation(ex), server, stash, string(o, "player"));
         JsonObject out = Http.ok();
         out.addProperty("needIndex", result.needIndex());
+        // Inversion of control: the agent reports which chests exist and when each was last read;
+        // the Manager answers with the positions it wants re-read.
+        if (status.hasChests() && status.chests() != null) chests.report(server, stash, status.chests());
+        var recheck = chests.due(server, stash);
+        if (!recheck.isEmpty()) out.add("recheck", recheck);
         // Always sent, so a bot knows this server takes delivery reports (it only sends them once it has seen the key).
         if (hasDeliveryHash && deliveryHash == null) delivery.clear(server, stash); // the container was unset
         out.addProperty("needDelivery", delivery.needed(server, stash, deliveryHash));
         out.add("orders", orders.heartbeatJson(server, stash));
         if (result.rescan() != null) out.addProperty("rescan", result.rescan());
-        // Manager-owned directive: region cube, delivery, anvil and workbench. The bot executes headlessly.
+        // Manager-owned directive: region cube, drop-off chest, delivery, anvil and workbench. The bot executes
+        // headlessly.
         if (defs != null) {
             JsonObject directive = defs.directive(stash);
             if (directive != null) out.add("directive", directive);
@@ -399,6 +420,11 @@ final class AddonRoutes {
             }
             storage = new IndexStore.DeliveryStorage(auto.getAsBoolean(), chests, full, can.getAsBoolean(), blocked);
         }
+        // The agent's chest report (inversion of control: the agent tells the Manager which chests
+        // exist and when each was last read; absent leaves the stored set alone, null clears it).
+        boolean hasChests = o.has("chests");
+        List<ChestStates.Chest> chestList = null;
+        if (hasChests && !o.get("chests").isJsonNull()) chestList = ChestStates.parse(o.get("chests"));
         return new IndexStore.BotStatus(
                 hasDelivery,
                 delivery,
@@ -412,7 +438,9 @@ final class AddonRoutes {
                 hasCrafting,
                 crafting,
                 hasStorage,
-                storage);
+                storage,
+                hasChests,
+                chestList);
     }
 
     /** A whole number in int range (1.0 is fine, 1.5 isn't), or null. */

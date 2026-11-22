@@ -170,7 +170,7 @@ public final class IndexStore {
 
     /**
      * The bot-status fields of one heartbeat. A field is only changed when the heartbeat carried it
-     * (hasDelivery / hasBlocker / hasNaming / hasCrafting), so an older addon that never sends them leaves them null.
+     * (hasDelivery / hasBlocker / hasNaming / hasCrafting / hasChests), so an older addon that never sends them leaves them null.
      */
     public record BotStatus(
             boolean hasDelivery,
@@ -185,9 +185,11 @@ public final class IndexStore {
             boolean hasCrafting,
             Crafting crafting,
             boolean hasStorage,
-            DeliveryStorage storage) {
-        public static final BotStatus NONE =
-                new BotStatus(false, null, false, null, -1, false, null, false, null, false, null, false, null);
+            DeliveryStorage storage,
+            boolean hasChests,
+            List<ChestStates.Chest> chests) {
+        public static final BotStatus NONE = new BotStatus(
+                false, null, false, null, -1, false, null, false, null, false, null, false, null, false, null);
 
         public BotStatus(
                 boolean hasDelivery,
@@ -213,6 +215,8 @@ public final class IndexStore {
                     naming,
                     hasCrafting,
                     crafting,
+                    false,
+                    null,
                     false,
                     null);
         }

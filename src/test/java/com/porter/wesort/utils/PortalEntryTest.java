@@ -27,6 +27,7 @@ class PortalEntryTest {
         BlockPos approach = new BlockPos(10, 64, 21);
         assertTrue(PortalEntry.atApproach(approach, 10.5, 64, 21.5));
         assertTrue(PortalEntry.atApproach(approach, 10.8, 64.5, 22.0));
+        assertFalse(PortalEntry.atApproach(approach, 11.5, 64, 21.5));
         assertFalse(PortalEntry.atApproach(approach, 10.5, 64, 24));
         assertFalse(PortalEntry.atApproach(approach, 10.5, 66, 21.5));
     }

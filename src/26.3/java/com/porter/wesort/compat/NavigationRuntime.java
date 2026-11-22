@@ -52,6 +52,11 @@ public final class NavigationRuntime {
      * Exactly one navigation-only exception to inventory readback: a validated walkable
      * approach next to a real lobby Nether portal. Ordinary routes never inherit this scope.
      */
+    /** Used only to filter candidate entrance stands; it does not authorize a route or any block use. */
+    public static boolean safePortalApproach(BlockPos stand) {
+        return stand != null && mc.level != null && NavigationGuard.permits(stand);
+    }
+
     public static void watchPortalApproach(Object goal, BlockPos portal, BlockPos stand) {
         boolean validPortal = mc.level != null
                 && portal != null

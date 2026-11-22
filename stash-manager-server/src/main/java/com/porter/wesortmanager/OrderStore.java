@@ -1099,8 +1099,11 @@ final class OrderStore {
             String recipient,
             boolean queueWhenStale)
             throws OrderException, IOException {
-        if (index.automation().current(server) != null)
-            throw new OrderException(409, "Physical sorting active or awaiting reconciliation", -1);
+        // A sorting lease cannot coexist with a new physical reservation.
+        // Accept a transparently UNRESERVED request and let the sorter finish
+        // or reconcile before any later claim. Never reject the customer's order
+        // just because an autonomous tier-optimization pass is in progress.
+        boolean sortingLeaseActive = index.automation().current(server) != null;
         if (requested.isEmpty()) throw new OrderException(400, "an order needs at least one line", -1);
         if (requested.size() > MAX_LINES) throw new OrderException(400, "at most " + MAX_LINES + " lines", -1);
         IndexStore.OrderCounts fresh = index.orderCounts(server, stash);
@@ -1133,7 +1136,7 @@ final class OrderStore {
         // Never extend an agent's already issued protected-root list mid-order.
         // Persist the request instead, explicitly unreserved until the next
         // claim revalidates the actual physical slots against fresh observations.
-        if (executingPhysical) {
+        if (executingPhysical || sortingLeaseActive) {
             KitExplosion pinned = explodeKits(merged, firstIndex, kits());
             for (Line line : merged.values())
                 if (line.type().equals("craft")

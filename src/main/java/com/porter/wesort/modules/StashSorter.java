@@ -4270,6 +4270,11 @@ public class StashSorter extends Module {
         if (touchingPortal()) {
             portalSession.crossingAttempted();
             portalForward(false);
+            // A manual crossing may contact the portal without a tracked goal.
+            // Do not leave an active entering state pointing at a null target if
+            // the player steps out again before the proxy transfers worlds.
+            portalEntering = false;
+            portalEntryTicks = 0;
             if (portalTarget != null) {
                 releaseGoal();
                 portalTarget = portalApproach = null;
@@ -4311,6 +4316,10 @@ public class StashSorter extends Module {
         }
 
         if (portalEntering) {
+            if (portalTarget == null) {
+                retryPortal();
+                return true;
+            }
             if (++portalEntryTicks > PORTAL_ENTRY_TIMEOUT_TICKS) {
                 warning("6b6t lobby: portal entry did not complete; retrying the other side.");
                 retryPortal();

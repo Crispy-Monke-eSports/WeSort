@@ -6408,16 +6408,15 @@ public class StashSorter extends Module {
      */
     private List<BlockPos> scanLocalPortalBlocks() {
         if (mc.level == null || mc.player == null) return List.of();
-        BlockPos at = mc.player.blockPosition();
-        int r = 32, h = 16;
+        var nearby = PortalEntry.nearbyWindow(mc.player.blockPosition());
         return scanRegion(
                 state -> state.is(Blocks.NETHER_PORTAL),
-                at.getX() - r,
-                at.getX() + r,
-                at.getY() - h,
-                at.getY() + h,
-                at.getZ() - r,
-                at.getZ() + r);
+                nearby.minX(),
+                nearby.maxX(),
+                nearby.minY(),
+                nearby.maxY(),
+                nearby.minZ(),
+                nearby.maxZ());
     }
 
     /** Shared chunk-palette scanner. The caller supplies its own bounds. */

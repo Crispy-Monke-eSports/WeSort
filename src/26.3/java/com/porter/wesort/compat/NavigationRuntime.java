@@ -8,19 +8,19 @@ import com.porter.wesort.inventory.NavigationWatchdog;
 import com.porter.wesort.inventory.PortalNavigationPolicy;
 import com.porter.wesort.modules.StashManager;
 import com.porter.wesort.modules.StashSorter;
+import com.porter.wesort.stash.StashIndex;
+import com.porter.wesort.utils.BaritoneHelper;
 import com.porter.wesort.utils.PortalEntry;
+import meteordevelopment.meteorclient.MeteorClient;
+import meteordevelopment.meteorclient.events.game.GameLeftEvent;
+import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.systems.modules.Modules;
+import meteordevelopment.orbit.EventHandler;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.NetherPortalBlock;
-import com.porter.wesort.stash.StashIndex;
-import com.porter.wesort.utils.BaritoneHelper;
-import meteordevelopment.meteorclient.MeteorClient;
-import meteordevelopment.meteorclient.events.game.GameLeftEvent;
-import meteordevelopment.meteorclient.events.world.TickEvent;
-import meteordevelopment.orbit.EventHandler;
-import net.fabricmc.loader.api.FabricLoader;
 
 /** Limits only goals started by WeSort. A failure requires an explicit player resume. */
 public final class NavigationRuntime {

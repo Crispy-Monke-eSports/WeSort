@@ -80,6 +80,10 @@ export function OverviewPage() {
   // is folded into the per-bot entries so the same incident is not counted
   // twice. Likewise NEEDS_RECONCILIATION alerts fold into listed orders.
   const attention: Attention[] = [];
+  const healthLoading = server.isLoading || stashes.isLoading || ordersLoading
+    || (canActivity && (bots.isLoading || ops.isLoading));
+  const healthUnknown = !canActivity || server.isError || stashes.isError
+    || failedStashes.length > 0 || (canActivity && (bots.isError || ops.isError));
   const offlineBots = botList.filter((b) => !b.online);
   for (const b of offlineBots) {
     attention.push({
@@ -116,7 +120,7 @@ export function OverviewPage() {
     <Stack spacing={2}>
       <Typography variant="h5" component="h1">Overview</Typography>
 
-      {!server.data?.configured && (
+      {server.isSuccess && !server.data?.configured && (
         <Alert severity="warning">
           No Minecraft server configured yet. Physical work is disabled until the owner sets one in{" "}
           <Link component={RouterLink} to="/settings">Settings</Link>.
@@ -130,13 +134,20 @@ export function OverviewPage() {
       {stashes.isError && (
         <Alert severity="error">Could not load the stash list. Check the Manager connection and reload.</Alert>
       )}
+      {canActivity && (bots.isError || ops.isError) && (
+        <Alert severity="error">Cannot verify agent or operations health. The dashboard is incomplete.</Alert>
+      )}
+      {!canActivity && (
+        <Alert severity="info">Agent and operations health cannot be verified without activity permission.</Alert>
+      )}
 
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card>
-            <CardHeader title="Bots" subheader={`${onlineBots.length} of ${botList.length} online`} />
+            <CardHeader title="Bots" subheader={canActivity ? `${onlineBots.length} of ${botList.length} online` : "Activity permission required"} />
             <CardContent>
-              {bots.isLoading ? <CircularProgress size={24} /> : (
+              {!canActivity || bots.isError ? <Typography variant="h4" component="p">—</Typography>
+                : bots.isLoading ? <CircularProgress size={24} /> : (
                 <Typography variant="h4" component="p">{onlineBots.length}/{botList.length}</Typography>
               )}
               <Typography variant="body2" color="text.secondary">
@@ -175,11 +186,14 @@ export function OverviewPage() {
           <Card>
             <CardHeader title="Needs attention" subheader="Bots, orders, alerts" />
             <CardContent>
-              {ordersLoading ? <CircularProgress size={24} /> : (
+              {healthLoading ? <CircularProgress size={24} /> : healthUnknown && attention.length === 0
+                ? <Typography variant="h4" component="p">—</Typography> : (
                 <Typography variant="h4" component="p" color={attention.length ? "error" : undefined}>{attention.length}</Typography>
               )}
               <Typography variant="body2" color="text.secondary">
-                {attention.length ? "Resolve below — each item links straight there." : "Nothing blocked."}
+                {attention.length ? "Resolve below — each item links straight there."
+                  : healthLoading ? "Checking system health."
+                  : healthUnknown ? "Health could not be fully verified." : "Nothing blocked."}
               </Typography>
             </CardContent>
           </Card>

@@ -57,8 +57,7 @@ class ConnectionStateTest {
 
     @Test
     void oldOnlineFlagDoesNotSurviveConnectionLoss() {
-        assertEquals(
-                ConnectionState.CONTACTING, ConnectionState.ofVerified(true, "http://h:1", "k", "online", false));
+        assertEquals(ConnectionState.CONTACTING, ConnectionState.ofVerified(true, "http://h:1", "k", "online", false));
         assertEquals(ConnectionState.ONLINE, ConnectionState.ofVerified(true, "http://h:1", "k", "online", true));
     }
 

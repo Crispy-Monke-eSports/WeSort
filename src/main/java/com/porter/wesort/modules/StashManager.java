@@ -333,6 +333,7 @@ public class StashManager extends Module {
         StashSorter sorter = WeSortAddon.sorter();
         if (sorter != null) {
             sorter.orders().park();
+            sorter.stopPortalNavigation();
             sorter.drive(false);
         }
         reset();

@@ -9,6 +9,8 @@ import time
 
 spec = importlib.util.spec_from_file_location('world', Path(__file__).with_name('world-harness.py'))
 world = importlib.util.module_from_spec(spec); spec.loader.exec_module(world)
+snbt_spec = importlib.util.spec_from_file_location('snbt', Path(__file__).with_name('server-snbt.py'))
+snbt = importlib.util.module_from_spec(snbt_spec); snbt_spec.loader.exec_module(snbt)
 require = world.require
 
 class SortingHarness(world.Harness):
@@ -54,6 +56,15 @@ class SortingHarness(world.Harness):
             self.command('close')
         for x, mark in [(0, {'dropOff': True}), (12, {'excluded': True}), (15, {'protected': True}), (30, {'delivery': True})]:
             self.command('sort-mark', x=x, y=64, z=3, **mark)
+    def authoritative_totals(self):
+        # Independent RCON witnesses, not the sorter's cache. Include the player's
+        # carried inventory so incomplete but safe moves cannot appear as losses.
+        sums = Counter()
+        for x in self.locations:
+            sums.update(snbt.totals(snbt.items(self.nbt(x))))
+        sums.update(snbt.totals(snbt.items(
+            self.rcon.command('data get entity ' + self.player + ' Inventory'))))
+        return dict(sums)
     def stock(self):
         code, value = self.http('/api/v1/stock'); require(code==200,'Stock API failed'); return value
     def order(self):
@@ -69,12 +80,15 @@ class SortingHarness(world.Harness):
         try:
             self.start_server(); self.fixture(); self.start_manager()
             manager_image_id = self.run(self.compose + ['images','-q','manager']).strip()
-            self.start_client(); self.observe(); self.command('sort-config')
+            self.start_client(); self.observe(); self.command('sort-config', mode='Tiers')
+            self.settle_test_menus()
+            baseline_totals = self.authoritative_totals()
             excluded, protected, outbound = self.nbt(12), self.nbt(15), self.nbt(30)
             sword_components = self.rcon.command('data get block 0 64 3 Items[{id:"minecraft:diamond_sword"}].components').split(': ',1)[-1]
             potion_components = self.rcon.command('data get block 0 64 3 Items[{id:"minecraft:potion"}].components').split(': ',1)[-1]
             self.server_name = self.command('state')['state']['server']
-            self.command('publish',url=f'http://127.0.0.1:{self.manager_port}',key=self.key)
+            self.command('publish',url=f'http://127.0.0.1:{self.manager_port}',key=self.key,
+                         holdPhysicalSorting=True)
             self.wait(lambda: (stock:=self.stock())['sources'] and all(source['state'] in ['FRESH','PROTECTED'] for source in stock['sources'])
                 and any(row['id']=='minecraft:diamond' and row['available']>0 for row in stock['items'])
                 and self.command('state')['state']['containerId']==0,
@@ -101,23 +115,24 @@ class SortingHarness(world.Harness):
                 and before_reserved=={x:self.nbt(x) for x in self.locations}, 'Sorter touched real reserved stock')
             status,_ = self.http('/api/v1/orders/'+reservation['order']['id']+'/cancel',{})
             require(status==200,'Cannot cancel fixture reservation')
-            self.wait(lambda: self.command('state')['state']['sortingPermitted'],'Signed automation permit was not granted',timeout=30)
+            self.command('manager-sorting-hold', hold=False)
+            self.wait(lambda: self.command('state')['state']['sortingPermitted'],
+                      'Signed automation permit was not granted',timeout=30)
             require(self.order()[0]==409,'New reservation raced an active physical sorting permit')
             self.ok('real signed Manager excludes a reservation and active sorter: no clicks or NBT changes while held, and new orders are rejected during physical sorting')
-            self.wait(lambda: self.count(6, 'dirt') == 16 and self.count(9, 'diamond_sword') == 1
-                and self.count(24, 'potion') == 1 and self.count(27, 'enchanted_golden_apple') == 4 and self.count(0, 'diamond') == 0
-                and self.count(3, 'diamond') == 1728 and self.count(18, 'diamond') + self.count(21, 'diamond') == 28
-                and '[]' in self.rcon.command('data get entity ' + self.player + ' Inventory') and self.command('state')['state']['inventoryReady'],
-                'Production sign sorter did not place the mixed fixture correctly')
+            # Tier-only storage must empty the deposit, preserve every item's
+            # exact metadata/count and leave protected/excluded inventory untouched.
+            # Locations are chosen by the real tier planner, never by signs.
+            self.wait(lambda: not snbt.items(self.nbt(0))
+                and '[]' in self.rcon.command('data get entity ' + self.player + ' Inventory')
+                and self.command('state')['state']['inventoryReady'],
+                'Production tier sorter did not empty the mixed deposit',timeout=240)
             self.command('sort-stop')
-            require(self.nbt(12) == excluded and self.nbt(15) == protected and self.nbt(30)==outbound, 'Sorter moved excluded or protected kit stock')
-            require(self.count(3, 'diamond') == 1728 and self.count(18, 'diamond') + self.count(21, 'diamond') == 28,
-                'Partial/full destination did not retain overflow without loss')
-            require(self.rcon.command('data get block 9 64 3 Items[{id:"minecraft:diamond_sword"}].components').split(': ',1)[-1]==sword_components,
-                'Exact name/damage/enchantment components changed during actual sorting')
-            require(self.rcon.command('data get block 24 64 3 Items[{id:"minecraft:potion"}].components').split(': ',1)[-1]==potion_components,
-                'Exact potion components changed during actual sorting')
-            self.ok('actual production Signs engine routes mixed items by labels/slang, preserves metadata and partial stacks, uses overflow and leaves excluded/protected kit/outbound stock unchanged')
+            require(self.nbt(12) == excluded and self.nbt(15) == protected and self.nbt(30)==outbound,
+                'Sorter moved excluded or protected kit stock')
+            require(self.authoritative_totals() == baseline_totals,
+                'Tier sorting changed authoritative recursive counts or item metadata')
+            self.ok('tier-only sorting empties deposit with exact server item conservation, preserving protected stock')
             self.wait(lambda: not self.stock()['automation'],'Verified sorting did not release its exclusion',timeout=30)
             self.command('manager-unlink-test')
             # Manager may have issued its final index-open before deactivation.
@@ -173,12 +188,12 @@ class SortingHarness(world.Harness):
             self.observe({**{x:('spyglass',1) for x in self.locations if x not in [12,15,30]},12:('diamond',5),15:('diamond',7),30:('diamond',9)})
             self.command('sort-mark',x=21,y=64,z=3,dropOff=False)
             full_before={x:self.nbt(x) for x in self.locations}
-            self.teleport(0.5,2); self.command('sort-start',mode='Signs')
+            self.teleport(0.5,2); self.command('sort-start',mode='Tiers')
             self.wait(lambda: 'Drop-off blocked: no unprotected destination has room' in (self.evidence/'client.log').read_text(),
                 'Full stock has no explicit blocked alert',timeout=60)
             self.command('sort-stop')
             require(full_before=={x:self.nbt(x) for x in self.locations},'Full stock moved or lost items')
-            self.ok('full labeled/misc/unsigned storage produces an explicit blocked alert with exact unchanged server inventories')
+            self.ok('full tier storage produces an explicit blocked alert with unchanged server inventories')
             self.command('screenshot'); world.shutil.copyfile(self.game_dir / 'screenshots/fixture.png', self.evidence / 'sorting-world.png')
             report = {'result':'PASS','scope':'W-019 actual 26.3 production sorting','checks':self.checks,
                 'manager_image':self.env['WESORT_IMAGE'],'manager_image_id':manager_image_id,

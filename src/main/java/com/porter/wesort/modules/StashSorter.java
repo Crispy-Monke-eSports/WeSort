@@ -3954,6 +3954,14 @@ public class StashSorter extends Module {
      * is held or waiting to claim. Scan-only and order work remain available
      * while the Manager denies the lease because an order is open.
      */
+    /** Finish a previously started physical move before surrendering the server lease. */
+    private boolean finishingPhysicalMaintenance() {
+        return handle != null
+                || compactor.active()
+                || (repackWork != null && !repackWork.terminal())
+                || (job != null && job != Job.Survey);
+    }
+
     private boolean sorting() {
         if (!sortItems.get()) return false;
         var manager =
@@ -3961,7 +3969,7 @@ public class StashSorter extends Module {
         return isActive()
                 || manager != null
                         && manager.sortingEnabled()
-                        && manager.pendingOrders() == 0
+                        && (manager.pendingOrders() == 0 || finishingPhysicalMaintenance())
                         && !orderRunner.holdsOrder()
                         && manager.sortingAllowed();
     }
@@ -3973,7 +3981,7 @@ public class StashSorter extends Module {
         return isActive()
                 || manager != null
                         && manager.sortingEnabled()
-                        && manager.pendingOrders() == 0
+                        && (manager.pendingOrders() == 0 || finishingPhysicalMaintenance())
                         && !orderRunner.holdsOrder();
     }
 

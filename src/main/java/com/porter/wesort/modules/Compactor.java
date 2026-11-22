@@ -301,8 +301,9 @@ final class Compactor {
      */
     private boolean isPlanShulker(ItemStack stack, Plan p) {
         if (!shulker(stack) || !repackableName(stack) || owner.isKitShulker(stack)) return false;
-        // A legacy unnamed plan cannot silently switch to a named UUID box.
-        if (p.targetUuid != null ? !p.targetUuid.equals(uuidOf(stack)) : p.topUp && uuidOf(stack) != null)
+        // A new or legacy unnamed plan cannot silently switch to a named
+        // UUID box. Only a top-up pinned to that exact UUID may touch it.
+        if (p.targetUuid != null ? !p.targetUuid.equals(uuidOf(stack)) : uuidOf(stack) != null)
             return false;
         List<StackInfo> inside = StackInfo.of(stack).contents();
         if (inside.isEmpty()) return !p.topUp;

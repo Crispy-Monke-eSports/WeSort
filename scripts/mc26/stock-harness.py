@@ -4,6 +4,7 @@ import argparse
 from collections import Counter
 import importlib.util
 import json
+import re
 from pathlib import Path
 import time
 import urllib.parse
@@ -38,9 +39,46 @@ class StockHarness(world.Harness):
         for x in [30, 31, 33]: before[f'{x},64,3'] = self.rcon.command(f'data get block {x} 64 3 Items')
         return before
 
+    def assert_recovered_shulker(self, before):
+        # The world fixture includes a placed, unclaimed shulker inside the Manager's
+        # bounding box. Unlike the read-only world harness, the running warehouse agent
+        # MUST collect that box and deposit it in a real stash container. Waiting for
+        # the break alone would conceal an item left in the player's inventory.
+        placed = '3,64,-3'
+        require('minecraft:dirt' in before[placed] and '16' in before[placed],
+                'Placed recovery fixture did not start with its 16 dirt')
+        expected = {pos: items for pos, items in before.items() if pos != placed}
+        original_boxes = sum(items.count('minecraft:shulker_box') for items in expected.values())
+        deadline = time.monotonic() + 150
+        last = 'recovery not yet observed'
+        while time.monotonic() < deadline:
+            air = self.rcon.command('execute if block 3 64 -3 minecraft:air run time query gametime')
+            if not re.search(r'time is \\d+', air):
+                last = 'the unclaimed shulker is still standing'
+                time.sleep(2)
+                continue
+            current = {}
+            for pos in expected:
+                value = self.rcon.command('data get block ' + pos.replace(',', ' ') + ' Items')
+                require('[' in value and ']' in value, 'Stored fixture ceased being a container: ' + pos)
+                current[pos] = value
+            changed = [pos for pos, items in expected.items() if current[pos] != items]
+            after_boxes = sum(items.count('minecraft:shulker_box') for items in current.values())
+            if (len(changed) == 1 and after_boxes == original_boxes + 1
+                    and 'minecraft:shulker_box' in current[changed[0]]
+                    and 'minecraft:dirt' in current[changed[0]]
+                    and re.search(r'count:\\s*16(?:b)?\\b', current[changed[0]], re.IGNORECASE)):
+                self.ok('unclaimed placed shulker was collected and deposited intact in stash, with other physical stock unchanged')
+                return
+            last = 'recovery changed %s containers; stored shulker count %s vs expected %s' % (
+                changed, after_boxes, original_boxes + 1)
+            time.sleep(2)
+        raise RuntimeError('Orphan shulker was not safely returned to stash: ' + last)
+
     def observe(self):
-        # This stash registers ordinary/trapped/double chests and the barrel. The separate placed-shulker
-        # fixture remains untouched, outside this scanner's registered source set.
+        # Register only ordinary/trapped/double chests and barrels as stock sources.
+        # The separately placed shulker is now a recoverable world drop-off, not a
+        # permanent world fixture, and must be checked for exact physical return.
         self.teleport(0.5, 2)
         self.command('overlap-open', x=0, y=64, z=3); self.command('close')
         self.ok('overlapping actual vanilla menu opens are drained without issuing a falsely attributed observation')
@@ -208,8 +246,8 @@ class StockHarness(world.Harness):
             self.wait(lambda s: (row := self.source(s, 0)) is not None and row['state'] == 'FRESH',
                 'Reconnect/Manager restart did not trigger real rescan', timeout=150)
             self.ok('real Manager restart preserves source history but blocks old stock until the Fabric production scanner performs new reads')
+            self.assert_recovered_shulker(before)
             self.pause()
-            require(before == self.physical_snapshot(), 'Scan/move-return/recovery did not restore the exact server fixtures')
             self.command('screenshot'); world.shutil.copyfile(self.game_dir / 'screenshots/fixture.png', self.evidence / 'stock-world.png')
             report = {'result': 'PASS', 'scope': 'W-018 real vanilla 26.3 observations, source freshness and production scan-only engine',
                 'checks': self.checks, 'manager_image': self.env['WESORT_IMAGE'], 'manager_image_id': manager_image_id,

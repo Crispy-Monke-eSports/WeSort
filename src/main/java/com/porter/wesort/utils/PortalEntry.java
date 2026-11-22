@@ -9,6 +9,16 @@ public final class PortalEntry {
 
     public static final int LOBBY_SEARCH_RADIUS = 32;
     public static final int LOBBY_SEARCH_HEIGHT = 16;
+    // Production 6b6t login-lobby chunks are near 0,0; survival proxy workers
+    // can place the same overworld player tens of thousands of blocks away.
+    // Restrict automatic lobby discovery to a generous origin window so
+    // survival Nether portals can never masquerade as the login portal there.
+    private static final int LOBBY_ORIGIN_LIMIT = 2048;
+
+    public static boolean in6b6tLobbyRegion(BlockPos position) {
+        return Math.abs((long) position.getX()) <= LOBBY_ORIGIN_LIMIT
+                && Math.abs((long) position.getZ()) <= LOBBY_ORIGIN_LIMIT;
+    }
 
     public record SearchWindow(int minX, int maxX, int minY, int maxY, int minZ, int maxZ) {
         public boolean contains(BlockPos position) {

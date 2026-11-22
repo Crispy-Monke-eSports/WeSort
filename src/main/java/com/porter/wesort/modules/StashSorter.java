@@ -7659,7 +7659,7 @@ public class StashSorter extends Module {
     /** Never change a user's custom-labelled box, but WeSort UUID identities are stable across repacking. */
     private static boolean repackableName(ItemStack stack) {
         var name = stack.get(DataComponents.CUSTOM_NAME);
-        return name == null || com.porter.wesort.data.ShulkerUuid.hasUuid(name.getString());
+        return com.porter.wesort.data.ShulkerUuid.repackableName(name == null ? null : name.getString());
     }
 
     private boolean bulkWithRoom(ItemStack shulker, BulkKey key) {

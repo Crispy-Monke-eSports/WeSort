@@ -4138,18 +4138,15 @@ public class StashSorter extends Module {
     private boolean clearPortalApproach(BlockPos stand) {
         BlockPos head = stand.above();
         BlockPos floor = stand.below();
-        return mc.level.isLoaded(stand)
-                && mc.level.isLoaded(head)
-                && mc.level.isLoaded(floor)
-                && mc.level
-                        .getBlockState(stand)
-                        .getCollisionShape(mc.level, stand)
-                        .isEmpty()
-                && mc.level
-                        .getBlockState(head)
-                        .getCollisionShape(mc.level, head)
-                        .isEmpty()
-                && mc.level.getBlockState(floor).isFaceSturdy(mc.level, floor, Direction.UP);
+        if (!mc.level.isLoaded(stand) || !mc.level.isLoaded(head) || !mc.level.isLoaded(floor)) return false;
+        var floorShape = mc.level.getBlockState(floor).getCollisionShape(mc.level, floor);
+        // The actual 6b6t lobby walkway uses slabs and steps near the obsidian
+        // frame. A full UP face would incorrectly discard those walkable cells.
+        return mc.level.getBlockState(stand).getCollisionShape(mc.level, stand).isEmpty()
+                && mc.level.getBlockState(head).getCollisionShape(mc.level, head).isEmpty()
+                && !floorShape.isEmpty()
+                && floorShape.max(Direction.Axis.Y) >= 0.5
+                && floorShape.max(Direction.Axis.Y) <= 1.0;
     }
 
     private record PortalRoute(BlockPos portal, BlockPos approach) {}

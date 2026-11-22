@@ -8922,7 +8922,8 @@ public class StashSorter extends Module {
     private void recordOrphan(BlockPos at, String item, int stacks) {
         if (stash == null) return;
         Stash.Orphan previous = stash.orphans.stream()
-                .filter(o -> o.pos.equals(at) && Stash.sameDimension(o.dimension, Stash.currentDimension()))
+                .filter(o -> o.pos.equals(at)
+                        && (o.dimension.isEmpty() || Stash.sameDimension(o.dimension, Stash.currentDimension())))
                 .findFirst()
                 .orElse(null);
         // Only a new placement establishes ownership; later verification/recovery keeps it.
@@ -8932,7 +8933,8 @@ public class StashSorter extends Module {
                 : previous == null ? "" : previous.orderId;
         String id =
                 placedItemId.isEmpty() && mc.level.isLoaded(at) && shulkerAt(at) ? blockId(mc.level, at) : placedItemId;
-        stash.orphans.removeIf(o -> o.pos.equals(at) && Stash.sameDimension(o.dimension, Stash.currentDimension()));
+        stash.orphans.removeIf(o -> o.pos.equals(at)
+                && (o.dimension.isEmpty() || Stash.sameDimension(o.dimension, Stash.currentDimension())));
         stash.orphans.add(new Stash.Orphan(
                 at,
                 item,
@@ -8950,7 +8952,8 @@ public class StashSorter extends Module {
 
     private void clearOrphan(BlockPos at) {
         if (stash == null || at == null) return;
-        if (stash.orphans.removeIf(o -> o.pos.equals(at))) {
+        if (stash.orphans.removeIf(o -> o.pos.equals(at)
+                && (o.dimension.isEmpty() || Stash.sameDimension(o.dimension, Stash.currentDimension())))) {
             stash.markDirty();
             stash.save();
         }
@@ -9118,7 +9121,7 @@ public class StashSorter extends Module {
         String here = mc.level.dimension().toString();
         for (Stash.Orphan orphan : new ArrayList<>(stash.orphans)) {
             // One in another dimension is neither forgotten nor looked for from here
-            if (!orphan.dimension.isEmpty() && !orphan.dimension.equals(here)) continue;
+            if (!orphan.dimension.isEmpty() && !Stash.sameDimension(orphan.dimension, here)) continue;
             // The one a saved step is about to finish
             if (pendingResume != null && orphan.pos.equals(pendingResume.placed)) continue;
             if (mc.level.isLoaded(orphan.pos) && !shulkerAt(orphan.pos)) {

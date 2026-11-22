@@ -1,15 +1,16 @@
 package com.porter.wesortmanager;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonParser;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonParser;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -33,6 +34,18 @@ class OrderStoreRecoveryTest {
         var store = new OrderStore(dir, new IndexStore(dir));
         assertThrows(IOException.class, store::load);
     }
+    @Test
+    void onlyRootsReservedForTheOrderAuthorizeRegisteredBoxRelease() {
+        var order = new OrderStore.Order();
+        order.allocations = List.of(new PhysicalReservations.Allocation(
+                "source-A", "8/2", "item:minecraft:diamond", 5, "fingerprint", 1));
+        assertTrue(OrderStore.ownsReservedRoot(order, "source-A", "8"));
+        assertFalse(OrderStore.ownsReservedRoot(order, "source-A", "9"));
+        assertFalse(OrderStore.ownsReservedRoot(order, "source-B", "8"));
+        order.allocations = null;
+        assertFalse(OrderStore.ownsReservedRoot(order, "source-A", "8"));
+    }
+
     @Test
     void interruptedUuidDeregistrationIsReplayedWhenOrdersLoad() throws Exception {
         var index = new IndexStore(dir, CreativeTabs.NONE);

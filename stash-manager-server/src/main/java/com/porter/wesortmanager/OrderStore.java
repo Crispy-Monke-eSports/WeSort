@@ -2120,10 +2120,6 @@ final class OrderStore {
             var box = element.getAsJsonObject();
             registered.put(box.get("uuid").getAsString(), box);
         }
-        var roots = new HashSet<PhysicalReservations.Root>();
-        if (order.allocations != null) {
-            for (var allocation : order.allocations) roots.add(allocation.root());
-        }
         var result = new JsonArray();
         var seen = new HashSet<String>();
         for (var element : reported) {
@@ -2133,13 +2129,19 @@ final class OrderStore {
             JsonObject box = registered.get(uuid);
             if (box == null) continue;
             if (!order.server.equals(box.get("server").getAsString())
-                    || !roots.contains(new PhysicalReservations.Root(
-                            box.get("source").getAsString(), box.get("path").getAsString()))) {
+                    || !ownsReservedRoot(order, box.get("source").getAsString(), box.get("path").getAsString())) {
                 throw new OrderException(409, "Delivered box UUID is not reserved for this order", -1);
             }
             result.add(uuid);
         }
         return result.isEmpty() ? null : result;
+    }
+
+    /** An exact reserved source/root pair, not just an item key, authorizes registry changes. */
+    static boolean ownsReservedRoot(Order order, String source, String path) {
+        if (order.allocations == null) return false;
+        var root = new PhysicalReservations.Root(source, path);
+        return order.allocations.stream().anyMatch(allocation -> root.equals(allocation.root()));
     }
 
     /** Crash-safe replay of registry removals committed to a saved order snapshot. */

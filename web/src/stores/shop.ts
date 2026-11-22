@@ -8,7 +8,7 @@ export interface CartLine extends OrderLine {
 }
 
 const CartLineSchema = z.object({
-  type: z.enum(["item", "shulker", "kit"]),
+  type: z.enum(["item", "shulker", "kit", "craft"]),
   key: z.string().min(1).max(512),
   count: z.number().int().min(1).max(2 ** 31 - 1),
   stash: z.string().min(1).max(256),
@@ -103,7 +103,7 @@ export type CheckoutStatus = "not_submitted" | "submitting" | "confirmed" | "unc
 /** One stash's order: the EXACT request payload plus its Idempotency-Key. */
 export interface OrderBody {
   stash: string;
-  lines: { type: "item" | "shulker" | "kit"; key: string; count: number }[];
+  lines: { type: "item" | "shulker" | "kit" | "craft"; key: string; count: number }[];
   /** Legacy free names (kept for persisted-group compat; new orders send null). */
   names: { mode: "all"; name: string } | { mode: "each"; names: string[] } | null;
   /** W-064 label: the server generates `WeSort (X/Y) - text` from the frozen total. */

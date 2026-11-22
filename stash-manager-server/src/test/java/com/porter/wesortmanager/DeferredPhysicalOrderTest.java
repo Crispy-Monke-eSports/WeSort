@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.porter.wesort.data.PhysicalSlots;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -22,11 +23,22 @@ class DeferredPhysicalOrderTest {
     void setUp() throws Exception {
         index = new IndexStore(data, CreativeTabs.NONE);
         index.load();
-        StockFixtures.put(
-                index,
-                JsonParser.parseString(
-                                "{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"items\":[{\"key\":\"minecraft:diamond\",\"id\":\"minecraft:diamond\",\"count\":64,\"maxStack\":64}]}")
-                        .getAsJsonObject());
+        var data = JsonParser.parseString(
+                        "{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"items\":[{\"key\":\"minecraft:diamond\",\"id\":\"minecraft:diamond\",\"count\":64,\"maxStack\":64}]}")
+                .getAsJsonObject();
+        var physical = StockFixtures.physical(
+                data, index.stock().epoch(), index.stock().revision(), index.stock().revision() + 1, 0);
+        var diamond = new PhysicalSlots.Item(
+                "minecraft:diamond", "minecraft:diamond", 64, "{}", PhysicalSlots.Kind.ITEM, 0, List.of(), "");
+        var slot = new PhysicalSlots.Slot(0, 64, diamond);
+        var writer = new PhysicalSlots.Writer();
+        var slotRows = writer.slots(List.of(slot));
+        physical.addProperty("physicalVersion", 2);
+        physical.add("slotVariants", writer.variants());
+        var source = physical.getAsJsonArray("physicalSources").get(0).getAsJsonObject();
+        source.add("slots", slotRows);
+        source.addProperty("fingerprint", new PhysicalSlots.Snapshot(27, List.of(slot)).fingerprint());
+        index.putIndex(physical);
         orders = new OrderStore(data, index);
         orders.load();
     }
@@ -55,8 +67,10 @@ class DeferredPhysicalOrderTest {
 
         // No duplicate hold is charged against stock until the next actual claim.
         var balances = orders.listJson("s", "a").getAsJsonObject("available");
+        // A physical allocation protects its complete root slot even when the
+        // order uses only 20 out of that 64-stack; no misleading availability.
         assertEquals(
-                44, balances.getAsJsonObject("items").get("minecraft:diamond").getAsLong());
+                0, balances.getAsJsonObject("items").get("minecraft:diamond").getAsLong());
 
         var restarted = new OrderStore(data, index);
         restarted.load();

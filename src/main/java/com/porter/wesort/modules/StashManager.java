@@ -356,7 +356,7 @@ public class StashManager extends Module {
         }
     }
 
-    private static void requireE2eFixture() {
+    private void requireE2eFixture() {
         java.nio.file.Path marker = mc.gameDirectory.toPath().resolve("wesort-e2e/installation.txt");
         try {
             if (!java.nio.file.Files.isRegularFile(marker)

@@ -4116,8 +4116,14 @@ public class StashSorter extends Module {
         return mc.level.isLoaded(stand)
                 && mc.level.isLoaded(head)
                 && mc.level.isLoaded(floor)
-                && mc.level.getBlockState(stand).getCollisionShape(mc.level, stand).isEmpty()
-                && mc.level.getBlockState(head).getCollisionShape(mc.level, head).isEmpty()
+                && mc.level
+                        .getBlockState(stand)
+                        .getCollisionShape(mc.level, stand)
+                        .isEmpty()
+                && mc.level
+                        .getBlockState(head)
+                        .getCollisionShape(mc.level, head)
+                        .isEmpty()
                 && mc.level.getBlockState(floor).isFaceSturdy(mc.level, floor, Direction.UP);
     }
 
@@ -4257,8 +4263,7 @@ public class StashSorter extends Module {
         if (portalTarget != null) {
             if (!isPortal(portalTarget) || !clearPortalApproach(portalApproach)) {
                 retryPortal();
-            } else if (PortalEntry.atApproach(
-                    portalApproach, mc.player.getX(), mc.player.getY(), mc.player.getZ())) {
+            } else if (PortalEntry.atApproach(portalApproach, mc.player.getX(), mc.player.getY(), mc.player.getZ())) {
                 releaseGoal();
                 portalSession.crossingAttempted();
                 portalEntering = true;

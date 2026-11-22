@@ -3948,27 +3948,45 @@ public class StashSorter extends Module {
         return isActive() || driven;
     }
 
-    /** The internal engine may sort only when its Manager agent enables sorting (or in the isolated E2E harness). */
+    /**
+     * Automatic tier sorting and order intake share the engine. Sorting is allowed
+     * only with an actual server-issued physical lease, and never while an order
+     * is held or waiting to claim. Scan-only and order work remain available
+     * while the Manager denies the lease because an order is open.
+     */
     private boolean sorting() {
         if (!sortItems.get()) return false;
-        var manager =
-                meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
-        return isActive() || manager != null && manager.sortingEnabled() && !manager.takingOrders();
+        var manager = meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
+        return isActive()
+                || manager != null
+                        && manager.sortingEnabled()
+                        && manager.pendingOrders() == 0
+                        && !orderRunner.holdsOrder()
+                        && manager.sortingAllowed();
     }
 
     public boolean requiresSortingPermit() {
-        return sorting();
+        if (!sortItems.get()) return false;
+        var manager = meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
+        return isActive()
+                || manager != null
+                        && manager.sortingEnabled()
+                        && manager.pendingOrders() == 0
+                        && !orderRunner.holdsOrder();
     }
 
     public boolean sortingPermitted() {
-        // A recovered physical operation must remain fenced even when the internal sorter
-        // is idle or Manager has disabled sorting. A missing sorting request does not
-        // authorize an inventory mutation. DIRECT clicks retain their normal path only
-        // when the durable journal is safe and its last receipt has been mirrored.
         if (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror()) return false;
         if (!requiresSortingPermit()) return true;
-        var manager =
-                meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
+        // Never continue an already active physical step after the lease expires.
+        // Idle scan-only paths can still read and claim orders without a lease.
+        if (!isActive()
+                && !sorting()
+                && job == null
+                && handle == null
+                && !compactor.active()
+                && (repackWork == null || repackWork.terminal())) return true;
+        var manager = meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
         return manager != null && manager.sortingAllowed();
     }
 

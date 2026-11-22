@@ -371,7 +371,12 @@ class NavigationHarness(world.Harness):
             # route fixture is gone before autonomous Manager recovery is enabled.
             for x in (3, 1011):
                 self.rcon.command(f"setblock {x} 64 -3 minecraft:air")
-            self.command("manager-resume")
+            # Keep Manager's dedicated safety policy ON, but prevent its normal
+            # autonomous warehouse path from racing the navigation guard probes.
+            # A plain manager-resume immediately begins reading 13 containers,
+            # so teleport(2.5, 7.5) can never observe the commanded position.
+            # The E2E-only hold is activated in the same client tick as resume.
+            self.command("manager-resume", inspectionHold=True)
             self.dedicated_guard_cases()
             reply = self.rcon.command(
                 "execute if blocks -8 63 -8 40 70 12 1000 63 -8 all run time query gametime"
@@ -405,6 +410,7 @@ class NavigationHarness(world.Harness):
                 json.dumps(result, indent=2) + "\n"
             )
             print("Evidence: " + str(self.evidence), flush=True)
+            self.command("manager-inspection-hold", hold=False)
         finally:
             self.close()
 

@@ -242,6 +242,16 @@ class StockHarness(world.Harness):
             restart = self.stock()
             require(self.amount(restart, 'minecraft:diamond', 'available') == 0 and any(s['state'] == 'STALE_STARTUP' for s in restart['sources']),
                 'Manager restart trusted old cached observations')
+            # A server-side OpenScreen packet from the scan cancelled by pause may
+            # arrive *after* the sorter has torn down. On this isolated, operatorless
+            # E2E client it is never a user's screen. Close the leftover vanilla
+            # container before asking the real Manager to resume physical scans;
+            # do not let a stale GUI prevent the scanner from refreshing stock.
+            # This performs no clicks and cannot renew any source witness.
+            if self.command('state')['state']['screen'] != 'none':
+                self.command('close')
+            require(self.command('state')['state']['screen'] == 'none',
+                'Fixture still holds an unexpected open menu before Manager restart rescan')
             self.resume()
             self.wait(lambda s: (row := self.source(s, 0)) is not None and row['state'] == 'FRESH',
                 'Reconnect/Manager restart did not trigger real rescan', timeout=150)

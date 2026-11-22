@@ -326,6 +326,29 @@ public class StashManager extends Module {
     private long verifiedManagerAt;
     private String verifiedManagerScope = "";
 
+    // Only the isolated real-Minecraft E2E fixture can request this. Keep the
+    // signed Manager connection and dedicated world-interaction policy active
+    // while the navigation harness tests guard cases without a competing sorter.
+    private boolean e2eInspectionHold;
+
+    public void e2eHoldAutonomousWork(boolean hold) {
+        java.nio.file.Path marker = mc.gameDirectory.toPath().resolve("wesort-e2e/installation.txt");
+        try {
+            if (!java.nio.file.Files.isRegularFile(marker)
+                    || !java.nio.file.Files.readString(marker).trim().equals("wesort-mc26-e2e-v1"))
+                throw new IllegalStateException("E2E inspection hold requires a verified isolated test fixture");
+        } catch (java.io.IOException invalidFixture) {
+            throw new IllegalStateException("Cannot verify isolated E2E fixture", invalidFixture);
+        }
+        if (hold && !dedicatedProfile())
+            throw new IllegalStateException("E2E inspection hold requires an active dedicated Manager profile");
+        e2eInspectionHold = hold;
+        if (hold) {
+            StashSorter sorter = WeSortAddon.sorter();
+            if (sorter != null) sorter.drive(false);
+        }
+    }
+
     @Override
     public void onDeactivate() {
         sortingUntil = 0;
@@ -345,6 +368,7 @@ public class StashManager extends Module {
     }
 
     private void reset() {
+        e2eInspectionHold = false;
         generation++;
         current = null;
         fingerprint = 0;
@@ -1511,6 +1535,10 @@ public class StashManager extends Module {
     private void driveSorter() {
         StashSorter sorter = WeSortAddon.sorter();
         if (sorter == null) return;
+        if (e2eInspectionHold) {
+            sorter.drive(false);
+            return;
+        }
         // With an assigned bounding box the agent must also keep watching for placed
         // shulkers and finish returning any it already collected, even when orders and
         // normal sorting are disabled. A website rescan alone can stop before that

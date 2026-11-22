@@ -19,8 +19,7 @@ class PortalEntryTest {
         assertEquals(new BlockPos(11, 64, 20), PortalEntry.approach(PORTAL, Direction.Axis.Z, 30, 20.5, false));
         assertEquals(new BlockPos(9, 64, 20), PortalEntry.approach(PORTAL, Direction.Axis.Z, 30, 20.5, true));
         assertThrows(
-                IllegalArgumentException.class,
-                () -> PortalEntry.approach(PORTAL, Direction.Axis.Y, 10, 20, false));
+                IllegalArgumentException.class, () -> PortalEntry.approach(PORTAL, Direction.Axis.Y, 10, 20, false));
     }
 
     @Test

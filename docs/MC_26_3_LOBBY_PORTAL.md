@@ -32,6 +32,38 @@ cross the lobby portal before any warehouse inventory interaction.
   a crossing attempt** releases the inventory/jobs gate. This is also what
   happens when the 6b6t proxy transfers the player to survival.
 
+## Production reproduction (22 November 2026; main at 3dd9b8c)
+
+The client log for Minecraft 26.3 on `6b6t.org:25565` shows:
+
+- 13:34:51: lobby joined, Manager stash `main` adopted, portal transit started
+- 13:34:53: `PAUSED_NAVIGATION_UNSAFE_BLOCK` blocked the autonomous route
+- 13:35:13: manual proxy transfer to a survival worker; pause remained
+- 13:38:42: explicit logout/rejoin; pause persisted on the new login
+- 13:39:15: another world transfer still left navigation paused
+
+The actual pre-patch navigation guard rejects a route cell containing
+`minecraft:nether_portal` (classified as a safety-sensitive block), and the
+generic navigator latches the pause until `.wesort-navigation resume`.
+The previous portal goal aimed at a portal block itself. The production log
+does not include coordinates identifying the rejected cell, so other unsafe
+route blocks cannot be excluded solely from this evidence.
+
+The fix keeps the generic safety classification unchanged. A dedicated
+`watchPortalApproach` route can be started without completed inventory
+readback **only** if the active Manager Agent is awaiting a real loaded portal,
+the approach is perpendicular to the portal plane, the approach is checked
+by the normal navigation guard, and the physical journal is clear. All route
+cells continue to be checked by `NavigationGuard`; rejected routes log the
+precise blocked block/position for diagnosis. Only a portal-scoped pause is
+released at disconnect, allowing a new guarded attempt on the next login.
+An ordinary unsafe warehouse route remains paused until manual approval.
+
+Manager `status.txt`: healthy, zero restarts, configured Minecraft server
+`6b6t.org`. Neither that status nor the startup-only Docker log proves a
+successful signed heartbeat, so authenticated presence must be verified
+in a live test separately.
+
 ## Manager online status
 
 The signed `/api/v1/bot/*` control channel now starts even if the lobby
@@ -55,6 +87,9 @@ that the configured Manager Minecraft address matches
   crossing geometry, arrival distance and camera heading.
 - `PortalWorldSessionTest`: manual/proxy transfer detection, unrelated
   world changes, and especially logout/rejoin requiring another portal entry.
+- `PortalNavigationPolicyTest`: refuses all missing prerequisites for
+  inventory-independent portal navigation and prevents general safety pauses
+  from resetting on logout.
 - `ConnectionStateTest`: signed presence while inventory/stash unavailable,
   stale authentication and concrete network/authentication error precedence.
 - `./gradlew test` and the Minecraft 26.3 Baritone client-runtime/E2E test

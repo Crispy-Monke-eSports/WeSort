@@ -3956,7 +3956,8 @@ public class StashSorter extends Module {
      */
     private boolean sorting() {
         if (!sortItems.get()) return false;
-        var manager = meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
+        var manager =
+                meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
         return isActive()
                 || manager != null
                         && manager.sortingEnabled()
@@ -3967,7 +3968,8 @@ public class StashSorter extends Module {
 
     public boolean requiresSortingPermit() {
         if (!sortItems.get()) return false;
-        var manager = meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
+        var manager =
+                meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
         return isActive()
                 || manager != null
                         && manager.sortingEnabled()
@@ -3986,7 +3988,8 @@ public class StashSorter extends Module {
                 && handle == null
                 && !compactor.active()
                 && (repackWork == null || repackWork.terminal())) return true;
-        var manager = meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
+        var manager =
+                meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
         return manager != null && manager.sortingAllowed();
     }
 

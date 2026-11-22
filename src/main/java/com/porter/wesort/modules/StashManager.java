@@ -1463,10 +1463,11 @@ public class StashManager extends Module {
         // opened
         // are not read by the bot on their own
         if (rescanning && !sorter.needsReading()) rescanning = false;
+        // The 6b6t lobby transit drives too: walking through the portal comes before everything.
         boolean want = isActive()
                 && dedicatedProfile()
                 && sorter.currentStash() != null
-                && (acceptOrders.get() || rescanning || sortEnabled.get());
+                && (acceptOrders.get() || rescanning || sortEnabled.get() || sorter.portalAwaiting());
         sorter.drive(want);
     }
 

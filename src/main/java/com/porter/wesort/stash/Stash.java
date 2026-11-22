@@ -232,7 +232,8 @@ public class Stash {
     // The input chest: unwanted items and shulkers are left here for the bot to sort into the stash. Kept on the
     // stash itself so it survives pruning, and may be outside the stash area. It stays until the user clears it
     public BlockPos inputPos;
-    // How the input chest came to be marked: "set" (picked by hand). "" counts as set
+    // How the input chest came to be marked: "set" (picked by hand), "manager" (Manager
+    // directive drop-off, which always wins) or "" (unset). "" counts as set
     public String inputSource = "";
     // The anvil orders are named at. Not a container: never a box, never indexed. Stays until the user clears it
     public BlockPos anvilPos;

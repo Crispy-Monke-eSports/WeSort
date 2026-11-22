@@ -6,8 +6,10 @@ import java.io.IOException;
 
 /**
  * Owner-managed stash definitions: each stash is created in the web UI with Position 1 and
- * Position 2 coordinates (the cube between them is the stash), plus delivery point, anvil
- * and workbench placements. The bot receives its directive in the heartbeat reply.
+ * Position 2 coordinates (the cube between them is the stash), plus drop-off chest,
+ * delivery point, anvil and workbench placements. The drop-off chest is where members
+ * leave items for sorting into the stash; it is selected here on stash level, never
+ * in the game. The bot receives its directive in the heartbeat reply.
  */
 final class StashDefRoutes {
     private final StashDefs defs;

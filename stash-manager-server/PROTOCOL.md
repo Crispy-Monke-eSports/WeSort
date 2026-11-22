@@ -19,9 +19,18 @@ Detta protokoll är den bevarade baslinjen, inte framtida guildordermotor.
   med opaka id:n. Positions-skydd via `positions`-permissionen finns kvar.
 - Varje stash skapas av ägaren i webb-UI:t (`GET/POST /api/v1/stash-defs`)
   med Position 1 + Position 2 (kuben dem emellan är stashet) samt
-  leveranspunkt, städ och arbetsbänk. Boten får sitt direktiv
-  (`{stash, dimension, pos1, pos2, delivery(+Dimension), anvil, table, revision}`)
+  drop-off-kista, leveranspunkt, städ och arbetsbänk. Drop-off-kistan är där
+  medlemmar lämnar items som ska sorteras in i stashet; den väljs på
+  stash-nivå i Managern, aldrig i spelet. Boten får sitt direktiv
+  (`{stash, dimension, pos1, pos2, dropoff(+Dimension), delivery(+Dimension), anvil, table, revision}`)
   i heartbeat-svaret och exekverar headless.
+- Omkollning är inverterad: agenten rapporterar vilka kistor som finns (`chests:
+  [{x, y, z, readAt}]` i heartbeat) och Managern svarar med positionerna den vill
+  ha omlästa (`recheck: [{x, y, z}]` i svaret, äldst först, max 128). En kista
+  efterfrågas en gång per läsning — och igen när själva begäran blivit äldre än
+  tröskeln, så en laggig server aldrig tappar en kista vars läsningar misslyckas.
+  Aldrig lästa (`readAt: 0`) lämnas till agenten. Tröskeln är
+  `WESORT_CHEST_MAX_AGE_SECONDS` (default 300).
 
 | Område | Aktiva routes |
 |---|---|

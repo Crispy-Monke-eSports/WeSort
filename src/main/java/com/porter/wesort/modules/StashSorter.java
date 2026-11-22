@@ -2074,6 +2074,8 @@ public class StashSorter extends Module {
             }
             warning(
                     "Inventory readback is pending or uncertain; no cleanup clicks were sent. Inspect the source and use .wesort-reconcile.");
+            gate = Gate.Running;
+            yielder.reset();
             return;
         }
         setUp = false;
@@ -7017,6 +7019,40 @@ public class StashSorter extends Module {
         return count;
     }
 
+    /**
+     * Marks Manager-requested positions to be read again: the inversion of control where the
+     * Manager, which owns the database, decides what to re-check. Unknown positions are ignored
+     * silently; excluded, foreign, unreachable, failed-survey and sign-pending chests are left to
+     * the normal jobs. Wakes the loop like {@link #rescan}, without forcing a full re-read.
+     * @return how many chests were marked, or -1 when no stash is loaded
+     */
+    int applyRecheck(List<BlockPos> positions) {
+        if (ensureStash() == null) return -1;
+        if (positions == null || positions.isEmpty()) return 0;
+        int marked = 0;
+        for (BlockPos pos : positions) {
+            if (pos == null) continue;
+            Box box = stash.boxAt(pos);
+            if (box == null
+                    || box.excluded
+                    || box.foreign
+                    || box.unreachable
+                    || failedSurvey.contains(box)
+                    || signPending(box)) continue;
+            if (!box.stale) {
+                box.stale = true;
+                marked++;
+            }
+        }
+        if (marked > 0) {
+            stash.markDirty();
+            stash.save();
+            version++;
+            idle = false;
+        }
+        return marked;
+    }
+
     /** The server cancelled an order: the sorter wakes up to stop it at the next safe point. */
     boolean orderCancel(String id) {
         boolean held = orderRunner.cancel(id);
@@ -10914,6 +10950,12 @@ public class StashSorter extends Module {
 
         // A refused delivery spot leaves no box behind
         if (pick.get() == Pick.Delivery && !deliverySpotSettable(pos)) return true;
+        // The drop-off chest is Manager-owned on directed stashes: it is selected in
+        // Settings > Stashes, never picked in the game. Refuse before any box is made.
+        if (pick.get() == Pick.Input && stash != null && stash.directiveRev >= 0) {
+            notice("The drop-off chest is set in the Manager (Settings > Stashes), not in the game.");
+            return true;
+        }
         if (ensureStash() == null) stash = new Stash(stashName(), Stash.currentServer());
         Box box = stash.boxAt(pos);
         if (box == null) {
@@ -10965,6 +11007,10 @@ public class StashSorter extends Module {
                     box.protectedStorage ? "%s is protected from automated moves." : "%s is no longer protected.",
                     box.pos.toShortString());
         } else if (pick.get() == Pick.Exclude) {
+            if (box.input && stash.directiveRev >= 0) {
+                notice("The drop-off chest is owned by the Manager; clear it in Settings > Stashes.");
+                return true;
+            }
             box.excluded = !box.excluded;
             box.dropOff = false;
             if (box.input) unmarkInput(box);
@@ -10973,8 +11019,13 @@ public class StashSorter extends Module {
             box.delivery = false;
             notice(box.excluded ? "%s won't be sorted." : "%s will be sorted again.", box.pos.toShortString());
         } else {
-            // The drop-off pick on the input chest unmarks it (it already empties like one)
+            // The drop-off pick on the input chest unmarks it (it already empties like one),
+            // unless the Manager owns it: directed drop-off chests are only cleared in the Manager.
             if (box.input) {
+                if (stash.directiveRev >= 0) {
+                    notice("The drop-off chest is owned by the Manager; clear it in Settings > Stashes.");
+                    return true;
+                }
                 unmarkInput(box);
                 notice("%s is no longer the input chest.", box.pos.toShortString());
                 stash.save();
@@ -11230,10 +11281,11 @@ public class StashSorter extends Module {
     }
 
     /**
-     * A Manager directive: the stash region cube, delivery container, anvil and workbench. The Manager owns
-     * placement; the bot only executes. Applied when the directive revision changes. Positions are stored as
-     * given (the Manager is authoritative); the delivery container is reconciled through ensureDelivery so the
-     * flagged box and the saved position agree.
+     * A Manager directive: the stash region cube, drop-off chest, delivery container, anvil and
+     * workbench. The Manager owns placement; the bot only executes. Applied when the directive
+     * revision changes. Positions are stored as given (the Manager is authoritative); the delivery
+     * container is reconciled through ensureDelivery and the drop-off chest through ensureInput so
+     * the flagged box and the saved position agree.
      *
      * @return true when anything changed
      */
@@ -11276,6 +11328,21 @@ public class StashSorter extends Module {
                     }
                 stash.deliveryPos = del;
                 stash.ensureDelivery();
+                changed = true;
+            }
+        }
+        if (d.has("dropoff")) {
+            net.minecraft.core.BlockPos drop = d.get("dropoff").isJsonNull() ? null : vec(d.get("dropoff"));
+            if (!java.util.Objects.equals(drop, stash.inputPos)) {
+                // The Manager owns the drop-off selection: any hand-picked input chest gives way.
+                for (Box b : stash.boxes)
+                    if (b.input) {
+                        b.input = false;
+                        b.dropOff = false;
+                    }
+                stash.inputPos = drop;
+                stash.inputSource = drop == null ? "" : "manager";
+                stash.ensureInput();
                 changed = true;
             }
         }

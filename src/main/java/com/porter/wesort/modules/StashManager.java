@@ -17,6 +17,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -27,6 +28,7 @@ import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.orbit.EventHandler;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.Item;
 
 /**
@@ -282,7 +284,7 @@ public class StashManager extends Module {
     }
 
     public boolean dedicatedProfile() {
-        return !serverUrl.get().isBlank() && !apiKey.get().isBlank();
+        return isActive() && !serverUrl.get().isBlank() && !apiKey.get().isBlank();
     }
 
     /**
@@ -600,6 +602,7 @@ public class StashManager extends Module {
             lastHeartbeat = now;
             String sig = deliverySig();
             long done = rescanDone;
+            StashSorter sorter = WeSortAddon.sorter();
             send(
                     base,
                     "/api/v1/heartbeat",
@@ -614,7 +617,8 @@ public class StashManager extends Module {
                             anvilSource(),
                             deliveryStorage(),
                             tableSource(),
-                            deliveryHash),
+                            deliveryHash,
+                            StashIndex.chestsReport(sorter == null ? null : sorter.currentStash())),
                     key,
                     (code, body) -> {
                         if (code != 200) return false;
@@ -1359,9 +1363,48 @@ public class StashManager extends Module {
         } catch (RuntimeException ex) {
             WeSortAddon.LOG.warn("wesort-stash-manager: couldn't read the rescan request", ex);
         }
+        readRecheck(body);
     }
 
-    /** A Manager directive from a heartbeat reply: region, delivery, anvil, workbench. Only applied to the matching stash. */
+    /**
+     * The Manager's recheck list: positions it wants re-read, from its chest database
+     * (inversion of control — the agent reports chests, the Manager decides). Malformed
+     * entries are skipped; unknown positions are ignored by the sorter.
+     */
+    private void readRecheck(String body) {
+        try {
+            JsonObject in = JsonParser.parseString(body).getAsJsonObject();
+            if (!in.has("recheck") || in.get("recheck").isJsonNull()) return;
+            if (!in.get("recheck").isJsonArray()) return;
+            List<BlockPos> positions = new ArrayList<>();
+            for (JsonElement e : in.getAsJsonArray("recheck")) {
+                if (positions.size() >= 512) break;
+                if (!e.isJsonObject()) continue;
+                JsonObject o = e.getAsJsonObject();
+                Integer x = whole(o.get("x")), y = whole(o.get("y")), z = whole(o.get("z"));
+                if (x == null || y == null || z == null) continue;
+                positions.add(new BlockPos(x, y, z));
+            }
+            if (positions.isEmpty()) return;
+            StashSorter sorter = WeSortAddon.sorter();
+            int count = sorter == null ? -1 : sorter.applyRecheck(positions);
+            if (count < 0) warning("Recheck requested from the Manager, but no stash is loaded.");
+            else if (count > 0) info("Manager requested re-reading %d containers.", count);
+        } catch (RuntimeException ex) {
+            WeSortAddon.LOG.warn("wesort-stash-manager: couldn't read the recheck request", ex);
+        }
+    }
+
+    private static Integer whole(JsonElement e) {
+        if (e == null || !e.isJsonPrimitive() || !e.getAsJsonPrimitive().isNumber()) return null;
+        try {
+            return e.getAsBigDecimal().intValueExact();
+        } catch (ArithmeticException ex) {
+            return null;
+        }
+    }
+
+    /** A Manager directive from a heartbeat reply: region, drop-off, delivery, anvil, workbench. Only applied to the matching stash. */
     private void readDirective(JsonObject in) {
         try {
             if (!in.has("directive") || in.get("directive").isJsonNull()) return;

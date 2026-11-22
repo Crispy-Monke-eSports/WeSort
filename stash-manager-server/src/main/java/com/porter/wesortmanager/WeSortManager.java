@@ -301,8 +301,9 @@ public final class WeSortManager {
         AuthRoutes authRoutes = new AuthRoutes(config, sessions, limiter, users, audit);
         authRoutes.register(router);
         DeliveryContents delivery = new DeliveryContents(); // in memory only
+        ChestStates chests = new ChestStates(); // in memory only
         var stashDefs = new StashDefs(config.dataDir());
-        new AddonRoutes(store, link, icons, orders, delivery, config, stashDefs).register(router);
+        new AddonRoutes(store, link, icons, orders, delivery, config, stashDefs, chests).register(router);
         new BrowserRoutes(store, config, link, urls, orders, sessions, audit, delivery, credentials).register(router);
         new DeliveryRoutes(delivery, config, stashDefs).register(router);
         var guild = new GuildRoutes(config.dataDir(), audit);

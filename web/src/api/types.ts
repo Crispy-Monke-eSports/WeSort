@@ -95,6 +95,8 @@ export const StashDefSchema = z.object({
   // Coordinates are owner/positions-only: redacted responses omit them.
   pos1: VecSchema.optional(),
   pos2: VecSchema.optional(),
+  dropoff: VecSchema.nullable().optional(),
+  dropoffDimension: z.string().nullable().optional(),
   delivery: VecSchema.nullable().optional(),
   deliveryDimension: z.string().nullable().optional(),
   anvil: VecSchema.nullable().optional(),

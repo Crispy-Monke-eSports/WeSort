@@ -984,6 +984,7 @@ class UsersTest {
         String owner = owner();
         String defA = "{\"action\":\"create\",\"name\":\"a\",\"dimension\":\"minecraft:overworld\","
                 + "\"pos1\":{\"x\":0,\"y\":-60,\"z\":0},\"pos2\":{\"x\":31,\"y\":20,\"z\":31},"
+                + "\"dropoff\":{\"x\":4,\"y\":63,\"z\":4},"
                 + "\"delivery\":{\"x\":5,\"y\":63,\"z\":5},\"deliveryDimension\":\"minecraft:overworld\","
                 + "\"anvil\":{\"x\":6,\"y\":63,\"z\":6},\"table\":{\"x\":7,\"y\":63,\"z\":7}}";
         Res created = post(owner, "/api/v1/stash-defs", defA);
@@ -1003,6 +1004,10 @@ class UsersTest {
                     d.has("pos1") && d.getAsJsonObject("pos1").has("x") && d.has("pos2"),
                     "owner sees coordinates: " + d);
         }
+        JsonObject a = all.get(0).getAsJsonObject().get("name").getAsString().equals("a")
+                ? all.get(0).getAsJsonObject()
+                : all.get(1).getAsJsonObject();
+        assertEquals(4, a.getAsJsonObject("dropoff").get("x").getAsInt(), "owner sees the drop-off chest");
 
         // A member scoped to "a" without positions sees the name only, and only their stash.
         create(owner, "erin", "{\"view\":true,\"stashes\":[{\"stash\":\"a\"}]}", false);
@@ -1015,7 +1020,7 @@ class UsersTest {
         assertEquals("a", ea.get("name").getAsString());
         assertEquals("minecraft:overworld", ea.get("dimension").getAsString());
         assertTrue(ea.has("revision"), "revision stays visible for conflict reloads");
-        for (String coord : List.of("pos1", "pos2", "delivery", "deliveryDimension", "anvil", "table"))
+        for (String coord : List.of("pos1", "pos2", "dropoff", "dropoffDimension", "delivery", "deliveryDimension", "anvil", "table"))
             assertFalse(ea.has(coord), "member without positions must not see " + coord);
 
         // A member with the positions permission sees full coordinates, still only in scope.

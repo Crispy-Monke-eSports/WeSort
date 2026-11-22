@@ -34,6 +34,14 @@ class PortalEntryTest {
     }
 
     @Test
+    void distantSurvivalWorkerCoordinatesCannotArm6b6tLobby() {
+        assertTrue(PortalEntry.in6b6tLobbyRegion(new BlockPos(0, 64, 0)));
+        assertTrue(PortalEntry.in6b6tLobbyRegion(new BlockPos(800, 64, -800)));
+        assertFalse(PortalEntry.in6b6tLobbyRegion(new BlockPos(80_000, 64, -4_000)));
+        assertFalse(PortalEntry.in6b6tLobbyRegion(new BlockPos(-3_000, 64, 0)));
+    }
+
+    @Test
     void adjacentPortalEntryAllowsSafeOneBlockElevationChanges() {
         assertTrue(PortalEntry.adjacentStand(PORTAL, Direction.Axis.X, new BlockPos(10, 64, 21)));
         assertTrue(PortalEntry.adjacentStand(PORTAL, Direction.Axis.X, new BlockPos(10, 63, 19)));

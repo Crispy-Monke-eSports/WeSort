@@ -2090,6 +2090,7 @@ public class StashSorter extends Module {
     }
 
     private void teardown() {
+        stopPortalNavigation();
         if (!InventorySync.ready() || PhysicalJournalRuntime.blocked()) {
             // Do not drain grids, return the cursor, or close the menu on an unverified inventory.
             setUp = false;
@@ -4063,6 +4064,19 @@ public class StashSorter extends Module {
     private boolean portalOtherSide;
     private boolean portalHoldingForward;
     private boolean portalNoBaritoneWarned;
+
+    /** The Manager can be disabled during a manual crossing; never leave a synthetic key held. */
+    void stopPortalNavigation() {
+        portalForward(false);
+        if (portalTarget != null || portalEntering) {
+            releaseGoal();
+            portalTarget = portalApproach = null;
+            portalLastPosition = null;
+            portalEntryTicks = portalStuckTicks = portalTouchTicks = 0;
+            portalEntering = false;
+            portalLastScan = 0;
+        }
+    }
 
     private boolean portalModeOn() {
         return switch (sixb6t.get()) {
@@ -12149,6 +12163,7 @@ public class StashSorter extends Module {
                 else portalForward(false);
                 return;
             }
+            if (portalHoldingForward && (manager == null || !manager.dedicatedProfile())) stopPortalNavigation();
             if (driven) StashSorter.this.onTick(event);
         }
 

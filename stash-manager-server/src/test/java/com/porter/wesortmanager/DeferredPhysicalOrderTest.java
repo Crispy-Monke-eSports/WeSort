@@ -23,11 +23,11 @@ class DeferredPhysicalOrderTest {
     void setUp() throws Exception {
         index = new IndexStore(data, CreativeTabs.NONE);
         index.load();
-        var data = JsonParser.parseString(
+        var indexJson = JsonParser.parseString(
                         "{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"items\":[{\"key\":\"minecraft:diamond\",\"id\":\"minecraft:diamond\",\"count\":64,\"maxStack\":64}]}")
                 .getAsJsonObject();
         var physical = StockFixtures.physical(
-                data,
+                indexJson,
                 index.stock().epoch(),
                 index.stock().revision(),
                 index.stock().revision() + 1,

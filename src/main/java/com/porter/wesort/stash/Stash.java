@@ -108,7 +108,8 @@ public class Stash {
     }
 
     /**
-     * A shulker with stacks in it the sorter put down and could not pick up again.
+     * A placed shulker inside the stash perimeter. Boxes placed by the bot retain their order owner;
+     * discovered boxes (including player drop-offs) have no order owner and must be collected.
      */
     public static class Orphan {
         public final BlockPos pos;
@@ -117,13 +118,24 @@ public class Stash {
         public final String when;
         // The dimension it stands in, empty if unknown
         public final String dimension;
+        /** Order that placed it, or empty for a discovered/player-placed box. */
+        public final String orderId;
+        /** Actual shulker block id (colour), used to avoid breaking a replacement block. */
+        public final String blockId;
 
         public Orphan(BlockPos pos, String item, int stacks, String when, String dimension) {
+            this(pos, item, stacks, when, dimension, "", "");
+        }
+
+        public Orphan(BlockPos pos, String item, int stacks, String when, String dimension,
+                      String orderId, String blockId) {
             this.pos = pos;
             this.item = item;
             this.stacks = stacks;
             this.when = when;
             this.dimension = dimension == null ? "" : dimension;
+            this.orderId = orderId == null ? "" : orderId;
+            this.blockId = blockId == null ? "" : blockId;
         }
     }
 
@@ -622,6 +634,8 @@ public class Stash {
             tag.putInt("stacks", orphan.stacks);
             tag.putString("when", orphan.when);
             tag.putString("dimension", orphan.dimension);
+            if (!orphan.orderId.isEmpty()) tag.putString("orderId", orphan.orderId);
+            if (!orphan.blockId.isEmpty()) tag.putString("blockId", orphan.blockId);
             lost.add(tag);
         }
         root.put("orphans", lost);
@@ -1052,7 +1066,9 @@ public class Stash {
                             item == null ? "items" : item,
                             number(tag.get("stacks"), 0),
                             when == null ? "" : when,
-                            string(tag.get("dimension"))));
+                            string(tag.get("dimension")),
+                            string(tag.get("orderId")),
+                            string(tag.get("blockId"))));
                 }
             }
         } catch (IOException | RuntimeException e) {

@@ -8930,6 +8930,137 @@ public class StashSorter extends Module {
         }
     }
 
+
+    /**
+     * Reconcile all shulker block entities in loaded perimeter chunks. Unknown boxes are drop-offs;
+     * order ownership is only attached when our own placement is recorded, not merely because
+     * another player placed a box while an order happened to be running.
+     *
+     * Unloaded chunks and still-pending placements are never treated as removed.
+     */
+    private void observePlacedShulkers() {
+        if (stash == null || !stash.hasArea() || mc.level == null) return;
+        BlockPos min = stash.areaMin(), max = stash.areaMax();
+        String dimension = Stash.currentDimension();
+        Set<BlockPos> seen = new HashSet<>();
+        boolean changed = false;
+        for (int cx = min.getX() >> 4; cx <= max.getX() >> 4; cx++) {
+            for (int cz = min.getZ() >> 4; cz <= max.getZ() >> 4; cz++) {
+                if (!mc.level.hasChunk(cx, cz)) continue;
+                for (BlockEntity entity : mc.level.getChunk(cx, cz).getBlockEntities().values()) {
+                    if (!(entity instanceof ShulkerBoxBlockEntity)) continue;
+                    BlockPos pos = entity.getBlockPos();
+                    if (!stash.inArea(pos) || !shulkerAt(pos)) continue;
+                    seen.add(pos);
+                    if (stash.orphans.stream().anyMatch(o -> o.pos.equals(pos)
+                            && (o.dimension.isEmpty() || Stash.sameDimension(o.dimension, dimension)))) continue;
+                    stash.orphans.add(new Stash.Orphan(
+                            pos.immutable(), "shulker box", 0,
+                            java.time.LocalDateTime.now()
+                                    .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")),
+                            dimension, "", blockId(mc.level, pos)));
+                    changed = true;
+                    info("Discovered placed shulker at %s; queued for stash recovery.", pos.toShortString());
+                }
+            }
+        }
+        for (Stash.Orphan orphan : new ArrayList<>(stash.orphans)) {
+            if (!orphan.dimension.isEmpty() && !Stash.sameDimension(orphan.dimension, dimension)) continue;
+            if (!stash.inArea(orphan.pos) || !mc.level.isLoaded(orphan.pos) || seen.contains(orphan.pos)) continue;
+            if (placed != null && placed.equals(orphan.pos)
+                    || pendingResume != null && orphan.pos.equals(pendingResume.placed)) continue;
+            stash.orphans.remove(orphan);
+            recoveryRetryAt.remove(orphan.pos);
+            changed = true;
+        }
+        if (changed) {
+            stash.markDirty();
+            stash.save();
+        }
+        if (stash.orphans.stream().anyMatch(o -> stash.inArea(o.pos)
+                && (o.dimension.isEmpty() || Stash.sameDimension(o.dimension, dimension))
+                && PlacedShulkerRecovery.shouldRecover(
+                        o.orderId, orderRunner.running() ? orderRunner.orderId() : null))) idle = false;
+    }
+
+    /**
+     * Schedule a physical recovery before other idle work. One box at a time is opened for
+     * server-confirmed readback, broken, collected and then stored using the normal stash
+     * return/deposit path. A live order keeps ownership of its own standing shulkers.
+     */
+    private boolean startOrphanRecovery() {
+        if (stash == null || !stash.hasArea() || pendingResume != null || handle != null
+                || compactor.active() || kitBuilder.active() || !freeInventorySlot()) return false;
+        String active = orderRunner.running() ? orderRunner.orderId() : null;
+        for (Stash.Orphan orphan : new ArrayList<>(stash.orphans)) {
+            if (!stash.inArea(orphan.pos)
+                    || !orphan.dimension.isEmpty() && !Stash.sameDimension(orphan.dimension, Stash.currentDimension())
+                    || !PlacedShulkerRecovery.shouldRecover(orphan.orderId, active)
+                    || ticks < recoveryRetryAt.getOrDefault(orphan.pos, 0)
+                    || !mc.level.isLoaded(orphan.pos) || !shulkerAt(orphan.pos)) continue;
+
+            String actualId = blockId(mc.level, orphan.pos);
+            if (!orphan.blockId.isEmpty() && !actualId.equals(orphan.blockId)) {
+                // The original box was replaced. Treat the replacement as a new drop-off,
+                // never reuse ownership or colour evidence from the previous box.
+                stash.orphans.remove(orphan);
+                stash.orphans.add(new Stash.Orphan(orphan.pos, "shulker box", 0,
+                        java.time.LocalDateTime.now().toString(), Stash.currentDimension(), "", actualId));
+                stash.markDirty();
+                stash.save();
+                return false;
+            }
+            Stash.InFlight recovery = new Stash.InFlight();
+            recovery.job = Job.Recover.name();
+            recovery.handle = Handle.Resume.name();
+            recovery.dimension = Stash.currentDimension();
+            recovery.placed = orphan.pos;
+            recovery.confirmed = true;
+            recovery.placedItemId = actualId;
+            recovery.placedStacks = orphan.stacks;
+            recovery.savedAt = System.currentTimeMillis();
+            stash.inFlight = recovery;
+            stash.markDirty();
+            stash.save();
+            pendingResume = recovery;
+            return beginOrphanRecovery(recovery);
+        }
+        return false;
+    }
+
+    /** Resume an interrupted recovery without treating a foreign shulker as a kit or compaction. */
+    private boolean beginOrphanRecovery(Stash.InFlight recovery) {
+        if (recovery.placed == null || !stash.hasArea() || !stash.inArea(recovery.placed)
+                || !Stash.sameDimension(recovery.dimension, Stash.currentDimension())
+                || mc.player.containerMenu != mc.player.inventoryMenu || !freeInventorySlot()) return false;
+        recoveringOrphan = true;
+        resuming = true;
+        resumeStarted = ticks;
+        resumeVerify = false;
+        resumeFinishOnly = true;
+        job = Job.Recover;
+        target = null;
+        placed = recovery.placed;
+        placedConfirmed = true;
+        placedItemId = recovery.placedItemId;
+        placedStacks = recovery.placedStacks;
+        lastGoodStand = recovery.lastGoodStand;
+        fillKey = null;
+        repackExpected = "";
+        handlingProof = false;
+        returnTo = Handle.Open;
+        handle = Handle.Resume;
+        handleTicks = 0;
+        breakTicks = 0;
+        brokenSince = -1;
+        collectedSlot = -1;
+        shulkersBefore = countShulkers() + 1;
+        shulkerSlotsBefore.clear();
+        step("recovering abandoned shulker at " + placed.toShortString()
+                + "; next: verify, break, collect, store in stash.");
+        return true;
+    }
+
     /**
      * At startup, discard records for blocks confirmed gone; others are queued for automatic
      * collection rather than requiring an operator to pick them up.

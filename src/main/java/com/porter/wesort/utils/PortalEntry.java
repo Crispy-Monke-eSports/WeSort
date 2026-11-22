@@ -11,11 +11,10 @@ public final class PortalEntry {
      * The portal plane runs along its block-state axis. Approach it from one of the two
      * perpendicular sides, then walk through the plane under direct, bounded player input.
      */
-    public static BlockPos approach(BlockPos portal, Direction.Axis axis, double playerX, double playerZ, boolean otherSide) {
+    public static BlockPos approach(
+            BlockPos portal, Direction.Axis axis, double playerX, double playerZ, boolean otherSide) {
         if (axis != Direction.Axis.X && axis != Direction.Axis.Z) throw new IllegalArgumentException("portal axis");
-        boolean positive = axis == Direction.Axis.X
-                ? playerZ >= portal.getZ() + 0.5
-                : playerX >= portal.getX() + 0.5;
+        boolean positive = axis == Direction.Axis.X ? playerZ >= portal.getZ() + 0.5 : playerX >= portal.getX() + 0.5;
         if (otherSide) positive = !positive;
         Direction outward = axis == Direction.Axis.X
                 ? (positive ? Direction.SOUTH : Direction.NORTH)

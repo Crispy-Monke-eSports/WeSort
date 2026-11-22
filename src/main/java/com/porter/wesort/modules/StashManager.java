@@ -1862,6 +1862,10 @@ public class StashManager extends Module {
                         } else if (finalCode == 200 || finalCode == 204) {
                             verifiedManagerAt = System.currentTimeMillis();
                             verifiedManagerScope = linkScope();
+                            // Recover from a previous invalid control signature/key once
+                            // the Manager actually authenticates this same connection.
+                            if (status.equals("server signature invalid") || status.equals("error 401"))
+                                setStatus("idle");
                         }
                     }
                     // Isolated replies do not change physical backoff or operational status.
@@ -1922,6 +1926,10 @@ public class StashManager extends Module {
                 if (ok) {
                     backoff = 0;
                     nextAttemptAt = 0;
+                    if (finalCode == 200 || finalCode == 204) {
+                        verifiedManagerAt = System.currentTimeMillis();
+                        verifiedManagerScope = linkScope();
+                    }
                 } else {
                     backoff = backoff == 0 ? BACKOFF_MIN_MS : Math.min(BACKOFF_MAX_MS, backoff * 2);
                     nextAttemptAt = System.currentTimeMillis() + backoff;

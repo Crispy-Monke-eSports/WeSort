@@ -190,6 +190,7 @@ final class OrderStore {
         boolean queuedOffline; // true when reserved against last-verified (stale) counts via the explicit offline queue
         /** Pending request accepted while another physical order runs; no stock is reserved yet. */
         boolean reservationDeferred;
+
         private JsonArray history = new JsonArray();
 
         void record(String action, String actor, long time) {
@@ -391,7 +392,8 @@ final class OrderStore {
                     r.kits.put(e.getKey(), e.getValue().getAsJsonObject().deepCopy());
             }
             r.queuedOffline = o.has("queuedOffline") && o.get("queuedOffline").getAsBoolean();
-            r.reservationDeferred = o.has("reservationDeferred") && o.get("reservationDeferred").getAsBoolean();
+            r.reservationDeferred =
+                    o.has("reservationDeferred") && o.get("reservationDeferred").getAsBoolean();
             r.createdAt = o.get("createdAt").getAsLong();
             r.updatedAt = o.get("updatedAt").getAsLong();
             r.status = o.get("status").getAsString();
@@ -560,8 +562,10 @@ final class OrderStore {
                 }
             }
             // A Manager restart must not reset an already expired cancellation.
-            for (String server : books.keySet().stream().map(IndexStore.StashKey::server).distinct().toList())
-                autoHeal(server);
+            for (String server : books.keySet().stream()
+                    .map(IndexStore.StashKey::server)
+                    .distinct()
+                    .toList()) autoHeal(server);
         }
     }
 
@@ -1123,7 +1127,8 @@ final class OrderStore {
         var physical = PhysicalReservations.read(index.stock(), server, stash);
         var existing = ordersOnServer(server);
         var held = heldRoots(server);
-        boolean executingPhysical = existing.stream().anyMatch(order -> order.allocations != null && isExecuting(order));
+        boolean executingPhysical =
+                existing.stream().anyMatch(order -> order.allocations != null && isExecuting(order));
         // Never extend an agent's already issued protected-root list mid-order.
         // Persist the request instead, explicitly unreserved until the next
         // claim revalidates the actual physical slots against fresh observations.
@@ -1134,11 +1139,31 @@ final class OrderStore {
                         && (line.count() > CraftingCatalog.MAX_PREVIEW
                                 || CraftingCatalog.RECIPES == null
                                 || CraftingCatalog.RECIPES.producing(line.key()).isEmpty()))
-                    throw new OrderException(400, "No supported craft recipe or invalid craft quantity", firstIndex.get(line.ref()));
+                    throw new OrderException(
+                            400, "No supported craft recipe or invalid craft quantity", firstIndex.get(line.ref()));
             return commitOrder(
-                    server, stash, merged, firstIndex, pinned, new CraftExpansion(), names, packageLabel,
-                    byId, byName, organizationId, intent, receiptKey, fingerprint, retryOf,
-                    needsApproval, recipient, fresh, physical, held, false, true);
+                    server,
+                    stash,
+                    merged,
+                    firstIndex,
+                    pinned,
+                    new CraftExpansion(),
+                    names,
+                    packageLabel,
+                    byId,
+                    byName,
+                    organizationId,
+                    intent,
+                    receiptKey,
+                    fingerprint,
+                    retryOf,
+                    needsApproval,
+                    recipient,
+                    fresh,
+                    physical,
+                    held,
+                    false,
+                    true);
         }
         if (!held.isEmpty()
                 && index.stock().sources().stream()
@@ -2134,12 +2159,15 @@ final class OrderStore {
             if (physical.hasSnapshots()) {
                 // Physical and old aggregate reservations may not be mixed.
                 if (ordersOnServer(book.server).stream()
-                        .anyMatch(o -> o != queued && o.allocations == null
-                                && !o.reservationDeferred && OPEN.contains(o.status))) return null;
+                        .anyMatch(o -> o != queued
+                                && o.allocations == null
+                                && !o.reservationDeferred
+                                && OPEN.contains(o.status))) return null;
                 allocations = physical.allocate(crafting.lines.values(), held, crafting.firstIndex);
             } else {
                 if (!held.isEmpty()
-                        || crafting.lines.values().stream().anyMatch(l -> l.type().equals("shulker"))) return null;
+                        || crafting.lines.values().stream()
+                                .anyMatch(l -> l.type().equals("shulker"))) return null;
                 Map<String, Long> reserved = reserved(book);
                 for (Line line : crafting.lines.values()) {
                     long total = fresh.total(line.type(), line.key());

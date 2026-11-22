@@ -1988,14 +1988,15 @@ public class StashSorter extends Module {
         ensureStash();
         restoreHeld();
 
-        // Scan-only never carries anything, so there are no slots to find
+        // A recovered world shulker may still be in our inventory after a stop. Restore
+        // its carry slot even if warehouse orders are disabled, so it is deposited.
         if (sorting()) {
             if (!pickCarrySlots()) {
                 turnOff();
                 return;
             }
-        } else if (ordersWanted()) {
-            // Not sorting moves nothing by itself, but orders need slots to carry in
+        } else if (ordersWanted() || !stashHeld.isEmpty()) {
+            // Orders and unfinished orphan recovery both need tracked carry slots.
             pickCarrySlots(false);
         } else {
             carry.clear();
@@ -2006,7 +2007,7 @@ public class StashSorter extends Module {
         returnGaveUp.clear();
         returnWarned.clear();
         // What an order took before a stop is put back now
-        if (!sorting() && ordersWanted()) {
+        if (!sorting() && (ordersWanted() || !stashHeld.isEmpty())) {
             for (int slot : stashHeld.keySet()) {
                 ItemStack there = mc.player.getInventory().getItem(slot);
                 if (carry.contains(slot) && !there.isEmpty()) orderHeld.put(slot, there.copy());
@@ -2429,15 +2430,16 @@ public class StashSorter extends Module {
                     idle = false;
                 }
             }
-            // Scan-only with no carry slot yet: looked for again now and then, for orders
+            // Scan-only with no carry slot yet: retry for orders and recovered warehouse items.
             if (!sorting()
-                    && ordersWanted()
+                    && (ordersWanted() || !stashHeld.isEmpty())
                     && carry.isEmpty()
                     && ticks % 100 == 0
                     && job == null
                     && mc.player.containerMenu == mc.player.inventoryMenu) pickCarrySlots(false);
             // Not taking orders and nothing of an order held: no carry slots
-            else if (!sorting() && !ordersWanted() && orderHeld.isEmpty() && !carry.isEmpty()) carry.clear();
+            else if (!sorting() && !ordersWanted() && stashHeld.isEmpty() && orderHeld.isEmpty() && !carry.isEmpty())
+                carry.clear();
             // Scan-only was switched off: there are carry slots to find now
             if (sorting() && carry.isEmpty()) {
                 if (!pickCarrySlots()) {

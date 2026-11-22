@@ -113,9 +113,8 @@ export function useStashes(enabled: boolean) {
     },
     enabled,
     staleTime: 10_000,
-    // Presence polling (P1-09): bot online/offline is used in Inventory while
-    // the page is open; a stale list would show a dead bot as reachable.
-    refetchInterval: enabled ? 15000 : false,
+    // Live: bot online/offline arrives over the SSE stream (presence channel),
+    // which invalidates this query. No interval polling.
     retry: 1,
   });
 }
@@ -136,21 +135,6 @@ export function useIndex(stash: string | null, enabled: boolean) {
 /** A 404 here means "no index for that stash" — a valid empty state, not a failure. */
 export function indexEmptyState(error: unknown): boolean {
   return (error as { status?: number })?.status === 404;
-}
-
-export function useOrders(stash: string | null, enabled: boolean, visible: boolean) {
-  return useQuery({
-    queryKey: stash ? keys.orders(stash) : ["orders", "none"],
-    queryFn: async () =>
-      OrdersResponseSchema.parse(
-        await api<unknown>(`/api/v1/orders?stash=${encodeURIComponent(stash!)}`),
-      ) as OrdersResponse,
-    enabled: enabled && !!stash,
-    // Shop polls faster while visible (3s) than in background (15s); stale errors keep last data.
-    refetchInterval: enabled && stash ? (visible ? 3000 : 15000) : false,
-    staleTime: 2_000,
-    retry: 1,
-  });
 }
 
 export function useBots(enabled: boolean) {
@@ -293,7 +277,6 @@ export function ordersQueryOptions(stash: string, enabled: boolean): UseQueryOpt
     enabled,
     staleTime: 2_000,
     retry: 1 as const,
-    refetchInterval: enabled ? 15000 : false,
   };
 }
 
@@ -334,7 +317,6 @@ export function useOperations(enabled: boolean) {
     enabled,
     staleTime: 5_000,
     retry: 1,
-    refetchInterval: enabled ? 15000 : false,
   });
 }
 

@@ -234,7 +234,8 @@ public class Stash {
     // The input chest: unwanted items and shulkers are left here for the bot to sort into the stash. Kept on the
     // stash itself so it survives pruning, and may be outside the stash area. It stays until the user clears it
     public BlockPos inputPos;
-    // How the input chest came to be marked: "set" (picked by hand). "" counts as set
+    // How the input chest came to be marked: "set" (picked by hand), "manager" (Manager
+    // directive drop-off, which always wins) or "" (unset). "" counts as set
     public String inputSource = "";
     // The anvil orders are named at. Not a container: never a box, never indexed. Stays until the user clears it
     public BlockPos anvilPos;
@@ -523,6 +524,19 @@ public class Stash {
     public static String currentServer() {
         if (mc.isSingleplayer()) return "singleplayer";
         return mc.getCurrentServer() != null ? mc.getCurrentServer().ip : "unknown";
+    }
+
+    /**
+     * Whether a server address is 6b6t (any subdomain): 6b6t.org, join.6b6t.org, play.6b6t.org,
+     * with or without :port. Used to arm the lobby-portal transit, never for auth.
+     */
+    public static boolean is6b6tServer(String ip) {
+        if (ip == null) return false;
+        String host = ip.toLowerCase(Locale.ROOT).trim();
+        int colon = host.lastIndexOf(':');
+        if (colon >= 0 && host.indexOf(':') == colon) host = host.substring(0, colon);
+        if (host.endsWith(".") && host.length() > 1) host = host.substring(0, host.length() - 1);
+        return host.equals("6b6t.org") || host.endsWith(".6b6t.org");
     }
 
     public static boolean exists(String name) {

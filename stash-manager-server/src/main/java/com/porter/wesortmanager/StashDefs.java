@@ -14,8 +14,10 @@ import java.util.regex.Pattern;
 
 /**
  * Single-server stash definitions, owned by the Manager. The owner creates each stash in the web UI
- * with Position 1 and Position 2 coordinates; the cube between them is the stash. Delivery point,
- * anvil and workbench placements are also stored here. The bot receives its stash's directive in the
+ * with Position 1 and Position 2 coordinates; the cube between them is the stash. The drop-off chest
+ * (where members leave items for sorting into the stash), delivery point, anvil and workbench
+ * placements are also stored here. The drop-off chest is selected on stash level in the Manager,
+ * never in the game. The bot receives its stash's directive in the
  * heartbeat reply and executes it headlessly (it only needs Manager address, port and API key).
  */
 final class StashDefs {
@@ -44,6 +46,8 @@ final class StashDefs {
             String dimension,
             Vec pos1,
             Vec pos2,
+            Vec dropoff,
+            String dropoffDimension,
             Vec delivery,
             String deliveryDimension,
             Vec anvil,
@@ -56,6 +60,8 @@ final class StashDefs {
             o.addProperty("dimension", dimension);
             o.add("pos1", pos1.json());
             o.add("pos2", pos2.json());
+            o.add("dropoff", dropoff == null ? null : dropoff.json());
+            if (dropoffDimension != null) o.addProperty("dropoffDimension", dropoffDimension);
             o.add("delivery", delivery == null ? null : delivery.json());
             if (deliveryDimension != null) o.addProperty("deliveryDimension", deliveryDimension);
             o.add("anvil", anvil == null ? null : anvil.json());
@@ -134,6 +140,10 @@ final class StashDefs {
             o.add("delivery", d.delivery().json());
             o.addProperty("deliveryDimension", d.deliveryDimension() != null ? d.deliveryDimension() : d.dimension());
         }
+        if (d.dropoff() != null) {
+            o.add("dropoff", d.dropoff().json());
+            o.addProperty("dropoffDimension", d.dropoffDimension() != null ? d.dropoffDimension() : d.dimension());
+        }
         if (d.anvil() != null) o.add("anvil", d.anvil().json());
         if (d.table() != null) o.add("table", d.table().json());
         o.addProperty("revision", d.revision());
@@ -175,6 +185,10 @@ final class StashDefs {
             throw new IllegalArgumentException("dimension is required");
         var pos1 = vec(req.getAsJsonObject("pos1"), "pos1");
         var pos2 = vec(req.getAsJsonObject("pos2"), "pos2");
+        Vec dropoff = req.has("dropoff") && !req.get("dropoff").isJsonNull()
+                ? vec(req.getAsJsonObject("dropoff"), "dropoff")
+                : null;
+        String dropoffDim = str(req, "dropoffDimension");
         Vec delivery = req.has("delivery") && !req.get("delivery").isJsonNull()
                 ? vec(req.getAsJsonObject("delivery"), "delivery")
                 : null;
@@ -184,7 +198,19 @@ final class StashDefs {
         Vec table =
                 req.has("table") && !req.get("table").isJsonNull() ? vec(req.getAsJsonObject("table"), "table") : null;
         long rev = revision > 0 ? revision + 1 : 1;
-        return new Def(name, dimension, pos1, pos2, delivery, deliveryDim, anvil, table, rev, clock.getAsLong());
+        return new Def(
+                name,
+                dimension,
+                pos1,
+                pos2,
+                dropoff,
+                dropoffDim,
+                delivery,
+                deliveryDim,
+                anvil,
+                table,
+                rev,
+                clock.getAsLong());
     }
 
     private static Vec vec(JsonObject o, String what) {
@@ -216,6 +242,9 @@ final class StashDefs {
     private static Def read(JsonObject o) {
         var pos1 = vec(o.getAsJsonObject("pos1"), "pos1");
         var pos2 = vec(o.getAsJsonObject("pos2"), "pos2");
+        Vec dropoff = o.has("dropoff") && !o.get("dropoff").isJsonNull()
+                ? vec(o.getAsJsonObject("dropoff"), "dropoff")
+                : null;
         Vec delivery = o.has("delivery") && !o.get("delivery").isJsonNull()
                 ? vec(o.getAsJsonObject("delivery"), "delivery")
                 : null;
@@ -226,6 +255,10 @@ final class StashDefs {
                 o.get("dimension").getAsString(),
                 pos1,
                 pos2,
+                dropoff,
+                o.has("dropoffDimension") && !o.get("dropoffDimension").isJsonNull()
+                        ? o.get("dropoffDimension").getAsString()
+                        : null,
                 delivery,
                 o.has("deliveryDimension") && !o.get("deliveryDimension").isJsonNull()
                         ? o.get("deliveryDimension").getAsString()

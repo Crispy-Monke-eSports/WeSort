@@ -323,6 +323,7 @@ final class Router implements HttpHandler {
                 case OPEN -> {}
             }
             match.route.handle(ex);
+            LiveEvents.routeChanged(path, method);
         } catch (Http.TooLarge e) {
             safeError(ex, 413, "body too large (bot/* 1 MiB, others 8 MiB)");
         } catch (IOException e) {

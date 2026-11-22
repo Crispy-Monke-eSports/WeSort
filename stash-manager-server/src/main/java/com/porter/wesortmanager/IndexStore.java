@@ -56,6 +56,23 @@ public final class IndexStore {
 
     public record StashKey(String server, String stash) {}
 
+    /** Stash-level blockers the web UI never surfaces: stash name -> alert codes present. */
+    Map<String, List<String>> stashBlockers() {
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        for (var e : stashes.entrySet()) {
+            var s = e.getValue();
+            synchronized (s) {
+                List<String> codes = new ArrayList<>();
+                if (s.orderBlocker != null) codes.add("ORDER_BLOCKED");
+                if (s.storage != null && s.storage.chests() > 0 && s.storage.full() >= s.storage.chests())
+                    codes.add("DELIVERY_FULL");
+                if (s.rescanBlocked != null) codes.add("RESCAN_BLOCKED");
+                if (!codes.isEmpty()) out.put(e.getKey().stash(), codes);
+            }
+        }
+        return out;
+    }
+
     /** What the icon proxy needs to fetch an id's icon. */
     public record IconInfo(String englishName, String mcVersion) {}
 
@@ -170,7 +187,7 @@ public final class IndexStore {
 
     /**
      * The bot-status fields of one heartbeat. A field is only changed when the heartbeat carried it
-     * (hasDelivery / hasBlocker / hasNaming / hasCrafting), so an older addon that never sends them leaves them null.
+     * (hasDelivery / hasBlocker / hasNaming / hasCrafting / hasChests), so an older addon that never sends them leaves them null.
      */
     public record BotStatus(
             boolean hasDelivery,
@@ -185,9 +202,11 @@ public final class IndexStore {
             boolean hasCrafting,
             Crafting crafting,
             boolean hasStorage,
-            DeliveryStorage storage) {
-        public static final BotStatus NONE =
-                new BotStatus(false, null, false, null, -1, false, null, false, null, false, null, false, null);
+            DeliveryStorage storage,
+            boolean hasChests,
+            List<ChestStates.Chest> chests) {
+        public static final BotStatus NONE = new BotStatus(
+                false, null, false, null, -1, false, null, false, null, false, null, false, null, false, null);
 
         public BotStatus(
                 boolean hasDelivery,
@@ -213,6 +232,8 @@ public final class IndexStore {
                     naming,
                     hasCrafting,
                     crafting,
+                    false,
+                    null,
                     false,
                     null);
         }

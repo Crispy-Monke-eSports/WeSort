@@ -22,16 +22,34 @@ Detta protokoll är den bevarade baslinjen, inte framtida guildordermotor.
   med opaka id:n. Positions-skydd via `positions`-permissionen finns kvar.
 - Varje stash skapas av ägaren i webb-UI:t (`GET/POST /api/v1/stash-defs`)
   med Position 1 + Position 2 (kuben dem emellan är stashet) samt
-  leveranspunkt, städ och arbetsbänk. Boten får sitt direktiv
-  (`{stash, dimension, pos1, pos2, delivery(+Dimension), anvil, table, revision}`)
+  drop-off-kista, leveranspunkt, städ och arbetsbänk. Drop-off-kistan är där
+  medlemmar lämnar items som ska sorteras in i stashet; den väljs på
+  stash-nivå i Managern, aldrig i spelet. Boten får sitt direktiv
+  (`{stash, dimension, pos1, pos2, dropoff(+Dimension), delivery(+Dimension), anvil, table, revision}`)
   i heartbeat-svaret och exekverar headless.
+- Omkollning är inverterad: agenten rapporterar vilka kistor som finns (`chests:
+  [{x, y, z, readAt}]` i heartbeat) och Managern svarar med positionerna den vill
+  ha omlästa (`recheck: [{x, y, z}]` i svaret, äldst först, max 128). En kista
+  efterfrågas en gång per läsning — och igen när själva begäran blivit äldre än
+  tröskeln, så en laggig server aldrig tappar en kista vars läsningar misslyckas.
+  Aldrig lästa (`readAt: 0`) lämnas till agenten. Tröskeln är
+  `WESORT_CHEST_MAX_AGE_SECONDS` (default 300).
+- Självläkning utan klick: `POST /api/v1/orders/{id}/reconcile` löser
+  `NEEDS_RECONCILIATION` (`target`: `cancelled`/`failed` avbryter alltid;
+  `pickup_ready` endast med färsk observation utan öppna fysiska operationer).
+  Samma bevis körs automatiskt vid varje färskt index (tillbaka till `packed`),
+  öppna ordrar med oavslutade fysiska operationer flaggas automatiskt, och
+  bekräftade cancels som inget håller verkställs efter 10 min tystnad.
+  Operations-larmen omfattar även `ORDER_BLOCKED`, `DELIVERY_FULL`,
+  `RESCAN_BLOCKED`, `UNKNOWN`, `MISSING`, `APPROVAL_PENDING` och
+  `CANCEL_REQUESTED`.
 
 | Område | Aktiva routes |
 |---|---|
 | Browser-auth | GET auth/state; POST auth/setup, auth/login, auth/logout, auth/logout-all, auth/password, auth/confirm, auth/lock |
 | Agent | POST index, heartbeat, orders/claim, orders/:id/status, delivery |
 | Lager/webb | GET stashes, index, orders, delivery, link, server, stash-defs, kits; POST server, stash-defs, kits, rescan, link/regenerate |
-| Order/webb | POST orders (lines: item, shulker eller kit), orders/clear, orders/:id/cancel, orders/:id/force-cancel, orders/:id/retry, orders/:id/approval |
+| Order/webb | POST orders (lines: item, shulker eller kit), orders/clear, orders/:id/cancel, orders/:id/force-cancel, orders/:id/retry, orders/:id/approval, orders/:id/reconcile |
 | Drift/agent | POST bot/hello, bot/state, bot/results, bot/activity; GET bot/next |
 | Drift/webb | GET bots, bots/:id/settings, bots/:id/jobs, bots/:id/activity; POST bots/:id/settings |
 | Administration | GET/POST users; POST users/owner, users/:id, users/:id/actions enligt UserRoutes; GET audit |

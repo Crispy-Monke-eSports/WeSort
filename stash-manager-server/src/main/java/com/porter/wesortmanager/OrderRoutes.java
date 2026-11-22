@@ -22,6 +22,7 @@ final class OrderRoutes {
     private static final Pattern STATUS = Pattern.compile("^/api/v1/orders/(o-[0-9a-f]{12})/status$");
     private static final Pattern RETRY = Pattern.compile("^/api/v1/orders/(o-[0-9a-f]{12})/retry$");
     private static final Pattern FORCE_CANCEL = Pattern.compile("^/api/v1/orders/(o-[0-9a-f]{12})/force-cancel$");
+    private static final Pattern RECONCILE = Pattern.compile("^/api/v1/orders/(o-[0-9a-f]{12})/reconcile$");
     private static final int MAX_KEY = 256;
     private static final int MAX_RESULT_LINES = 400;
 
@@ -109,6 +110,12 @@ final class OrderRoutes {
                         Router.Perm.ORDER_OWN_OR_ALL,
                         this::forceCancel)
                 .pattern(Router.POST, RETRY, Router.Guard.BROWSER_WRITE, Router.Perm.ORDER_OWN_OR_ALL, this::retry)
+                .pattern(
+                        Router.POST,
+                        RECONCILE,
+                        Router.Guard.BROWSER_WRITE,
+                        Router.Perm.ORDER_OWN_OR_ALL,
+                        this::reconcile)
                 .pattern(Router.POST, STATUS, Router.Guard.ADDON_KEY, this::status);
     }
 
@@ -377,6 +384,29 @@ final class OrderRoutes {
             OrderStore.Order order =
                     orders.forceCancel(m.group(1), Router.user(ex).id());
             audit.add(Router.user(ex), "order.force-cancel", order.id, AuthRoutes.address(ex));
+            JsonObject out = Http.ok();
+            out.add("order", shown(ex, order.toJson()));
+            Http.json(ex, 200, out);
+        } catch (OrderStore.OrderException e) {
+            Http.error(ex, e.status, e.getMessage());
+        }
+    }
+
+    /** POST /api/v1/orders/{id}/reconcile: resolve a NEEDS_RECONCILIATION order without touching the game. */
+    private void reconcile(HttpExchange ex) throws IOException {
+        Matcher m = RECONCILE.matcher(ex.getRequestURI().getRawPath());
+        if (!m.matches()) {
+            Http.error(ex, 404, "not found");
+            return;
+        }
+        if (!mayChange(ex, m.group(1))) return;
+        JsonElement json = AddonRoutes.readJson(ex);
+        JsonObject o = json != null && json.isJsonObject() ? json.getAsJsonObject() : null;
+        String target = o == null ? null : AddonRoutes.string(o, "target");
+        try {
+            OrderStore.Order order =
+                    orders.reconcile(m.group(1), target, Router.user(ex).id());
+            audit.add(Router.user(ex), "order.reconcile", order.id + " to " + target, AuthRoutes.address(ex));
             JsonObject out = Http.ok();
             out.add("order", shown(ex, order.toJson()));
             Http.json(ex, 200, out);

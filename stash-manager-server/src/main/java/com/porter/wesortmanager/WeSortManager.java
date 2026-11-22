@@ -301,9 +301,10 @@ public final class WeSortManager {
         AuthRoutes authRoutes = new AuthRoutes(config, sessions, limiter, users, audit);
         authRoutes.register(router);
         DeliveryContents delivery = new DeliveryContents(); // in memory only
+        ChestStates chests = new ChestStates(); // in memory only
         var stashDefs = new StashDefs(config.dataDir());
         var kits = orders.kits(); // the shared catalog: routes and reservations see the same templates
-        new AddonRoutes(store, link, icons, orders, delivery, config, stashDefs).register(router);
+        new AddonRoutes(store, link, icons, orders, delivery, config, stashDefs, chests).register(router);
         new BrowserRoutes(store, config, link, urls, orders, sessions, audit, delivery, credentials).register(router);
         new DeliveryRoutes(delivery, config, stashDefs).register(router);
         var guild = new GuildRoutes(config.dataDir(), audit);
@@ -325,6 +326,7 @@ public final class WeSortManager {
         new PhysicalRoutes(store, audit, config).register(router);
         new BotRoutes(hub, audit, orders, config, stashDefs).register(router);
         new DashboardRoutes(hub, store, sessions, audit).register(router);
+        new LiveRoutes(hub, store).register(router);
         new UserRoutes(users, sessions, audit).register(router);
         guild.register(router);
         new IconRoutes(icons).register(router);

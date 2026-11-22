@@ -167,8 +167,8 @@ function StashSection() {
   return (
     <Stack spacing={2}>
       <Typography color="text.secondary">
-        Each stash is a cube between Position 1 and Position 2. Delivery point, anvil and workbench are optional
-        placements the bot executes headlessly. {perms.owner ? "" : "Only the owner can change definitions."}
+        Each stash is a cube between Position 1 and Position 2. Drop-off chest, delivery point, anvil and workbench are optional
+        placements the bot executes headlessly. The drop-off chest is where members leave items for sorting into the stash — set it here, never in the game. {perms.owner ? "" : "Only the owner can change definitions."}
       </Typography>
       {defs.isLoading && <LinearProgress />}
       {defs.isError && <Alert severity="error">Could not load stash definitions.</Alert>}
@@ -183,7 +183,8 @@ function StashSection() {
                   {d.dimension}{d.pos1 && d.pos2 ? ` [${d.pos1.x},${d.pos1.y},${d.pos1.z}]–[${d.pos2.x},${d.pos2.y},${d.pos2.z}]` : " (coordinates hidden)"}
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ fontFamily: "monospace", wordBreak: "break-all" }}>
-                  {[d.delivery && `drop ${d.delivery.x},${d.delivery.y},${d.delivery.z}${d.deliveryDimension ? ` in ${d.deliveryDimension}` : ""}`,
+                  {[d.dropoff && `drop-off ${d.dropoff.x},${d.dropoff.y},${d.dropoff.z}${d.dropoffDimension ? ` in ${d.dropoffDimension}` : ""}`,
+                    d.delivery && `drop ${d.delivery.x},${d.delivery.y},${d.delivery.z}${d.deliveryDimension ? ` in ${d.deliveryDimension}` : ""}`,
                     d.anvil && `anvil ${d.anvil.x},${d.anvil.y},${d.anvil.z}`,
                     d.table && `bench ${d.table.x},${d.table.y},${d.table.z}`].filter(Boolean).join(" · ") || "no placements"}
                   {` · rev ${d.revision}`}
@@ -224,6 +225,8 @@ function StashEditor({ initial, onClose, onSaved }: {
   const [dimension, setDimension] = useState(initial.dimension ?? "minecraft:overworld");
   const [pos1, setPos1] = useState(vecText(initial.pos1));
   const [pos2, setPos2] = useState(vecText(initial.pos2));
+  const [dropoff, setDropoff] = useState(vecText(initial.dropoff));
+  const [dropoffDimension, setDropoffDimension] = useState(initial.dropoffDimension ?? "");
   const [delivery, setDelivery] = useState(vecText(initial.delivery));
   const [deliveryDimension, setDeliveryDimension] = useState(initial.deliveryDimension ?? "");
   const [anvil, setAnvil] = useState(vecText(initial.anvil));
@@ -244,6 +247,8 @@ function StashEditor({ initial, onClose, onSaved }: {
       dimension: dimension.trim() || "minecraft:overworld",
       pos1: p1,
       pos2: p2,
+      dropoff: parseVec(dropoff),
+      dropoffDimension: dropoffDimension.trim() || null,
       delivery: parseVec(delivery),
       deliveryDimension: deliveryDimension.trim() || null,
       anvil: parseVec(anvil),
@@ -268,6 +273,8 @@ function StashEditor({ initial, onClose, onSaved }: {
           <TextField label="Dimension" value={dimension} onChange={(e) => setDimension(e.target.value)} size="small" sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }} />
           <TextField label="Position 1 (x, y, z)" value={pos1} onChange={(e) => setPos1(e.target.value)} size="small" sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }} />
           <TextField label="Position 2 (x, y, z)" value={pos2} onChange={(e) => setPos2(e.target.value)} size="small" sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }} />
+          <TextField label="Drop-off (x, y, z, optional)" value={dropoff} onChange={(e) => setDropoff(e.target.value)} size="small" sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }} helperText="Members leave items here for sorting in. Never set in the game." />
+          <TextField label="Drop-off dimension (optional, defaults to stash dimension)" value={dropoffDimension} onChange={(e) => setDropoffDimension(e.target.value)} size="small" sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }} />
           <TextField label="Delivery (x, y, z, optional)" value={delivery} onChange={(e) => setDelivery(e.target.value)} size="small" sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }} />
           <TextField label="Delivery dimension (optional, defaults to stash dimension)" value={deliveryDimension} onChange={(e) => setDeliveryDimension(e.target.value)} size="small" sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }} />
           <TextField label="Anvil (x, y, z, optional)" value={anvil} onChange={(e) => setAnvil(e.target.value)} size="small" sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }} />
@@ -451,6 +458,10 @@ function UsersSection() {
   const [editStashes, setEditStashes] = useState<string[]>([]);
   const [editBotMode, setEditBotMode] = useState<"all" | "selected">("all");
   const [editBots, setEditBots] = useState<string[]>([]);
+  const [editIgn, setEditIgn] = useState("");
+  const [owner, setOwner] = useState<any | null>(null);
+  const [ownerIgn, setOwnerIgn] = useState("");
+  const [ownerIgnOpen, setOwnerIgnOpen] = useState(false);
   const stashDefs = useStashDefs(true);
   const botsList = useBots(true);
   const [minLength, setMinLength] = useState(12);
@@ -468,6 +479,7 @@ function UsersSection() {
     try {
       const raw = await api<any>("/api/v1/users");
       setUsers(raw?.users ?? []);
+      setOwner(raw?.owner ?? null);
       if (typeof raw?.minLength === "number") setMinLength(raw.minLength);
       const p = raw?.presets;
       if (p && typeof p === "object") {
@@ -515,6 +527,7 @@ function UsersSection() {
     setEditFlags(flags);
     setEditDisabled(!!u.disabled);
     setEditName(u.name ?? "");
+    setEditIgn(u.minecraftAccount ?? "");
     setEditStashMode(u.perms?.stashes == null ? "all" : "selected");
     setEditStashes(stashListOf(u.perms));
     setEditBotMode(u.perms?.bots == null ? "all" : "selected");
@@ -556,6 +569,10 @@ function UsersSection() {
       body.name = editName.trim();
       changes.push(`name: ${original?.name ?? ""} → ${editName.trim()}`);
     }
+    const nextIgn = editIgn.trim();
+    const prevIgn = original?.minecraftAccount ?? "";
+    const ignChanged = nextIgn !== prevIgn;
+    if (ignChanged) changes.push(`minecraft: ${prevIgn || "(none)"} → ${nextIgn || "(none)"}`);
     if (!changes.length) {
       setMsg("No changes — nothing sent.");
       setEditId(null);
@@ -569,7 +586,8 @@ function UsersSection() {
       changes,
       confirmLabel: "Apply",
       run: async () => {
-        await api(`/api/v1/users/${id}`, { method: "POST", body });
+        if (Object.keys(body).length) await api(`/api/v1/users/${id}`, { method: "POST", body });
+        if (ignChanged) await api(`/api/v1/users/${id}/minecraft`, { method: "POST", body: { account: nextIgn } });
         setEditId(null);
         setMsg(`User updated (${changes.length} change${changes.length === 1 ? "" : "s"}).`);
         await load();
@@ -656,6 +674,7 @@ function UsersSection() {
       <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap", gap: 0.5, mt: 0.5 }}>
         <Chip size="small" variant="outlined" label={stashes == null ? "All stashes" : stashes.length ? `Stashes: ${stashes.join(", ")}` : "No stashes"} />
         <Chip size="small" variant="outlined" label={bots == null ? "All bots" : bots.length ? `Bots: ${bots.join(", ")}` : "No bots"} />
+        <Chip size="small" variant="outlined" label={u.minecraftAccount ? `IGN: ${u.minecraftAccount}` : "No IGN"} />
       </Stack>
     );
   }
@@ -663,6 +682,23 @@ function UsersSection() {
   return (
     <Stack spacing={2}>
       {msg && <Alert severity="info" onClose={() => setMsg("")}>{msg}</Alert>}
+      {owner && (
+        <Paper variant="outlined" sx={{ p: 1.5 }}>
+          <Stack spacing={1}>
+            <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexWrap: "wrap" }}>
+              <Typography sx={{ fontWeight: 600, wordBreak: "break-word" }}>{owner.name}</Typography>
+              <Chip size="small" label="owner" />
+              {owner.minecraftAccount
+                ? <Chip size="small" variant="outlined" label={`IGN: ${owner.minecraftAccount}`} />
+                : <Chip size="small" variant="outlined" label="No IGN" />}
+            </Stack>
+            <Typography variant="caption" color="text.secondary" sx={{ fontFamily: "monospace" }}>
+              sessions: {owner.sessions ?? 0} · Minecraft IGN is used for recipient verification.
+            </Typography>
+            <Box><Button size="small" variant="outlined" onClick={() => { setOwnerIgn(owner.minecraftAccount ?? ""); setOwnerIgnOpen(true); }}>Set IGN</Button></Box>
+          </Stack>
+        </Paper>
+      )}
       <List dense>
         {users.map((u: any) => (
           <ListItem key={u.id} divider sx={{ alignItems: "flex-start" }}>
@@ -809,6 +845,7 @@ function UsersSection() {
               label={<Typography variant="body2">disabled</Typography>}
             />
             <TextField label="Account name" value={editName} onChange={(e) => setEditName(e.target.value)} size="small" fullWidth />
+            <TextField label="Minecraft IGN (optional, empty unlinks)" value={editIgn} onChange={(e) => setEditIgn(e.target.value)} size="small" fullWidth helperText="1–16 chars: letters, digits, _. Used for recipient verification." sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }} />
             <Typography variant="caption" color="text.secondary">
               Only changed fields are sent. Scopes are always explicit: All means every stash/bot, an empty
               selection means no access.
@@ -844,6 +881,27 @@ function UsersSection() {
         onClose={() => { if (!pwBusy) setPwUser(null); }}
         onConfirm={resetPassword}
       />
+      <Dialog open={ownerIgnOpen} onClose={() => setOwnerIgnOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Owner Minecraft IGN</DialogTitle>
+        <DialogContent>
+          <Stack spacing={1.5} sx={{ mt: 1 }}>
+            <TextField label="Minecraft IGN (optional, empty unlinks)" value={ownerIgn} onChange={(e) => setOwnerIgn(e.target.value)} size="small" fullWidth helperText="1–16 chars: letters, digits, _. Used for recipient verification." sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }} />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOwnerIgnOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={async () => {
+            try {
+              await api("/api/v1/users/owner/minecraft", { method: "POST", body: { account: ownerIgn.trim() } });
+              setMsg(ownerIgn.trim() ? `Owner IGN set to ${ownerIgn.trim()}.` : "Owner IGN unlinked.");
+              setOwnerIgnOpen(false);
+              await load();
+            } catch (e: any) {
+              setMsg(e?.message ?? "IGN save failed.");
+            }
+          }}>Save</Button>
+        </DialogActions>
+      </Dialog>
     </Stack>
   );
 }

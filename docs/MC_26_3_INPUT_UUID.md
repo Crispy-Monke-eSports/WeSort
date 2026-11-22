@@ -2,11 +2,14 @@
 
 ## Inputkista
 
-Varje stash kan ha en markerad **inputkista** (`Pick: Input chest` i
-wesort-stash-sorter). Den får stå utanför stashens bounding box, likt
-delivery-containern. Spelare lägger där items och shulkerboxar de inte längre
-vill ha; botten tömmer den som en drop-off (allt räknas som misplaced och
-sorteras in i stashet) och inget sorteras någonsin in i den.
+Varje stash har en markerad **inputkista**, vald på stash-nivå i
+WeSort Manager (Settings > Stashes > Drop-off). Den får stå utanför
+stashens bounding box, likt delivery-containern. Spelare lägger där items
+och shulkerboxar de inte längre vill ha; botten tömmer den som en drop-off
+(allt räknas som misplaced och sorteras in i stashet) och inget sorteras
+någonsin in i den. Valet hanteras aldrig i spelet: Managerns direktiv äger
+drop-off-positionen, och pick-lägen som skulle ändra en Manager-styrd
+inputkista avvisas med ett meddelande.
 
 Tekniskt sätter markeringen både `input` och `dropOff` på boxen, så all
 befintlig drop-off-logik gäller (tömning, recheck-schema, lock, heartbeat,

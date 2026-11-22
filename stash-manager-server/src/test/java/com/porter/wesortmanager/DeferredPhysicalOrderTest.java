@@ -27,7 +27,11 @@ class DeferredPhysicalOrderTest {
                         "{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"items\":[{\"key\":\"minecraft:diamond\",\"id\":\"minecraft:diamond\",\"count\":64,\"maxStack\":64}]}")
                 .getAsJsonObject();
         var physical = StockFixtures.physical(
-                data, index.stock().epoch(), index.stock().revision(), index.stock().revision() + 1, 0);
+                data,
+                index.stock().epoch(),
+                index.stock().revision(),
+                index.stock().revision() + 1,
+                0);
         var diamond = new PhysicalSlots.Item(
                 "minecraft:diamond", "minecraft:diamond", 64, "{}", PhysicalSlots.Kind.ITEM, 0, List.of(), "");
         var slot = new PhysicalSlots.Slot(0, 64, diamond);

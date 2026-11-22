@@ -23,6 +23,29 @@ class PortalEntryTest {
     }
 
     @Test
+    void portalScanAlwaysFollowsPlayerRatherThanRemoteStash() {
+        BlockPos lobbyPlayer = new BlockPos(12, 64, -8);
+        PortalEntry.SearchWindow window = PortalEntry.nearbyWindow(lobbyPlayer);
+        assertTrue(window.contains(lobbyPlayer));
+        assertTrue(window.contains(lobbyPlayer.offset(20, 8, 5)));
+        assertFalse(window.contains(lobbyPlayer.offset(33, 0, 0)));
+        assertFalse(window.contains(lobbyPlayer.offset(0, 17, 0)));
+        assertFalse(window.contains(new BlockPos(80_000, 64, -4_000)));
+    }
+
+    @Test
+    void adjacentPortalEntryAllowsSafeOneBlockElevationChanges() {
+        assertTrue(PortalEntry.adjacentStand(PORTAL, Direction.Axis.X, new BlockPos(10, 64, 21)));
+        assertTrue(PortalEntry.adjacentStand(PORTAL, Direction.Axis.X, new BlockPos(10, 63, 19)));
+        assertTrue(PortalEntry.adjacentStand(PORTAL, Direction.Axis.X, new BlockPos(10, 65, 21)));
+        assertTrue(PortalEntry.adjacentStand(PORTAL, Direction.Axis.Z, new BlockPos(11, 65, 20)));
+        assertFalse(PortalEntry.adjacentStand(PORTAL, Direction.Axis.X, new BlockPos(11, 64, 20)));
+        assertFalse(PortalEntry.adjacentStand(PORTAL, Direction.Axis.X, new BlockPos(10, 66, 21)));
+        assertFalse(PortalEntry.adjacentStand(PORTAL, Direction.Axis.Z, new BlockPos(10, 64, 21)));
+        assertFalse(PortalEntry.adjacentStand(PORTAL, Direction.Axis.Y, new BlockPos(10, 64, 21)));
+    }
+
+    @Test
     void transitionsToManualEntryOnlyAtTheApproach() {
         BlockPos approach = new BlockPos(10, 64, 21);
         assertTrue(PortalEntry.atApproach(approach, 10.5, 64, 21.5));

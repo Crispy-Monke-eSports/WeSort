@@ -38,8 +38,8 @@ React 19 + TypeScript (strict) + Vite + Material UI v9 (Material Design 2 theme,
 dark default + full light variant, restrained 4dp corners, WeSort green accent).
 TanStack Router (code-based routes: `/overview`, `/inventory`, `/orders`,
 `/bots`, `/operations`, `/settings`, `/login`; legacy `/shop` → `/inventory`,
-`/activity` → `/operations` redirects), TanStack Query (server state, order
-polling, logout clears the cache), TanStack Form + Zod (checkout details),
+`/activity` → `/operations` redirects), TanStack Query (server state, live
+SSE invalidations, logout clears the cache), TanStack Form + Zod (checkout details),
 Zustand (cart draft per user + checkout groups with zod-validated rehydration),
 Vitest unit tests, Playwright E2E, live screenshot evidence
 (`scripts/screenshots-live.py` against a real Manager with real 26.3 icons).

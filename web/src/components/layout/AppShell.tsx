@@ -32,6 +32,8 @@ import { useColorScheme, useTheme } from "@mui/material/styles";
 import { Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useAuth, useLogout, usePermissions } from "../../api/queries";
+import { useLiveUpdates } from "../../api/live";
+import { LiveBadge } from "../LiveBadge";
 import { ToastHost } from "../ToastHost";
 
 const DRAWER_WIDTH = 240;
@@ -57,6 +59,8 @@ export function AppShell() {
   const location = useLocation();
 
   const user = auth.data?.user ?? null;
+  // One live stream per tab: server pushes invalidate TanStack Query (no polling).
+  useLiveUpdates(!!auth.data?.loggedIn);
   const { mode, setMode } = useColorScheme();
   const dark = mode !== "light";
   function toggleMode() {
@@ -141,6 +145,7 @@ export function AppShell() {
           </Typography>
           {user ? (
             <>
+              <LiveBadge />
               <Chip
                 label={user.owner ? "Owner" : (user.name ?? user.id)}
                 size="small"

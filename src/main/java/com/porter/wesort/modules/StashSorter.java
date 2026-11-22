@@ -4155,8 +4155,7 @@ public class StashSorter extends Module {
             if (!state.hasProperty(net.minecraft.world.level.block.NetherPortalBlock.AXIS)) continue;
             Direction.Axis axis = state.getValue(net.minecraft.world.level.block.NetherPortalBlock.AXIS);
             BlockPos stand = PortalEntry.approach(p, axis, at.x, at.z, portalOtherSide);
-            if (!clearPortalApproach(stand)
-                    || !com.porter.wesort.compat.NavigationRuntime.safePortalApproach(stand)) {
+            if (!clearPortalApproach(stand) || !com.porter.wesort.compat.NavigationRuntime.safePortalApproach(stand)) {
                 stand = PortalEntry.approach(p, axis, at.x, at.z, !portalOtherSide);
                 if (!clearPortalApproach(stand)
                         || !com.porter.wesort.compat.NavigationRuntime.safePortalApproach(stand)) continue;

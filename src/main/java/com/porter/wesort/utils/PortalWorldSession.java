@@ -29,6 +29,16 @@ public final class PortalWorldSession {
         return lobbyObserved && !arrived;
     }
 
+    /**
+     * Block ordinary warehouse navigation during a new lobby login even before
+     * the portal chunks are available. A known 6b6t survival worker outside
+     * the origin lobby region is exempt; the portal is never assumed merely
+     * from the hostname. Only actual loaded portal blocks may start entry.
+     */
+    public boolean awaitingBootstrap(boolean portalMode, boolean known6b6t, boolean nearLobbyOrigin) {
+        return portalMode && !arrived && (!known6b6t || nearLobbyOrigin);
+    }
+
     /** Called only after finding actual lobby portal blocks in the player's loaded vicinity. */
     public void lobbySeen(double x, double z) {
         if (arrived || !started()) return;

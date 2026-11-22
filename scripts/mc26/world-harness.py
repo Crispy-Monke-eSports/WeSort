@@ -333,6 +333,27 @@ class Harness:
             time.sleep(0.1)
         raise RuntimeError('Client control timed out; no physical action is assumed complete')
 
+    def settle_test_menus(self, quiet=2.5, timeout=20):
+        """E2E-only cleanup of a late OpenScreen packet from fixture observation.
+
+        The client has no human operator. Closing a leftover vanilla menu does
+        not move items, fabricate a receipt, or bypass any physical work fence.
+        Do not enter a new physical phase until the screen is stably released.
+        """
+        end = time.monotonic() + timeout
+        quiet_since = None
+        while time.monotonic() < end:
+            state = self.command('state')['state']
+            if state['screen'] != 'none' or state['containerId'] != 0:
+                self.command('close')
+                quiet_since = None
+            else:
+                if quiet_since is None: quiet_since = time.monotonic()
+                if time.monotonic() - quiet_since >= quiet:
+                    return
+            time.sleep(.2)
+        raise RuntimeError('Fixture did not release late container menu without inventory mutation')
+
     def teleport(self, x, z=0.5):
         self.rcon.command(f'tp {self.player} {float(x)} 64 {float(z)}')
         for _ in range(50):

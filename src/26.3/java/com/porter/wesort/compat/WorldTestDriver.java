@@ -375,6 +375,11 @@ public final class WorldTestDriver {
                     manager.e2eHoldAutonomousWork(command.get("hold").getAsBoolean());
                     respond(true, "E2E inspection hold updated; dedicated Manager remains active", state());
                 }
+                case "manager-sorting-hold" -> {
+                    var manager = Modules.get().get(StashManager.class);
+                    manager.e2eHoldPhysicalSorting(command.get("hold").getAsBoolean());
+                    respond(true, "E2E scan-only hold updated; Manager continues real observations", state());
+                }
                 case "engine-index" -> {
                     var current = com.porter.wesort.WeSortAddon.sorter().currentStash();
                     var result = state();
@@ -720,6 +725,10 @@ public final class WorldTestDriver {
         ((Setting<String>) manager.settings.get("api-key"))
                 .set(command.get("key").getAsString());
         if (!manager.isActive()) manager.toggle();
+        if (command.has("holdPhysicalSorting")
+                && command.get("holdPhysicalSorting").getAsBoolean()) manager.e2eHoldPhysicalSorting(true);
+        if (command.has("inspectionHold") && command.get("inspectionHold").getAsBoolean())
+            manager.e2eHoldAutonomousWork(true);
         respond(true, "production signed module enabled; verify Manager separately", state());
     }
 

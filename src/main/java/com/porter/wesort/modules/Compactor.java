@@ -2,6 +2,7 @@ package com.porter.wesort.modules;
 
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
+import com.porter.wesort.data.ShulkerUuid;
 import com.porter.wesort.stash.Categories;
 import com.porter.wesort.stash.StackInfo;
 import com.porter.wesort.stash.StackInfo.BulkKey;
@@ -24,9 +25,9 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.ShulkerBoxBlock;
 
 /**
- * Packs a full shulker's worth of one item from the category chests into an empty, unnamed shulker, which is then put
- * away in the item's own chest, so 27 slots become 1. Never mixed shulkers, never a named one, never a kit chest. This
- * class plans it and keeps the plan; the sorter walks, opens, places and breaks.
+ * Packs full stacks of one item from tier storage into a shulker and can top up
+ * part-full shulkers with the same item. Preserves canonical WeSort UUID names,
+ * never changes user-labelled shulkers, mixed kits or order-reserved stock.
  */
 final class Compactor {
     /**
@@ -35,10 +36,13 @@ final class Compactor {
     interface Owner {
         Stash stash();
 
-        /** Compacting is on, in Signs mode, and not paused after a shulker problem. */
+        /** Compacting is on and has a current safe physical permit. No sign is required. */
         boolean on();
 
         int topUpAt();
+
+        /** Minimum full stacks to start a new bulk box (0 disables new boxes). */
+        int newBulkAt();
 
         boolean excluded(ItemStack stack);
 
@@ -129,6 +133,9 @@ final class Compactor {
         final ItemStack sample;
         final String name;
         final boolean topUp;
+        // Pin the exact UUID on a top-up: two identical UUID boxes must never
+        // be exchanged across a restart or during carry-slot changes.
+        String targetUuid;
         // Stacks the shulker held when this began, and should hold when it is done
         final int startSize, target;
         // Where the part-full shulker to top up is kept
@@ -154,7 +161,7 @@ final class Compactor {
         }
     }
 
-    private record Partial(Box box, int slot, int size) {}
+    private record Partial(Box box, int slot, int size, String uuid) {}
 
     private record Found(Box box, int slot) {}
 
@@ -205,6 +212,7 @@ final class Compactor {
         c.sample = p.sample.copy();
         c.name = p.name;
         c.topUp = p.topUp;
+        c.boxUuid = p.targetUuid == null ? "" : p.targetUuid;
         c.startSize = p.startSize;
         c.target = p.target;
         c.sourceBox = p.sourceBox == null ? null : p.sourceBox.pos;
@@ -226,6 +234,10 @@ final class Compactor {
         if (key == null) return null;
         Plan p = new Plan(key, c.sample.copyWithCount(1), c.name, c.topUp, c.startSize, c.target);
         p.sourceSlot = c.sourceSlot;
+        if (!c.boxUuid.isEmpty()) {
+            if (!ShulkerUuid.hasUuid(c.boxUuid)) return null;
+            p.targetUuid = c.boxUuid;
+        }
         p.placedPos = c.placedPos;
         p.dimension = dimension;
         p.placedSize = c.placedSize;
@@ -273,8 +285,14 @@ final class Compactor {
         return stack != null && !stack.isEmpty() && Utils.isShulker(stack.getItem());
     }
 
-    private static boolean unnamed(ItemStack stack) {
-        return !stack.has(DataComponents.CUSTOM_NAME);
+    private static String uuidOf(ItemStack stack) {
+        var custom = stack.get(DataComponents.CUSTOM_NAME);
+        return custom == null || !ShulkerUuid.hasUuid(custom.getString()) ? null : custom.getString();
+    }
+
+    private static boolean repackableName(ItemStack stack) {
+        var custom = stack.get(DataComponents.CUSTOM_NAME);
+        return ShulkerUuid.repackableName(custom == null ? null : custom.getString());
     }
 
     private static boolean full(ItemStack stack) {
@@ -285,7 +303,10 @@ final class Compactor {
      * An unnamed shulker that is empty, or holds only this plan's item.
      */
     private boolean isPlanShulker(ItemStack stack, Plan p) {
-        if (!shulker(stack) || !unnamed(stack) || owner.isKitShulker(stack)) return false;
+        if (!shulker(stack) || !repackableName(stack) || owner.isKitShulker(stack)) return false;
+        // A new or legacy unnamed plan cannot silently switch to a named
+        // UUID box. Only a top-up pinned to that exact UUID may touch it.
+        if (p.targetUuid != null ? !p.targetUuid.equals(uuidOf(stack)) : uuidOf(stack) != null) return false;
         List<StackInfo> inside = StackInfo.of(stack).contents();
         if (inside.isEmpty()) return !p.topUp;
         for (StackInfo s : inside) if (!p.key.equals(s.bulkKey())) return false;
@@ -298,7 +319,7 @@ final class Compactor {
 
     private boolean emptyShulker(ItemStack stack) {
         return shulker(stack)
-                && unnamed(stack)
+                && repackableName(stack)
                 && !owner.isKitShulker(stack)
                 && StackInfo.of(stack).contents().isEmpty();
     }
@@ -402,19 +423,28 @@ final class Compactor {
     }
 
     private Partial partialOf(Box box, int slot, ItemStack shulker) {
-        if (!unnamed(shulker) || owner.isKitShulker(shulker)) return null;
+        if (!repackableName(shulker) || owner.isKitShulker(shulker)) return null;
         List<StackInfo> inside = StackInfo.of(shulker).contents();
         if (inside.isEmpty() || inside.size() >= 27) return null;
         BulkKey key = inside.get(0).bulkKey();
         if (key == null) return null;
         for (StackInfo s : inside) if (!key.equals(s.bulkKey())) return null;
-        return new Partial(box, slot, inside.size());
+        return new Partial(box, slot, inside.size(), uuidOf(shulker));
     }
 
     private void why(String text) {
         if (text.equals(lastWhy)) return;
         lastWhy = text;
         owner.say("Compaction: " + text + ".");
+    }
+
+    /**
+     * Compact mode must still create a box from 27 full stacks when the
+     * independent repack new-bulk threshold is zero. Zero disables creating
+     * new *repack* boxes, not the compactor's full-box operation.
+     */
+    static int newBoxThreshold(int configured) {
+        return configured > 0 ? configured : 27;
     }
 
     /**
@@ -434,6 +464,19 @@ final class Compactor {
         if (owner.version() == noPlanVersion && owner.ticks() < noPlanUntil) return false;
 
         Stash stash = owner.stash();
+        // Two boxes with the same WeSort UUID cannot both be treated as the
+        // pinned physical identity. Leave duplicates untouched for the UUID
+        // naming/reconciliation pass before any top-up is attempted.
+        Set<String> seenUuids = new HashSet<>();
+        Set<String> duplicateUuids = new HashSet<>();
+        for (Box box : stash.boxes) {
+            if (box.contents == null || box.stale) continue;
+            for (ItemStack stack : box.contents) {
+                if (!shulker(stack)) continue;
+                String uuid = uuidOf(stack);
+                if (uuid != null && (!seenUuids.add(uuid) || stack.getCount() != 1)) duplicateUuids.add(uuid);
+            }
+        }
         Map<BulkKey, Integer> full = new LinkedHashMap<>();
         Map<BulkKey, Map<Box, Integer>> where = new HashMap<>();
         Map<BulkKey, ItemStack> sample = new HashMap<>();
@@ -448,7 +491,7 @@ final class Compactor {
 
                 if (shulker(stack)) {
                     Partial part = partialOf(box, i, stack);
-                    if (part == null) continue;
+                    if (part == null || part.uuid() != null && duplicateUuids.contains(part.uuid())) continue;
                     StackInfo first = StackInfo.of(stack).contents().get(0);
                     BulkKey key = first.bulkKey();
                     if (owner.excluded(first.stack) || !homed.computeIfAbsent(key, k -> hasHome(first.stack))) continue;
@@ -502,9 +545,10 @@ final class Compactor {
                 candidate = new Plan(key, sample.get(key), ref.name, true, part.size(), part.size() + add);
                 candidate.sourceBox = part.box();
                 candidate.sourceSlot = part.slot();
+                candidate.targetUuid = part.uuid();
                 score = 1000 + add;
-            } else if (single ? stacks >= 2 : stacks >= 27) {
-                int target = single ? Math.min(27, stacks) : 27;
+            } else if (single ? stacks >= 2 : stacks >= newBoxThreshold(owner.newBulkAt())) {
+                int target = Math.min(27, stacks);
                 candidate = new Plan(key, sample.get(key), ref.name, false, 0, target);
                 score = target;
             } else continue;
@@ -532,7 +576,7 @@ final class Compactor {
             }
             why(
                     held.isEmpty()
-                            ? "nothing has a full shulker's worth (closest: " + closest + ")"
+                            ? "nothing reaches the bulk packing threshold (closest: " + closest + ")"
                             : held + " (closest: " + closest + ")");
             return false;
         }

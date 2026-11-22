@@ -60,31 +60,54 @@ class AutomationGateTest {
     }
 
     @Test
-    void simultaneousSortingAndReservationHaveOneWinner() throws Exception {
+    void simultaneousSortingAndOrderRequestHaveNoOverlappingReservations() throws Exception {
         var store = store();
         var orders = new OrderStore(data, store);
         orders.load();
+        var start = new CountDownLatch(1);
         try (var pool = Executors.newFixedThreadPool(2)) {
-            var results = pool.invokeAll(List.of(() -> orders.acquireSorting("s", "agent", null) != null, () -> {
-                try {
-                    orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 1)), null);
-                    return true;
-                } catch (OrderStore.OrderException e) {
-                    return false;
-                }
-            }));
-            assertEquals(
-                    1,
-                    results.stream()
-                            .filter(result -> {
-                                try {
-                                    return Boolean.TRUE.equals(result.get());
-                                } catch (Exception e) {
-                                    throw new RuntimeException(e);
-                                }
-                            })
-                            .count());
+            var sorting = pool.submit(() -> {
+                start.await();
+                return orders.acquireSorting("s", "agent", null);
+            });
+            var placing = pool.submit(() -> {
+                start.await();
+                return orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 1)), null);
+            });
+            start.countDown();
+            var lease = sorting.get();
+            var order = placing.get();
+            assertNotNull(order); // Never reject a customer's new request.
+            if (lease != null) {
+                assertTrue(order.reservationDeferred);
+                assertNull(order.allocations);
+                assertTrue(orders.heldRoots("s").isEmpty());
+                assertNotNull(orders.acquireSorting("s", "agent", lease.token()));
+                assertNull(orders.acquireSorting("s", "foreign-agent", null));
+            } else {
+                assertFalse(order.reservationDeferred);
+                assertNotNull(order.allocations);
+                assertFalse(orders.heldRoots("s").isEmpty());
+            }
         }
+    }
+
+    @Test
+    void onlyCurrentLeaseHolderMayFinishPhysicalSortingAfterAQueueArrives() throws Exception {
+        var store = store();
+        var orders = new OrderStore(data, store);
+        orders.load();
+        var lease = orders.acquireSorting("s", "agent", null);
+        assertNotNull(lease);
+        var queued = orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 1)), null);
+        assertTrue(queued.reservationDeferred);
+        assertNull(queued.allocations);
+        assertNull(orders.claim("s", "a")); // No claim until the active sorting lease is released.
+        assertNotNull(orders.acquireSorting("s", "agent", lease.token()));
+        assertNull(orders.acquireSorting("s", "other-agent", lease.token()));
+        assertTrue(store.automation().finish("s", "agent", lease.token(), true));
+        assertNull(store.automation().current("s"));
+        assertNull(orders.claim("s", "a")); // Release invalidated the old physical observation.
     }
 
     @Test

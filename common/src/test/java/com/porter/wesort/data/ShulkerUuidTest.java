@@ -17,6 +17,15 @@ class ShulkerUuidTest {
     }
 
     @Test
+    void automaticRepackingDoesNotDependOnSignsButProtectsHumanLabels() {
+        assertTrue(ShulkerUuid.repackableName(null)); // unnamed spare shulkers
+        assertTrue(ShulkerUuid.repackableName("WeSort-" + V4));
+        assertFalse(ShulkerUuid.repackableName("My private stash"));
+        assertFalse(ShulkerUuid.repackableName("WeSort-not-a-valid-uuid"));
+        assertFalse(ShulkerUuid.repackableName("WeSort-" + V4.toUpperCase()));
+    }
+
+    @Test
     void rejectsWrongLengthPrefixAndCase() {
         assertNull(ShulkerUuid.parse(null));
         assertNull(ShulkerUuid.parse(""));

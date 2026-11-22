@@ -146,6 +146,7 @@ public class Stash {
         public ItemStack sample = ItemStack.EMPTY;
         public String name = "";
         public boolean topUp;
+        public String boxUuid = "";
         public int startSize, target;
         public BlockPos sourceBox;
         public int sourceSlot = -1;
@@ -806,6 +807,7 @@ public class Stash {
                 ItemStack.CODEC.encodeStart(ops, c.sample).result().ifPresent(item -> ct.put("sample", item));
             ct.putString("name", c.name);
             ct.putBoolean("topUp", c.topUp);
+            ct.putString("boxUuid", c.boxUuid);
             ct.putInt("startSize", c.startSize);
             ct.putInt("target", c.target);
             if (c.sourceBox != null) ct.put("sourceBox", positions(List.of(c.sourceBox)));
@@ -859,6 +861,7 @@ public class Stash {
             c.sample = readStack(ops, ct.get("sample"));
             c.name = text(ct, "name");
             c.topUp = flag(ct, "topUp");
+            c.boxUuid = text(ct, "boxUuid");
             c.startSize = number(ct.get("startSize"), 0);
             c.target = number(ct.get("target"), 0);
             c.sourceBox = readPos(ct, "sourceBox");

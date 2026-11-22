@@ -272,9 +272,9 @@ public class StashSorter extends Module {
 
     private final Setting<Mode> mode = sgGeneral.add(new EnumSetting.Builder<Mode>()
             .name("mode")
-            .description(
-                    "Tiers: filled shulkers, empty shulkers, 64-stackables, 16-stackables, then singles, filling the nearest containers first. Signs: each item goes to the container whose signs describe it best.")
+            .description("Automatic tier storage: group similar items in shulkers without signs.")
             .defaultValue(Mode.Tiers)
+            .visible(() -> false)
             .build());
 
     private final Setting<Pick> pick = sgGeneral.add(new EnumSetting.Builder<Pick>()
@@ -1326,6 +1326,11 @@ public class StashSorter extends Module {
         }
 
         @Override
+        public int newBulkAt() {
+            return newBulkAt.get();
+        }
+
+        @Override
         public boolean excluded(ItemStack stack) {
             return compactExclude.get().contains(stack.getItem());
         }
@@ -1779,7 +1784,6 @@ public class StashSorter extends Module {
 
     private static final List<RemoteControl> REMOTE_CONTROLS = List.of(
             new RemoteControl("safe-walk", "Safe walking", "bool", 0, 0),
-            new RemoteControl("mode", "Sort mode", "enum", 0, 0),
             new RemoteControl("radius", "Search radius", "int", 2, 32),
             new RemoteControl("height", "Search height", "int", 0, 16),
             new RemoteControl("barrels", "Include barrels", "bool", 0, 0),
@@ -1789,19 +1793,14 @@ public class StashSorter extends Module {
             new RemoteControl("quiet", "Interruption quiet time", "int", 0, 60),
             new RemoteControl("walk", "Allow navigation", "bool", 0, 0),
             new RemoteControl("rotate", "Rotate while interacting", "bool", 0, 0),
-            new RemoteControl("unsigned-overflow", "Handle unsigned overflow", "bool", 0, 0),
             new RemoteControl("log-level", "Log level", "enum", 0, 0),
             new RemoteControl("stay-on", "Stay on when idle", "bool", 0, 0),
             new RemoteControl("recheck", "Recheck interval", "int", 5, 600),
             new RemoteControl("smart-recheck", "Smart recheck", "bool", 0, 0),
             new RemoteControl("collect-ground", "Collect ground items", "bool", 0, 0),
             new RemoteControl("collect-range", "Ground collection range", "int", 0, 64),
-            new RemoteControl("auto-label", "Auto-label containers", "bool", 0, 0),
-            new RemoteControl("label-gap", "Label gap", "int", 0, 300),
             new RemoteControl("watch", "Watch inventory", "bool", 0, 0),
             new RemoteControl("watch-delay", "Watch delay", "int", 0, 60),
-            new RemoteControl("watch-signs", "Watch signs", "bool", 0, 0),
-            new RemoteControl("sign-delay", "Sign delay", "int", 0, 60),
             new RemoteControl("compact", "Compact stacks", "bool", 0, 0),
             new RemoteControl("compact-top-up-at", "Compaction top-up threshold", "int", 1, 26),
             new RemoteControl("repack", "Repack shulkers", "bool", 0, 0),
@@ -1936,6 +1935,9 @@ public class StashSorter extends Module {
      */
     private void setup() {
         setUp = true;
+        // Legacy configs may still contain Signs. This Agent uses tier-based sorting
+        // exclusively; never require or create chest labels to compact UUID boxes.
+        if (mode.get() != Mode.Tiers) mode.set(Mode.Tiers);
         boolean user = isActive();
         job = null;
         target = null;
@@ -3456,12 +3458,14 @@ public class StashSorter extends Module {
             if (best != null) return fetch(best, bestSlot);
         }
 
+        // Give UUID registration a bounded chance before generic stock moves:
+        // otherwise a busy warehouse continually finds another Take job and
+        // its shulker boxes never receive the WeSort identity they need.
+        if (uuidIdleAllowed(rereading) && uuidFetchStep()) return true;
+
         // With every carry slot full there's nothing to pick up into: a trip would only open the container and stall it
         Box source = nearestTakeSource();
         if (source != null) return start(Job.Take, source);
-
-        // Idle work: fetch a shulker (or XP bottles) to name with its WeSort UUID when there is time over
-        if (uuidIdleAllowed(rereading) && uuidFetchStep()) return true;
 
         // Downstack: merge partial stacks of the same item, once per container per run
         Box messy = nearest(stash.boxes.stream()
@@ -3946,25 +3950,61 @@ public class StashSorter extends Module {
         return isActive() || driven;
     }
 
-    /** The internal engine may sort only when its Manager agent enables sorting (or in the isolated E2E harness). */
+    /**
+     * Automatic tier sorting and order intake share the engine. Sorting is allowed
+     * only with an actual server-issued physical lease, and never while an order
+     * is held or waiting to claim. Scan-only and order work remain available
+     * while the Manager denies the lease because an order is open.
+     */
+    /** Finish a previously started physical move before surrendering the server lease. */
+    private boolean finishingPhysicalMaintenance() {
+        return handle != null
+                || compactor.active()
+                || (repackWork != null && !repackWork.terminal())
+                || (job != null && job != Job.Survey);
+    }
+
     private boolean sorting() {
         if (!sortItems.get()) return false;
         var manager =
                 meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
-        return isActive() || manager != null && manager.sortingEnabled() && !manager.takingOrders();
+        return isActive()
+                || manager != null
+                        && manager.sortingEnabled()
+                        && (manager.pendingOrders() == 0 || finishingPhysicalMaintenance())
+                        && !orderRunner.holdsOrder()
+                        && manager.sortingAllowed();
     }
 
     public boolean requiresSortingPermit() {
-        return sorting();
+        if (!sortItems.get()
+                || mc.player == null
+                || mc.level == null
+                || stash == null
+                || !InventorySync.ready()
+                || PhysicalJournalRuntime.blocked()
+                || PhysicalJournalRuntime.awaitingMirror()
+                || notInStashWorld() != null) return false;
+        var manager =
+                meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
+        return isActive()
+                || manager != null
+                        && manager.sortingEnabled()
+                        && (manager.pendingOrders() == 0 || finishingPhysicalMaintenance())
+                        && !orderRunner.holdsOrder();
     }
 
     public boolean sortingPermitted() {
-        // A recovered physical operation must remain fenced even when the internal sorter
-        // is idle or Manager has disabled sorting. A missing sorting request does not
-        // authorize an inventory mutation. DIRECT clicks retain their normal path only
-        // when the durable journal is safe and its last receipt has been mirrored.
         if (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror()) return false;
         if (!requiresSortingPermit()) return true;
+        // Never continue an already active physical step after the lease expires.
+        // Idle scan-only paths can still read and claim orders without a lease.
+        if (!isActive()
+                && !sorting()
+                && job == null
+                && handle == null
+                && !compactor.active()
+                && (repackWork == null || repackWork.terminal())) return true;
         var manager =
                 meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
         return manager != null && manager.sortingAllowed();
@@ -4063,9 +4103,14 @@ public class StashSorter extends Module {
         if (stash == null) return "no stash";
         if (portalAwaiting()) return "in lobby, entering survival world";
         String dim = !stash.dimension.isEmpty() ? stash.dimension : stash.areaDimension;
-        if (!dim.isEmpty()) return Stash.sameDimension(dim, Stash.currentDimension()) ? null : "wrong dimension";
+        if (!dim.isEmpty() && !Stash.sameDimension(dim, Stash.currentDimension())) return "wrong dimension";
 
+        // A matching dimension is not enough: the 6b6t proxy lobby and a
+        // survival warehouse can both be minecraft:overworld, millions of
+        // blocks apart. Never path towards a remote Manager region merely
+        // because it names the same dimension.
         Vec3 at = mc.player.position();
+        if (stash.hasArea() && stash.inArea(at.x, at.y, at.z, 128)) return null;
         for (Box box : stash.boxes) {
             if (box.known() && at.distanceToSqr(Vec3.atCenterOf(box.pos)) <= 128 * 128) return null;
         }
@@ -4111,9 +4156,17 @@ public class StashSorter extends Module {
         };
     }
 
-    /** True for EVERY new 6b6t login, including after a previous session succeeded. */
+    /**
+     * A new 6b6t login near the lobby origin must not run stash navigation
+     * while portal chunks are loading. Confirmed survival workers far away
+     * can resume normally, subject to the separate stash proximity guard.
+     */
     public boolean portalAwaiting() {
-        return portalSession.inLobby() && portalModeOn() && mc.player != null && mc.level != null;
+        if (mc.player == null || mc.level == null) return false;
+        return portalSession.awaitingBootstrap(
+                portalModeOn(),
+                Stash.is6b6tServer(Stash.currentServer()),
+                PortalEntry.in6b6tLobbyRegion(mc.player.blockPosition()));
     }
 
     /** Releases synthetic movement on completion, failure, yielding and disconnect. */
@@ -4217,6 +4270,11 @@ public class StashSorter extends Module {
             portalForward(false);
             return true;
         }
+        // Proxy worker switches do not always emit GameLeftEvent. If the
+        // player is now in the likely lobby region, revoke an old warehouse
+        // goal before any portal evidence is available. Never revoke a
+        // currently verified portal-approach goal.
+        if (portalAwaiting() && portalTarget == null && ourGoal != null) releaseGoal();
 
         if (portalSession.observe(mc.level, Stash.currentDimension(), mc.player.getX(), mc.player.getZ())) {
             stopPortalNavigation();
@@ -4261,10 +4319,16 @@ public class StashSorter extends Module {
             }
         }
         if (!portalSession.inLobby()) {
-            // Survival (or an unknown world): NEVER activate lobby navigation without
-            // positive local portal evidence. An old portal goal cannot cross worlds.
+            // Before chunk loading confirms the lobby we still hold every
+            // warehouse route. Only a locally verified portal can authorize
+            // the dedicated portal approach; an ordinary stash route cannot
+            // sneak through while the chunks are still arriving.
             stopPortalNavigation();
-            return false;
+            if (portalAwaiting() && now - portalWaitWarnedAt >= 60_000) {
+                portalWaitWarnedAt = now;
+                warning("6b6t lobby: waiting for portal chunks; warehouse navigation is blocked.");
+            }
+            return portalAwaiting();
         }
 
         if (touchingPortal()) {
@@ -7481,7 +7545,7 @@ public class StashSorter extends Module {
     }
 
     private boolean compactOn() {
-        return compact.get() && mode.get() == Mode.Signs && shulkersOk();
+        return compact.get() && shulkersOk();
     }
 
     /**
@@ -7493,7 +7557,7 @@ public class StashSorter extends Module {
     }
 
     private boolean repackOn() {
-        return repack.get() && mode.get() == Mode.Signs && shulkersOk();
+        return repack.get() && shulkersOk();
     }
 
     /**
@@ -7525,7 +7589,7 @@ public class StashSorter extends Module {
             int stacks = carriedStacksOf(key);
             // With compacting on, new bulk shulkers are made by compacting: a full shulker's worth, never a part-filled
             // one
-            boolean startNew = !compact.get() && newBulkAt.get() > 0 && stacks >= newBulkAt.get();
+            boolean startNew = newBulkAt.get() > 0 && stacks >= newBulkAt.get();
 
             for (int s : carriedSlots()) {
                 ItemStack shulker = mc.player.getInventory().getItem(s);
@@ -7595,16 +7659,19 @@ public class StashSorter extends Module {
      */
     private List<Integer> strays(ItemStack shulker) {
         if (shulker == null || shulker.isEmpty() || !Utils.isShulker(shulker.getItem())) return List.of();
-        if (shulker.has(DataComponents.CUSTOM_NAME)) return List.of();
+        if (!repackableName(shulker)) return List.of();
 
         ItemStack main = Categories.dominantContent(shulker);
         if (main == null) return List.of();
+        BulkKey dominant = keyOf(main);
+        if (dominant == null) return List.of();
 
         // A saved kit, finished or part built, stays whole
         if (isKitShulker(shulker)) return List.of();
 
-        // A chest signed for kits takes mixed shulkers whole instead
-        if (!keepWholeBoxes().isEmpty()) return List.of();
+        // Tier mode must never depend on signs. Actual kit and reserved boxes
+        // are already excluded above; old sign-only whole-box labels are irrelevant.
+        if (mode.get() == Mode.Signs && !keepWholeBoxes().isEmpty()) return List.of();
 
         List<Integer> out = new ArrayList<>();
         ItemStack[] inside = inside(shulker);
@@ -7615,8 +7682,10 @@ public class StashSorter extends Module {
                 out.add(i);
                 continue;
             }
-            if (s.is(main.getItem())) continue;
-            if (!bestSigned(s).isEmpty()) out.add(i);
+            if (dominant.equals(keyOf(s))) continue;
+            // Tier mode needs no sign: move different variants to a safe
+            // ordinary destination only when it is currently available.
+            if (canPlace(s)) out.add(i);
         }
         return out;
     }
@@ -7632,11 +7701,28 @@ public class StashSorter extends Module {
     /**
      * A shulker holding only stacks of this bulk key, with room for more.
      */
+    /** Protect human labels and duplicate UUID identities from physical optimization. */
+    private boolean repackableName(ItemStack stack) {
+        var name = stack.get(DataComponents.CUSTOM_NAME);
+        if (name == null) return true;
+        if (!com.porter.wesort.data.ShulkerUuid.repackableName(name.getString())) return false;
+        String uuid = uuidOf(stack);
+        if (uuid == null || stash == null) return false;
+        int copies = 0;
+        for (Box box : stash.boxes) {
+            if (box.contents == null || box.stale) continue;
+            for (ItemStack item : box.contents) {
+                if (uuid.equals(uuidOf(item)) && ++copies > 1) return false;
+            }
+        }
+        return true;
+    }
+
     private boolean bulkWithRoom(ItemStack shulker, BulkKey key) {
         if (shulker == null
                 || shulker.isEmpty()
                 || !Utils.isShulker(shulker.getItem())
-                || shulker.has(DataComponents.CUSTOM_NAME)
+                || !repackableName(shulker)
                 || isKitShulker(shulker)) return false;
 
         List<StackInfo> contents = StackInfo.of(shulker).contents();
@@ -7653,7 +7739,7 @@ public class StashSorter extends Module {
         if (shulker == null
                 || shulker.isEmpty()
                 || !Utils.isShulker(shulker.getItem())
-                || shulker.has(DataComponents.CUSTOM_NAME)
+                || !repackableName(shulker)
                 || Kits.claims(shulker)
                 || orderRunner.claims(shulker)) return false;
         for (ItemStack s : inside(shulker)) if (s != null && !s.isEmpty()) return false;
@@ -7716,8 +7802,8 @@ public class StashSorter extends Module {
                 repackOuter = mc.player.getInventory().getItem(slot).copy();
                 repackExpected = "";
                 try {
-                    if (repackOuter.has(DataComponents.CUSTOM_NAME) || isKitShulker(repackOuter))
-                        return repackPrecondition("Named or kit shulker is protected");
+                    if (!repackableName(repackOuter) || isKitShulker(repackOuter))
+                        return repackPrecondition("Non-WeSort named or kit shulker is protected");
                     repackExpected = com.porter.wesort.compat.RepackRuntime.signature(repackOuter);
                     repackExistingCopies = (int) repackInventory().stream()
                                     .filter(this::repackMatches)
@@ -12496,6 +12582,11 @@ public class StashSorter extends Module {
 
         @EventHandler
         private void onGameLeft(GameLeftEvent event) {
+            // Cancel only the exact Baritone goal WeSort owned before losing
+            // its identity. Otherwise an old warehouse path can keep running
+            // after a kick and resume in the proxy lobby on reconnect.
+            releaseGoal();
+            portalForward(false);
             driven = false;
             setUp = false;
             // Before anything is forgotten: what is carried and the shulker standing in the world are written down

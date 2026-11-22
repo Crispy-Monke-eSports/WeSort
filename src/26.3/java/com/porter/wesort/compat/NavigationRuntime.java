@@ -66,8 +66,7 @@ public final class NavigationRuntime {
         boolean adjacent = false;
         if (validPortal && stand != null) {
             Direction.Axis axis = mc.level.getBlockState(portal).getValue(NetherPortalBlock.AXIS);
-            adjacent = stand.equals(PortalEntry.approach(portal, axis, 0, 0, false))
-                    || stand.equals(PortalEntry.approach(portal, axis, 0, 0, true));
+            adjacent = PortalEntry.adjacentStand(portal, axis, stand);
         }
         StashManager manager = Modules.get().get(StashManager.class);
         StashSorter sorter = WeSortAddon.sorter();

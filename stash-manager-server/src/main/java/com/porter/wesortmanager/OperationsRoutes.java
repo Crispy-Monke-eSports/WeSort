@@ -55,11 +55,23 @@ final class OperationsRoutes {
                 count(stock, state);
                 if (state.startsWith("STALE")) count(alerts, "STALE");
                 else if ("UNREACHABLE".equals(state)) count(alerts, "UNREACHABLE");
+                else if ("UNKNOWN".equals(state)) count(alerts, "UNKNOWN");
+                else if ("MISSING".equals(state)) count(alerts, "MISSING");
+            }
+            for (var en : index.stashBlockers().entrySet()) {
+                if (!perms.seesStash(en.getKey())) continue;
+                for (String code : en.getValue()) count(alerts, code);
             }
         }
         var states = perms.ordersAll() ? orders.activeStates(viewer) : Map.<String, Integer>of();
         var reconciliation = states.get(OrderStage.NEEDS_RECONCILIATION.name());
         if (reconciliation != null) alerts.put("NEEDS_RECONCILIATION", reconciliation);
+        if (perms.ordersAll()) {
+            int approvals = orders.pendingApprovals(viewer);
+            if (approvals > 0) alerts.put("APPROVAL_PENDING", approvals);
+            int cancels = orders.cancelRequestedOpen(viewer);
+            if (cancels > 0) alerts.put("CANCEL_REQUESTED", cancels);
+        }
         var notices = new JsonArray();
         alerts.forEach((code, count) -> {
             var alert = new JsonObject();

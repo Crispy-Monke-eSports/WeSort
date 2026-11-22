@@ -2655,6 +2655,16 @@ public class StashSorter extends Module {
         setGoal(BaritoneHelper.moveNear(pos, range));
     }
 
+    /** Navigation-only lobby entrance; never asks Baritone to path through the portal block. */
+    private void walkPortalApproach() {
+        if (!BARITONE) return;
+        BaritoneHelper.protect(List.of());
+        usedBaritone = true;
+        BaritoneHelper.confine(safeWalk.get());
+        walkInside = false;
+        setGoal(BaritoneHelper.movePortalApproach(portalTarget, portalApproach));
+    }
+
     /**
      * The same walk, but only until the container is within reach: one up high is opened from below, the way a player
      * would, instead of looking for a spot next to it that may not be there.
@@ -4087,7 +4097,7 @@ public class StashSorter extends Module {
     }
 
     /** True for EVERY new 6b6t login, including after a previous session succeeded. */
-    boolean portalAwaiting() {
+    public boolean portalAwaiting() {
         return !portalSession.arrived() && portalModeOn() && mc.player != null && mc.level != null;
     }
 
@@ -4145,9 +4155,11 @@ public class StashSorter extends Module {
             if (!state.hasProperty(net.minecraft.world.level.block.NetherPortalBlock.AXIS)) continue;
             Direction.Axis axis = state.getValue(net.minecraft.world.level.block.NetherPortalBlock.AXIS);
             BlockPos stand = PortalEntry.approach(p, axis, at.x, at.z, portalOtherSide);
-            if (!clearPortalApproach(stand)) {
+            if (!clearPortalApproach(stand)
+                    || !com.porter.wesort.compat.NavigationRuntime.safePortalApproach(stand)) {
                 stand = PortalEntry.approach(p, axis, at.x, at.z, !portalOtherSide);
-                if (!clearPortalApproach(stand)) continue;
+                if (!clearPortalApproach(stand)
+                        || !com.porter.wesort.compat.NavigationRuntime.safePortalApproach(stand)) continue;
             }
             double distance = at.distanceToSqr(Vec3.atCenterOf(stand));
             if (distance < bestD) {
@@ -4212,6 +4224,13 @@ public class StashSorter extends Module {
             return true;
         }
         portalTouchTicks = 0;
+
+        // Keep observing portal completion even when ordinary navigation is paused.
+        // Never restart movement under a genuine safety pause.
+        if (com.porter.wesort.compat.NavigationRuntime.paused()) {
+            portalForward(false);
+            return true;
+        }
 
         if (!BARITONE) {
             portalForward(false);
@@ -4282,7 +4301,7 @@ public class StashSorter extends Module {
                     return true;
                 }
                 if (ourGoal == null || !BaritoneHelper.goalIs((baritone.api.pathing.goals.Goal) ourGoal)) {
-                    walkNear(portalApproach, 0);
+                    walkPortalApproach();
                 }
             }
         }
@@ -12162,9 +12181,7 @@ public class StashSorter extends Module {
             if (portalAwaiting() && manager != null && manager.dedicatedProfile()) {
                 // Inventory readback can remain unready in the proxy lobby. Navigation
                 // does not touch inventory, but a journal uncertainty still blocks it.
-                if (!PhysicalJournalRuntime.blocked()
-                        && !PhysicalJournalRuntime.awaitingMirror()
-                        && !com.porter.wesort.compat.NavigationRuntime.paused()) portalTick();
+                if (!PhysicalJournalRuntime.blocked() && !PhysicalJournalRuntime.awaitingMirror()) portalTick();
                 else portalForward(false);
                 return;
             }

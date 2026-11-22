@@ -84,7 +84,7 @@ class HierarchyHarness(stock.StockHarness):
         code, replacement = place(orders[1 - winner])
         require(code == 200, 'Cancellation did not make the separate physical request orderable')
         self.http('/api/v1/orders/' + replacement['order']['id'] + '/cancel', {})
-        require(before == {str(x): self.rcon.command(f'data get block {x} 64 -3 Items') for x in [0, 3, 6]},
+        require(before == {str(x): self.rcon.command(f'data get block {x} 64 -3 Items') for x in [0, 6]},
                 'The reservation or cancellation changed real world inventory')
         self.ok('same live 26.3 shulker roots cannot be reserved as both whole boxes and child stock; sorting lease refused and cancellation restored availability')
 
@@ -481,7 +481,13 @@ class HierarchyHarness(stock.StockHarness):
             self.start_server(); self.fixture(); self.start_manager(); self.start_client()
             self.command('stock-scan-settings')
             self.read(0); self.read(6); self.read(3, 'minecraft:dirt', 16)
-            before = {str(x): self.rcon.command(f'data get block {x} 64 -3 Items') for x in [0, 3, 6]}
+            # This standalone shulker only verifies the physical 27-slot menu.
+            # Remove it before enabling the Manager: otherwise the new warehouse
+            # orphan collector correctly recovers it while these tests are trying
+            # to prove that API reservations/cancellations are read-only.
+            removed = self.rcon.command('setblock 3 64 -3 minecraft:air')
+            require('changed' in removed.lower(), 'Failed to clear the one-off menu fixture')
+            before = {str(x): self.rcon.command(f'data get block {x} 64 -3 Items') for x in [0, 6]}
             initial = self.command('state')['state']['index']
             require(initial['physicalVersion'] == 2 and initial['slotVariants'], 'Actual client omitted physical tree')
             self.server_name = initial['server']
@@ -506,7 +512,7 @@ class HierarchyHarness(stock.StockHarness):
             require(positions['0/13/0']['id'] == 'minecraft:iron_ingot' and positions['0/13/0']['count'] == 8, 'Nested bundle inventory not modeled')
             require(self.amount(observed, 'minecraft:diamond', 'observed') == 96 and self.amount(observed, 'minecraft:iron_ingot', 'observed') == 32,
                 'Native guild totals double counted inner items or missed existing outer bundle')
-            after = {str(x): self.rcon.command(f'data get block {x} 64 -3 Items') for x in [0, 3, 6]}
+            after = {str(x): self.rcon.command(f'data get block {x} 64 -3 Items') for x in [0, 6]}
             require(before == after, 'Read-only physical hierarchy changed server inventory')
             self.ok('native sparse 27-slot hierarchy, metadata and nested contents survive signed sync and SQLite; identical boxes stay separate and totals count each item once')
             (self.evidence / 'initial-details.json').write_text(json.dumps([a,b], indent=2)+'\n')

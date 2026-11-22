@@ -167,6 +167,13 @@ interface CheckoutState {
   setPending: (user: string, groups: CheckoutGroup[]) => void;
 }
 
+/** An interrupted HTTP request can have committed: preserve its exact key/body for retry. */
+export function recoverCheckoutGroups(groups: CheckoutGroup[]): CheckoutGroup[] {
+  return groups.map((g) => g.status === "submitting"
+    ? { ...g, status: "uncertain", error: "Result unknown after reload; retry with the original key." }
+    : g);
+}
+
 export const useCheckout = create<CheckoutState>()(
   persist(
     (set, get) => ({
@@ -180,7 +187,10 @@ export const useCheckout = create<CheckoutState>()(
       partialize: (s) => ({ pending: s.pending }) as CheckoutState,
       merge: (persisted, current) => {
         const parsed = CheckoutPersistedSchema.safeParse(persisted);
-        return { ...current, pending: parsed.success ? parsed.data.pending : {} };
+        if (!parsed.success) return { ...current, pending: {} };
+        const pending: Record<string, CheckoutGroup[]> = {};
+        for (const [user, groups] of Object.entries(parsed.data.pending)) pending[user] = recoverCheckoutGroups(groups);
+        return { ...current, pending };
       },
     },
   ),

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { useCart } from "../stores/shop";
+import { recoverCheckoutGroups, useCart } from "../stores/shop";
 
 function linesOf() {
   return useCart.getState().lines();
@@ -7,6 +7,17 @@ function linesOf() {
 
 const dia = (stash: string, count: number) => ({ type: "item" as const, key: "minecraft:diamond", count, stash });
 const box = (stash: string, key: string, count: number) => ({ type: "shulker" as const, key, count, stash });
+
+describe("recovering an interrupted checkout", () => {
+  it("preserves the key and exact request when a submitting group survives a reload", () => {
+    const group = { body: { stash: "a", lines: [], names: null, packageLabel: null, purpose: "SELF" as const,
+      recipient: null, comment: null }, hash: "hash", key: "same-key", status: "submitting" as const, updatedAt: 1 };
+    const [recovered] = recoverCheckoutGroups([group]);
+    expect(recovered.status).toBe("uncertain");
+    expect(recovered.key).toBe(group.key);
+    expect(recovered.body).toEqual(group.body);
+  });
+});
 
 describe("cart isolation (per user; lines carry their stash)", () => {
   beforeEach(() => {

@@ -48,7 +48,7 @@ import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, idempotencyKey } from "../api/client";
 import { keys, ordersQueryOptions, useAuth, useKitTemplates, usePermissions, useStashes } from "../api/queries";
 import { IndexResponseSchema, type IndexResponse, type KitTemplate } from "../api/types";
@@ -381,6 +381,7 @@ export function InventoryPage() {
     const packedInNext = (stash: string, boxKey: string) =>
       next.filter((l) => l.type === "shulker" && l.key === boxKey && l.stash === stash).reduce((a, l) => a + l.count, 0);
     const byLoose = slices
+      .filter((s) => s.ordersOk)
       .map((s) => ({ s, loose: Math.max(0, (s.availableItems[key] ?? 0) - looseInNext(s.stash)) }))
       .filter((x) => x.loose > 0)
       .sort((a, b) => b.loose - a.loose);
@@ -396,6 +397,7 @@ export function InventoryPage() {
     if (remaining > 0) {
       const cands: { stash: string; boxKey: string; perBox: number; left: number }[] = [];
       for (const s of slices) {
+        if (!s.ordersOk) continue;
         for (const b of s.shulkers) {
           if (!isSingleContent(b, key)) continue;
           let perBox = 0;
@@ -435,6 +437,8 @@ export function InventoryPage() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [step, setStep] = useState(0);
   const [placing, setPlacing] = useState(false);
+  const retriesInFlight = useRef(new Set<string>());
+  const [retrying, setRetrying] = useState<string[]>([]);
   const [groups, setGroups] = useState<CheckoutGroup[]>(() => getPending(userId).filter((g) => g.status !== "confirmed"));
   // Re-hydrate when the authenticated identity resolves (userId is "anon"
   // while auth loads): never strand uncertain outcomes under the wrong key.
@@ -556,14 +560,23 @@ export function InventoryPage() {
   }
 
   async function retryExact(g: CheckoutGroup) {
-    // Same confirmation/cart reconciliation as the normal submit path, so a
-    // successful retry never leaves already-ordered lines in the draft.
-    const out = await submitGroup(g);
-    if (out.status === "confirmed") removeConfirmedLines(out.body);
-    queryClient.invalidateQueries({ queryKey: keys.orders(g.body.stash) });
+    const id = `${g.body.stash}:${g.hash}`;
+    if (placing || retriesInFlight.current.has(id)) return;
+    retriesInFlight.current.add(id);
+    setRetrying([...retriesInFlight.current]);
+    try {
+      // Retry the frozen body and idempotency key even if the draft has changed.
+      const out = await submitGroup(g);
+      if (out.status === "confirmed") removeConfirmedLines(out.body);
+      await queryClient.invalidateQueries({ queryKey: keys.orders(g.body.stash) });
+    } finally {
+      retriesInFlight.current.delete(id);
+      setRetrying([...retriesInFlight.current]);
+    }
   }
 
   function discard(hash: string) {
+    if (retriesInFlight.current.size > 0 || placing) return;
     persist(getPending(userId).filter((p) => p.hash !== hash));
   }
 
@@ -742,7 +755,7 @@ export function InventoryPage() {
       />
       <CheckoutDialog
         open={checkoutOpen} onClose={() => setCheckoutOpen(false)} step={step} setStep={setStep}
-        lines={cartLines} groups={groups} placing={placing} onPlace={place}
+        lines={cartLines} groups={groups} placing={placing} retrying={retrying} onPlace={place}
         purpose={purpose} setPurpose={setPurpose} recipient={recipient} setRecipient={setRecipient}
         comment={comment} setComment={setComment} labelsFor={labelsFor} setLabelsFor={setLabelsFor}
         estBoxes={Object.fromEntries(boxUsage)}
@@ -1223,7 +1236,7 @@ function CartDrawer({ open, onClose, lines, slices, boxUsage, overLimit, onCheck
 
 function CheckoutDialog(props: {
   open: boolean; onClose: () => void; step: number; setStep: (n: number) => void;
-  lines: CartLine[]; groups: CheckoutGroup[]; placing: boolean; onPlace: () => void;
+  lines: CartLine[]; groups: CheckoutGroup[]; placing: boolean; retrying: string[]; onPlace: () => void;
   purpose: "SELF" | "GUILD"; setPurpose: (v: "SELF" | "GUILD") => void;
   recipient: string; setRecipient: (v: string) => void;
   comment: string; setComment: (v: string) => void;
@@ -1432,10 +1445,10 @@ function CheckoutDialog(props: {
                   </Stack>
                   {(g.status === "uncertain" || g.status === "rejected") && (
                     <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-                      <Button size="small" variant="outlined" onClick={() => props.onRetryExact(g)}>
+                      <Button size="small" variant="outlined" disabled={props.placing || props.retrying.includes(`${g.body.stash}:${g.hash}`)} onClick={() => props.onRetryExact(g)}>
                         {g.status === "uncertain" ? "Retry safely" : "Retry"}
                       </Button>
-                      <Button size="small" onClick={() => props.onDiscard(g.hash)}>Discard</Button>
+                      <Button size="small" disabled={props.placing || props.retrying.length > 0} onClick={() => props.onDiscard(g.hash)}>Discard</Button>
                     </Stack>
                   )}
                 </Paper>

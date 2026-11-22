@@ -919,16 +919,16 @@ function GuildSection() {
   const guild = useGuild(!!auth.data?.loggedIn);
   const quotaMe = useQuotaMe(!!auth.data?.loggedIn && perms.can("view"));
   const [name, setName] = useState("");
-  const [msg, setMsg] = useState("");
+  const [msg, setMsg] = useState<{ severity: "success" | "error"; text: string } | null>(null);
 
   async function save() {
-    setMsg("");
+    setMsg(null);
     try {
       await api("/api/v1/guild", { method: "POST", body: { name, expectedRevision: (guild.data as any)?.revision ?? 1 } });
-      setMsg("Guild saved.");
+      setMsg({ severity: "success", text: "Guild saved." });
       await guild.refetch();
     } catch (e: any) {
-      setMsg(e?.message ?? "Save failed.");
+      setMsg({ severity: "error", text: e?.message ?? "Save failed." });
     }
   }
 
@@ -943,7 +943,7 @@ function GuildSection() {
       ) : (
         <Typography color="text.secondary">Only the owner can change guild settings.</Typography>
       )}
-      {msg && <Alert severity="info" onClose={() => setMsg("")}>{msg}</Alert>}
+      {msg && <Alert severity={msg.severity} onClose={() => setMsg(null)}>{msg.text}</Alert>}
       {quotaMe.data && Object.keys((quotaMe.data as any).usage ?? {}).length > 0 && (
         <>
           <Divider />
@@ -963,35 +963,40 @@ function SecuritySection() {
   const auth = useAuth();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
-  const [msg, setMsg] = useState("");
+  const [msg, setMsg] = useState<{ severity: "success" | "error"; text: string } | null>(null);
   const [confirmPw, setConfirmPw] = useState("");
   const elevated = !!auth.data?.loggedIn && (auth.data.elevatedUntil ?? 0) > Date.now();
 
   async function submit() {
-    setMsg("");
+    setMsg(null);
     try {
       await api("/api/v1/auth/password", { method: "POST", body: { current, next } });
-      setMsg("Password changed.");
+      setMsg({ severity: "success", text: "Password changed." });
       setCurrent("");
       setNext("");
     } catch (e: any) {
-      setMsg(e?.message ?? "Password change failed.");
+      setMsg({ severity: "error", text: e?.message ?? "Password change failed." });
     }
   }
   async function confirm() {
-    setMsg("");
+    setMsg(null);
     try {
       await api("/api/v1/auth/confirm", { method: "POST", body: { password: confirmPw } });
-      setMsg("Admin unlocked for 15 minutes.");
+      setMsg({ severity: "success", text: "Admin unlocked for 15 minutes." });
       setConfirmPw("");
       await auth.refetch();
     } catch (e: any) {
-      setMsg(e?.message ?? "Confirm failed.");
+      setMsg({ severity: "error", text: e?.message ?? "Confirm failed." });
     }
   }
   async function lock() {
-    await api("/api/v1/auth/lock", { method: "POST", body: {} });
-    await auth.refetch();
+    try {
+      await api("/api/v1/auth/lock", { method: "POST", body: {} });
+      await auth.refetch();
+      setMsg({ severity: "success", text: "Admin locked." });
+    } catch (e: any) {
+      setMsg({ severity: "error", text: e?.message ?? "Lock failed." });
+    }
   }
 
   return (
@@ -1015,7 +1020,7 @@ function SecuritySection() {
           <Button variant="outlined" onClick={confirm}>Unlock</Button>
         </Stack>
       )}
-      {msg && <Alert severity="info" onClose={() => setMsg("")}>{msg}</Alert>}
+      {msg && <Alert severity={msg.severity} onClose={() => setMsg(null)}>{msg.text}</Alert>}
     </Stack>
   );
 }
@@ -1024,15 +1029,15 @@ function ApiKeysSection() {
   const [slots, setSlots] = useState<any[]>([]);
   const [label, setLabel] = useState("");
   const [freshKey, setFreshKey] = useState("");
-  const [msg, setMsg] = useState("");
+  const [msg, setMsg] = useState<{ severity: "error"; text: string } | null>(null);
   const confirm = useConfirm();
   async function load() {
     try {
-      setMsg("");
+      setMsg(null);
       const res = await api<any>("/api/v1/agents");
       setSlots(res?.slots ?? []);
     } catch (e: any) {
-      setMsg(e?.message ?? "API keys unavailable.");
+      setMsg({ severity: "error", text: e?.message ?? "API keys unavailable." });
     }
   }
   useEffect(() => { void load(); }, []);
@@ -1044,13 +1049,13 @@ function ApiKeysSection() {
   }
   async function issue() {
     try {
-      setMsg("");
+      setMsg(null);
       const res = await api<any>("/api/v1/agents", { method: "POST", body: { label: label.trim() || "bot" } });
       setFreshKey(res?.key ?? "");
       setLabel("");
       await load();
     } catch (e: any) {
-      setMsg(errText(e));
+      setMsg({ severity: "error", text: errText(e) });
     }
   }
   function revoke(slot: any) {
@@ -1076,7 +1081,7 @@ function ApiKeysSection() {
         The API key authorizes the agent, independently of Minecraft username or UUID.
         The last reported player name is only presence information. A new key is shown once.
       </Typography>
-      {msg && <Alert severity="info" onClose={() => setMsg("")}>{msg}</Alert>}
+      {msg && <Alert severity={msg.severity} onClose={() => setMsg(null)}>{msg.text}</Alert>}
       {freshKey && (
         <Paper variant="outlined" sx={{ p: 1.5 }}>
           <Typography variant="subtitle2">New API key (copy it now — it is never shown again):</Typography>

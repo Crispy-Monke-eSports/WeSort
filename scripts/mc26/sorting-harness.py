@@ -145,7 +145,13 @@ class SortingHarness(world.Harness):
             require(self.authoritative_totals() == baseline_totals,
                 'Tier sorting changed authoritative recursive counts or item metadata')
             self.ok('tier-only sorting empties deposit with exact server item conservation, preserving protected stock')
-            self.wait(lambda: not self.stock()['automation'],'Verified sorting did not release its exclusion',timeout=30)
+            # The web Manager is still active and would immediately renew a new
+            # autonomous sorting lease after the local sorter stops. Explicitly
+            # disable only the isolated test's Manager physical sorting, leaving
+            # the signed connection and real stock observations intact.
+            self.command('manager-sorting-hold', hold=True)
+            self.wait(lambda: not self.stock()['automation'],
+                'Verified physical lease was not released after fixture stopped sorting', timeout=30)
             self.command('manager-unlink-test')
             # Manager may have issued its final index-open before deactivation.
             # A late server-side menu response must not be mistaken for this

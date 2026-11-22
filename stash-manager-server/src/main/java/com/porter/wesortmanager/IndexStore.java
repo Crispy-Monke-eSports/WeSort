@@ -851,6 +851,15 @@ public final class IndexStore {
     }
 
     /** Order availability data for a stash's current index, or null when it has none. */
+    /** Live agent-reported table readiness; absent/disabled means no new crafting orders. */
+    boolean craftingReady(String server, String stash) {
+        Stash s = stashes.get(new StashKey(server, stash));
+        if (s == null) return false;
+        synchronized (s) {
+            return s.crafting != null && s.crafting.enabled() && s.crafting.table();
+        }
+    }
+
     public OrderCounts orderCounts(String server, String stash) {
         return countsFor(server, stash, false);
     }

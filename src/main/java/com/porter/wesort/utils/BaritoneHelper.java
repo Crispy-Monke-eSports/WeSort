@@ -48,6 +48,17 @@ public final class BaritoneHelper {
     }
 
     /**
+     * A separate checked lobby bootstrap route. Only this particular adjacent portal stand
+     * may be reached without inventory readback; ordinary warehouse goals retain the fence.
+     */
+    public static Goal movePortalApproach(BlockPos portal, BlockPos stand) {
+        Goal goal = new GoalNear(stand, 0);
+        com.porter.wesort.compat.NavigationRuntime.watchPortalApproach(goal, portal, stand);
+        baritone().getCustomGoalProcess().setGoalAndPath(goal);
+        return goal;
+    }
+
+    /**
      * Clears the custom goal process, but only if its current goal is {@code ours}. Never cancels anything else, so
      * the user's own Baritone processes and goals survive. Returns true if we released it.
      */

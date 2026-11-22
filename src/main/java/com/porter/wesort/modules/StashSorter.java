@@ -25,6 +25,8 @@ import com.porter.wesort.stash.StashWatch;
 import com.porter.wesort.utils.BaritoneHelper;
 import com.porter.wesort.utils.ChestStack;
 import com.porter.wesort.utils.PlaceSearch;
+import com.porter.wesort.utils.PortalEntry;
+import com.porter.wesort.utils.PortalWorldSession;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -2088,6 +2090,7 @@ public class StashSorter extends Module {
     }
 
     private void teardown() {
+        stopPortalNavigation();
         if (!InventorySync.ready() || PhysicalJournalRuntime.blocked()) {
             // Do not drain grids, return the cursor, or close the menu on an unverified inventory.
             setUp = false;
@@ -2333,11 +2336,8 @@ public class StashSorter extends Module {
             if (InventorySync.failed()) blockRepack("Physical readback failed: " + InventorySync.reason());
             else if (repackWork.expired(System.nanoTime())) blockRepack("Physical phase deadline expired");
         }
-        if (!sortingPermitted()) {
-            step("sorting paused: Manager must exclude reservations before physical moves.");
-            ledgeGuard(false);
-            return;
-        }
+        // Lobby navigation uses no inventory or physical permit, but still obeys the
+        // reconciliation/navigation safety fences below. Sorting itself remains permit-gated.
         if (repackWork != null
                 && repackWork.phase() == com.porter.wesort.inventory.PhysicalWork.Phase.NEEDS_RECONCILIATION) {
             ledgeGuard(false);
@@ -2351,13 +2351,19 @@ public class StashSorter extends Module {
             return;
         }
         verifyRepackStored();
-        if (stash == null) {
-            turnOff();
-            return;
-        }
-        // 6b6t lobby mode: the portal transit owns the tick until the survival world is reached.
+        // 6b6t portal transit is navigation-only; it cannot require a sorting lease or
+        // a configured stash before the Manager has assigned one.
         if (portalTick()) {
             ledgeGuard(false);
+            return;
+        }
+        if (!sortingPermitted()) {
+            step("sorting paused: Manager must exclude reservations before physical moves.");
+            ledgeGuard(false);
+            return;
+        }
+        if (stash == null) {
+            turnOff();
             return;
         }
         ticks++;
@@ -2647,6 +2653,16 @@ public class StashSorter extends Module {
                     && stash.inArea(mc.player.getX(), mc.player.getY(), mc.player.getZ(), AREA_MARGIN);
         debug(() -> String.format("Walking to within %d of %s.", range, xyz(pos)));
         setGoal(BaritoneHelper.moveNear(pos, range));
+    }
+
+    /** Navigation-only lobby entrance; never asks Baritone to path through the portal block. */
+    private void walkPortalApproach() {
+        if (!BARITONE) return;
+        BaritoneHelper.protect(List.of());
+        usedBaritone = true;
+        BaritoneHelper.confine(safeWalk.get());
+        walkInside = false;
+        setGoal(BaritoneHelper.movePortalApproach(portalTarget, portalApproach));
     }
 
     /**
@@ -4030,7 +4046,7 @@ public class StashSorter extends Module {
      */
     private String notInStashWorld() {
         if (stash == null) return "no stash";
-        if (!portalArrived && portalModeOn()) return "in lobby, entering survival world";
+        if (!portalSession.arrived() && portalModeOn()) return "in lobby, entering survival world";
         String dim = !stash.dimension.isEmpty() ? stash.dimension : stash.areaDimension;
         if (!dim.isEmpty()) return Stash.sameDimension(dim, Stash.currentDimension()) ? null : "wrong dimension";
 
@@ -4043,15 +4059,34 @@ public class StashSorter extends Module {
 
     // ---- 6b6t lobby portal ----
 
-    private boolean portalArrived = false;
-    private Object portalStartLevel = null;
-    private String portalStartDim = "";
+    private static final int PORTAL_PATH_STALL_TICKS = 200;
+    private static final int PORTAL_ENTRY_TIMEOUT_TICKS = 100;
+    private final PortalWorldSession portalSession = new PortalWorldSession();
     private long portalLastScan = 0;
-    private BlockPos portalGoal = null;
-    private int portalTicks = 0;
-    private int portalStuckTicks = 0;
-    private boolean portalNoBaritoneWarned = false;
     private long portalWaitWarnedAt = 0;
+    private BlockPos portalTarget;
+    private BlockPos portalApproach;
+    private Vec3 portalLastPosition;
+    private int portalStuckTicks;
+    private int portalEntryTicks;
+    private int portalTouchTicks;
+    private boolean portalEntering;
+    private boolean portalOtherSide;
+    private boolean portalHoldingForward;
+    private boolean portalNoBaritoneWarned;
+
+    /** The Manager can be disabled during a manual crossing; never leave a synthetic key held. */
+    void stopPortalNavigation() {
+        portalForward(false);
+        if (portalTarget != null || portalEntering) {
+            releaseGoal();
+            portalTarget = portalApproach = null;
+            portalLastPosition = null;
+            portalEntryTicks = portalStuckTicks = portalTouchTicks = 0;
+            portalEntering = false;
+            portalLastScan = 0;
+        }
+    }
 
     private boolean portalModeOn() {
         return switch (sixb6t.get()) {
@@ -4061,9 +4096,16 @@ public class StashSorter extends Module {
         };
     }
 
-    /** True while the bot must enter the lobby portal before any work: 6b6t mode, not arrived yet. */
-    boolean portalAwaiting() {
-        return !portalArrived && portalModeOn() && mc.player != null && mc.level != null;
+    /** True for EVERY new 6b6t login, including after a previous session succeeded. */
+    public boolean portalAwaiting() {
+        return !portalSession.arrived() && portalModeOn() && mc.player != null && mc.level != null;
+    }
+
+    /** Releases synthetic movement on completion, failure, yielding and disconnect. */
+    private void portalForward(boolean hold) {
+        if (portalHoldingForward == hold) return;
+        portalHoldingForward = hold;
+        if (mc.options != null) mc.options.keyUp.setDown(hold || Input.isPressed(mc.options.keyUp));
     }
 
     private boolean isPortal(BlockPos pos) {
@@ -4072,77 +4114,195 @@ public class StashSorter extends Module {
                 && mc.level.getBlockState(pos).is(Blocks.NETHER_PORTAL);
     }
 
-    /** Nearest nether-portal block around the player, or null. Bounded span so the world isn't combed. */
-    private BlockPos nearestPortal() {
+    /** A real player touching the portal (including manual assistance) also counts as an entry attempt. */
+    private boolean touchingPortal() {
+        BlockPos feet = mc.player.blockPosition();
+        return isPortal(feet) || isPortal(feet.above()) || isPortal(feet.below());
+    }
+
+    private boolean clearPortalApproach(BlockPos stand) {
+        BlockPos head = stand.above();
+        BlockPos floor = stand.below();
+        return mc.level.isLoaded(stand)
+                && mc.level.isLoaded(head)
+                && mc.level.isLoaded(floor)
+                && mc.level
+                        .getBlockState(stand)
+                        .getCollisionShape(mc.level, stand)
+                        .isEmpty()
+                && mc.level
+                        .getBlockState(head)
+                        .getCollisionShape(mc.level, head)
+                        .isEmpty()
+                && mc.level.getBlockState(floor).isFaceSturdy(mc.level, floor, Direction.UP);
+    }
+
+    private record PortalRoute(BlockPos portal, BlockPos approach) {}
+
+    /**
+     * A portal is not a walkable Baritone GoalNear(0). Pick a safe adjacent stand on the
+     * perpendicular side of the portal plane; the last step across the plane is done separately.
+     */
+    private PortalRoute nearestPortal() {
         List<BlockPos> found = scanArea(state -> state.is(Blocks.NETHER_PORTAL), true);
-        BlockPos best = null;
+        PortalRoute best = null;
         double bestD = Double.MAX_VALUE;
         Vec3 at = mc.player.position();
         for (BlockPos p : found) {
-            double d = at.distanceToSqr(Vec3.atCenterOf(p));
-            if (d < bestD) {
-                bestD = d;
-                best = p;
+            // The bottom portal block is at the player's feet, unlike the upper portal blocks.
+            if (isPortal(p.below())) continue;
+            var state = mc.level.getBlockState(p);
+            if (!state.hasProperty(net.minecraft.world.level.block.NetherPortalBlock.AXIS)) continue;
+            Direction.Axis axis = state.getValue(net.minecraft.world.level.block.NetherPortalBlock.AXIS);
+            BlockPos stand = PortalEntry.approach(p, axis, at.x, at.z, portalOtherSide);
+            if (!clearPortalApproach(stand) || !com.porter.wesort.compat.NavigationRuntime.safePortalApproach(stand)) {
+                stand = PortalEntry.approach(p, axis, at.x, at.z, !portalOtherSide);
+                if (!clearPortalApproach(stand)
+                        || !com.porter.wesort.compat.NavigationRuntime.safePortalApproach(stand)) continue;
+            }
+            double distance = at.distanceToSqr(Vec3.atCenterOf(stand));
+            if (distance < bestD) {
+                bestD = distance;
+                best = new PortalRoute(p.immutable(), stand.immutable());
             }
         }
         return best;
     }
 
+    /** Never leave an agent-held route or a pressed forward key behind after a failed attempt. */
+    private void retryPortal() {
+        portalForward(false);
+        portalSession.cancelAttempt();
+        releaseGoal();
+        portalTarget = null;
+        portalApproach = null;
+        portalLastPosition = null;
+        portalStuckTicks = 0;
+        portalEntryTicks = 0;
+        portalTouchTicks = 0;
+        portalEntering = false;
+        portalOtherSide = !portalOtherSide;
+        portalLastScan = 0;
+    }
+
     /**
-     * 6b6t lobby handling. Returns true while the portal transit owns the tick (normal jobs stay
-     * parked); false when arrived or inapplicable. Runs after the ready-guards, so Baritone and
-     * navigation may be used. Arrival is a new level instance (proxy transfer) or a changed
-     * dimension (portal teleport): either way the survival world is a different world to start in.
+     * Runs only during lobby transit. Keeps all sorting and inventory work parked until a
+     * post-entry world/dimension change. Walking into the portal is explicitly controlled
+     * rather than relying on Baritone to path onto a non-walkable portal block.
      */
     private boolean portalTick() {
-        if (portalArrived || !portalModeOn()) return false;
-        if (mc.player == null || mc.level == null) return true;
-        if (!BARITONE) {
-            if (!portalNoBaritoneWarned) {
-                portalNoBaritoneWarned = true;
-                warning("6b6t lobby mode needs Baritone to walk through the portal to survival.");
+        if (portalSession.arrived() || !portalModeOn()) {
+            portalForward(false);
+            return false;
+        }
+        if (mc.player == null || mc.level == null) {
+            portalForward(false);
+            return true;
+        }
+
+        boolean firstObservation = !portalSession.started();
+        if (portalSession.observe(mc.level, Stash.currentDimension())) {
+            portalForward(false);
+            releaseGoal();
+            portalTarget = portalApproach = null;
+            info("Through the portal. Starting normal work.");
+            return false;
+        }
+        if (firstObservation) info("6b6t lobby mode: entering the portal to the survival world first.");
+
+        if (touchingPortal()) {
+            portalSession.crossingAttempted();
+            portalForward(false);
+            if (portalTarget != null) {
+                releaseGoal();
+                portalTarget = portalApproach = null;
+            }
+            if (++portalTouchTicks == 400) {
+                warning("6b6t lobby: inside the portal for 20 seconds without a world transfer; check the server.");
+                portalTouchTicks = 0;
             }
             return true;
         }
-        String dim = Stash.currentDimension();
-        if (portalStartLevel == null) {
-            portalStartLevel = mc.level;
-            portalStartDim = dim;
-            info("6b6t lobby mode: entering the portal to the survival world first.");
-        } else if (mc.level != portalStartLevel || !dim.equals(portalStartDim)) {
-            portalArrived = true;
-            releaseGoal();
-            portalGoal = null;
-            info("Through the portal (%s). Starting normal work.", dim.isEmpty() ? "new world" : dim);
-            return false;
+        portalTouchTicks = 0;
+
+        // Keep observing portal completion even when ordinary navigation is paused.
+        // Never restart movement under a genuine safety pause.
+        if (com.porter.wesort.compat.NavigationRuntime.paused()) {
+            portalForward(false);
+            return true;
         }
-        portalTicks++;
-        if (portalGoal == null && System.currentTimeMillis() - portalLastScan >= 10_000) {
-            portalLastScan = System.currentTimeMillis();
-            portalGoal = nearestPortal();
-            if (portalGoal == null
-                    && portalTicks % 1200 == 1
-                    && System.currentTimeMillis() - portalWaitWarnedAt > 60_000) {
-                portalWaitWarnedAt = System.currentTimeMillis();
-                info("6b6t lobby mode: no portal in reach yet, waiting for chunks.");
+
+        if (!BARITONE) {
+            portalForward(false);
+            if (!portalNoBaritoneWarned) {
+                portalNoBaritoneWarned = true;
+                warning("6b6t lobby mode needs Baritone to reach the survival portal.");
+            }
+            return true;
+        }
+
+        // Do not override a person, an open screen, or another Baritone process.
+        if (mc.screen != null
+                || Input.isPressed(mc.options.keyDown)
+                || Input.isPressed(mc.options.keyLeft)
+                || Input.isPressed(mc.options.keyRight)
+                || Input.isPressed(mc.options.keyJump)
+                || BaritoneHelper.controlledByOther(
+                        ourGoal == null ? null : (baritone.api.pathing.goals.Goal) ourGoal)) {
+            portalForward(false);
+            return true;
+        }
+
+        if (portalEntering) {
+            if (++portalEntryTicks > PORTAL_ENTRY_TIMEOUT_TICKS) {
+                warning("6b6t lobby: portal entry did not complete; retrying the other side.");
+                retryPortal();
+            } else {
+                mc.player.setYRot(PortalEntry.yawTowards(portalTarget, mc.player.getX(), mc.player.getZ()));
+                portalForward(true);
+            }
+            return true;
+        }
+
+        long now = System.currentTimeMillis();
+        if (portalTarget == null && now - portalLastScan >= 10_000) {
+            portalLastScan = now;
+            PortalRoute route = nearestPortal();
+            if (route != null) {
+                portalTarget = route.portal();
+                portalApproach = route.approach();
+                portalLastPosition = mc.player.position();
+                portalStuckTicks = 0;
+            } else if (now - portalWaitWarnedAt >= 60_000) {
+                portalWaitWarnedAt = now;
+                info("6b6t lobby: no walkable portal entrance found in loaded chunks.");
             }
         }
-        if (portalGoal != null) {
-            if (ourGoal == null || !BaritoneHelper.goalIs((baritone.api.pathing.goals.Goal) ourGoal)) {
-                walkNear(portalGoal, 0);
-                portalStuckTicks = 0;
-            } else if (!BaritoneHelper.isMoving()) {
-                if (++portalStuckTicks > 1200) {
-                    releaseGoal();
-                    portalGoal = null;
-                    portalStuckTicks = 0;
-                    portalLastScan = 0;
-                }
-            } else portalStuckTicks = 0;
-            if (!isPortal(portalGoal)) {
+
+        if (portalTarget != null) {
+            if (!isPortal(portalTarget) || !clearPortalApproach(portalApproach)) {
+                retryPortal();
+            } else if (PortalEntry.atApproach(portalApproach, mc.player.getX(), mc.player.getY(), mc.player.getZ())) {
                 releaseGoal();
-                portalGoal = null;
-                portalLastScan = 0;
+                portalSession.crossingAttempted();
+                portalEntering = true;
+                portalEntryTicks = 0;
+                mc.player.setYRot(PortalEntry.yawTowards(portalTarget, mc.player.getX(), mc.player.getZ()));
+                portalForward(true);
+            } else {
+                portalForward(false);
+                // Real position progress, not Baritone.isMoving(): a stuck path can be "active" forever.
+                if (mc.player.position().distanceToSqr(portalLastPosition) > 0.35 * 0.35) {
+                    portalLastPosition = mc.player.position();
+                    portalStuckTicks = 0;
+                } else if (++portalStuckTicks > PORTAL_PATH_STALL_TICKS) {
+                    warning("6b6t lobby: no path progress to the portal; retrying from the other side.");
+                    retryPortal();
+                    return true;
+                }
+                if (ourGoal == null || !BaritoneHelper.goalIs((baritone.api.pathing.goals.Goal) ourGoal)) {
+                    walkPortalApproach();
+                }
             }
         }
         return true;
@@ -12014,7 +12174,19 @@ public class StashSorter extends Module {
         // Driven by wesort-stash-manager the module's own handlers are not subscribed: the loop is ticked from here
         @EventHandler
         private void onEngineTick(TickEvent.Pre event) {
-            if (driven && !isActive() && mc.player != null && mc.level != null) StashSorter.this.onTick(event);
+            if (mc.player == null || mc.level == null || isActive()) return;
+            // Lobby entry is a navigation-only bootstrap: it cannot depend on an already loaded
+            // stash, a sorting lease or an enabled warehouse job. In particular it runs on re-login.
+            StashManager manager = Modules.get().get(StashManager.class);
+            if (portalAwaiting() && manager != null && manager.dedicatedProfile()) {
+                // Inventory readback can remain unready in the proxy lobby. Navigation
+                // does not touch inventory, but a journal uncertainty still blocks it.
+                if (!PhysicalJournalRuntime.blocked() && !PhysicalJournalRuntime.awaitingMirror()) portalTick();
+                else portalForward(false);
+                return;
+            }
+            if (portalHoldingForward && (manager == null || !manager.dedicatedProfile())) stopPortalNavigation();
+            if (driven) StashSorter.this.onTick(event);
         }
 
         @EventHandler
@@ -12074,14 +12246,14 @@ public class StashSorter extends Module {
             lastPlayer = null;
             ground.reset();
             forgetExploration();
-            // A new world is a new chance at the lobby portal: arrive again through it.
-            portalArrived = false;
-            portalStartLevel = null;
-            portalStartDim = "";
-            portalGoal = null;
-            portalTicks = 0;
-            portalStuckTicks = 0;
-            portalNoBaritoneWarned = false;
+            // A logout/disconnect re-arms the portal even if the previous login succeeded.
+            portalForward(false);
+            portalSession.reset();
+            portalTarget = portalApproach = null;
+            portalLastPosition = null;
+            portalLastScan = 0;
+            portalEntryTicks = portalStuckTicks = portalTouchTicks = 0;
+            portalEntering = portalOtherSide = portalNoBaritoneWarned = false;
             portalWaitWarnedAt = 0;
             // Whatever walk was ours is over with the world, and Baritone gets its settings back
             ourGoal = null;

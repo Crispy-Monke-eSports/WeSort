@@ -312,9 +312,19 @@ public class StashManager extends Module {
      * connection, so this never reports online before a verified Manager reply. See ConnectionState.
      */
     public String connectionState() {
-        return com.porter.wesort.commands.ConnectionState.of(isActive(), serverUrl.get(), apiKey.get(), status)
+        // Operational blockers (inventory, navigation or no stash) are not link failures.
+        // Only a verified, recent Manager reply for the CURRENT address, key and MC server
+        // can assert ONLINE. Explicit auth/transport errors still win immediately.
+        boolean authenticated = verifiedManagerAt > 0
+                && verifiedManagerScope.equals(linkScope())
+                && System.currentTimeMillis() - verifiedManagerAt < 90_000;
+        return com.porter.wesort.commands.ConnectionState.ofVerified(
+                        isActive(), serverUrl.get(), apiKey.get(), status, authenticated)
                 .name();
     }
+
+    private long verifiedManagerAt;
+    private String verifiedManagerScope = "";
 
     @Override
     public void onDeactivate() {
@@ -323,6 +333,7 @@ public class StashManager extends Module {
         StashSorter sorter = WeSortAddon.sorter();
         if (sorter != null) {
             sorter.orders().park();
+            sorter.stopPortalNavigation();
             sorter.drive(false);
         }
         reset();
@@ -347,6 +358,8 @@ public class StashManager extends Module {
         lastPushed = null;
         needIndex = false;
         inFlight = false;
+        verifiedManagerAt = 0;
+        verifiedManagerScope = "";
         status = "idle";
         lastLogged = "";
         controlRegistered = false;
@@ -636,13 +649,9 @@ public class StashManager extends Module {
     }
 
     private void serviceBlockedControl() {
-        if (inFlight || current == null || mc.player == null || mc.level == null) return;
-        var sorter = WeSortAddon.sorter();
-        var stash = sorter == null ? null : sorter.currentStash();
-        if (stash == null
-                || !current.server().equals(stash.server)
-                || !current.stash().equals(stash.name)
-                || !current.player().equals(mc.player.getName().getString())) return;
+        // The signed control channel must bootstrap even in a lobby with no inventory
+        // readback or assigned stash. Physical actions remain fenced by the caller.
+        if (inFlight || mc.player == null || mc.level == null || !dedicatedProfile()) return;
         String key = apiKey.get().trim();
         URI base = parse(serverUrl.get());
         long now = System.currentTimeMillis();
@@ -1842,7 +1851,24 @@ public class StashManager extends Module {
                 inFlight = false;
 
                 if (isolated) {
-                    // No signature check failure, 404 or server refusal here may reach the shared backoff or the status
+                    // A signed control reply confirms Manager presence, even before the
+                    // client has a stash/inventory. Other isolated physical calls must never
+                    // manufacture a connection state.
+                    if (path.startsWith("/api/v1/bot/")) {
+                        if (finalBad) {
+                            setStatus("server signature invalid");
+                        } else if (finalCode == 401) {
+                            setStatus("error 401");
+                        } else if (finalCode == 200 || finalCode == 204) {
+                            verifiedManagerAt = System.currentTimeMillis();
+                            verifiedManagerScope = linkScope();
+                            // Recover from a previous invalid control signature/key once
+                            // the Manager actually authenticates this same connection.
+                            if (status.equals("server signature invalid") || status.equals("error 401"))
+                                setStatus("idle");
+                        }
+                    }
+                    // Isolated replies do not change physical backoff or operational status.
                     if (finalCode == 409) {
                         deliverySync.forget();
                         deliverySync.retryLater(System.currentTimeMillis());
@@ -1900,6 +1926,10 @@ public class StashManager extends Module {
                 if (ok) {
                     backoff = 0;
                     nextAttemptAt = 0;
+                    if (finalCode == 200 || finalCode == 204) {
+                        verifiedManagerAt = System.currentTimeMillis();
+                        verifiedManagerScope = linkScope();
+                    }
                 } else {
                     backoff = backoff == 0 ? BACKOFF_MIN_MS : Math.min(BACKOFF_MAX_MS, backoff * 2);
                     nextAttemptAt = System.currentTimeMillis() + backoff;

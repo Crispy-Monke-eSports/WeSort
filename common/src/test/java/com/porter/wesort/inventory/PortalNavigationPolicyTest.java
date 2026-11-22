@@ -1,0 +1,26 @@
+package com.porter.wesort.inventory;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import org.junit.jupiter.api.Test;
+
+class PortalNavigationPolicyTest {
+    @Test
+    void onlyAnExplicitlyValidatedLobbyPortalCanNavigateBeforeInventoryReadback() {
+        assertTrue(PortalNavigationPolicy.mayBootstrap(true, true, true, true, true, true));
+        for (int missing = 0; missing < 6; missing++) {
+            boolean[] inputs = {true, true, true, true, true, true};
+            inputs[missing] = false;
+            assertFalse(PortalNavigationPolicy.mayBootstrap(
+                    inputs[0], inputs[1], inputs[2], inputs[3], inputs[4], inputs[5]));
+        }
+    }
+
+    @Test
+    void onlyPortalScopedFailuresCanResetOnLogout() {
+        assertTrue(PortalNavigationPolicy.clearPauseOnDisconnect(true, true));
+        assertFalse(PortalNavigationPolicy.clearPauseOnDisconnect(true, false));
+        assertFalse(PortalNavigationPolicy.clearPauseOnDisconnect(false, true));
+    }
+}

@@ -1640,11 +1640,6 @@ public class StashSorter extends Module {
         }
 
         @Override
-        public boolean mayTakeFrom(Box box, int slot) {
-            return orderRunner.mayTakeFrom(box, slot);
-        }
-
-        @Override
         public boolean namedShulkers() {
             return namedForOrders();
         }
@@ -4741,6 +4736,11 @@ public class StashSorter extends Module {
         @Override
         public boolean usable(Box box) {
             return !blocked(box, Job.Take) && !blocked(box, Job.CraftTake) && !signPending(box) && !box.unreachable;
+        }
+
+        @Override
+        public boolean mayTakeFrom(Box box, int slot) {
+            return orderRunner.mayTakeFrom(box, slot);
         }
 
         @Override

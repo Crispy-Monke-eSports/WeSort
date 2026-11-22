@@ -118,7 +118,7 @@ final class OrderRunner {
     record Rename(BlockPos anvil, String name, int slot) implements Intent {}
 
     /** Craft this many plain shulker boxes (0: carry on with the crafting in hand). A failure is told with {@link #craftEnded}. */
-    record Craft(int count) implements Intent {}
+    record Craft(String item, int count) implements Intent {}
 
     /** Look for an anvil in the stash area, or take one from the stash and place it. The outcome is told with {@link #anvilFound}. */
     record FindAnvil() implements Intent {}
@@ -133,7 +133,8 @@ final class OrderRunner {
         Running,
         Delivered,
         Failed,
-        Cancelled
+        Cancelled,
+        NeedsReconciliation
     }
 
     /** The WeSort UUID carried by a shulker stack, or null. */
@@ -279,6 +280,11 @@ final class OrderRunner {
     // Shulker boxes crafted for this order, and why crafting was given up on for it (null: not)
     private int craftedTotal;
     private String craftFailure;
+    /** Ingredient crafting runs before the ordinary packer. An uncertain run
+     *  is never repeated after restart without reconciliation. */
+    private int craftIndex, craftMade;
+    private boolean craftInFlight;
+    private final Map<String, Integer> craftUsed = new HashMap<>();
     // No anvil could be found or placed for this order: later shulkers go unnamed at once
     private boolean anvilNone;
     private String phase = "starting";
@@ -359,6 +365,9 @@ final class OrderRunner {
         unnamedReasons.clear();
         craftedTotal = 0;
         craftFailure = null;
+        craftIndex = craftMade = 0;
+        craftInFlight = false;
+        craftUsed.clear();
         anvilNone = false;
         endCrafting("the order was left");
         owner.crafter().release();
@@ -411,6 +420,9 @@ final class OrderRunner {
         message = "";
         craftedTotal = 0;
         craftFailure = null;
+        craftIndex = craftMade = 0;
+        craftInFlight = false;
+        craftUsed.clear();
         anvilNone = false;
         cancelRequested = false;
         parked = false;
@@ -428,6 +440,27 @@ final class OrderRunner {
         lastStale = Integer.MAX_VALUE;
         phase = "re-reading containers";
         epoch++;
+
+        // Craftable products are manufactured first; the ordinary packing
+        // plan must not look for an output which does not yet physically exist.
+        if (!o.craftJobs.isEmpty()) {
+            Stash.ActiveOrder prior = stash.activeOrder;
+            if (prior != null && prior.id.equals(o.id)
+                    && (prior.craftInFlight || prior.craftIndex > 0 || prior.craftMade > 0)) {
+                state = State.NeedsReconciliation;
+                phase = "crafting needs reconciliation";
+                message = "A manufacturing step may have consumed ingredients before restart; inspect physical stock";
+                return null;
+            }
+            Stash.ActiveOrder active = new Stash.ActiveOrder();
+            active.id = o.id;
+            for (Order.Line line : o.lines)
+                active.lines.add(new String[] {line.type(), line.key(), String.valueOf(line.count())});
+            stash.activeOrder = active;
+            stash.save();
+            phase = "preparing crafting";
+            return null;
+        }
 
         if (!owner.rereading()) {
             String why = completePlan();
@@ -519,6 +552,10 @@ final class OrderRunner {
         if (!resumed) {
             Stash.ActiveOrder active = new Stash.ActiveOrder();
             active.id = o.id;
+            active.craftIndex = craftIndex;
+            active.craftMade = craftMade;
+            active.craftInFlight = craftInFlight;
+            active.craftUsed.putAll(craftUsed);
             for (Order.Line l : o.lines) active.lines.add(new String[] {l.type(), l.key(), String.valueOf(l.count())});
             for (Unit u : plan) {
                 Stash.ActiveOrder.UnitPlan p = new Stash.ActiveOrder.UnitPlan();
@@ -548,7 +585,7 @@ final class OrderRunner {
     private String planFresh(Stash stash, Order o, List<Unit> plan, List<String> notes) {
         Set<String> wanted = new HashSet<>();
         for (Order.Line l : o.lines) {
-            if (l.type().equals(Order.ITEM)) wanted.add(l.key());
+            if (l.type().equals(Order.ITEM) || l.type().equals(Order.CRAFT)) wanted.add(l.key());
             else if (l.type().equals(Order.KIT) && o.kits.containsKey(l.key())) {
                 // Kit components are surveyed exactly like loose item lines.
                 for (var s : o.kits.get(l.key())) wanted.add(s.key());
@@ -719,6 +756,36 @@ final class OrderRunner {
      * What crafts may use up: the stash, less the items the units still to do need for their shulkers. One pool, used by
      * the plan, the replan and the run.
      */
+    /** The current manufacturing task, if any. */
+    boolean manufacturing() {
+        return order != null && craftIndex < order.craftJobs.size() && !planned;
+    }
+
+    /** Only the server-reserved ingredient budget can be used for this recipe. */
+    Map<String, Long> manufacturingPool() {
+        if (!manufacturing()) return Map.of();
+        Order.CraftJob job = order.craftJobs.get(craftIndex);
+        Map<String, Long> pool = owner.crafter().survey();
+        pool.keySet().removeIf(k -> !job.materials().containsKey(k));
+        for (var e : job.materials().entrySet()) {
+            long remaining = (long) e.getValue() - craftUsed.getOrDefault(e.getKey(), 0);
+            pool.computeIfPresent(e.getKey(), (k, n) -> Math.min(n, Math.max(0, remaining)));
+        }
+        pool.values().removeIf(n -> n <= 0);
+        return pool;
+    }
+
+    /** Durable pre-click intent; an interrupted craft can never be blindly replayed. */
+    void manufacturingIntent() {
+        if (!manufacturing()) return;
+        Stash stash = owner.stash();
+        if (stash == null || stash.activeOrder == null || !stash.activeOrder.id.equals(order.id))
+            throw new IllegalStateException("Missing manufacturing order journal");
+        craftInFlight = stash.activeOrder.craftInFlight = true;
+        stash.markDirty();
+        stash.save();
+    }
+
     Map<String, Long> craftPool() {
         return craftPool(index < units.size() ? units.subList(index, units.size()) : List.of());
     }
@@ -782,6 +849,45 @@ final class OrderRunner {
     /** The crafting the sorter ran for the order is over: this many boxes were made, and this is why not more. */
     void craftEnded(Crafter.Outcome outcome) {
         if (order == null) return;
+        if (manufacturing()) {
+            Order.CraftJob task = order.craftJobs.get(craftIndex);
+            if (!task.item().equals(outcome.item()) || outcome.failure() != null
+                    || outcome.crafted() <= 0 || outcome.consumed().isEmpty()) {
+                finish(State.NeedsReconciliation,
+                        "Crafting interrupted or unverifiable: " +
+                        (outcome.failure() == null ? "no verified output" : outcome.failure()));
+                return;
+            }
+            for (var e : outcome.consumed().entrySet()) {
+                long used = (long) craftUsed.getOrDefault(e.getKey(), 0) + e.getValue();
+                if (used > task.materials().getOrDefault(e.getKey(), 0)) {
+                    finish(State.NeedsReconciliation, "Craft used more than the reserved material budget");
+                    return;
+                }
+            }
+            outcome.consumed().forEach((key, n) -> craftUsed.merge(key, n, Math::addExact));
+            craftMade = Math.addExact(craftMade, outcome.crafted());
+            if (craftMade >= task.count()) {
+                craftIndex++;
+                craftMade = 0;
+                craftUsed.clear();
+            }
+            craftInFlight = false;
+            Stash inStash = owner.stash();
+            if (inStash != null && inStash.activeOrder != null && inStash.activeOrder.id.equals(order.id)) {
+                inStash.activeOrder.craftIndex = craftIndex;
+                inStash.activeOrder.craftMade = craftMade;
+                inStash.activeOrder.craftInFlight = false;
+                inStash.activeOrder.craftUsed.clear();
+                inStash.activeOrder.craftUsed.putAll(craftUsed);
+                inStash.markDirty();
+                inStash.save();
+            }
+            lastForwardAt = System.currentTimeMillis();
+            phase = manufacturing() ? "crafting ingredients" : "planning crafted order";
+            epoch++;
+            return;
+        }
         craftedTotal += outcome.crafted();
         Stash stash = owner.stash();
         if (stash != null && stash.activeOrder != null && stash.activeOrder.id.equals(order.id)) {
@@ -814,7 +920,7 @@ final class OrderRunner {
         }
         u.craftTries++;
         phase = "crafting " + (index + 1) + "/" + units.size();
-        return new Craft(Math.max(1, pending));
+        return new Craft(SHULKER_BOX, Math.max(1, pending));
     }
 
     /** Empty boxes still wanted by the units from here on: bins and plain empty lines. */
@@ -896,6 +1002,7 @@ final class OrderRunner {
             case Delivered -> "delivered";
             case Failed -> "failed";
             case Cancelled -> "cancelled";
+            case NeedsReconciliation -> "needs_reconciliation";
         };
         String shown = state == State.Running && owner.rereading() ? "re-reading containers" : phase;
         return new Report(
@@ -1140,7 +1247,8 @@ final class OrderRunner {
             return new Idle();
         }
         if (cancelRequested) {
-            finish(State.Cancelled, "cancelled");
+            finish(craftInFlight ? State.NeedsReconciliation : State.Cancelled,
+                    craftInFlight ? "Crafting was interrupted by cancellation" : "cancelled");
             return new Idle();
         }
         if (!owner.gate() || mc.player == null) {
@@ -1167,6 +1275,28 @@ final class OrderRunner {
         // A transient problem is waited out, not failed: try the same step again afterwards
         if (nowMs < retryWaitUntil) {
             phase = "waiting: " + retryWaitWhy;
+            return new Idle();
+        }
+
+        // Execute pinned crafting tasks before the normal stock-based pack plan.
+        if (!planned && manufacturing()) {
+            if (owner.rereading()) {
+                phase = "re-reading crafting ingredients";
+                return new Idle();
+            }
+            Order.CraftJob task = order.craftJobs.get(craftIndex);
+            if (owner.crafter().active()) {
+                phase = "crafting " + task.item();
+                return new Craft(task.item(), 0);
+            }
+            if (!owner.craftingOn() || owner.craftBlocker() != null)
+                return waitRetry("crafting table unavailable or crafting disabled");
+            int remaining = task.count() - craftMade;
+            if (remaining > 0) {
+                phase = "crafting " + task.item();
+                return new Craft(task.item(), remaining);
+            }
+            finish(State.NeedsReconciliation, "Inconsistent crafting progress");
             return new Idle();
         }
 
@@ -1200,7 +1330,8 @@ final class OrderRunner {
         // Crafting in hand carries on until it is over
         if (owner.crafter().active()) {
             phase = "crafting " + (index + 1) + "/" + units.size();
-            return new Craft(0);
+            return new Craft(craftIndex < order.craftJobs.size()
+                    ? order.craftJobs.get(craftIndex).item() : SHULKER_BOX, 0);
         }
 
         skips = 0;
@@ -1884,6 +2015,18 @@ final class OrderRunner {
             }
             if (box.stale) staleSeen.addAll(targetAvailable.keySet());
         }
+        // The crafter leaves verified output in order-owned carry slots.
+        // Count these once, so the normal kit packer can use them immediately.
+        if (order != null && !order.craftJobs.isEmpty() && mc.player != null) {
+            Set<String> outputs = new HashSet<>();
+            for (Order.CraftJob job : order.craftJobs) outputs.add(job.item());
+            for (int slot : owner.carry()) {
+                ItemStack carried = mc.player.getInventory().getItem(slot);
+                if (!carried.isEmpty() && outputs.contains(idOf(carried)) && !carried.isDamaged()
+                        && !holdsItems(carried))
+                    count(samples, available, raw, filled, wanted, ids, carried);
+            }
+        }
         staleSeen.removeAll(available.keySet());
         Map<String, List<Variant>> variants = new HashMap<>();
         for (var e : raw.entrySet()) {
@@ -1980,6 +2123,10 @@ final class OrderRunner {
 
     private void finish(State end, String text) {
         if (order == null || state != State.Running) return;
+        if (craftInFlight && end != State.NeedsReconciliation) {
+            end = State.NeedsReconciliation;
+            text = "Manufacturing was interrupted; physical reconciliation required: " + text;
+        }
         kits.dropOrderKit();
         state = end;
         endCrafting("the order ended");

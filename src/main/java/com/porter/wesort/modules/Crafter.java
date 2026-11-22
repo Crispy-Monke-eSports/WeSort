@@ -501,7 +501,9 @@ final class Crafter {
         if (stash == null) return out;
         for (Box box : stash.boxes) {
             if (!source(box)) continue;
-            for (ItemStack s : box.contents) {
+            for (int slot = 0; slot < box.contents.length; slot++) {
+                if (!owner.mayTakeFrom(box, slot)) continue;
+                ItemStack s = box.contents[slot];
                 if (s.isEmpty()) continue;
                 if (Utils.isShulker(s.getItem())) {
                     if (!shulkerOk(s)) continue;

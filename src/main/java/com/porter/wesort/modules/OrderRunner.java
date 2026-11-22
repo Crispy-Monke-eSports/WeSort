@@ -757,7 +757,7 @@ final class OrderRunner {
      * the plan, the replan and the run.
      */
     boolean manufacturingHasProgress() {
-        return craftMade > 0;
+        return craftMade > 0 || craftIndex > 0;
     }
 
     /** The current manufacturing task, if any. */
@@ -772,7 +772,7 @@ final class OrderRunner {
         Map<String, Long> pool = owner.crafter().survey();
         // Already fetched, unused ingredients survive successful craft batches
         // in the bot's owned carry. Never count outputs as new free ingredients.
-        if (craftMade > 0 && mc.player != null) {
+        if ((craftMade > 0 || craftIndex > 0) && mc.player != null) {
             Set<String> outputs = new HashSet<>();
             for (Order.CraftJob made : order.craftJobs) outputs.add(made.item());
             for (int slot : owner.carry()) {
@@ -1150,6 +1150,11 @@ final class OrderRunner {
     boolean mayTakeFrom(String source, int slot, ItemStack stack) {
         if (!hasPhysicalAllocation()) return true;
         if (order.protectedRoots.getOrDefault(source, Set.of()).contains(slot)) return false;
+        // Manufacturing may only consume the exact roots reserved by Manager.
+        // Unlike ordinary pack-job scavenging, never accept an extra ingredient
+        // stack merely because it is not itself an ordered output.
+        if (manufacturing() && !order.allocatedRoots.getOrDefault(source, Set.of()).contains(slot))
+            return false;
         if (order.allocatedRoots.getOrDefault(source, Set.of()).contains(slot) || stack.isEmpty()) return true;
         try {
             for (var entry : com.porter.wesort.compat.SlotRuntime.snapshot(new ItemStack[] {stack})

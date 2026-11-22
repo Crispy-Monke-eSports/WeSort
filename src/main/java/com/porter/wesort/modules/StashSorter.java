@@ -8724,6 +8724,26 @@ public class StashSorter extends Module {
         if (r == null || stash == null || resuming) return false;
         if (Job.Recover.name().equals(r.job)) return beginOrphanRecovery(r);
 
+        // A crash may have left an old kit/unpack job in flight after its order
+        // was cancelled. Collect the box intact instead of resuming mutations.
+        if (r.placed != null && stash.hasArea() && stash.inArea(r.placed)) {
+            String active = orderRunner.running() && !orderRunner.calledOff() ? orderRunner.orderId() : null;
+            boolean cancelled = stash.orphans.stream()
+                    .anyMatch(o -> o.pos.equals(r.placed)
+                            && !o.orderId.isEmpty()
+                            && (o.dimension.isEmpty() || Stash.sameDimension(o.dimension, Stash.currentDimension()))
+                            && PlacedShulkerRecovery.shouldRecover(o.orderId, active));
+            if (cancelled) {
+                r.job = Job.Recover.name();
+                r.handle = Handle.Resume.name();
+                r.compact = null;
+                stash.inFlight = r;
+                stash.markDirty();
+                stash.save();
+                return beginOrphanRecovery(r);
+            }
+        }
+
         String here = mc.level.dimension().toString();
         if (!r.dimension.isEmpty() && !r.dimension.equals(here)) {
             if (!resumeDimensionSaid) {
@@ -8905,9 +8925,9 @@ public class StashSorter extends Module {
                 .filter(o -> o.pos.equals(at) && Stash.sameDimension(o.dimension, Stash.currentDimension()))
                 .findFirst()
                 .orElse(null);
-        String owner = previous != null && !previous.orderId.isEmpty()
+        String owner = previous != null
                 ? previous.orderId
-                : orderRunner.running() ? orderRunner.orderId() : "";
+                : job != Job.Recover && orderRunner.running() ? orderRunner.orderId() : "";
         String id =
                 placedItemId.isEmpty() && mc.level.isLoaded(at) && shulkerAt(at) ? blockId(mc.level, at) : placedItemId;
         stash.orphans.removeIf(o -> o.pos.equals(at) && Stash.sameDimension(o.dimension, Stash.currentDimension()));
@@ -8991,7 +9011,8 @@ public class StashSorter extends Module {
                 .anyMatch(o -> stash.inArea(o.pos)
                         && (o.dimension.isEmpty() || Stash.sameDimension(o.dimension, dimension))
                         && PlacedShulkerRecovery.shouldRecover(
-                                o.orderId, orderRunner.running() ? orderRunner.orderId() : null))) idle = false;
+                                o.orderId, orderRunner.running() && !orderRunner.calledOff()
+                                        ? orderRunner.orderId() : null))) idle = false;
     }
 
     /**
@@ -9007,7 +9028,7 @@ public class StashSorter extends Module {
                 || compactor.active()
                 || kitBuilder.active()
                 || !freeInventorySlot()) return false;
-        String active = orderRunner.running() ? orderRunner.orderId() : null;
+        String active = orderRunner.running() && !orderRunner.calledOff() ? orderRunner.orderId() : null;
         for (Stash.Orphan orphan : new ArrayList<>(stash.orphans)) {
             if (!stash.inArea(orphan.pos)
                     || !orphan.dimension.isEmpty() && !Stash.sameDimension(orphan.dimension, Stash.currentDimension())

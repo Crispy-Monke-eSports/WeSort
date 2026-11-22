@@ -73,8 +73,10 @@ class DeferredPhysicalOrderTest {
         var balances = orders.listJson("s", "a").getAsJsonObject("available");
         // A physical allocation protects its complete root slot even when the
         // order uses only 20 out of that 64-stack; no misleading availability.
-        assertEquals(
-                0, balances.getAsJsonObject("items").get("minecraft:diamond").getAsLong());
+        var availableItems = balances.getAsJsonObject("items");
+        assertTrue(
+                !availableItems.has("minecraft:diamond")
+                        || availableItems.get("minecraft:diamond").getAsLong() == 0);
 
         var restarted = new OrderStore(data, index);
         restarted.load();

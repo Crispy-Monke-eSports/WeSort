@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
-import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.junit.jupiter.api.Test;
 
@@ -56,12 +55,15 @@ class OrderKitLinesTest {
     void badTemplateSlotsAreDropped() {
         // A broken template snapshot must not sink the order: the kit line
         // stays and reports its missing template at plan time.
-        var bad = order(base("{\"type\":\"kit\",\"key\":\"starter\",\"count\":1}",
+        var bad = order(base(
+                "{\"type\":\"kit\",\"key\":\"starter\",\"count\":1}",
                 "{\"starter\":{\"name\":\"starter\",\"revision\":1,\"updatedAt\":1,\"slots\":[]}}"));
         assertEquals(1, bad.lines.size());
         assertNull(bad.kits.get("starter"));
-        var badSlot = order(base("{\"type\":\"kit\",\"key\":\"starter\",\"count\":1}",
-                "{\"starter\":{\"name\":\"starter\",\"revision\":1,\"updatedAt\":1,\"slots\":[{\"slot\":27,\"key\":\"minecraft:dirt\",\"count\":1}]}}"));
+        var badSlot = order(
+                base(
+                        "{\"type\":\"kit\",\"key\":\"starter\",\"count\":1}",
+                        "{\"starter\":{\"name\":\"starter\",\"revision\":1,\"updatedAt\":1,\"slots\":[{\"slot\":27,\"key\":\"minecraft:dirt\",\"count\":1}]}}"));
         assertEquals(1, badSlot.lines.size());
         assertNull(badSlot.kits.get("starter"));
     }

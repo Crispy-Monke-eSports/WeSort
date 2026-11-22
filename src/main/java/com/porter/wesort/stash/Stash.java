@@ -925,8 +925,7 @@ public class Stash {
                                 if (lt instanceof CompoundTag lot) {
                                     u.lotKeys.add(text(lot, "key"));
                                     u.lotCounts.add(number(lot.get("count"), 0));
-                                    u.lotSlots.add(
-                                            lot.contains("slot") ? number(lot.get("slot"), -1) : -1);
+                                    u.lotSlots.add(lot.contains("slot") ? number(lot.get("slot"), -1) : -1);
                                 }
                             }
                         }

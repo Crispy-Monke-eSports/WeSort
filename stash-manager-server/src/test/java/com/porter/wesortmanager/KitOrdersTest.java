@@ -31,10 +31,9 @@ class KitOrdersTest {
         index.load();
         StockFixtures.put(
                 index,
-                json(
-                        "{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"items\":["
-                                + "{\"key\":\"minecraft:diamond\",\"id\":\"minecraft:diamond\",\"count\":100,\"maxStack\":64},"
-                                + "{\"key\":\"minecraft:dirt\",\"id\":\"minecraft:dirt\",\"count\":200,\"maxStack\":64}]}"));
+                json("{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"items\":["
+                        + "{\"key\":\"minecraft:diamond\",\"id\":\"minecraft:diamond\",\"count\":100,\"maxStack\":64},"
+                        + "{\"key\":\"minecraft:dirt\",\"id\":\"minecraft:dirt\",\"count\":200,\"maxStack\":64}]}"));
         orders = new OrderStore(data, index);
         orders.load();
         orders.kits()
@@ -73,20 +72,28 @@ class KitOrdersTest {
         var kits = o.toJson().getAsJsonObject("kits");
         assertNotNull(kits);
         assertEquals(1, kits.getAsJsonObject("starter").get("revision").getAsInt());
-        assertEquals(
-                2,
-                kits.getAsJsonObject("starter").getAsJsonArray("slots").size());
+        assertEquals(2, kits.getAsJsonObject("starter").getAsJsonArray("slots").size());
     }
 
     @Test
     void kitAvailabilityIsScarcestComponent() throws Exception {
         // 100 diamonds / 16 = 6, 200 dirt / 32 = 6.
-        assertEquals(6, orders.listJson("s", "a").getAsJsonObject("available").getAsJsonObject("kits").get("starter")
-                .getAsInt());
+        assertEquals(
+                6,
+                orders.listJson("s", "a")
+                        .getAsJsonObject("available")
+                        .getAsJsonObject("kits")
+                        .get("starter")
+                        .getAsInt());
         kitOrder(5);
         // 20 diamonds left (1 kit), 40 dirt left (1 kit).
-        assertEquals(1, orders.listJson("s", "a").getAsJsonObject("available").getAsJsonObject("kits").get("starter")
-                .getAsInt());
+        assertEquals(
+                1,
+                orders.listJson("s", "a")
+                        .getAsJsonObject("available")
+                        .getAsJsonObject("kits")
+                        .get("starter")
+                        .getAsInt());
     }
 
     @Test
@@ -121,17 +128,20 @@ class KitOrdersTest {
     @Test
     void templateEditDoesNotMovePlacedOrders() throws Exception {
         var o = kitOrder(1);
-        var changed = json(
-                "{\"name\":\"starter\",\"slots\":[{\"slot\":0,\"key\":\"minecraft:diamond\",\"count\":1}]}");
+        var changed = json("{\"name\":\"starter\",\"slots\":[{\"slot\":0,\"key\":\"minecraft:diamond\",\"count\":1}]}");
         orders.kits().update(changed, 1);
         // The placed order still pins revision 1 with the original two slots.
-        var pinned =
-                o.toJson().getAsJsonObject("kits").getAsJsonObject("starter");
+        var pinned = o.toJson().getAsJsonObject("kits").getAsJsonObject("starter");
         assertEquals(1, pinned.get("revision").getAsInt());
         assertEquals(2, pinned.getAsJsonArray("slots").size());
         // …while new orders see revision 2: 84 diamonds left, 1 per kit.
-        assertEquals(84, orders.listJson("s", "a").getAsJsonObject("available").getAsJsonObject("kits").get("starter")
-                .getAsInt());
+        assertEquals(
+                84,
+                orders.listJson("s", "a")
+                        .getAsJsonObject("available")
+                        .getAsJsonObject("kits")
+                        .get("starter")
+                        .getAsInt());
     }
 
     @Test

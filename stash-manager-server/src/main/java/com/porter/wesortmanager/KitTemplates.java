@@ -34,6 +34,7 @@ final class KitTemplates {
     private static final int SCHEMA = 1;
     /** One box holds 27 slots. */
     static final int SLOTS = 27;
+
     private static final Pattern NAME = Pattern.compile("[A-Za-z0-9_.-]{1,64}");
     private static final int MAX_KEY = 256;
     /** A slot holds at most one stack; the bot verifies the real max stack at pack time. */
@@ -169,7 +170,10 @@ final class KitTemplates {
         var slots = new ArrayList<Slot>();
         for (var e : o.getAsJsonArray("slots")) {
             var s = e.getAsJsonObject();
-            slots.add(new Slot(s.get("slot").getAsInt(), s.get("key").getAsString(), s.get("count").getAsLong()));
+            slots.add(new Slot(
+                    s.get("slot").getAsInt(),
+                    s.get("key").getAsString(),
+                    s.get("count").getAsLong()));
         }
         return new Template(
                 o.get("name").getAsString(),

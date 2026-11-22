@@ -177,6 +177,7 @@ final class OrderRunner {
         final List<Order.Lot> lots;
         /** Exact box slot per lot (-1: totals-packed). Parallel to lots; template kits only. */
         final List<Integer> lotSlots = new ArrayList<>();
+
         Kit kit;
         boolean have, built, confirmed, verified, verifying, replanned;
         int fullTries, starts, fetches, begins, base;
@@ -479,8 +480,7 @@ final class OrderRunner {
                 for (int i = 0; i < p.lotKeys.size(); i++)
                     lots.add(new Order.Lot(p.lotKeys.get(i), p.lotCounts.get(i)));
                 Unit restored = new Unit(p.kind == 0 ? Kind.Shulker : p.kind == 1 ? Kind.Empty : Kind.Bin, p.key, lots);
-                for (int i = 0; i < p.lotSlots.size() && i < lots.size(); i++)
-                    restored.lotSlots.add(p.lotSlots.get(i));
+                for (int i = 0; i < p.lotSlots.size() && i < lots.size(); i++) restored.lotSlots.add(p.lotSlots.get(i));
                 restored.nameDone = p.nameDone;
                 restored.named = p.named;
                 restored.unnamedReason = p.nameFailure == null || p.nameFailure.isEmpty() ? null : p.nameFailure;
@@ -528,8 +528,7 @@ final class OrderRunner {
                     p.lotKeys.add(lot.key());
                     p.lotCounts.add(lot.count());
                 }
-                for (int i = 0; i < u.lots.size(); i++)
-                    p.lotSlots.add(i < u.lotSlots.size() ? u.lotSlots.get(i) : -1);
+                for (int i = 0; i < u.lots.size(); i++) p.lotSlots.add(i < u.lotSlots.size() ? u.lotSlots.get(i) : -1);
                 active.units.add(p);
             }
             if (names != null) {

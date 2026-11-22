@@ -69,8 +69,8 @@ final class OrderStore {
      * Explodes merged kit lines using the current templates. Unknown kits are
      * 404 (like unknown stashes); shortages are reported against components.
      */
-    static KitExplosion explodeKits(
-            Map<String, Line> merged, Map<String, Integer> firstIndex, KitTemplates kits) throws OrderException {
+    static KitExplosion explodeKits(Map<String, Line> merged, Map<String, Integer> firstIndex, KitTemplates kits)
+            throws OrderException {
         var out = new KitExplosion();
         for (var l : merged.values()) {
             if (!l.type.equals("kit")) {
@@ -161,6 +161,7 @@ final class OrderStore {
         int packageTotal; // frozen number of boxes Y, 0 when unknown (legacy orders)
         /** Kit template snapshots pinned at submit (name to template JSON), or null without kit lines. */
         Map<String, JsonObject> kits;
+
         long createdAt;
         long updatedAt;
         String status;
@@ -1065,9 +1066,9 @@ final class OrderStore {
             Set<PhysicalReservations.Root> held,
             boolean allowStale)
             throws OrderException, IOException {
-        var allocations =
-                physical.hasSnapshots() ? physical.allocate(exploded.lines.values(), held, exploded.firstIndex, allowStale)
-                        : null;
+        var allocations = physical.hasSnapshots()
+                ? physical.allocate(exploded.lines.values(), held, exploded.firstIndex, allowStale)
+                : null;
         Book b = book(server, stash);
         synchronized (b) {
             long open = b.orders.stream().filter(o -> OPEN.contains(o.status)).count();
@@ -1434,7 +1435,8 @@ final class OrderStore {
         }
     }
 
-    private void kitsAvailableFromRefs(Map<String, Long> physicalAvailable, Map<String, Long> reserved, JsonObject out) {
+    private void kitsAvailableFromRefs(
+            Map<String, Long> physicalAvailable, Map<String, Long> reserved, JsonObject out) {
         for (var t : allKits()) {
             var need = t.components();
             if (need.isEmpty()) continue;

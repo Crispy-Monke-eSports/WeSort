@@ -3,12 +3,10 @@ package com.porter.wesortmanager;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.nio.file.Path;
-import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -25,8 +23,9 @@ class KitTemplatesTest {
     }
 
     private static JsonObject template(String name) {
-        return json("{\"name\":\"" + name
-                + "\",\"slots\":[{\"slot\":0,\"key\":\"minecraft:diamond\",\"count\":16},{\"slot\":13,\"key\":\"minecraft:dirt\",\"count\":32}]}");
+        return json(
+                "{\"name\":\"" + name
+                        + "\",\"slots\":[{\"slot\":0,\"key\":\"minecraft:diamond\",\"count\":16},{\"slot\":13,\"key\":\"minecraft:dirt\",\"count\":32}]}");
     }
 
     @BeforeEach
@@ -71,21 +70,24 @@ class KitTemplatesTest {
                         "{\"name\":\"bad name!\",\"slots\":[{\"slot\":0,\"key\":\"minecraft:dirt\",\"count\":1}]}")));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> kits.create(json(
-                        "{\"name\":\"x\",\"slots\":[{\"slot\":27,\"key\":\"minecraft:dirt\",\"count\":1}]}")));
+                () -> kits.create(
+                        json("{\"name\":\"x\",\"slots\":[{\"slot\":27,\"key\":\"minecraft:dirt\",\"count\":1}]}")));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> kits.create(json(
-                        "{\"name\":\"x\",\"slots\":[{\"slot\":0,\"key\":\"minecraft:dirt\",\"count\":1},{\"slot\":0,\"key\":\"minecraft:dirt\",\"count\":1}]}")));
+                () -> kits.create(
+                        json(
+                                "{\"name\":\"x\",\"slots\":[{\"slot\":0,\"key\":\"minecraft:dirt\",\"count\":1},{\"slot\":0,\"key\":\"minecraft:dirt\",\"count\":1}]}")));
         assertThrows(
                 IllegalArgumentException.class,
                 () -> kits.create(json("{\"name\":\"x\",\"slots\":[{\"slot\":0,\"key\":\"\",\"count\":1}]}")));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> kits.create(json("{\"name\":\"x\",\"slots\":[{\"slot\":0,\"key\":\"minecraft:dirt\",\"count\":0}]}")));
+                () -> kits.create(
+                        json("{\"name\":\"x\",\"slots\":[{\"slot\":0,\"key\":\"minecraft:dirt\",\"count\":0}]}")));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> kits.create(json("{\"name\":\"x\",\"slots\":[{\"slot\":0,\"key\":\"minecraft:dirt\",\"count\":65}]}")));
+                () -> kits.create(
+                        json("{\"name\":\"x\",\"slots\":[{\"slot\":0,\"key\":\"minecraft:dirt\",\"count\":65}]}")));
         assertThrows(IllegalArgumentException.class, () -> kits.create(json("{\"name\":\"x\"}")));
         assertThrows(IllegalArgumentException.class, () -> kits.update(template("missing"), 1));
     }

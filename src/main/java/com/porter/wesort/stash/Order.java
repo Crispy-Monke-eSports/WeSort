@@ -93,6 +93,7 @@ public final class Order {
     public final List<Line> lines;
     /** Output batches and the precise ingredient budgets pinned by Manager. */
     public record CraftJob(String item, int count, Map<String, Integer> materials) {}
+
     public final List<CraftJob> craftJobs;
     /** Null: no naming. */
     public final Names names;
@@ -146,8 +147,8 @@ public final class Order {
                 String key = l.get("key").getAsString();
                 int count = l.get("count").getAsInt();
                 if ((type.equals(ITEM) || type.equals(SHULKER) || type.equals(KIT) || type.equals(CRAFT))
-                        && !key.isEmpty() && count >= 1)
-                    lines.add(new Line(type, key, count));
+                        && !key.isEmpty()
+                        && count >= 1) lines.add(new Line(type, key, count));
             } catch (RuntimeException ex) {
                 // A broken line is left out and shows up as undelivered
             }
@@ -206,8 +207,7 @@ public final class Order {
         }
         var crafts = new ArrayList<CraftJob>();
         var required = new LinkedHashMap<String, Integer>();
-        for (Line line : lines) if (line.type().equals(CRAFT))
-            required.merge(line.key(), line.count(), Math::addExact);
+        for (Line line : lines) if (line.type().equals(CRAFT)) required.merge(line.key(), line.count(), Math::addExact);
         if (!required.isEmpty()) {
             if (!o.has("craftPlans") || !o.get("craftPlans").isJsonArray())
                 throw new IllegalArgumentException("Missing pinned craft plans");
@@ -217,8 +217,10 @@ public final class Order {
                 JsonObject c = e.getAsJsonObject();
                 String item = c.get("item").getAsString();
                 int count = c.get("count").getAsInt();
-                if (!item.matches("[a-z0-9_.-]+:[a-z0-9_./-]+") || count < 1
-                        || !c.has("recipeVersion") || !"26.3".equals(c.get("recipeVersion").getAsString()))
+                if (!item.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")
+                        || count < 1
+                        || !c.has("recipeVersion")
+                        || !"26.3".equals(c.get("recipeVersion").getAsString()))
                     throw new IllegalArgumentException("Unsupported craft");
                 var materials = new LinkedHashMap<String, Integer>();
                 for (var m : c.getAsJsonObject("materials").entrySet()) {
@@ -233,8 +235,14 @@ public final class Order {
             }
             if (!planned.equals(required)) throw new IllegalArgumentException("Craft plans differ from order lines");
         }
-        return new Order(id, lines, parseNames(o), Map.copyOf(kits), Map.copyOf(guards),
-                Map.copyOf(allocated), List.copyOf(crafts));
+        return new Order(
+                id,
+                lines,
+                parseNames(o),
+                Map.copyOf(kits),
+                Map.copyOf(guards),
+                Map.copyOf(allocated),
+                List.copyOf(crafts));
     }
 
     private static boolean isText(JsonElement e) {

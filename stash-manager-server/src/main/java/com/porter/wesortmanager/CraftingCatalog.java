@@ -37,12 +37,12 @@ final class CraftingCatalog {
     }
 
     static CraftPlanner.Result plan(String output, int count, Map<String, Long> available) {
-        if (RECIPES == null || output.endsWith("shulker_box")
+        if (RECIPES == null
+                || output.endsWith("shulker_box")
                 || !output.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")
                 || RECIPES.producing(output).isEmpty())
             return new CraftPlanner.Result(null, "No 2x2/3x3 crafting-table recipe");
-        return CraftPlanner.plan(
-                RECIPES, output, count, available, Set.of(), CraftPlanner.Caps.NONE, 0, 0);
+        return CraftPlanner.plan(RECIPES, output, count, available, Set.of(), CraftPlanner.Caps.NONE, 0, 0);
     }
 
     /** Immutable result sorted by item id, excluding impossible recipes. */

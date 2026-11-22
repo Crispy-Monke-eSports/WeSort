@@ -13,15 +13,17 @@ class CraftingCatalogTest {
         assertTrue(p.ok());
         assertEquals(2, p.plan().count());
         assertEquals(162, p.plan().take().get("minecraft:iron_nugget"));
-        assertEquals("minecraft:iron_block", p.plan().steps().get(p.plan().steps().size()-1).recipe().result());
+        assertEquals(
+                "minecraft:iron_block",
+                p.plan().steps().get(p.plan().steps().size() - 1).recipe().result());
     }
 
     @Test
     void onlyPlainStacksCanSupplyRecipes() {
         var available = Map.of(
-            "item:minecraft:iron_nugget", 200L,
-            "item:minecraft:iron_nugget#named", 900L,
-            "shulker:minecraft:iron_nugget", 99L);
+                "item:minecraft:iron_nugget", 200L,
+                "item:minecraft:iron_nugget#named", 900L,
+                "shulker:minecraft:iron_nugget", 99L);
         var pool = CraftingCatalog.eligiblePool(available);
         assertEquals(Map.of("minecraft:iron_nugget", 200L), pool);
         var listing = CraftingCatalog.available(available, true);
@@ -31,6 +33,7 @@ class CraftingCatalogTest {
 
     @Test
     void doesNotPretendFurnaceRecipesAreTableCraftable() {
-        assertFalse(CraftingCatalog.plan("minecraft:stone", 1, Map.of("minecraft:cobblestone", 64L)).ok());
+        assertFalse(CraftingCatalog.plan("minecraft:stone", 1, Map.of("minecraft:cobblestone", 64L))
+                .ok());
     }
 }

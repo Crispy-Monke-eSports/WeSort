@@ -283,6 +283,7 @@ final class OrderRunner {
     /** Ingredient crafting runs before the ordinary packer. An uncertain run
      *  is never repeated after restart without reconciliation. */
     private int craftIndex, craftMade;
+
     private boolean craftInFlight;
     private final Map<String, Integer> craftUsed = new HashMap<>();
     // No anvil could be found or placed for this order: later shulkers go unnamed at once
@@ -445,7 +446,8 @@ final class OrderRunner {
         // plan must not look for an output which does not yet physically exist.
         if (!o.craftJobs.isEmpty()) {
             Stash.ActiveOrder prior = stash.activeOrder;
-            if (prior != null && prior.id.equals(o.id)
+            if (prior != null
+                    && prior.id.equals(o.id)
                     && (prior.craftInFlight || prior.craftIndex > 0 || prior.craftMade > 0)) {
                 state = State.NeedsReconciliation;
                 phase = "crafting needs reconciliation";
@@ -777,8 +779,10 @@ final class OrderRunner {
             for (Order.CraftJob made : order.craftJobs) outputs.add(made.item());
             for (int slot : owner.carry()) {
                 ItemStack held = mc.player.getInventory().getItem(slot);
-                if (!held.isEmpty() && owner.crafter().eligible(held)
-                        && !outputs.contains(idOf(held)) && job.materials().containsKey(idOf(held)))
+                if (!held.isEmpty()
+                        && owner.crafter().eligible(held)
+                        && !outputs.contains(idOf(held))
+                        && job.materials().containsKey(idOf(held)))
                     pool.merge(idOf(held), (long) held.getCount(), Long::sum);
             }
         }
@@ -867,11 +871,14 @@ final class OrderRunner {
         if (order == null) return;
         if (manufacturing()) {
             Order.CraftJob task = order.craftJobs.get(craftIndex);
-            if (!task.item().equals(outcome.item()) || outcome.failure() != null
-                    || outcome.crafted() <= 0 || outcome.consumed().isEmpty()) {
-                finish(State.NeedsReconciliation,
-                        "Crafting interrupted or unverifiable: " +
-                        (outcome.failure() == null ? "no verified output" : outcome.failure()));
+            if (!task.item().equals(outcome.item())
+                    || outcome.failure() != null
+                    || outcome.crafted() <= 0
+                    || outcome.consumed().isEmpty()) {
+                finish(
+                        State.NeedsReconciliation,
+                        "Crafting interrupted or unverifiable: "
+                                + (outcome.failure() == null ? "no verified output" : outcome.failure()));
                 return;
             }
             for (var e : outcome.consumed().entrySet()) {
@@ -1153,8 +1160,8 @@ final class OrderRunner {
         // Manufacturing may only consume the exact roots reserved by Manager.
         // Unlike ordinary pack-job scavenging, never accept an extra ingredient
         // stack merely because it is not itself an ordered output.
-        if (manufacturing() && !order.allocatedRoots.getOrDefault(source, Set.of()).contains(slot))
-            return false;
+        if (manufacturing()
+                && !order.allocatedRoots.getOrDefault(source, Set.of()).contains(slot)) return false;
         if (order.allocatedRoots.getOrDefault(source, Set.of()).contains(slot) || stack.isEmpty()) return true;
         try {
             for (var entry : com.porter.wesort.compat.SlotRuntime.snapshot(new ItemStack[] {stack})
@@ -1268,7 +1275,8 @@ final class OrderRunner {
             return new Idle();
         }
         if (cancelRequested) {
-            finish(craftInFlight ? State.NeedsReconciliation : State.Cancelled,
+            finish(
+                    craftInFlight ? State.NeedsReconciliation : State.Cancelled,
                     craftInFlight ? "Crafting was interrupted by cancellation" : "cancelled");
             return new Idle();
         }
@@ -1351,8 +1359,11 @@ final class OrderRunner {
         // Crafting in hand carries on until it is over
         if (owner.crafter().active()) {
             phase = "crafting " + (index + 1) + "/" + units.size();
-            return new Craft(craftIndex < order.craftJobs.size()
-                    ? order.craftJobs.get(craftIndex).item() : SHULKER_BOX, 0);
+            return new Craft(
+                    craftIndex < order.craftJobs.size()
+                            ? order.craftJobs.get(craftIndex).item()
+                            : SHULKER_BOX,
+                    0);
         }
 
         skips = 0;
@@ -2043,9 +2054,10 @@ final class OrderRunner {
             for (Order.CraftJob job : order.craftJobs) outputs.add(job.item());
             for (int slot : owner.carry()) {
                 ItemStack carried = mc.player.getInventory().getItem(slot);
-                if (!carried.isEmpty() && outputs.contains(idOf(carried)) && !carried.isDamaged()
-                        && !holdsItems(carried))
-                    count(samples, available, raw, filled, wanted, ids, carried);
+                if (!carried.isEmpty()
+                        && outputs.contains(idOf(carried))
+                        && !carried.isDamaged()
+                        && !holdsItems(carried)) count(samples, available, raw, filled, wanted, ids, carried);
             }
         }
         staleSeen.removeAll(available.keySet());

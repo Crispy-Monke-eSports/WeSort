@@ -112,8 +112,7 @@ final class OrderStore {
             }
             for (var e : perKit.entrySet()) out.add(new Line("item", e.getKey(), e.getValue() * l.count));
         }
-        if (o.craftMaterials != null)
-            o.craftMaterials.forEach((key, count) -> out.add(new Line("item", key, count)));
+        if (o.craftMaterials != null) o.craftMaterials.forEach((key, count) -> out.add(new Line("item", key, count)));
         return out;
     }
 
@@ -166,6 +165,7 @@ final class OrderStore {
         Map<String, JsonObject> kits;
         /** Server-pinned table craft steps and the exact ingredient reservation. */
         JsonArray craftPlans;
+
         Map<String, Long> craftMaterials;
 
         long createdAt;
@@ -377,8 +377,10 @@ final class OrderStore {
                 r.craftPlans = o.getAsJsonArray("craftPlans").deepCopy();
             if (o.has("craftMaterials") && o.get("craftMaterials").isJsonObject()) {
                 r.craftMaterials = new LinkedHashMap<>();
-                o.getAsJsonObject("craftMaterials").entrySet().forEach(e ->
-                        r.craftMaterials.put(e.getKey(), e.getValue().getAsLong()));
+                o.getAsJsonObject("craftMaterials")
+                        .entrySet()
+                        .forEach(e ->
+                                r.craftMaterials.put(e.getKey(), e.getValue().getAsLong()));
             }
             if (o.has("kits") && o.get("kits").isJsonObject()) {
                 r.kits = new LinkedHashMap<>();
@@ -1196,8 +1198,11 @@ final class OrderStore {
 
         void add(Line line, int at) {
             var existing = lines.get(line.ref());
-            lines.put(line.ref(), existing == null ? line
-                    : new Line(line.type(), line.key(), Math.addExact(existing.count(), line.count())));
+            lines.put(
+                    line.ref(),
+                    existing == null
+                            ? line
+                            : new Line(line.type(), line.key(), Math.addExact(existing.count(), line.count())));
             firstIndex.merge(line.ref(), at, Math::min);
         }
     }
@@ -1216,7 +1221,8 @@ final class OrderStore {
             Map<String, Integer> firstIndex)
             throws IOException, OrderException {
         CraftExpansion result = new CraftExpansion();
-        boolean wantsCraft = exploded.lines.values().stream().anyMatch(l -> l.type().equals("craft"));
+        boolean wantsCraft =
+                exploded.lines.values().stream().anyMatch(l -> l.type().equals("craft"));
         for (var l : exploded.lines.values())
             if (!l.type().equals("craft")) result.add(l, exploded.firstIndex.get(l.ref()));
         if (!wantsCraft) return result;
@@ -1634,9 +1640,11 @@ final class OrderStore {
         available.add("items", items);
         available.add("shulkers", shulkers);
         available.add("kits", kitsOut);
-        available.add("craftables", CraftingCatalog.available(
-                physicalAvailable == null ? Map.of() : physicalAvailable,
-                index.craftingReady(server, stash) && physicalAvailable != null));
+        available.add(
+                "craftables",
+                CraftingCatalog.available(
+                        physicalAvailable == null ? Map.of() : physicalAvailable,
+                        index.craftingReady(server, stash) && physicalAvailable != null));
         out.add("available", available);
         return out;
     }

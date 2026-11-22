@@ -4897,8 +4897,7 @@ public class StashSorter extends Module {
             // For shulker packing, retain the existing fallback to find/place a
             // missing table. For new product manufacturing, the table is pinned.
             if (!manufacturing && stash != null && tableMissing()) {
-                var preview = crafter.preview(
-                        item, craft.count(), orderRunner.crafted(), pool.get(), false);
+                var preview = crafter.preview(item, craft.count(), orderRunner.crafted(), pool.get(), false);
                 if (!preview.ok()) {
                     orderRunner.craftEnded(new Crafter.Outcome(item, 0, preview.refusal()));
                     return false;

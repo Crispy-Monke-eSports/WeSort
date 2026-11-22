@@ -204,6 +204,7 @@ public class Stash {
         public int crafted;
         /** Manufacturing progress is journalled before any inventory clicks. */
         public int craftIndex, craftMade;
+
         public boolean craftInFlight;
         public final java.util.Map<String, Integer> craftUsed = new java.util.LinkedHashMap<>();
     }
@@ -982,8 +983,9 @@ public class Stash {
                 active.craftMade = number(order.get("craftMade"), 0);
                 active.craftInFlight = flag(order, "craftInFlight");
                 if (order.get("craftUsed") instanceof ListTag used)
-                    for (Tag t : used) if (t instanceof CompoundTag row)
-                        active.craftUsed.put(text(row, "key"), number(row.get("count"), 0));
+                    for (Tag t : used)
+                        if (t instanceof CompoundTag row)
+                            active.craftUsed.put(text(row, "key"), number(row.get("count"), 0));
                 if (order.get("unnamedWhy") instanceof ListTag why) {
                     for (Tag t : why) if (string(t) != null) active.unnamedReasons.add(string(t));
                 }

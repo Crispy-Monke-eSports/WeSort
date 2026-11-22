@@ -26,7 +26,7 @@ public final class PortalEntry {
     public static boolean atApproach(BlockPos approach, double x, double y, double z) {
         double dx = x - approach.getX() - 0.5;
         double dz = z - approach.getZ() - 0.5;
-        return Math.abs(y - approach.getY()) <= 1.0 && dx * dx + dz * dz <= 1.15 * 1.15;
+        return Math.abs(y - approach.getY()) <= 1.0 && dx * dx + dz * dz <= 0.85 * 0.85;
     }
 
     /** Minecraft yaw: 0 faces south, 90 faces west. */

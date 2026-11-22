@@ -45,6 +45,15 @@ public final class ShulkerUuid {
     }
 
     /**
+     * Only unnamed boxes or boxes named by the WeSort UUID system are eligible
+     * for automatic repacking. A human label (including a malformed WeSort name)
+     * is never overwritten or altered by the optimizer.
+     */
+    public static boolean repackableName(String name) {
+        return name == null || hasUuid(name);
+    }
+
+    /**
      * The plain {@code CUSTOM_NAME} text carried by a typed-NBT component patch (the transport produced
      * by {@code DataComponentPatch.CODEC}), or {@code null}. Only a bare plain-text component counts; a
      * styled/translated/compound name is not a canonical WeSort label.

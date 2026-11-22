@@ -8967,7 +8967,6 @@ public class StashSorter extends Module {
         if (stash == null || !stash.hasArea() || mc.level == null) return;
         BlockPos min = stash.areaMin(), max = stash.areaMax();
         String dimension = Stash.currentDimension();
-        Set<BlockPos> seen = new HashSet<>();
         boolean changed = false;
         for (int cx = min.getX() >> 4; cx <= max.getX() >> 4; cx++) {
             for (int cz = min.getZ() >> 4; cz <= max.getZ() >> 4; cz++) {
@@ -8977,7 +8976,6 @@ public class StashSorter extends Module {
                     if (!(entity instanceof ShulkerBoxBlockEntity)) continue;
                     BlockPos pos = entity.getBlockPos();
                     if (!stash.inArea(pos) || !shulkerAt(pos)) continue;
-                    seen.add(pos);
                     if (stash.orphans.stream()
                             .anyMatch(o -> o.pos.equals(pos)
                                     && (o.dimension.isEmpty() || Stash.sameDimension(o.dimension, dimension))))
@@ -8998,7 +8996,8 @@ public class StashSorter extends Module {
         }
         for (Stash.Orphan orphan : new ArrayList<>(stash.orphans)) {
             if (!orphan.dimension.isEmpty() && !Stash.sameDimension(orphan.dimension, dimension)) continue;
-            if (!stash.inArea(orphan.pos) || !mc.level.isLoaded(orphan.pos) || seen.contains(orphan.pos)) continue;
+            // A temporarily missing block entity is not proof that the block is gone.
+            if (!stash.inArea(orphan.pos) || !mc.level.isLoaded(orphan.pos) || shulkerAt(orphan.pos)) continue;
             if (placed != null && placed.equals(orphan.pos)
                     || pendingResume != null && orphan.pos.equals(pendingResume.placed)) continue;
             stash.orphans.remove(orphan);

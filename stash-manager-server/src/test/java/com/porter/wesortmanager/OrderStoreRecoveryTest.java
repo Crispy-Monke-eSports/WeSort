@@ -19,4 +19,13 @@ class OrderStoreRecoveryTest {
         var store = new OrderStore(dir, new IndexStore(dir));
         assertThrows(IOException.class, store::load);
     }
+
+    @Test
+    void partiallyValidOrderBookAlsoPreventsStartup() throws Exception {
+        Path orders = Files.createDirectories(dir.resolve("orders"));
+        Files.writeString(orders.resolve("partial.json"),
+                "{\"server\":\"s\",\"stash\":\"a\",\"orders\":[{\"id\":\"o-1\"}, {\"missing\":true}]}");
+        var store = new OrderStore(dir, new IndexStore(dir));
+        assertThrows(IOException.class, store::load);
+    }
 }

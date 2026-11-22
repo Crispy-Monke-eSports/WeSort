@@ -173,6 +173,8 @@ final class OrderStore {
         long cancelRequestedAt; // 0 when unknown (orders from before this field)
         JsonObject result;
         JsonObject manifest;
+        /** Durable outbox: UUID registry mutations still pending after a saved order transition. */
+        JsonArray pendingUuidDeregistrations;
         long manifestAcknowledgedAt;
         String placedById; // Users.OWNER_ID or a sub-user's id; null for orders from before accounts (the owner's)
         String placedByName; // the name at the time
@@ -193,6 +195,8 @@ final class OrderStore {
         JsonObject snapshot() {
             var saved = toJson();
             if (!history.isEmpty()) saved.add("history", history.deepCopy());
+            if (pendingUuidDeregistrations != null && !pendingUuidDeregistrations.isEmpty())
+                saved.add("pendingUuidDeregistrations", pendingUuidDeregistrations.deepCopy());
             return saved;
         }
 
@@ -315,6 +319,8 @@ final class OrderStore {
             Order r = new Order();
             r.id = o.get("id").getAsString();
             if (o.has("history")) r.history = o.getAsJsonArray("history").deepCopy();
+            if (o.has("pendingUuidDeregistrations"))
+                r.pendingUuidDeregistrations = o.getAsJsonArray("pendingUuidDeregistrations").deepCopy();
             if (o.has("manifest")) r.manifest = o.getAsJsonObject("manifest").deepCopy();
             if (o.has("manifestAcknowledgedAt"))
                 r.manifestAcknowledgedAt = o.get("manifestAcknowledgedAt").getAsLong();
@@ -519,6 +525,15 @@ final class OrderStore {
                 } catch (RuntimeException e) {
                     // An incomplete order book could silently release live reservations. Refuse readiness.
                     throw new IOException("Cannot restore orders file " + file.getFileName(), e);
+                }
+            }
+        }
+        // Complete previously committed registry side effects before serving any new requests.
+        // Never advertise readiness while the durable outbox still has work to replay.
+        synchronized (index) {
+            for (Book b : books.values()) {
+                synchronized (b) {
+                    for (Order order : List.copyOf(b.orders)) finishPendingUuidDeregistrations(b, order);
                 }
             }
         }
@@ -2016,11 +2031,23 @@ final class OrderStore {
             report.add("progress", progress == null ? JsonNull.INSTANCE : progress);
             report.addProperty("message", message);
             report.add("result", result == null ? JsonNull.INSTANCE : result);
+            // These UUIDs are a physical side effect of the report and MUST be bound to its receipt.
+            report.add("deliveredUuids", deliveredUuids == null ? new JsonArray() : deliveredUuids.deepCopy());
             String fingerprint = hash(report);
             String key =
                     receiptKey("report:" + id, agent, reportId == null ? "content:" + fingerprint : "id:" + reportId);
             var saved = previouslyReceived(key);
-            if (saved != null) return replay(saved, fingerprint);
+            if (saved != null) {
+                Order replayed = replay(saved, fingerprint);
+                Book book = byOrderId.get(id);
+                if (book != null) {
+                    synchronized (book) {
+                        Order current = find(book, id);
+                        if (current != null) finishPendingUuidDeregistrations(book, current);
+                    }
+                }
+                return replayed;
+            }
             return statusWithObservationLock(
                     id, status, phase, progress, message, deliveredUuids, result, agent, key, fingerprint);
         }
@@ -2064,6 +2091,10 @@ final class OrderStore {
             else if (result != null) o.result = result;
             o.updatedAt = System.currentTimeMillis();
             if (next != previous.stage()) o.record("order.transition", agent, o.updatedAt);
+            // Only a verified staging manifest authorizes UUID removal. Persist the intent
+            // with the order BEFORE updating SQLite, so retries/restarts can finish it.
+            if ("delivered".equals(status) && next == OrderStage.PICKUP_READY)
+                o.pendingUuidDeregistrations = authorizedDeregistrations(o, deliveredUuids);
             b.receipts.put(key, new Receipt(fingerprint, o.toJson()));
             try {
                 update(b, previous, o);
@@ -2071,21 +2102,55 @@ final class OrderStore {
                 b.receipts.remove(key);
                 throw failure;
             }
-            // Delivered shulkers left the stash: their UUIDs are deregistered, so the registry
-            // doesn't expect them back. Idempotent: repeats and unknown UUIDs are no-ops.
-            if (deliveredUuids != null) {
-                for (var element : deliveredUuids) {
-                    if (!element.isJsonPrimitive()
-                            || !element.getAsJsonPrimitive().isString()) continue;
-                    try {
-                        index.stock().deregisterBoxUuid(o.server, element.getAsString(), "DEREGISTERED_FOR_ORDER");
-                    } catch (IllegalArgumentException invalid) {
-                        // Not a UUID: ignore, the bot inventory is never trusted blindly
-                    }
-                }
-            }
-            return o;
+            finishPendingUuidDeregistrations(b, o);
+            return find(b, id);
         }
+    }
+
+    /**
+     * A client-supplied UUID is never proof of ownership. A registered box may leave the
+     * registry only when its exact physical root was reserved for this order. Unregistered
+     * (newly assembled) boxes need no registry mutation.
+     */
+    private JsonArray authorizedDeregistrations(Order order, JsonArray reported)
+            throws IOException, OrderException {
+        if (reported == null || reported.isEmpty() || order.manifest == null) return null;
+        var registered = new HashMap<String, JsonObject>();
+        for (var element : index.stock().boxUuids()) {
+            var box = element.getAsJsonObject();
+            registered.put(box.get("uuid").getAsString(), box);
+        }
+        var roots = new HashSet<PhysicalReservations.Root>();
+        if (order.allocations != null) {
+            for (var allocation : order.allocations) roots.add(allocation.root());
+        }
+        var result = new JsonArray();
+        var seen = new HashSet<String>();
+        for (var element : reported) {
+            if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) continue;
+            String uuid = element.getAsString();
+            if (!seen.add(uuid)) continue;
+            JsonObject box = registered.get(uuid);
+            if (box == null) continue;
+            if (!order.server.equals(box.get("server").getAsString())
+                    || !roots.contains(new PhysicalReservations.Root(
+                            box.get("source").getAsString(), box.get("path").getAsString()))) {
+                throw new OrderException(409, "Delivered box UUID is not reserved for this order", -1);
+            }
+            result.add(uuid);
+        }
+        return result.isEmpty() ? null : result;
+    }
+
+    /** Crash-safe replay of registry removals committed to a saved order snapshot. */
+    private void finishPendingUuidDeregistrations(Book book, Order order) throws IOException {
+        if (order.pendingUuidDeregistrations == null || order.pendingUuidDeregistrations.isEmpty()) return;
+        for (var uuid : order.pendingUuidDeregistrations) {
+            index.stock().deregisterBoxUuid(order.server, uuid.getAsString(), "DEREGISTERED_FOR_ORDER");
+        }
+        Order cleared = Order.fromJson(order.snapshot());
+        cleared.pendingUuidDeregistrations = null;
+        update(book, order, cleared);
     }
 
     private OrderStage reportedStage(Order order, String status, JsonObject result) throws IOException {

@@ -140,6 +140,24 @@ public class StashSorter extends Module {
         }
     }
 
+    /** 6b6t lobby handling: walk through the nether portal to the survival world before working. */
+    public enum PortalMode {
+        Auto("Auto (6b6t only)"),
+        On("On"),
+        Off("Off");
+
+        private final String title;
+
+        PortalMode(String title) {
+            this.title = title;
+        }
+
+        @Override
+        public String toString() {
+            return title;
+        }
+    }
+
     public enum LogLevel {
         Quiet("Quiet"),
         Normal("Normal"),
@@ -370,6 +388,13 @@ public class StashSorter extends Module {
                     "Only drop-offs that can change without anyone opening them (a hopper, dropper or dispenser next to or above them, or out of loaded range) are checked, and the wait grows from the recheck time up to 5 minutes while nothing is found. Opened drop-offs are noticed from their lids. Off: every drop-off is checked every recheck seconds.")
             .defaultValue(true)
             .visible(stayOn::get)
+            .build());
+
+    private final Setting<PortalMode> sixb6t = sgBot.add(new EnumSetting.Builder<PortalMode>()
+            .name("6b6t-mode")
+            .description(
+                    "On 6b6t the bot spawns in a lobby and must walk through the nether portal to the survival world first. Auto: only on 6b6t servers. While waiting for the survival world, no sorting, orders or reads start.")
+            .defaultValue(PortalMode.Auto)
             .build());
 
     // Ground
@@ -2330,6 +2355,11 @@ public class StashSorter extends Module {
             turnOff();
             return;
         }
+        // 6b6t lobby mode: the portal transit owns the tick until the survival world is reached.
+        if (portalTick()) {
+            ledgeGuard(false);
+            return;
+        }
         ticks++;
         // Whatever the sorter is doing, a skipped container whose time has come is made eligible again
         releaseDueSurveys();
@@ -3972,7 +4002,9 @@ public class StashSorter extends Module {
 
         driveBlocked = null;
         if (want) driveBlocked = notInStashWorld();
-        if (driveBlocked != null) want = false;
+        // The lobby transit reports through driveBlocked but must keep driving: the portal tick
+        // runs inside the driven loop and parks everything else itself.
+        if (driveBlocked != null && !portalAwaiting()) want = false;
 
         if (want && !driven) {
             driven = true;
@@ -3993,10 +4025,12 @@ public class StashSorter extends Module {
 
     /**
      * Why the player is not where the stash is, or null: no stash, another dimension, or (when the stash does not know its
-     * dimension yet) too far from every container it knows.
+     * dimension yet) too far from every container it knows. While the 6b6t lobby transit is pending, that is the
+     * only reason: it surfaces in the order blocker and the heartbeat, so the Manager sees "waiting for survival".
      */
     private String notInStashWorld() {
         if (stash == null) return "no stash";
+        if (!portalArrived && portalModeOn()) return "in lobby, entering survival world";
         String dim = !stash.dimension.isEmpty() ? stash.dimension : stash.areaDimension;
         if (!dim.isEmpty()) return Stash.sameDimension(dim, Stash.currentDimension()) ? null : "wrong dimension";
 
@@ -4005,6 +4039,113 @@ public class StashSorter extends Module {
             if (box.known() && at.distanceToSqr(Vec3.atCenterOf(box.pos)) <= 128 * 128) return null;
         }
         return "too far from the stash";
+    }
+
+    // ---- 6b6t lobby portal ----
+
+    private boolean portalArrived = false;
+    private Object portalStartLevel = null;
+    private String portalStartDim = "";
+    private long portalLastScan = 0;
+    private BlockPos portalGoal = null;
+    private int portalTicks = 0;
+    private int portalStuckTicks = 0;
+    private boolean portalNoBaritoneWarned = false;
+    private long portalWaitWarnedAt = 0;
+
+    private boolean portalModeOn() {
+        return switch (sixb6t.get()) {
+            case On -> true;
+            case Off -> false;
+            case Auto -> Stash.is6b6tServer(Stash.currentServer());
+        };
+    }
+
+    /** True while the bot must enter the lobby portal before any work: 6b6t mode, not arrived yet. */
+    boolean portalAwaiting() {
+        return !portalArrived && portalModeOn() && mc.player != null && mc.level != null;
+    }
+
+    private boolean isPortal(BlockPos pos) {
+        return mc.level != null
+                && mc.level.isLoaded(pos)
+                && mc.level.getBlockState(pos).is(Blocks.NETHER_PORTAL);
+    }
+
+    /** Nearest nether-portal block around the player, or null. Bounded span so the world isn't combed. */
+    private BlockPos nearestPortal() {
+        List<BlockPos> found = scanArea(state -> state.is(Blocks.NETHER_PORTAL), true);
+        BlockPos best = null;
+        double bestD = Double.MAX_VALUE;
+        Vec3 at = mc.player.position();
+        for (BlockPos p : found) {
+            double d = at.distanceToSqr(Vec3.atCenterOf(p));
+            if (d < bestD) {
+                bestD = d;
+                best = p;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * 6b6t lobby handling. Returns true while the portal transit owns the tick (normal jobs stay
+     * parked); false when arrived or inapplicable. Runs after the ready-guards, so Baritone and
+     * navigation may be used. Arrival is a new level instance (proxy transfer) or a changed
+     * dimension (portal teleport): either way the survival world is a different world to start in.
+     */
+    private boolean portalTick() {
+        if (portalArrived || !portalModeOn()) return false;
+        if (mc.player == null || mc.level == null) return true;
+        if (!BARITONE) {
+            if (!portalNoBaritoneWarned) {
+                portalNoBaritoneWarned = true;
+                warning("6b6t lobby mode needs Baritone to walk through the portal to survival.");
+            }
+            return true;
+        }
+        String dim = Stash.currentDimension();
+        if (portalStartLevel == null) {
+            portalStartLevel = mc.level;
+            portalStartDim = dim;
+            info("6b6t lobby mode: entering the portal to the survival world first.");
+        } else if (mc.level != portalStartLevel || !dim.equals(portalStartDim)) {
+            portalArrived = true;
+            releaseGoal();
+            portalGoal = null;
+            info("Through the portal (%s). Starting normal work.", dim.isEmpty() ? "new world" : dim);
+            return false;
+        }
+        portalTicks++;
+        if (portalGoal == null && System.currentTimeMillis() - portalLastScan >= 10_000) {
+            portalLastScan = System.currentTimeMillis();
+            portalGoal = nearestPortal();
+            if (portalGoal == null
+                    && portalTicks % 1200 == 1
+                    && System.currentTimeMillis() - portalWaitWarnedAt > 60_000) {
+                portalWaitWarnedAt = System.currentTimeMillis();
+                info("6b6t lobby mode: no portal in reach yet, waiting for chunks.");
+            }
+        }
+        if (portalGoal != null) {
+            if (ourGoal == null || !BaritoneHelper.goalIs((baritone.api.pathing.goals.Goal) ourGoal)) {
+                walkNear(portalGoal, 0);
+                portalStuckTicks = 0;
+            } else if (!BaritoneHelper.isMoving()) {
+                if (++portalStuckTicks > 1200) {
+                    releaseGoal();
+                    portalGoal = null;
+                    portalStuckTicks = 0;
+                    portalLastScan = 0;
+                }
+            } else portalStuckTicks = 0;
+            if (!isPortal(portalGoal)) {
+                releaseGoal();
+                portalGoal = null;
+                portalLastScan = 0;
+            }
+        }
+        return true;
     }
 
     /** wesort-stash-manager's setting: orders may unpack shulkers with a custom name. */
@@ -11933,6 +12074,15 @@ public class StashSorter extends Module {
             lastPlayer = null;
             ground.reset();
             forgetExploration();
+            // A new world is a new chance at the lobby portal: arrive again through it.
+            portalArrived = false;
+            portalStartLevel = null;
+            portalStartDim = "";
+            portalGoal = null;
+            portalTicks = 0;
+            portalStuckTicks = 0;
+            portalNoBaritoneWarned = false;
+            portalWaitWarnedAt = 0;
             // Whatever walk was ours is over with the world, and Baritone gets its settings back
             ourGoal = null;
             if (BARITONE) BaritoneHelper.unconfine();

@@ -524,6 +524,19 @@ public class Stash {
         return mc.getCurrentServer() != null ? mc.getCurrentServer().ip : "unknown";
     }
 
+    /**
+     * Whether a server address is 6b6t (any subdomain): 6b6t.org, join.6b6t.org, play.6b6t.org,
+     * with or without :port. Used to arm the lobby-portal transit, never for auth.
+     */
+    public static boolean is6b6tServer(String ip) {
+        if (ip == null) return false;
+        String host = ip.toLowerCase(Locale.ROOT).trim();
+        int colon = host.lastIndexOf(':');
+        if (colon >= 0 && host.indexOf(':') == colon) host = host.substring(0, colon);
+        if (host.endsWith(".") && host.length() > 1) host = host.substring(0, host.length() - 1);
+        return host.equals("6b6t.org") || host.endsWith(".6b6t.org");
+    }
+
     public static boolean exists(String name) {
         return Files.exists(file(name, currentServer()));
     }

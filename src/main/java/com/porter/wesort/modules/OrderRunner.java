@@ -756,6 +756,10 @@ final class OrderRunner {
      * What crafts may use up: the stash, less the items the units still to do need for their shulkers. One pool, used by
      * the plan, the replan and the run.
      */
+    boolean manufacturingHasProgress() {
+        return craftMade > 0;
+    }
+
     /** The current manufacturing task, if any. */
     boolean manufacturing() {
         return order != null && craftIndex < order.craftJobs.size() && !planned;
@@ -766,6 +770,18 @@ final class OrderRunner {
         if (!manufacturing()) return Map.of();
         Order.CraftJob job = order.craftJobs.get(craftIndex);
         Map<String, Long> pool = owner.crafter().survey();
+        // Already fetched, unused ingredients survive successful craft batches
+        // in the bot's owned carry. Never count outputs as new free ingredients.
+        if (craftMade > 0 && mc.player != null) {
+            Set<String> outputs = new HashSet<>();
+            for (Order.CraftJob made : order.craftJobs) outputs.add(made.item());
+            for (int slot : owner.carry()) {
+                ItemStack held = mc.player.getInventory().getItem(slot);
+                if (!held.isEmpty() && owner.crafter().eligible(held)
+                        && !outputs.contains(idOf(held)) && job.materials().containsKey(idOf(held)))
+                    pool.merge(idOf(held), (long) held.getCount(), Long::sum);
+            }
+        }
         pool.keySet().removeIf(k -> !job.materials().containsKey(k));
         for (var e : job.materials().entrySet()) {
             long remaining = (long) e.getValue() - craftUsed.getOrDefault(e.getKey(), 0);

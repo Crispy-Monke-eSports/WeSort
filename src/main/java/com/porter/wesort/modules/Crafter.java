@@ -104,7 +104,12 @@ final class Crafter {
             int doneOrder,
             Supplier<Map<String, Long>> pool,
             Supplier<Set<String>> reservedKeys,
-            boolean gatherOnly) {
+            boolean gatherOnly,
+            boolean useCarry) {
+        Request(String item, int count, String purpose, boolean reserve, int doneOrder,
+                Supplier<Map<String, Long>> pool, Supplier<Set<String>> reservedKeys, boolean gatherOnly) {
+            this(item, count, purpose, reserve, doneOrder, pool, reservedKeys, gatherOnly, false);
+        }
         Request(
                 String item,
                 int count,
@@ -112,7 +117,7 @@ final class Crafter {
                 boolean reserve,
                 int doneOrder,
                 Supplier<Map<String, Long>> pool) {
-            this(item, count, purpose, reserve, doneOrder, pool, Set::of, false);
+            this(item, count, purpose, reserve, doneOrder, pool, Set::of, false, false);
         }
     }
 
@@ -343,6 +348,14 @@ final class Crafter {
         active = true;
         startedAt = System.currentTimeMillis();
         snapshotBefore();
+        // Finished manufacturing batches may leave reserved, unconsumed inputs
+        // in the bot's stash-owned carry slots. Reuse them before fetching more.
+        if (r.useCarry() && mc.player != null) {
+            for (int slot : owner.carry()) {
+                ItemStack held = mc.player.getInventory().getItem(slot);
+                if (eligible(held) && plan.take().containsKey(idOf(held))) mine.add(slot);
+            }
+        }
         owner.say(String.format(
                 "Crafting %d %s for %s: %s.",
                 plan.count(), CraftPlanner.pretty(r.item()), r.purpose(), describe(plan)));
@@ -363,7 +376,8 @@ final class Crafter {
     private void replan() {
         replans++;
         Map<String, Long> pool = new HashMap<>(req.pool().get());
-        for (var e : carried().entrySet()) pool.merge(e.getKey(), (long) e.getValue(), Long::sum);
+        if (!req.useCarry())
+            for (var e : carried().entrySet()) pool.merge(e.getKey(), (long) e.getValue(), Long::sum);
         CraftPlanner.Result result = preview(req.item(), plan.count(), req.doneOrder(), pool, false);
         if (result.ok()) plan = result.plan();
         else failure = result.refusal();

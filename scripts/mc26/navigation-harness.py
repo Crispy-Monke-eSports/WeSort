@@ -349,6 +349,11 @@ class NavigationHarness(world.Harness):
             self.start_client()
             index = self.observe()
             self.verify_manager_index(index)
+            # The navigation test verifies exact read-only routes and dedicated
+            # safety fences, not Manager's autonomous world-dropoff recovery.
+            # Keep the intentionally placed shulker fixture standing here; the
+            # separate physical-stock E2E proves Manager recovers it into stash.
+            self.command("manager-pause")
             self.tour()
             self.fault_cases()
             self.dedicated_guard_cases()

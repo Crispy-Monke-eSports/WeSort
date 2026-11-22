@@ -703,8 +703,7 @@ final class OrderStore {
             for (var book : books.values()) {
                 if (!who.perms().seesStash(book.stash)) continue;
                 synchronized (book) {
-                    for (Order o : book.orders)
-                        if (o.status.equals("pending") && o.approval == Approval.PENDING) n++;
+                    for (Order o : book.orders) if (o.status.equals("pending") && o.approval == Approval.PENDING) n++;
                 }
             }
             return n;
@@ -718,8 +717,7 @@ final class OrderStore {
             for (var book : books.values()) {
                 if (!who.perms().seesStash(book.stash)) continue;
                 synchronized (book) {
-                    for (Order o : book.orders)
-                        if (o.cancelRequested && OPEN.contains(o.status)) n++;
+                    for (Order o : book.orders) if (o.cancelRequested && OPEN.contains(o.status)) n++;
                 }
             }
             return n;

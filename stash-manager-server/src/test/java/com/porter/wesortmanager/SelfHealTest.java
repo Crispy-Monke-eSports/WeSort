@@ -18,8 +18,7 @@ class SelfHealTest {
     private StockLedger ledger;
     private IndexStore store;
     private OrderStore orders;
-    private static final Users.Principal VIEWER =
-            new Users.Principal("owner", "Owner", true, Users.Perms.ALL, false);
+    private static final Users.Principal VIEWER = new Users.Principal("owner", "Owner", true, Users.Perms.ALL, false);
 
     @BeforeEach
     void initialize() throws Exception {
@@ -32,8 +31,14 @@ class SelfHealTest {
 
     private com.porter.wesort.data.PhysicalSlots.Snapshot frame(int count) {
         var diamond = new com.porter.wesort.data.PhysicalSlots.Item(
-                "minecraft:diamond", "minecraft:diamond", 64, "{}", com.porter.wesort.data.PhysicalSlots.Kind.ITEM,
-                0, List.of(), "");
+                "minecraft:diamond",
+                "minecraft:diamond",
+                64,
+                "{}",
+                com.porter.wesort.data.PhysicalSlots.Kind.ITEM,
+                0,
+                List.of(),
+                "");
         return new com.porter.wesort.data.PhysicalSlots.Snapshot(
                 27, List.of(new com.porter.wesort.data.PhysicalSlots.Slot(0, count, diamond)));
     }
@@ -64,10 +69,7 @@ class SelfHealTest {
 
     private void observe(String stash, int count) throws Exception {
         var payload = index(stash, count);
-        payload.getAsJsonArray("physicalSources")
-                .get(0)
-                .getAsJsonObject()
-                .addProperty("observedAt", time.get());
+        payload.getAsJsonArray("physicalSources").get(0).getAsJsonObject().addProperty("observedAt", time.get());
         store.putIndex(payload);
     }
 
@@ -107,13 +109,21 @@ class SelfHealTest {
         observe("a", 10);
         var open = orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 2)), null);
         assertEquals(
-                409, assertThrows(OrderStore.OrderException.class, () -> orders.reconcile(open.id, "cancelled", "owner")).status);
+                409,
+                assertThrows(OrderStore.OrderException.class, () -> orders.reconcile(open.id, "cancelled", "owner"))
+                        .status);
         assertEquals(
-                404, assertThrows(OrderStore.OrderException.class, () -> orders.reconcile("o-000000000000", "cancelled", "owner")).status);
+                404,
+                assertThrows(
+                                OrderStore.OrderException.class,
+                                () -> orders.reconcile("o-000000000000", "cancelled", "owner"))
+                        .status);
         observe("b", 10);
         var stuck = stuckOrder("b");
         assertEquals(
-                400, assertThrows(OrderStore.OrderException.class, () -> orders.reconcile(stuck.id, "deliver", "owner")).status);
+                400,
+                assertThrows(OrderStore.OrderException.class, () -> orders.reconcile(stuck.id, "deliver", "owner"))
+                        .status);
     }
 
     @Test
@@ -171,14 +181,21 @@ class SelfHealTest {
         String agent = UUID.randomUUID().toString();
         orders.claimPayload("s", "a", agent);
         var journal = new com.porter.wesort.inventory.PhysicalJournal(data.resolve("autoflag-client"));
-        var context = JsonParser.parseString("{\"server\":\"s\",\"stash\":\"a\",\"dimension\":\"minecraft:overworld\",\"agent\":\""
-                        + agent + "\",\"kind\":\"DIRECT\",\"orderId\":\"" + order.id + "\"}")
+        var context = JsonParser.parseString(
+                        "{\"server\":\"s\",\"stash\":\"a\",\"dimension\":\"minecraft:overworld\",\"agent\":\"" + agent
+                                + "\",\"kind\":\"DIRECT\",\"orderId\":\"" + order.id + "\"}")
                 .getAsJsonObject();
         journal.start(context);
         var intent = new JsonObject();
         intent.add("origin", journal.current().getAsJsonObject("context"));
-        intent.add("before", JsonParser.parseString("{\"menu\":1,\"slots\":[\"\",\"\"],\"cursor\":\"\"}").getAsJsonObject());
-        intent.add("expected", JsonParser.parseString("{\"menu\":1,\"slots\":[\"\",\"\"],\"cursor\":\"\"}").getAsJsonObject());
+        intent.add(
+                "before",
+                JsonParser.parseString("{\"menu\":1,\"slots\":[\"\",\"\"],\"cursor\":\"\"}")
+                        .getAsJsonObject());
+        intent.add(
+                "expected",
+                JsonParser.parseString("{\"menu\":1,\"slots\":[\"\",\"\"],\"cursor\":\"\"}")
+                        .getAsJsonObject());
         journal.intent(intent);
         new PhysicalOperations(ledger).accept(agent, journal.current());
         orders.releaseFromFreshObservation("s");

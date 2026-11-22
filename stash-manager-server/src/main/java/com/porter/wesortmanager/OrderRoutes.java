@@ -110,7 +110,12 @@ final class OrderRoutes {
                         Router.Perm.ORDER_OWN_OR_ALL,
                         this::forceCancel)
                 .pattern(Router.POST, RETRY, Router.Guard.BROWSER_WRITE, Router.Perm.ORDER_OWN_OR_ALL, this::retry)
-                .pattern(Router.POST, RECONCILE, Router.Guard.BROWSER_WRITE, Router.Perm.ORDER_OWN_OR_ALL, this::reconcile)
+                .pattern(
+                        Router.POST,
+                        RECONCILE,
+                        Router.Guard.BROWSER_WRITE,
+                        Router.Perm.ORDER_OWN_OR_ALL,
+                        this::reconcile)
                 .pattern(Router.POST, STATUS, Router.Guard.ADDON_KEY, this::status);
     }
 
@@ -398,7 +403,8 @@ final class OrderRoutes {
         JsonObject o = json != null && json.isJsonObject() ? json.getAsJsonObject() : null;
         String target = o == null ? null : AddonRoutes.string(o, "target");
         try {
-            OrderStore.Order order = orders.reconcile(m.group(1), target, Router.user(ex).id());
+            OrderStore.Order order =
+                    orders.reconcile(m.group(1), target, Router.user(ex).id());
             audit.add(Router.user(ex), "order.reconcile", order.id + " to " + target, AuthRoutes.address(ex));
             JsonObject out = Http.ok();
             out.add("order", shown(ex, order.toJson()));

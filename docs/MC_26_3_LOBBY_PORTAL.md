@@ -1,36 +1,70 @@
-# 6b6t-läge: lobbyportal före arbete
+# 6b6t lobby: safe portal entry and Manager presence
 
-När den anslutna servern är 6b6t (`6b6t.org`, `join.6b6t.org`, `play.6b6t.org`,
-med eller utan port) hamnar spelaren i en lobbyvärld och måste gå igenom
-netherportalen på torget för att komma till survival-världen. Agenten gör den
-promenaden själv innan något arbete börjar.
+On a 6b6t endpoint (`6b6t.org` and subdomains, with/without port) the
+client may join a **lobby** rather than survival. The internal sorter must
+cross the lobby portal before any warehouse inventory interaction.
 
-## Beteende
+## How it works
 
-- **Aktivering:** inställningen `6b6t-mode` i wesort-stash-sorter (Auto/På/Av,
-  default Auto). Auto = endast på 6b6t-servrar (`Stash.is6b6tServer`).
-- **Väntan:** Managerns `driveSorter` fortsätter driva medan `portalAwaiting()`
-  gäller; sorterns tick parkerar alla jobb tills transitens är klar.
-  `driveBlocked` rapporterar `"in lobby, entering survival world"`, vilket syns
-  som order-blocker i heartbeat — Managern ser alltså att boten är på väg in.
-- **Sökning:** throttlad (10 s) `scanArea` efter `minecraft:nether_portal`
-  inom 128 block. Inga hårdkodade koordinater — lobbyns layout ändras.
-- **Promenad:** `walkNear(portal, 0)` med vanlig safe-walk-confine; Baritone
-  krävs. Fastnar promenaden (ingen rörelse 60 s) släpps målet och sökningen
-  görs om.
-- **Ankomst:** nytt `ClientLevel`-objekt (proxy-transfer) eller ändrad dimension
-  (portal-teleport) jämfört med snapshot vid start → `releaseGoal()`,
-  `"Through the portal (...). Starting normal work."`, och ordinarie jobb tar vid.
-  Portalen söks aldrig igen under sessionen (dimensionsvillkor); nytt GameLeft
-  nollställer.
-- **Ping-pong-skydd:** transitlogik körs bara före ankomst; i survival-världen
-  gäller vanliga grindar. En borttagen portalblockposition (söndergrävd)
-  invaliderar målet direkt.
+- **Per-login state:** `PortalWorldSession` is re-armed by `GameLeftEvent`.
+  Every new login starts with a fresh world snapshot; a stale `portalArrived`
+  state from the previous connection cannot skip the lobby. Unrelated world
+  reloads *before* an entry attempt do not count as successful crossing.
+- **Bootstrap without a stash:** the always-subscribed sorter tracker drives
+  portal navigation for a configured, active Manager Agent even before
+  `bot/hello` has assigned a stash or a sorting permit exists. Normal inventory
+  and physical work remain behind the existing Manager/journal safety gates.
+- **Walkable approach:** scan loaded chunks for `minecraft:nether_portal`,
+  choose the lower portal block and compute the adjacent standing cell
+  perpendicular to its `AXIS`. Only select a cell with a clear two-block-high
+  hitbox and solid floor. Baritone walks **to the approach**, not the
+  non-solid portal block, so it no longer stops in front of the surface.
+- **Final crossing:** at the approach, release only the agent-owned Baritone
+  goal, face the center of the portal and temporarily hold forward to enter
+  it. Release the synthetic forward key on portal contact, loss of focus,
+  retry, logout and success. Manual portal contact is recognized too.
+- **Recovery:** the approach stalls after 200 ticks (10 seconds) without
+  position progress; explicit crossing times out after 100 ticks (5 seconds)
+  outside the portal. In either case, release our goal/key, choose the other
+  side and scan again. Being inside the portal suppresses repeated movement
+  and warns after 20 seconds if the server has not transferred the player.
+- **Confirmation:** only a new `ClientLevel` instance or dimension **after
+  a crossing attempt** releases the inventory/jobs gate. This is also what
+  happens when the 6b6t proxy transfers the player to survival.
 
-## Gränser
+## Manager online status
 
-- Fungerar bara med Baritone installerat (varning utan, väntar kvar).
-- Manager-sidans serversträng (`ServerRoutes`, exakt match) måste stämma mot
-  den värld boten står i, annars svarar heartbeat 409 wrong server oavsett läge.
-- Mojangs server-blocklista och 6b6t-verifiering (captcha/e-post) ligger utanför:
-  kontot måste redan kunna ansluta.
+The signed `/api/v1/bot/*` control channel now starts even if the lobby
+has not provided inventory readback or the Manager has not announced a
+stash. Its authenticated hello/state/long poll establishes agent presence
+independently of warehouse readiness. A recent signed 200/204 response for
+the **current link scope** is reported as Online in the connection UI; real
+authentication errors, an unreachable Manager, bad signatures and wrong
+server responses still override that state. Stale replies (over 90 seconds)
+never keep a disconnected agent Online.
+
+This does **not** loosen the server binding: Manager still requires the
+exact server address configured in its server settings for physical
+heartbeats and index uploads. If the Agent reports `wrong server`, verify
+that the configured Manager Minecraft address matches
+`Stash.currentServer()` (including port).
+
+## Regression checks
+
+- `PortalEntryTest`: approach orientation on both portal axes, free
+  crossing geometry, arrival distance and camera heading.
+- `PortalWorldSessionTest`: manual/proxy transfer detection, unrelated
+  world changes, and especially logout/rejoin requiring another portal entry.
+- `ConnectionStateTest`: signed presence while inventory/stash unavailable,
+  stale authentication and concrete network/authentication error precedence.
+- `./gradlew test` and the Minecraft 26.3 Baritone client-runtime/E2E test
+  matrix are required before merge. A passing unit suite does **not** by
+  itself prove live entry on 6b6t. Verify on an actual lobby and check that
+  the Agent appears online before and after portal transfer.
+
+## Limits
+
+Baritone is required for autonomous approach walking. Mojang login and
+6b6t-specific identity/captcha checks are not bypassed. A player can still
+enter the portal manually, and the agent must not fabricate survival
+arrival or a verified Manager connection.

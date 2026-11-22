@@ -4172,6 +4172,7 @@ public class StashSorter extends Module {
     /** Never leave an agent-held route or a pressed forward key behind after a failed attempt. */
     private void retryPortal() {
         portalForward(false);
+        portalSession.cancelAttempt();
         releaseGoal();
         portalTarget = null;
         portalApproach = null;

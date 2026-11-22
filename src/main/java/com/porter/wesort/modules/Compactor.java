@@ -455,6 +455,19 @@ final class Compactor {
         if (owner.version() == noPlanVersion && owner.ticks() < noPlanUntil) return false;
 
         Stash stash = owner.stash();
+        // Two boxes with the same WeSort UUID cannot both be treated as the
+        // pinned physical identity. Leave duplicates untouched for the UUID
+        // naming/reconciliation pass before any top-up is attempted.
+        Set<String> seenUuids = new HashSet<>();
+        Set<String> duplicateUuids = new HashSet<>();
+        for (Box box : stash.boxes) {
+            if (box.contents == null || box.stale) continue;
+            for (ItemStack stack : box.contents) {
+                if (!shulker(stack)) continue;
+                String uuid = uuidOf(stack);
+                if (uuid != null && (!seenUuids.add(uuid) || stack.getCount() != 1)) duplicateUuids.add(uuid);
+            }
+        }
         Map<BulkKey, Integer> full = new LinkedHashMap<>();
         Map<BulkKey, Map<Box, Integer>> where = new HashMap<>();
         Map<BulkKey, ItemStack> sample = new HashMap<>();
@@ -469,7 +482,7 @@ final class Compactor {
 
                 if (shulker(stack)) {
                     Partial part = partialOf(box, i, stack);
-                    if (part == null) continue;
+                    if (part == null || part.uuid() != null && duplicateUuids.contains(part.uuid())) continue;
                     StackInfo first = StackInfo.of(stack).contents().get(0);
                     BulkKey key = first.bulkKey();
                     if (owner.excluded(first.stack) || !homed.computeIfAbsent(key, k -> hasHome(first.stack))) continue;

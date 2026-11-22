@@ -43,12 +43,12 @@ class OrderStoreRecoveryTest {
         var order = new OrderStore.Order();
         // A reserved nested item belongs to the outer box's root but must not
         // deregister the still-existing container when those items are packed.
-        order.allocations = List.of(new PhysicalReservations.Allocation(
-                "source-A", "8/2", "item:minecraft:diamond", 5, "fingerprint", 1));
+        order.allocations = List.of(
+                new PhysicalReservations.Allocation("source-A", "8/2", "item:minecraft:diamond", 5, "fingerprint", 1));
         assertFalse(OrderStore.ownsReservedRoot(order, "source-A", "8"));
 
-        order.allocations = List.of(new PhysicalReservations.Allocation(
-                "source-A", "8", "shulker:kit", 1, "fingerprint", 1));
+        order.allocations =
+                List.of(new PhysicalReservations.Allocation("source-A", "8", "shulker:kit", 1, "fingerprint", 1));
         assertTrue(OrderStore.ownsReservedRoot(order, "source-A", "8"));
         assertFalse(OrderStore.ownsReservedRoot(order, "source-A", "9"));
         assertFalse(OrderStore.ownsReservedRoot(order, "source-B", "8"));

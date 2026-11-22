@@ -235,6 +235,7 @@ export type QuotaMe = z.infer<typeof QuotaMeSchema>;
 export const ManagedUserSchema = z.object({
   id: z.string(),
   name: z.string(),
+  minecraftAccount: z.string().nullable().optional(),
   disabled: z.boolean().default(false),
   mustChange: z.boolean().default(false),
   perms: PermsSchema.default({}),

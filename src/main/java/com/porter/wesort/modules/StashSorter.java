@@ -4224,6 +4224,16 @@ public class StashSorter extends Module {
             return false;
         }
 
+        // Production 6b6t lobby spawns near world origin while survival proxy
+        // workers can use the same dimension at x=80k. Do not reinterpret a
+        // distant survival portal as the lobby's login portal after reconnect.
+        if (!portalSession.inLobby()
+                && Stash.is6b6tServer(Stash.currentServer())
+                && !PortalEntry.in6b6tLobbyRegion(mc.player.blockPosition())) {
+            stopPortalNavigation();
+            return false;
+        }
+
         // First determine where the player actually is. The hostname alone
         // is not evidence of being in a lobby: returning users can spawn
         // directly on a survival worker with no portal anywhere nearby.

@@ -363,7 +363,17 @@ public final class WorldTestDriver {
                 case "manager-resume" -> {
                     var manager = Modules.get().get(StashManager.class);
                     if (!manager.isActive()) manager.toggle();
+                    // The live Manager must remain enabled for fail-closed guard tests,
+                    // but its autonomous sorter would immediately override RCON teleports.
+                    // Apply the fixture-only hold in this same client tick as activation.
+                    if (command.has("inspectionHold") && command.get("inspectionHold").getAsBoolean())
+                        manager.e2eHoldAutonomousWork(true);
                     respond(true, "production Manager agent resumed", state());
+                }
+                case "manager-inspection-hold" -> {
+                    var manager = Modules.get().get(StashManager.class);
+                    manager.e2eHoldAutonomousWork(command.get("hold").getAsBoolean());
+                    respond(true, "E2E inspection hold updated; dedicated Manager remains active", state());
                 }
                 case "engine-index" -> {
                     var current = com.porter.wesort.WeSortAddon.sorter().currentStash();

@@ -35,6 +35,20 @@ class PortalWorldSessionTest {
     }
 
     @Test
+    void failedCrossingMustNotMistakeRespawnForSurvival() {
+        var session = new PortalWorldSession();
+        Object lobby = new Object();
+        session.observe(lobby, "minecraft:overworld");
+        session.crossingAttempted();
+        session.cancelAttempt();
+        assertFalse(session.observe(new Object(), "minecraft:overworld"));
+        Object reloadedLobby = new Object();
+        assertFalse(session.observe(reloadedLobby, "minecraft:overworld"));
+        session.crossingAttempted();
+        assertTrue(session.observe(new Object(), "minecraft:overworld"));
+    }
+
+    @Test
     void disconnectAndRejoinRequiresAnotherEntry() {
         var session = new PortalWorldSession();
         Object oldWorld = new Object();

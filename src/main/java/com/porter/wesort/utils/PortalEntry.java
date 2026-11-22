@@ -7,6 +7,31 @@ import net.minecraft.core.Direction;
 public final class PortalEntry {
     private PortalEntry() {}
 
+    public static final int LOBBY_SEARCH_RADIUS = 32;
+    public static final int LOBBY_SEARCH_HEIGHT = 16;
+
+    public record SearchWindow(int minX, int maxX, int minY, int maxY, int minZ, int maxZ) {
+        public boolean contains(BlockPos position) {
+            return position.getX() >= minX
+                    && position.getX() <= maxX
+                    && position.getY() >= minY
+                    && position.getY() <= maxY
+                    && position.getZ() >= minZ
+                    && position.getZ() <= maxZ;
+        }
+    }
+
+    /** Search bounds follow the logged-in player, never the Manager's remote warehouse area. */
+    public static SearchWindow nearbyWindow(BlockPos player) {
+        return new SearchWindow(
+                player.getX() - LOBBY_SEARCH_RADIUS,
+                player.getX() + LOBBY_SEARCH_RADIUS,
+                player.getY() - LOBBY_SEARCH_HEIGHT,
+                player.getY() + LOBBY_SEARCH_HEIGHT,
+                player.getZ() - LOBBY_SEARCH_RADIUS,
+                player.getZ() + LOBBY_SEARCH_RADIUS);
+    }
+
     /**
      * The portal plane runs along its block-state axis. Approach it from one of the two
      * perpendicular sides, then walk through the plane under direct, bounded player input.

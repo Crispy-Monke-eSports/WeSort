@@ -9982,6 +9982,7 @@ public class StashSorter extends Module {
             case Survey,
                     Clean,
                     Fill,
+                    Recover,
                     KitUnpack,
                     KitFill,
                     Label,

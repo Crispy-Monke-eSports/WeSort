@@ -685,7 +685,12 @@ final class OrderRunner {
 
             // Stacks that differ in any component (ViaVersion's marker, say) can't share a slot, so each stack of the
             // line is taken from one variant (the smallest that has enough, else the biggest) and may be split over two
-            int max = Math.max(1, sample.getMaxStackSize());
+            // The Manager freezes the number of output shulkers before
+            // crafting begins. For an as-yet-unobserved crafted item its true
+            // stack size may not be available on the server, so both sides
+            // conservatively plan one output per slot instead of disagreeing
+            // about packageTotal and generated WeSort X/Y names.
+            int max = l.type().equals(Order.CRAFT) ? 1 : Math.max(1, sample.getMaxStackSize());
             List<Order.Lot> mine =
                     allocate(l.key(), usable, max, survey.variants().getOrDefault(l.key(), List.of()), used);
             stacks += mine.size();

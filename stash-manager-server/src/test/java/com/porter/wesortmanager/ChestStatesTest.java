@@ -26,9 +26,12 @@ class ChestStatesTest {
     void freshChestsAreNeverRequested() {
         AtomicLong clock = new AtomicLong(1_000_000);
         ChestStates s = states(clock);
-        s.report("s", "a", ChestStates.parse(JsonParser.parseString(
-                        "[" + chest(1, 64, 1, 900_000) + "," + chest(2, 64, 2, 999_999) + "]")
-                .getAsJsonArray()));
+        s.report(
+                "s",
+                "a",
+                ChestStates.parse(
+                        JsonParser.parseString("[" + chest(1, 64, 1, 900_000) + "," + chest(2, 64, 2, 999_999) + "]")
+                                .getAsJsonArray()));
         assertTrue(s.due("s", "a").isEmpty(), "reads within the max age stay quiet");
         assertTrue(s.due("s", "unknown").isEmpty(), "unknown stashes stay quiet");
     }
@@ -40,9 +43,9 @@ class ChestStatesTest {
         s.report(
                 "s",
                 "a",
-                ChestStates.parse(JsonParser.parseString(
-                                "[" + chest(1, 64, 1, 1_000) + "," + chest(2, 64, 2, 2_000) + "]")
-                        .getAsJsonArray()));
+                ChestStates.parse(
+                        JsonParser.parseString("[" + chest(1, 64, 1, 1_000) + "," + chest(2, 64, 2, 2_000) + "]")
+                                .getAsJsonArray()));
         JsonArray due = s.due("s", "a");
         assertEquals(2, due.size());
         assertEquals(1, due.get(0).getAsJsonObject().get("x").getAsInt(), "oldest read first");
@@ -50,8 +53,11 @@ class ChestStatesTest {
         assertTrue(s.due("s", "a").isEmpty(), "no repeat until a newer read is reported");
         // A newer read re-arms the chest.
         clock.set(10_000_001 + HOUR - 1000);
-        s.report("s", "a", ChestStates.parse(JsonParser.parseString("[" + chest(1, 64, 1, 10_000_001) + "]")
-                .getAsJsonArray()));
+        s.report(
+                "s",
+                "a",
+                ChestStates.parse(JsonParser.parseString("[" + chest(1, 64, 1, 10_000_001) + "]")
+                        .getAsJsonArray()));
         assertTrue(s.due("s", "a").isEmpty(), "fresh re-read stays quiet");
         clock.set(10_000_001 + HOUR + 1);
         JsonArray again = s.due("s", "a");
@@ -64,8 +70,11 @@ class ChestStatesTest {
         // give up forever — once the last request itself is older than the max age, ask again.
         AtomicLong clock = new AtomicLong(10_000_000);
         ChestStates s = states(clock);
-        s.report("s", "a", ChestStates.parse(
-                        JsonParser.parseString("[" + chest(1, 64, 1, 1_000) + "]").getAsJsonArray()));
+        s.report(
+                "s",
+                "a",
+                ChestStates.parse(JsonParser.parseString("[" + chest(1, 64, 1, 1_000) + "]")
+                        .getAsJsonArray()));
         assertEquals(1, s.due("s", "a").size(), "first ask");
         assertTrue(s.due("s", "a").isEmpty(), "no immediate repeat");
         clock.set(10_000_000 + HOUR - 1);
@@ -78,9 +87,13 @@ class ChestStatesTest {
     }
 
     @Test
-    void neverReadChestsAreLeftToTheAgent() {        AtomicLong clock = new AtomicLong(10_000_000);
+    void neverReadChestsAreLeftToTheAgent() {
+        AtomicLong clock = new AtomicLong(10_000_000);
         ChestStates s = states(clock);
-        s.report("s", "a", ChestStates.parse(
+        s.report(
+                "s",
+                "a",
+                ChestStates.parse(
                         JsonParser.parseString("[" + chest(1, 64, 1, 0) + "]").getAsJsonArray()));
         assertTrue(s.due("s", "a").isEmpty(), "readAt 0 is the agent's own unknown-chest business");
     }
@@ -89,11 +102,17 @@ class ChestStatesTest {
     void reportsReplaceTheStoredSet() {
         AtomicLong clock = new AtomicLong(10_000_000);
         ChestStates s = states(clock);
-        s.report("s", "a", ChestStates.parse(
-                        JsonParser.parseString("[" + chest(1, 64, 1, 1_000) + "]").getAsJsonArray()));
+        s.report(
+                "s",
+                "a",
+                ChestStates.parse(JsonParser.parseString("[" + chest(1, 64, 1, 1_000) + "]")
+                        .getAsJsonArray()));
         assertEquals(1, s.due("s", "a").size());
-        s.report("s", "a", ChestStates.parse(
-                        JsonParser.parseString("[" + chest(9, 64, 9, 9_999_999) + "]").getAsJsonArray()));
+        s.report(
+                "s",
+                "a",
+                ChestStates.parse(JsonParser.parseString("[" + chest(9, 64, 9, 9_999_999) + "]")
+                        .getAsJsonArray()));
         assertTrue(s.due("s", "a").isEmpty(), "gone chests are forgotten, fresh ones stay quiet");
         assertEquals(1, s.size());
     }
@@ -107,8 +126,11 @@ class ChestStatesTest {
             if (i > 0) body.append(',');
             body.append(chest(i, 64, i, i));
         }
-        s.report("s", "a", ChestStates.parse(JsonParser.parseString(body.append(']').toString())
-                .getAsJsonArray()));
+        s.report(
+                "s",
+                "a",
+                ChestStates.parse(
+                        JsonParser.parseString(body.append(']').toString()).getAsJsonArray()));
         JsonArray due = s.due("s", "a");
         assertEquals(ChestStates.MAX_RECHECK, due.size());
         assertEquals(1, due.get(0).getAsJsonObject().get("x").getAsInt(), "oldest first (readAt 0 is skipped)");
@@ -125,10 +147,8 @@ class ChestStatesTest {
                 () -> ChestStates.parse(JsonParser.parseString("[{\"x\":1.5,\"y\":64,\"z\":1,\"readAt\":5}]")));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> ChestStates.parse(
-                        JsonParser.parseString("[{\"x\":99999999,\"y\":64,\"z\":1,\"readAt\":5}]")));
-        List<ChestStates.Chest> ok =
-                ChestStates.parse(JsonParser.parseString("[" + chest(1, 64, 1, 5) + "]"));
+                () -> ChestStates.parse(JsonParser.parseString("[{\"x\":99999999,\"y\":64,\"z\":1,\"readAt\":5}]")));
+        List<ChestStates.Chest> ok = ChestStates.parse(JsonParser.parseString("[" + chest(1, 64, 1, 5) + "]"));
         assertEquals(1, ok.size());
         assertEquals(new ChestStates.Chest(1, 64, 1, 5), ok.get(0));
     }

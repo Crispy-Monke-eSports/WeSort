@@ -278,7 +278,8 @@ final class AddonRoutes {
         out.addProperty("needDelivery", delivery.needed(server, stash, deliveryHash));
         out.add("orders", orders.heartbeatJson(server, stash));
         if (result.rescan() != null) out.addProperty("rescan", result.rescan());
-        // Manager-owned directive: region cube, drop-off chest, delivery, anvil and workbench. The bot executes headlessly.
+        // Manager-owned directive: region cube, drop-off chest, delivery, anvil and workbench. The bot executes
+        // headlessly.
         if (defs != null) {
             JsonObject directive = defs.directive(stash);
             if (directive != null) out.add("directive", directive);
@@ -389,7 +390,8 @@ final class AddonRoutes {
             crafting = new IndexStore.Crafting(enabled.getAsBoolean(), table.getAsBoolean(), tableSource);
         }
         boolean hasStorage = o.has("deliveryStorage");
-        IndexStore.DeliveryStorage storage = null;        if (hasStorage && !o.get("deliveryStorage").isJsonNull()) {
+        IndexStore.DeliveryStorage storage = null;
+        if (hasStorage && !o.get("deliveryStorage").isJsonNull()) {
             if (!o.get("deliveryStorage").isJsonObject()) {
                 throw new IllegalArgumentException(
                         "deliveryStorage must be {autoExpand, chests, full, canExpand, blocked} or null");

@@ -168,8 +168,7 @@ final class ChestStates {
         for (var en : old) {
             if (n >= MAX_RECHECK) break;
             Entry e = set.get(en.getKey());
-            if (e == null
-                    || (e.lastRequestedReadAt() == e.readAt() && now - e.lastRequestedAt() < maxAgeMillis))
+            if (e == null || (e.lastRequestedReadAt() == e.readAt() && now - e.lastRequestedAt() < maxAgeMillis))
                 continue;
             set.put(en.getKey(), new Entry(e.readAt(), e.seenAt(), e.readAt(), now));
             out.add(chestJson(en.getKey()));

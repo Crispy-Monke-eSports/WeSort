@@ -1020,7 +1020,8 @@ class UsersTest {
         assertEquals("a", ea.get("name").getAsString());
         assertEquals("minecraft:overworld", ea.get("dimension").getAsString());
         assertTrue(ea.has("revision"), "revision stays visible for conflict reloads");
-        for (String coord : List.of("pos1", "pos2", "dropoff", "dropoffDimension", "delivery", "deliveryDimension", "anvil", "table"))
+        for (String coord : List.of(
+                "pos1", "pos2", "dropoff", "dropoffDimension", "delivery", "deliveryDimension", "anvil", "table"))
             assertFalse(ea.has(coord), "member without positions must not see " + coord);
 
         // A member with the positions permission sees full coordinates, still only in scope.

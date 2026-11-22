@@ -198,7 +198,19 @@ final class StashDefs {
         Vec table =
                 req.has("table") && !req.get("table").isJsonNull() ? vec(req.getAsJsonObject("table"), "table") : null;
         long rev = revision > 0 ? revision + 1 : 1;
-        return new Def(name, dimension, pos1, pos2, dropoff, dropoffDim, delivery, deliveryDim, anvil, table, rev, clock.getAsLong());
+        return new Def(
+                name,
+                dimension,
+                pos1,
+                pos2,
+                dropoff,
+                dropoffDim,
+                delivery,
+                deliveryDim,
+                anvil,
+                table,
+                rev,
+                clock.getAsLong());
     }
 
     private static Vec vec(JsonObject o, String what) {

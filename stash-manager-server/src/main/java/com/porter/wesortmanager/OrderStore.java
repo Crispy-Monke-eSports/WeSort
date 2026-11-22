@@ -559,6 +559,9 @@ final class OrderStore {
                     for (Order order : List.copyOf(b.orders)) finishPendingUuidDeregistrations(b, order);
                 }
             }
+            // A Manager restart must not reset an already expired cancellation.
+            for (String server : books.keySet().stream().map(IndexStore.StashKey::server).distinct().toList())
+                autoHeal(server);
         }
     }
 
@@ -801,6 +804,24 @@ final class OrderStore {
             o.updatedAt = now;
             o.record("order.auto-reconcile", Users.OWNER_ID, now);
             return o;
+        }
+        if (previous.cancelRequested
+                && previous.allocations != null
+                && isExecuting(previous)
+                && previous.cancelRequestedAt > 0
+                && now - previous.cancelRequestedAt > AUTO_CANCEL_AFTER_MS
+                && now - previous.updatedAt > AUTO_CANCEL_AFTER_MS) {
+            // Never pretend an allocated physical order was safely cancelled.
+            // An absent/silent bot cannot prove what it moved; retain all holds
+            // and require an explicit reconciliation instead of CANCEL_REQUESTED forever.
+            Order pending = Order.fromJson(previous.snapshot());
+            pending.advance(OrderStage.NEEDS_RECONCILIATION);
+            pending.status = "needs_reconciliation";
+            pending.cancelRequested = false;
+            pending.message = "Cancel timed out: physical allocations remain protected pending reconciliation";
+            pending.updatedAt = now;
+            pending.record("order.cancel.reconciliation-required", Users.OWNER_ID, now);
+            return pending;
         }
         if (previous.cancelRequested
                 && previous.allocations == null
@@ -1605,6 +1626,15 @@ final class OrderStore {
 
     /** { orders: [newest first], available: { items: {key: n}, shulkers: {key: n} } } */
     JsonObject listJson(String server, String stash) {
+        // Repair stale cancellations during normal dashboard polling as well as
+        // startup. Physical holds are *not* released by this status transition.
+        synchronized (index) {
+            try {
+                autoHeal(server);
+            } catch (IOException ignored) {
+                // Keep the previous durable state when disk/source verification fails.
+            }
+        }
         JsonObject out = new JsonObject();
         JsonArray list = new JsonArray();
         Book b = books.get(new IndexStore.StashKey(server, stash));

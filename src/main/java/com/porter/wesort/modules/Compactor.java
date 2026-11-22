@@ -288,7 +288,8 @@ final class Compactor {
     }
 
     private static boolean repackableName(ItemStack stack) {
-        return !stack.has(DataComponents.CUSTOM_NAME) || uuidOf(stack) != null;
+        var custom = stack.get(DataComponents.CUSTOM_NAME);
+        return ShulkerUuid.repackableName(custom == null ? null : custom.getString());
     }
 
     private static boolean full(ItemStack stack) {

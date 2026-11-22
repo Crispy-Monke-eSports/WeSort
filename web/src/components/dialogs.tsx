@@ -85,7 +85,7 @@ export function ConfirmDialog({
         onClose();
       }}
       aria-labelledby="confirm-dialog-title"
-      aria-describedby="confirm-dialog-desc"
+      aria-describedby={intro ? "confirm-dialog-desc" : undefined}
       maxWidth="xs"
       fullWidth
     >
@@ -106,7 +106,7 @@ export function ConfirmDialog({
         </Stack>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose} disabled={busy} autoFocus={!danger}>
+        <Button onClick={onClose} disabled={busy} autoFocus>
           Cancel
         </Button>
         <Button
@@ -114,7 +114,6 @@ export function ConfirmDialog({
           color={danger ? "error" : "primary"}
           onClick={onConfirm}
           disabled={busy}
-          autoFocus={danger}
         >
           {busy ? "Working…" : danger ? `Yes, ${confirmLabel.toLowerCase()}` : confirmLabel}
         </Button>

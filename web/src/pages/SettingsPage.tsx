@@ -49,31 +49,38 @@ const vecText = (v?: { x: number; y: number; z: number } | null) => (v ? `${v.x}
 export function SettingsPage() {
   const auth = useAuth();
   const perms = usePermissions(auth.data);
-  const [tab, setTab] = useState(0);
+  type Section = "server" | "stashes" | "kits" | "users" | "keys" | "guild" | "security" | "connection";
+  const [tab, setTab] = useState<Section>("server");
+  // Permissions can change mid-session: stable tab IDs prevent index drift.
+  const visible: Section[] = ["server", "stashes",
+    ...(perms.owner ? ["kits", "users", "keys"] as Section[] : []),
+    "guild", "security", ...(perms.can("link") ? ["connection"] as Section[] : [])];
+  const active = visible.includes(tab) ? tab : "server";
+  useEffect(() => { if (active !== tab) setTab(active); }, [active, tab]);
 
   return (
     <Stack spacing={2}>
       <Typography variant="h5" component="h1">Settings</Typography>
       <Card>
-        <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto" aria-label="Settings sections">
-          <Tab label="Server" />
-          <Tab label="Stashes" />
-          {perms.owner && <Tab label="Kits" />}
-          {perms.owner && <Tab label="Users" />}
-          {perms.owner && <Tab label="API keys" />}
-          <Tab label="Guild" />
-          <Tab label="Security" />
-          {perms.can("link") && <Tab label="Connection" />}
+        <Tabs value={active} onChange={(_, v: Section) => setTab(v)} variant="scrollable" scrollButtons="auto" aria-label="Settings sections">
+          <Tab value="server" label="Server" />
+          <Tab value="stashes" label="Stashes" />
+          {perms.owner && <Tab value="kits" label="Kits" />}
+          {perms.owner && <Tab value="users" label="Users" />}
+          {perms.owner && <Tab value="keys" label="API keys" />}
+          <Tab value="guild" label="Guild" />
+          <Tab value="security" label="Security" />
+          {perms.can("link") && <Tab value="connection" label="Connection" />}
         </Tabs>
         <CardContent>
-          {tab === 0 && <ServerSection />}
-          {tab === 1 && <StashSection />}
-          {tab === 2 && perms.owner && <KitSection />}
-          {tab === (perms.owner ? 3 : 2) && perms.owner && <UsersSection />}
-          {tab === (perms.owner ? 4 : 2) && perms.owner && <ApiKeysSection />}
-          {tab === (perms.owner ? 5 : 2) && <GuildSection />}
-          {tab === (perms.owner ? 6 : 3) && <SecuritySection />}
-          {tab === (perms.owner ? 7 : 4) && perms.can("link") && <LinkSection />}
+          {active === "server" && <ServerSection />}
+          {active === "stashes" && <StashSection />}
+          {active === "kits" && perms.owner && <KitSection />}
+          {active === "users" && perms.owner && <UsersSection />}
+          {active === "keys" && perms.owner && <ApiKeysSection />}
+          {active === "guild" && <GuildSection />}
+          {active === "security" && <SecuritySection />}
+          {active === "connection" && perms.can("link") && <LinkSection />}
         </CardContent>
       </Card>
     </Stack>
@@ -1053,12 +1060,13 @@ function ApiKeysSection() {
       confirmLabel: "Revoke",
       danger: true,
       run: async () => {
+        // Keep the confirmation dialog open and show the error if revoke fails.
         try {
           await api(`/api/v1/agents/${slot.id}/revoke`, { method: "POST", body: {} });
-          await load();
         } catch (e: any) {
-          setMsg(errText(e));
+          throw new Error(errText(e));
         }
+        await load();
       },
     });
   }

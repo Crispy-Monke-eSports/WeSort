@@ -139,56 +139,77 @@ export function useLiveUpdates(enabled: boolean, streamUrl = "/api/v1/events") {
   const lastAuthCheck = useRef(0);
   useEffect(() => {
     if (!enabled || typeof EventSource === "undefined") return;
-    setLive({ status: "connecting" });
-    const source = new EventSource(streamUrl);
-    let timer: ReturnType<typeof setTimeout> | null = null;
+    let source: EventSource | null = null;
+    let flushTimer: ReturnType<typeof setTimeout> | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let pending = new Set<string>();
+    let stopped = false;
 
     const flush = () => {
-      timer = null;
+      flushTimer = null;
       if (pending.size === 0) return;
       invalidateLive(client, [...pending]);
       pending = new Set<string>();
     };
     const queue = (channels: string[]) => {
       for (const c of channels) pending.add(c);
-      if (timer !== null) return;
-      timer = setTimeout(flush, 250);
-    };
-
-    source.onopen = () => {
-      setLive({ status: "live" });
-      invalidateLive(client); // resync: cover everything missed while away
+      if (flushTimer === null) flushTimer = setTimeout(flush, 250);
     };
     const onUpdate = (event: MessageEvent) => {
-      const channels = parseUpdate(String((event as MessageEvent).data ?? ""));
+      const data = String(event.data ?? "");
+      const channels = parseUpdate(data);
       try {
-        const rev = (JSON.parse(String((event as MessageEvent).data ?? "")) as { rev?: unknown }).rev;
+        const rev = (JSON.parse(data) as { rev?: unknown }).rev;
         if (typeof rev === "number") setLive({ rev });
       } catch {
         /* rev is advisory */
       }
       queue(channels.length ? channels : ["__unknown__"]);
     };
-    source.addEventListener("update", onUpdate as EventListener);
-    source.onerror = () => {
-      // EventSource retries by itself; only mark offline when it gives up.
-      if (source.readyState === EventSource.CLOSED) setLive({ status: "offline" });
-      else setLive({ status: "connecting" });
-      // The stream dying can mean the session is gone (revoked, disabled,
-      // logged out elsewhere): revalidate auth so a 401 bounces to login
-      // promptly instead of stranding a stale-looking session. Throttled —
-      // routine ~50 s stream rotations must not refetch auth every time.
-      const now = Date.now();
-      if (authCheckDue(lastAuthCheck.current, now)) {
-        lastAuthCheck.current = now;
-        void client.invalidateQueries({ queryKey: keys.auth });
-      }
+    const connect = () => {
+      if (stopped) return;
+      setLive({ status: "connecting" });
+      const current = new EventSource(streamUrl);
+      source = current;
+      current.onopen = () => {
+        if (stopped) return;
+        setLive({ status: "live" });
+        invalidateLive(client); // replay everything missed during a disconnection
+      };
+      current.addEventListener("update", onUpdate as EventListener);
+      current.onerror = () => {
+        if (stopped) return;
+        if (current.readyState === EventSource.CLOSED) {
+          // HTTP 503 when all stream permits are occupied can close EventSource
+          // permanently. Unlike ordinary network errors, it needs an explicit retry.
+          setLive({ status: "offline" });
+          current.removeEventListener("update", onUpdate as EventListener);
+          current.close();
+          if (source === current) source = null;
+          if (reconnectTimer === null) {
+            reconnectTimer = setTimeout(() => {
+              reconnectTimer = null;
+              connect();
+            }, 5000);
+          }
+        } else {
+          // EventSource performs its own retry while in CONNECTING state.
+          setLive({ status: "connecting" });
+        }
+        const now = Date.now();
+        if (authCheckDue(lastAuthCheck.current, now)) {
+          lastAuthCheck.current = now;
+          void client.invalidateQueries({ queryKey: keys.auth });
+        }
+      };
     };
+    connect();
     return () => {
-      if (timer !== null) clearTimeout(timer);
-      source.removeEventListener("update", onUpdate as EventListener);
-      source.close();
+      stopped = true;
+      if (flushTimer !== null) clearTimeout(flushTimer);
+      if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+      source?.removeEventListener("update", onUpdate as EventListener);
+      source?.close();
       setLive({ status: "offline" });
     };
   }, [enabled, streamUrl, client]);

@@ -4061,7 +4061,7 @@ public class StashSorter extends Module {
      */
     private String notInStashWorld() {
         if (stash == null) return "no stash";
-        if (!portalSession.arrived() && portalModeOn()) return "in lobby, entering survival world";
+        if (portalAwaiting()) return "in lobby, entering survival world";
         String dim = !stash.dimension.isEmpty() ? stash.dimension : stash.areaDimension;
         if (!dim.isEmpty()) return Stash.sameDimension(dim, Stash.currentDimension()) ? null : "wrong dimension";
 
@@ -4113,7 +4113,7 @@ public class StashSorter extends Module {
 
     /** True for EVERY new 6b6t login, including after a previous session succeeded. */
     public boolean portalAwaiting() {
-        return !portalSession.arrived() && portalModeOn() && mc.player != null && mc.level != null;
+        return portalSession.inLobby() && portalModeOn() && mc.player != null && mc.level != null;
     }
 
     /** Releases synthetic movement on completion, failure, yielding and disconnect. */
@@ -4158,27 +4158,29 @@ public class StashSorter extends Module {
      * A portal is not a walkable Baritone GoalNear(0). Pick a safe adjacent stand on the
      * perpendicular side of the portal plane; the last step across the plane is done separately.
      */
-    private PortalRoute nearestPortal() {
-        List<BlockPos> found = scanArea(state -> state.is(Blocks.NETHER_PORTAL), true);
+    private PortalRoute nearestPortal(List<BlockPos> found) {
         PortalRoute best = null;
         double bestD = Double.MAX_VALUE;
         Vec3 at = mc.player.position();
         for (BlockPos p : found) {
-            // The bottom portal block is at the player's feet, unlike the upper portal blocks.
+            // Use the bottom portal cell so an approach aligns with the player's feet.
             if (isPortal(p.below())) continue;
             var state = mc.level.getBlockState(p);
             if (!state.hasProperty(net.minecraft.world.level.block.NetherPortalBlock.AXIS)) continue;
             Direction.Axis axis = state.getValue(net.minecraft.world.level.block.NetherPortalBlock.AXIS);
-            BlockPos stand = PortalEntry.approach(p, axis, at.x, at.z, portalOtherSide);
-            if (!clearPortalApproach(stand) || !com.porter.wesort.compat.NavigationRuntime.safePortalApproach(stand)) {
-                stand = PortalEntry.approach(p, axis, at.x, at.z, !portalOtherSide);
-                if (!clearPortalApproach(stand)
-                        || !com.porter.wesort.compat.NavigationRuntime.safePortalApproach(stand)) continue;
-            }
-            double distance = at.distanceToSqr(Vec3.atCenterOf(stand));
-            if (distance < bestD) {
-                bestD = distance;
-                best = new PortalRoute(p.immutable(), stand.immutable());
+            for (int side = 0; side < 2; side++) {
+                BlockPos adjacent = PortalEntry.approach(p, axis, at.x, at.z, side == 0 ? portalOtherSide : !portalOtherSide);
+                // Lobby walkways can be one block above/below the bottom portal cell.
+                for (int dy : new int[] {0, -1, 1}) {
+                    BlockPos stand = adjacent.offset(0, dy, 0);
+                    if (!clearPortalApproach(stand)
+                            || !com.porter.wesort.compat.NavigationRuntime.safePortalApproach(stand)) continue;
+                    double distance = at.distanceToSqr(Vec3.atCenterOf(stand));
+                    if (distance < bestD) {
+                        bestD = distance;
+                        best = new PortalRoute(p.immutable(), stand.immutable());
+                    }
+                }
             }
         }
         return best;
@@ -4215,15 +4217,44 @@ public class StashSorter extends Module {
             return true;
         }
 
-        boolean firstObservation = !portalSession.started();
-        if (portalSession.observe(mc.level, Stash.currentDimension())) {
-            portalForward(false);
-            releaseGoal();
-            portalTarget = portalApproach = null;
-            info("Through the portal. Starting normal work.");
+        if (portalSession.observe(mc.level, Stash.currentDimension(), mc.player.getX(), mc.player.getZ())) {
+            stopPortalNavigation();
+            info("6b6t: confirmed survival transfer. Starting normal work.");
             return false;
         }
-        if (firstObservation) info("6b6t lobby mode: entering the portal to the survival world first.");
+
+        // First determine where the player actually is. The hostname alone
+        // is not evidence of being in a lobby: returning users can spawn
+        // directly on a survival worker with no portal anywhere nearby.
+        long now = System.currentTimeMillis();
+        if (portalTarget == null && now - portalLastScan >= 10_000) {
+            portalLastScan = now;
+            List<BlockPos> nearby = scanLocalPortalBlocks();
+            if (!nearby.isEmpty()) {
+                boolean firstLobby = !portalSession.inLobby();
+                portalSession.lobbySeen(mc.player.getX(), mc.player.getZ());
+                if (firstLobby) info("6b6t lobby confirmed: entering the nearby portal before sorting.");
+                PortalRoute route = nearestPortal(nearby);
+                if (route != null) {
+                    portalTarget = route.portal();
+                    portalApproach = route.approach();
+                    portalLastPosition = mc.player.position();
+                    portalStuckTicks = 0;
+                } else if (now - portalWaitWarnedAt >= 60_000) {
+                    portalWaitWarnedAt = now;
+                    warning("6b6t lobby: portal blocks found, but no safe approach cell; inspect the walkway.");
+                }
+            } else if (portalSession.inLobby() && now - portalWaitWarnedAt >= 60_000) {
+                portalWaitWarnedAt = now;
+                warning("6b6t lobby: portal temporarily not visible in loaded nearby chunks; retrying.");
+            }
+        }
+        if (!portalSession.inLobby()) {
+            // Survival (or an unknown world): NEVER activate lobby navigation without
+            // positive local portal evidence. An old portal goal cannot cross worlds.
+            stopPortalNavigation();
+            return false;
+        }
 
         if (touchingPortal()) {
             portalSession.crossingAttempted();
@@ -4277,21 +4308,6 @@ public class StashSorter extends Module {
                 portalForward(true);
             }
             return true;
-        }
-
-        long now = System.currentTimeMillis();
-        if (portalTarget == null && now - portalLastScan >= 10_000) {
-            portalLastScan = now;
-            PortalRoute route = nearestPortal();
-            if (route != null) {
-                portalTarget = route.portal();
-                portalApproach = route.approach();
-                portalLastPosition = mc.player.position();
-                portalStuckTicks = 0;
-            } else if (now - portalWaitWarnedAt >= 60_000) {
-                portalWaitWarnedAt = now;
-                info("6b6t lobby: no walkable portal entrance found in loaded chunks.");
-            }
         }
 
         if (portalTarget != null) {
@@ -12435,12 +12451,14 @@ public class StashSorter extends Module {
             // Lobby entry is a navigation-only bootstrap: it cannot depend on an already loaded
             // stash, a sorting lease or an enabled warehouse job. In particular it runs on re-login.
             StashManager manager = Modules.get().get(StashManager.class);
-            if (portalAwaiting() && manager != null && manager.dedicatedProfile()) {
-                // Inventory readback can remain unready in the proxy lobby. Navigation
-                // does not touch inventory, but a journal uncertainty still blocks it.
-                if (!PhysicalJournalRuntime.blocked() && !PhysicalJournalRuntime.awaitingMirror()) portalTick();
-                else portalForward(false);
-                return;
+            if (portalModeOn() && manager != null && manager.dedicatedProfile()) {
+                // Probe for positive lobby evidence even if the user manually crossed the
+                // portal. A survival world without a nearby lobby portal proceeds normally.
+                if (!PhysicalJournalRuntime.blocked() && !PhysicalJournalRuntime.awaitingMirror()) {
+                    if (portalTick()) return;
+                } else {
+                    portalForward(false);
+                }
             }
             if (portalHoldingForward && (manager == null || !manager.dedicatedProfile())) stopPortalNavigation();
             if (driven) StashSorter.this.onTick(event);

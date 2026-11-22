@@ -41,6 +41,9 @@ final class Compactor {
 
         int topUpAt();
 
+        /** Minimum full stacks to start a new bulk box (0 disables new boxes). */
+        int newBulkAt();
+
         boolean excluded(ItemStack stack);
 
         List<Box> destinationsFor(ItemStack stack);
@@ -523,8 +526,8 @@ final class Compactor {
                 candidate.sourceSlot = part.slot();
                 candidate.targetUuid = part.uuid();
                 score = 1000 + add;
-            } else if (single ? stacks >= 2 : stacks >= 27) {
-                int target = single ? Math.min(27, stacks) : 27;
+            } else if (single ? stacks >= 2 : owner.newBulkAt() > 0 && stacks >= owner.newBulkAt()) {
+                int target = Math.min(27, stacks);
                 candidate = new Plan(key, sample.get(key), ref.name, false, 0, target);
                 score = target;
             } else continue;
@@ -552,7 +555,7 @@ final class Compactor {
             }
             why(
                     held.isEmpty()
-                            ? "nothing has a full shulker's worth (closest: " + closest + ")"
+                            ? "nothing reaches the bulk packing threshold (closest: " + closest + ")"
                             : held + " (closest: " + closest + ")");
             return false;
         }

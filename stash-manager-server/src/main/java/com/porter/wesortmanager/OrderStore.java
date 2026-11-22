@@ -892,9 +892,23 @@ final class OrderStore {
 
     AutomationGate.Lease acquireSorting(String server, String agent, String token) throws IOException {
         synchronized (index) {
-            return hasOpenOnServer(server) || !heldRoots(server).isEmpty()
-                    ? null
-                    : index.automation().acquire(server, agent, token);
+            if (!heldRoots(server).isEmpty()) return null;
+            if (hasOpenOnServer(server)) {
+                // A new unreserved order arriving during compaction must NOT
+                // revoke the current lease mid-click. Allow ONLY this same
+                // active holder to finish its in-flight physical transaction,
+                // then it releases the lease before the queued order can claim.
+                boolean allDeferred = ordersOnServer(server).stream()
+                        .filter(o -> OPEN.contains(o.status))
+                        .allMatch(o -> o.reservationDeferred);
+                AutomationGate.Lease current = index.automation().current(server);
+                if (!allDeferred
+                        || current == null
+                        || !current.state().equals("ACTIVE")
+                        || !current.agent().equals(agent)
+                        || !current.token().equals(token)) return null;
+            }
+            return index.automation().acquire(server, agent, token);
         }
     }
 

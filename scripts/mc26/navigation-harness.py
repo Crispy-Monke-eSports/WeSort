@@ -16,6 +16,18 @@ require = world.require
 
 
 class NavigationHarness(world.Harness):
+    def physical_snapshot(self):
+        # The placed shulker is the route's temporary 27-slot menu fixture.
+        # Unlike permanent warehouse containers it is removed *after* the route,
+        # before enabling the Manager's autonomous recovery monitor.
+        positions = [(x, 64, 3) for x in range(30) if x % 3 != 2]
+        positions += [(0, 64, -3), (6, 64, -3)]
+        snapshot = {','.join(map(str, p)): self.rcon.command(
+            'data get block ' + ' '.join(map(str, p)) + ' Items') for p in positions}
+        for pos, items in snapshot.items():
+            require('[' in items and ']' in items, 'Missing reference inventory: ' + pos)
+        return snapshot
+
     def fixture(self):
         super().fixture()
         for command in [
@@ -348,14 +360,18 @@ class NavigationHarness(world.Harness):
             self.start_manager()
             self.start_client()
             index = self.observe()
-            self.verify_manager_index(index)
-            # The navigation test verifies exact read-only routes and dedicated
-            # safety fences, not Manager's autonomous world-dropoff recovery.
-            # Keep the intentionally placed shulker fixture standing here; the
-            # separate physical-stock E2E proves Manager recovers it into stash.
-            self.command("manager-pause")
+            # Navigation must finish using its intentionally placed shulker before
+            # the warehouse agent is enabled. The stock E2E separately asserts
+            # that an unclaimed box inside the stash is collected and stored.
             self.tour()
             self.fault_cases()
+            self.verify_manager_index(index)
+            self.command("manager-pause")
+            # Keep the independently cloned reference identical: the temporary
+            # route fixture is gone before autonomous Manager recovery is enabled.
+            for x in (3, 1011):
+                self.rcon.command(f"setblock {x} 64 -3 minecraft:air")
+            self.command("manager-resume")
             self.dedicated_guard_cases()
             reply = self.rcon.command(
                 "execute if blocks -8 63 -8 40 70 12 1000 63 -8 all run time query gametime"

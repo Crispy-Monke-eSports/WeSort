@@ -46,6 +46,17 @@ public enum ConnectionState {
      * reconciliation, physical work) mean the link is being worked, not verified: CONTACTING, never ONLINE.
      * Only the module's own "online" verdict — set after a verified reply — maps to ONLINE.
      */
+    /**
+     * Connection state is independent of operational readiness: a verified Manager control
+     * reply proves the link even while no stash exists or inventory reconciliation is pending.
+     * Never mask a concrete authentication/transport error with an older successful reply.
+     */
+    public static ConnectionState ofVerified(
+            boolean active, String serverUrl, String apiKey, String status, boolean recentlyVerified) {
+        ConnectionState raw = of(active, serverUrl, apiKey, status);
+        return raw == CONTACTING && recentlyVerified ? ONLINE : raw;
+    }
+
     public static ConnectionState of(boolean active, String serverUrl, String apiKey, String status) {
         if (!active) return DISCONNECTED;
         if (serverUrl == null || serverUrl.isBlank() || apiKey == null || apiKey.isBlank()) return NOT_CONFIGURED;

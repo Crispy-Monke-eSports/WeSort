@@ -727,6 +727,8 @@ public final class WorldTestDriver {
         if (!manager.isActive()) manager.toggle();
         if (command.has("holdPhysicalSorting") && command.get("holdPhysicalSorting").getAsBoolean())
             manager.e2eHoldPhysicalSorting(true);
+        if (command.has("inspectionHold") && command.get("inspectionHold").getAsBoolean())
+            manager.e2eHoldAutonomousWork(true);
         respond(true, "production signed module enabled; verify Manager separately", state());
     }
 

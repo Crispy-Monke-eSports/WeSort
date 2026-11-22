@@ -175,6 +175,7 @@ final class OrderStore {
         JsonObject manifest;
         /** Durable outbox: UUID registry mutations still pending after a saved order transition. */
         JsonArray pendingUuidDeregistrations;
+
         long manifestAcknowledgedAt;
         String placedById; // Users.OWNER_ID or a sub-user's id; null for orders from before accounts (the owner's)
         String placedByName; // the name at the time
@@ -320,7 +321,8 @@ final class OrderStore {
             r.id = o.get("id").getAsString();
             if (o.has("history")) r.history = o.getAsJsonArray("history").deepCopy();
             if (o.has("pendingUuidDeregistrations"))
-                r.pendingUuidDeregistrations = o.getAsJsonArray("pendingUuidDeregistrations").deepCopy();
+                r.pendingUuidDeregistrations =
+                        o.getAsJsonArray("pendingUuidDeregistrations").deepCopy();
             if (o.has("manifest")) r.manifest = o.getAsJsonObject("manifest").deepCopy();
             if (o.has("manifestAcknowledgedAt"))
                 r.manifestAcknowledgedAt = o.get("manifestAcknowledgedAt").getAsLong();
@@ -2112,8 +2114,7 @@ final class OrderStore {
      * registry only when its exact physical root was reserved for this order. Unregistered
      * (newly assembled) boxes need no registry mutation.
      */
-    private JsonArray authorizedDeregistrations(Order order, JsonArray reported)
-            throws IOException, OrderException {
+    private JsonArray authorizedDeregistrations(Order order, JsonArray reported) throws IOException, OrderException {
         if (reported == null || reported.isEmpty() || order.manifest == null) return null;
         var registered = new HashMap<String, JsonObject>();
         for (var element : index.stock().boxUuids()) {
@@ -2129,7 +2130,10 @@ final class OrderStore {
             JsonObject box = registered.get(uuid);
             if (box == null) continue;
             if (!order.server.equals(box.get("server").getAsString())
-                    || !ownsReservedRoot(order, box.get("source").getAsString(), box.get("path").getAsString())) {
+                    || !ownsReservedRoot(
+                            order,
+                            box.get("source").getAsString(),
+                            box.get("path").getAsString())) {
                 throw new OrderException(409, "Delivered box UUID is not reserved for this order", -1);
             }
             result.add(uuid);

@@ -65,6 +65,11 @@ public final class Recipes {
         return byResult.getOrDefault(item, List.of());
     }
 
+    /** Every result the 2x2/3x3 table can make (other stations excluded). */
+    public java.util.Set<String> outputs() {
+        return java.util.Set.copyOf(byResult.keySet());
+    }
+
     /** The other station that makes the item (smelting, blasting, smoking, campfire_cooking, stonecutting, smithing, transmute, special), or null. */
     public String station(String item) {
         return stations.get(item);

@@ -55,7 +55,8 @@ class DeferredPhysicalOrderTest {
 
         // No duplicate hold is charged against stock until the next actual claim.
         var balances = orders.listJson("s", "a").getAsJsonObject("available");
-        assertEquals(44, balances.getAsJsonObject("items").get("minecraft:diamond").getAsLong());
+        assertEquals(
+                44, balances.getAsJsonObject("items").get("minecraft:diamond").getAsLong());
 
         var restarted = new OrderStore(data, index);
         restarted.load();
@@ -79,7 +80,9 @@ class DeferredPhysicalOrderTest {
 
         Path saved;
         try (var files = Files.list(data.resolve("orders"))) {
-            saved = files.filter(p -> p.toString().endsWith(".json")).findFirst().orElseThrow();
+            saved = files.filter(p -> p.toString().endsWith(".json"))
+                    .findFirst()
+                    .orElseThrow();
         }
         JsonObject book = JsonParser.parseString(Files.readString(saved)).getAsJsonObject();
         JsonObject order = book.getAsJsonArray("orders").get(0).getAsJsonObject();
@@ -90,10 +93,8 @@ class DeferredPhysicalOrderTest {
 
         var restarted = new OrderStore(data, index);
         restarted.load();
-        JsonObject current = restarted.listJson("s", "a")
-                .getAsJsonArray("orders")
-                .get(0)
-                .getAsJsonObject();
+        JsonObject current =
+                restarted.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
         assertEquals("needs_reconciliation", current.get("status").getAsString());
         assertEquals("NEEDS_RECONCILIATION", current.get("state").getAsString());
         assertFalse(current.get("cancelRequested").getAsBoolean());

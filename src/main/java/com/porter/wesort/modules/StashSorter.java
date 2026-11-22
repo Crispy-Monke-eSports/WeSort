@@ -4270,6 +4270,11 @@ public class StashSorter extends Module {
             portalForward(false);
             return true;
         }
+        // Proxy worker switches do not always emit GameLeftEvent. If the
+        // player is now in the likely lobby region, revoke an old warehouse
+        // goal before any portal evidence is available. Never revoke a
+        // currently verified portal-approach goal.
+        if (portalAwaiting() && portalTarget == null && ourGoal != null) releaseGoal();
 
         if (portalSession.observe(mc.level, Stash.currentDimension(), mc.player.getX(), mc.player.getZ())) {
             stopPortalNavigation();

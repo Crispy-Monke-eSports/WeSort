@@ -128,6 +128,17 @@ class StockLedgerTest {
     }
 
     @Test
+    void sharedPhysicalSourceCannotBeReservedEvenWhenFresh() throws Exception {
+        var l = ledger();
+        l.accept(observation(l, "a", 64, 0, 1, 0));
+        l.accept(observation(l, "b", 64, l.revision(), 2, 0));
+        assertTrue(l.sources().stream().allMatch(StockLedger.Source::shared));
+        var reservations = PhysicalReservations.read(l, "s", null);
+        assertFalse(reservations.hasSnapshots());
+        assertTrue(reservations.available(Set.of()).isEmpty());
+    }
+
+    @Test
     void lossOfAccessPreservesLastObservedCountsAsUnknown() throws Exception {
         var l = ledger();
         l.accept(observation(l, "a", 64, 0, 1, 0));

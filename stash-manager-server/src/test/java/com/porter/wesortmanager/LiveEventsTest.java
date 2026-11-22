@@ -79,6 +79,12 @@ class LiveEventsTest {
             LiveEvents.routeChanged("/api/v1/bots/abc/settings", "POST");
             assertEquals(Set.of("bots"), take(queue).channels());
 
+            LiveEvents.routeChanged("/api/v1/users/u-1", "POST");
+            assertEquals(Set.of("settings", "auth"), take(queue).channels());
+
+            LiveEvents.routeChanged("/api/v1/kits", "POST");
+            assertEquals(Set.of("settings", "operations"), take(queue).channels());
+
             // Reads never push: the page already holds the data it asked for.
             LiveEvents.routeChanged("/api/v1/orders", "GET");
             LiveEvents.routeChanged("/api/v1/events", "GET");

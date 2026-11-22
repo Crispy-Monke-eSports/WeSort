@@ -22,6 +22,11 @@ public final class PortalWorldSession {
         crossingAttempted = true;
     }
 
+    /** An approach timed out without portal contact; do not count a later unrelated reload as arrival. */
+    public void cancelAttempt() {
+        if (!arrived) crossingAttempted = false;
+    }
+
     /** Returns true once a crossing is confirmed by a new world or a new dimension. */
     public boolean observe(Object level, String dimension) {
         if (level == null) return false;

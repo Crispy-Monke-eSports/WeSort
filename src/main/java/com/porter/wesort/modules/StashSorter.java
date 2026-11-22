@@ -6354,10 +6354,9 @@ public class StashSorter extends Module {
      * only. {@code bounded}: at most TableFinder.SEARCH_SPAN blocks across (x and z), around us.
      */
     private List<BlockPos> scanArea(java.util.function.Predicate<BlockState> test, boolean bounded) {
-        List<BlockPos> out = new ArrayList<>();
-        if (mc.level == null) return out;
+        if (mc.level == null || mc.player == null) return List.of();
         int minX, maxX, minY, maxY, minZ, maxZ;
-        if (stash.hasArea()) {
+        if (stash != null && stash.hasArea()) {
             BlockPos lo = stash.areaMin(), hi = stash.areaMax();
             minX = lo.getX();
             maxX = hi.getX();
@@ -6383,6 +6382,39 @@ public class StashSorter extends Module {
             minZ = zs[0];
             maxZ = zs[1];
         }
+        return scanRegion(test, minX, maxX, minY, maxY, minZ, maxZ);
+    }
+
+    /**
+     * 6b6t's login portal belongs to the current lobby, not the Manager's remote
+     * warehouse or the sorter's user-configurable container-search radius.
+     * Scan only nearby loaded chunks (and only the relevant Y sections).
+     */
+    private List<BlockPos> scanLocalPortalBlocks() {
+        if (mc.level == null || mc.player == null) return List.of();
+        BlockPos at = mc.player.blockPosition();
+        int r = 32, h = 16;
+        return scanRegion(
+                state -> state.is(Blocks.NETHER_PORTAL),
+                at.getX() - r,
+                at.getX() + r,
+                at.getY() - h,
+                at.getY() + h,
+                at.getZ() - r,
+                at.getZ() + r);
+    }
+
+    /** Shared chunk-palette scanner. The caller supplies its own bounds. */
+    private List<BlockPos> scanRegion(
+            java.util.function.Predicate<BlockState> test,
+            int minX,
+            int maxX,
+            int minY,
+            int maxY,
+            int minZ,
+            int maxZ) {
+        List<BlockPos> out = new ArrayList<>();
+        if (mc.level == null) return out;
         int minSection = mc.level.getMinSectionY();
         for (int cx = minX >> 4; cx <= maxX >> 4; cx++) {
             for (int cz = minZ >> 4; cz <= maxZ >> 4; cz++) {

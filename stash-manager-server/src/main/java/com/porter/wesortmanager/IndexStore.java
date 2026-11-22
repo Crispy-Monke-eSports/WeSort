@@ -172,7 +172,7 @@ public final class IndexStore {
      */
     public record Crafting(boolean enabled, boolean table, String tableSource) {
         public static final java.util.Set<String> TABLE_SOURCES =
-                java.util.Set.of("set", "found", "placed", "crafted", "none");
+                java.util.Set.of("set", "manager", "found", "placed", "crafted", "none");
 
         public Crafting(boolean enabled, boolean table) {
             this(enabled, table, null);
@@ -856,7 +856,13 @@ public final class IndexStore {
         Stash s = stashes.get(new StashKey(server, stash));
         if (s == null) return false;
         synchronized (s) {
-            return s.crafting != null && s.crafting.enabled() && s.crafting.table();
+            return s.crafting != null
+                    && s.crafting.enabled()
+                    && s.crafting.table()
+                    // Demand-driven member orders must use an explicitly
+                    // selected table, never an untracked auto-found station.
+                    && ("manager".equals(s.crafting.tableSource())
+                            || "set".equals(s.crafting.tableSource()));
         }
     }
 

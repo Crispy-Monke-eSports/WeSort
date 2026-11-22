@@ -384,7 +384,7 @@ final class AddonRoutes {
                 tableSource = src.isJsonPrimitive() && src.getAsJsonPrimitive().isString() ? src.getAsString() : null;
                 if (tableSource == null || !IndexStore.Crafting.TABLE_SOURCES.contains(tableSource)) {
                     throw new IllegalArgumentException(
-                            "crafting.tableSource must be \"set\", \"found\", \"placed\", \"crafted\" or \"none\"");
+                            "crafting.tableSource must be \"manager\", \"set\", \"found\", \"placed\", \"crafted\" or \"none\"");
                 }
             }
             crafting = new IndexStore.Crafting(enabled.getAsBoolean(), table.getAsBoolean(), tableSource);

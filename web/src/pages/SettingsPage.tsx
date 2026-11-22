@@ -29,10 +29,10 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
-import { useAuth, useBots, useGuild, usePermissions, useQuotaMe, useServer, useStashDefs } from "../api/queries";
+import { useAuth, useBots, useGuild, useKitTemplates, usePermissions, useQuotaMe, useServer, useStashDefs } from "../api/queries";
 import { ConfirmDialog, PasswordDialog, useConfirm } from "../components/dialogs";
 import { botListOf, buildUserPerms, presetMatches, scopeDiff, stashListOf } from "../lib/userScopes";
-import type { StashDef } from "../api/types";
+import type { KitTemplate, StashDef } from "../api/types";
 
 function parseVec(text: string): { x: number; y: number; z: number } | null {
   const parts = text.split(/[, ]+/).map((s) => s.trim()).filter(Boolean).map(Number);
@@ -58,6 +58,7 @@ export function SettingsPage() {
         <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto" aria-label="Settings sections">
           <Tab label="Server" />
           <Tab label="Stashes" />
+          {perms.owner && <Tab label="Kits" />}
           {perms.owner && <Tab label="Users" />}
           {perms.owner && <Tab label="API keys" />}
           <Tab label="Guild" />
@@ -67,11 +68,12 @@ export function SettingsPage() {
         <CardContent>
           {tab === 0 && <ServerSection />}
           {tab === 1 && <StashSection />}
-          {tab === 2 && perms.owner && <UsersSection />}
-          {tab === 3 && perms.owner && <ApiKeysSection />}
-          {tab === (perms.owner ? 4 : 2) && <GuildSection />}
-          {tab === (perms.owner ? 5 : 3) && <SecuritySection />}
-          {tab === (perms.owner ? 6 : 4) && perms.can("link") && <LinkSection />}
+          {tab === 2 && perms.owner && <KitSection />}
+          {tab === (perms.owner ? 3 : 2) && perms.owner && <UsersSection />}
+          {tab === (perms.owner ? 4 : 2) && perms.owner && <ApiKeysSection />}
+          {tab === (perms.owner ? 5 : 2) && <GuildSection />}
+          {tab === (perms.owner ? 6 : 3) && <SecuritySection />}
+          {tab === (perms.owner ? 7 : 4) && perms.can("link") && <LinkSection />}
         </CardContent>
       </Card>
     </Stack>
@@ -277,6 +279,157 @@ function StashEditor({ initial, onClose, onSaved }: {
           <TextField label="Delivery dimension (optional, defaults to stash dimension)" value={deliveryDimension} onChange={(e) => setDeliveryDimension(e.target.value)} size="small" sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }} />
           <TextField label="Anvil (x, y, z, optional)" value={anvil} onChange={(e) => setAnvil(e.target.value)} size="small" sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }} />
           <TextField label="Workbench (x, y, z, optional)" value={table} onChange={(e) => setTable(e.target.value)} size="small" sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }} />
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button variant="contained" onClick={save}>{initial.isNew ? "Create" : "Save"}</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+/**
+ * Owner-managed kit templates: what one ordered shulker box holds, slot for
+ * slot. One kit is exactly one box, packed on demand — finished boxes are
+ * never stored. Orders pin the template revision at submit.
+ */
+function KitSection() {
+  const auth = useAuth();
+  const kits = useKitTemplates(!!auth.data?.loggedIn);
+  const [editing, setEditing] = useState<null | (Partial<KitTemplate> & { isNew: boolean })>(null);
+  const [msg, setMsg] = useState("");
+  const confirm = useConfirm();
+
+  function remove(k: KitTemplate) {
+    setMsg("");
+    confirm.ask({
+      title: `Delete kit "${k.name}"?`,
+      intro: "Placed orders keep their pinned layout, but the kit can no longer be ordered.",
+      changes: [`kit: ${k.name}`, `revision: ${k.revision}`],
+      confirmLabel: "Delete",
+      danger: true,
+      run: async () => {
+        await api("/api/v1/kits", { method: "POST", body: { action: "delete", name: k.name, expectedRevision: k.revision } });
+        setMsg(`Kit "${k.name}" deleted.`);
+        await kits.refetch();
+      },
+    });
+  }
+
+  return (
+    <Stack spacing={2}>
+      <Typography color="text.secondary">
+        Each kit is exactly one shulker box, packed on demand with the exact slot placement below.
+        Orders reserve the components from loose stock; finished kit boxes are never stored.
+      </Typography>
+      {kits.isLoading && <LinearProgress />}
+      {kits.isError && <Alert severity="error">Could not load kit templates.</Alert>}
+      {msg && <Alert severity="info" onClose={() => setMsg("")}>{msg}</Alert>}
+      <Stack spacing={1}>
+        {(kits.data ?? []).map((k) => (
+          <Card key={k.name} variant="outlined">
+            <CardContent sx={{ display: "flex", gap: 1, alignItems: "flex-start", flexDirection: { xs: "column", sm: "row" } }}>
+              <Box sx={{ flexGrow: 1, minWidth: 0, width: "100%" }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, wordBreak: "break-all" }}>{k.name}</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ fontFamily: "monospace", wordBreak: "break-all" }}>
+                  {k.slots.length === 0 ? "empty" : k.slots.map((s) => `${s.slot}:${s.count}× ${s.key}`).join(" · ")}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">{`rev ${k.revision}`}</Typography>
+              </Box>
+              <Stack direction="row" spacing={1}>
+                <Button size="small" variant="outlined" onClick={() => setEditing({ ...k, isNew: false })}>Edit</Button>
+                <Button size="small" color="error" onClick={() => remove(k)}>Delete</Button>
+              </Stack>
+            </CardContent>
+          </Card>
+        ))}
+      </Stack>
+      {(kits.data ?? []).length === 0 && !kits.isLoading && (
+        <Typography color="text.secondary">No kits yet. Create the first box below.</Typography>
+      )}
+      <Button variant="contained" onClick={() => setEditing({ isNew: true, name: "", revision: 0, slots: [] })}>Create kit</Button>
+      {editing && (
+        <KitEditor
+          initial={editing}
+          onClose={() => setEditing(null)}
+          onSaved={async (m) => { setEditing(null); setMsg(m); await kits.refetch(); }}
+        />
+      )}
+      {confirm.dialog}
+    </Stack>
+  );
+}
+
+function KitEditor({ initial, onClose, onSaved }: {
+  initial: Partial<KitTemplate> & { isNew: boolean };
+  onClose: () => void;
+  onSaved: (msg: string) => void;
+}) {
+  const [name, setName] = useState(initial.name ?? "");
+  const [rows, setRows] = useState<{ key: string; count: string }[]>(
+    Array.from({ length: 27 }, (_, slot) => {
+      const s = initial.slots?.find((x) => x.slot === slot);
+      return { key: s?.key ?? "", count: s ? String(s.count) : "" };
+    }),
+  );
+  const [error, setError] = useState("");
+
+  function setRow(slot: number, patch: Partial<{ key: string; count: string }>) {
+    setRows((r) => r.map((row, i) => (i === slot ? { ...row, ...patch } : row)));
+  }
+
+  async function save() {
+    setError("");
+    const slots: { slot: number; key: string; count: number }[] = [];
+    for (let slot = 0; slot < 27; slot++) {
+      const row = rows[slot];
+      const key = row.key.trim();
+      if (!key) continue;
+      const count = Number(row.count);
+      if (!Number.isInteger(count) || count < 1 || count > 64) {
+        setError(`Slot ${slot}: count must be a whole number 1-64.`);
+        return;
+      }
+      slots.push({ slot, key, count });
+    }
+    if (!name.trim()) {
+      setError("Name is required (letters, digits, _ . -, max 64).");
+      return;
+    }
+    if (slots.length === 0) {
+      setError("A kit needs at least one filled slot.");
+      return;
+    }
+    const body: any = { action: initial.isNew ? "create" : "update", name: name.trim(), slots };
+    if (!initial.isNew) body.expectedRevision = initial.revision;
+    try {
+      await api("/api/v1/kits", { method: "POST", body });
+      onSaved(initial.isNew ? `Kit "${name.trim()}" created.` : `Kit "${name.trim()}" updated (rev ${(initial.revision ?? 0) + 1}).`);
+    } catch (e: any) {
+      setError(e?.message ?? "Save failed. On revision conflicts, close and reopen the editor to reload.");
+    }
+  }
+
+  return (
+    <Dialog open onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>{initial.isNew ? "Create kit" : `Edit kit ${initial.name} (rev ${initial.revision})`}</DialogTitle>
+      <DialogContent>
+        <Stack spacing={1.5} sx={{ mt: 1 }}>
+          {error && <Alert severity="error">{error}</Alert>}
+          <TextField label="Kit name" value={name} onChange={(e) => setName(e.target.value)} size="small" disabled={!initial.isNew} helperText={initial.isNew ? "Letters, digits, _ . - (max 64). One kit is one box." : "The name is the kit identity and cannot change."} />
+          <Typography variant="body2" color="text.secondary">
+            One row per box slot (0-26). Leave the key empty to leave the slot empty.
+          </Typography>
+          <Stack spacing={0.5}>
+            {rows.map((row, slot) => (
+              <Stack key={slot} direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                <Typography variant="caption" color="text.secondary" sx={{ minWidth: 24, textAlign: "right", fontFamily: "monospace" }}>{slot}</Typography>
+                <TextField label="Item key" value={row.key} onChange={(e) => setRow(slot, { key: e.target.value })} size="small" fullWidth placeholder="minecraft:diamond" sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }} />
+                <TextField label="Count" value={row.count} onChange={(e) => setRow(slot, { count: e.target.value })} size="small" type="number" sx={{ width: 110 }} slotProps={{ htmlInput: { min: 1, max: 64 } }} />
+              </Stack>
+            ))}
+          </Stack>
         </Stack>
       </DialogContent>
       <DialogActions>

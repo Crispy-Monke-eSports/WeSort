@@ -190,7 +190,8 @@ final class OrderRoutes {
                 String type = AddonRoutes.string(l, "type");
                 String key = AddonRoutes.string(l, "key");
                 long count = positiveInt(l.get("count"));
-                if (!"item".equals(type) && !"shulker".equals(type)) problem = "type must be item or shulker";
+                if (!"item".equals(type) && !"shulker".equals(type) && !"kit".equals(type))
+                    problem = "type must be item, shulker or kit";
                 else if (key == null || key.isEmpty() || key.length() > MAX_KEY)
                     problem = "key must be a non-empty string";
                 else if (count < 1) problem = "count must be a whole number from 1 to " + Integer.MAX_VALUE;

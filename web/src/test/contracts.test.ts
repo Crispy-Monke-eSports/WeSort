@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { StashRefSchema } from "../api/types";
+import { KitTemplateSchema, OrderLineSchema, OrdersResponseSchema, StashRefSchema } from "../api/types";
 
 /** Regression: the real Java payload uses explicit nulls for stall flags and
  *  summaries. The schema must accept them — a parse throw here empties the
@@ -31,5 +31,34 @@ describe("StashRef server contract", () => {
     expect(parsed.online).toBe(true);
     expect(parsed.rescanPending).toBe(true);
     expect(parsed.rescanBlocked).toBe(false);
+  });
+});
+
+describe("kit contracts (on-demand: one kit is one box)", () => {
+  it("parses a kit order line and per-stash kit availability", () => {
+    expect(OrderLineSchema.parse({ type: "kit", key: "starter", count: 2 })).toEqual({
+      type: "kit",
+      key: "starter",
+      count: 2,
+    });
+    const res = OrdersResponseSchema.parse({
+      orders: [],
+      available: { items: { "minecraft:diamond": 10 }, shulkers: {}, kits: { starter: 3 } },
+    });
+    expect(res.available.kits?.["starter"]).toBe(3);
+  });
+
+  it("parses the kit template list", () => {
+    const t = KitTemplateSchema.parse({
+      name: "starter",
+      revision: 2,
+      updatedAt: 123,
+      slots: [
+        { slot: 0, key: "minecraft:diamond", count: 16 },
+        { slot: 13, key: "minecraft:dirt", count: 32 },
+      ],
+    });
+    expect(t.slots).toHaveLength(2);
+    expect(t.slots[0]).toEqual({ slot: 0, key: "minecraft:diamond", count: 16 });
   });
 });

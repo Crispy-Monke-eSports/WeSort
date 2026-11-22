@@ -175,6 +175,9 @@ final class OrderRunner {
         final Kind kind;
         final String key;
         final List<Order.Lot> lots;
+        /** Exact box slot per lot (-1: totals-packed). Parallel to lots; template kits only. */
+        final List<Integer> lotSlots = new ArrayList<>();
+
         Kit kit;
         boolean have, built, confirmed, verified, verifying, replanned;
         int fullTries, starts, fetches, begins, base;
@@ -477,6 +480,7 @@ final class OrderRunner {
                 for (int i = 0; i < p.lotKeys.size(); i++)
                     lots.add(new Order.Lot(p.lotKeys.get(i), p.lotCounts.get(i)));
                 Unit restored = new Unit(p.kind == 0 ? Kind.Shulker : p.kind == 1 ? Kind.Empty : Kind.Bin, p.key, lots);
+                for (int i = 0; i < p.lotSlots.size() && i < lots.size(); i++) restored.lotSlots.add(p.lotSlots.get(i));
                 restored.nameDone = p.nameDone;
                 restored.named = p.named;
                 restored.unnamedReason = p.nameFailure == null || p.nameFailure.isEmpty() ? null : p.nameFailure;
@@ -524,6 +528,7 @@ final class OrderRunner {
                     p.lotKeys.add(lot.key());
                     p.lotCounts.add(lot.count());
                 }
+                for (int i = 0; i < u.lots.size(); i++) p.lotSlots.add(i < u.lotSlots.size() ? u.lotSlots.get(i) : -1);
                 active.units.add(p);
             }
             if (names != null) {
@@ -542,7 +547,13 @@ final class OrderRunner {
     /** Plans the order from what the addon can really use. Fills {@code plan}; returns why not, or null. */
     private String planFresh(Stash stash, Order o, List<Unit> plan, List<String> notes) {
         Set<String> wanted = new HashSet<>();
-        for (Order.Line l : o.lines) if (l.type().equals(Order.ITEM)) wanted.add(l.key());
+        for (Order.Line l : o.lines) {
+            if (l.type().equals(Order.ITEM)) wanted.add(l.key());
+            else if (l.type().equals(Order.KIT) && o.kits.containsKey(l.key())) {
+                // Kit components are surveyed exactly like loose item lines.
+                for (var s : o.kits.get(l.key())) wanted.add(s.key());
+            }
+        }
         Survey survey = survey(stash, wanted);
 
         Map<String, Integer> emptiesByKey = new HashMap<>();
@@ -560,6 +571,41 @@ final class OrderRunner {
         for (Order.Line l : o.lines) {
             if (l.type().equals(Order.SHULKER)) {
                 for (int i = 0; i < l.count(); i++) shulkerUnits.add(new Unit(Kind.Shulker, l.key(), List.of()));
+                continue;
+            }
+
+            if (l.type().equals(Order.KIT)) {
+                // On demand, never from stored finished boxes: one exact box per ordered kit.
+                var template = o.kits.get(l.key());
+                if (template == null) {
+                    notes.add(l.key() + ": kit template missing from the order");
+                    continue;
+                }
+                for (int i = 0; i < l.count(); i++) {
+                    List<Order.Lot> box = new ArrayList<>();
+                    List<Integer> slots = new ArrayList<>();
+                    boolean shortKit = false;
+                    for (var s : template) {
+                        long have = Math.max(0, left.getOrDefault(s.key(), 0L));
+                        if (have < s.count()) {
+                            String reason = survey.why().get(s.key());
+                            notes.add(l.key() + ": only " + have + " of " + s.count() + " " + StashIndex.nameOf(s.key())
+                                    + (reason == null ? "" : " (the rest " + reason + ")"));
+                            shortKit = true;
+                            break;
+                        }
+                        left.put(s.key(), have - s.count());
+                        box.add(new Order.Lot(s.key(), s.count()));
+                        slots.add(s.slot());
+                    }
+                    if (shortKit) continue;
+                    Unit u = new Unit(Kind.Bin, l.key(), box);
+                    u.lotSlots.addAll(slots);
+                    plan.add(u);
+                    stacks += box.size();
+                    if (stacks > (long) Order.MAX_BINS * Order.SLOTS)
+                        return "too big: that is more than " + Order.MAX_BINS + " shulkers";
+                }
                 continue;
             }
 
@@ -1524,6 +1570,8 @@ final class OrderRunner {
     private Kit buildKit(Unit u) {
         Stash stash = owner.stash();
         if (stash == null) return null;
+        // A template kit packs its exact slots, never first-fit: one box per unit.
+        if (!u.lotSlots.isEmpty()) return buildTemplateKit(u);
         Set<String> keys = new HashSet<>();
         for (Order.Lot lot : u.lots) keys.add(lot.key());
         Survey survey = survey(stash, keys);
@@ -1592,6 +1640,67 @@ final class OrderRunner {
             problems.add(e.getKey() + ": " + e.getValue() + " couldn't be taken out of the stash, shipped short");
         if (m == 0) return null;
         return m == n && cut.isEmpty() ? probe : new Kit(probe.name, trimmed, true);
+    }
+
+    /**
+     * Builds one exact box from a Manager kit template: every template slot is filled from one
+     * exact variant (the smallest that has enough, else the biggest), placed in its own slot.
+     * Short slots fail the box (wait and retry later), never substitution or first-fit packing.
+     */
+    private Kit buildTemplateKit(Unit u) {
+        Stash stash = owner.stash();
+        if (stash == null) return null;
+        Set<String> keys = new HashSet<>();
+        for (Order.Lot lot : u.lots) keys.add(lot.key());
+        Survey survey = survey(stash, keys);
+        Map<Variant, Long> used = new java.util.IdentityHashMap<>();
+        ItemStack[] stacks = new ItemStack[Kit.SLOTS];
+        for (int i = 0; i < u.lots.size(); i++) {
+            Order.Lot lot = u.lots.get(i);
+            int slot = i < u.lotSlots.size() ? u.lotSlots.get(i) : -1;
+            if (slot < 0 || slot >= Kit.SLOTS || stacks[slot] != null) {
+                problems.add(u.key + ": kit template has a bad slot, box skipped");
+                return null;
+            }
+            List<Variant> variants = survey.variants().getOrDefault(lot.key(), List.of());
+            Variant best = bestFit(variants, used, lot.count());
+            if (best == null) {
+                String reason = survey.why().get(lot.key());
+                problems.add(StashIndex.nameOf(lot.key()) + ": " + lot.count() + " missing for kit " + u.key
+                        + (reason == null ? "" : " (some " + reason + ")"));
+                return null;
+            }
+            long rest = best.count - used.getOrDefault(best, 0L);
+            int take = (int) Math.min(Math.min(lot.count(), rest), Math.max(1, best.sample.getMaxStackSize()));
+            if (take < lot.count()) {
+                problems.add(StashIndex.nameOf(lot.key()) + ": only " + take + " of " + lot.count()
+                        + " in one variant for kit " + u.key);
+                return null;
+            }
+            used.merge(best, (long) take, Long::sum);
+            stacks[slot] = best.sample.copyWithCount(take);
+        }
+        // What the kit builder can really take may differ from this survey (it has its own scan of the same
+        // stash): like buildKit, trim to what is actually there so the lots that can be supplied still pack.
+        Kit probe = Kit.template("order " + order.id + " kit " + u.key, stacks);
+        Map<Kit.Key, Integer> supply = kits.supply(probe);
+        Map<Kit.Key, Integer> left = new HashMap<>(supply);
+        ItemStack[] trimmed = new ItemStack[Kit.SLOTS];
+        Map<String, Integer> cut = new LinkedHashMap<>();
+        for (int i = 0; i < Kit.SLOTS; i++) {
+            if (stacks[i] == null || stacks[i].isEmpty()) continue;
+            Kit.Key key = probe.key(stacks[i]);
+            int have = left.getOrDefault(key, 0);
+            int take = Math.min(stacks[i].getCount(), have);
+            left.put(key, have - take);
+            if (take < stacks[i].getCount())
+                cut.merge(StashIndex.nameOf(StashIndex.keyOf(stacks[i])), stacks[i].getCount() - take, Integer::sum);
+            if (take > 0) trimmed[i] = stacks[i].copyWithCount(take);
+        }
+        for (var e : cut.entrySet())
+            problems.add(e.getKey() + ": " + e.getValue() + " couldn't be taken out of the stash, kit skipped");
+        if (!cut.isEmpty()) return null;
+        return Kit.template(probe.name, trimmed);
     }
 
     private void skip(String why) {

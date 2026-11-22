@@ -14,6 +14,7 @@ import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import CardActions from "@mui/material/CardActions";
 import CardContent from "@mui/material/CardContent";
+import CardHeader from "@mui/material/CardHeader";
 import Chip from "@mui/material/Chip";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
@@ -49,8 +50,8 @@ import { useTheme } from "@mui/material/styles";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { api, idempotencyKey } from "../api/client";
-import { keys, ordersQueryOptions, useAuth, usePermissions, useStashes } from "../api/queries";
-import { IndexResponseSchema, type IndexResponse } from "../api/types";
+import { keys, ordersQueryOptions, useAuth, useKitTemplates, usePermissions, useStashes } from "../api/queries";
+import { IndexResponseSchema, type IndexResponse, type KitTemplate } from "../api/types";
 import {
   boxedContents,
   BuyUnit,
@@ -107,6 +108,7 @@ interface SliceState {
   shulkers: IndexResponse["shulkers"];
   availableItems: Record<string, number>;
   availableShulkers: Record<string, number>;
+  availableKits: Record<string, number>;
 }
 
 interface StashLabels {
@@ -196,6 +198,7 @@ export function InventoryPage() {
           shulkers: indexQ?.data?.shulkers ?? [],
           availableItems: orderQ?.data?.available.items ?? {},
           availableShulkers: orderQ?.data?.available.shulkers ?? {},
+          availableKits: orderQ?.data?.available.kits ?? {},
         };
       }),
     [stashList, indexQueries, orderQueries],
@@ -312,6 +315,56 @@ export function InventoryPage() {
     cartLines.filter((l) => l.key === key).reduce((a, l) => a + l.count, 0);
   const looseInCart = (stash: string, key: string) =>
     cartLines.filter((l) => l.type === "item" && l.stash === stash && l.key === key).reduce((a, l) => a + l.count, 0);
+  const kitsInCart = (stash: string, name: string) =>
+    cartLines.filter((l) => l.type === "kit" && l.stash === stash && l.key === name).reduce((a, l) => a + l.count, 0);
+
+  // ---- kits (on demand: one kit is exactly one box, packed at fulfillment) ----
+  const kitTemplates = useKitTemplates(canView);
+  const kitList = useMemo(() => kitTemplates.data ?? [], [kitTemplates.data]);
+
+  /**
+   * Guild-wide buildable kits, or null when reservation state is UNKNOWN
+   * (same contract as orderableOf: never present uncertain stock as buildable).
+   */
+  const kitsOrderable = (name: string): number | null => {
+    let unknown = false;
+    let total = 0;
+    for (const s of slices) {
+      if (!s.ordersOk) { unknown = true; continue; }
+      total += Math.max(0, (s.availableKits[name] ?? 0) - kitsInCart(s.stash, name));
+    }
+    if (unknown && total <= 0) return null;
+    return total;
+  };
+
+  function addKitToCart(name: string, n: number): boolean {
+    if (n < 1 || !canOrder) return false;
+    // Split across stashes with the most buildable kits first. Each stash
+    // becomes its OWN backend order; one kit is exactly one box.
+    const next: CartLine[] = cartLines.map((l) => ({ ...l }));
+    let remaining = n;
+    const kitsInNext = (stash: string) =>
+      next.filter((l) => l.type === "kit" && l.key === name && l.stash === stash).reduce((a, l) => a + l.count, 0);
+    const byKits = slices
+      .map((s) => ({ s, buildable: Math.max(0, (s.availableKits[name] ?? 0) - kitsInNext(s.stash)) }))
+      .filter((x) => x.buildable > 0 && x.s.ordersOk)
+      .sort((a, b) => b.buildable - a.buildable);
+    for (const { s } of byKits) {
+      if (remaining <= 0) break;
+      const take = Math.min(remaining, Math.max(0, (s.availableKits[name] ?? 0) - kitsInNext(s.stash)));
+      if (take <= 0) continue;
+      const found = next.find((l) => l.type === "kit" && l.key === name && l.stash === s.stash);
+      if (found) found.count += take;
+      else next.push({ type: "kit", key: name, count: take, stash: s.stash });
+      remaining -= take;
+    }
+    if (remaining > 0) return false;
+    for (const b of perStashBoxUsage(next, maxStackOf).values()) {
+      if (b > MAX_SHULKERS) return false;
+    }
+    cart.setLines(next);
+    return true;
+  }
 
   function addToCart(key: string, n: number): boolean {
     if (n < 1 || !canOrder) return false;
@@ -375,6 +428,7 @@ export function InventoryPage() {
   }
 
   const [buy, setBuy] = useState<MergedItem | null>(null);
+  const [buyKit, setBuyKit] = useState<KitTemplate | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
 
   // ---- checkout state machine (P0 2.3) ----
@@ -675,6 +729,12 @@ export function InventoryPage() {
       </Drawer>
 
       <BuyDialog item={buy} slices={slices} mcVersion={mcVersion} canOrder={canOrder} remaining={buy ? (orderableOf(buy.key) ?? 0) : 0} onClose={() => setBuy(null)} onAdd={(n) => { if (buy && addToCart(buy.key, n)) { setBuy(null); return true; } return false; }} />
+      <KitCatalog
+        kits={kitList} slices={slices} canOrder={canOrder}
+        orderableOf={kitsOrderable} inCart={(name) => cartLines.filter((l) => l.type === "kit" && l.key === name).reduce((a, l) => a + l.count, 0)}
+        onBuy={setBuyKit}
+      />
+      <KitBuyDialog kit={buyKit} slices={slices} canOrder={canOrder} remaining={buyKit ? (kitsOrderable(buyKit.name) ?? 0) : 0} onClose={() => setBuyKit(null)} onAdd={(n) => { if (buyKit && addKitToCart(buyKit.name, n)) { setBuyKit(null); return true; } return false; }} />
       <CartDrawer
         open={cartOpen} onClose={() => setCartOpen(false)} lines={cartLines} slices={slices}
         boxUsage={boxUsage} overLimit={overLimitStashes}
@@ -842,6 +902,136 @@ function InventoryRow({ item, slices, mcVersion, onBuy, canOrder, orderable, inC
   );
 }
 
+/**
+ * On-demand kit catalog: one kit is exactly one box, packed at fulfillment
+ * with the template's exact slot placement — never stored pre-packed.
+ * Buildable counts come from the server's component reservation math.
+ */
+function KitCatalog({ kits, slices, canOrder, orderableOf, inCart, onBuy }: {
+  kits: KitTemplate[]; slices: SliceState[]; canOrder: boolean;
+  orderableOf: (name: string) => number | null; inCart: (name: string) => number;
+  onBuy: (kit: KitTemplate) => void;
+}) {
+  if (kits.length === 0) return null;
+  return (
+    <Card sx={{ mt: 2 }}>
+      <CardHeader title="Kits" subheader="Packed on demand · one kit is one box with exact placement" />
+      <CardContent sx={{ pt: 0 }}>
+        <Stack spacing={1}>
+          {kits.map((k) => {
+            const orderable = orderableOf(k.name);
+            const cart = inCart(k.name);
+            const stale = slices.some((s) => s.online === false);
+            const unverified = orderable === null || slices.some((s) => !s.ordersOk);
+            return (
+              <Paper key={k.name} variant="outlined" sx={{ p: 1.5 }}>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ alignItems: { sm: "center" } }}>
+                  <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                    <Typography variant="subtitle1" component="h3" sx={{ fontWeight: 600 }}>{k.name}</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      <strong>{orderable === null ? "?" : grouped(orderable)}</strong> buildable
+                      {cart > 0 ? ` · ${grouped(cart)} in draft` : ""}
+                      {stale ? " · bot offline — queues" : ""}
+                      {unverified ? " · unverified" : ""}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                      {k.slots.length} filled slots · {k.slots.slice(0, 4).map((s) => `${s.count}× ${s.key}`).join(", ")}{k.slots.length > 4 ? ` +${k.slots.length - 4} more` : ""}
+                    </Typography>
+                  </Box>
+                  <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                    {unverified && <Chip size="small" variant="outlined" label="Unverified" />}
+                    {!unverified && (orderable ?? 0) > 0 && <Chip size="small" color="success" label="Orderable" />}
+                    {!unverified && (orderable ?? 0) <= 0 && <Chip size="small" label="Empty" />}
+                    <Button size="small" variant="contained" startIcon={<AddShoppingCartIcon />} onClick={() => onBuy(k)} disabled={!canOrder || (orderable ?? 0) <= 0}>
+                      Add
+                    </Button>
+                  </Stack>
+                </Stack>
+              </Paper>
+            );
+          })}
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+}
+
+function KitBuyDialog({ kit, slices, canOrder, remaining, onClose, onAdd }: {
+  kit: KitTemplate | null; slices: SliceState[]; canOrder: boolean;
+  remaining: number;
+  onClose: () => void; onAdd: (n: number) => boolean;
+}) {
+  const [n, setN] = useState(1);
+  const [addError, setAddError] = useState("");
+  useEffect(() => { setN(Math.max(1, Math.min(remaining, 54))); setAddError(""); }, [kit?.name]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!kit) return null;
+  const max = Math.max(1, Math.min(remaining, 54));
+  return (
+    <Dialog open={!!kit} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>{kit.name} — kit, packed on demand</DialogTitle>
+      <DialogContent>
+        <Typography variant="body1"><strong>{grouped(remaining)}</strong> buildable across all stashes</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          One kit is exactly one box · {kit.slots.length} filled slots · packed with exact placement at fulfillment.
+        </Typography>
+        <TableContainer component={Paper} variant="outlined">
+          <Table size="small" aria-label="Kit contents">
+            <TableHead>
+              <TableRow><TableCell>Slot</TableCell><TableCell>Item</TableCell><TableCell align="right">Count</TableCell></TableRow>
+            </TableHead>
+            <TableBody>
+              {kit.slots.map((s) => (
+                <TableRow key={s.slot}>
+                  <TableCell>{s.slot}</TableCell>
+                  <TableCell sx={{ fontFamily: "monospace", wordBreak: "break-all" }}>{s.key}</TableCell>
+                  <TableCell align="right">{grouped(s.count)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+        <TableContainer component={Paper} variant="outlined" sx={{ mt: 1 }}>
+          <Table size="small" aria-label="Per-stash kit availability">
+            <TableHead>
+              <TableRow><TableCell>Stash</TableCell><TableCell align="right">Buildable</TableCell><TableCell>Status</TableCell></TableRow>
+            </TableHead>
+            <TableBody>
+              {slices.map((s) => (
+                <TableRow key={s.stash}>
+                  <TableCell sx={{ fontFamily: "monospace" }}>{s.stash}</TableCell>
+                  <TableCell align="right">{grouped(Math.max(0, s.availableKits[kit.name] ?? 0))}</TableCell>
+                  <TableCell><PresenceChip online={s.online} label={s.online ? "bot online" : s.online === false ? "bot offline" : "unknown"} /></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+        <TextField
+          label="Boxes" type="number" value={n} size="small" sx={{ mt: 2, width: 160 }}
+          slotProps={{ htmlInput: { min: 1, max } }}
+          onChange={(e) => setN(Math.max(1, Math.min(max, Number(e.target.value) || 1)))}
+        />
+        {!canOrder && <Alert severity="warning" sx={{ mt: 1 }}>Your account can't place orders.</Alert>}
+        {addError && <Alert severity="error" sx={{ mt: 1 }}>{addError}</Alert>}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button
+          variant="contained"
+          onClick={() => {
+            if (!onAdd(n)) {
+              setAddError("That quantity would push a stash order past 54 boxes. Lower it — the server rejects oversized orders.");
+            }
+          }}
+          disabled={!canOrder || remaining < 1}
+        >
+          Add to cart
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 function BuyDialog({ item, slices, mcVersion, canOrder, remaining, onClose, onAdd }: {
   item: MergedItem | null; slices: SliceState[]; mcVersion: string | null; canOrder: boolean;
   remaining: number;
@@ -995,8 +1185,8 @@ function CartDrawer({ open, onClose, lines, slices, boxUsage, overLimit, onCheck
                 <Paper key={`${l.type}:${l.key}:${l.stash}`} variant="outlined" sx={{ p: 1.5 }} className="cart-line">
                   <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
                     <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                      <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>{l.type === "shulker" ? `Packed: ${l.key}` : l.key}</Typography>
-                      <Typography variant="caption" color="text.secondary">{l.type === "shulker" ? "whole box" : "loose"} · {l.stash} · ×{grouped(l.count)}</Typography>
+                      <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>{l.type === "shulker" ? `Packed: ${l.key}` : l.type === "kit" ? `Kit: ${l.key}` : l.key}</Typography>
+                      <Typography variant="caption" color="text.secondary">{l.type === "shulker" ? "whole box" : l.type === "kit" ? "kit box" : "loose"} · {l.stash} · ×{grouped(l.count)}</Typography>
                     </Box>
                     <IconButton size="small" aria-label={`Remove ${l.key}`} onClick={() => cart.setLines(lines.filter((_, x) => x !== i))}>
                       <DeleteIcon fontSize="small" />
@@ -1081,7 +1271,7 @@ function CheckoutDialog(props: {
                 <Typography variant="subtitle2" sx={{ fontFamily: "monospace" }}>{stash}</Typography>
                 {ls.map((l) => (
                   <Typography key={`${l.type}:${l.key}`} variant="body2" color="text.secondary">
-                    ×{grouped(l.count)} {l.type === "shulker" ? `packed ${l.key}` : l.key}
+                    ×{grouped(l.count)} {l.type === "shulker" ? `packed ${l.key}` : l.type === "kit" ? `kit ${l.key}` : l.key}
                   </Typography>
                 ))}
               </Paper>
@@ -1172,7 +1362,7 @@ function CheckoutDialog(props: {
                 <Typography variant="subtitle2" sx={{ fontFamily: "monospace" }}>{stash}</Typography>
                 {ls.map((l) => (
                   <Typography key={`${l.type}:${l.key}`} variant="body2" color="text.secondary">
-                    ×{grouped(l.count)} {l.type === "shulker" ? `packed ${l.key}` : l.key}
+                    ×{grouped(l.count)} {l.type === "shulker" ? `packed ${l.key}` : l.type === "kit" ? `kit ${l.key}` : l.key}
                   </Typography>
                 ))}
                 {(() => {
@@ -1227,7 +1417,7 @@ function CheckoutDialog(props: {
                     <Box sx={{ flexGrow: 1 }}>
                       <Typography variant="subtitle2" sx={{ fontFamily: "monospace" }}>{g.body.stash}</Typography>
                       <Typography variant="body2" color="text.secondary">
-                        {g.body.lines.map((l) => `×${grouped(l.count)} ${l.type === "shulker" ? `packed ${l.key}` : l.key}`).join(" · ")}
+                        {g.body.lines.map((l) => `×${grouped(l.count)} ${l.type === "shulker" ? `packed ${l.key}` : l.type === "kit" ? `kit ${l.key}` : l.key}`).join(" · ")}
                       </Typography>
                       {g.status === "rejected" && g.error && (
                         <Typography variant="body2" color="error">{g.error}</Typography>

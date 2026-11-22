@@ -144,11 +144,35 @@ export type IndexResponse = z.infer<typeof IndexResponseSchema>;
 // ---------- orders ----------
 
 export const OrderLineSchema = z.object({
-  type: z.enum(["item", "shulker"]),
+  type: z.enum(["item", "shulker", "kit"]),
   key: z.string().min(1),
   count: z.number().int().min(1),
 });
 export type OrderLine = z.infer<typeof OrderLineSchema>;
+
+// ---------- kits ----------
+
+/** One filled box slot of a kit template: 0-based slot, exact item variant key, count. */
+export const KitSlotSchema = z.object({
+  slot: z.number().int().min(0).max(26),
+  key: z.string().min(1),
+  count: z.number().int().min(1),
+});
+export type KitSlot = z.infer<typeof KitSlotSchema>;
+
+/** An owner-managed kit template: what one ordered shulker box holds, slot for slot. */
+export const KitTemplateSchema = z.object({
+  name: z.string().min(1),
+  revision: z.number().default(1),
+  updatedAt: z.number().default(0),
+  slots: z.array(KitSlotSchema).default([]),
+});
+export type KitTemplate = z.infer<typeof KitTemplateSchema>;
+
+export const KitListResponseSchema = z.object({
+  kits: z.array(KitTemplateSchema).default([]),
+});
+export type KitListResponse = z.infer<typeof KitListResponseSchema>;
 
 export const OrderStatusSchema = z.object({
   id: z.string(),
@@ -188,8 +212,12 @@ export type OrderStatus = z.infer<typeof OrderStatusSchema>;
 export const OrdersResponseSchema = z.object({
   orders: z.array(OrderStatusSchema).default([]),
   available: z
-    .object({ items: z.record(z.string(), z.number()).default({}), shulkers: z.record(z.string(), z.number()).default({}) })
-    .default({ items: {}, shulkers: {} }),
+    .object({
+      items: z.record(z.string(), z.number()).default({}),
+      shulkers: z.record(z.string(), z.number()).default({}),
+      kits: z.record(z.string(), z.number()).default({}),
+    })
+    .default({ items: {}, shulkers: {}, kits: {} }),
 });
 export type OrdersResponse = z.infer<typeof OrdersResponseSchema>;
 

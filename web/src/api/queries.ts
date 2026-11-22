@@ -6,6 +6,7 @@ import {
   BotInfoSchema,
   GuildSchema,
   IndexResponseSchema,
+  KitTemplateSchema,
   OrdersResponseSchema,
   QuotaMeSchema,
   ServerStateSchema,
@@ -16,6 +17,7 @@ import {
   type BotInfo,
   type Guild,
   type IndexResponse,
+  type KitTemplate,
   type OrdersResponse,
   type Perms,
   type QuotaMe,
@@ -45,6 +47,7 @@ export const keys = {
   deposits: ["deposits"] as const,
   boxJobs: ["boxes", "jobs"] as const,
   auditOrders: ["audit", "orders"] as const,
+  kits: ["kits"] as const,
 };
 
 export function useAuth() {
@@ -206,6 +209,21 @@ export function useStashDefs(enabled: boolean) {
       const raw = (await api<unknown>("/api/v1/stash-defs")) as { defs?: unknown[] };
       const list = Array.isArray(raw?.defs) ? raw.defs : [];
       return list.map((d) => StashDefSchema.parse(d)) as StashDef[];
+    },
+    enabled,
+    staleTime: 15_000,
+    retry: 1,
+  });
+}
+
+/** Owner-managed kit templates (one kit is exactly one box, packed on demand). */
+export function useKitTemplates(enabled: boolean) {
+  return useQuery({
+    queryKey: [...keys.kits],
+    queryFn: async () => {
+      const raw = (await api<unknown>("/api/v1/kits")) as { kits?: unknown[] };
+      const list = Array.isArray(raw?.kits) ? raw.kits : [];
+      return list.map((k) => KitTemplateSchema.parse(k)) as KitTemplate[];
     },
     enabled,
     staleTime: 15_000,

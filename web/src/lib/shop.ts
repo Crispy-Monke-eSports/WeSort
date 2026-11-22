@@ -3,7 +3,7 @@ import type { IndexItem, OrderLine, ShulkerEntry } from "../api/types";
 export const MAX_SHULKERS = 54;
 export const SHULKER_SLOTS = 27;
 
-/** One stash's slice of the unified shop: its own items, boxes and net availability. */
+/** One stash's slice of the unified shop: its own items, boxes, kits and net availability. */
 export interface StashSlice {
   stash: string;
   online: boolean;
@@ -11,6 +11,7 @@ export interface StashSlice {
   shulkers: ShulkerEntry[];
   availableItems: Record<string, number>;
   availableShulkers: Record<string, number>;
+  availableKits: Record<string, number>;
 }
 
 export interface CartLine extends OrderLine {
@@ -180,12 +181,13 @@ export function takeBoxes(
   return { took, remainder };
 }
 
-/** Shulkers the lines need (packed lines 1:1, item lines via ceil(count/maxStack) into 27-slot bins). */
+/** Shulkers the lines need (packed and kit lines 1:1, item lines via ceil(count/maxStack) into 27-slot bins). */
 export function shulkersNeeded(lines: OrderLine[], maxStackOf: (key: string) => number, isBoxKey: (key: string) => boolean): number {
   let units = 0;
   let slots = 0;
   for (const l of lines) {
-    if (l.type === "shulker" || isBoxKey(l.key)) units += l.count;
+    // One kit is exactly one box.
+    if (l.type === "shulker" || l.type === "kit" || isBoxKey(l.key)) units += l.count;
     else {
       const max = Math.max(1, maxStackOf(l.key));
       slots += Math.ceil(l.count / max);

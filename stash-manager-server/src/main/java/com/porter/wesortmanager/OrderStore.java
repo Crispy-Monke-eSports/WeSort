@@ -51,6 +51,69 @@ final class OrderStore {
         }
     }
 
+    /**
+     * Kit lines exploded to their component item lines: one kit is exactly one
+     * box, so ordering N kits of a template reserves N times every slot.
+     * Errors point at the original kit line, naming the missing component.
+     */
+    static final class KitExplosion {
+        /** Component item lines merged with any real item lines (ref to line). */
+        final Map<String, Line> lines = new LinkedHashMap<>();
+        /** Every line ref (exploded or plain) to the request index for error reporting. */
+        final Map<String, Integer> firstIndex = new HashMap<>();
+        /** Template snapshots to pin on the order (name to template JSON). */
+        final Map<String, JsonObject> snapshots = new LinkedHashMap<>();
+    }
+
+    /**
+     * Explodes merged kit lines using the current templates. Unknown kits are
+     * 404 (like unknown stashes); shortages are reported against components.
+     */
+    static KitExplosion explodeKits(Map<String, Line> merged, Map<String, Integer> firstIndex, KitTemplates kits)
+            throws OrderException {
+        var out = new KitExplosion();
+        for (var l : merged.values()) {
+            if (!l.type.equals("kit")) {
+                var prev = out.lines.get(l.ref());
+                out.lines.put(l.ref(), prev == null ? l : new Line(l.type, l.key, prev.count + l.count));
+                out.firstIndex.putIfAbsent(l.ref(), firstIndex.get(l.ref()));
+                continue;
+            }
+            var template = kits.get(l.key);
+            if (template == null) throw new OrderException(404, "no such kit: " + l.key, firstIndex.get(l.ref()));
+            out.snapshots.put(l.key, template.json());
+            for (var entry : template.components().entrySet()) {
+                var need = new Line("item", entry.getKey(), entry.getValue() * l.count);
+                var prev = out.lines.get(need.ref());
+                out.lines.put(need.ref(), prev == null ? need : new Line("item", need.key, prev.count + need.count));
+                // A component shared with a real item line reports the earliest line.
+                out.firstIndex.merge(need.ref(), firstIndex.get(l.ref()), Math::min);
+            }
+            if (template.components().isEmpty())
+                throw new OrderException(400, "kit '" + l.key + "' is empty", firstIndex.get(l.ref()));
+        }
+        return out;
+    }
+
+    /** Explodes an order's kit lines from its pinned snapshots (no live templates needed). */
+    static List<Line> explodeOrderLines(Order o) {
+        var out = new ArrayList<Line>();
+        for (Line l : o.lines) {
+            if (!l.type.equals("kit") || o.kits == null || !o.kits.containsKey(l.key)) {
+                out.add(l);
+                continue;
+            }
+            var slots = o.kits.get(l.key).getAsJsonArray("slots");
+            var perKit = new LinkedHashMap<String, Long>();
+            for (var e : slots) {
+                var s = e.getAsJsonObject();
+                perKit.merge(s.get("key").getAsString(), s.get("count").getAsLong(), Long::sum);
+            }
+            for (var e : perKit.entrySet()) out.add(new Line("item", e.getKey(), e.getValue() * l.count));
+        }
+        return out;
+    }
+
     /** A rejected request: HTTP status, message, and the index of the offending line (or -1). */
     static final class OrderException extends Exception {
         final int status;
@@ -96,6 +159,9 @@ final class OrderStore {
         JsonObject names; // normalized (see normalizeNames), or null for no naming
         JsonObject packageLabel; // normalized (see normalizePackageLabel), or null for the default label
         int packageTotal; // frozen number of boxes Y, 0 when unknown (legacy orders)
+        /** Kit template snapshots pinned at submit (name to template JSON), or null without kit lines. */
+        Map<String, JsonObject> kits;
+
         long createdAt;
         long updatedAt;
         String status;
@@ -213,6 +279,11 @@ final class OrderStore {
             o.add("names", names == null ? null : names.deepCopy());
             o.add("packageLabel", packageLabel == null ? null : packageLabel.deepCopy());
             if (packageTotal > 0) o.addProperty("packageTotal", packageTotal);
+            if (kits != null) {
+                var kj = new JsonObject();
+                for (var e : kits.entrySet()) kj.add(e.getKey(), e.getValue().deepCopy());
+                o.add("kits", kj);
+            }
             o.addProperty("createdAt", createdAt);
             o.addProperty("updatedAt", updatedAt);
             o.addProperty("status", status);
@@ -286,6 +357,11 @@ final class OrderStore {
                 r.packageLabel = null;
             }
             r.packageTotal = o.has("packageTotal") ? o.get("packageTotal").getAsInt() : 0;
+            if (o.has("kits") && o.get("kits").isJsonObject()) {
+                r.kits = new LinkedHashMap<>();
+                for (var e : o.getAsJsonObject("kits").entrySet())
+                    r.kits.put(e.getKey(), e.getValue().getAsJsonObject().deepCopy());
+            }
             r.queuedOffline = o.has("queuedOffline") && o.get("queuedOffline").getAsBoolean();
             r.createdAt = o.get("createdAt").getAsLong();
             r.updatedAt = o.get("updatedAt").getAsLong();
@@ -401,6 +477,14 @@ final class OrderStore {
     OrderStore(Path dataDir, IndexStore index) {
         this.dir = dataDir.resolve("orders");
         this.index = index;
+    }
+
+    private volatile KitTemplates kits;
+
+    /** The shared kit catalog (loaded once; the routes layer reuses this instance). */
+    synchronized KitTemplates kits() throws IOException {
+        if (kits == null) kits = new KitTemplates(dir.getParent());
+        return kits;
     }
 
     void load() throws IOException {
@@ -549,7 +633,7 @@ final class OrderStore {
         Map<String, Long> out = new HashMap<>();
         for (Order o : b.orders) {
             if (!OPEN.contains(o.status) && !holdsPhysical(o)) continue;
-            for (Line l : o.lines) out.merge(l.ref(), l.count, Long::sum);
+            for (Line l : explodeOrderLines(o)) out.merge(l.ref(), l.count, Long::sum);
         }
         return out;
     }
@@ -999,12 +1083,17 @@ final class OrderStore {
                                 || merged.values().stream().anyMatch(line -> line.type.equals("shulker")))) {
             throw new OrderException(409, "Resolve existing reservations before mixing source observation formats", -1);
         }
+        // Kit lines reserve their components, never a "kit:" ref: explode against
+        // the current templates and pin the snapshots on the order, so the bot
+        // packs the exact layout even if the template changes later.
+        KitExplosion exploded = explodeKits(merged, firstIndex, kits());
         try {
             return commitOrder(
                     server,
                     stash,
                     merged,
                     firstIndex,
+                    exploded,
                     names,
                     packageLabel,
                     byId,
@@ -1035,6 +1124,7 @@ final class OrderStore {
                         stash,
                         merged,
                         firstIndex,
+                        exploded,
                         names,
                         packageLabel,
                         byId,
@@ -1066,6 +1156,7 @@ final class OrderStore {
             String stash,
             Map<String, Line> merged,
             Map<String, Integer> firstIndex,
+            KitExplosion exploded,
             JsonObject names,
             JsonObject packageLabel,
             String byId,
@@ -1082,16 +1173,17 @@ final class OrderStore {
             Set<PhysicalReservations.Root> held,
             boolean allowStale)
             throws OrderException, IOException {
-        var allocations =
-                physical.hasSnapshots() ? physical.allocate(merged.values(), held, firstIndex, allowStale) : null;
+        var allocations = physical.hasSnapshots()
+                ? physical.allocate(exploded.lines.values(), held, exploded.firstIndex, allowStale)
+                : null;
         Book b = book(server, stash);
         synchronized (b) {
             long open = b.orders.stream().filter(o -> OPEN.contains(o.status)).count();
             if (open >= MAX_OPEN)
                 throw new OrderException(400, "too many open orders for this stash (limit " + MAX_OPEN + ")", -1);
             Map<String, Long> reserved = reserved(b);
-            for (Line l : merged.values()) {
-                int at = firstIndex.get(l.ref());
+            for (Line l : exploded.lines.values()) {
+                int at = exploded.firstIndex.get(l.ref());
                 long total = counts.total(l.type, l.key);
                 if (total < 0 && allocations == null) throw new OrderException(400, "not in the stash: " + l.key, at);
                 long available = Math.max(0, total - reserved.getOrDefault(l.ref(), 0L));
@@ -1122,6 +1214,9 @@ final class OrderStore {
             o.packageLabel = packageLabel == null ? null : packageLabel.deepCopy();
             o.packageTotal = (int) shulkers;
             o.allocations = allocations;
+            // Pinned kit layouts: the bot packs exactly these slots even if the
+            // template changes or is deleted after submit.
+            if (!exploded.snapshots.isEmpty()) o.kits = new LinkedHashMap<>(exploded.snapshots);
             // A stale-backed reservation is an explicitly queued offline order, never a
             // verified reservation: visibly marked in every API response, and unclaimable
             // until a fresh observation re-verifies it (claim path stays fresh-only).
@@ -1329,7 +1424,10 @@ final class OrderStore {
         long slots = 0;
         long units = 0;
         for (Line l : lines) {
-            if (l.type.equals("shulker") || counts.isShulkerBoxKey(l.key)) {
+            // One kit is exactly one box, however its slots are filled.
+            if (l.type.equals("kit")) {
+                units += l.count;
+            } else if (l.type.equals("shulker") || counts.isShulkerBoxKey(l.key)) {
                 units += l.count;
             } else {
                 long max = counts.maxStack(l.key);
@@ -1396,11 +1494,13 @@ final class OrderStore {
         }
         JsonObject items = new JsonObject();
         JsonObject shulkers = new JsonObject();
+        JsonObject kitsOut = new JsonObject();
         if (physicalAvailable != null) {
             physicalAvailable.forEach((ref, count) -> {
                 int split = ref.indexOf(':');
                 (ref.startsWith("item:") ? items : shulkers).addProperty(ref.substring(split + 1), count);
             });
+            kitsAvailableFromRefs(physicalAvailable, reserved, kitsOut);
         } else if (counts != null) {
             for (String key : counts.items().keySet()) {
                 items.addProperty(
@@ -1410,11 +1510,64 @@ final class OrderStore {
                 shulkers.addProperty(
                         key, Math.max(0, counts.total("shulker", key) - reserved.getOrDefault("shulker:" + key, 0L)));
             }
+            kitsAvailableFromCounts(counts, reserved, kitsOut);
         }
         available.add("items", items);
         available.add("shulkers", shulkers);
+        available.add("kits", kitsOut);
         out.add("available", available);
         return out;
+    }
+
+    /**
+     * Whole kits buildable from unreserved stock: the scarcest component decides.
+     * A kit whose components are unknown (or which has none) is omitted, never
+     * presented as buildable or as empty.
+     */
+    private void kitsAvailableFromCounts(IndexStore.OrderCounts counts, Map<String, Long> reserved, JsonObject out) {
+        for (var t : allKits()) {
+            var need = t.components();
+            if (need.isEmpty()) continue;
+            long buildable = Long.MAX_VALUE;
+            for (var e : need.entrySet()) {
+                long total = counts.total("item", e.getKey());
+                if (total < 0) {
+                    buildable = -1;
+                    break;
+                }
+                long avail = Math.max(0, total - reserved.getOrDefault("item:" + e.getKey(), 0L));
+                buildable = Math.min(buildable, avail / e.getValue());
+            }
+            if (buildable >= 0) out.addProperty(t.name(), buildable);
+        }
+    }
+
+    private void kitsAvailableFromRefs(
+            Map<String, Long> physicalAvailable, Map<String, Long> reserved, JsonObject out) {
+        for (var t : allKits()) {
+            var need = t.components();
+            if (need.isEmpty()) continue;
+            long buildable = Long.MAX_VALUE;
+            for (var e : need.entrySet()) {
+                String ref = "item:" + e.getKey();
+                Long total = physicalAvailable.get(ref);
+                if (total == null) {
+                    buildable = -1;
+                    break;
+                }
+                long avail = Math.max(0, total - reserved.getOrDefault(ref, 0L));
+                buildable = Math.min(buildable, avail / e.getValue());
+            }
+            if (buildable >= 0) out.addProperty(t.name(), buildable);
+        }
+    }
+
+    private List<KitTemplates.Template> allKits() {
+        try {
+            return kits().all();
+        } catch (IOException ignored) {
+            return List.of();
+        }
     }
 
     /**

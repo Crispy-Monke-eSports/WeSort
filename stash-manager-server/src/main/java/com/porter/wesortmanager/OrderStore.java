@@ -784,7 +784,8 @@ final class OrderStore {
     private Order healed(Book book, Order previous, long now) throws IOException, OrderException {
         if (previous.stage() == OrderStage.NEEDS_RECONCILIATION
                 && previous.allocations != null
-                && !previous.allocations.isEmpty()) {
+                && !previous.allocations.isEmpty()
+                && previous.cancelRequestedAt == 0) {
             PhysicalReservations observations = PhysicalReservations.read(index.stock(), book.server, null);
             if (!observations.refreshedAfter(previous.allocations, previous.updatedAt)
                     || !observations.matches(previous.allocations)

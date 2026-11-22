@@ -3458,12 +3458,14 @@ public class StashSorter extends Module {
             if (best != null) return fetch(best, bestSlot);
         }
 
+        // Give UUID registration a bounded chance before generic stock moves:
+        // otherwise a busy warehouse continually finds another Take job and
+        // its shulker boxes never receive the WeSort identity they need.
+        if (uuidIdleAllowed(rereading) && uuidFetchStep()) return true;
+
         // With every carry slot full there's nothing to pick up into: a trip would only open the container and stall it
         Box source = nearestTakeSource();
         if (source != null) return start(Job.Take, source);
-
-        // Idle work: fetch a shulker (or XP bottles) to name with its WeSort UUID when there is time over
-        if (uuidIdleAllowed(rereading) && uuidFetchStep()) return true;
 
         // Downstack: merge partial stacks of the same item, once per container per run
         Box messy = nearest(stash.boxes.stream()

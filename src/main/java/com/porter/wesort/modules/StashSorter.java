@@ -4143,7 +4143,10 @@ public class StashSorter extends Module {
         // The actual 6b6t lobby walkway uses slabs and steps near the obsidian
         // frame. A full UP face would incorrectly discard those walkable cells.
         return mc.level.getBlockState(stand).getCollisionShape(mc.level, stand).isEmpty()
-                && mc.level.getBlockState(head).getCollisionShape(mc.level, head).isEmpty()
+                && mc.level
+                        .getBlockState(head)
+                        .getCollisionShape(mc.level, head)
+                        .isEmpty()
                 && !floorShape.isEmpty()
                 && floorShape.max(Direction.Axis.Y) >= 0.5
                 && floorShape.max(Direction.Axis.Y) <= 1.0;
@@ -4166,7 +4169,8 @@ public class StashSorter extends Module {
             if (!state.hasProperty(net.minecraft.world.level.block.NetherPortalBlock.AXIS)) continue;
             Direction.Axis axis = state.getValue(net.minecraft.world.level.block.NetherPortalBlock.AXIS);
             for (int side = 0; side < 2; side++) {
-                BlockPos adjacent = PortalEntry.approach(p, axis, at.x, at.z, side == 0 ? portalOtherSide : !portalOtherSide);
+                BlockPos adjacent =
+                        PortalEntry.approach(p, axis, at.x, at.z, side == 0 ? portalOtherSide : !portalOtherSide);
                 // Lobby walkways can be one block above/below the bottom portal cell.
                 for (int dy : new int[] {0, -1, 1}) {
                     BlockPos stand = adjacent.offset(0, dy, 0);
@@ -6418,13 +6422,7 @@ public class StashSorter extends Module {
 
     /** Shared chunk-palette scanner. The caller supplies its own bounds. */
     private List<BlockPos> scanRegion(
-            java.util.function.Predicate<BlockState> test,
-            int minX,
-            int maxX,
-            int minY,
-            int maxY,
-            int minZ,
-            int maxZ) {
+            java.util.function.Predicate<BlockState> test, int minX, int maxX, int minY, int maxY, int minZ, int maxZ) {
         List<BlockPos> out = new ArrayList<>();
         if (mc.level == null) return out;
         int minSection = mc.level.getMinSectionY();

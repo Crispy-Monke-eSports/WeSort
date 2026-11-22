@@ -69,8 +69,7 @@ public final class PortalWorldSession {
         boolean relocated = lobbyObserved
                 && Double.isFinite(x)
                 && Double.isFinite(z)
-                && (x - lobbyX) * (x - lobbyX) + (z - lobbyZ) * (z - lobbyZ)
-                        >= PROXY_TRANSFER_DISTANCE_SQR;
+                && (x - lobbyX) * (x - lobbyX) + (z - lobbyZ) * (z - lobbyZ) >= PROXY_TRANSFER_DISTANCE_SQR;
         if ((changedWorld && crossingAttempted) || relocated) {
             arrived = true;
             lobbyObserved = false;

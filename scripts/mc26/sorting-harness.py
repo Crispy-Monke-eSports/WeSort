@@ -38,6 +38,16 @@ class SortingHarness(world.Harness):
         reply = self.rcon.command(f'item replace block {x} 64 3 container.{slot} with minecraft:{item} {count}')
         require('Replaced 1 slot' in reply, 'Rejected sorting fixture item: ' + reply)
     def nbt(self, x): return self.rcon.command(f'data get block {x} 64 3 Items')
+    def packed_count(self, x, item):
+        # Real server-side NBT, including exact nested stack counts in the
+        # shulker's minecraft:container component. No client cache or mock.
+        return sum(
+            inner['item'].get('count', 1)
+            for outer in snbt.items(self.nbt(x))
+            if outer['id'].endswith('shulker_box')
+            for inner in outer.get('components', {}).get('minecraft:container', [])
+            if inner['item']['id'] == 'minecraft:' + item
+        )
     def count(self, x, item):
         # Independent server commands, with each stack queried separately to avoid the RCON 4KiB frame limit.
         import re
@@ -190,14 +200,23 @@ class SortingHarness(world.Harness):
             self.setitem(21, 0, 'egg', 8); self.setitem(21, 1, 'diamond_sword', 1)
             self.observe({0:('shulker_box',1),12:('diamond',5),15:('diamond',7),30:('diamond',9),21:('egg',8)})
             self.command('sort-mark', x=21,y=64,z=3,dropOff=True)
+            second_baseline = self.authoritative_totals()
             self.teleport(0.5,2); self.command('sort-start', mode='Tiers')
-            self.wait(lambda: self.count(3,'dirt')==26*64 and self.count(3,'shulker_box')==1
+            # Tier-only optimization can safely fill the existing empty
+            # shulker with 26 full dirt stacks. The old test incorrectly
+            # required those same stacks to remain loose in the barrel.
+            self.wait(lambda: self.packed_count(3,'dirt')==26*64
+                and self.count(3,'shulker_box')==1
+                and self.count(0,'dirt')==0
                 and self.count(6,'egg')==8 and self.count(6,'diamond_sword')==1
-                and '[]' in self.rcon.command('data get entity '+self.player+' Inventory') and self.command('state')['state']['inventoryReady'],
-                'Actual tier planner did not separate the overflow tiers')
+                and '[]' in self.rcon.command('data get entity '+self.player+' Inventory')
+                and self.command('state')['state']['inventoryReady'],
+                'Tier optimizer did not compact dirt into its shulker and separate the overflow tiers')
             self.command('sort-stop')
+            require(self.authoritative_totals() == second_baseline,
+                    'Tier optimization changed authoritative recursive item counts or metadata')
             require(self.nbt(12)==excluded and self.nbt(15)==protected and self.nbt(30)==outbound, 'Tier sorting touched protected stock')
-            self.ok('actual Tiers planner fills 27-slot capacity in tier order and routes 16-stackables/singletons to the next container')
+            self.ok('actual Tiers optimizer groups 26 full dirt stacks inside one physical shulker and separates eggs and swords with exact conservation')
             # Every destination, including the unsigned overflow, is physically full.
             for x in self.locations:
                 if x in [12,15,30]: continue

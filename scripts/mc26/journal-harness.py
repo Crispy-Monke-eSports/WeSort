@@ -125,7 +125,8 @@ class JournalHarness(repack.RepackHarness):
             self.start_client()
             self.configure()
             before = self.snapshots()
-            self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key)
+            self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key,
+                         inspectionHold=True)
             self.command('arm-physical-crash', phase=self.phase)
             self.command('sort-start', **self.settings)
             marker = self.control / 'physical-crash-ready'

@@ -53,7 +53,7 @@ class StockHarness(world.Harness):
         last = 'recovery not yet observed'
         while time.monotonic() < deadline:
             air = self.rcon.command('execute if block 3 64 -3 minecraft:air run time query gametime')
-            if not re.search(r'time is \\d+', air):
+            if not re.search(r'time is \d+', air):
                 last = 'the unclaimed shulker is still standing'
                 time.sleep(2)
                 continue
@@ -67,7 +67,7 @@ class StockHarness(world.Harness):
             if (len(changed) == 1 and after_boxes == original_boxes + 1
                     and 'minecraft:shulker_box' in current[changed[0]]
                     and 'minecraft:dirt' in current[changed[0]]
-                    and re.search(r'count:\\s*16(?:b)?\\b', current[changed[0]], re.IGNORECASE)):
+                    and re.search(r'count:\s*16(?:b)?\b', current[changed[0]], re.IGNORECASE)):
                 self.ok('unclaimed placed shulker was collected and deposited intact in stash, with other physical stock unchanged')
                 return
             last = 'recovery changed %s containers; stored shulker count %s vs expected %s' % (

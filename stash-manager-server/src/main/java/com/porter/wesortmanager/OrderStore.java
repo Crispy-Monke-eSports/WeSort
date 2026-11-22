@@ -517,7 +517,8 @@ final class OrderStore {
                         b.orders.sort((x, y) -> Long.compare(x.createdAt, y.createdAt));
                     }
                 } catch (RuntimeException e) {
-                    System.err.println("Skipping orders file " + file.getFileName() + ": " + e);
+                    // An incomplete order book could silently release live reservations. Refuse readiness.
+                    throw new IOException("Cannot restore orders file " + file.getFileName(), e);
                 }
             }
         }

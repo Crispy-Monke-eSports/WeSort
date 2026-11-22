@@ -42,6 +42,18 @@ class LiveEventsTest {
     }
 
     @Test
+    void slowSubscriberGetsBoundedResyncInsteadOfUnboundedQueue() throws InterruptedException {
+        BlockingQueue<LiveEvents.Event> queue = LiveEvents.subscribe();
+        try {
+            for (int i = 0; i < LiveEvents.MAX_PENDING_EVENTS + 2; i++) LiveEvents.bump("orders");
+            assertTrue(queue.size() <= LiveEvents.MAX_PENDING_EVENTS);
+            assertTrue(queue.stream().anyMatch(e -> e.channels().contains("__unknown__")));
+        } finally {
+            LiveEvents.unsubscribe(queue);
+        }
+    }
+
+    @Test
     void unsubscribeStopsDelivery() throws InterruptedException {
         BlockingQueue<LiveEvents.Event> queue = LiveEvents.subscribe();
         LiveEvents.unsubscribe(queue);

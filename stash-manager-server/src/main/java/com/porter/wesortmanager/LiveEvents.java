@@ -22,6 +22,7 @@ final class LiveEvents {
     /** One broadcast: the revision after the bump and the channels it touches. */
     record Event(long rev, Set<String> channels) {}
 
+    static final int MAX_PENDING_EVENTS = 128;
     private static final AtomicLong REV = new AtomicLong();
     private static final Set<BlockingQueue<Event>> SUBSCRIBERS = ConcurrentHashMap.newKeySet();
     private static final ConcurrentHashMap<String, Long> THROTTLED = new ConcurrentHashMap<>();
@@ -34,7 +35,7 @@ final class LiveEvents {
     }
 
     static BlockingQueue<Event> subscribe() {
-        BlockingQueue<Event> queue = new LinkedBlockingQueue<>();
+        BlockingQueue<Event> queue = new LinkedBlockingQueue<>(MAX_PENDING_EVENTS);
         SUBSCRIBERS.add(queue);
         return queue;
     }
@@ -51,7 +52,13 @@ final class LiveEvents {
     static long publish(Set<String> channels) {
         long rev = REV.incrementAndGet();
         Event event = new Event(rev, Set.copyOf(channels));
-        for (BlockingQueue<Event> queue : SUBSCRIBERS) queue.offer(event);
+        for (BlockingQueue<Event> queue : SUBSCRIBERS) {
+            if (!queue.offer(event)) {
+                // A slow subscriber must resync, not retain an unbounded backlog of stale updates.
+                queue.clear();
+                queue.offer(new Event(rev, Set.of("__unknown__")));
+            }
+        }
         return rev;
     }
 

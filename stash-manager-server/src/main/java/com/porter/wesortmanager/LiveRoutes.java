@@ -11,6 +11,7 @@ import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -34,16 +35,19 @@ final class LiveRoutes {
     static final long MAX_AGE_MS = 50_000;
     /** How often a stream re-checks bot/stash presence for silent offline transitions. */
     static final long PRESENCE_SWEEP_MS = 10_000;
+    /** Bound concurrent long-lived HTTP connections and their worker threads. */
+    static final int MAX_STREAMS = 32;
 
     private final BotHub hub;
     private final IndexStore store;
     private Router router;
     private final ExecutorService pool;
+    private final Semaphore streamPermits = new Semaphore(MAX_STREAMS);
 
     LiveRoutes(BotHub hub, IndexStore store) {
         this.hub = hub;
         this.store = store;
-        this.pool = Executors.newCachedThreadPool(daemonThreads());
+        this.pool = Executors.newFixedThreadPool(MAX_STREAMS, daemonThreads());
     }
 
     private static java.util.concurrent.ThreadFactory daemonThreads() {
@@ -61,16 +65,29 @@ final class LiveRoutes {
     }
 
     private void stream(HttpExchange ex) throws IOException {
-        String token = (String) Http.attr(ex, Router.SESSION_TOKEN);
-        var headers = ex.getResponseHeaders();
-        headers.set("Content-Type", "text/event-stream; charset=utf-8");
-        headers.set("Cache-Control", "no-store");
-        headers.set("Connection", "keep-alive");
-        headers.set("X-Accel-Buffering", "no");
-        ex.sendResponseHeaders(200, 0);
-        // Another thread owns the exchange from here; the Router must not close it.
-        Http.attr(ex, Http.DETACHED, Boolean.TRUE);
-        pool.execute(() -> run(ex, token));
+        if (!streamPermits.tryAcquire()) {
+            Http.error(ex, 503, "too many live streams; reconnect later");
+            return;
+        }
+        boolean handedOff = false;
+        try {
+            String token = (String) Http.attr(ex, Router.SESSION_TOKEN);
+            var headers = ex.getResponseHeaders();
+            headers.set("Content-Type", "text/event-stream; charset=utf-8");
+            headers.set("Cache-Control", "no-store");
+            headers.set("Connection", "keep-alive");
+            headers.set("X-Accel-Buffering", "no");
+            ex.sendResponseHeaders(200, 0);
+            // Another thread owns the exchange from here; the Router must not close it.
+            Http.attr(ex, Http.DETACHED, Boolean.TRUE);
+            pool.execute(() -> run(ex, token));
+            handedOff = true;
+        } finally {
+            if (!handedOff) {
+                streamPermits.release();
+                ex.close();
+            }
+        }
     }
 
     private void run(HttpExchange ex, String token) {
@@ -119,6 +136,7 @@ final class LiveRoutes {
             // The tab went away mid-stream. Nothing useful to send back.
         } finally {
             LiveEvents.unsubscribe(queue);
+            streamPermits.release();
             try {
                 ex.close();
             } catch (RuntimeException ignored) {

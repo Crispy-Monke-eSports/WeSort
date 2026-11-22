@@ -4103,9 +4103,14 @@ public class StashSorter extends Module {
         if (stash == null) return "no stash";
         if (portalAwaiting()) return "in lobby, entering survival world";
         String dim = !stash.dimension.isEmpty() ? stash.dimension : stash.areaDimension;
-        if (!dim.isEmpty()) return Stash.sameDimension(dim, Stash.currentDimension()) ? null : "wrong dimension";
+        if (!dim.isEmpty() && !Stash.sameDimension(dim, Stash.currentDimension())) return "wrong dimension";
 
+        // A matching dimension is not enough: the 6b6t proxy lobby and a
+        // survival warehouse can both be minecraft:overworld, millions of
+        // blocks apart. Never path towards a remote Manager region merely
+        // because it names the same dimension.
         Vec3 at = mc.player.position();
+        if (stash.hasArea() && stash.inArea(at.x, at.y, at.z, 128)) return null;
         for (Box box : stash.boxes) {
             if (box.known() && at.distanceToSqr(Vec3.atCenterOf(box.pos)) <= 128 * 128) return null;
         }
@@ -4151,9 +4156,17 @@ public class StashSorter extends Module {
         };
     }
 
-    /** True for EVERY new 6b6t login, including after a previous session succeeded. */
+    /**
+     * A new 6b6t login near the lobby origin must not run stash navigation
+     * while portal chunks are loading. Confirmed survival workers far away
+     * can resume normally, subject to the separate stash proximity guard.
+     */
     public boolean portalAwaiting() {
-        return portalSession.inLobby() && portalModeOn() && mc.player != null && mc.level != null;
+        if (mc.player == null || mc.level == null) return false;
+        return portalSession.awaitingBootstrap(
+                portalModeOn(),
+                Stash.is6b6tServer(Stash.currentServer()),
+                PortalEntry.in6b6tLobbyRegion(mc.player.blockPosition()));
     }
 
     /** Releases synthetic movement on completion, failure, yielding and disconnect. */
@@ -4301,10 +4314,16 @@ public class StashSorter extends Module {
             }
         }
         if (!portalSession.inLobby()) {
-            // Survival (or an unknown world): NEVER activate lobby navigation without
-            // positive local portal evidence. An old portal goal cannot cross worlds.
+            // Before chunk loading confirms the lobby we still hold every
+            // warehouse route. Only a locally verified portal can authorize
+            // the dedicated portal approach; an ordinary stash route cannot
+            // sneak through while the chunks are still arriving.
             stopPortalNavigation();
-            return false;
+            if (portalAwaiting() && now - portalWaitWarnedAt >= 60_000) {
+                portalWaitWarnedAt = now;
+                warning("6b6t lobby: waiting for portal chunks; warehouse navigation is blocked.");
+            }
+            return portalAwaiting();
         }
 
         if (touchingPortal()) {
@@ -12558,6 +12577,11 @@ public class StashSorter extends Module {
 
         @EventHandler
         private void onGameLeft(GameLeftEvent event) {
+            // Cancel only the exact Baritone goal WeSort owned before losing
+            // its identity. Otherwise an old warehouse path can keep running
+            // after a kick and resume in the proxy lobby on reconnect.
+            releaseGoal();
+            portalForward(false);
             driven = false;
             setUp = false;
             // Before anything is forgotten: what is carried and the shulker standing in the world are written down

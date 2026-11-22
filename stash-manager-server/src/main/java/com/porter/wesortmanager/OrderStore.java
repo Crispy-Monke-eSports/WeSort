@@ -612,10 +612,117 @@ final class OrderStore {
                     }
                 }
             }
+            autoHeal(server);
         }
     }
 
+    /** Orders a silent bot holds that nobody asked to cancel: cancel requests older than this
+     * are fulfilled automatically when the order holds nothing physical. */
+    static final long AUTO_CANCEL_AFTER_MS = 10 * 60 * 1000;
+
+    /**
+     * Server-side self-healing on every fresh index, no clicks needed. Abandons nothing and
+     * guesses nothing: NEEDS_RECONCILIATION orders the fresh observation proves are returned to
+     * PICKUP_READY; open orders with an unsettled physical operation are surfaced as
+     * NEEDS_RECONCILIATION instead of hanging silently; cancel requests the bot never confirmed
+     * and that hold nothing physical are fulfilled once stale.
+     */
+    private void autoHeal(String server) throws IOException {
+        long now = System.currentTimeMillis();
+        for (var entry : books.entrySet()) {
+            if (!entry.getKey().server().equals(server)) continue;
+            var book = entry.getValue();
+            synchronized (book) {
+                // Copy-on-write through update(): a failed save rolls back that order only,
+                // exactly like the release sweep above.
+                for (Order previous : List.copyOf(book.orders)) {
+                    Order next;
+                    try {
+                        next = healed(book, previous, now);
+                    } catch (OrderException conflict) {
+                        continue;
+                    }
+                    if (next != null) update(book, previous, next);
+                }
+            }
+        }
+    }
+
+    /** One order's automatic step, or null when it stays as it is. Copy-on-write: the caller saves. */
+    private Order healed(Book book, Order previous, long now) throws IOException, OrderException {
+        if (previous.stage() == OrderStage.NEEDS_RECONCILIATION
+                && previous.allocations != null
+                && !previous.allocations.isEmpty()) {
+            PhysicalReservations observations = PhysicalReservations.read(index.stock(), book.server, null);
+            if (!observations.refreshedAfter(previous.allocations, previous.updatedAt)
+                    || !observations.matches(previous.allocations)
+                    || index.stock().unsettledPhysicalOrder(previous.id)) return null;
+            Order o = Order.fromJson(previous.snapshot());
+            o.advance(OrderStage.PICKUP_READY);
+            o.status = "packed";
+            o.message = "reconciled from a fresh observation; ready for pickup";
+            o.updatedAt = now;
+            o.record("order.auto-reconcile", Users.OWNER_ID, now);
+            return o;
+        }
+        if ((previous.status.equals("accepted")
+                        || previous.status.equals("in_progress")
+                        || previous.status.equals("packed"))
+                && index.stock().unsettledPhysicalOrder(previous.id)) {
+            Order o = Order.fromJson(previous.snapshot());
+            o.advance(OrderStage.NEEDS_RECONCILIATION);
+            o.status = "needs_reconciliation";
+            o.message = "physical work left unsettled; verify before pickup";
+            o.updatedAt = now;
+            o.record("order.auto-reconcile", Users.OWNER_ID, now);
+            return o;
+        }
+        if (previous.cancelRequested
+                && previous.allocations == null
+                && (previous.status.equals("accepted") || previous.status.equals("in_progress"))
+                && previous.cancelRequestedAt > 0
+                && now - previous.cancelRequestedAt > AUTO_CANCEL_AFTER_MS
+                && now - previous.updatedAt > AUTO_CANCEL_AFTER_MS) {
+            Order o = Order.fromJson(previous.snapshot());
+            o.advance(OrderStage.CANCELLED);
+            o.status = "cancelled";
+            o.message = "cancelled automatically: requested, bot silent, nothing held";
+            o.updatedAt = now;
+            o.record("order.auto-force-cancel", Users.OWNER_ID, now);
+            return o;
+        }
+        return null;
+    }
+
     record Reservation(String order, PhysicalReservations.Allocation allocation) {}
+
+    /** Orders waiting on a human decision: PENDING with approval still PENDING, in the viewer's scope. */
+    int pendingApprovals(Users.Principal who) {
+        synchronized (index) {
+            int n = 0;
+            for (var book : books.values()) {
+                if (!who.perms().seesStash(book.stash)) continue;
+                synchronized (book) {
+                    for (Order o : book.orders) if (o.status.equals("pending") && o.approval == Approval.PENDING) n++;
+                }
+            }
+            return n;
+        }
+    }
+
+    /** Open orders with a requested cancel: visible so a silent bot cannot hide them, in the viewer's scope. */
+    int cancelRequestedOpen(Users.Principal who) {
+        synchronized (index) {
+            int n = 0;
+            for (var book : books.values()) {
+                if (!who.perms().seesStash(book.stash)) continue;
+                synchronized (book) {
+                    for (Order o : book.orders) if (o.cancelRequested && OPEN.contains(o.status)) n++;
+                }
+            }
+            return n;
+        }
+    }
 
     List<Reservation> physicalHolds(String server) {
         var holds = new ArrayList<Reservation>();
@@ -1445,6 +1552,63 @@ final class OrderStore {
             o.record("order.force-cancel", actor, o.updatedAt);
             update(b, previous, o);
             return o;
+        }
+    }
+
+    /**
+     * Owner/member resolution of a NEEDS_RECONCILIATION order without touching the game.
+     * Abandon it (FAILED/CANCELLED: reservations release through the regular fresh-observation
+     * sweep) or return it to PICKUP_READY when the server itself can prove the stock: a fresh
+     * observation covering the allocations and no unsettled physical operation for the order.
+     * 409 for anything the data cannot prove.
+     */
+    Order reconcile(String id, String target, String actor) throws OrderException, IOException {
+        synchronized (index) {
+            Book b = byOrderId.get(id);
+            if (b == null) throw new OrderException(404, "no such order", -1);
+            synchronized (b) {
+                Order previous = find(b, id);
+                if (previous == null) throw new OrderException(404, "no such order", -1);
+                if (previous.stage() != OrderStage.NEEDS_RECONCILIATION)
+                    throw new OrderException(409, "only orders needing reconciliation can be reconciled", -1);
+                Order o = Order.fromJson(previous.snapshot());
+                OrderStage next = switch (target == null ? "" : target) {
+                    case "cancelled" -> OrderStage.CANCELLED;
+                    case "failed" -> OrderStage.FAILED;
+                    case "pickup_ready" -> OrderStage.PICKUP_READY;
+                    default -> throw new OrderException(400, "target must be cancelled, failed or pickup_ready", -1);
+                };
+                o.advance(next);
+                if (next == OrderStage.PICKUP_READY) {
+                    if (!provenStock(b, o))
+                        throw new OrderException(
+                                409, "physical state still uncertain; resolve after a fresh observation", -1);
+                    o.status = "packed";
+                    o.message = "reconciled from a fresh observation; ready for pickup";
+                } else {
+                    o.status = next == OrderStage.CANCELLED ? "cancelled" : "failed";
+                    o.message = "reconciled from the website; reservations release on the next fresh observation";
+                }
+                o.updatedAt = System.currentTimeMillis();
+                o.record("order.reconcile", actor, o.updatedAt);
+                update(b, previous, o);
+                return o;
+            }
+        }
+    }
+
+    /** The server's own proof that an order's stock is verified: a fresh observation newer
+     * than the order's last change, with every allocated stack still present under the same
+     * fingerprint, and no unsettled physical operation for the order. */
+    private boolean provenStock(Book b, Order o) {
+        try {
+            if (o.allocations == null || o.allocations.isEmpty()) return false;
+            PhysicalReservations observations = PhysicalReservations.read(index.stock(), b.server, null);
+            return observations.refreshedAfter(o.allocations, o.updatedAt)
+                    && observations.matches(o.allocations)
+                    && !index.stock().unsettledPhysicalOrder(o.id);
+        } catch (IOException | RuntimeException e) {
+            return false;
         }
     }
 

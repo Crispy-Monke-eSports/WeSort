@@ -56,6 +56,23 @@ public final class IndexStore {
 
     public record StashKey(String server, String stash) {}
 
+    /** Stash-level blockers the web UI never surfaces: stash name -> alert codes present. */
+    Map<String, List<String>> stashBlockers() {
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        for (var e : stashes.entrySet()) {
+            var s = e.getValue();
+            synchronized (s) {
+                List<String> codes = new ArrayList<>();
+                if (s.orderBlocker != null) codes.add("ORDER_BLOCKED");
+                if (s.storage != null && s.storage.chests() > 0 && s.storage.full() >= s.storage.chests())
+                    codes.add("DELIVERY_FULL");
+                if (s.rescanBlocked != null) codes.add("RESCAN_BLOCKED");
+                if (!codes.isEmpty()) out.put(e.getKey().stash(), codes);
+            }
+        }
+        return out;
+    }
+
     /** What the icon proxy needs to fetch an id's icon. */
     public record IconInfo(String englishName, String mcVersion) {}
 

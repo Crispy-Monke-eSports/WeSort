@@ -31,13 +31,22 @@ Detta protokoll är den bevarade baslinjen, inte framtida guildordermotor.
   tröskeln, så en laggig server aldrig tappar en kista vars läsningar misslyckas.
   Aldrig lästa (`readAt: 0`) lämnas till agenten. Tröskeln är
   `WESORT_CHEST_MAX_AGE_SECONDS` (default 300).
+- Självläkning utan klick: `POST /api/v1/orders/{id}/reconcile` löser
+  `NEEDS_RECONCILIATION` (`target`: `cancelled`/`failed` avbryter alltid;
+  `pickup_ready` endast med färsk observation utan öppna fysiska operationer).
+  Samma bevis körs automatiskt vid varje färskt index (tillbaka till `packed`),
+  öppna ordrar med oavslutade fysiska operationer flaggas automatiskt, och
+  bekräftade cancels som inget håller verkställs efter 10 min tystnad.
+  Operations-larmen omfattar även `ORDER_BLOCKED`, `DELIVERY_FULL`,
+  `RESCAN_BLOCKED`, `UNKNOWN`, `MISSING`, `APPROVAL_PENDING` och
+  `CANCEL_REQUESTED`.
 
 | Område | Aktiva routes |
 |---|---|
 | Browser-auth | GET auth/state; POST auth/setup, auth/login, auth/logout, auth/logout-all, auth/password, auth/confirm, auth/lock |
 | Agent | POST index, heartbeat, orders/claim, orders/:id/status, delivery |
 | Lager/webb | GET stashes, index, orders, delivery, link, server, stash-defs; POST server, stash-defs, rescan, link/regenerate |
-| Order/webb | POST orders, orders/clear, orders/:id/cancel, orders/:id/force-cancel, orders/:id/retry, orders/:id/approval |
+| Order/webb | POST orders, orders/clear, orders/:id/cancel, orders/:id/force-cancel, orders/:id/retry, orders/:id/approval, orders/:id/reconcile |
 | Drift/agent | POST bot/hello, bot/state, bot/results, bot/activity; GET bot/next |
 | Drift/webb | GET bots, bots/:id/settings, bots/:id/jobs, bots/:id/activity; POST bots/:id/settings |
 | Administration | GET/POST users; POST users/owner, users/:id, users/:id/actions enligt UserRoutes; GET audit |

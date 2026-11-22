@@ -12141,8 +12141,9 @@ public class StashSorter extends Module {
             // stash, a sorting lease or an enabled warehouse job. In particular it runs on re-login.
             StashManager manager = Modules.get().get(StashManager.class);
             if (portalAwaiting() && manager != null && manager.dedicatedProfile()) {
-                if (InventorySync.ready()
-                        && !PhysicalJournalRuntime.blocked()
+                // Inventory readback can remain unready in the proxy lobby. Navigation
+                // does not touch inventory, but a journal uncertainty still blocks it.
+                if (!PhysicalJournalRuntime.blocked()
                         && !PhysicalJournalRuntime.awaitingMirror()
                         && !com.porter.wesort.compat.NavigationRuntime.paused()) portalTick();
                 else portalForward(false);

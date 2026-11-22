@@ -7670,10 +7670,21 @@ public class StashSorter extends Module {
     /**
      * A shulker holding only stacks of this bulk key, with room for more.
      */
-    /** Never change a user's custom-labelled box, but WeSort UUID identities are stable across repacking. */
-    private static boolean repackableName(ItemStack stack) {
+    /** Protect human labels and duplicate UUID identities from physical optimization. */
+    private boolean repackableName(ItemStack stack) {
         var name = stack.get(DataComponents.CUSTOM_NAME);
-        return com.porter.wesort.data.ShulkerUuid.repackableName(name == null ? null : name.getString());
+        if (name == null) return true;
+        if (!com.porter.wesort.data.ShulkerUuid.repackableName(name.getString())) return false;
+        String uuid = uuidOf(stack);
+        if (uuid == null || stash == null) return false;
+        int copies = 0;
+        for (Box box : stash.boxes) {
+            if (box.contents == null || box.stale) continue;
+            for (ItemStack item : box.contents) {
+                if (uuid.equals(uuidOf(item)) && ++copies > 1) return false;
+            }
+        }
+        return true;
     }
 
     private boolean bulkWithRoom(ItemStack shulker, BulkKey key) {

@@ -22,6 +22,7 @@ final class LiveEvents {
     /** One broadcast: the revision after the bump and the channels it touches. */
     record Event(long rev, Set<String> channels) {}
 
+    static final int MAX_PENDING_EVENTS = 128;
     private static final AtomicLong REV = new AtomicLong();
     private static final Set<BlockingQueue<Event>> SUBSCRIBERS = ConcurrentHashMap.newKeySet();
     private static final ConcurrentHashMap<String, Long> THROTTLED = new ConcurrentHashMap<>();
@@ -34,7 +35,7 @@ final class LiveEvents {
     }
 
     static BlockingQueue<Event> subscribe() {
-        BlockingQueue<Event> queue = new LinkedBlockingQueue<>();
+        BlockingQueue<Event> queue = new LinkedBlockingQueue<>(MAX_PENDING_EVENTS);
         SUBSCRIBERS.add(queue);
         return queue;
     }
@@ -51,7 +52,13 @@ final class LiveEvents {
     static long publish(Set<String> channels) {
         long rev = REV.incrementAndGet();
         Event event = new Event(rev, Set.copyOf(channels));
-        for (BlockingQueue<Event> queue : SUBSCRIBERS) queue.offer(event);
+        for (BlockingQueue<Event> queue : SUBSCRIBERS) {
+            if (!queue.offer(event)) {
+                // A slow subscriber must resync, not retain an unbounded backlog of stale updates.
+                queue.clear();
+                queue.offer(new Event(rev, Set.of("__unknown__")));
+            }
+        }
         return rev;
     }
 
@@ -102,8 +109,25 @@ final class LiveEvents {
             bump("index", "operations");
             return;
         }
-        // Any other website write (boxes, custody, handoffs, deposits, jobs, physical,
-        // guild, quotas, server, stash-defs, ...): the operations view may show it.
+        if (path.startsWith("/api/v1/users")) {
+            bump("settings", "auth");
+            return;
+        }
+        if (path.startsWith("/api/v1/auth/")) {
+            bump("auth");
+            return;
+        }
+        if (path.startsWith("/api/v1/kits")
+                || path.startsWith("/api/v1/guild")
+                || path.startsWith("/api/v1/quotas")
+                || path.startsWith("/api/v1/stash-defs")
+                || path.startsWith("/api/v1/server")
+                || path.startsWith("/api/v1/agents")
+                || path.startsWith("/api/v1/link")) {
+            bump("settings", "operations");
+            return;
+        }
+        // All other physical/fulfillment writes affect the operations view.
         bump("operations");
     }
 }

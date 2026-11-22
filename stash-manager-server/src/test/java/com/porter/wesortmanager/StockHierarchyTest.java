@@ -228,20 +228,14 @@ class StockHierarchyTest {
             var a = pool.submit(first);
             var b = pool.submit(second);
             start.countDown();
-            OrderStore.Order winner = a.get();
-            OrderStore.Order other = b.get();
-            assertTrue((winner == null) != (other == null));
-            if (winner == null) winner = other;
-            assertEquals(2, orders.heldRoots("s").size());
-            assertNull(orders.acquireSorting("s", java.util.UUID.randomUUID().toString(), null));
+            // Both aliases refer to one physical source. Neither may reserve it
+            // until ownership is unambiguous, even if their requests race.
+            assertNull(a.get());
+            assertNull(b.get());
+            assertTrue(orders.heldRoots("s").isEmpty());
             var restarted = new OrderStore(data, store);
             restarted.load();
-            assertEquals(orders.heldRoots("s"), restarted.heldRoots("s"));
-            restarted.cancel(winner.id);
             assertTrue(restarted.heldRoots("s").isEmpty());
-            var after = restarted.place(
-                    "s", winner.stash.equals("a") ? "b" : "a", List.of(winner.stash.equals("a") ? child : whole), null);
-            assertEquals(2, after.allocations.size());
         }
     }
 
@@ -252,7 +246,9 @@ class StockHierarchyTest {
         try {
             return orders.place("s", stash, List.of(line), null);
         } catch (OrderStore.OrderException conflict) {
-            assertEquals(409, conflict.status);
+            // A shared source can surface as an empty verified aggregate (400)
+            // or an explicit reservation conflict (409), but never be allocated.
+            assertTrue(conflict.status == 400 || conflict.status == 409);
             return null;
         }
     }

@@ -46,6 +46,17 @@ describe("live channel mapping (SSE update → TanStack Query keys)", () => {
     }
   });
 
+  it("settings changes update guild, kits, permissions, server and stash definitions", () => {
+    const prefixes = prefixesForChannels(["settings"]);
+    for (const p of [["guild"], ["kits"], ["stash-defs"], ["users"], ["quotas"], ["server"], ["stashes"], ["auth"], ["agents"]]) {
+      expect(prefixes).toContainEqual(p);
+    }
+  });
+
+  it("user changes revalidate auth state", () => {
+    expect(prefixesForChannels(["auth"])).toContainEqual(["auth"]);
+  });
+
   it("unknown channels fall back to the full live set", () => {
     const prefixes = prefixesForChannels(["something-new"]);
     expect(prefixes).toContainEqual(["orders"]);

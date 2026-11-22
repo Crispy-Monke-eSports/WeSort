@@ -42,6 +42,18 @@ class LiveEventsTest {
     }
 
     @Test
+    void slowSubscriberGetsBoundedResyncInsteadOfUnboundedQueue() throws InterruptedException {
+        BlockingQueue<LiveEvents.Event> queue = LiveEvents.subscribe();
+        try {
+            for (int i = 0; i < LiveEvents.MAX_PENDING_EVENTS + 2; i++) LiveEvents.bump("orders");
+            assertTrue(queue.size() <= LiveEvents.MAX_PENDING_EVENTS);
+            assertTrue(queue.stream().anyMatch(e -> e.channels().contains("__unknown__")));
+        } finally {
+            LiveEvents.unsubscribe(queue);
+        }
+    }
+
+    @Test
     void unsubscribeStopsDelivery() throws InterruptedException {
         BlockingQueue<LiveEvents.Event> queue = LiveEvents.subscribe();
         LiveEvents.unsubscribe(queue);
@@ -66,6 +78,12 @@ class LiveEventsTest {
 
             LiveEvents.routeChanged("/api/v1/bots/abc/settings", "POST");
             assertEquals(Set.of("bots"), take(queue).channels());
+
+            LiveEvents.routeChanged("/api/v1/users/u-1", "POST");
+            assertEquals(Set.of("settings", "auth"), take(queue).channels());
+
+            LiveEvents.routeChanged("/api/v1/kits", "POST");
+            assertEquals(Set.of("settings", "operations"), take(queue).channels());
 
             // Reads never push: the page already holds the data it asked for.
             LiveEvents.routeChanged("/api/v1/orders", "GET");

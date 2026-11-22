@@ -4,6 +4,7 @@ import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
+import CardActionArea from "@mui/material/CardActionArea";
 import CardContent from "@mui/material/CardContent";
 import Checkbox from "@mui/material/Checkbox";
 import Chip from "@mui/material/Chip";
@@ -186,20 +187,15 @@ export function OrdersPage() {
               <TableCell>Items</TableCell>
               <TableCell>Status</TableCell>
               <TableCell>Updated</TableCell>
+              <TableCell>Details</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {loading && (
-              <TableRow><TableCell colSpan={5}><LinearProgress /></TableCell></TableRow>
+              <TableRow><TableCell colSpan={6}><LinearProgress /></TableCell></TableRow>
             )}
             {filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((o: any) => (
-              <TableRow
-                hover key={`${o.stash}:${o.id}`} sx={{ cursor: "pointer" }}
-                onClick={() => setDetail(o)}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDetail(o); } }}
-                tabIndex={0} role="button" aria-label={`Order ${o.id}`}
-                data-testid="order-card"
-              >
+              <TableRow hover key={`${o.stash}:${o.id}`} data-testid="order-card">
                 <TableCell sx={{ fontFamily: "monospace", fontSize: "0.8rem" }}>{o.id}</TableCell>
                 <TableCell sx={{ fontFamily: "monospace", fontSize: "0.8rem" }}>{o.stash ?? o.stashName ?? o.server}</TableCell>
                 <TableCell>
@@ -208,10 +204,11 @@ export function OrdersPage() {
                 </TableCell>
                 <TableCell><OrderStatusChip status={String(o.status ?? "unknown")} /></TableCell>
                 <TableCell>{o.updatedAt ? new Date(o.updatedAt).toLocaleString() : "—"}</TableCell>
+                <TableCell><Button size="small" onClick={() => setDetail(o)} aria-label={`View order ${o.id}`}>View details</Button></TableCell>
               </TableRow>
             ))}
             {!loading && filtered.length === 0 && (
-              <TableRow><TableCell colSpan={5}><Typography color="text.secondary">No orders match.</Typography></TableCell></TableRow>
+              <TableRow><TableCell colSpan={6}><Typography color="text.secondary">No orders match.</Typography></TableCell></TableRow>
             )}
           </TableBody>
         </Table>
@@ -227,14 +224,9 @@ export function OrdersPage() {
       {isXs && (<Stack spacing={1} id="order-list-cards">
         {loading && <LinearProgress />}
         {filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((o: any) => (
-          <Card
-            key={`${o.stash}:${o.id}`} data-testid="order-card" tabIndex={0} role="button"
-            aria-label={`Order ${o.id}`}
-            onClick={() => setDetail(o)}
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDetail(o); } }}
-            sx={{ cursor: "pointer" }}
-          >
-            <CardContent sx={{ "&:last-child": { pb: 2 } }}>
+          <Card key={`${o.stash}:${o.id}`} data-testid="order-card">
+            <CardActionArea onClick={() => setDetail(o)} aria-label={`View order ${o.id}`}>
+              <CardContent sx={{ "&:last-child": { pb: 2 } }}>
               <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
                 <Typography variant="body2" sx={{ fontFamily: "monospace", flexGrow: 1, wordBreak: "break-all" }}>{o.id}</Typography>
                 <OrderStatusChip status={String(o.status ?? "unknown")} />
@@ -248,7 +240,8 @@ export function OrdersPage() {
               <Typography variant="caption" color="text.secondary">
                 {o.updatedAt ? new Date(o.updatedAt).toLocaleString() : "—"}
               </Typography>
-            </CardContent>
+              </CardContent>
+            </CardActionArea>
           </Card>
         ))}
         {!loading && filtered.length === 0 && (

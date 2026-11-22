@@ -59,7 +59,9 @@ final class PhysicalReservations {
             if (!source.server().equals(server)
                     || stash != null && !source.stash().equals(stash)) continue;
             var value = source.value();
-            if (!value.has("slotFingerprint")) continue;
+            // Shared container identities are visible but never safe for a physical reservation.
+            // IndexStore already excludes them from aggregate stock; the slot allocator must agree.
+            if (source.shared() || !value.has("slotFingerprint")) continue;
             String id = value.get("id").getAsString();
             if (sources.putIfAbsent(id, source) != null) continue;
             boolean fresh = source.status().equals("FRESH");

@@ -10,6 +10,7 @@ import { getRouteApi } from "@tanstack/react-router";
 import { useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../api/queries";
+import { safeLoginRedirect } from "../lib/safeRedirect";
 
 const loginRoute = getRouteApi("/login");
 
@@ -34,7 +35,7 @@ export function LoginPage() {
       // Java AuthRoutes.login reads `username` (blank/absent = owner), not `name`.
       await api("/api/v1/auth/login", { method: "POST", body: name.trim() ? { username: name.trim(), password } : { password } });
       await auth.refetch();
-      window.location.assign(search.redirect || "/overview");
+      window.location.assign(safeLoginRedirect(search.redirect));
     } catch (err: any) {
       setError(err?.message ?? "Login failed.");
     } finally {
@@ -49,7 +50,7 @@ export function LoginPage() {
     try {
       await api("/api/v1/auth/setup", { method: "POST", body: { code, password } });
       await auth.refetch();
-      window.location.assign(search.redirect || "/overview");
+      window.location.assign(safeLoginRedirect(search.redirect));
     } catch (err: any) {
       setError(err?.message ?? "Setup failed. Request a code with the local bootstrap command.");
     } finally {

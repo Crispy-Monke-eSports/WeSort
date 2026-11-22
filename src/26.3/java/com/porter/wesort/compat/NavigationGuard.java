@@ -21,8 +21,8 @@ final class NavigationGuard {
             if (!WorldInteractionGuard.safeBlock(cell))
                 return "safety-sensitive " + WorldInteractionGuard.blockId(cell) + " at " + cell.toShortString();
         }
-        if (!mc.level.getFluidState(feet).isEmpty() || !mc.level.getFluidState(feet.above()).isEmpty())
-            return "fluid at " + feet.toShortString();
+        if (!mc.level.getFluidState(feet).isEmpty()
+                || !mc.level.getFluidState(feet.above()).isEmpty()) return "fluid at " + feet.toShortString();
         for (int x = -1; x <= 1; x++) {
             for (int z = -1; z <= 1; z++) {
                 var neighbor = feet.offset(x, 0, z);

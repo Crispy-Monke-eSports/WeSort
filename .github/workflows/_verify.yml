@@ -51,6 +51,38 @@ jobs:
           } > build/evidence/versions.txt
           python3 scripts/test-summary.py build > build/evidence/tests.txt 2>&1 || true
           cat build/evidence/tests.txt >> "$GITHUB_STEP_SUMMARY"
+      # Publish the installable (remapped) Fabric JAR as a convenient download
+      # for runs on main, without including development/source JARs or test reports.
+      - name: Prepare WeSort Fabric mod download
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          set --
+          for candidate in build/libs/*.jar; do
+            case "$candidate" in
+              *-dev.jar|*-sources.jar|*-javadoc.jar) continue ;;
+            esac
+            if unzip -p "$candidate" fabric.mod.json >/dev/null 2>&1; then
+              set -- "$@" "$candidate"
+            fi
+          done
+          if [ "$#" -ne 1 ]; then
+            echo "Expected one installable Fabric mod JAR, found $#." >&2
+            ls -lah build/libs >&2
+            exit 1
+          fi
+          mkdir -p build/agent-artifact
+          cp "$1" build/agent-artifact/WeSort-Agent.jar
+      - name: Upload WeSort-Agent.jar on main
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: WeSort-Agent.jar
+          path: build/agent-artifact/WeSort-Agent.jar
+          retention-days: 7
+          if-no-files-found: error
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: always()
         with:

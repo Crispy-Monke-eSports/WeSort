@@ -9011,8 +9011,9 @@ public class StashSorter extends Module {
                 .anyMatch(o -> stash.inArea(o.pos)
                         && (o.dimension.isEmpty() || Stash.sameDimension(o.dimension, dimension))
                         && PlacedShulkerRecovery.shouldRecover(
-                                o.orderId, orderRunner.running() && !orderRunner.calledOff()
-                                        ? orderRunner.orderId() : null))) idle = false;
+                                o.orderId,
+                                orderRunner.running() && !orderRunner.calledOff() ? orderRunner.orderId() : null)))
+            idle = false;
     }
 
     /**

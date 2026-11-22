@@ -312,15 +312,15 @@ public class StashManager extends Module {
      * connection, so this never reports online before a verified Manager reply. See ConnectionState.
      */
     public String connectionState() {
-        var direct = com.porter.wesort.commands.ConnectionState.of(isActive(), serverUrl.get(), apiKey.get(), status);
         // Operational blockers (inventory, navigation or no stash) are not link failures.
         // Only a verified, recent Manager reply for the CURRENT address, key and MC server
         // can assert ONLINE. Explicit auth/transport errors still win immediately.
-        if (direct != com.porter.wesort.commands.ConnectionState.CONTACTING
-                || !verifiedManagerScope.equals(linkScope())
-                || verifiedManagerAt == 0
-                || System.currentTimeMillis() - verifiedManagerAt >= 90_000) return direct.name();
-        return com.porter.wesort.commands.ConnectionState.ONLINE.name();
+        boolean authenticated = verifiedManagerAt > 0
+                && verifiedManagerScope.equals(linkScope())
+                && System.currentTimeMillis() - verifiedManagerAt < 90_000;
+        return com.porter.wesort.commands.ConnectionState.ofVerified(
+                        isActive(), serverUrl.get(), apiKey.get(), status, authenticated)
+                .name();
     }
 
     private long verifiedManagerAt;

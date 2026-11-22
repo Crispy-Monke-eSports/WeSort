@@ -439,6 +439,15 @@ final class Compactor {
     }
 
     /**
+     * Compact mode must still create a box from 27 full stacks when the
+     * independent repack new-bulk threshold is zero. Zero disables creating
+     * new *repack* boxes, not the compactor's full-box operation.
+     */
+    static int newBoxThreshold(int configured) {
+        return configured > 0 ? configured : 27;
+    }
+
+    /**
      * Looks for something to compact: first topping up a shulker of an item that is part full, else 27 full stacks of
      * an item with an empty shulker to put them in. Only with the stash otherwise settled and nothing carried.
      * @return true when a plan was made
@@ -538,7 +547,7 @@ final class Compactor {
                 candidate.sourceSlot = part.slot();
                 candidate.targetUuid = part.uuid();
                 score = 1000 + add;
-            } else if (single ? stacks >= 2 : owner.newBulkAt() > 0 && stacks >= owner.newBulkAt()) {
+            } else if (single ? stacks >= 2 : stacks >= newBoxThreshold(owner.newBulkAt())) {
                 int target = Math.min(27, stacks);
                 candidate = new Plan(key, sample.get(key), ref.name, false, 0, target);
                 score = target;

@@ -4065,7 +4065,9 @@ public class StashSorter extends Module {
     }
 
     private boolean isPortal(BlockPos pos) {
-        return mc.level != null && mc.level.isLoaded(pos) && mc.level.getBlockState(pos).is(Blocks.NETHER_PORTAL);
+        return mc.level != null
+                && mc.level.isLoaded(pos)
+                && mc.level.getBlockState(pos).is(Blocks.NETHER_PORTAL);
     }
 
     /** Nearest nether-portal block around the player, or null. Bounded span so the world isn't combed. */

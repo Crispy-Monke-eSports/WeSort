@@ -130,6 +130,9 @@ final class Compactor {
         final ItemStack sample;
         final String name;
         final boolean topUp;
+        // Pin the exact UUID on a top-up: two identical UUID boxes must never
+        // be exchanged across a restart or during carry-slot changes.
+        String targetUuid;
         // Stacks the shulker held when this began, and should hold when it is done
         final int startSize, target;
         // Where the part-full shulker to top up is kept
@@ -155,7 +158,7 @@ final class Compactor {
         }
     }
 
-    private record Partial(Box box, int slot, int size) {}
+    private record Partial(Box box, int slot, int size, String uuid) {}
 
     private record Found(Box box, int slot) {}
 
@@ -206,6 +209,7 @@ final class Compactor {
         c.sample = p.sample.copy();
         c.name = p.name;
         c.topUp = p.topUp;
+        c.boxUuid = p.targetUuid == null ? "" : p.targetUuid;
         c.startSize = p.startSize;
         c.target = p.target;
         c.sourceBox = p.sourceBox == null ? null : p.sourceBox.pos;
@@ -227,6 +231,10 @@ final class Compactor {
         if (key == null) return null;
         Plan p = new Plan(key, c.sample.copyWithCount(1), c.name, c.topUp, c.startSize, c.target);
         p.sourceSlot = c.sourceSlot;
+        if (!c.boxUuid.isEmpty()) {
+            if (!ShulkerUuid.hasUuid(c.boxUuid)) return null;
+            p.targetUuid = c.boxUuid;
+        }
         p.placedPos = c.placedPos;
         p.dimension = dimension;
         p.placedSize = c.placedSize;
@@ -274,9 +282,13 @@ final class Compactor {
         return stack != null && !stack.isEmpty() && Utils.isShulker(stack.getItem());
     }
 
-    private static boolean repackableName(ItemStack stack) {
+    private static String uuidOf(ItemStack stack) {
         var custom = stack.get(DataComponents.CUSTOM_NAME);
-        return custom == null || ShulkerUuid.hasUuid(custom.getString());
+        return custom == null || !ShulkerUuid.hasUuid(custom.getString()) ? null : custom.getString();
+    }
+
+    private static boolean repackableName(ItemStack stack) {
+        return !stack.has(DataComponents.CUSTOM_NAME) || uuidOf(stack) != null;
     }
 
     private static boolean full(ItemStack stack) {
@@ -288,6 +300,9 @@ final class Compactor {
      */
     private boolean isPlanShulker(ItemStack stack, Plan p) {
         if (!shulker(stack) || !repackableName(stack) || owner.isKitShulker(stack)) return false;
+        // A legacy unnamed plan cannot silently switch to a named UUID box.
+        if (p.targetUuid != null ? !p.targetUuid.equals(uuidOf(stack)) : p.topUp && uuidOf(stack) != null)
+            return false;
         List<StackInfo> inside = StackInfo.of(stack).contents();
         if (inside.isEmpty()) return !p.topUp;
         for (StackInfo s : inside) if (!p.key.equals(s.bulkKey())) return false;
@@ -410,7 +425,7 @@ final class Compactor {
         BulkKey key = inside.get(0).bulkKey();
         if (key == null) return null;
         for (StackInfo s : inside) if (!key.equals(s.bulkKey())) return null;
-        return new Partial(box, slot, inside.size());
+        return new Partial(box, slot, inside.size(), uuidOf(shulker));
     }
 
     private void why(String text) {
@@ -504,6 +519,7 @@ final class Compactor {
                 candidate = new Plan(key, sample.get(key), ref.name, true, part.size(), part.size() + add);
                 candidate.sourceBox = part.box();
                 candidate.sourceSlot = part.slot();
+                candidate.targetUuid = part.uuid();
                 score = 1000 + add;
             } else if (single ? stacks >= 2 : stacks >= 27) {
                 int target = single ? Math.min(27, stacks) : 27;

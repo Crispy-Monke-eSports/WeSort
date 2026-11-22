@@ -272,9 +272,9 @@ public class StashSorter extends Module {
 
     private final Setting<Mode> mode = sgGeneral.add(new EnumSetting.Builder<Mode>()
             .name("mode")
-            .description(
-                    "Tiers: filled shulkers, empty shulkers, 64-stackables, 16-stackables, then singles, filling the nearest containers first. Signs: each item goes to the container whose signs describe it best.")
+            .description("Automatic tier storage: group similar items in shulkers without signs.")
             .defaultValue(Mode.Tiers)
+            .visible(() -> false)
             .build());
 
     private final Setting<Pick> pick = sgGeneral.add(new EnumSetting.Builder<Pick>()
@@ -1779,7 +1779,6 @@ public class StashSorter extends Module {
 
     private static final List<RemoteControl> REMOTE_CONTROLS = List.of(
             new RemoteControl("safe-walk", "Safe walking", "bool", 0, 0),
-            new RemoteControl("mode", "Sort mode", "enum", 0, 0),
             new RemoteControl("radius", "Search radius", "int", 2, 32),
             new RemoteControl("height", "Search height", "int", 0, 16),
             new RemoteControl("barrels", "Include barrels", "bool", 0, 0),
@@ -1936,6 +1935,9 @@ public class StashSorter extends Module {
      */
     private void setup() {
         setUp = true;
+        // Legacy configs may still contain Signs. This Agent uses tier-based sorting
+        // exclusively; never require or create chest labels to compact UUID boxes.
+        if (mode.get() != Mode.Tiers) mode.set(Mode.Tiers);
         boolean user = isActive();
         job = null;
         target = null;
@@ -7481,7 +7483,7 @@ public class StashSorter extends Module {
     }
 
     private boolean compactOn() {
-        return compact.get() && mode.get() == Mode.Signs && shulkersOk();
+        return compact.get() && shulkersOk();
     }
 
     /**
@@ -7493,7 +7495,7 @@ public class StashSorter extends Module {
     }
 
     private boolean repackOn() {
-        return repack.get() && mode.get() == Mode.Signs && shulkersOk();
+        return repack.get() && shulkersOk();
     }
 
     /**
@@ -7525,7 +7527,7 @@ public class StashSorter extends Module {
             int stacks = carriedStacksOf(key);
             // With compacting on, new bulk shulkers are made by compacting: a full shulker's worth, never a part-filled
             // one
-            boolean startNew = !compact.get() && newBulkAt.get() > 0 && stacks >= newBulkAt.get();
+            boolean startNew = !compactOn() && newBulkAt.get() > 0 && stacks >= newBulkAt.get();
 
             for (int s : carriedSlots()) {
                 ItemStack shulker = mc.player.getInventory().getItem(s);
@@ -7595,10 +7597,12 @@ public class StashSorter extends Module {
      */
     private List<Integer> strays(ItemStack shulker) {
         if (shulker == null || shulker.isEmpty() || !Utils.isShulker(shulker.getItem())) return List.of();
-        if (shulker.has(DataComponents.CUSTOM_NAME)) return List.of();
+        if (!repackableName(shulker)) return List.of();
 
         ItemStack main = Categories.dominantContent(shulker);
         if (main == null) return List.of();
+        BulkKey dominant = keyOf(main);
+        if (dominant == null) return List.of();
 
         // A saved kit, finished or part built, stays whole
         if (isKitShulker(shulker)) return List.of();
@@ -7615,8 +7619,10 @@ public class StashSorter extends Module {
                 out.add(i);
                 continue;
             }
-            if (s.is(main.getItem())) continue;
-            if (!bestSigned(s).isEmpty()) out.add(i);
+            if (dominant.equals(keyOf(s))) continue;
+            // Tier mode needs no sign: move different variants to a safe
+            // ordinary destination only when it is currently available.
+            if (canPlace(s)) out.add(i);
         }
         return out;
     }
@@ -7632,11 +7638,17 @@ public class StashSorter extends Module {
     /**
      * A shulker holding only stacks of this bulk key, with room for more.
      */
+    /** Never change a user's custom-labelled box, but WeSort UUID identities are stable across repacking. */
+    private static boolean repackableName(ItemStack stack) {
+        var name = stack.get(DataComponents.CUSTOM_NAME);
+        return name == null || com.porter.wesort.data.ShulkerUuid.hasUuid(name.getString());
+    }
+
     private boolean bulkWithRoom(ItemStack shulker, BulkKey key) {
         if (shulker == null
                 || shulker.isEmpty()
                 || !Utils.isShulker(shulker.getItem())
-                || shulker.has(DataComponents.CUSTOM_NAME)
+                || !repackableName(shulker)
                 || isKitShulker(shulker)) return false;
 
         List<StackInfo> contents = StackInfo.of(shulker).contents();
@@ -7653,7 +7665,7 @@ public class StashSorter extends Module {
         if (shulker == null
                 || shulker.isEmpty()
                 || !Utils.isShulker(shulker.getItem())
-                || shulker.has(DataComponents.CUSTOM_NAME)
+                || !repackableName(shulker)
                 || Kits.claims(shulker)
                 || orderRunner.claims(shulker)) return false;
         for (ItemStack s : inside(shulker)) if (s != null && !s.isEmpty()) return false;
@@ -7716,8 +7728,8 @@ public class StashSorter extends Module {
                 repackOuter = mc.player.getInventory().getItem(slot).copy();
                 repackExpected = "";
                 try {
-                    if (repackOuter.has(DataComponents.CUSTOM_NAME) || isKitShulker(repackOuter))
-                        return repackPrecondition("Named or kit shulker is protected");
+                    if (!repackableName(repackOuter) || isKitShulker(repackOuter))
+                        return repackPrecondition("Non-WeSort named or kit shulker is protected");
                     repackExpected = com.porter.wesort.compat.RepackRuntime.signature(repackOuter);
                     repackExistingCopies = (int) repackInventory().stream()
                                     .filter(this::repackMatches)

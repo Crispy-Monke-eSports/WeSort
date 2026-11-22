@@ -118,8 +118,20 @@ class SortingHarness(world.Harness):
             self.command('manager-sorting-hold', hold=False)
             self.wait(lambda: self.command('state')['state']['sortingPermitted'],
                       'Signed automation permit was not granted',timeout=30)
-            require(self.order()[0]==409,'New reservation raced an active physical sorting permit')
-            self.ok('real signed Manager excludes a reservation and active sorter: no clicks or NBT changes while held, and new orders are rejected during physical sorting')
+            queued_status, queued_reply = self.order()
+            require(queued_status == 200, 'A new order was rejected during an active physical sorting permit')
+            waiting_order = queued_reply['order']
+            require(waiting_order['reservationDeferred'] and waiting_order['state'] == 'CREATED'
+                    and waiting_order['status'] == 'pending' and not waiting_order.get('allocations'),
+                    'Order accepted during sorting must remain unreserved until fresh physical claim')
+            # Cancel this test-only waiting order so the sorter can complete the
+            # existing deposit pass. A cancellation of an unreserved CREATED
+            # order must not touch stock or require a bot-side physical ACK.
+            cancelled_status, cancelled_reply = self.http(
+                '/api/v1/orders/' + waiting_order['id'] + '/cancel', {})
+            require(cancelled_status == 200 and cancelled_reply['order']['status'] == 'cancelled',
+                    'Unreserved waiting order did not cancel immediately')
+            self.ok('real signed Manager preserves reserved stock, queues new orders without allocations during sorting, and cancels the waiting request without a physical mutation')
             # Tier-only storage must empty the deposit, preserve every item's
             # exact metadata/count and leave protected/excluded inventory untouched.
             # Locations are chosen by the real tier planner, never by signs.

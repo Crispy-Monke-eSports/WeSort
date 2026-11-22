@@ -53,12 +53,37 @@ final class CraftingCatalog {
         if (pool.isEmpty()) return out;
         List<String> results = new ArrayList<>(RECIPES.outputs());
         results.sort(Comparator.naturalOrder());
+
+        // Build a cheap over-approximation of three crafting levels first.
+        // Running the recursive planner for every Minecraft recipe on each
+        // order-list request would otherwise dominate dashboard latency.
+        var reachable = new java.util.HashSet<>(pool.keySet());
+        for (int depth = 0; depth < CraftPlanner.MAX_DEPTH; depth++) {
+            var newlyReachable = new java.util.HashSet<String>();
+            for (String result : results) {
+                if (reachable.contains(result)) continue;
+                for (var recipe : RECIPES.producing(result)) {
+                    boolean possible = true;
+                    for (var alts : recipe.cells()) {
+                        if (alts == null) continue;
+                        if (alts.stream().noneMatch(reachable::contains)) {
+                            possible = false;
+                            break;
+                        }
+                    }
+                    if (possible) {
+                        newlyReachable.add(result);
+                        break;
+                    }
+                }
+            }
+            if (newlyReachable.isEmpty()) break;
+            reachable.addAll(newlyReachable);
+        }
         for (String id : results) {
-            // Cheap reachability check: a final result with no usable ingredients
-            // is rejected by the planner. Count is capped to bound listing cost.
+            if (!reachable.contains(id)) continue;
             var p = plan(id, MAX_PREVIEW, pool);
-            if (p.ok() && p.plan().count() > 0)
-                out.addProperty(id, p.plan().count());
+            if (p.ok() && p.plan().count() > 0) out.addProperty(id, p.plan().count());
         }
         return out;
     }

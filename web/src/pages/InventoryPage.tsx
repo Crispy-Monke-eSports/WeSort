@@ -246,7 +246,7 @@ export function InventoryPage() {
         const label = id.split(":").pop()?.replace(/_/g, " ") ?? id;
         byKey.set(id, {
           key: id, id,
-          name: label.replace(/\\b\\w/g, (c) => c.toUpperCase()),
+          name: label.replace(/\b\w/g, (c) => c.toUpperCase()),
           englishName: label,
           maxStack: 1, tab: "other", count: 0, boxed: 0, mixed: 0,
         });

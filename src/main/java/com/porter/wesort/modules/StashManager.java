@@ -87,8 +87,8 @@ public class StashManager extends Module {
     // The server controls when the internal engine may sort; never configured in Meteor.
     private final Setting<Boolean> sortEnabled = sgGeneral.add(new BoolSetting.Builder()
             .name("sort-enabled")
-            .description("Manager-controlled physical sorting. Requires a current server-issued sorting permit.")
-            .defaultValue(false)
+            .description("Automatically sort, compact and repack when idle. Requires a current server-issued physical sorting lease.")
+            .defaultValue(true)
             .visible(() -> false)
             .build());
 

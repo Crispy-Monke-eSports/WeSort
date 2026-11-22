@@ -190,8 +190,10 @@ final class OrderRoutes {
                 String type = AddonRoutes.string(l, "type");
                 String key = AddonRoutes.string(l, "key");
                 long count = positiveInt(l.get("count"));
-                if (!"item".equals(type) && !"shulker".equals(type) && !"kit".equals(type))
-                    problem = "type must be item, shulker or kit";
+                if (!"item".equals(type) && !"shulker".equals(type) && !"kit".equals(type) && !"craft".equals(type))
+                    problem = "type must be item, shulker, kit or craft";
+                else if ("craft".equals(type) && (key == null || !key.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")))
+                    problem = "craft key must be a plain namespaced item id";
                 else if (key == null || key.isEmpty() || key.length() > MAX_KEY)
                     problem = "key must be a non-empty string";
                 else if (count < 1) problem = "count must be a whole number from 1 to " + Integer.MAX_VALUE;

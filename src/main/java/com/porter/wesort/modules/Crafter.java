@@ -50,6 +50,11 @@ final class Crafter {
 
         boolean usable(Box box);
 
+        /** No ingredient may come from a root reserved for another physical order. */
+        default boolean mayTakeFrom(Box box, int slot) {
+            return true;
+        }
+
         boolean keepWhole(Box box);
 
         boolean namedShulkers();
@@ -88,7 +93,11 @@ final class Crafter {
     record Abort(String reason) implements Intent {}
 
     /** What a session came to: how many of the item were crafted, and why not more (null when it went through). */
-    record Outcome(String item, int crafted, String failure) {}
+    record Outcome(String item, int crafted, String failure, Map<String, Integer> consumed) {
+        Outcome(String item, int crafted, String failure) {
+            this(item, crafted, failure, Map.of());
+        }
+    }
 
     /** The work one session is asked for. {@code pool} is what the crafts may use up (the stash's, less what others need). */
     record Request(
@@ -99,7 +108,20 @@ final class Crafter {
             int doneOrder,
             Supplier<Map<String, Long>> pool,
             Supplier<Set<String>> reservedKeys,
-            boolean gatherOnly) {
+            boolean gatherOnly,
+            boolean useCarry) {
+        Request(
+                String item,
+                int count,
+                String purpose,
+                boolean reserve,
+                int doneOrder,
+                Supplier<Map<String, Long>> pool,
+                Supplier<Set<String>> reservedKeys,
+                boolean gatherOnly) {
+            this(item, count, purpose, reserve, doneOrder, pool, reservedKeys, gatherOnly, false);
+        }
+
         Request(
                 String item,
                 int count,
@@ -107,7 +129,7 @@ final class Crafter {
                 boolean reserve,
                 int doneOrder,
                 Supplier<Map<String, Long>> pool) {
-            this(item, count, purpose, reserve, doneOrder, pool, Set::of, false);
+            this(item, count, purpose, reserve, doneOrder, pool, Set::of, false, false);
         }
     }
 
@@ -338,6 +360,14 @@ final class Crafter {
         active = true;
         startedAt = System.currentTimeMillis();
         snapshotBefore();
+        // Finished manufacturing batches may leave reserved, unconsumed inputs
+        // in the bot's stash-owned carry slots. Reuse them before fetching more.
+        if (r.useCarry() && mc.player != null) {
+            for (int slot : owner.carry()) {
+                ItemStack held = mc.player.getInventory().getItem(slot);
+                if (eligible(held) && plan.take().containsKey(idOf(held))) mine.add(slot);
+            }
+        }
         owner.say(String.format(
                 "Crafting %d %s for %s: %s.",
                 plan.count(), CraftPlanner.pretty(r.item()), r.purpose(), describe(plan)));
@@ -358,7 +388,7 @@ final class Crafter {
     private void replan() {
         replans++;
         Map<String, Long> pool = new HashMap<>(req.pool().get());
-        for (var e : carried().entrySet()) pool.merge(e.getKey(), (long) e.getValue(), Long::sum);
+        if (!req.useCarry()) for (var e : carried().entrySet()) pool.merge(e.getKey(), (long) e.getValue(), Long::sum);
         CraftPlanner.Result result = preview(req.item(), plan.count(), req.doneOrder(), pool, false);
         if (result.ok()) plan = result.plan();
         else failure = result.refusal();
@@ -366,7 +396,11 @@ final class Crafter {
 
     /** What the session ends with. */
     Outcome finish() {
-        Outcome out = new Outcome(req == null ? "" : req.item(), craftedTarget, failure);
+        // An incomplete craft may have consumed an unknown portion of its
+        // ingredients. The owner must reconcile instead of replaying it.
+        Map<String, Integer> used =
+                failure == null && plan != null && craftedTarget >= plan.count() ? Map.copyOf(plan.take()) : Map.of();
+        Outcome out = new Outcome(req == null ? "" : req.item(), craftedTarget, failure, used);
         adoptStrays();
         syncHeld();
         lastHeld.clear();
@@ -478,7 +512,9 @@ final class Crafter {
         if (stash == null) return out;
         for (Box box : stash.boxes) {
             if (!source(box)) continue;
-            for (ItemStack s : box.contents) {
+            for (int slot = 0; slot < box.contents.length; slot++) {
+                if (!owner.mayTakeFrom(box, slot)) continue;
+                ItemStack s = box.contents[slot];
                 if (s.isEmpty()) continue;
                 if (Utils.isShulker(s.getItem())) {
                     if (!shulkerOk(s)) continue;
@@ -560,7 +596,7 @@ final class Crafter {
             double d = owner.distance(box);
             for (int i = 0; i < box.contents.length; i++) {
                 ItemStack s = box.contents[i];
-                if (s.isEmpty()) continue;
+                if (s.isEmpty() || !owner.mayTakeFrom(box, i)) continue;
                 if (Utils.isShulker(s.getItem())) {
                     if (!shulkerOk(s) || badSpots.contains(new Spot(box, i)) || !holdsAny(s, missing)) continue;
                     if (d < packedD) {
@@ -635,7 +671,8 @@ final class Crafter {
         if (missing.isEmpty()) return false;
         int into = owner.freeCarrySlot();
         if (into == -1) return false;
-        int slot = bestStack(box.contents.length, i -> box.contents[i], missing);
+        int slot = bestStack(
+                box.contents.length, i -> owner.mayTakeFrom(box, i) ? box.contents[i] : ItemStack.EMPTY, missing);
         if (slot == -1) return false;
 
         owner.held(into, box.contents[slot]);

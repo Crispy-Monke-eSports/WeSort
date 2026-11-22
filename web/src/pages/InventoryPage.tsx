@@ -109,6 +109,7 @@ interface SliceState {
   availableItems: Record<string, number>;
   availableShulkers: Record<string, number>;
   availableKits: Record<string, number>;
+  availableCraftables: Record<string, number>;
 }
 
 interface StashLabels {
@@ -199,6 +200,7 @@ export function InventoryPage() {
           availableItems: orderQ?.data?.available.items ?? {},
           availableShulkers: orderQ?.data?.available.shulkers ?? {},
           availableKits: orderQ?.data?.available.kits ?? {},
+          availableCraftables: orderQ?.data?.available.craftables ?? {},
         };
       }),
     [stashList, indexQueries, orderQueries],
@@ -235,6 +237,21 @@ export function InventoryPage() {
         }
       }
     }
+    // Items which do not exist physically yet still belong in the catalogue
+    // when Manager has a feasible, reservation-aware crafting-table plan.
+    for (const s of slices) {
+      if (!s.indexOk || !s.ordersOk) continue;
+      for (const [id, qty] of Object.entries(s.availableCraftables)) {
+        if (qty <= 0 || byKey.has(id)) continue;
+        const label = id.split(":").pop()?.replace(/_/g, " ") ?? id;
+        byKey.set(id, {
+          key: id, id,
+          name: label.replace(/\b\w/g, (c) => c.toUpperCase()),
+          englishName: label,
+          maxStack: 1, tab: "other", count: 0, boxed: 0, mixed: 0,
+        });
+      }
+    }
     return [...byKey.values()];
   }, [slices]);
 
@@ -249,6 +266,9 @@ export function InventoryPage() {
     for (const s of slices) {
       if (!s.ordersOk) { unknown = true; continue; }
       looseTotal += Math.max(0, (s.availableItems[key] ?? 0) - looseInCart(s.stash, key));
+      looseTotal += Math.max(0, (s.availableCraftables[key] ?? 0) -
+        cartLines.filter((l) => l.type === "craft" && l.stash === s.stash && l.key === key)
+          .reduce((a, l) => a + l.count, 0));
       for (const b of s.shulkers) {
         if (!isSingleContent(b, key)) continue;
         let perBox = 0;
@@ -274,7 +294,9 @@ export function InventoryPage() {
     else if (avail === "unverified") shown = shown.filter((e) => slices.some((s) => !s.ordersOk || !s.indexOk));
     shown.sort((a, b) => sort === "name"
       ? (a.name ?? a.id).localeCompare(b.name ?? b.id)
-      : sort === "id" ? a.id.localeCompare(b.id) : (b.count + b.boxed) - (a.count + a.boxed));
+      : sort === "id" ? a.id.localeCompare(b.id)
+        : (b.count + b.boxed + slices.reduce((n, s) => n + (s.availableCraftables[b.key] ?? 0), 0)) -
+          (a.count + a.boxed + slices.reduce((n, s) => n + (s.availableCraftables[a.key] ?? 0), 0)));
     return shown;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [merged, q, cat, avail, sort, slices, cart]);
@@ -299,10 +321,15 @@ export function InventoryPage() {
     return m;
   }, [slices]);
   const maxStackOf = (key: string) => maxStackByKey.get(key) ?? 64;
+  // The index may have no sample for a manufactured item. Until its stack
+  // size is verified, count one slot per craft result (fail-safe).
+  const boxStackOf = (lines: CartLine[], key: string) =>
+    lines.some((l) => l.type === "craft" && l.key === key) ? 1 : maxStackOf(key);
   // Per-stash box usage of the current draft (P1-08): shown in the cart and
   // enforced before Place, because the 54-box limit is per stash order.
   const boxUsage = useMemo(
-    () => perStashBoxUsage(cartLines, (key) => maxStackByKey.get(key) ?? 64),
+    () => perStashBoxUsage(cartLines, (key) =>
+      cartLines.some((l) => l.type === "craft" && l.key === key) ? 1 : maxStackByKey.get(key) ?? 64),
     [cartLines, maxStackByKey],
   );
   const overLimitStashes = useMemo(
@@ -359,7 +386,7 @@ export function InventoryPage() {
       remaining -= take;
     }
     if (remaining > 0) return false;
-    for (const b of perStashBoxUsage(next, maxStackOf).values()) {
+    for (const b of perStashBoxUsage(next, (key) => boxStackOf(next, key)).values()) {
       if (b > MAX_SHULKERS) return false;
     }
     cart.setLines(next);
@@ -418,11 +445,33 @@ export function InventoryPage() {
         if (remaining <= 0) break;
       }
     }
+    // Manufacture only what cannot be sourced as finished stock. The Manager
+    // re-plans the whole group's ingredient needs atomically at checkout.
+    if (remaining > 0) {
+      const craftByStash = slices
+        .filter((s) => s.ordersOk && s.indexOk)
+        .map((s) => ({
+          stash: s.stash,
+          left: Math.max(0, (s.availableCraftables[key] ?? 0) -
+            next.filter((l) => l.type === "craft" && l.key === key && l.stash === s.stash)
+              .reduce((sum, l) => sum + l.count, 0)),
+        }))
+        .filter((s) => s.left > 0)
+        .sort((a, b) => b.left - a.left);
+      for (const source of craftByStash) {
+        if (remaining <= 0) break;
+        const take = Math.min(remaining, source.left);
+        const existing = next.find((l) => l.type === "craft" && l.key === key && l.stash === source.stash);
+        if (existing) existing.count += take;
+        else next.push({ type: "craft", key, count: take, stash: source.stash });
+        remaining -= take;
+      }
+    }
     if (remaining > 0) return false;
     // P1-08: validate the whole new per-stash order, not just this addition.
     // Individually-valid additions can overflow the same stash together; the
     // server would reject the oversized order, so the draft refuses it first.
-    for (const n of perStashBoxUsage(next, maxStackOf).values()) {
+    for (const n of perStashBoxUsage(next, (key) => boxStackOf(next, key)).values()) {
       if (n > MAX_SHULKERS) return false;
     }
     cart.setLines(next);
@@ -801,6 +850,7 @@ function AvailabilityLine({ item, slices, orderable, inCart }: { item: MergedIte
     let loose = 0;
     let boxed = 0;
     let mixed = 0;
+    let craftable = 0;
     let verified = true;
     let stale = false;
     let observedAt = 0;
@@ -812,8 +862,9 @@ function AvailabilityLine({ item, slices, orderable, inCart }: { item: MergedIte
       if (s.indexedAt) observedAt = Math.max(observedAt, s.indexedAt);
       boxed += netBoxedContents(item.key, s.shulkers, s.availableShulkers);
       mixed += mixedBoxedContents(item.key, s.shulkers);
+      craftable += Math.max(0, s.availableCraftables[item.key] ?? 0);
     }
-    return { loose, boxed, mixed, verified, stale, observedAt };
+    return { loose, boxed, mixed, craftable, verified, stale, observedAt };
   }, [item, slices]);
   // Headline is cart-adjusted (what you can still add); breakdown is observed stock.
   const headline = orderable ?? av.loose + av.boxed;
@@ -821,7 +872,7 @@ function AvailabilityLine({ item, slices, orderable, inCart }: { item: MergedIte
     <Typography variant="body2" color="text.secondary">
       <Typography component="span" sx={{ fontWeight: 700, color: "text.primary" }}>{orderable === null ? "?" : grouped(headline)}</Typography> orderable
       <Typography component="span" variant="caption" sx={{ display: "block" }}>
-        {grouped(av.loose)} loose{av.boxed > 0 ? ` · ${grouped(av.boxed)} in whole boxes` : ""}{av.mixed > 0 ? ` · ${grouped(av.mixed)} in mixed boxes` : ""}
+        {grouped(av.loose)} loose{av.craftable > 0 ? ` · ${grouped(av.craftable)} craftable at workbench` : ""}{av.boxed > 0 ? ` · ${grouped(av.boxed)} in whole boxes` : ""}{av.mixed > 0 ? ` · ${grouped(av.mixed)} in mixed boxes` : ""}
         {!av.verified ? " · unverified" : ""}
         {inCart > 0 ? ` · ${grouped(inCart)} in draft` : ""}
         {av.stale ? ` · bot offline — queues, last seen ${av.observedAt ? timeAgo(av.observedAt) : "unknown"}` : ""}
@@ -835,6 +886,7 @@ function ItemCard({ item, slices, mcVersion, onBuy, canOrder, orderable, inCart 
 }) {
   const stale = slices.some((s) => s.online === false);
   const unknown = orderable === null;
+  const craftable = slices.some((s) => (s.availableCraftables[item.key] ?? 0) > 0);
   return (
     <Card sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <CardContent sx={{ flexGrow: 1 }}>
@@ -850,6 +902,7 @@ function ItemCard({ item, slices, mcVersion, onBuy, canOrder, orderable, inCart 
         </Box>
         <Stack direction="row" spacing={1} sx={{ mt: 1, alignItems: "center" }}>
           {unknown && <Chip size="small" variant="outlined" label="Unverified" />}
+          {craftable && <Chip size="small" color="info" variant="outlined" label="Craft on demand" />}
           {!unknown && (orderable ?? 0) > 0 && !stale && inCart <= 0 && <Chip size="small" color="success" label="Orderable" />}
           {!unknown && (orderable ?? 0) > 0 && !stale && inCart > 0 && <Chip size="small" color="info" label="In draft" />}
           {stale && <Chip size="small" color="warning" variant="outlined" label="Stale — bot offline" />}
@@ -1199,7 +1252,7 @@ function CartDrawer({ open, onClose, lines, slices, boxUsage, overLimit, onCheck
                   <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
                     <Box sx={{ flexGrow: 1, minWidth: 0 }}>
                       <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>{l.type === "shulker" ? `Packed: ${l.key}` : l.type === "kit" ? `Kit: ${l.key}` : l.key}</Typography>
-                      <Typography variant="caption" color="text.secondary">{l.type === "shulker" ? "whole box" : l.type === "kit" ? "kit box" : "loose"} · {l.stash} · ×{grouped(l.count)}</Typography>
+                      <Typography variant="caption" color="text.secondary">{l.type === "shulker" ? "whole box" : l.type === "kit" ? "kit box" : l.type === "craft" ? "workbench craft" : "loose"} · {l.stash} · ×{grouped(l.count)}</Typography>
                     </Box>
                     <IconButton size="small" aria-label={`Remove ${l.key}`} onClick={() => cart.setLines(lines.filter((_, x) => x !== i))}>
                       <DeleteIcon fontSize="small" />

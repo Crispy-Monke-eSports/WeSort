@@ -4754,6 +4754,11 @@ public class StashSorter extends Module {
         }
 
         @Override
+        public boolean mayTakeFrom(Box box, int slot) {
+            return orderRunner.mayTakeFrom(box, slot);
+        }
+
+        @Override
         public boolean keepWhole(Box box) {
             return box.labels.stream().anyMatch(Categories::isKeepWhole);
         }
@@ -4888,17 +4893,28 @@ public class StashSorter extends Module {
         idle = false;
     }
 
-    /** The order wants this many plain shulker boxes crafted. */
+    /** Craft a pinned order product, or produce an empty shulker for packing. */
     private boolean startOrderCraft(OrderRunner.Craft craft) {
         if (!crafter.active()) {
-            // No table set or remembered: one is found, placed from the stash or crafted first (the order carries on
-            // after)
-            if (stash != null && tableMissing()) {
-                // The craft itself must be possible before a table is put in the world for it
-                var preview = crafter.preview(
-                        SHULKER_BOX_ID, craft.count(), orderRunner.crafted(), orderRunner.craftPool(), false);
+            boolean manufacturing = orderRunner.manufacturing();
+            String item = craft.item();
+            java.util.function.Supplier<Map<String, Long>> pool =
+                    manufacturing ? orderRunner::manufacturingPool : orderRunner::craftPool;
+            if (manufacturing) {
+                // A selected Manager workbench must already exist: never spend
+                // unreserved materials manufacturing a replacement table.
+                if (stash == null || tableMissing()) {
+                    orderRunner.craftEnded(new Crafter.Outcome(item, 0, "the selected workbench is missing"));
+                    return false;
+                }
+                orderRunner.manufacturingIntent();
+            }
+            // For shulker packing, retain the existing fallback to find/place a
+            // missing table. For new product manufacturing, the table is pinned.
+            if (!manufacturing && stash != null && tableMissing()) {
+                var preview = crafter.preview(item, craft.count(), orderRunner.crafted(), pool.get(), false);
                 if (!preview.ok()) {
-                    orderRunner.craftEnded(new Crafter.Outcome(SHULKER_BOX_ID, 0, preview.refusal()));
+                    orderRunner.craftEnded(new Crafter.Outcome(item, 0, preview.refusal()));
                     return false;
                 }
                 switch (prepareTable(TableResume.Order)) {
@@ -4909,23 +4925,24 @@ public class StashSorter extends Module {
                         return true;
                     }
                     case FAILED -> {
-                        orderRunner.craftEnded(new Crafter.Outcome(SHULKER_BOX_ID, 0, tableWhy));
+                        orderRunner.craftEnded(new Crafter.Outcome(item, 0, tableWhy));
                         return false;
                     }
                     default -> {}
                 }
             }
             String why = crafter.begin(new Crafter.Request(
-                    SHULKER_BOX_ID,
+                    item,
                     craft.count(),
                     "order " + orderRunner.orderId(),
-                    true,
-                    orderRunner.crafted(),
-                    orderRunner::craftPool,
+                    !manufacturing,
+                    manufacturing ? 0 : orderRunner.crafted(),
+                    pool,
                     orderRunner::lotKeys,
-                    false));
+                    false,
+                    manufacturing && orderRunner.manufacturingHasProgress()));
             if (why != null) {
-                orderRunner.craftEnded(new Crafter.Outcome(SHULKER_BOX_ID, 0, why));
+                orderRunner.craftEnded(new Crafter.Outcome(item, 0, why));
                 return false;
             }
             craftForOrder = true;

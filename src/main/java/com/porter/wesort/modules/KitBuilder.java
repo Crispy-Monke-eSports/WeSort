@@ -387,6 +387,17 @@ final class KitBuilder {
 
         Map<Key, Integer> available(Kit kit) {
             Map<Key, Integer> avail = new HashMap<>();
+            // Craft outputs belong to the current order and remain in bot carry
+            // slots until packed. The kit builder already fills from carry; its
+            // feasibility check must include the same stocks.
+            if (kit.orderKit && mc.player != null) {
+                for (int slot : owner.carry()) {
+                    ItemStack held = mc.player.getInventory().getItem(slot);
+                    if (held.isEmpty() || !kit.hasItem(held.getItem())) continue;
+                    Key key = kit.key(held);
+                    if (kit.need(key) != null) avail.merge(key, held.getCount(), Integer::sum);
+                }
+            }
             for (Loose l : loose) if (kit.need(l.key) != null) avail.merge(l.key, l.count, Integer::sum);
             for (Packed p : packed)
                 for (Entry e : p.entries) if (kit.need(e.key) != null) avail.merge(e.key, e.count, Integer::sum);

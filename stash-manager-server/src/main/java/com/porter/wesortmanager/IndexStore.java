@@ -159,7 +159,8 @@ public final class IndexStore {
      * its anvil comes from ("set", "found", "placed" or "none"; null for an older bot that doesn't report it).
      */
     public record Naming(boolean anvil, int xpLevels, String anvilSource) {
-        public static final java.util.Set<String> ANVIL_SOURCES = java.util.Set.of("set", "found", "placed", "none");
+        public static final java.util.Set<String> ANVIL_SOURCES =
+                java.util.Set.of("set", "manager", "found", "placed", "none");
 
         public Naming(boolean anvil, int xpLevels) {
             this(anvil, xpLevels, null);
@@ -172,7 +173,7 @@ public final class IndexStore {
      */
     public record Crafting(boolean enabled, boolean table, String tableSource) {
         public static final java.util.Set<String> TABLE_SOURCES =
-                java.util.Set.of("set", "found", "placed", "crafted", "none");
+                java.util.Set.of("set", "manager", "found", "placed", "crafted", "none");
 
         public Crafting(boolean enabled, boolean table) {
             this(enabled, table, null);
@@ -851,6 +852,20 @@ public final class IndexStore {
     }
 
     /** Order availability data for a stash's current index, or null when it has none. */
+    /** Live agent-reported table readiness; absent/disabled means no new crafting orders. */
+    boolean craftingReady(String server, String stash) {
+        Stash s = stashes.get(new StashKey(server, stash));
+        if (s == null) return false;
+        synchronized (s) {
+            return s.crafting != null
+                    && s.crafting.enabled()
+                    && s.crafting.table()
+                    // Demand-driven member orders must use an explicitly
+                    // selected table, never an untracked auto-found station.
+                    && ("manager".equals(s.crafting.tableSource()) || "set".equals(s.crafting.tableSource()));
+        }
+    }
+
     public OrderCounts orderCounts(String server, String stash) {
         return countsFor(server, stash, false);
     }

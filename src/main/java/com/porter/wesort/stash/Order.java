@@ -17,7 +17,7 @@ import java.util.TreeMap;
  * into shulker loads. Nothing here touches Minecraft types, so it can be tested and ported on its own.
  */
 public final class Order {
-    public static final String ITEM = "item", SHULKER = "shulker", KIT = "kit";
+    public static final String ITEM = "item", SHULKER = "shulker", KIT = "kit", CRAFT = "craft";
     /** The most shulkers one order may need. */
     public static final int MAX_BINS = 54;
 
@@ -91,6 +91,10 @@ public final class Order {
 
     public final String id;
     public final List<Line> lines;
+    /** Output batches and the precise ingredient budgets pinned by Manager. */
+    public record CraftJob(String item, int count, Map<String, Integer> materials) {}
+
+    public final List<CraftJob> craftJobs;
     /** Null: no naming. */
     public final Names names;
 
@@ -108,7 +112,7 @@ public final class Order {
     }
 
     public Order(String id, List<Line> lines, Names names) {
-        this(id, lines, names, Map.of(), Map.of(), Map.of());
+        this(id, lines, names, Map.of(), Map.of(), Map.of(), List.of());
     }
 
     private Order(
@@ -117,7 +121,9 @@ public final class Order {
             Names names,
             Map<String, List<TemplateSlot>> kits,
             Map<String, Set<Integer>> protectedRoots,
-            Map<String, Set<Integer>> allocatedRoots) {
+            Map<String, Set<Integer>> allocatedRoots,
+            List<CraftJob> craftJobs) {
+        this.craftJobs = craftJobs;
         this.id = id;
         this.lines = lines;
         this.names = names;
@@ -140,8 +146,9 @@ public final class Order {
                 String type = l.get("type").getAsString();
                 String key = l.get("key").getAsString();
                 int count = l.get("count").getAsInt();
-                if ((type.equals(ITEM) || type.equals(SHULKER) || type.equals(KIT)) && !key.isEmpty() && count >= 1)
-                    lines.add(new Line(type, key, count));
+                if ((type.equals(ITEM) || type.equals(SHULKER) || type.equals(KIT) || type.equals(CRAFT))
+                        && !key.isEmpty()
+                        && count >= 1) lines.add(new Line(type, key, count));
             } catch (RuntimeException ex) {
                 // A broken line is left out and shows up as undelivered
             }
@@ -198,7 +205,44 @@ public final class Order {
                 }
             }
         }
-        return new Order(id, lines, parseNames(o), Map.copyOf(kits), Map.copyOf(guards), Map.copyOf(allocated));
+        var crafts = new ArrayList<CraftJob>();
+        var required = new LinkedHashMap<String, Integer>();
+        for (Line line : lines) if (line.type().equals(CRAFT)) required.merge(line.key(), line.count(), Math::addExact);
+        if (!required.isEmpty()) {
+            if (!o.has("craftPlans") || !o.get("craftPlans").isJsonArray())
+                throw new IllegalArgumentException("Missing pinned craft plans");
+            var planned = new LinkedHashMap<String, Integer>();
+            for (JsonElement e : o.getAsJsonArray("craftPlans")) {
+                if (!e.isJsonObject()) throw new IllegalArgumentException("Invalid craft plan");
+                JsonObject c = e.getAsJsonObject();
+                String item = c.get("item").getAsString();
+                int count = c.get("count").getAsInt();
+                if (!item.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")
+                        || count < 1
+                        || !c.has("recipeVersion")
+                        || !"26.3".equals(c.get("recipeVersion").getAsString()))
+                    throw new IllegalArgumentException("Unsupported craft");
+                var materials = new LinkedHashMap<String, Integer>();
+                for (var m : c.getAsJsonObject("materials").entrySet()) {
+                    int quantity = m.getValue().getAsInt();
+                    if (!m.getKey().matches("[a-z0-9_.-]+:[a-z0-9_./-]+") || quantity < 1)
+                        throw new IllegalArgumentException("Invalid craft material");
+                    materials.put(m.getKey(), quantity);
+                }
+                if (materials.isEmpty()) throw new IllegalArgumentException("Missing craft materials");
+                crafts.add(new CraftJob(item, count, Map.copyOf(materials)));
+                planned.merge(item, count, Math::addExact);
+            }
+            if (!planned.equals(required)) throw new IllegalArgumentException("Craft plans differ from order lines");
+        }
+        return new Order(
+                id,
+                lines,
+                parseNames(o),
+                Map.copyOf(kits),
+                Map.copyOf(guards),
+                Map.copyOf(allocated),
+                List.copyOf(crafts));
     }
 
     private static boolean isText(JsonElement e) {

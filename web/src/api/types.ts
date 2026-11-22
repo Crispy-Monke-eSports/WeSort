@@ -144,7 +144,7 @@ export type IndexResponse = z.infer<typeof IndexResponseSchema>;
 // ---------- orders ----------
 
 export const OrderLineSchema = z.object({
-  type: z.enum(["item", "shulker", "kit"]),
+  type: z.enum(["item", "shulker", "kit", "craft"]),
   key: z.string().min(1),
   count: z.number().int().min(1),
 });
@@ -216,8 +216,9 @@ export const OrdersResponseSchema = z.object({
       items: z.record(z.string(), z.number()).default({}),
       shulkers: z.record(z.string(), z.number()).default({}),
       kits: z.record(z.string(), z.number()).default({}),
+      craftables: z.record(z.string(), z.number()).default({}),
     })
-    .default({ items: {}, shulkers: {}, kits: {} }),
+    .default({ items: {}, shulkers: {}, kits: {}, craftables: {} }),
 });
 export type OrdersResponse = z.infer<typeof OrdersResponseSchema>;
 

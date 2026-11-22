@@ -99,6 +99,7 @@ final class OrderStore {
     static List<Line> explodeOrderLines(Order o) {
         var out = new ArrayList<Line>();
         for (Line l : o.lines) {
+            if (l.type.equals("craft")) continue;
             if (!l.type.equals("kit") || o.kits == null || !o.kits.containsKey(l.key)) {
                 out.add(l);
                 continue;
@@ -111,6 +112,7 @@ final class OrderStore {
             }
             for (var e : perKit.entrySet()) out.add(new Line("item", e.getKey(), e.getValue() * l.count));
         }
+        if (o.craftMaterials != null) o.craftMaterials.forEach((key, count) -> out.add(new Line("item", key, count)));
         return out;
     }
 
@@ -161,6 +163,10 @@ final class OrderStore {
         int packageTotal; // frozen number of boxes Y, 0 when unknown (legacy orders)
         /** Kit template snapshots pinned at submit (name to template JSON), or null without kit lines. */
         Map<String, JsonObject> kits;
+        /** Server-pinned table craft steps and the exact ingredient reservation. */
+        JsonArray craftPlans;
+
+        Map<String, Long> craftMaterials;
 
         long createdAt;
         long updatedAt;
@@ -284,6 +290,8 @@ final class OrderStore {
             o.add("names", names == null ? null : names.deepCopy());
             o.add("packageLabel", packageLabel == null ? null : packageLabel.deepCopy());
             if (packageTotal > 0) o.addProperty("packageTotal", packageTotal);
+            if (craftPlans != null) o.add("craftPlans", craftPlans.deepCopy());
+            if (craftMaterials != null) o.add("craftMaterials", Json.GSON.toJsonTree(craftMaterials));
             if (kits != null) {
                 var kj = new JsonObject();
                 for (var e : kits.entrySet()) kj.add(e.getKey(), e.getValue().deepCopy());
@@ -365,6 +373,15 @@ final class OrderStore {
                 r.packageLabel = null;
             }
             r.packageTotal = o.has("packageTotal") ? o.get("packageTotal").getAsInt() : 0;
+            if (o.has("craftPlans") && o.get("craftPlans").isJsonArray())
+                r.craftPlans = o.getAsJsonArray("craftPlans").deepCopy();
+            if (o.has("craftMaterials") && o.get("craftMaterials").isJsonObject()) {
+                r.craftMaterials = new LinkedHashMap<>();
+                o.getAsJsonObject("craftMaterials")
+                        .entrySet()
+                        .forEach(e ->
+                                r.craftMaterials.put(e.getKey(), e.getValue().getAsLong()));
+            }
             if (o.has("kits") && o.get("kits").isJsonObject()) {
                 r.kits = new LinkedHashMap<>();
                 for (var e : o.getAsJsonObject("kits").entrySet())
@@ -1105,6 +1122,7 @@ final class OrderStore {
         // the current templates and pin the snapshots on the order, so the bot
         // packs the exact layout even if the template changes later.
         KitExplosion exploded = explodeKits(merged, firstIndex, kits());
+        CraftExpansion crafting = expandCrafts(server, stash, exploded, physical, held, firstIndex);
         try {
             return commitOrder(
                     server,
@@ -1112,6 +1130,7 @@ final class OrderStore {
                     merged,
                     firstIndex,
                     exploded,
+                    crafting,
                     names,
                     packageLabel,
                     byId,
@@ -1143,6 +1162,7 @@ final class OrderStore {
                         merged,
                         firstIndex,
                         exploded,
+                        crafting,
                         names,
                         packageLabel,
                         byId,
@@ -1169,12 +1189,95 @@ final class OrderStore {
         return e.line >= 0 && (e.status == 400 || e.status == 409);
     }
 
+    /** Craft outputs remain order lines; only their reserved materials become physical lines. */
+    private static final class CraftExpansion {
+        final Map<String, Line> lines = new LinkedHashMap<>();
+        final Map<String, Integer> firstIndex = new HashMap<>();
+        final Map<String, Long> materials = new LinkedHashMap<>();
+        final JsonArray plans = new JsonArray();
+
+        void add(Line line, int at) {
+            var existing = lines.get(line.ref());
+            lines.put(
+                    line.ref(),
+                    existing == null
+                            ? line
+                            : new Line(line.type(), line.key(), Math.addExact(existing.count(), line.count())));
+            firstIndex.merge(line.ref(), at, Math::min);
+        }
+    }
+
+    /**
+     * Resolve recipe alternatives before reserving any stock. Direct lines and
+     * kits take precedence; multiple craft requests share one diminishing pool.
+     * Only fresh, physical, base-ID ingredient slots can back a craft.
+     */
+    private CraftExpansion expandCrafts(
+            String server,
+            String stash,
+            KitExplosion exploded,
+            PhysicalReservations physical,
+            Set<PhysicalReservations.Root> held,
+            Map<String, Integer> firstIndex)
+            throws IOException, OrderException {
+        CraftExpansion result = new CraftExpansion();
+        boolean wantsCraft =
+                exploded.lines.values().stream().anyMatch(l -> l.type().equals("craft"));
+        for (var l : exploded.lines.values())
+            if (!l.type().equals("craft")) result.add(l, exploded.firstIndex.get(l.ref()));
+        if (!wantsCraft) return result;
+        if (!physical.hasSnapshots() || !index.craftingReady(server, stash))
+            throw new OrderException(409, "Crafting requires a ready agent, table and fresh physical stock", -1);
+
+        Map<String, Long> pool = new HashMap<>(CraftingCatalog.eligiblePool(physical.available(held)));
+        // Already ordered direct components must not also be used as craft inputs.
+        for (Line l : result.lines.values())
+            if (l.type().equals("item") && pool.containsKey(l.key()))
+                pool.put(l.key(), Math.max(0, pool.get(l.key()) - l.count()));
+
+        for (var l : exploded.lines.values()) {
+            if (!l.type().equals("craft")) continue;
+            int at = firstIndex.get(l.ref());
+            if (l.count() > CraftingCatalog.MAX_PREVIEW)
+                throw new OrderException(400, "Too many craftable items in one order", at);
+            var preview = CraftingCatalog.plan(l.key(), (int) l.count(), pool);
+            if (!preview.ok() || preview.plan().count() < l.count())
+                throw new OrderException(409, "Not enough verified ingredients to craft " + l.key(), at);
+
+            var step = new JsonObject();
+            step.addProperty("item", l.key());
+            step.addProperty("count", l.count());
+            step.addProperty("recipeVersion", CraftingCatalog.VERSION);
+            step.add("materials", Json.GSON.toJsonTree(preview.plan().take()));
+            var recipeSteps = new JsonArray();
+            for (var one : preview.plan().steps()) {
+                var rs = new JsonObject();
+                rs.addProperty("recipe", one.recipe().id());
+                rs.addProperty("crafts", one.crafts());
+                recipeSteps.add(rs);
+            }
+            step.add("steps", recipeSteps);
+            result.plans.add(step);
+            try {
+                CraftingCatalog.consume(pool, preview.plan().take());
+            } catch (IllegalArgumentException invalid) {
+                throw new OrderException(409, "Crafting material reservation changed", at);
+            }
+            for (var need : preview.plan().take().entrySet()) {
+                result.materials.merge(need.getKey(), (long) need.getValue(), Math::addExact);
+                result.add(new Line("item", need.getKey(), need.getValue()), at);
+            }
+        }
+        return result;
+    }
+
     private Order commitOrder(
             String server,
             String stash,
             Map<String, Line> merged,
             Map<String, Integer> firstIndex,
             KitExplosion exploded,
+            CraftExpansion crafting,
             JsonObject names,
             JsonObject packageLabel,
             String byId,
@@ -1192,7 +1295,7 @@ final class OrderStore {
             boolean allowStale)
             throws OrderException, IOException {
         var allocations = physical.hasSnapshots()
-                ? physical.allocate(exploded.lines.values(), held, exploded.firstIndex, allowStale)
+                ? physical.allocate(crafting.lines.values(), held, crafting.firstIndex, allowStale)
                 : null;
         Book b = book(server, stash);
         synchronized (b) {
@@ -1200,8 +1303,8 @@ final class OrderStore {
             if (open >= MAX_OPEN)
                 throw new OrderException(400, "too many open orders for this stash (limit " + MAX_OPEN + ")", -1);
             Map<String, Long> reserved = reserved(b);
-            for (Line l : exploded.lines.values()) {
-                int at = exploded.firstIndex.get(l.ref());
+            for (Line l : crafting.lines.values()) {
+                int at = crafting.firstIndex.get(l.ref());
                 long total = counts.total(l.type, l.key);
                 if (total < 0 && allocations == null) throw new OrderException(400, "not in the stash: " + l.key, at);
                 long available = Math.max(0, total - reserved.getOrDefault(l.ref(), 0L));
@@ -1228,6 +1331,8 @@ final class OrderStore {
             o.approval = needsApproval ? Approval.PENDING : Approval.DIRECT;
             o.verifiedRecipient = recipient;
             o.lines = new ArrayList<>(merged.values());
+            o.craftPlans = crafting.plans.isEmpty() ? null : crafting.plans.deepCopy();
+            o.craftMaterials = crafting.materials.isEmpty() ? null : Map.copyOf(crafting.materials);
             o.names = names == null ? null : names.deepCopy();
             o.packageLabel = packageLabel == null ? null : packageLabel.deepCopy();
             o.packageTotal = (int) shulkers;
@@ -1448,7 +1553,9 @@ final class OrderStore {
             } else if (l.type.equals("shulker") || counts.isShulkerBoxKey(l.key)) {
                 units += l.count;
             } else {
-                long max = counts.maxStack(l.key);
+                // Craft-only results can be absent from the index. Without a
+                // verified stack-size sample assume 1, never undercount boxes.
+                long max = l.type.equals("craft") ? 1 : counts.maxStack(l.key);
                 slots += (l.count + max - 1) / max;
             }
         }
@@ -1533,6 +1640,11 @@ final class OrderStore {
         available.add("items", items);
         available.add("shulkers", shulkers);
         available.add("kits", kitsOut);
+        available.add(
+                "craftables",
+                CraftingCatalog.available(
+                        physicalAvailable == null ? Map.of() : physicalAvailable,
+                        index.craftingReady(server, stash) && physicalAvailable != null));
         out.add("available", available);
         return out;
     }

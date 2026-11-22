@@ -214,6 +214,11 @@ public class Stash {
         public final List<String> unnamedReasons = new ArrayList<>();
         /** Shulker boxes crafted for this order so far (the per-order cap and the end message count them). */
         public int crafted;
+        /** Manufacturing progress is journalled before any inventory clicks. */
+        public int craftIndex, craftMade;
+
+        public boolean craftInFlight;
+        public final java.util.Map<String, Integer> craftUsed = new java.util.LinkedHashMap<>();
     }
 
     public ActiveOrder activeOrder;
@@ -712,6 +717,19 @@ public class Stash {
                 order.put("namesEach", each);
             }
             if (activeOrder.crafted > 0) order.putInt("crafted", activeOrder.crafted);
+            if (activeOrder.craftIndex > 0) order.putInt("craftIndex", activeOrder.craftIndex);
+            if (activeOrder.craftMade > 0) order.putInt("craftMade", activeOrder.craftMade);
+            if (activeOrder.craftInFlight) order.putBoolean("craftInFlight", true);
+            if (!activeOrder.craftUsed.isEmpty()) {
+                ListTag used = new ListTag();
+                for (var e : activeOrder.craftUsed.entrySet()) {
+                    CompoundTag row = new CompoundTag();
+                    row.putString("key", e.getKey());
+                    row.putInt("count", e.getValue());
+                    used.add(row);
+                }
+                order.put("craftUsed", used);
+            }
             if (activeOrder.unnamed > 0) {
                 order.putInt("unnamed", activeOrder.unnamed);
                 ListTag why = new ListTag();
@@ -975,6 +993,13 @@ public class Stash {
                 }
                 active.unnamed = number(order.get("unnamed"), 0);
                 active.crafted = number(order.get("crafted"), 0);
+                active.craftIndex = number(order.get("craftIndex"), 0);
+                active.craftMade = number(order.get("craftMade"), 0);
+                active.craftInFlight = flag(order, "craftInFlight");
+                if (order.get("craftUsed") instanceof ListTag used)
+                    for (Tag t : used)
+                        if (t instanceof CompoundTag row)
+                            active.craftUsed.put(text(row, "key"), number(row.get("count"), 0));
                 if (order.get("unnamedWhy") instanceof ListTag why) {
                     for (Tag t : why) if (string(t) != null) active.unnamedReasons.add(string(t));
                 }

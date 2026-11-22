@@ -2,6 +2,7 @@ package com.porter.wesort.modules;
 
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
+import com.porter.wesort.data.ShulkerUuid;
 import com.porter.wesort.stash.Categories;
 import com.porter.wesort.stash.StackInfo;
 import com.porter.wesort.stash.StackInfo.BulkKey;
@@ -24,9 +25,9 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.ShulkerBoxBlock;
 
 /**
- * Packs a full shulker's worth of one item from the category chests into an empty, unnamed shulker, which is then put
- * away in the item's own chest, so 27 slots become 1. Never mixed shulkers, never a named one, never a kit chest. This
- * class plans it and keeps the plan; the sorter walks, opens, places and breaks.
+ * Packs full stacks of one item from tier storage into a shulker and can top up
+ * part-full shulkers with the same item. Preserves canonical WeSort UUID names,
+ * never changes user-labelled shulkers, mixed kits or order-reserved stock.
  */
 final class Compactor {
     /**
@@ -35,7 +36,7 @@ final class Compactor {
     interface Owner {
         Stash stash();
 
-        /** Compacting is on, in Signs mode, and not paused after a shulker problem. */
+        /** Compacting is on and has a current safe physical permit. No sign is required. */
         boolean on();
 
         int topUpAt();
@@ -273,8 +274,9 @@ final class Compactor {
         return stack != null && !stack.isEmpty() && Utils.isShulker(stack.getItem());
     }
 
-    private static boolean unnamed(ItemStack stack) {
-        return !stack.has(DataComponents.CUSTOM_NAME);
+    private static boolean repackableName(ItemStack stack) {
+        var custom = stack.get(DataComponents.CUSTOM_NAME);
+        return custom == null || ShulkerUuid.hasUuid(custom.getString());
     }
 
     private static boolean full(ItemStack stack) {
@@ -285,7 +287,7 @@ final class Compactor {
      * An unnamed shulker that is empty, or holds only this plan's item.
      */
     private boolean isPlanShulker(ItemStack stack, Plan p) {
-        if (!shulker(stack) || !unnamed(stack) || owner.isKitShulker(stack)) return false;
+        if (!shulker(stack) || !repackableName(stack) || owner.isKitShulker(stack)) return false;
         List<StackInfo> inside = StackInfo.of(stack).contents();
         if (inside.isEmpty()) return !p.topUp;
         for (StackInfo s : inside) if (!p.key.equals(s.bulkKey())) return false;
@@ -298,7 +300,7 @@ final class Compactor {
 
     private boolean emptyShulker(ItemStack stack) {
         return shulker(stack)
-                && unnamed(stack)
+                && repackableName(stack)
                 && !owner.isKitShulker(stack)
                 && StackInfo.of(stack).contents().isEmpty();
     }
@@ -402,7 +404,7 @@ final class Compactor {
     }
 
     private Partial partialOf(Box box, int slot, ItemStack shulker) {
-        if (!unnamed(shulker) || owner.isKitShulker(shulker)) return null;
+        if (!repackableName(shulker) || owner.isKitShulker(shulker)) return null;
         List<StackInfo> inside = StackInfo.of(shulker).contents();
         if (inside.isEmpty() || inside.size() >= 27) return null;
         BulkKey key = inside.get(0).bulkKey();

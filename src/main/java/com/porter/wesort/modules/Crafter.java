@@ -50,6 +50,9 @@ final class Crafter {
 
         boolean usable(Box box);
 
+        /** No ingredient may come from a root reserved for another physical order. */
+        default boolean mayTakeFrom(Box box, int slot) { return true; }
+
         boolean keepWhole(Box box);
 
         boolean namedShulkers();
@@ -88,7 +91,9 @@ final class Crafter {
     record Abort(String reason) implements Intent {}
 
     /** What a session came to: how many of the item were crafted, and why not more (null when it went through). */
-    record Outcome(String item, int crafted, String failure) {}
+    record Outcome(String item, int crafted, String failure, Map<String, Integer> consumed) {
+        Outcome(String item, int crafted, String failure) { this(item, crafted, failure, Map.of()); }
+    }
 
     /** The work one session is asked for. {@code pool} is what the crafts may use up (the stash's, less what others need). */
     record Request(
@@ -366,7 +371,11 @@ final class Crafter {
 
     /** What the session ends with. */
     Outcome finish() {
-        Outcome out = new Outcome(req == null ? "" : req.item(), craftedTarget, failure);
+        // An incomplete craft may have consumed an unknown portion of its
+        // ingredients. The owner must reconcile instead of replaying it.
+        Map<String, Integer> used = failure == null && plan != null && craftedTarget >= plan.count()
+                ? Map.copyOf(plan.take()) : Map.of();
+        Outcome out = new Outcome(req == null ? "" : req.item(), craftedTarget, failure, used);
         adoptStrays();
         syncHeld();
         lastHeld.clear();
@@ -560,7 +569,7 @@ final class Crafter {
             double d = owner.distance(box);
             for (int i = 0; i < box.contents.length; i++) {
                 ItemStack s = box.contents[i];
-                if (s.isEmpty()) continue;
+                if (s.isEmpty() || !owner.mayTakeFrom(box, i)) continue;
                 if (Utils.isShulker(s.getItem())) {
                     if (!shulkerOk(s) || badSpots.contains(new Spot(box, i)) || !holdsAny(s, missing)) continue;
                     if (d < packedD) {
@@ -635,7 +644,8 @@ final class Crafter {
         if (missing.isEmpty()) return false;
         int into = owner.freeCarrySlot();
         if (into == -1) return false;
-        int slot = bestStack(box.contents.length, i -> box.contents[i], missing);
+        int slot = bestStack(box.contents.length,
+                i -> owner.mayTakeFrom(box, i) ? box.contents[i] : ItemStack.EMPTY, missing);
         if (slot == -1) return false;
 
         owner.held(into, box.contents[slot]);

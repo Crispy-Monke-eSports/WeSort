@@ -28,6 +28,7 @@ import Tabs from "@mui/material/Tabs";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth, useBots, useGuild, useKitTemplates, usePermissions, useQuotaMe, useServer, useStashDefs } from "../api/queries";
 import { ConfirmDialog, PasswordDialog, useConfirm } from "../components/dialogs";
@@ -451,7 +452,7 @@ function UsersSection() {
   const [users, setUsers] = useState<any[]>([]);
   const [presets, setPresets] = useState<string[]>(["viewer", "orderer", "member", "officer", "operator"]);
   const [presetDefs, setPresetDefs] = useState<Record<string, any>>({});
-  const [msg, setMsg] = useState("");
+  const [msg, setMsg] = useState<{ severity: "success" | "error" | "info"; text: string } | null>(null);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
@@ -481,23 +482,27 @@ function UsersSection() {
   const [pwBusy, setPwBusy] = useState(false);
   const [pwError, setPwError] = useState("");
 
-  async function load() {
-    setMsg("");
-    try {
-      const raw = await api<any>("/api/v1/users");
-      setUsers(raw?.users ?? []);
-      setOwner(raw?.owner ?? null);
-      if (typeof raw?.minLength === "number") setMinLength(raw.minLength);
-      const p = raw?.presets;
-      if (p && typeof p === "object") {
-        setPresets(Object.keys(p));
-        setPresetDefs(p);
-      }
-    } catch (e: any) {
-      setMsg(e?.message ?? "User list unavailable.");
+  const usersQuery = useQuery({
+    queryKey: ["users"],
+    queryFn: () => api<any>("/api/v1/users"),
+    staleTime: 10_000,
+    retry: 1,
+  });
+  useEffect(() => {
+    const raw = usersQuery.data;
+    if (!raw) return;
+    setUsers(raw.users ?? []);
+    setOwner(raw.owner ?? null);
+    if (typeof raw.minLength === "number") setMinLength(raw.minLength);
+    if (raw.presets && typeof raw.presets === "object") {
+      setPresets(Object.keys(raw.presets));
+      setPresetDefs(raw.presets);
     }
+  }, [usersQuery.data]);
+  async function load() {
+    const refreshed = await usersQuery.refetch();
+    if (refreshed.error) setMsg({ severity: "error", text: refreshed.error.message ?? "User list unavailable." });
   }
-  useEffect(() => { void load(); }, []);
 
   async function create() {
     try {
@@ -507,7 +512,7 @@ function UsersSection() {
       setCreating(false);
       await load();
     } catch (e: any) {
-      setMsg(e?.message ?? "Create failed.");
+      setMsg({ severity: "error", text: e?.message ?? "Create failed." });
     }
   }
 
@@ -581,7 +586,7 @@ function UsersSection() {
     const ignChanged = nextIgn !== prevIgn;
     if (ignChanged) changes.push(`minecraft: ${prevIgn || "(none)"} → ${nextIgn || "(none)"}`);
     if (!changes.length) {
-      setMsg("No changes — nothing sent.");
+      setMsg({ severity: "info", text: "No changes — nothing sent." });
       setEditId(null);
       return;
     }
@@ -596,7 +601,7 @@ function UsersSection() {
         if (Object.keys(body).length) await api(`/api/v1/users/${id}`, { method: "POST", body });
         if (ignChanged) await api(`/api/v1/users/${id}/minecraft`, { method: "POST", body: { account: nextIgn } });
         setEditId(null);
-        setMsg(`User updated (${changes.length} change${changes.length === 1 ? "" : "s"}).`);
+        setMsg({ severity: "success", text: `User updated (${changes.length} change${changes.length === 1 ? "" : "s"}).` });
         await load();
       },
     });
@@ -611,7 +616,7 @@ function UsersSection() {
         confirmLabel: "End sessions",
         run: async () => {
           await api(`/api/v1/users/${id}/logout`, { method: "POST", body: {} });
-          setMsg("Sessions ended.");
+          setMsg({ severity: "success", text: "Sessions ended." });
           await load();
         },
       });
@@ -629,7 +634,7 @@ function UsersSection() {
       danger: true,
       run: async () => {
         await api(`/api/v1/users/${id}/delete`, { method: "POST", body: {} });
-        setMsg("User deleted.");
+        setMsg({ severity: "success", text: "User deleted." });
         await load();
       },
     });
@@ -656,7 +661,7 @@ function UsersSection() {
     try {
       await api(`/api/v1/users/${pwUser.id}/password`, { method: "POST", body: { password } });
       setPwUser(null);
-      setMsg("Password reset.");
+      setMsg({ severity: "success", text: "Password reset." });
       await load();
     } catch (e: any) {
       setPwError(e?.message ?? "Reset failed.");
@@ -688,7 +693,8 @@ function UsersSection() {
 
   return (
     <Stack spacing={2}>
-      {msg && <Alert severity="info" onClose={() => setMsg("")}>{msg}</Alert>}
+      {msg && <Alert severity={msg.severity} onClose={() => setMsg(null)}>{msg.text}</Alert>}
+      {usersQuery.isError && <Alert severity="error">Cannot refresh user permissions.</Alert>}
       {owner && (
         <Paper variant="outlined" sx={{ p: 1.5 }}>
           <Stack spacing={1}>
@@ -900,11 +906,11 @@ function UsersSection() {
           <Button variant="contained" onClick={async () => {
             try {
               await api("/api/v1/users/owner/minecraft", { method: "POST", body: { account: ownerIgn.trim() } });
-              setMsg(ownerIgn.trim() ? `Owner IGN set to ${ownerIgn.trim()}.` : "Owner IGN unlinked.");
+              setMsg({ severity: "success", text: ownerIgn.trim() ? `Owner IGN set to ${ownerIgn.trim()}.` : "Owner IGN unlinked." });
               setOwnerIgnOpen(false);
               await load();
             } catch (e: any) {
-              setMsg(e?.message ?? "IGN save failed.");
+              setMsg({ severity: "error", text: e?.message ?? "IGN save failed." });
             }
           }}>Save</Button>
         </DialogActions>
@@ -1026,21 +1032,22 @@ function SecuritySection() {
 }
 
 function ApiKeysSection() {
-  const [slots, setSlots] = useState<any[]>([]);
+  const agentsQuery = useQuery({
+    queryKey: ["agents"],
+    queryFn: () => api<{ slots: any[] }>("/api/v1/agents"),
+    staleTime: 10_000,
+    retry: 1,
+  });
+  const slots = agentsQuery.data?.slots ?? [];
   const [label, setLabel] = useState("");
   const [freshKey, setFreshKey] = useState("");
   const [msg, setMsg] = useState<{ severity: "error"; text: string } | null>(null);
   const confirm = useConfirm();
   async function load() {
-    try {
-      setMsg(null);
-      const res = await api<any>("/api/v1/agents");
-      setSlots(res?.slots ?? []);
-    } catch (e: any) {
-      setMsg({ severity: "error", text: e?.message ?? "API keys unavailable." });
-    }
+    const refreshed = await agentsQuery.refetch();
+    if (refreshed.error)
+      setMsg({ severity: "error", text: refreshed.error.message ?? "API keys unavailable." });
   }
-  useEffect(() => { void load(); }, []);
   function errText(e: any): string {
     if (e?.status === 403 && /confirm password/i.test(e?.body?.error ?? "")) {
       return "Confirm your password in the Security tab first, then try again.";
@@ -1082,6 +1089,7 @@ function ApiKeysSection() {
         The last reported player name is only presence information. A new key is shown once.
       </Typography>
       {msg && <Alert severity={msg.severity} onClose={() => setMsg(null)}>{msg.text}</Alert>}
+      {agentsQuery.isError && <Alert severity="error">Cannot refresh agent credentials.</Alert>}
       {freshKey && (
         <Paper variant="outlined" sx={{ p: 1.5 }}>
           <Typography variant="subtitle2">New API key (copy it now — it is never shown again):</Typography>

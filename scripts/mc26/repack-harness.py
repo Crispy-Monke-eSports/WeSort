@@ -79,6 +79,7 @@ class RepackHarness(world.Harness):
         self.settings=dict(repack=True,compact=self.scenario in ['compact','rounds'],newBulkAt=2 if self.scenario in ['bulk','no-empty'] else 0,topUpAt=1,carrySlots='1-8,10-36',walk=True)
         if self.scenario=='rounds':self.settings['carrySlots']='1-8,10-20'
         self.command('sort-config',**self.settings)
+        self.settle_test_menus()
         if self.scenario=='blocked':self.rcon.command(f'gamemode adventure {self.player}')
     def give(self,slot,item,count=1):
         if slot==8: reply=self.rcon.command(f'item replace entity {self.player} hotbar.8 with minecraft:{item} {count}')
@@ -121,7 +122,8 @@ class RepackHarness(world.Harness):
             if self.scenario=='reserved':self.start_manager()
             self.start_client();self.configure()
             if self.scenario=='reserved':
-                self.command('publish',url=f'http://127.0.0.1:{self.manager_port}',key=self.key)
+                self.command('publish',url=f'http://127.0.0.1:{self.manager_port}',key=self.key,
+                             holdPhysicalSorting=True)
                 until=time.monotonic()+90
                 while time.monotonic()<until:
                     code,stock=self.http('/api/v1/stock')

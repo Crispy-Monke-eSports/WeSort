@@ -1326,6 +1326,11 @@ public class StashSorter extends Module {
         }
 
         @Override
+        public int newBulkAt() {
+            return newBulkAt.get();
+        }
+
+        @Override
         public boolean excluded(ItemStack stack) {
             return compactExclude.get().contains(stack.getItem());
         }
@@ -7540,7 +7545,7 @@ public class StashSorter extends Module {
             int stacks = carriedStacksOf(key);
             // With compacting on, new bulk shulkers are made by compacting: a full shulker's worth, never a part-filled
             // one
-            boolean startNew = !compactOn() && newBulkAt.get() > 0 && stacks >= newBulkAt.get();
+            boolean startNew = newBulkAt.get() > 0 && stacks >= newBulkAt.get();
 
             for (int s : carriedSlots()) {
                 ItemStack shulker = mc.player.getInventory().getItem(s);

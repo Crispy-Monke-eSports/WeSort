@@ -1511,15 +1511,20 @@ public class StashManager extends Module {
     private void driveSorter() {
         StashSorter sorter = WeSortAddon.sorter();
         if (sorter == null) return;
-        // The bot walks only when asked: orders are accepted, or a website rescan is under way. Containers a player
-        // opened
-        // are not read by the bot on their own
+        // With an assigned bounding box the agent must also keep watching for placed
+        // shulkers and finish returning any it already collected, even when orders and
+        // normal sorting are disabled. A website rescan alone can stop before that
+        // physical recovery is safely deposited.
         if (rescanning && !sorter.needsReading()) rescanning = false;
         // The 6b6t lobby transit drives too: walking through the portal comes before everything.
         boolean want = isActive()
                 && dedicatedProfile()
                 && sorter.currentStash() != null
-                && (acceptOrders.get() || rescanning || sortEnabled.get() || sorter.portalAwaiting());
+                && (acceptOrders.get()
+                        || rescanning
+                        || sortEnabled.get()
+                        || sorter.currentStash().hasArea()
+                        || sorter.portalAwaiting());
         sorter.drive(want);
     }
 

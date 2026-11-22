@@ -188,6 +188,8 @@ final class OrderStore {
         String retriedAs; // the order this one was placed again as (Retry, or the planner's "order part again"), or
         // null
         boolean queuedOffline; // true when reserved against last-verified (stale) counts via the explicit offline queue
+        /** Pending request accepted while another physical order runs; no stock is reserved yet. */
+        boolean reservationDeferred;
         private JsonArray history = new JsonArray();
 
         void record(String action, String actor, long time) {
@@ -302,6 +304,7 @@ final class OrderStore {
             o.addProperty("status", status);
             o.addProperty("state", stage().name());
             o.addProperty("queuedOffline", queuedOffline);
+            o.addProperty("reservationDeferred", reservationDeferred);
             o.addProperty("phase", phase);
             o.add("progress", progress == null ? null : progress.deepCopy());
             o.addProperty("message", message);
@@ -388,6 +391,7 @@ final class OrderStore {
                     r.kits.put(e.getKey(), e.getValue().getAsJsonObject().deepCopy());
             }
             r.queuedOffline = o.has("queuedOffline") && o.get("queuedOffline").getAsBoolean();
+            r.reservationDeferred = o.has("reservationDeferred") && o.get("reservationDeferred").getAsBoolean();
             r.createdAt = o.get("createdAt").getAsLong();
             r.updatedAt = o.get("updatedAt").getAsLong();
             r.status = o.get("status").getAsString();
@@ -667,7 +671,9 @@ final class OrderStore {
     private static Map<String, Long> reserved(Book b) {
         Map<String, Long> out = new HashMap<>();
         for (Order o : b.orders) {
-            if (!OPEN.contains(o.status) && !holdsPhysical(o)) continue;
+            // The waiting queue is intentionally *not* a physical or aggregate
+            // reservation. Availability must not advertise it as committed stock.
+            if (o.reservationDeferred || (!OPEN.contains(o.status) && !holdsPhysical(o))) continue;
             for (Line l : explodeOrderLines(o)) out.merge(l.ref(), l.count, Long::sum);
         }
         return out;
@@ -1095,11 +1101,24 @@ final class OrderStore {
         }
         var physical = PhysicalReservations.read(index.stock(), server, stash);
         var existing = ordersOnServer(server);
-        if (existing.stream().anyMatch(order -> order.allocations != null && isExecuting(order))) {
-            throw new OrderException(
-                    409, "Wait for the active physical order to finish before reserving more stock", -1);
-        }
         var held = heldRoots(server);
+        boolean executingPhysical = existing.stream().anyMatch(order -> order.allocations != null && isExecuting(order));
+        // Never extend an agent's already issued protected-root list mid-order.
+        // Persist the request instead, explicitly unreserved until the next
+        // claim revalidates the actual physical slots against fresh observations.
+        if (executingPhysical) {
+            KitExplosion pinned = explodeKits(merged, firstIndex, kits());
+            for (Line line : merged.values())
+                if (line.type().equals("craft")
+                        && (line.count() > CraftingCatalog.MAX_PREVIEW
+                                || CraftingCatalog.RECIPES == null
+                                || CraftingCatalog.RECIPES.producing(line.key()).isEmpty()))
+                    throw new OrderException(400, "No supported craft recipe or invalid craft quantity", firstIndex.get(line.ref()));
+            return commitOrder(
+                    server, stash, merged, firstIndex, pinned, new CraftExpansion(), names, packageLabel,
+                    byId, byName, organizationId, intent, receiptKey, fingerprint, retryOf,
+                    needsApproval, recipient, fresh, physical, held, false, true);
+        }
         if (!held.isEmpty()
                 && index.stock().sources().stream()
                         .anyMatch(source -> source.server().equals(server)
@@ -1145,6 +1164,7 @@ final class OrderStore {
                     fresh,
                     physical,
                     held,
+                    false,
                     false);
         } catch (OrderException shortfall) {
             // The offline queue is explicit, never silent: only a caller that opts in with
@@ -1177,7 +1197,8 @@ final class OrderStore {
                         stale,
                         physical,
                         held,
-                        true);
+                        true,
+                        false);
             } catch (OrderException retryFailed) {
                 throw isShortage(retryFailed) ? shortfall : retryFailed;
             }
@@ -1292,9 +1313,10 @@ final class OrderStore {
             IndexStore.OrderCounts counts,
             PhysicalReservations physical,
             Set<PhysicalReservations.Root> held,
-            boolean allowStale)
+            boolean allowStale,
+            boolean deferReservation)
             throws OrderException, IOException {
-        var allocations = physical.hasSnapshots()
+        var allocations = !deferReservation && physical.hasSnapshots()
                 ? physical.allocate(crafting.lines.values(), held, crafting.firstIndex, allowStale)
                 : null;
         Book b = book(server, stash);
@@ -1306,6 +1328,7 @@ final class OrderStore {
             for (Line l : crafting.lines.values()) {
                 int at = crafting.firstIndex.get(l.ref());
                 long total = counts.total(l.type, l.key);
+                if (deferReservation) continue;
                 if (total < 0 && allocations == null) throw new OrderException(400, "not in the stash: " + l.key, at);
                 long available = Math.max(0, total - reserved.getOrDefault(l.ref(), 0L));
                 if (allocations == null && l.count > available) {
@@ -1344,16 +1367,18 @@ final class OrderStore {
             // verified reservation: visibly marked in every API response, and unclaimable
             // until a fresh observation re-verifies it (claim path stays fresh-only).
             o.queuedOffline = allowStale;
-            o.sourceGuards = sourceGuards(server, stash);
+            o.reservationDeferred = deferReservation;
+            o.sourceGuards = deferReservation ? null : sourceGuards(server, stash);
             o.createdAt = now;
             o.updatedAt = now;
             o.status = "pending";
             o.stage = OrderStage.CREATED;
-            o.advance(OrderStage.RESERVED);
+            if (!deferReservation) o.advance(OrderStage.RESERVED);
+            else o.message = "Queued after an active physical order; stock is NOT reserved until verified at claim.";
             o.placedById = byId;
             o.placedByName = byId == null ? null : byName;
             o.record(
-                    retryOf == null ? "order.reserve" : "order.retry.reserve",
+                    deferReservation ? "order.queue.wait" : retryOf == null ? "order.reserve" : "order.retry.reserve",
                     byId == null ? Users.OWNER_ID : byId,
                     now);
             b.orders.add(o);

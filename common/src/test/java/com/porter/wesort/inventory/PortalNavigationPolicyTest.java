@@ -12,9 +12,8 @@ class PortalNavigationPolicyTest {
         for (int missing = 0; missing < 6; missing++) {
             boolean[] inputs = {true, true, true, true, true, true};
             inputs[missing] = false;
-            assertFalse(
-                    PortalNavigationPolicy.mayBootstrap(
-                            inputs[0], inputs[1], inputs[2], inputs[3], inputs[4], inputs[5]));
+            assertFalse(PortalNavigationPolicy.mayBootstrap(
+                    inputs[0], inputs[1], inputs[2], inputs[3], inputs[4], inputs[5]));
         }
     }
 

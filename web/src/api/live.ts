@@ -32,6 +32,12 @@ const LIVE_PREFIXES: readonly unknown[][] = [
   ["custody"],
   ["deposits"],
   ["boxes", "jobs"],
+  ["guild"],
+  ["kits"],
+  ["stash-defs"],
+  ["users"],
+  ["quotas"],
+  ["auth"],
 ];
 
 /** TanStack Query key prefixes invalidated for a set of live channels. */
@@ -61,6 +67,10 @@ export function prefixesForChannels(channels: string[]): unknown[][] {
     add(["bots"]);
     add(["operations"]);
   }
+  if (has("settings")) {
+    for (const key of [["guild"], ["kits"], ["stash-defs"], ["users"], ["quotas"], ["server"], ["stashes"], ["auth"]]) add(key);
+  }
+  if (has("auth")) add(["auth"]);
   if (has("operations")) {
     add(["operations"]);
     add(["physical"]);

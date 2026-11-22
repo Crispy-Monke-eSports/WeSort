@@ -109,8 +109,25 @@ final class LiveEvents {
             bump("index", "operations");
             return;
         }
-        // Any other website write (boxes, custody, handoffs, deposits, jobs, physical,
-        // guild, quotas, server, stash-defs, ...): the operations view may show it.
+        if (path.startsWith("/api/v1/users")) {
+            bump("settings", "auth");
+            return;
+        }
+        if (path.startsWith("/api/v1/auth/")) {
+            bump("auth");
+            return;
+        }
+        if (path.startsWith("/api/v1/kits")
+                || path.startsWith("/api/v1/guild")
+                || path.startsWith("/api/v1/quotas")
+                || path.startsWith("/api/v1/stash-defs")
+                || path.startsWith("/api/v1/server")
+                || path.startsWith("/api/v1/agents")
+                || path.startsWith("/api/v1/link")) {
+            bump("settings", "operations");
+            return;
+        }
+        // All other physical/fulfillment writes affect the operations view.
         bump("operations");
     }
 }

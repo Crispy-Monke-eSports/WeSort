@@ -127,8 +127,8 @@ public class Stash {
             this(pos, item, stacks, when, dimension, "", "");
         }
 
-        public Orphan(BlockPos pos, String item, int stacks, String when, String dimension,
-                      String orderId, String blockId) {
+        public Orphan(
+                BlockPos pos, String item, int stacks, String when, String dimension, String orderId, String blockId) {
             this.pos = pos;
             this.item = item;
             this.stacks = stacks;

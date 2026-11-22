@@ -15,6 +15,7 @@ import com.porter.wesort.stash.DeliveryRoom;
 import com.porter.wesort.stash.ItemPreviewScreen;
 import com.porter.wesort.stash.Kit;
 import com.porter.wesort.stash.Kits;
+import com.porter.wesort.stash.PlacedShulkerRecovery;
 import com.porter.wesort.stash.StackInfo;
 import com.porter.wesort.stash.StackInfo.BulkKey;
 import com.porter.wesort.stash.Stash;
@@ -22,7 +23,6 @@ import com.porter.wesort.stash.Stash.Box;
 import com.porter.wesort.stash.StashIndex;
 import com.porter.wesort.stash.StashSafety;
 import com.porter.wesort.stash.StashWatch;
-import com.porter.wesort.stash.PlacedShulkerRecovery;
 import com.porter.wesort.utils.BaritoneHelper;
 import com.porter.wesort.utils.ChestStack;
 import com.porter.wesort.utils.PlaceSearch;
@@ -100,8 +100,8 @@ import net.minecraft.world.level.block.TrappedChestBlock;
 import net.minecraft.world.level.block.entity.BarrelBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.ChestBlockEntity;
-import net.minecraft.world.level.block.entity.SignBlockEntity;
 import net.minecraft.world.level.block.entity.ShulkerBoxBlockEntity;
+import net.minecraft.world.level.block.entity.SignBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.ChestType;
 import net.minecraft.world.phys.AABB;
@@ -8903,18 +8903,22 @@ public class StashSorter extends Module {
         if (stash == null) return;
         Stash.Orphan previous = stash.orphans.stream()
                 .filter(o -> o.pos.equals(at) && Stash.sameDimension(o.dimension, Stash.currentDimension()))
-                .findFirst().orElse(null);
+                .findFirst()
+                .orElse(null);
         String owner = previous != null && !previous.orderId.isEmpty()
-                ? previous.orderId : orderRunner.running() ? orderRunner.orderId() : "";
-        String id = placedItemId.isEmpty() && mc.level.isLoaded(at) && shulkerAt(at)
-                ? blockId(mc.level, at) : placedItemId;
+                ? previous.orderId
+                : orderRunner.running() ? orderRunner.orderId() : "";
+        String id =
+                placedItemId.isEmpty() && mc.level.isLoaded(at) && shulkerAt(at) ? blockId(mc.level, at) : placedItemId;
         stash.orphans.removeIf(o -> o.pos.equals(at) && Stash.sameDimension(o.dimension, Stash.currentDimension()));
         stash.orphans.add(new Stash.Orphan(
                 at,
                 item,
                 stacks,
-                previous != null ? previous.when : java.time.LocalDateTime.now()
-                        .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")),
+                previous != null
+                        ? previous.when
+                        : java.time.LocalDateTime.now()
+                                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")),
                 Stash.currentDimension(),
                 owner,
                 previous != null && !previous.blockId.isEmpty() ? previous.blockId : id));
@@ -8929,7 +8933,6 @@ public class StashSorter extends Module {
             stash.save();
         }
     }
-
 
     /**
      * Reconcile all shulker block entities in loaded perimeter chunks. Unknown boxes are drop-offs;
@@ -8947,18 +8950,25 @@ public class StashSorter extends Module {
         for (int cx = min.getX() >> 4; cx <= max.getX() >> 4; cx++) {
             for (int cz = min.getZ() >> 4; cz <= max.getZ() >> 4; cz++) {
                 if (!mc.level.hasChunk(cx, cz)) continue;
-                for (BlockEntity entity : mc.level.getChunk(cx, cz).getBlockEntities().values()) {
+                for (BlockEntity entity :
+                        mc.level.getChunk(cx, cz).getBlockEntities().values()) {
                     if (!(entity instanceof ShulkerBoxBlockEntity)) continue;
                     BlockPos pos = entity.getBlockPos();
                     if (!stash.inArea(pos) || !shulkerAt(pos)) continue;
                     seen.add(pos);
-                    if (stash.orphans.stream().anyMatch(o -> o.pos.equals(pos)
-                            && (o.dimension.isEmpty() || Stash.sameDimension(o.dimension, dimension)))) continue;
+                    if (stash.orphans.stream()
+                            .anyMatch(o -> o.pos.equals(pos)
+                                    && (o.dimension.isEmpty() || Stash.sameDimension(o.dimension, dimension))))
+                        continue;
                     stash.orphans.add(new Stash.Orphan(
-                            pos.immutable(), "shulker box", 0,
+                            pos.immutable(),
+                            "shulker box",
+                            0,
                             java.time.LocalDateTime.now()
                                     .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")),
-                            dimension, "", blockId(mc.level, pos)));
+                            dimension,
+                            "",
+                            blockId(mc.level, pos)));
                     changed = true;
                     info("Discovered placed shulker at %s; queued for stash recovery.", pos.toShortString());
                 }
@@ -8977,10 +8987,11 @@ public class StashSorter extends Module {
             stash.markDirty();
             stash.save();
         }
-        if (stash.orphans.stream().anyMatch(o -> stash.inArea(o.pos)
-                && (o.dimension.isEmpty() || Stash.sameDimension(o.dimension, dimension))
-                && PlacedShulkerRecovery.shouldRecover(
-                        o.orderId, orderRunner.running() ? orderRunner.orderId() : null))) idle = false;
+        if (stash.orphans.stream()
+                .anyMatch(o -> stash.inArea(o.pos)
+                        && (o.dimension.isEmpty() || Stash.sameDimension(o.dimension, dimension))
+                        && PlacedShulkerRecovery.shouldRecover(
+                                o.orderId, orderRunner.running() ? orderRunner.orderId() : null))) idle = false;
     }
 
     /**
@@ -8989,23 +9000,35 @@ public class StashSorter extends Module {
      * return/deposit path. A live order keeps ownership of its own standing shulkers.
      */
     private boolean startOrphanRecovery() {
-        if (stash == null || !stash.hasArea() || pendingResume != null || handle != null
-                || compactor.active() || kitBuilder.active() || !freeInventorySlot()) return false;
+        if (stash == null
+                || !stash.hasArea()
+                || pendingResume != null
+                || handle != null
+                || compactor.active()
+                || kitBuilder.active()
+                || !freeInventorySlot()) return false;
         String active = orderRunner.running() ? orderRunner.orderId() : null;
         for (Stash.Orphan orphan : new ArrayList<>(stash.orphans)) {
             if (!stash.inArea(orphan.pos)
                     || !orphan.dimension.isEmpty() && !Stash.sameDimension(orphan.dimension, Stash.currentDimension())
                     || !PlacedShulkerRecovery.shouldRecover(orphan.orderId, active)
                     || ticks < recoveryRetryAt.getOrDefault(orphan.pos, 0)
-                    || !mc.level.isLoaded(orphan.pos) || !shulkerAt(orphan.pos)) continue;
+                    || !mc.level.isLoaded(orphan.pos)
+                    || !shulkerAt(orphan.pos)) continue;
 
             String actualId = blockId(mc.level, orphan.pos);
             if (!orphan.blockId.isEmpty() && !actualId.equals(orphan.blockId)) {
                 // The original box was replaced. Treat the replacement as a new drop-off,
                 // never reuse ownership or colour evidence from the previous box.
                 stash.orphans.remove(orphan);
-                stash.orphans.add(new Stash.Orphan(orphan.pos, "shulker box", 0,
-                        java.time.LocalDateTime.now().toString(), Stash.currentDimension(), "", actualId));
+                stash.orphans.add(new Stash.Orphan(
+                        orphan.pos,
+                        "shulker box",
+                        0,
+                        java.time.LocalDateTime.now().toString(),
+                        Stash.currentDimension(),
+                        "",
+                        actualId));
                 stash.markDirty();
                 stash.save();
                 return false;
@@ -9030,9 +9053,12 @@ public class StashSorter extends Module {
 
     /** Resume an interrupted recovery without treating a foreign shulker as a kit or compaction. */
     private boolean beginOrphanRecovery(Stash.InFlight recovery) {
-        if (recovery.placed == null || !stash.hasArea() || !stash.inArea(recovery.placed)
+        if (recovery.placed == null
+                || !stash.hasArea()
+                || !stash.inArea(recovery.placed)
                 || !Stash.sameDimension(recovery.dimension, Stash.currentDimension())
-                || mc.player.containerMenu != mc.player.inventoryMenu || !freeInventorySlot()) return false;
+                || mc.player.containerMenu != mc.player.inventoryMenu
+                || !freeInventorySlot()) return false;
         recoveringOrphan = true;
         resuming = true;
         resumeStarted = ticks;
@@ -9077,7 +9103,8 @@ public class StashSorter extends Module {
                 stash.markDirty();
                 info("The shulker I left at %s is gone.", orphan.pos.toShortString());
             } else {
-                info("Placed shulker at %s (since %s) queued for recovery when its order is inactive.",
+                info(
+                        "Placed shulker at %s (since %s) queued for recovery when its order is inactive.",
                         orphan.pos.toShortString(), orphan.when);
             }
         }

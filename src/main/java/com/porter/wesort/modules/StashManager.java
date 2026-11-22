@@ -331,8 +331,32 @@ public class StashManager extends Module {
     // signed Manager connection and dedicated world-interaction policy active
     // while the navigation harness tests guard cases without a competing sorter.
     private boolean e2eInspectionHold;
+    private boolean e2ePhysicalSortingHold;
+
+    /**
+     * Only the isolated Minecraft test may temporarily postpone sort operations
+     * while still allowing the genuine Manager to scan physical containers.
+     * This is not an inventory permit and cannot authorize any mutation.
+     */
+    public void e2eHoldPhysicalSorting(boolean hold) {
+        requireE2eFixture();
+        if (hold && !dedicatedProfile())
+            throw new IllegalStateException("E2E physical sort hold requires an active dedicated Manager");
+        e2ePhysicalSortingHold = hold;
+    }
 
     public void e2eHoldAutonomousWork(boolean hold) {
+        requireE2eFixture();
+        if (hold && !dedicatedProfile())
+            throw new IllegalStateException("E2E inspection hold requires an active dedicated Manager profile");
+        e2eInspectionHold = hold;
+        if (hold) {
+            StashSorter sorter = WeSortAddon.sorter();
+            if (sorter != null) sorter.drive(false);
+        }
+    }
+
+    private static void requireE2eFixture() {
         java.nio.file.Path marker = mc.gameDirectory.toPath().resolve("wesort-e2e/installation.txt");
         try {
             if (!java.nio.file.Files.isRegularFile(marker)
@@ -340,13 +364,6 @@ public class StashManager extends Module {
                 throw new IllegalStateException("E2E inspection hold requires a verified isolated test fixture");
         } catch (java.io.IOException invalidFixture) {
             throw new IllegalStateException("Cannot verify isolated E2E fixture", invalidFixture);
-        }
-        if (hold && !dedicatedProfile())
-            throw new IllegalStateException("E2E inspection hold requires an active dedicated Manager profile");
-        e2eInspectionHold = hold;
-        if (hold) {
-            StashSorter sorter = WeSortAddon.sorter();
-            if (sorter != null) sorter.drive(false);
         }
     }
 
@@ -370,6 +387,7 @@ public class StashManager extends Module {
 
     private void reset() {
         e2eInspectionHold = false;
+        e2ePhysicalSortingHold = false;
         generation++;
         current = null;
         fingerprint = 0;
@@ -454,7 +472,7 @@ public class StashManager extends Module {
     private long sortingUntil, sortingPoll;
 
     public boolean sortingEnabled() {
-        return isActive() && dedicatedProfile() && sortEnabled.get();
+        return isActive() && dedicatedProfile() && sortEnabled.get() && !e2ePhysicalSortingHold;
     }
 
     /** Orders waiting to be claimed: the sorter names no UUIDs while any wait, so packed orders keep matching. */

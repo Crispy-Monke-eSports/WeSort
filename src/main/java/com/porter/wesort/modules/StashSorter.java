@@ -8925,9 +8925,11 @@ public class StashSorter extends Module {
                 .filter(o -> o.pos.equals(at) && Stash.sameDimension(o.dimension, Stash.currentDimension()))
                 .findFirst()
                 .orElse(null);
-        String owner = previous != null
-                ? previous.orderId
-                : job != Job.Recover && orderRunner.running() ? orderRunner.orderId() : "";
+        // Only a new placement establishes ownership; later verification/recovery keeps it.
+        // A previous occupant at the same position must not lend an old order ID to this one.
+        String owner = handle == Handle.Place
+                ? orderRunner.running() && !orderRunner.calledOff() ? orderRunner.orderId() : ""
+                : previous == null ? "" : previous.orderId;
         String id =
                 placedItemId.isEmpty() && mc.level.isLoaded(at) && shulkerAt(at) ? blockId(mc.level, at) : placedItemId;
         stash.orphans.removeIf(o -> o.pos.equals(at) && Stash.sameDimension(o.dimension, Stash.currentDimension()));

@@ -7628,8 +7628,9 @@ public class StashSorter extends Module {
         // A saved kit, finished or part built, stays whole
         if (isKitShulker(shulker)) return List.of();
 
-        // A chest signed for kits takes mixed shulkers whole instead
-        if (!keepWholeBoxes().isEmpty()) return List.of();
+        // Tier mode must never depend on signs. Actual kit and reserved boxes
+        // are already excluded above; old sign-only whole-box labels are irrelevant.
+        if (mode.get() == Mode.Signs && !keepWholeBoxes().isEmpty()) return List.of();
 
         List<Integer> out = new ArrayList<>();
         ItemStack[] inside = inside(shulker);

@@ -7,6 +7,37 @@ import org.junit.jupiter.api.Test;
 
 class PortalWorldSessionTest {
     @Test
+    void rejoiningLobbyBlocksWarehouseNavigationBeforePortalChunksLoad() {
+        var session = new PortalWorldSession();
+        assertTrue(session.awaitingBootstrap(true, true, true));
+        assertFalse(session.inLobby()); // no loaded portal needed to hold the warehouse path
+
+        // Even a lobby respawn or a new connection without loaded chunks
+        // must not lift the navigation fence.
+        session.observe(new Object(), "minecraft:overworld", 0, 0);
+        assertTrue(session.awaitingBootstrap(true, true, true));
+        session.reset();
+        assertTrue(session.awaitingBootstrap(true, true, true));
+        session.lobbySeen(0, 0); // ignored until a world is observed
+        assertTrue(session.awaitingBootstrap(true, true, true));
+    }
+
+    @Test
+    void survivalAtRemoteCoordinatesDoesNotArmLobbyBootstrap() {
+        var session = new PortalWorldSession();
+        assertFalse(session.awaitingBootstrap(true, true, false));
+        assertFalse(session.awaitingBootstrap(false, true, true));
+        assertTrue(session.awaitingBootstrap(true, false, false)); // manually forced portal mode
+        session.observe(new Object(), "minecraft:overworld", 0, 0);
+        session.lobbySeen(0, 0);
+        session.crossingAttempted();
+        assertTrue(session.observe(new Object(), "minecraft:overworld", 80_000, 0));
+        assertFalse(session.awaitingBootstrap(true, true, true));
+        session.reset();
+        assertFalse(session.awaitingBootstrap(true, true, false));
+    }
+
+    @Test
     void directSurvivalLoginDoesNotArmPortalMerelyBecauseServerIs6b6t() {
         var session = new PortalWorldSession();
         Object survival = new Object();

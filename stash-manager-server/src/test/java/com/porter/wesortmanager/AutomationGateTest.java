@@ -3,6 +3,7 @@ package com.porter.wesortmanager;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.google.gson.*;
+import com.porter.wesort.data.PhysicalSlots;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.*;
@@ -59,9 +60,33 @@ class AutomationGateTest {
         assertThrows(java.io.IOException.class, () -> new StockLedger(data));
     }
 
+    /** The race must test real physical holds, not the legacy aggregate-only stock fixture. */
+    private IndexStore storeWithPhysicalSlots() throws Exception {
+        var store = new IndexStore(data, CreativeTabs.NONE);
+        store.load();
+        var index = JsonParser.parseString(
+                        "{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"items\":[{\"key\":\"minecraft:diamond\",\"id\":\"minecraft:diamond\",\"count\":64,\"maxStack\":64}]}")
+                .getAsJsonObject();
+        var ledger = store.stock();
+        var physical = StockFixtures.physical(index, ledger.epoch(), ledger.revision(), ledger.revision() + 1, 0);
+        var diamond = new PhysicalSlots.Item(
+                "minecraft:diamond", "minecraft:diamond", 64, "{}", PhysicalSlots.Kind.ITEM, 0, List.of(), "");
+        var slots = List.of(new PhysicalSlots.Slot(0, 64, diamond));
+        var writer = new PhysicalSlots.Writer();
+        var slotRows = writer.slots(slots);
+        physical.addProperty("physicalVersion", 2);
+        physical.add("slotVariants", writer.variants());
+        var source = physical.getAsJsonArray("physicalSources").get(0).getAsJsonObject();
+        source.add("slots", slotRows);
+        source.addProperty("fingerprint", new PhysicalSlots.Snapshot(27, slots).fingerprint());
+        store.putIndex(physical);
+        return store;
+    }
+
     @Test
     void simultaneousSortingAndOrderRequestHaveNoOverlappingReservations() throws Exception {
-        var store = store();
+        var store = storeWithPhysicalSlots();
+        assertTrue(PhysicalReservations.read(store.stock(), "s", "a").hasSnapshots());
         var orders = new OrderStore(data, store);
         orders.load();
         var start = new CountDownLatch(1);

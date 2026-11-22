@@ -22,6 +22,7 @@ import com.porter.wesort.stash.Stash.Box;
 import com.porter.wesort.stash.StashIndex;
 import com.porter.wesort.stash.StashSafety;
 import com.porter.wesort.stash.StashWatch;
+import com.porter.wesort.stash.PlacedShulkerRecovery;
 import com.porter.wesort.utils.BaritoneHelper;
 import com.porter.wesort.utils.ChestStack;
 import com.porter.wesort.utils.PlaceSearch;
@@ -100,6 +101,7 @@ import net.minecraft.world.level.block.entity.BarrelBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import net.minecraft.world.level.block.entity.SignBlockEntity;
+import net.minecraft.world.level.block.entity.ShulkerBoxBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.ChestType;
 import net.minecraft.world.phys.AABB;
@@ -626,6 +628,7 @@ public class StashSorter extends Module {
         Fetch,
         Clean,
         Fill,
+        Recover,
         Compact,
         Deliver,
         Return,
@@ -1262,6 +1265,8 @@ public class StashSorter extends Module {
     private static final int RESUME_MAX_TICKS = 20 * 60 * 10;
     private Stash.InFlight pendingResume;
     private boolean resuming, resumeVerify, resumeFinishOnly, resumeDimensionSaid;
+    private boolean recoveringOrphan;
+    private final Map<BlockPos, Integer> recoveryRetryAt = new HashMap<>();
     private int resumeStarted;
     private String placedItemId = "";
     private BlockPos lastGoodStand;
@@ -1973,6 +1978,8 @@ public class StashSorter extends Module {
         resumeVerify = false;
         resumeFinishOnly = false;
         resumeDimensionSaid = false;
+        recoveringOrphan = false;
+        recoveryRetryAt.clear();
         syncedHandle = null;
         syncedPlaced = null;
         syncedConfirmed = false;
@@ -2361,6 +2368,9 @@ public class StashSorter extends Module {
             return;
         }
         ticks++;
+        // Track every placed shulker in the loaded portion of the assigned bounding box, including
+        // player drop-offs, even while an order keeps the bot busy for a long time.
+        if (ticks % 100 == 0) observePlacedShulkers();
         // Whatever the sorter is doing, a skipped container whose time has come is made eligible again
         releaseDueSurveys();
         if (handle != null) lastOwnAct = ticks;
@@ -3203,6 +3213,9 @@ public class StashSorter extends Module {
         // compacting,
         // labelling, saved kits, the ground. They wait until it is finished or parked
         if (orderRunner.planned() && orderPriorityStep()) return true;
+
+        // Unclaimed world shulkers use the same stash put-away path as a drop-off.
+        if (startOrphanRecovery()) return true;
 
         // Exploring: whatever unknown or old is within reach is read before moving on to the next waypoint
         if (exploring && stash.hasArea()) {
@@ -8206,7 +8219,13 @@ public class StashSorter extends Module {
             } else {
                 ItemStack got = mc.player.getInventory().getItem(found).copy();
                 collectedSlot = found;
-                if (found < 36 && !carry.contains(found)) {
+                if (job == Job.Recover && found < 36) {
+                    // A collected world drop-off belongs to the warehouse, never to the player's
+                    // pre-existing inventory. In scan-only mode the return path uses orderHeld.
+                    carry.add(found);
+                    stashHeld.put(found, got.copy());
+                    if (!sorting()) orderHeld.put(found, got.copy());
+                } else if (found < 36 && !carry.contains(found)) {
                     int free = freeCarrySlot();
                     if (free != -1) {
                         InvUtils.move().from(found).to(free);
@@ -8233,6 +8252,12 @@ public class StashSorter extends Module {
                 journalShulkerPhase(com.porter.wesort.inventory.PhysicalWork.Phase.STORE);
             }
             clearOrphan(placed);
+            if (job == Job.Recover) {
+                idle = false;
+                version++;
+                clearStalled();
+                stuckCarried.clear();
+            }
             endHandling();
             return;
         }
@@ -8508,6 +8533,7 @@ public class StashSorter extends Module {
         syncedConfirmed = false;
         if (resuming) finishResume();
         else syncInFlight();
+        recoveringOrphan = false;
         syncHeld();
         if (stash.isDirty()) stash.save();
         job = null;
@@ -8527,7 +8553,10 @@ public class StashSorter extends Module {
         alertError(
                 "%s It holds %s of %s. No more shulkers are put down until sorting is restarted.",
                 why, stacks > 0 ? stacks + " stacks" : "some stacks", what);
-        if (at != null) recordOrphan(at, what, stacks);
+        if (at != null) {
+            recordOrphan(at, what, stacks);
+            if (job == Job.Recover) recoveryRetryAt.put(at, ticks + 20 * 60 * 5);
+        }
         dropLost = true;
         compactor.drop();
         if (isKitJob()) kitBuilder.suspend(why);
@@ -8693,6 +8722,7 @@ public class StashSorter extends Module {
     private boolean startResume() {
         Stash.InFlight r = pendingResume;
         if (r == null || stash == null || resuming) return false;
+        if (Job.Recover.name().equals(r.job)) return beginOrphanRecovery(r);
 
         String here = mc.level.dimension().toString();
         if (!r.dimension.isEmpty() && !r.dimension.equals(here)) {
@@ -8871,13 +8901,23 @@ public class StashSorter extends Module {
 
     private void recordOrphan(BlockPos at, String item, int stacks) {
         if (stash == null) return;
-        stash.orphans.removeIf(o -> o.pos.equals(at));
+        Stash.Orphan previous = stash.orphans.stream()
+                .filter(o -> o.pos.equals(at) && Stash.sameDimension(o.dimension, Stash.currentDimension()))
+                .findFirst().orElse(null);
+        String owner = previous != null && !previous.orderId.isEmpty()
+                ? previous.orderId : orderRunner.running() ? orderRunner.orderId() : "";
+        String id = placedItemId.isEmpty() && mc.level.isLoaded(at) && shulkerAt(at)
+                ? blockId(mc.level, at) : placedItemId;
+        stash.orphans.removeIf(o -> o.pos.equals(at) && Stash.sameDimension(o.dimension, Stash.currentDimension()));
         stash.orphans.add(new Stash.Orphan(
                 at,
                 item,
                 stacks,
-                java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")),
-                mc.level.dimension().toString()));
+                previous != null ? previous.when : java.time.LocalDateTime.now()
+                        .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")),
+                Stash.currentDimension(),
+                owner,
+                previous != null && !previous.blockId.isEmpty() ? previous.blockId : id));
         stash.markDirty();
         stash.save();
     }
@@ -8891,8 +8931,8 @@ public class StashSorter extends Module {
     }
 
     /**
-     * When sorting starts: shulkers left standing last time that are gone now are forgotten, and any still there mean no
-     * more are put down.
+     * At startup, discard records for blocks confirmed gone; others are queued for automatic
+     * collection rather than requiring an operator to pick them up.
      */
     private void checkOrphans() {
         String here = mc.level.dimension().toString();
@@ -8906,10 +8946,8 @@ public class StashSorter extends Module {
                 stash.markDirty();
                 info("The shulker I left at %s is gone.", orphan.pos.toShortString());
             } else {
-                alert(
-                        "A shulker with %d stacks of %s is still standing at %s (since %s), pick it up by hand. No shulkers are put down until it's gone.",
-                        orphan.stacks, orphan.item, orphan.pos.toShortString(), orphan.when);
-                dropLost = true;
+                info("Placed shulker at %s (since %s) queued for recovery when its order is inactive.",
+                        orphan.pos.toShortString(), orphan.when);
             }
         }
     }

@@ -43,9 +43,7 @@ class ConnectionStateTest {
 
     @Test
     void signedControlPresenceIsOnlineEvenWithoutStashOrInventory() {
-        assertEquals(
-                ConnectionState.ONLINE,
-                ConnectionState.ofVerified(true, "http://h:1", "k", "no stash", true));
+        assertEquals(ConnectionState.ONLINE, ConnectionState.ofVerified(true, "http://h:1", "k", "no stash", true));
         assertEquals(
                 ConnectionState.ONLINE,
                 ConnectionState.ofVerified(true, "http://h:1", "k", "awaiting server inventory", true));
@@ -59,7 +57,8 @@ class ConnectionStateTest {
 
     @Test
     void oldOnlineFlagDoesNotSurviveConnectionLoss() {
-        assertEquals(ConnectionState.CONTACTING, ConnectionState.ofVerified(true, "http://h:1", "k", "online", false));
+        assertEquals(
+                ConnectionState.CONTACTING, ConnectionState.ofVerified(true, "http://h:1", "k", "online", false));
         assertEquals(ConnectionState.ONLINE, ConnectionState.ofVerified(true, "http://h:1", "k", "online", true));
     }
 
@@ -68,7 +67,9 @@ class ConnectionStateTest {
         assertEquals(ConnectionState.DISCONNECTED, ConnectionState.ofVerified(false, "http://h:1", "k", "idle", true));
         assertEquals(ConnectionState.NOT_CONFIGURED, ConnectionState.ofVerified(true, "", "k", "idle", true));
         assertEquals(ConnectionState.WRONG_KEY, ConnectionState.ofVerified(true, "http://h:1", "k", "error 401", true));
-        assertEquals(ConnectionState.WRONG_SERVER, ConnectionState.ofVerified(true, "http://h:1", "k", "wrong server", true));
+        assertEquals(
+                ConnectionState.WRONG_SERVER,
+                ConnectionState.ofVerified(true, "http://h:1", "k", "wrong server", true));
         assertEquals(
                 ConnectionState.SIGNATURE_INVALID,
                 ConnectionState.ofVerified(true, "http://h:1", "k", "server signature invalid", true));

@@ -68,8 +68,7 @@ class AutomationGateTest {
                         "{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"items\":[{\"key\":\"minecraft:diamond\",\"id\":\"minecraft:diamond\",\"count\":64,\"maxStack\":64}]}")
                 .getAsJsonObject();
         var ledger = store.stock();
-        var physical = StockFixtures.physical(
-                index, ledger.epoch(), ledger.revision(), ledger.revision() + 1, 0);
+        var physical = StockFixtures.physical(index, ledger.epoch(), ledger.revision(), ledger.revision() + 1, 0);
         var diamond = new PhysicalSlots.Item(
                 "minecraft:diamond", "minecraft:diamond", 64, "{}", PhysicalSlots.Kind.ITEM, 0, List.of(), "");
         var slots = List.of(new PhysicalSlots.Slot(0, 64, diamond));

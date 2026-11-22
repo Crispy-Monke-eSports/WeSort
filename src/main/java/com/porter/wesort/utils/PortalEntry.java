@@ -22,6 +22,23 @@ public final class PortalEntry {
         return portal.relative(outward);
     }
 
+    /**
+     * A walkable stand can be one block above or below the bottom portal block:
+     * lobby paths often use slabs or stairs. Only a perpendicular adjacent cell
+     * may be used, never a cell inside the portal or along its frame.
+     */
+    public static boolean adjacentStand(BlockPos portal, Direction.Axis axis, BlockPos stand) {
+        if (portal == null || stand == null) return false;
+        if (Math.abs(stand.getY() - portal.getY()) > 1) return false;
+        if (axis == Direction.Axis.X) {
+            return stand.getX() == portal.getX() && Math.abs(stand.getZ() - portal.getZ()) == 1;
+        }
+        if (axis == Direction.Axis.Z) {
+            return stand.getZ() == portal.getZ() && Math.abs(stand.getX() - portal.getX()) == 1;
+        }
+        return false;
+    }
+
     /** Close enough to leave the safe Baritone approach and enter the portal by hand. */
     public static boolean atApproach(BlockPos approach, double x, double y, double z) {
         double dx = x - approach.getX() - 0.5;

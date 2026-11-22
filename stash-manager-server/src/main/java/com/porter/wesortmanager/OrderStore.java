@@ -2145,7 +2145,12 @@ final class OrderStore {
     static boolean ownsReservedRoot(Order order, String source, String path) {
         if (order.allocations == null) return false;
         var root = new PhysicalReservations.Root(source, path);
-        return order.allocations.stream().anyMatch(allocation -> root.equals(allocation.root()));
+        // Reserving the contents of a shulker does NOT authorize removing its
+        // outer box from the UUID registry. Only whole-box allocations may do that.
+        return order.allocations.stream()
+                .anyMatch(allocation -> allocation.outer()
+                        && allocation.ref().startsWith("shulker:")
+                        && root.equals(allocation.root()));
     }
 
     /** Crash-safe replay of registry removals committed to a saved order snapshot. */

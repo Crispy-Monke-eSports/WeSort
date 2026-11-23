@@ -116,8 +116,7 @@ final class AuditLog {
         JsonObject root = new JsonObject();
         root.add("entries", list);
         try {
-            if (Files.isSymbolicLink(file))
-                throw new IOException("Audit log must not be a symbolic link");
+            if (Files.isSymbolicLink(file)) throw new IOException("Audit log must not be a symbolic link");
             AtomicFiles.write(file, Json.GSON.toJson(root).getBytes(StandardCharsets.UTF_8), true);
         } catch (IOException e) {
             throw new UncheckedIOException("Cannot persist " + file.getFileName(), e);

@@ -23,8 +23,11 @@ class AuditLogTest {
         AuditLog restarted = new AuditLog(data);
         restarted.load();
         assertEquals(1, restarted.size());
-        assertEquals("order.created", restarted.newest(1).get(0).getAsJsonObject().get("action").getAsString());
-        assertEquals(1234L, restarted.newest(1).get(0).getAsJsonObject().get("at").getAsLong());
+        assertEquals(
+                "order.created",
+                restarted.newest(1).get(0).getAsJsonObject().get("action").getAsString());
+        assertEquals(
+                1234L, restarted.newest(1).get(0).getAsJsonObject().get("at").getAsLong());
     }
 
     @Test

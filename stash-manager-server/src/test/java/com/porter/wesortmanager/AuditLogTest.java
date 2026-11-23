@@ -73,4 +73,33 @@ class AuditLogTest {
                 "after recovery",
                 restarted.newest(1).get(0).getAsJsonObject().get("detail").getAsString());
     }
+
+    @Test
+    void failedAppendPreservesPreviouslyCommittedHistory() throws IOException {
+        AuditLog audit = new AuditLog(data);
+        audit.add("member-1", "Member", "order.created", "first", "127.0.0.1");
+
+        Path auditFile = data.resolve("audit.json");
+        Path savedFile = data.resolve("saved-audit.json");
+        Files.move(auditFile, savedFile);
+        Files.createDirectory(auditFile);
+        assertThrows(
+                UncheckedIOException.class,
+                () -> audit.add("member-2", "Member", "order.created", "must not appear", "127.0.0.1"));
+        assertEquals(1, audit.size());
+
+        Files.delete(auditFile);
+        Files.move(savedFile, auditFile);
+        AuditLog fromDisk = new AuditLog(data);
+        fromDisk.load();
+        assertEquals(1, fromDisk.size());
+
+        audit.add("member-2", "Member", "order.created", "committed", "127.0.0.1");
+        AuditLog restarted = new AuditLog(data);
+        restarted.load();
+        assertEquals(2, restarted.size());
+        assertEquals(
+                "committed",
+                restarted.newest(1).get(0).getAsJsonObject().get("detail").getAsString());
+    }
 }

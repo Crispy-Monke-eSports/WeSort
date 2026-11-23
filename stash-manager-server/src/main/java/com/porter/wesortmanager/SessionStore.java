@@ -14,7 +14,6 @@ import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.HexFormat;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.function.LongSupplier;
 
@@ -68,16 +67,21 @@ final class SessionStore {
     }
 
     synchronized void load() throws IOException {
+        sessions.clear();
+        elevatedUntil.clear();
         if (file == null || !Files.exists(file)) return;
+        var loaded = new HashMap<String, Session>();
         try {
             JsonArray list = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8))
                     .getAsJsonArray();
             for (JsonElement e : list) {
                 JsonObject o = e.getAsJsonObject();
                 String hash = o.get("hash").getAsString();
-                if (!hash.matches("[0-9a-f]{64}")) continue;
-                // Sessions from before sub-users have no user: they are the owner's.
-                String user = o.has("user") ? o.get("user").getAsString() : Users.OWNER_ID;
+                if (!hash.matches("[0-9a-f]{64}")) throw new IllegalArgumentException("Invalid session hash");
+                // A missing user is not evidence of Owner identity.
+                String user = o.get("user").getAsString();
+                if (!Users.OWNER_ID.equals(user) && !Users.ID.matcher(user).matches())
+                    throw new IllegalArgumentException("Invalid session user");
                 Session s = new Session(
                         user,
                         o.get("created").getAsLong(),
@@ -86,10 +90,13 @@ final class SessionStore {
                 s.cred = o.has("cred") && o.get("cred").isJsonPrimitive()
                         ? o.get("cred").getAsString()
                         : null;
-                sessions.put(hash, s);
+                if (loaded.putIfAbsent(hash, s) != null || loaded.size() > MAX_SESSIONS)
+                    throw new IllegalArgumentException("Invalid session registry");
             }
-        } catch (RuntimeException e) {
-            System.err.println("Skipping " + file.getFileName() + " (everyone has to log in again): " + e);
+            sessions.putAll(loaded);
+        } catch (RuntimeException invalid) {
+            // Do not retain a valid-looking prefix of a damaged registry.
+            System.err.println("Invalid " + file.getFileName() + "; all users must log in again");
         }
         AtomicFiles.ownerOnly(file);
         if (prune()) save();
@@ -143,10 +150,7 @@ final class SessionStore {
         Session s = new Session(user, now, now + LIFETIME_MS, now);
         s.cred = cred;
         next.put(hash(token), s);
-        persist(next);
-        sessions.clear();
-        sessions.putAll(next);
-        elevatedUntil.keySet().retainAll(sessions.keySet());
+        commit(next);
         return token;
     }
 
@@ -192,18 +196,13 @@ final class SessionStore {
     }
 
     /** Ends every session of this user except keepToken's (null ends them all). Returns how many ended. */
-    synchronized int removeUser(String user, String keepToken) {
+    synchronized int removeUser(String user, String keepToken) throws IOException {
         String keep = keepToken == null ? null : hash(keepToken);
-        int removed = 0;
-        for (Iterator<Map.Entry<String, Session>> it = sessions.entrySet().iterator(); it.hasNext(); ) {
-            Map.Entry<String, Session> e = it.next();
-            if (e.getValue().user.equals(user) && !e.getKey().equals(keep)) {
-                it.remove();
-                removed++;
-            }
-        }
-        elevatedUntil.keySet().removeIf(h -> !sessions.containsKey(h));
-        if (removed > 0) save();
+        var next = new HashMap<>(sessions);
+        next.entrySet()
+                .removeIf(e -> e.getValue().user.equals(user) && !e.getKey().equals(keep));
+        int removed = sessions.size() - next.size();
+        if (removed > 0) commit(next);
         return removed;
     }
 
@@ -216,10 +215,10 @@ final class SessionStore {
     }
 
     /** Ends one session. */
-    synchronized void remove(String token) {
+    synchronized void remove(String token) throws IOException {
         if (token == null) return;
-        elevatedUntil.remove(hash(token));
-        if (sessions.remove(hash(token)) != null) save();
+        var next = new HashMap<>(sessions);
+        if (next.remove(hash(token)) != null) commit(next);
     }
 
     /** The password was just typed in this session: dangerous actions are allowed for 15 minutes. */
@@ -246,17 +245,12 @@ final class SessionStore {
     }
 
     /** Ends every session except keepToken's (null ends them all). Returns how many ended. */
-    synchronized int removeAllExcept(String keepToken) {
+    synchronized int removeAllExcept(String keepToken) throws IOException {
         String keep = keepToken == null ? null : hash(keepToken);
-        int removed = 0;
-        for (Iterator<String> it = sessions.keySet().iterator(); it.hasNext(); ) {
-            if (!it.next().equals(keep)) {
-                it.remove();
-                removed++;
-            }
-        }
-        elevatedUntil.keySet().removeIf(h -> !sessions.containsKey(h));
-        if (removed > 0) save();
+        var next = new HashMap<>(sessions);
+        next.keySet().removeIf(h -> !h.equals(keep));
+        int removed = sessions.size() - next.size();
+        if (removed > 0) commit(next);
         return removed;
     }
 
@@ -293,6 +287,13 @@ final class SessionStore {
     private boolean prune() {
         long now = clock.getAsLong();
         return sessions.values().removeIf(s -> now >= s.expires);
+    }
+
+    private void commit(Map<String, Session> snapshot) throws IOException {
+        persist(snapshot);
+        sessions.clear();
+        sessions.putAll(snapshot);
+        elevatedUntil.keySet().retainAll(sessions.keySet());
     }
 
     private void persist(Map<String, Session> snapshot) throws IOException {

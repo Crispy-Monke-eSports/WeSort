@@ -372,7 +372,12 @@ final class AuthRoutes {
     }
 
     private void logout(HttpExchange ex) throws IOException {
-        sessions.remove((String) Http.attr(ex, Router.SESSION_TOKEN));
+        try {
+            sessions.remove((String) Http.attr(ex, Router.SESSION_TOKEN));
+        } catch (IOException failed) {
+            Http.error(ex, 503, "Could not persist logout; retry");
+            return;
+        }
         ex.getResponseHeaders()
                 .add("Set-Cookie", SessionStore.clearCookie() + (config.secureCookies ? "; Secure" : ""));
         ex.getResponseHeaders()
@@ -383,7 +388,13 @@ final class AuthRoutes {
     /** The owner ends every session of every user; a sub-user ends their own. */
     private void logoutAll(HttpExchange ex) throws IOException {
         Users.Principal who = Router.user(ex);
-        int n = who.owner() ? sessions.removeAllExcept(null) : sessions.removeUser(who.id(), null);
+        int n;
+        try {
+            n = who.owner() ? sessions.removeAllExcept(null) : sessions.removeUser(who.id(), null);
+        } catch (IOException failed) {
+            Http.error(ex, 503, "Could not persist session revocation; retry");
+            return;
+        }
         System.out.println("Logged out " + (who.owner() ? "every website session" : "every session of " + who.name())
                 + " (" + n + ") from " + address(ex) + ".");
         audit.add(who, "logout-all", who.owner() ? "every user" : null, address(ex));
@@ -450,13 +461,23 @@ final class AuthRoutes {
                 return;
             }
         }
-        int ended = sessions.removeUser(who.id(), token);
+        int ended = 0;
+        boolean cleanupPending = false;
+        try {
+            ended = sessions.removeUser(who.id(), token);
+        } catch (IOException failed) {
+            // The password commit is authoritative: old credential tags no
+            // longer authenticate, even if cleaning up their rows must wait.
+            cleanupPending = true;
+            System.err.println("Could not persist old session cleanup after password change");
+        }
         sessions.elevate(token);
         System.out.println("Website password of " + who.name() + " changed from " + address(ex) + "; " + ended
                 + " other session(s) logged out.");
         audit.add(who, "password.change", null, address(ex));
         JsonObject out = Http.ok();
         out.addProperty("ended", ended);
+        if (cleanupPending) out.addProperty("sessionCleanupPending", true);
         Http.json(ex, 200, out);
     }
 

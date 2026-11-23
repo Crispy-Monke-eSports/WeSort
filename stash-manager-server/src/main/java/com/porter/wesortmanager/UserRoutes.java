@@ -187,7 +187,12 @@ final class UserRoutes {
             if (!sent.has("bots")) perms = perms.withBots(before.perms().bots());
         }
         Users.User u;
+        int ended = 0;
         try {
+            // Persist revocation before a disable or re-enable. A failed
+            // session write must never resurrect the old cookie later.
+            if (before != null && disabled != null && (disabled || before.disabled()))
+                ended = sessions.removeUser(before.id(), null);
             u = users.update(m.group(1), name, perms, disabled);
         } catch (Users.UserException e) {
             Http.error(ex, e.status, e.getMessage());
@@ -195,10 +200,6 @@ final class UserRoutes {
         } catch (IOException e) {
             saveFailed(ex, e);
             return;
-        }
-        int ended = 0;
-        if (u.disabled()) {
-            ended = sessions.removeUser(u.id(), null);
         }
         StringBuilder what = new StringBuilder(u.name());
         if (before != null && before.perms().guildOrders() != u.perms().guildOrders()) {

@@ -175,7 +175,7 @@ final class Router implements HttpHandler {
 
     /**
      * Who a session token belongs to now, or null. Ends the session when its user is gone or disabled, or when it
-     * was made with a password that has changed since. Sessions from before sub-users (no tag) are the owner's only.
+     * was made with a password that has changed since. Untagged legacy sessions must log in again.
      */
     static Users.Principal resolve(SessionStore sessions, Users users, Config config, String token) {
         if (config.dashboardPassword() == null) return null;
@@ -183,10 +183,14 @@ final class Router implements HttpHandler {
         if (userId == null) return null;
         Users.Principal p = users.principal(userId);
         String cred = sessions.credOf(token);
-        boolean credOk =
-                cred == null ? p != null && p.owner() : cred.equals(users.credTag(userId, config.dashboardPassword()));
+        boolean credOk = cred != null && cred.equals(users.credTag(userId, config.dashboardPassword()));
         if (p == null || !credOk) {
-            sessions.remove(token);
+            try {
+                sessions.remove(token);
+            } catch (IOException failed) {
+                // A stale credential remains invalid even if disk cleanup fails.
+                System.err.println("Could not persist stale session removal");
+            }
             return null;
         }
         return p;

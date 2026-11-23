@@ -64,8 +64,8 @@ class UsersTest {
         Auth.iterations = Auth.ITERATIONS;
     }
 
-    /** A pre-sub-users setup: the owner password in config.properties and a session in sessions.json without a user. */
-    String legacyOwnerSession;
+    /** A credential-bound owner session persisted before Manager startup. */
+    String persistedOwnerSession;
 
     @BeforeEach
     void start() throws Exception {
@@ -73,10 +73,7 @@ class UsersTest {
         config.setDashboardPassword(Auth.hash(OWNER_PW));
         config.setMinecraftServer("s");
         SessionStore old = new SessionStore(data);
-        legacyOwnerSession = old.create();
-        // Strip the user field, as an older server wrote it.
-        Path sf = data.resolve("sessions.json");
-        Files.writeString(sf, Files.readString(sf).replaceAll("\"user\":\\s*\"owner\",?", ""));
+        persistedOwnerSession = old.create(Users.OWNER_ID, Auth.tag(config.dashboardPassword()));
         startServer(config);
     }
 
@@ -237,15 +234,17 @@ class UsersTest {
     }
 
     @Test
-    void anExistingSinglePasswordSetupKeepsWorking() throws Exception {
-        // The session made before sub-users is the owner's.
-        Res state = get(legacyOwnerSession, "/api/v1/auth/state");
+    void credentialBoundOwnerSessionSurvivesStartupAndUntaggedSessionsAreRefused() throws Exception {
+        Res state = get(persistedOwnerSession, "/api/v1/auth/state");
         assertTrue(state.obj().get("loggedIn").getAsBoolean());
         JsonObject user = state.obj().getAsJsonObject("user");
         assertEquals("owner", user.get("id").getAsString());
         assertTrue(user.get("owner").getAsBoolean());
-        assertEquals(200, get(legacyOwnerSession, "/api/v1/users").status);
-        // The owner logs in as before (no username), or with the owner's name.
+        assertEquals(200, get(persistedOwnerSession, "/api/v1/users").status);
+        String untaggedOwner = sessions.create(Users.OWNER_ID);
+        assertEquals(401, get(untaggedOwner, "/api/v1/users").status);
+        assertFalse(get(untaggedOwner, "/api/v1/auth/state").obj().get("loggedIn").getAsBoolean());
+        // The owner logs in with no username or with the owner's name.
         assertNotNull(owner());
         assertNotNull(login("owner", OWNER_PW));
         assertNotNull(login(" OWNER ", OWNER_PW));
@@ -896,7 +895,7 @@ class UsersTest {
         for (int i = 0; i < 230; i++) sessions.create(id);
         assertEquals(SessionStore.MAX_PER_USER, sessions.countByUser().get(id));
         assertEquals(200, get(owner, "/api/v1/users").status, "the owner's session survived");
-        assertEquals(200, get(legacyOwnerSession, "/api/v1/stashes").status);
+        assertEquals(200, get(persistedOwnerSession, "/api/v1/stashes").status);
     }
 
     @Test
@@ -942,10 +941,11 @@ class UsersTest {
         assertEquals(200, changed.status, changed.raw.body());
         assertEquals(401, get(ownerLate, "/api/v1/users").status);
         assertEquals(200, get(owner, "/api/v1/users").status, "the session that changed it stays");
-        // A sub-user session without a tag (never made by this server) is refused; untagged owner sessions are old
-        // ones.
+        // A session without an explicit current credential tag is never authorized.
         String untagged = sessions.create(id);
         assertEquals(401, get(untagged, "/api/v1/stashes").status);
+        String untaggedOwner = sessions.create(Users.OWNER_ID);
+        assertEquals(401, get(untaggedOwner, "/api/v1/users").status);
     }
 
     @Test

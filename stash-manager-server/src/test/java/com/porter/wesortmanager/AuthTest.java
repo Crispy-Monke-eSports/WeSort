@@ -127,6 +127,50 @@ class AuthTest {
     }
 
     @Test
+    void corruptSessionRegistryNeverAuthenticatesAPartiallyLoadedPrefix(@TempDir Path dir) throws Exception {
+        var store = new SessionStore(dir, () -> 1);
+        String token = store.create();
+        Path file = dir.resolve("sessions.json");
+        var rows = com.google.gson.JsonParser.parseString(Files.readString(file)).getAsJsonArray();
+        rows.add(new com.google.gson.JsonObject());
+        Files.writeString(file, rows.toString());
+
+        var restarted = new SessionStore(dir, () -> 1);
+        restarted.load();
+        assertEquals(0, restarted.size());
+        assertFalse(restarted.valid(token));
+    }
+
+    @Test
+    void failedRevocationIsNotReportedAsADurableLogout(@TempDir Path dir) throws Exception {
+        var store = new SessionStore(dir, () -> 1);
+        String owner = store.create();
+        String member = store.create("u-123456789abc");
+        store.elevate(owner);
+        Path file = dir.resolve("sessions.json");
+        Path saved = Files.move(file, dir.resolve("sessions.saved"));
+        Files.createDirectory(file);
+        Files.writeString(file.resolve("obstruction"), "write failure");
+
+        assertThrows(java.io.IOException.class, () -> store.remove(owner));
+        assertThrows(java.io.IOException.class, () -> store.removeUser("u-123456789abc", null));
+        assertThrows(java.io.IOException.class, () -> store.removeAllExcept(null));
+        assertTrue(store.valid(owner));
+        assertTrue(store.valid(member));
+        assertTrue(store.elevated(owner));
+
+        Files.delete(file.resolve("obstruction"));
+        Files.delete(file);
+        Files.move(saved, file);
+        store.remove(owner);
+        assertEquals(1, store.removeUser("u-123456789abc", null));
+        var restarted = new SessionStore(dir, () -> 1);
+        restarted.load();
+        assertFalse(restarted.valid(owner));
+        assertFalse(restarted.valid(member));
+    }
+
+    @Test
     void cookieParsing() {
         String token = "abc_DEF-123";
         assertEquals(token, SessionStore.tokenFrom(List.of("other=1; wesort_session=" + token + "; x=y")));

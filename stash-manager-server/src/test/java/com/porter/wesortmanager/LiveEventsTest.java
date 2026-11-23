@@ -179,12 +179,11 @@ class LiveEventsTest {
     }
 
     /**
-     * The registered stream speaks SSE and pushes a handled website write: open
-     * GET /api/v1/events, POST a (rejected, still handled) order write, and the
-     * tab gets an update frame naming the orders channel.
+     * Only an accepted browser mutation changes the live revision. Invalid writes
+     * cannot appear as a successful change in another tab.
      */
     @Test
-    void streamPushesHandledWrites() throws Exception {
+    void streamPushesOnlyAcceptedWrites() throws Exception {
         String session = login();
         BlockingQueue<String> frames = new java.util.concurrent.LinkedBlockingQueue<>();
         Thread reader = new Thread(() -> readFrames(session, frames));
@@ -195,20 +194,30 @@ class LiveEventsTest {
             assertNotNull(hello, "no hello frame from /api/v1/events");
             assertTrue(hello.contains("event: hello"), hello);
 
-            int status = post(session, "/api/v1/orders/clear", "{}");
-            assertTrue(status == 400 || status == 200, "unexpected status " + status);
+            // Guild validation returns 400 before any persistent change.
+            int rejected =
+                    post(session, "/api/v1/guild", "{\"name\":\"\",\"description\":\"\",\"expectedRevision\":1}");
+            assertEquals(400, rejected, "invalid guild writes must be rejected");
+            String unexpected = frames.poll(750, TimeUnit.MILLISECONDS);
+            assertTrue(
+                    unexpected == null || !unexpected.contains("event: update"),
+                    "a rejected write must not broadcast an update: " + unexpected);
+
+            int accepted = post(
+                    session, "/api/v1/guild", "{\"name\":\"6b6t Guild\",\"description\":\"\",\"expectedRevision\":1}");
+            assertEquals(200, accepted, "valid guild write must succeed");
 
             String update = null;
             long end = System.currentTimeMillis() + 10_000;
             while (System.currentTimeMillis() < end) {
                 String frame = frames.poll(2, TimeUnit.SECONDS);
                 if (frame == null) break;
-                if (frame.contains("event: update") && frame.contains("orders")) {
+                if (frame.contains("event: update") && frame.contains("settings")) {
                     update = frame;
                     break;
                 }
             }
-            assertNotNull(update, "no orders update frame after the handled write");
+            assertNotNull(update, "no settings update frame after the accepted write");
         } finally {
             reader.interrupt();
         }

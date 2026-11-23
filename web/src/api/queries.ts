@@ -8,7 +8,6 @@ import {
   IndexResponseSchema,
   KitTemplateSchema,
   OrdersResponseSchema,
-  QuotaMeSchema,
   ServerStateSchema,
   StashDefSchema,
   StashRefSchema,
@@ -20,7 +19,6 @@ import {
   type KitTemplate,
   type OrdersResponse,
   type Perms,
-  type QuotaMe,
   type ServerState,
   type StashDef,
   type StashRef,
@@ -35,7 +33,6 @@ export const keys = {
   botActivity: (id: string) => ["bots", id, "activity"] as const,
   botSettings: (id: string) => ["bots", id, "settings"] as const,
   guild: ["guild"] as const,
-  quotaMe: ["quotas", "me"] as const,
   users: ["users"] as const,
   server: ["server"] as const,
   stashDefs: ["stash-defs"] as const,
@@ -176,16 +173,6 @@ export function useGuild(enabled: boolean) {
   return useQuery({
     queryKey: [...keys.guild],
     queryFn: async () => GuildSchema.parse(await api<unknown>("/api/v1/guild")) as Guild,
-    enabled,
-    staleTime: 30_000,
-    retry: 1,
-  });
-}
-
-export function useQuotaMe(enabled: boolean) {
-  return useQuery({
-    queryKey: [...keys.quotaMe],
-    queryFn: async () => QuotaMeSchema.parse(await api<unknown>("/api/v1/quotas/me")) as QuotaMe,
     enabled,
     staleTime: 30_000,
     retry: 1,

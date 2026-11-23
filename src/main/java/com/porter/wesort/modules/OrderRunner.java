@@ -1449,7 +1449,7 @@ final class OrderRunner {
         // queue forever. Normal progress (planning, advancing units, delivering) resets the clock.
         long nowMs = System.currentTimeMillis();
         if (lastForwardAt != 0 && nowMs - lastForwardAt > ORDER_STALL_MAX_MS) {
-            finish(State.Failed, "no forward progress for 2 hours (" + phase + "), giving up");
+            finish(State.Failed, "no forward progress for 10 minutes (" + phase + "), giving up");
             return new Idle();
         }
 

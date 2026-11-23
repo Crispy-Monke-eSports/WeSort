@@ -1573,5 +1573,4 @@ public final class Categories {
         Predicate<StackInfo> test = s -> potions.test(s) && s.potion != null && s.potion.contains(kind);
         for (String name : names) add(test, name, name + " pot", name + " potion");
     }
-
 }

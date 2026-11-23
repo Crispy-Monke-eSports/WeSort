@@ -217,6 +217,26 @@ class UsersTest {
     // ---------- tests ----------
 
     @Test
+    void loginReturnsNoCookieWhenItsSessionCannotBePersisted() throws Exception {
+        String existing = login(null, OWNER_PW);
+        Path file = data.resolve("sessions.json");
+        Path saved = Files.move(file, data.resolve("previous-sessions.json"));
+        Files.createDirectory(file);
+        try {
+            JsonObject password = new JsonObject();
+            password.addProperty("password", OWNER_PW);
+            Res failed = post(null, "/api/v1/auth/login", password.toString());
+            assertEquals(503, failed.status, failed.raw.body());
+            assertTrue(failed.raw.headers().firstValue("Set-Cookie").isEmpty());
+            assertTrue(get(existing, "/api/v1/auth/state").obj().get("loggedIn").getAsBoolean());
+        } finally {
+            Files.delete(file);
+            Files.move(saved, file);
+        }
+        assertFalse(login(null, OWNER_PW).isBlank());
+    }
+
+    @Test
     void anExistingSinglePasswordSetupKeepsWorking() throws Exception {
         // The session made before sub-users is the owner's.
         Res state = get(legacyOwnerSession, "/api/v1/auth/state");

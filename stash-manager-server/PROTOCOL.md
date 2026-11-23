@@ -59,6 +59,11 @@ API-routes börjar med `/api/v1/`. Se exakta regex/actions i respektive
 avvisas. Jobbkön kan bara bära settingsändringar. Gamla planner-, console- och
 viewer-routes saknas och ger 404. Inga kommandon kan köas via gammalt API.
 
+En lyckad inloggning utfärdar cookien efter lyckad sessionspersistens. Om
+sessionsfilen inte kan skrivas svarar Manager med 503 och behåller tidigare
+giltiga sessioner. Om detta inträffar under Owner-bootstrap kan Owner logga
+in med det redan sparade lösenordet när skrivfelet har lösts.
+
 Browserläsning kräver session; writes kräver dessutom POST, JSON,
 `X-Stash-Manager: 1`, samma origin och tillämplig permission. CORS-preflight
 nekas. Owner-only administration använder lösenordsbekräftelse.

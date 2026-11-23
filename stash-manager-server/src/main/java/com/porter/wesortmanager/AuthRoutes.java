@@ -233,7 +233,7 @@ final class AuthRoutes {
         }
         System.out.println("Dashboard password set from " + address(ex) + ".");
         audit.add(Users.OWNER_ID, users.ownerName(), "setup", null, address(ex));
-        startSession(ex, Users.OWNER_ID, false, stored);
+        startSession(ex, Users.OWNER_ID, false, stored, null);
     }
 
     private void login(HttpExchange ex) throws IOException {
@@ -300,9 +300,7 @@ final class AuthRoutes {
             Http.error(ex, 403, "this account is disabled");
             return;
         }
-        if (!who.owner()) users.noteLogin(userId);
-        audit.add(who, "login", null, address(ex));
-        startSession(ex, userId, who.mustChange(), stored);
+        startSession(ex, userId, who.mustChange(), stored, who);
     }
 
     /** A login name as typed, fit for the audit log: the allowed characters only, else "(invalid)". */
@@ -339,9 +337,22 @@ final class AuthRoutes {
         return true;
     }
 
-    /** stored: the password hash just verified; a session made with it ends once it changes. */
-    private void startSession(HttpExchange ex, String userId, boolean mustChange, String stored) throws IOException {
-        String token = sessions.create(userId, Auth.tag(stored));
+    /** The login principal is present on ordinary sign-in. Setup separately audits its configuration change. */
+    private void startSession(HttpExchange ex, String userId, boolean mustChange, String stored, Users.Principal login)
+            throws IOException {
+        String token;
+        try {
+            token = sessions.create(userId, Auth.tag(stored));
+        } catch (IOException e) {
+            System.err.println(
+                    "Could not persist a new browser session: " + e.getClass().getSimpleName());
+            Http.error(ex, 503, "could not save session");
+            return;
+        }
+        if (login != null) {
+            if (!login.owner()) users.noteLogin(userId);
+            audit.add(login, "login", null, address(ex));
+        }
         sessions.elevate(token); // the password was just typed
         ex.getResponseHeaders()
                 .add("Set-Cookie", SessionStore.cookie(token) + (config.secureCookies ? "; Secure" : ""));

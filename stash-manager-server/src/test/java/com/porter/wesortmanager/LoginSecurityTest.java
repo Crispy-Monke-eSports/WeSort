@@ -161,7 +161,7 @@ class LoginSecurityTest {
     }
 
     @Test
-    void sudoModeLasts15MinutesPerSession(@TempDir Path dir) {
+    void sudoModeLasts15MinutesPerSession(@TempDir Path dir) throws Exception {
         AtomicLong now = new AtomicLong(1000);
         SessionStore store = new SessionStore(dir, now::get);
         String a = store.create();

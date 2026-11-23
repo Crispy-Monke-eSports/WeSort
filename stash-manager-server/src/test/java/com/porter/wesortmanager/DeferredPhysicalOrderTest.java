@@ -101,8 +101,8 @@ class DeferredPhysicalOrderTest {
         String agent = "00000000-0000-0000-0000-000000000001";
         var journal = new PhysicalJournal(data.resolve("active-order-journal"));
         journal.start(JsonParser.parseString(
-                        "{\"server\":\"s\",\"stash\":\"a\",\"dimension\":\"minecraft:overworld\",\"agent\":\""
-                                + agent + "\",\"kind\":\"DIRECT\",\"orderId\":\"" + placed.id + "\"}")
+                        "{\"server\":\"s\",\"stash\":\"a\",\"dimension\":\"minecraft:overworld\",\"agent\":\"" + agent
+                                + "\",\"kind\":\"DIRECT\",\"orderId\":\"" + placed.id + "\"}")
                 .getAsJsonObject());
         var intent = new JsonObject();
         intent.add("origin", journal.context());
@@ -110,7 +110,9 @@ class DeferredPhysicalOrderTest {
         intent.add("expected", JsonParser.parseString("{\"menu\":1,\"slots\":[\"after\",\"\"],\"cursor\":\"\"}"));
         journal.intent(intent);
         var operations = new PhysicalOperations(index.stock());
-        assertEquals("IN_PROGRESS", operations.accept(agent, journal.current()).get("state").getAsString());
+        assertEquals(
+                "IN_PROGRESS",
+                operations.accept(agent, journal.current()).get("state").getAsString());
         assertTrue(index.stock().unsettledPhysicalOrder(placed.id));
 
         // The dashboard polls while the agent physically stages the package.
@@ -122,7 +124,8 @@ class DeferredPhysicalOrderTest {
 
         // A genuine Manager fence still blocks pickup and keeps reservations held.
         journal.block("The physical postcondition could not be verified");
-        assertEquals("NEEDS_RECONCILIATION",
+        assertEquals(
+                "NEEDS_RECONCILIATION",
                 operations.accept(agent, journal.current()).get("state").getAsString());
         var fenced = orders.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
         assertEquals("NEEDS_RECONCILIATION", fenced.get("state").getAsString());

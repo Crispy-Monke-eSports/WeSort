@@ -104,12 +104,17 @@ class DeferredPhysicalOrderTest {
                         "{\"server\":\"s\",\"stash\":\"a\",\"dimension\":\"minecraft:overworld\",\"agent\":\"" + agent
                                 + "\",\"kind\":\"DIRECT\",\"orderId\":\"" + placed.id + "\"}")
                 .getAsJsonObject());
+        var operations = new PhysicalOperations(index.stock());
+        var planned = operations.accept(agent, journal.current());
+        assertEquals("PLANNED", planned.get("state").getAsString());
+        var queued = orders.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
+        assertEquals("PACKING", queued.get("state").getAsString());
+
         var intent = new JsonObject();
         intent.add("origin", journal.context());
         intent.add("before", JsonParser.parseString("{\"menu\":1,\"slots\":[\"before\",\"\"],\"cursor\":\"\"}"));
         intent.add("expected", JsonParser.parseString("{\"menu\":1,\"slots\":[\"after\",\"\"],\"cursor\":\"\"}"));
         journal.intent(intent);
-        var operations = new PhysicalOperations(index.stock());
         assertEquals(
                 "IN_PROGRESS",
                 operations.accept(agent, journal.current()).get("state").getAsString());

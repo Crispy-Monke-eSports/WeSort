@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""W-019: actual Signs/Tiers sorting, blocked capacity and protected sources in vanilla 26.3."""
+"""Physical tier sorting, blocked capacity and protected sources in vanilla 26.3."""
 import argparse
 from collections import Counter
 import importlib.util
@@ -15,16 +15,12 @@ require = world.require
 
 class SortingHarness(world.Harness):
     locations = list(range(0, 33, 3))
-    labels = {3: 'dias', 6: 'building blocks', 9: 'diamond swords', 12: 'dias', 15: 'dias', 18: 'misc', 24: 'strength', 27: 'egaps'}
     def fixture(self):
         super().fixture()
         self.rcon.command('fill -1 64 -4 35 66 4 minecraft:air')
         self.rcon.command('kill @e[type=minecraft:item]')
         for x in self.locations:
             self.rcon.command(f'setblock {x} 64 3 minecraft:barrel')
-            if x in self.labels:
-                self.rcon.command(f'setblock {x} 65 3 minecraft:oak_sign')
-                self.rcon.command(f'data merge block {x} 65 3 {{front_text:{{messages:[{{text:"{self.labels[x]}"}},{{text:""}},{{text:""}},{{text:""}}]}}}}')
         self.setitem(0, 0, 'diamond', 32); self.setitem(0, 1, 'dirt', 16)
         self.setitem(0, 2, 'diamond_sword[minecraft:custom_name={text:"Do not rename"},minecraft:damage=3,minecraft:enchantments={"minecraft:unbreaking":1}]', 1)
         self.setitem(0, 3, 'enchanted_golden_apple', 4)

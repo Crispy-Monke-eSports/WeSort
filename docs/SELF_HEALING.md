@@ -40,7 +40,7 @@ world state can be reconstructed.
 
 ## Verification
 
-- `./gradlew :stash-manager-server:test` (or the equivalent module test task)
+- `./gradlew -p stash-manager-server test`
 - `SelfHealTest`: fresh readback fails unproven packing, times-out cancellations settle,
   and a missing fresh readback retains its hold.
 - `PhysicalOperationsTest`: automatic inspection, duplicate prevention, backoff, and

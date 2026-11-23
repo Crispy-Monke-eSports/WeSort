@@ -15,23 +15,31 @@ import org.junit.jupiter.api.io.TempDir;
 
 /** The rate limiter, new-password rules, the setup code and sudo mode. */
 class LoginSecurityTest {
+    // These tests exercise sequential failure accounting; concurrent admission
+    // and release are covered separately in LoginLimiterTest.
+    private static long sequentialAttempt(LoginLimiter limiter, String key, boolean loopback) {
+        long wait = limiter.begin(key, key, loopback);
+        if (wait == 0) limiter.end(key, loopback);
+        return wait;
+    }
+
     @Test
     void fiveFailuresLockAnAddressWithDoublingLockouts() {
         AtomicLong now = new AtomicLong(0);
         LoginLimiter limiter = new LoginLimiter(now::get);
         for (int i = 0; i < 5; i++) {
-            assertEquals(0, limiter.tryAcquire("10.0.0.5", false));
+            assertEquals(0, sequentialAttempt(limiter, "10.0.0.5", false));
             limiter.failure("10.0.0.5", false);
         }
-        assertEquals(60_000, limiter.tryAcquire("10.0.0.5", false));
-        assertEquals(0, limiter.tryAcquire("10.0.0.6", false), "other addresses are not affected");
+        assertEquals(60_000, sequentialAttempt(limiter, "10.0.0.5", false));
+        assertEquals(0, sequentialAttempt(limiter, "10.0.0.6", false), "other addresses are not affected");
 
         now.addAndGet(60_000);
         for (int i = 0; i < 5; i++) {
-            assertEquals(0, limiter.tryAcquire("10.0.0.5", false));
+            assertEquals(0, sequentialAttempt(limiter, "10.0.0.5", false));
             limiter.failure("10.0.0.5", false);
         }
-        assertEquals(120_000, limiter.tryAcquire("10.0.0.5", false), "the second lockout doubles");
+        assertEquals(120_000, sequentialAttempt(limiter, "10.0.0.5", false), "the second lockout doubles");
     }
 
     @Test
@@ -40,12 +48,12 @@ class LoginSecurityTest {
         LoginLimiter limiter = new LoginLimiter(now::get);
         for (int round = 0; round < 6; round++) {
             for (int i = 0; i < 5; i++) {
-                limiter.tryAcquire("a", false);
+                sequentialAttempt(limiter, "a", false);
                 limiter.failure("a", false);
             }
             if (round < 5) now.addAndGet(LoginLimiter.GLOBAL_WINDOW_MS + LoginLimiter.MAX_LOCK_MS);
         }
-        assertEquals(LoginLimiter.MAX_LOCK_MS, limiter.tryAcquire("a", false));
+        assertEquals(LoginLimiter.MAX_LOCK_MS, sequentialAttempt(limiter, "a", false));
     }
 
     @Test
@@ -53,16 +61,16 @@ class LoginSecurityTest {
         AtomicLong now = new AtomicLong(0);
         LoginLimiter limiter = new LoginLimiter(now::get);
         for (int i = 0; i < 4; i++) {
-            limiter.tryAcquire("a", false);
+            sequentialAttempt(limiter, "a", false);
             limiter.failure("a", false);
         }
-        limiter.tryAcquire("a", false);
+        sequentialAttempt(limiter, "a", false);
         limiter.success("a");
         for (int i = 0; i < 4; i++) {
-            assertEquals(0, limiter.tryAcquire("a", false));
+            assertEquals(0, sequentialAttempt(limiter, "a", false));
             limiter.failure("a", false);
         }
-        assertEquals(0, limiter.tryAcquire("a", false), "the count started again after the success");
+        assertEquals(0, sequentialAttempt(limiter, "a", false), "the count started again after the success");
     }
 
     @Test
@@ -72,23 +80,23 @@ class LoginSecurityTest {
         // 20 failures over 5 addresses, 4 each, so no single address locks
         for (int i = 0; i < 20; i++) {
             String ip = "10.0.3." + (i / 4);
-            assertEquals(0, limiter.tryAcquire(ip, false));
+            assertEquals(0, sequentialAttempt(limiter, ip, false));
             limiter.failure(ip, false);
             now.addAndGet(1000);
         }
-        long wait = limiter.tryAcquire("10.9.9.9", false);
+        long wait = sequentialAttempt(limiter, "10.9.9.9", false);
         assertTrue(
                 wait > LoginLimiter.GLOBAL_LOCK_MS - 2000 && wait <= LoginLimiter.GLOBAL_LOCK_MS,
                 "everyone else is paused for 15 minutes: " + wait);
-        assertEquals(0, limiter.tryAcquire("127.0.0.1", true), "the server PC itself is exempt");
+        assertEquals(0, sequentialAttempt(limiter, "127.0.0.1", true), "the server PC itself is exempt");
 
         now.addAndGet(LoginLimiter.GLOBAL_LOCK_MS);
         for (int i = 0; i < 20; i++) {
             String ip = "10.0.4." + (i / 4);
-            limiter.tryAcquire(ip, false);
+            sequentialAttempt(limiter, ip, false);
             limiter.failure(ip, false);
         }
-        assertEquals(2 * LoginLimiter.GLOBAL_LOCK_MS, limiter.tryAcquire("10.9.9.9", false), "the next pause doubles");
+        assertEquals(2 * LoginLimiter.GLOBAL_LOCK_MS, sequentialAttempt(limiter, "10.9.9.9", false), "the next pause doubles");
     }
 
     @Test
@@ -96,7 +104,7 @@ class LoginSecurityTest {
         AtomicLong now = new AtomicLong(0);
         LoginLimiter limiter = new LoginLimiter(now::get);
         for (int i = 0; i < 100; i++) {
-            assertEquals(0, limiter.tryAcquire("10.0.6." + i, false), "attempt " + i);
+            assertEquals(0, sequentialAttempt(limiter, "10.0.6." + i, false), "attempt " + i);
             limiter.success("10.0.6." + i);
         }
     }
@@ -107,7 +115,7 @@ class LoginSecurityTest {
         LoginLimiter limiter = new LoginLimiter(now::get);
         for (int i = 0; i < 40; i++) {
             String ip = "10.0.5." + i;
-            assertEquals(0, limiter.tryAcquire(ip, false), "attempt " + i);
+            assertEquals(0, sequentialAttempt(limiter, ip, false), "attempt " + i);
             limiter.failure(ip, false);
             now.addAndGet(LoginLimiter.GLOBAL_WINDOW_MS / 19 + 1);
         }
@@ -118,10 +126,10 @@ class LoginSecurityTest {
         AtomicLong now = new AtomicLong(0);
         LoginLimiter limiter = new LoginLimiter(now::get);
         for (int i = 0; i < 100; i++) {
-            assertEquals(0, limiter.tryAcquire("127.0.0.1", true));
+            assertEquals(0, sequentialAttempt(limiter, "127.0.0.1", true));
             limiter.failure("127.0.0.1", true);
         }
-        assertEquals(0, limiter.tryAcquire("10.0.0.1", false), "loopback failures don't count toward the global pause");
+        assertEquals(0, sequentialAttempt(limiter, "10.0.0.1", false), "loopback failures don't count toward the global pause");
     }
 
     @Test

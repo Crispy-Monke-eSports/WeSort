@@ -23,6 +23,15 @@ class JournalHarness(repack.RepackHarness):
         self.phase = phase
         self.journal = self.game_dir / 'meteor-client/wesort/physical-journal/active.json'
 
+    def crash_manager(self):
+        manager = self.run(self.compose + ['ps', '-q', 'manager']).strip()
+        require(manager, 'No running test Manager to crash')
+        self.run(self.compose + ['kill', '-s', 'SIGKILL', 'manager'])
+        exit_code = self.run(['docker', 'inspect', '--format', '{{.State.ExitCode}}', manager]).strip()
+        require(exit_code == '137', 'The test Manager did not exit from SIGKILL: ' + exit_code)
+        self.run(self.compose + ['up', '-d', '--no-build', '--wait', '--wait-timeout', '120', 'manager'])
+        self.ok('Docker Manager survived SIGKILL and became ready on the same test volume')
+
     def record_fence_state(self, stage, state):
         # Common evidence for SELECT/PLACE/OPEN, TRANSFER/VERIFY/BREAK and
         # PICKUP/STORE: distinguish disabled sorting, missing Manager lease,
@@ -165,7 +174,7 @@ class JournalHarness(repack.RepackHarness):
             require(crashed['phase'] == self.phase, 'Wrong durable phase at process kill')
             (self.evidence / 'physical-before-restart.json').write_text(json.dumps(crashed, indent=2) + '\n')
             (self.evidence / 'client.log').rename(self.evidence / 'client-before-restart.log')
-            self.run(self.compose + ['restart', 'manager'])
+            self.crash_manager()
             self.start_client()
             initial = self.command('state')['state']
             initial_detail = self.record_fence_state('restart', initial)
@@ -276,7 +285,7 @@ class DirectHarness(JournalHarness):
             require(crashed['state'] != 'COMPLETED', 'Move completed while server frames were held')
             (self.evidence / 'direct-before-restart.json').write_text(json.dumps(crashed, indent=2) + '\n')
             (self.evidence / 'client.log').rename(self.evidence / 'client-before-restart.log')
-            self.run(self.compose + ['restart', 'manager'])
+            self.crash_manager()
             self.start_client()
             self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key)
             row = self.wait_for_review(crashed['id'])

@@ -14,6 +14,9 @@ export default defineConfig({
     proxy: {
       "/api": { target: "http://127.0.0.1:8765", changeOrigin: false },
       "/dirt.png": { target: "http://127.0.0.1:8765", changeOrigin: false },
+      "/wesort.svg": { target: "http://127.0.0.1:8765", changeOrigin: false },
+      "/wesort-lockup.svg": { target: "http://127.0.0.1:8765", changeOrigin: false },
+      "/wesort-horizontal.svg": { target: "http://127.0.0.1:8765", changeOrigin: false },
       "/icons": { target: "http://127.0.0.1:8765", changeOrigin: false },
       "/icon": { target: "http://127.0.0.1:8765", changeOrigin: false },
     },

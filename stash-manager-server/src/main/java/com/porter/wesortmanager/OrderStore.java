@@ -801,7 +801,9 @@ final class OrderStore {
         if ((previous.status.equals("accepted")
                         || previous.status.equals("in_progress")
                         || previous.status.equals("packed"))
-                && index.stock().unsettledPhysicalOrder(previous.id)) {
+                // Live physical work is not a failure. Only an actual Manager
+                // reconciliation fence authorizes this terminal transition.
+                && index.stock().reconciliationRequiredPhysicalOrder(previous.id)) {
             Order o = Order.fromJson(previous.snapshot());
             o.advance(OrderStage.NEEDS_RECONCILIATION);
             o.status = "needs_reconciliation";

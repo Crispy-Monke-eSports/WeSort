@@ -571,12 +571,12 @@ public class StashManager extends Module {
             return;
         }
         if (PhysicalJournalRuntime.blocked()) {
-            setStatus("physical operation needs reconciliation");
+            setStatus("automatically recovering physical operation");
             serviceBlockedControl();
             return;
         }
         if (!InventorySync.ready()) {
-            setStatus(InventorySync.failed() ? "inventory needs reconciliation" : "awaiting server inventory");
+            setStatus(InventorySync.failed() ? "awaiting automatic inventory recovery" : "awaiting server inventory");
             serviceBlockedControl();
             return;
         }
@@ -1022,7 +1022,7 @@ public class StashManager extends Module {
             task = "Player died";
             incident = "DEATH";
         } else if (needsReconciliation) {
-            task = "Needs physical reconciliation";
+            task = "Automatically recovering physical inventory";
             incident = "INVENTORY_UNVERIFIED";
         } else if (com.porter.wesort.compat.NavigationRuntime.paused()) task = "Navigation paused";
         else if (!InventorySync.ready()) task = "Awaiting server inventory";
@@ -1476,7 +1476,7 @@ public class StashManager extends Module {
             // and require reconciliation first. The directive is revision-pinned, so the next
             // heartbeat after recovery applies exactly what was skipped.
             if (com.porter.wesort.compat.PhysicalJournalRuntime.blocked() || !InventorySync.ready()) {
-                info("Manager directive (revision %d) deferred: physical reconciliation required first.", rev);
+                info("Manager directive (revision %d) deferred until automatic physical recovery completes.", rev);
                 return;
             }
             sorter.applyDirective(d, rev);

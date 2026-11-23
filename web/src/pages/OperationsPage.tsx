@@ -125,7 +125,7 @@ export function OperationsPage() {
                 columns={["Operation", "State", "Revision", "Last seen"]}
                 rows={rowsOf(physical.data, "operations").map((o: any) => [
                   String(o.id ?? o.operation ?? "?"),
-                  <Chip key="s" size="small" color={/need|fail|uncertain/i.test(String(o.state ?? "")) ? "warning" : "default"} label={String(o.state ?? o.inspectionState ?? "unknown").replace("NEEDS_RECONCILIATION", "AUTO_RECOVERING")} />,
+                  <Chip key="s" size="small" color={/need|fail|uncertain/i.test(String(o.state ?? "")) ? "warning" : "default"} label={String(o.managerState ?? o.state ?? "unknown")} />,
                   String(o.revision ?? "—"),
                   o.lastSeen ? new Date(o.lastSeen).toLocaleString() : "—",
                 ])}

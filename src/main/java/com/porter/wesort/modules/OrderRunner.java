@@ -57,6 +57,9 @@ final class OrderRunner {
         /** All items carried for this order have been returned to verified stash storage. */
         boolean cleanupComplete();
 
+        /** Whether a verified, returned package is presently tracked in the agent's carry slots. */
+        boolean trackedPackage(String fingerprint);
+
         double distance(Box box);
 
         Set<Integer> carry();
@@ -100,7 +103,7 @@ final class OrderRunner {
         XpBottles xpBottleSource();
     }
 
-    sealed interface Intent permits Idle, Build, Fetch, Deliver, Rename, Craft, FindAnvil, Expand, Recheck, XpBottles {}
+    sealed interface Intent permits Idle, Build, Fetch, RecoverStage, Deliver, Rename, Craft, FindAnvil, Expand, Recheck, XpBottles {}
 
     /** Nothing for the sorter to do for the order now. */
     record Idle() implements Intent {}
@@ -110,6 +113,9 @@ final class OrderRunner {
 
     /** Take this shulker out of the container. */
     record Fetch(Box box, int slot) implements Intent {}
+
+    /** Retrieve only the exact package/slot committed to the delivery receipt. */
+    record RecoverStage(Box box, int slot, String fingerprint) implements Intent {}
 
     /** Take these bottles of enchanting out of the container, to buy XP for a rename. */
     record XpBottles(Box box, int slot) implements Intent {}
@@ -208,6 +214,11 @@ final class OrderRunner {
         Map<String, Integer> lotTotals;
         // When this unit first started waiting for a retry (0: not waiting); bounds one bad unit
         long waitSince;
+        /** A physical receipt for a package staged before this order failed. */
+        String stagedSource = "", stagedFingerprint = "";
+        int stagedSlot = -1;
+        boolean reclaimed;
+        ItemStack[] deliveryBefore;
 
         Unit(Kind kind, String key, List<Order.Lot> lots) {
             this.kind = kind;
@@ -528,6 +539,10 @@ final class OrderRunner {
                 restored.named = p.named;
                 restored.unnamedReason = p.nameFailure == null || p.nameFailure.isEmpty() ? null : p.nameFailure;
                 restored.namedKey = p.namedKey == null || p.namedKey.isEmpty() ? null : p.namedKey;
+                restored.stagedSource = p.stagedSource;
+                restored.stagedFingerprint = p.stagedFingerprint;
+                restored.stagedSlot = p.stagedSlot;
+                restored.reclaimed = p.reclaimed;
                 plan.add(restored);
             }
             start = Math.min(saved.done, plan.size());
@@ -1013,7 +1028,7 @@ final class OrderRunner {
 
     Report report() {
         if (order == null) return null;
-        if (state == State.Returning && owner.cleanupComplete()) {
+        if (state == State.Returning && stagedReturned() && owner.cleanupComplete()) {
             state = pendingOutcome == null ? State.Failed : pendingOutcome;
             pendingOutcome = null;
             phase = state == State.Cancelled ? "cancelled" : "failed";
@@ -1165,6 +1180,10 @@ final class OrderRunner {
         p.named = u.named;
         p.nameFailure = u.unnamedReason == null ? "" : u.unnamedReason;
         p.namedKey = u.namedKey == null ? "" : u.namedKey;
+        p.stagedSource = u.stagedSource;
+        p.stagedFingerprint = u.stagedFingerprint;
+        p.stagedSlot = u.stagedSlot;
+        p.reclaimed = u.reclaimed;
         stash.markDirty();
         stash.save();
     }
@@ -1249,7 +1268,9 @@ final class OrderRunner {
     /** The delivery container is open: how many of the current shulker it holds before anything is put in. */
     void deliveryOpened(ItemStack[] contents) {
         if (!running() || index >= units.size() || units.get(index).verifying) return;
-        units.get(index).base = countIn(units.get(index), contents);
+        Unit u = units.get(index);
+        u.base = countIn(u, contents);
+        u.deliveryBefore = java.util.Arrays.stream(contents).map(ItemStack::copy).toArray(ItemStack[]::new);
     }
 
     /** The delivery container had no room for the shulker. */
@@ -1270,13 +1291,44 @@ final class OrderRunner {
     }
 
     /** The shulker is no longer carried: the open container is checked for it. */
-    void deliveryClosed(ItemStack[] contents) {
+    void deliveryClosed(Box delivery, ItemStack[] contents) {
         if (!running() || index >= units.size()) return;
         Unit u = units.get(index);
-        if (u.have && countIn(u, contents) > u.base) u.confirmed = true;
+        if (u.have && countIn(u, contents) > u.base) {
+            // The before/after delta binds this package to a single, exact
+            // physical delivery slot. A matching *other* package is not proof.
+            int found = -1;
+            if (u.deliveryBefore != null && u.deliveryBefore.length == contents.length) {
+                for (int i = 0; i < contents.length; i++) {
+                    ItemStack old = u.deliveryBefore[i], current = contents[i];
+                    if (!matches(u, current)) continue;
+                    boolean added = old.isEmpty() && current.getCount() == 1
+                            || !old.isEmpty()
+                                    && ItemStack.isSameItemSameComponents(old, current)
+                                    && current.getCount() == old.getCount() + 1;
+                    if (!added) continue;
+                    if (found >= 0) {
+                        found = -1; // Ambiguous; never claim somebody else's package.
+                        break;
+                    }
+                    found = i;
+                }
+            }
+            if (found >= 0) {
+                u.stagedSource = com.porter.wesort.compat.ObservationRuntime.sourceId(delivery.parts);
+                u.stagedSlot = found;
+                u.stagedFingerprint = fingerprint(contents[found]);
+                saveUnit(u);
+            }
+            u.confirmed = true;
+        }
         // It reached the container with the name: it was named, whatever was noted about it before
         if (u.name != null && !u.named)
             for (ItemStack s : contents) if (matches(u, s) && isOurName(u, s)) u.named = true;
+    }
+
+    private static String fingerprint(ItemStack stack) {
+        return com.porter.wesort.compat.SlotRuntime.snapshot(new ItemStack[] {stack}).fingerprint();
     }
 
     private int countIn(Unit u, ItemStack[] contents) {
@@ -1286,6 +1338,49 @@ final class OrderRunner {
     }
 
     // The next step
+
+    /** Returns the next verified rollback action; no packing work runs during recovery. */
+    Intent recoveryStep() {
+        if (state != State.Returning || owner.rereading()) return new Idle();
+        Stash stash = owner.stash();
+        if (stash == null) return new Idle();
+        for (Unit u : units) {
+            if (u.reclaimed) continue;
+            if (u.stagedSource.isEmpty() || u.stagedSlot < 0 || u.stagedFingerprint.isEmpty()) continue;
+            Box source = stash.boxes.stream()
+                    .filter(box -> (box.delivery || box.deliveryExtra)
+                            && u.stagedSource.equals(com.porter.wesort.compat.ObservationRuntime.sourceId(box.parts)))
+                    .findFirst()
+                    .orElse(null);
+            if (source == null || !source.known() || source.stale || source.unreachable) {
+                phase = "returning staged packages: waiting for verified delivery storage";
+                return new Idle();
+            }
+            if (u.stagedSlot < source.contents.length
+                    && fingerprint(source.contents[u.stagedSlot]).equals(u.stagedFingerprint)) {
+                phase = "returning staged packages";
+                return new RecoverStage(source, u.stagedSlot, u.stagedFingerprint);
+            }
+            if (owner.trackedPackage(u.stagedFingerprint)) {
+                u.reclaimed = true;
+                saveUnit(u);
+                continue;
+            }
+            phase = "verifying staged package return";
+            return new Idle();
+        }
+        return new Idle();
+    }
+
+    private boolean stagedReturned() {
+        for (Unit u : units) {
+            if (!u.stagedSource.isEmpty() && !u.reclaimed) return false;
+        }
+        // A delivered unit without a unique delivery receipt must never be
+        // silently abandoned. Keep its reservation until the agent can recover.
+        return shulkersDelivered == 0
+                || units.stream().filter(u -> u.reclaimed).count() >= shulkersDelivered;
+    }
 
     Intent next() {
         if (!running()) return new Idle();
@@ -2167,10 +2262,10 @@ final class OrderRunner {
         if (!problems.isEmpty())
             note += (note.isEmpty() ? "" : "; ")
                     + String.join(", ", problems.size() > 3 ? problems.subList(0, 3) : problems);
-        boolean anything = shulkersDelivered > 0;
+        boolean complete = shortLines.isEmpty() && shulkersDelivered == units.size();
         finish(
-                anything ? State.Delivered : State.Failed,
-                anything ? note : (note.isEmpty() ? "nothing could be staged" : "nothing could be staged: " + note));
+                complete ? State.Delivered : State.Failed,
+                complete ? note : (note.isEmpty() ? "order incomplete; returning staged packages" : note));
     }
 
     private void finish(State end, String text) {

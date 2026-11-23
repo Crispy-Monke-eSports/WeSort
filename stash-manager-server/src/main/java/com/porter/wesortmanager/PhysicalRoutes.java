@@ -23,8 +23,6 @@ final class PhysicalRoutes {
 
     void register(Router router) {
         router.exact(Router.GET, "/api/v1/physical", Router.Guard.SESSION, Router.Perm.OWNER, this::list);
-        router.exact(
-                Router.POST, "/api/v1/physical/inspect", Router.Guard.BROWSER_WRITE, Router.Perm.OWNER, this::inspect);
         router.exact(Router.POST, "/api/v1/physical/agent", Router.Guard.ADDON_KEY, this::agent);
     }
 
@@ -32,27 +30,6 @@ final class PhysicalRoutes {
         var response = new JsonObject();
         response.add("operations", operations().list());
         Http.json(ex, 200, response);
-    }
-
-    private void inspect(HttpExchange ex) throws IOException {
-        var raw = AddonRoutes.readJson(ex);
-        if (raw == null) return;
-        try {
-            var body = raw.getAsJsonObject();
-            var operation = body.get("operation").getAsString();
-            var decision = operations()
-                    .inspect(
-                            operation,
-                            body.get("revision").getAsBigDecimal().longValueExact(),
-                            body.get("checksum").getAsString(),
-                            Router.user(ex).id());
-            audit.add(Router.user(ex), "physical.inspect", operation, AuthRoutes.address(ex));
-            Http.json(ex, 200, decision);
-        } catch (PhysicalOperations.Conflict conflict) {
-            Http.error(ex, 409, conflict.getMessage());
-        } catch (RuntimeException invalid) {
-            Http.error(ex, 400, "Invalid physical inspection request");
-        }
     }
 
     private void agent(HttpExchange ex) throws IOException {

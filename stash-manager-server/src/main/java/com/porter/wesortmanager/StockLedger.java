@@ -302,9 +302,7 @@ final class StockLedger {
         String server = index.get("server").getAsString(),
                 stash = index.get("stash").getAsString();
         try (var c = open();
-                var tx = c.createStatement()) {
-            tx.execute("BEGIN IMMEDIATE");
-            try {
+                var tx = new SqliteWriteTransaction(c)) {
                 long before = revision(c), next = Math.addExact(before, 1);
                 long now = clock.getAsLong();
                 Map<String, Long> memberTimes = new HashMap<>();
@@ -525,13 +523,7 @@ final class StockLedger {
                     p.setLong(1, next);
                     p.executeUpdate();
                 }
-                tx.execute("COMMIT");
-            } catch (Exception e) {
-                tx.execute("ROLLBACK");
-                if (e instanceof IOException io) throw io;
-                if (e instanceof RuntimeException re) throw re;
-                throw e;
-            }
+                tx.commit();
         } catch (SQLException e) {
             throw new IOException("Observation transaction failed", e);
         }
@@ -890,16 +882,14 @@ final class StockLedger {
     synchronized void deregisterBoxUuid(String server, String uuid, String reason) throws IOException {
         UUID.fromString(uuid);
         try (var c = open();
-                var tx = c.createStatement()) {
-            tx.execute("BEGIN IMMEDIATE");
-            try {
+                var tx = new SqliteWriteTransaction(c)) {
                 try (var read =
                         c.prepareStatement("SELECT source,path,status FROM box_uuids WHERE uuid=? AND server=?")) {
                     read.setString(1, uuid);
                     read.setString(2, server);
                     try (var rows = read.executeQuery()) {
                         if (!rows.next()) {
-                            tx.execute("COMMIT");
+                            tx.commit();
                             return;
                         }
                         long revision = revision(c);
@@ -915,11 +905,7 @@ final class StockLedger {
                                 clock.getAsLong());
                     }
                 }
-                tx.execute("COMMIT");
-            } catch (Exception failure) {
-                tx.execute("ROLLBACK");
-                throw failure;
-            }
+                tx.commit();
         } catch (SQLException failure) {
             throw new IOException("Cannot deregister box UUID", failure);
         }

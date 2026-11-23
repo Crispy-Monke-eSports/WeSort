@@ -255,7 +255,9 @@ public final class Order {
         if (label != null && !label.isJsonNull()) {
             try {
                 var totalValue = o.get("packageTotal");
-                if (!label.isJsonObject() || totalValue == null || !totalValue.isJsonPrimitive()
+                if (!label.isJsonObject()
+                        || totalValue == null
+                        || !totalValue.isJsonPrimitive()
                         || !totalValue.getAsJsonPrimitive().isNumber())
                     throw new IllegalArgumentException("Missing frozen package total or label");
                 int total = totalValue.getAsBigDecimal().intValueExact();

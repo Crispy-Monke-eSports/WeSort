@@ -69,7 +69,8 @@ public final class PackageLabel {
         if (all == each) throw new IllegalArgumentException("packageLabel must have exactly one of text or texts");
         if (label.has("mode")) {
             var mode = label.get("mode");
-            if (!mode.isJsonPrimitive() || !mode.getAsJsonPrimitive().isString()
+            if (!mode.isJsonPrimitive()
+                    || !mode.getAsJsonPrimitive().isString()
                     || !(all ? "all" : "each").equals(mode.getAsString()))
                 throw new IllegalArgumentException("packageLabel mode differs from its text fields");
         }

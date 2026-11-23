@@ -260,19 +260,6 @@ final class AuthRoutes {
         if (username != null && username.length() > Users.MAX_NAME * 4)
             username = username.substring(0, Users.MAX_NAME * 4);
 
-        // Failures count per address and account, so a success with one account doesn't wipe the failures run up
-        // guessing another's from the same address.
-        String key = LoginLimiter.key(remote(ex)) + "|"
-                + (users.isOwnerName(username)
-                        ? Users.OWNER_ID
-                        : String.valueOf(username).toLowerCase(java.util.Locale.ROOT));
-        boolean loopback = fromLoopback(ex) && !proxied(ex.getRequestHeaders());
-        long wait =
-                Math.max(limiter.tryAcquire(key, loopback), limiter.tryAcquire(LoginLimiter.key(remote(ex)), loopback));
-        if (wait > 0) {
-            tooMany(ex, wait);
-            return;
-        }
         String userId;
         String stored;
         Users.User sub = null;
@@ -285,14 +272,30 @@ final class AuthRoutes {
             // An unknown name still costs a full hash check, so the answer time doesn't say which names exist.
             stored = sub == null ? Auth.dummyHash() : sub.hash();
         }
-        if (!Auth.verify(password, stored) || userId == null) {
-            limiter.failure(key, loopback);
-            limiter.addressFailure(LoginLimiter.key(remote(ex)), loopback);
-            audit.add(sub == null ? null : sub.id(), safeName(username), "login.failed", null, address(ex));
-            Http.error(ex, 401, WRONG);
+        // Use the immutable account id for known users, just as password confirmation does.
+        // Unknown names use a separate namespace; they cannot consume another account's counter.
+        String address = LoginLimiter.key(remote(ex));
+        String key = address + "|" + (userId != null
+                ? userId
+                : "unknown:" + String.valueOf(username).toLowerCase(java.util.Locale.ROOT));
+        boolean loopback = fromLoopback(ex) && !proxied(ex.getRequestHeaders());
+        long wait = limiter.begin(key, address, loopback);
+        if (wait > 0) {
+            tooMany(ex, wait);
             return;
         }
-        limiter.success(key);
+        try {
+            if (!Auth.verify(password, stored) || userId == null) {
+                limiter.failure(key, loopback);
+                limiter.addressFailure(address, loopback);
+                audit.add(sub == null ? null : sub.id(), safeName(username), "login.failed", null, address(ex));
+                Http.error(ex, 401, WRONG);
+                return;
+            }
+            if (!loopback) limiter.success(key);
+        } finally {
+            limiter.end(address, loopback);
+        }
         Users.Principal who = users.principal(userId);
         if (who == null) {
             // Right password, disabled account (or deleted a moment ago).
@@ -322,19 +325,23 @@ final class AuthRoutes {
         Users.Principal who = Router.user(ex);
         String key = address + "|" + (who == null ? "?" : who.id());
         boolean loopback = fromLoopback(ex) && !proxied(ex.getRequestHeaders());
-        long wait = Math.max(limiter.tryAcquire(key, loopback), limiter.tryAcquire(address, loopback));
+        long wait = limiter.begin(key, address, loopback);
         if (wait > 0) {
             tooMany(ex, wait);
             return false;
         }
-        if (!Auth.verify(password, stored)) {
-            limiter.failure(key, loopback);
-            limiter.addressFailure(address, loopback);
-            Http.error(ex, 401, "wrong password");
-            return false;
+        try {
+            if (!Auth.verify(password, stored)) {
+                limiter.failure(key, loopback);
+                limiter.addressFailure(address, loopback);
+                Http.error(ex, 401, "wrong password");
+                return false;
+            }
+            if (!loopback) limiter.success(key);
+            return true;
+        } finally {
+            limiter.end(address, loopback);
         }
-        limiter.success(key);
-        return true;
     }
 
     /** The login principal is present on ordinary sign-in. Setup separately audits its configuration change. */

@@ -111,7 +111,7 @@ import net.minecraft.world.phys.Vec3;
 
 /**
  * Sorts a stash of chests and barrels, either into tiers (shulkers first, then stackables, then singles) or into
- * whichever container's signs best describe each item. The stash is scanned once and saved, then kept up to date
+ * nearby storage selected by tier policy. The stash is scanned once and saved, then kept up to date
  * whenever a container in it is opened, even with the module off. It can stay on as a sorting bot, and the saved
  * stash can be searched from the module's settings or by whitelisted players over whispers.
  */
@@ -240,7 +240,7 @@ public class StashSorter extends Module {
     private final Setting<Boolean> sortItems = sgGeneral.add(new BoolSetting.Builder()
             .name("sort-items")
             .description(
-                    "Off: scan only. The module still reads containers it doesn't know or that went stale, watches containers and signs, and keeps the saved stash current for wesort-stash-overlay and search, but never sorts: no taking, depositing, compacting, labelling, saved kits or picking up from the ground. Containers are only opened to read them. Orders from wesort-stash-manager still run, they are the only thing that moves items, and what an order leaves over is put back where it came from.")
+                    "Off: scan only. The module still reads containers it doesn't know or that went stale, watches containers, and keeps the saved stash current for wesort-stash-overlay and search, but never sorts: no taking, depositing, compacting, labelling, saved kits or picking up from the ground. Containers are only opened to read them. Orders from wesort-stash-manager still run, they are the only thing that moves items, and what an order leaves over is put back where it came from.")
             .defaultValue(true)
             .build());
 
@@ -408,7 +408,7 @@ public class StashSorter extends Module {
     private final Setting<Boolean> compact = sgShulkers.add(new BoolSetting.Builder()
             .name("compact")
             .description(
-                    "Signs mode, once everything is sorted: packs a full shulker's worth of one item (27 full stacks, or two of the same gear piece and up) from the category chests into an empty unnamed shulker and files it in the item's chest, so 27 slots become 1. Never mixed shulkers, never a named one, never kit chests. Shulkers are put down beside you for it.")
+                    "Tier mode, once everything is sorted: packs a full shulker's worth of one item (27 full stacks, or two of the same gear piece and up) from the category chests into an empty unnamed shulker and files it in the item's chest, so 27 slots become 1. Never mixed shulkers, never a named one, never kit chests. Shulkers are put down beside you for it.")
             .defaultValue(true)
             .build());
 
@@ -431,7 +431,7 @@ public class StashSorter extends Module {
     private final Setting<Boolean> repack = sgShulkers.add(new BoolSetting.Builder()
             .name("repack")
             .description(
-                    "Signs mode: takes items that belong elsewhere out of mixed shulkers, and packs loose items into shulkers that already hold only that item. Places the shulker beside you to do it, then breaks it and picks it back up. Named shulkers, and shulkers when a sign asks for them whole (like \"kits\"), are left as they are.")
+                    "Tier mode: takes items that belong elsewhere out of mixed shulkers, and packs loose items into shulkers that already hold only that item. Places the shulker beside you to do it, then breaks it and picks it back up. Named shulkers, and shulkers when a sign asks for them whole (like \"kits\"), are left as they are.")
             .defaultValue(true)
             .build());
 
@@ -871,7 +871,7 @@ public class StashSorter extends Module {
     private final Set<Box> loopReported = new HashSet<>();
     private boolean jobCounted;
 
-    // Watching containers and signs: other players' lids and sign text, read from the client's own world
+    // Watching other players' container lid activity from the client's own world
     private final StashWatch stashWatch = new StashWatch();
     private static final int LID_POLL_TICKS = 4;
     private static final int OWN_TOUCH_TICKS = 20 * 10;
@@ -1021,7 +1021,8 @@ public class StashSorter extends Module {
 
         @Override
         public boolean isMisc(Box box) {
-            return StashSorter.this.isMisc(box);
+            // Sign-defined catch-all chests are no longer a concept.
+            return false;
         }
 
         @Override
@@ -1444,7 +1445,7 @@ public class StashSorter extends Module {
         super(
                 WeSortAddon.CATEGORY,
                 "wesort-stash-sorter",
-                "Sorts a saved stash by tier or by sign, keeps it sorted, and lets you search it.");
+                "Sorts a saved stash by tier and lets you search its inventory.");
 
         // Always listening: keeping the stash up to date, picking containers and whisper searches all work with the
         // module off
@@ -2850,7 +2851,7 @@ public class StashSorter extends Module {
     private Map<Box, Integer> roomBase;
 
     /**
-     * What destinationsFor and Categories.signScore depend on in a stack: its item and components (name, enchants,
+     * What deterministic tier destinations depend on in a stack: its item and components (name, enchants,
      * potion, food, damage, shulker contents...), not its count.
      */
     private record DestKey(Item item, DataComponentMap components) {
@@ -3119,7 +3120,7 @@ public class StashSorter extends Module {
             return start(Job.Compact, messy);
         }
 
-        // A sign that is being changed decides what is left to do: wait for it before calling it done
+        // An inventory revision determines whether an operation has made progress
 
         // Everything is put away: whatever others left on the ground comes before compacting
         if (startGround()) return true;
@@ -7984,7 +7985,7 @@ public class StashSorter extends Module {
         for (int i = 0; i < 27; i++) {
             ItemStack s = menu.getSlot(i).getItem();
             if (s.isEmpty()
-                    || (!fullBundle(s) && (s.is(mainItem) || bestSigned(s).isEmpty()))) continue;
+                    || (!fullBundle(s) && s.is(mainItem))) continue;
             stashHeld.put(into, s.copy());
             InvUtils.move().fromId(i).toId(inventoryToMenu(into, 27));
             moved++;
@@ -9447,7 +9448,7 @@ public class StashSorter extends Module {
             if (moved > 0 || !extra.equals(lastSummary)) {
                 info("Sorted, moved %d stacks.%s Waiting for more to sort.", moved, extra);
                 step(String.format(
-                        "idle: sorted, moved %d stacks; next: sort again when a container, sign or the ground changes.",
+                        "idle: sorted, moved %d stacks; next: sort again when a container or the ground changes.",
                         moved));
             }
             lastSummary = extra;
@@ -10580,7 +10581,7 @@ public class StashSorter extends Module {
     // Planning
 
     /**
-     * Works out where everything belongs. Signs mode needs no planning, each item is matched on its own.
+     * Works out where everything belongs. The single tier mode uses deterministic container planning.
      */
     private void plan() {
         tierBoxes.clear();

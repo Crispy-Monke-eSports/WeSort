@@ -427,11 +427,6 @@ public final class WorldTestDriver {
                     ((Setting<Integer>) sorter.settings.get("delay")).set(1);
                     ((Setting<Integer>) sorter.settings.get("container-delay")).set(0);
                     if (command.get("action").getAsString().equals("sort-start") && !sorter.isActive()) sorter.toggle();
-                    // An explicit sort-start is an operator authorization to work: it releases a
-                    // crash-recovery fence (no-op when none is held). Mirror round-trips,
-                    // inspection results and automatic restores never release it.
-                    if (command.get("action").getAsString().equals("sort-start"))
-                        com.porter.wesort.compat.PhysicalJournalRuntime.releaseReconciled();
                     respond(true, "actual StashSorter configured", state());
                 }
                 case "sort-stop-when-idle" -> {

@@ -3,14 +3,11 @@
  * Java backend, not from hand-written frontend guesses:
  *
  * - OrderStore.OPEN = pending, accepted, in_progress (mutable; cancellable).
- * - OrderStore.FINISHED = delivered, packed, failed, cancelled,
- *   needs_reconciliation (terminal; cancel refused with 409).
- * - OrderStore REPORTED_TERMINAL + the retry gate allow retry only for
- *   failed/cancelled (delivered/packed/needs_reconciliation are NOT retryable).
- * - OrderStage adds PACKING, PICKUP_READY (reported as "packed"),
- *   PICKED_UP, IN_TRANSIT, AWAITING_CUSTOMER, DELIVERED, FAILED,
- *   NEEDS_RECONCILIATION, CANCELLED — mapped defensively in case an API
- *   ever surfaces stage names.
+ * - OrderStore.FINISHED = delivered, packed, failed, cancelled.
+ * - Failed or cancelled orders are historical outcomes, not work requiring
+ *   a human operator. RECOVERING is an active, autonomous rollback stage.
+ * - OrderStage adds PACKING, RECOVERING, PICKUP_READY, PICKED_UP,
+ *   IN_TRANSIT, AWAITING_CUSTOMER, DELIVERED, FAILED, CANCELLED.
  *
  * Unknown strings stay visible (never hidden) with a neutral chip.
  */
@@ -25,7 +22,7 @@ export interface OrderUiState {
   cancellable: boolean;
   /** Retry-as-new-order may be attempted. */
   retryable: boolean;
-  /** Needs operator attention (failure / reconciliation). */
+  /** Requires human action; automated recovery must not generate these alerts. */
   needsAttention: boolean;
 }
 
@@ -35,7 +32,6 @@ export const ORDER_STATUSES = [
   "accepted",
   "in_progress",
   "packed",
-  "needs_reconciliation",
   "delivered",
   "failed",
   "cancelled",
@@ -52,10 +48,12 @@ const STATES: Record<string, OrderUiState> = {
   in_transit: { severity: "info", open: false, cancellable: false, retryable: false, needsAttention: false },
   awaiting_customer: { severity: "info", open: false, cancellable: false, retryable: false, needsAttention: false },
   delivered: { severity: "success", open: false, cancellable: false, retryable: false, needsAttention: false },
-  failed: { severity: "error", open: false, cancellable: false, retryable: true, needsAttention: true },
-  cancelled: { severity: "error", open: false, cancellable: false, retryable: true, needsAttention: true },
-  "force-cancelled": { severity: "error", open: false, cancellable: false, retryable: false, needsAttention: true },
-  needs_reconciliation: { severity: "warning", open: false, cancellable: false, retryable: false, needsAttention: true },
+  failed: { severity: "error", open: false, cancellable: false, retryable: true, needsAttention: false },
+  cancelled: { severity: "default", open: false, cancellable: false, retryable: true, needsAttention: false },
+  "force-cancelled": { severity: "default", open: false, cancellable: false, retryable: false, needsAttention: false },
+  // For old cached API responses, display the legacy state as an automated failure.
+  needs_reconciliation: { severity: "error", open: false, cancellable: false, retryable: true, needsAttention: false },
+  recovering: { severity: "info", open: true, cancellable: false, retryable: false, needsAttention: false },
   // Legacy/alias strings some older payloads used: visible, never hidden.
   completed: { severity: "success", open: false, cancellable: false, retryable: false, needsAttention: false },
   done: { severity: "success", open: false, cancellable: false, retryable: false, needsAttention: false },

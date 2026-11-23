@@ -80,7 +80,7 @@ public final class InventorySync {
     }
 
     private static boolean recoveringWorld, recoveringReceipt;
-    private static boolean reopenRequested;
+    private static long lastRecoveryReopenAt;
 
     private record BlockExpected(int sequence, BlockPos pos, String block, long deadline) {}
 
@@ -680,7 +680,15 @@ public final class InventorySync {
                     recoveringWorld = true;
                     sendReadback(expected);
                 }
-            } else if (!reopenRequested && openRecoverySource()) reopenRequested = true;
+            } else if (System.nanoTime() - lastRecoveryReopenAt >= 2_000_000_000L) {
+                // Reopening this exact saved source is read-only, never a
+                // retransmission of the interrupted inventory click. A denied
+                // or lost container-open packet must not strand the bot
+                // permanently after the first attempt. Old opening receipts
+                // are no longer accepted after a bounded retry.
+                if (readOpen != null && readOpen.recovery()) readOpen = null;
+                if (openRecoverySource()) lastRecoveryReopenAt = System.nanoTime();
+            }
         }
         if (gate.failed()) return;
         // The block ACK is an ordering fence, not proof that a separate world
@@ -879,7 +887,7 @@ public final class InventorySync {
     public static boolean requestReconciliation() {
         if (!gate.failed() || gate.expected() == null || origin == null) return false;
         reconciling = true;
-        reopenRequested = false;
+        lastRecoveryReopenAt = 0;
         reconcileDeadline = System.nanoTime() + 30_000_000_000L;
         return true;
     }

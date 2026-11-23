@@ -572,12 +572,12 @@ public class StashManager extends Module {
             return;
         }
         if (PhysicalJournalRuntime.blocked()) {
-            setStatus("physical operation needs reconciliation");
+            setStatus("automatically recovering physical operation");
             serviceBlockedControl();
             return;
         }
         if (!InventorySync.ready()) {
-            setStatus(InventorySync.failed() ? "inventory needs reconciliation" : "awaiting server inventory");
+            setStatus(InventorySync.failed() ? "awaiting automatic inventory recovery" : "awaiting server inventory");
             serviceBlockedControl();
             return;
         }
@@ -1016,10 +1016,10 @@ public class StashManager extends Module {
     private JsonObject controlActivity() {
         var sorter = WeSortAddon.sorter();
         var runner = sorter == null ? null : sorter.orders();
+        boolean recoveringInventory = InventorySync.failed() || PhysicalJournalRuntime.blocked();
         AgentIncident incident = null;
         if (mc.player.getHealth() <= 0) incident = AgentIncident.DEATH;
-        else if (PhysicalJournalRuntime.blocked()) incident = AgentIncident.NEEDS_RECONCILIATION;
-        else if (InventorySync.failed()) incident = AgentIncident.INVENTORY_UNVERIFIED;
+        else if (recoveringInventory) incident = AgentIncident.INVENTORY_UNVERIFIED;
         else if (status.equals("wrong server")) incident = AgentIncident.WRONG_SERVER;
         else if (status.equals("error 401") || status.equals("server signature invalid")) {
             incident = AgentIncident.AUTH_FAILED;
@@ -1036,7 +1036,9 @@ public class StashManager extends Module {
             incident = AgentIncident.NO_CAPACITY;
         }
         String task = "Monitoring stock";
-        if (incident != null) task = incident.title();
+        if (incident == AgentIncident.INVENTORY_UNVERIFIED && recoveringInventory)
+            task = "Automatically recovering physical inventory";
+        else if (incident != null) task = incident.title();
         else if (runner != null && runner.running()) task = "Packing " + runner.info();
         else if (orderIntakePaused.get()) task = "New orders paused";
         var work = new JsonObject();
@@ -1322,6 +1324,27 @@ public class StashManager extends Module {
                                 } else lastStatusSig = sig;
                                 return true;
                             }
+                            // A successful HTTP response is not necessarily
+                            // a successful delivery. If the Manager cannot prove
+                            // physical staging it returns RECOVERING: keep local
+                            // package receipts and return every staged item.
+                            if (code == 200 && report.status().equals("delivered")) {
+                                try {
+                                    JsonObject accepted =
+                                            JsonParser.parseString(body).getAsJsonObject();
+                                    if (accepted.has("order")
+                                            && "RECOVERING"
+                                                    .equals(accepted.getAsJsonObject("order")
+                                                            .get("state")
+                                                            .getAsString())) {
+                                        runner.rollbackUnverifiedDelivery(report.id());
+                                        lastStatusSig = "";
+                                        return true;
+                                    }
+                                } catch (RuntimeException invalid) {
+                                    return false; // Do not forget a delivery without understanding its receipt.
+                                }
+                            }
                             // 409: the order is already finished or moved on, nothing more to say about it
                             if (code != 200 && code != 409) return false;
                             minimalFor = null;
@@ -1483,7 +1506,7 @@ public class StashManager extends Module {
             // and require reconciliation first. The directive is revision-pinned, so the next
             // heartbeat after recovery applies exactly what was skipped.
             if (com.porter.wesort.compat.PhysicalJournalRuntime.blocked() || !InventorySync.ready()) {
-                info("Manager directive (revision %d) deferred: physical reconciliation required first.", rev);
+                info("Manager directive (revision %d) deferred until automatic physical recovery completes.", rev);
                 return;
             }
             sorter.applyDirective(d, rev);
@@ -1622,10 +1645,15 @@ public class StashManager extends Module {
 
     private void takeOrder(StashSorter sorter, OrderRunner runner, String body) {
         Order order = null;
+        boolean recovering = false;
         try {
             JsonElement e = JsonParser.parseString(body);
-            if (e.isJsonObject() && e.getAsJsonObject().has("order"))
-                order = Order.parse(e.getAsJsonObject().getAsJsonObject("order"));
+            if (e.isJsonObject() && e.getAsJsonObject().has("order")) {
+                JsonObject offered = e.getAsJsonObject().getAsJsonObject("order");
+                recovering = offered.has("state")
+                        && "RECOVERING".equals(offered.get("state").getAsString());
+                order = Order.parse(offered);
+            }
         } catch (RuntimeException e) {
             // Treated as no usable order below
         }
@@ -1651,7 +1679,7 @@ public class StashManager extends Module {
         }
 
         runner.dropSaved(order.id);
-        String why = runner.offer(order);
+        String why = runner.offer(order, recovering);
         if (why == null) {
             sorter.orderTaken();
             pendingOrders = Math.max(0, pendingOrders - 1);

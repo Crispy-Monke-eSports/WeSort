@@ -22,13 +22,11 @@ import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import { useState } from "react";
-import { api } from "../api/client";
 import {
   useAuditOrders, useAuth, useBoxJobs, useCustody, useDeposits, useHandoffs,
   useJobQueue, useOperations, usePermissions, usePhysicalOps,
   type OpsList,
 } from "../api/queries";
-import { useConfirm } from "../components/dialogs";
 
 function rowsOf(data: OpsList | undefined, key: string): any[] {
   const v = (data as any)?.[key];
@@ -36,8 +34,8 @@ function rowsOf(data: OpsList | undefined, key: string): any[] {
 }
 
 /**
- * Operations: ongoing/completed work, physical reconciliation, job history and the
- * order audit. Read-only tables except the owner physical-inspect action.
+ * Operations: ongoing/completed work, autonomous physical recovery, job history
+ * and the order audit. All physical recovery runs unattended.
  */
 export function OperationsPage() {
   const auth = useAuth();
@@ -61,25 +59,6 @@ export function OperationsPage() {
   const [auditGo, setAuditGo] = useState({ order: "", person: "", item: "", stash: "" });
   const audit = useAuditOrders(canAudit, { limit: 50, ...auditGo });
 
-  const [inspectMsg, setInspectMsg] = useState("");
-  const confirm = useConfirm();
-  function inspect(op: any) {
-    setInspectMsg("");
-    confirm.ask({
-      title: `Inspect physical operation ${op.id ?? op.operation}?`,
-      intro: `Revision ${op.revision}. A re-inspection is recorded against the operation's checksum and may re-queue physical verification.`,
-      changes: [`operation: ${op.id ?? op.operation}`, `revision: ${op.revision}`, `stash: ${op.stash ?? "?"}`],
-      confirmLabel: "Record inspection",
-      run: async () => {
-        const res = await api<{ ok: boolean; [k: string]: unknown }>("/api/v1/physical/inspect", {
-          method: "POST",
-          body: { operation: op.id ?? op.operation, revision: op.revision, checksum: op.checksum },
-        });
-        setInspectMsg(`Inspection recorded: ${JSON.stringify(res).slice(0, 200)}`);
-        physical.refetch();
-      },
-    });
-  }
 
   const alerts: { code: string; count: number }[] = Array.isArray((ops.data as any)?.alerts) ? (ops.data as any).alerts : [];
   const stock = (ops.data as any)?.stock as Record<string, number> | undefined;
@@ -129,7 +108,7 @@ export function OperationsPage() {
 
       {(owner || canAudit) && (
         <Card>
-          <CardHeader title="Operator queues" subheader={owner ? "Owner-only physical and fulfillment work" : "Order audit for your role"} />
+          <CardHeader title="Automation queues" subheader={owner ? "Autonomous physical recovery and fulfillment work" : "Order audit for your role"} />
           <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto" aria-label="Operator queues">
             {owner && <Tab label={`Physical (${rowsOf(physical.data, "operations").length})`} />}
             {owner && <Tab label={`Jobs (${rowsOf(jobs.data, "jobs").length})`} />}
@@ -140,17 +119,15 @@ export function OperationsPage() {
             <Tab label="Order audit" />
           </Tabs>
           <CardContent>
-            {inspectMsg && <Alert severity="info" sx={{ mb: 1 }} onClose={() => setInspectMsg("")}>{inspectMsg}</Alert>}
             {owner && tab === 0 && (
               <OpsTable
                 loading={physical.isLoading} error={physical.isError}
-                columns={["Operation", "State", "Revision", "Last seen", "Action"]}
+                columns={["Operation", "State", "Revision", "Last seen"]}
                 rows={rowsOf(physical.data, "operations").map((o: any) => [
                   String(o.id ?? o.operation ?? "?"),
-                  <Chip key="s" size="small" color={/need|fail|uncertain/i.test(String(o.state ?? "")) ? "warning" : "default"} label={String(o.state ?? o.inspectionState ?? "unknown")} />,
+                  <Chip key="s" size="small" color={/need|fail|uncertain/i.test(String(o.state ?? "")) ? "warning" : "default"} label={String(o.managerState ?? o.state ?? "unknown")} />,
                   String(o.revision ?? "—"),
                   o.lastSeen ? new Date(o.lastSeen).toLocaleString() : "—",
-                  <Button key="i" size="small" variant="outlined" onClick={() => inspect(o)}>Inspect</Button>,
                 ])}
               />
             )}
@@ -230,7 +207,6 @@ export function OperationsPage() {
           </CardContent>
         </Card>
       )}
-      {confirm.dialog}
     </Stack>
   );
 }

@@ -54,6 +54,12 @@ final class OrderRunner {
         /** How many containers are waiting to be read again. */
         int staleCount();
 
+        /** All items carried for this order have been returned to verified stash storage. */
+        boolean cleanupComplete();
+
+        /** Whether a verified, returned package is presently tracked in the agent's carry slots. */
+        boolean trackedPackage(String fingerprint);
+
         double distance(Box box);
 
         Set<Integer> carry();
@@ -97,7 +103,8 @@ final class OrderRunner {
         XpBottles xpBottleSource();
     }
 
-    sealed interface Intent permits Idle, Build, Fetch, Deliver, Rename, Craft, FindAnvil, Expand, Recheck, XpBottles {}
+    sealed interface Intent
+            permits Idle, Build, Fetch, RecoverStage, Deliver, Rename, Craft, FindAnvil, Expand, Recheck, XpBottles {}
 
     /** Nothing for the sorter to do for the order now. */
     record Idle() implements Intent {}
@@ -107,6 +114,9 @@ final class OrderRunner {
 
     /** Take this shulker out of the container. */
     record Fetch(Box box, int slot) implements Intent {}
+
+    /** Retrieve only the exact package/slot committed to the delivery receipt. */
+    record RecoverStage(Box box, int slot, String fingerprint) implements Intent {}
 
     /** Take these bottles of enchanting out of the container, to buy XP for a rename. */
     record XpBottles(Box box, int slot) implements Intent {}
@@ -134,7 +144,7 @@ final class OrderRunner {
         Delivered,
         Failed,
         Cancelled,
-        NeedsReconciliation
+        Returning
     }
 
     /** The WeSort UUID carried by a shulker stack, or null. */
@@ -205,6 +215,12 @@ final class OrderRunner {
         Map<String, Integer> lotTotals;
         // When this unit first started waiting for a retry (0: not waiting); bounds one bad unit
         long waitSince;
+        /** A physical receipt for a package staged before this order failed. */
+        String stagedSource = "", stagedFingerprint = "";
+
+        int stagedSlot = -1;
+        boolean reclaimed;
+        ItemStack[] deliveryBefore;
 
         Unit(Kind kind, String key, List<Order.Lot> lots) {
             this.kind = kind;
@@ -235,8 +251,8 @@ final class OrderRunner {
     private record RawKey(
             net.minecraft.world.item.Item item, net.minecraft.core.component.DataComponentMap components) {}
 
-    private static final long PAUSE_TIMEOUT_MS = 2 * 60 * 60 * 1000L;
-    private static final long REREAD_TIMEOUT_MS = 30 * 60 * 1000L;
+    private static final long PAUSE_TIMEOUT_MS = 5 * 60 * 1000L;
+    private static final long REREAD_TIMEOUT_MS = 5 * 60 * 1000L;
     private static final int MAX_FULL_TRIES = 2;
     /** Times one shulker asks the delivery storage to grow before the order waits instead. */
     private static final int MAX_EXPANDS = 6;
@@ -247,9 +263,9 @@ final class OrderRunner {
     private static final int MAX_NAME_TRIES = 2;
     private static final int MAX_CRAFT_TRIES = 2;
     /** Transient hiccups (lag, a container that opens slowly, items still being re-read) wait this long and try again. */
-    private static final long RETRY_WAIT_MS = 60_000L;
-    /** One shulker waits at most this long in total before it is skipped so the rest of the order can deliver. */
-    private static final long UNIT_WAIT_MAX_MS = 2 * 60 * 60 * 1000L;
+    private static final long RETRY_WAIT_MS = 20_000L;
+    /** An irrecoverable unit fails the whole order so partially staged packages are rolled back. */
+    private static final long UNIT_WAIT_MAX_MS = 3 * 60 * 1000L;
 
     private static final String SHULKER_BOX = "minecraft:shulker_box";
     /** Bottles of enchanting are thrown for the XP a rename costs: top up to this level when short. */
@@ -266,6 +282,9 @@ final class OrderRunner {
 
     private Order order;
     private State state = State.Running;
+    /** Final outcome is not reported until the sorter has put back loose order stock. */
+    private State pendingOutcome;
+
     private final List<Unit> units = new ArrayList<>();
     private int index;
     private int shulkersDelivered;
@@ -309,8 +328,8 @@ final class OrderRunner {
     // time the order moved forward at all. An order that never moves still lets go after a backstop.
     private long planWaitSince;
     private long lastForwardAt;
-    /** An order with no forward progress at all still lets go after this long, so it can't block the queue forever. */
-    private static final long ORDER_STALL_MAX_MS = 2 * 60 * 60 * 1000L;
+    /** Bounded waiting: orders with no progress fail and enter rollback instead of monopolizing the queue. */
+    private static final long ORDER_STALL_MAX_MS = 10 * 60 * 1000L;
 
     private Survey lastSurvey;
     private int lastSurveyTick = -1;
@@ -341,6 +360,11 @@ final class OrderRunner {
     /** An order is being worked on. */
     boolean running() {
         return order != null && state == State.Running;
+    }
+
+    /** The current order must return staged packages and leftover carried items. */
+    boolean returning() {
+        return order != null && state == State.Returning;
     }
 
     /** There is an order, finished or not, that the server has not been told the end of yet. */
@@ -385,6 +409,7 @@ final class OrderRunner {
         planWaitSince = 0;
         lastForwardAt = 0;
         state = State.Running;
+        pendingOutcome = null;
         epoch++;
     }
 
@@ -403,6 +428,10 @@ final class OrderRunner {
      *         reconnect the plan waits for them, and nothing is rejected for what is not known yet.
      */
     String offer(Order o) {
+        return offer(o, false);
+    }
+
+    String offer(Order o, boolean managerRecovery) {
         if (order != null) return order.id.equals(o.id) ? null : "already working on another order";
         Stash stash = owner.stash();
         if (stash == null || mc.level == null) return "no stash is loaded";
@@ -410,6 +439,7 @@ final class OrderRunner {
 
         order = o;
         state = State.Running;
+        pendingOutcome = null;
         units.clear();
         index = 0;
         shulkersDelivered = 0;
@@ -442,6 +472,36 @@ final class OrderRunner {
         phase = "re-reading containers";
         epoch++;
 
+        // A crashed rollback must not redo the original manufacturing/packing
+        // plan. Restore only the exact staged receipts needed to reclaim items.
+        Stash.ActiveOrder savedRecovery = stash.activeOrder;
+        if (savedRecovery != null
+                && savedRecovery.id.equals(o.id)
+                && (savedRecovery.recoveryPending || managerRecovery)) {
+            if (managerRecovery) {
+                savedRecovery.recoveryPending = true;
+                savedRecovery.recoveryCancelled = true;
+                stash.markDirty();
+                stash.save();
+            }
+            restoreRecovery(savedRecovery);
+            return null;
+        }
+        if (managerRecovery) {
+            // The Manager has fenced an interrupted order, but no local packing
+            // plan survived. Never reconstruct and restart the old plan from
+            // changed stock; reclaim only tracked carry inventory.
+            Stash.ActiveOrder recovering = new Stash.ActiveOrder();
+            recovering.id = o.id;
+            recovering.recoveryPending = true;
+            recovering.recoveryCancelled = true;
+            stash.activeOrder = recovering;
+            stash.markDirty();
+            stash.save();
+            restoreRecovery(recovering);
+            return null;
+        }
+
         // Craftable products are manufactured first; the ordinary packing
         // plan must not look for an output which does not yet physically exist.
         if (!o.craftJobs.isEmpty()) {
@@ -449,9 +509,10 @@ final class OrderRunner {
             if (prior != null
                     && prior.id.equals(o.id)
                     && (prior.craftInFlight || prior.craftIndex > 0 || prior.craftMade > 0)) {
-                state = State.NeedsReconciliation;
-                phase = "crafting needs reconciliation";
-                message = "A manufacturing step may have consumed ingredients before restart; inspect physical stock";
+                // Never repeat a manufacturing mutation after restart. The
+                // physical journal is inspected separately; the current
+                // order aborts and rolls back carried ingredients.
+                finish(State.Failed, "Manufacturing interrupted; returning leftover ingredients");
                 return null;
             }
             Stash.ActiveOrder active = new Stash.ActiveOrder();
@@ -489,6 +550,27 @@ final class OrderRunner {
         return null;
     }
 
+    private void restoreRecovery(Stash.ActiveOrder saved) {
+        units.clear();
+        for (Stash.ActiveOrder.UnitPlan p : saved.units) {
+            List<Order.Lot> lots = new ArrayList<>();
+            for (int i = 0; i < p.lotKeys.size(); i++) lots.add(new Order.Lot(p.lotKeys.get(i), p.lotCounts.get(i)));
+            Unit u = new Unit(p.kind == 0 ? Kind.Shulker : p.kind == 1 ? Kind.Empty : Kind.Bin, p.key, lots);
+            u.stagedSource = p.stagedSource;
+            u.stagedFingerprint = p.stagedFingerprint;
+            u.stagedSlot = p.stagedSlot;
+            u.reclaimed = p.reclaimed;
+            units.add(u);
+        }
+        shulkersDelivered = saved.shulkersDelivered;
+        delivered.putAll(saved.delivered);
+        pendingOutcome = saved.recoveryCancelled ? State.Cancelled : State.Failed;
+        state = State.Returning;
+        planned = true;
+        phase = "returning items to stash";
+        epoch++;
+    }
+
     /** Only refusals that can never resolve by waiting (too big for any stock) fail the order at once. */
     private static boolean isPermanentPlanRefusal(String why) {
         return why.startsWith("too big");
@@ -520,6 +602,10 @@ final class OrderRunner {
                 restored.named = p.named;
                 restored.unnamedReason = p.nameFailure == null || p.nameFailure.isEmpty() ? null : p.nameFailure;
                 restored.namedKey = p.namedKey == null || p.namedKey.isEmpty() ? null : p.namedKey;
+                restored.stagedSource = p.stagedSource;
+                restored.stagedFingerprint = p.stagedFingerprint;
+                restored.stagedSlot = p.stagedSlot;
+                restored.reclaimed = p.reclaimed;
                 plan.add(restored);
             }
             start = Math.min(saved.done, plan.size());
@@ -881,7 +967,7 @@ final class OrderRunner {
                     || outcome.crafted() <= 0
                     || outcome.consumed().isEmpty()) {
                 finish(
-                        State.NeedsReconciliation,
+                        State.Failed,
                         "Crafting interrupted or unverifiable: "
                                 + (outcome.failure() == null ? "no verified output" : outcome.failure()));
                 return;
@@ -889,7 +975,7 @@ final class OrderRunner {
             for (var e : outcome.consumed().entrySet()) {
                 long used = (long) craftUsed.getOrDefault(e.getKey(), 0) + e.getValue();
                 if (used > task.materials().getOrDefault(e.getKey(), 0)) {
-                    finish(State.NeedsReconciliation, "Craft used more than the reserved material budget");
+                    finish(State.Failed, "Craft used more than the reserved material budget");
                     return;
                 }
             }
@@ -977,6 +1063,16 @@ final class OrderRunner {
         if (!owner.gate() && !kits.active()) reset();
     }
 
+    /**
+     * The Manager rejected a reported delivery because the native staging
+     * manifest was not proven. Keep the staged receipts and retrieve every
+     * package; do not forget the order on a successful HTTP response.
+     */
+    void rollbackUnverifiedDelivery(String id) {
+        if (order != null && order.id.equals(id) && state == State.Delivered)
+            finish(State.Failed, "Manager could not verify the staging receipt; returning all packages");
+    }
+
     /** The server has the end of the order: it can be forgotten, and the next one claimed. */
     void ack(String id) {
         if (order == null || !order.id.equals(id) || state == State.Running) return;
@@ -1005,6 +1101,12 @@ final class OrderRunner {
 
     Report report() {
         if (order == null) return null;
+        if (state == State.Returning && stagedReturned() && owner.cleanupComplete()) {
+            state = pendingOutcome == null ? State.Failed : pendingOutcome;
+            pendingOutcome = null;
+            phase = state == State.Cancelled ? "cancelled" : "failed";
+            epoch++;
+        }
         // The wait for the re-read only runs out when it has stopped making progress: a big rescan can take long
         if (state == State.Running && !planned) {
             long now = System.currentTimeMillis();
@@ -1030,7 +1132,7 @@ final class OrderRunner {
             case Delivered -> "delivered";
             case Failed -> "failed";
             case Cancelled -> "cancelled";
-            case NeedsReconciliation -> "needs_reconciliation";
+            case Returning -> "in_progress";
         };
         String shown = state == State.Running && owner.rereading() ? "re-reading containers" : phase;
         return new Report(
@@ -1151,6 +1253,10 @@ final class OrderRunner {
         p.named = u.named;
         p.nameFailure = u.unnamedReason == null ? "" : u.unnamedReason;
         p.namedKey = u.namedKey == null ? "" : u.namedKey;
+        p.stagedSource = u.stagedSource;
+        p.stagedFingerprint = u.stagedFingerprint;
+        p.stagedSlot = u.stagedSlot;
+        p.reclaimed = u.reclaimed;
         stash.markDirty();
         stash.save();
     }
@@ -1235,7 +1341,10 @@ final class OrderRunner {
     /** The delivery container is open: how many of the current shulker it holds before anything is put in. */
     void deliveryOpened(ItemStack[] contents) {
         if (!running() || index >= units.size() || units.get(index).verifying) return;
-        units.get(index).base = countIn(units.get(index), contents);
+        Unit u = units.get(index);
+        u.base = countIn(u, contents);
+        u.deliveryBefore =
+                java.util.Arrays.stream(contents).map(ItemStack::copy).toArray(ItemStack[]::new);
     }
 
     /** The delivery container had no room for the shulker. */
@@ -1256,13 +1365,45 @@ final class OrderRunner {
     }
 
     /** The shulker is no longer carried: the open container is checked for it. */
-    void deliveryClosed(ItemStack[] contents) {
+    void deliveryClosed(Box delivery, ItemStack[] contents) {
         if (!running() || index >= units.size()) return;
         Unit u = units.get(index);
-        if (u.have && countIn(u, contents) > u.base) u.confirmed = true;
+        if (u.have && countIn(u, contents) > u.base) {
+            // The before/after delta binds this package to a single, exact
+            // physical delivery slot. A matching *other* package is not proof.
+            int found = -1;
+            if (u.deliveryBefore != null && u.deliveryBefore.length == contents.length) {
+                for (int i = 0; i < contents.length; i++) {
+                    ItemStack old = u.deliveryBefore[i], current = contents[i];
+                    if (!matches(u, current)) continue;
+                    boolean added = old.isEmpty() && current.getCount() == 1
+                            || !old.isEmpty()
+                                    && ItemStack.isSameItemSameComponents(old, current)
+                                    && current.getCount() == old.getCount() + 1;
+                    if (!added) continue;
+                    if (found >= 0) {
+                        found = -1; // Ambiguous; never claim somebody else's package.
+                        break;
+                    }
+                    found = i;
+                }
+            }
+            if (found >= 0) {
+                u.stagedSource = com.porter.wesort.compat.ObservationRuntime.sourceId(delivery.parts);
+                u.stagedSlot = found;
+                u.stagedFingerprint = fingerprint(contents[found]);
+                saveUnit(u);
+            }
+            u.confirmed = true;
+        }
         // It reached the container with the name: it was named, whatever was noted about it before
         if (u.name != null && !u.named)
             for (ItemStack s : contents) if (matches(u, s) && isOurName(u, s)) u.named = true;
+    }
+
+    private static String fingerprint(ItemStack stack) {
+        return com.porter.wesort.compat.SlotRuntime.snapshot(new ItemStack[] {stack})
+                .fingerprint();
     }
 
     private int countIn(Unit u, ItemStack[] contents) {
@@ -1273,6 +1414,48 @@ final class OrderRunner {
 
     // The next step
 
+    /** Returns the next verified rollback action; no packing work runs during recovery. */
+    Intent recoveryStep() {
+        if (state != State.Returning || owner.rereading()) return new Idle();
+        Stash stash = owner.stash();
+        if (stash == null) return new Idle();
+        for (Unit u : units) {
+            if (u.reclaimed) continue;
+            if (u.stagedSource.isEmpty() || u.stagedSlot < 0 || u.stagedFingerprint.isEmpty()) continue;
+            Box source = stash.boxes.stream()
+                    .filter(box -> (box.delivery || box.deliveryExtra)
+                            && u.stagedSource.equals(com.porter.wesort.compat.ObservationRuntime.sourceId(box.parts)))
+                    .findFirst()
+                    .orElse(null);
+            if (source == null || !source.known() || source.stale || source.unreachable) {
+                phase = "returning staged packages: waiting for verified delivery storage";
+                return new Idle();
+            }
+            if (owner.trackedPackage(u.stagedFingerprint)) {
+                u.reclaimed = true;
+                saveUnit(u);
+                continue;
+            }
+            if (u.stagedSlot < source.contents.length
+                    && fingerprint(source.contents[u.stagedSlot]).equals(u.stagedFingerprint)) {
+                phase = "returning staged packages";
+                return new RecoverStage(source, u.stagedSlot, u.stagedFingerprint);
+            }
+            phase = "verifying staged package return";
+            return new Idle();
+        }
+        return new Idle();
+    }
+
+    private boolean stagedReturned() {
+        for (Unit u : units) {
+            if (!u.stagedSource.isEmpty() && !u.reclaimed) return false;
+        }
+        // A delivered unit without a unique delivery receipt must never be
+        // silently abandoned. Keep its reservation until the agent can recover.
+        return shulkersDelivered == 0 || units.stream().filter(u -> u.reclaimed).count() >= shulkersDelivered;
+    }
+
     Intent next() {
         if (!running()) return new Idle();
         if (parked) {
@@ -1281,8 +1464,8 @@ final class OrderRunner {
         }
         if (cancelRequested) {
             finish(
-                    craftInFlight ? State.NeedsReconciliation : State.Cancelled,
-                    craftInFlight ? "Crafting was interrupted by cancellation" : "cancelled");
+                    State.Cancelled,
+                    craftInFlight ? "Crafting interrupted by cancellation; returning materials" : "cancelled");
             return new Idle();
         }
         if (!owner.gate() || mc.player == null) {
@@ -1302,7 +1485,7 @@ final class OrderRunner {
         // queue forever. Normal progress (planning, advancing units, delivering) resets the clock.
         long nowMs = System.currentTimeMillis();
         if (lastForwardAt != 0 && nowMs - lastForwardAt > ORDER_STALL_MAX_MS) {
-            finish(State.Failed, "no forward progress for 2 hours (" + phase + "), giving up");
+            finish(State.Failed, "no forward progress for 10 minutes (" + phase + "), giving up");
             return new Idle();
         }
 
@@ -1330,7 +1513,7 @@ final class OrderRunner {
                 phase = "crafting " + task.item();
                 return new Craft(task.item(), remaining);
             }
-            finish(State.NeedsReconciliation, "Inconsistent crafting progress");
+            finish(State.Failed, "Inconsistent crafting progress");
             return new Idle();
         }
 
@@ -1896,7 +2079,7 @@ final class OrderRunner {
         if (u.waitSince == 0) u.waitSince = now;
         if (now - u.waitSince > UNIT_WAIT_MAX_MS) {
             u.waitSince = 0;
-            skip(why + " (gave up waiting)");
+            finish(State.Failed, why + " (unit could not be completed; rolling back order)");
             return new Idle();
         }
         noteProblem(why + " (trying again)");
@@ -2153,20 +2336,32 @@ final class OrderRunner {
         if (!problems.isEmpty())
             note += (note.isEmpty() ? "" : "; ")
                     + String.join(", ", problems.size() > 3 ? problems.subList(0, 3) : problems);
-        boolean anything = shulkersDelivered > 0;
+        boolean complete = shortLines.isEmpty() && shulkersDelivered == units.size();
         finish(
-                anything ? State.Delivered : State.Failed,
-                anything ? note : (note.isEmpty() ? "nothing could be staged" : "nothing could be staged: " + note));
+                complete ? State.Delivered : State.Failed,
+                complete ? note : (note.isEmpty() ? "order incomplete; returning staged packages" : note));
     }
 
     private void finish(State end, String text) {
         if (order == null || state != State.Running) return;
-        if (craftInFlight && end != State.NeedsReconciliation) {
-            end = State.NeedsReconciliation;
-            text = "Manufacturing was interrupted; physical reconciliation required: " + text;
-        }
+        if (craftInFlight && end != State.Delivered)
+            text = "Manufacturing was interrupted; physical verification is required before cleanup: " + text;
         kits.dropOrderKit();
-        state = end;
+        // Failed/cancelled orders stay active while the sorter puts back all
+        // tracked inventory. Never acknowledge a terminal outcome while the
+        // bot still holds order items.
+        pendingOutcome = end == State.Failed || end == State.Cancelled ? end : null;
+        state = pendingOutcome == null ? end : State.Returning;
+        Stash currentStash = owner.stash();
+        if (pendingOutcome != null
+                && currentStash != null
+                && currentStash.activeOrder != null
+                && currentStash.activeOrder.id.equals(order.id)) {
+            currentStash.activeOrder.recoveryPending = true;
+            currentStash.activeOrder.recoveryCancelled = end == State.Cancelled;
+            currentStash.markDirty();
+            currentStash.save();
+        }
         endCrafting("the order ended");
         owner.crafter().release();
         if (craftedTotal > 0) text = (text.isEmpty() ? "" : text + "; ") + "crafted " + craftedTotal + " Shulker Box";
@@ -2175,7 +2370,9 @@ final class OrderRunner {
             text = text.isEmpty() ? unnamedNote : text + "; " + unnamedNote;
         text = cut(text);
         message = text;
-        phase = end == State.Delivered ? "ready for pickup" : end.name().toLowerCase();
+        phase = state == State.Returning
+                ? "returning items to stash"
+                : end == State.Delivered ? "ready for pickup" : end.name().toLowerCase();
         epoch++;
         say("Order " + order.id + " " + phase + (text.isEmpty() ? "." : ": " + text));
     }

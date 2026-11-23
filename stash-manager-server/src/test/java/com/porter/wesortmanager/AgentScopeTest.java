@@ -244,12 +244,7 @@ class AgentScopeTest {
         var activity = new JsonObject();
         poll.add("activity", activity);
         for (String code : List.of(
-                "WAITING_ON_6B6T_LOBBY",
-                "WRONG_SERVER",
-                "NAVIGATION_PAUSED",
-                "AUTH_FAILED",
-                "INVENTORY_UNVERIFIED",
-                "NEEDS_RECONCILIATION")) {
+                "WAITING_ON_6B6T_LOBBY", "WRONG_SERVER", "NAVIGATION_PAUSED", "AUTH_FAILED", "INVENTORY_UNVERIFIED")) {
             activity.addProperty("incident", code);
             assertEquals(2, agentPost(agentA, agentKeyA, "/api/v1/bot/next", poll.toString()).status / 100);
             var alerts = operationsAlerts(owner);
@@ -262,11 +257,14 @@ class AgentScopeTest {
         poll.addProperty("controlEpoch", "expired");
         assertEquals(409, agentPost(agentA, agentKeyA, "/api/v1/bot/next", poll.toString()).status);
         assertEquals(
-                "NEEDS_RECONCILIATION",
+                "INVENTORY_UNVERIFIED",
                 operationsAlerts(owner).get(0).getAsJsonObject().get("code").getAsString());
         poll.addProperty("controlEpoch", epoch);
         assertEquals(2, agentPost(agentA, agentKeyA, "/api/v1/bot/next", poll.toString()).status / 100);
         assertTrue(operationsAlerts(owner).isEmpty());
+        activity.addProperty("incident", "NEEDS_RECONCILIATION");
+        assertEquals(2, agentPost(agentA, agentKeyA, "/api/v1/bot/next", poll.toString()).status / 100);
+        assertTrue(operationsAlerts(owner).isEmpty(), "Automatic recovery has no manual reconciliation alert");
 
         activity.addProperty("incident", "WAITING_ON_6B6T_LOBBY");
         assertEquals(2, agentPost(agentA, agentKeyA, "/api/v1/bot/next", poll.toString()).status / 100);

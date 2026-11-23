@@ -5,7 +5,6 @@ import java.util.Arrays;
 /** Location-free incident codes shared by the agent and Manager. */
 public enum AgentIncident {
     DEATH("Player died"),
-    NEEDS_RECONCILIATION("Needs physical reconciliation"),
     INVENTORY_UNVERIFIED("Awaiting server inventory"),
     NAVIGATION_PAUSED("Navigation paused"),
     WAITING_ON_6B6T_LOBBY("Waiting for the 6b6t lobby portal"),

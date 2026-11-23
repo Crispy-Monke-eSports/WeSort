@@ -13,11 +13,7 @@
  */
 
 export type OrderSeverity =
-  | "success"
-  | "error"
-  | "info"
-  | "warning"
-  | "default";
+  "success" | "error" | "info" | "warning" | "default";
 
 export interface OrderUiState {
   severity: OrderSeverity;
@@ -194,9 +190,7 @@ export function orderUiState(status: string | null | undefined): OrderUiState {
  * shows if it needs attention.
  */
 type AttentionOrder =
-  | { status?: unknown; retriedAs?: unknown }
-  | null
-  | undefined;
+  { status?: unknown; retriedAs?: unknown } | null | undefined;
 
 export function isSuperseded(order: AttentionOrder): boolean {
   return !!order?.retriedAs;

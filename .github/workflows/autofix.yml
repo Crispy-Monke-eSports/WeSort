@@ -57,13 +57,12 @@ jobs:
           fi
 
   main:
-    name: Format Java, web and Markdown on main (auto-commit)
+    name: Check Java, web and Markdown on main
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-26.04
-    # Only this job can push to main; it never runs for PRs.
+    # Protected main is read-only; formatting fixes must go through a PR.
     permissions:
-      contents: write
-      actions: write # Dispatch CI on the newly formatted main commit.
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -76,45 +75,16 @@ jobs:
         with:
           cache-read-only: true
       - uses: ./.github/actions/configure-gradle-mirror
-      - name: Format and verify client, Minecraft 26.3, and shared Java
-        run: ./gradlew --no-daemon spotlessApply spotlessCheck
+      - name: Require formatted client, Minecraft 26.3, and shared Java
+        run: ./gradlew --no-daemon spotlessCheck
       - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6
         with:
           distribution: temurin
           java-version: '21'
-      - name: Format and verify Manager Java
-        run: ./gradlew --no-daemon -p stash-manager-server spotlessApply spotlessCheck
+      - name: Require formatted Manager Java
+        run: ./gradlew --no-daemon -p stash-manager-server spotlessCheck
       - uses: oven-sh/setup-bun@v2
       - name: Install web formatting dependencies
         run: cd web && bun install --frozen-lockfile
-      - name: Apply Prettier to web UI and all Markdown
-        run: cd web && bun run format
-      - name: Commit and push formatting fixes to main
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Stage only tracked Java, web UI and Markdown files changed by the formatters.
-          git add -u -- '*.java' '*.md' 'web/**' 'web-tests/**' 'stash-manager-server/src/main/resources/web/**'
-          if git diff --cached --quiet; then
-            echo 'All Java, web and Markdown files already follow Spotless and Prettier.'
-            exit 0
-          fi
-
-          git -c user.name='github-actions[bot]' \
-              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
-              commit -m 'style: apply Spotless and Prettier formatting'
-
-          # No force push: fail if main advanced or branch rules prohibit updates.
-          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:refs/heads/main
-
-          # A push with GITHUB_TOKEN never triggers push workflows. Explicitly
-          # dispatch WeSort CI against the new head, so verify/E2E can run.
-          # workflow_dispatch is an exception to the GITHUB_TOKEN recursion rule.
-          curl --fail-with-body --silent --show-error \
-            --request POST \
-            --header "Authorization: Bearer ${GITHUB_TOKEN}" \
-            --header "Accept: application/vnd.github+json" \
-            --header "X-GitHub-Api-Version: 2022-11-28" \
-            --data '{"ref":"main"}' \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/dispatches"
+      - name: Require formatted web UI and all Markdown
+        run: cd web && bun run format:check

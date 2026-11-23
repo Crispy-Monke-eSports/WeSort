@@ -1,15 +1,14 @@
 # W-019 – verifierad sortering och skyddad stock
 
-Signs och Tiers använder den befintliga StashSorter-motorn i riktig 26.3.
-Kategorier läses från verkliga skyltar; matchning använder föremålets typ,
-slang, enchantments och potion. Anvil-namn ersätter inte typen. Varianternas
-komponenter och antal bevaras vid flytten och kvitteras genom W-015:s fulla
-server-readback, inte genom lokal prediction.
+Tiers använder StashSorter-motorn i riktig Minecraft 26.3. Fysiska
+observationer och tillgänglig plats styr destinationen. Föremålets
+komponenter och antal bevaras vid flytten och kontrolleras genom
+serverbekräftad före-/efterbild.
 
 ## Destinationsval och skydd
 
 `.wesort-sort-why` förklarar destinationsval för den variant som hålls i handen:
-matchningspoäng, full container, bättre match, misc/unsigned overflow, excluded,
+matchningspoäng, full container, bättre match, overflow, excluded,
 kit-container och skyddat lager. Kommandot flyttar inget och skriver inga
 koordinater i serverloggen. En helt blockerad drop-off ger en varning och
 behåller varorna i källan. Fulla containrar med delvis fyllda matchande stacks
@@ -66,12 +65,16 @@ Stocktestet kontrollerar att skydd varken ignoreras eller tas bort med ett
 under pågående eller osäker fysisk sortering.
 
 `scripts/mc26/sorting-harness.py --manager-image <image>` använder egen vanilla
-26.3-server, extern Fabric/Meteor/WeSort-klient och Docker Manager. Själva
-produktionssortern flyttar blandat innehåll efter verkliga skyltar. Provet
-kontrollerar namngivet skadat enchanted gear, slang, potions, delvis/full
-mottagare, misc och osignerad overflow, excluded och skyddad kitbox, Tiers,
-helt fullt lager samt samverkan med signerad Manager-reservation.
+26.3-server, extern Fabric/Meteor/WeSort-klient och Docker Manager. Provet
+kontrollerar tier-sortering, varianters komponenter, fulla destinationer,
+skyddad stock och samverkan med signerade Manager-reservationer.
 
-CI kör samma skript i `mc26-sorting.yml`. Lokala rapporter under
-`docs/verification` och hosted CI-resultat är separata bevis. Inga befintliga
-användarvärldar eller Qwerte-data används.
+W-005 omfattar vanliga vetefrön, dirt och ender pearls. Testet jämför
+serverns lager med Managers fysiska slots, reserverar tre orderrader mot
+verifierade fingerprints och avbokar ordern utan inventoryändring. Kopior
+av artikeltyperna sorteras från drop-off och ingår i den oberoende
+serverkontrollen av exakta mängder och komponenter. Provet använder dagens
+tier-motor i stället för skyltberoendet i den stängda PR #70.
+
+CI kör samma skript som del av Minecraft 26.3 E2E. Rapporterna skiljer
+privata vanilla-resultat från liveprov på 6b6t.

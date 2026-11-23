@@ -2413,22 +2413,23 @@ final class OrderStore {
         // failure, not a human-facing reconciliation workflow.
         if (status.equals("needs_reconciliation")) return OrderStage.FAILED;
         if (status.equals("delivered")) {
-            int packages = result != null && result.has("shulkers")
-                    ? result.get("shulkers").getAsInt()
-                    : 0;
-            if (order.agent != null && packages > 0 && packages <= MAX_SHULKERS) {
+            order.manifest = null;
+            // A late completion cannot undo a cancellation or an already started rollback.
+            if (order.cancelRequested || order.stage() == OrderStage.RECOVERING) return OrderStage.RECOVERING;
+            long packages = exactPositiveCount(result == null ? null : result.get("shulkers"));
+            if (order.agent != null
+                    && packages > 0
+                    && packages <= MAX_SHULKERS
+                    && allLinesStaged(order.lines, result)
+                    && !index.stock().unsettledPhysicalOrder(order.id)) {
                 order.manifest =
-                        index.stock().stagingManifest(order.server, order.stash, order.id, order.agent, packages);
+                        index.stock().stagingManifest(order.server, order.stash, order.id, order.agent, (int) packages);
             }
             // A terminal report without a native staging receipt is *not*
             // terminal: order the same agent to reclaim staged packages first.
             // Returning FAILED here would let the agent delete its recovery
             // checkpoint after a successful HTTP response.
-            return order.manifest != null
-                            && allLinesStaged(order.lines, result)
-                            && !index.stock().unsettledPhysicalOrder(order.id)
-                    ? OrderStage.PICKUP_READY
-                    : OrderStage.RECOVERING;
+            return order.manifest != null ? OrderStage.PICKUP_READY : OrderStage.RECOVERING;
         }
         return status.equals("cancelled") ? OrderStage.CANCELLED : OrderStage.FAILED;
     }
@@ -2495,11 +2496,25 @@ final class OrderStore {
         var outstanding = new HashMap<String, Long>();
         for (var line : lines) outstanding.merge(line.key(), line.count(), Long::sum);
         for (var entry : result.getAsJsonArray("lines")) {
+            if (!entry.isJsonObject()) return false;
             var line = entry.getAsJsonObject();
-            var count = outstanding.remove(line.get("key").getAsString());
-            if (count == null || count.longValue() != line.get("delivered").getAsLong()) return false;
+            var key = line.get("key");
+            if (key == null || !key.isJsonPrimitive() || !key.getAsJsonPrimitive().isString()) return false;
+            var count = outstanding.remove(key.getAsString());
+            if (count == null || count.longValue() != exactPositiveCount(line.get("delivered"))) return false;
         }
         return outstanding.isEmpty();
+    }
+
+    /** Never let Gson's narrowing conversions truncate fractions or wrap overflowing quantities. */
+    static long exactPositiveCount(JsonElement value) {
+        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()) return -1;
+        try {
+            long count = value.getAsBigDecimal().longValueExact();
+            return count > 0 ? count : -1;
+        } catch (ArithmeticException | NumberFormatException invalid) {
+            return -1;
+        }
     }
 
     /**

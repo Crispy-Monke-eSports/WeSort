@@ -3964,6 +3964,14 @@ public class StashSorter extends Module {
                 || (job != null && job != Job.Survey);
     }
 
+    /**
+     * True while a started physical sorting or repacking operation must finish before
+     * an operator may safely stop the module. Surveys alone are read-only.
+     */
+    public boolean physicalWorkInProgress() {
+        return finishingPhysicalMaintenance();
+    }
+
     private boolean sorting() {
         if (!sortItems.get()) return false;
         var manager =

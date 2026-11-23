@@ -217,7 +217,8 @@ final class PhysicalOperations {
         var context = record.getAsJsonObject("context");
         for (String key : List.of("server", "agent", "dimension", "kind", "orderId", "jobId"))
             if (context.has(key)) summary.add(key, context.get(key));
-        summary.addProperty("managerState", state);
+        // Persisted journal fences are internal; clients only see autonomous recovery.
+        summary.addProperty("managerState", state.equals("NEEDS_RECONCILIATION") ? "RECOVERING" : state);
         var standing = new LinkedHashMap<String, JsonObject>();
         if (state.equals("NEEDS_RECONCILIATION"))
             for (var entry : record.getAsJsonArray("events")) {

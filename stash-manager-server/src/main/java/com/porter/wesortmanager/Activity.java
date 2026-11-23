@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
+import com.porter.wesort.data.AgentIncident;
 import java.util.Set;
 
 /**
@@ -76,10 +77,7 @@ final class Activity {
         Double at = num(in, "at");
         out.addProperty("at", sane(at, now) ? at.longValue() : now);
         String incident = str(in, "incident");
-        if (incident != null
-                && Set.of("DEATH", "INVENTORY_UNVERIFIED", "NO_CAPACITY").contains(incident)) {
-            out.addProperty("incident", incident);
-        }
+        if (AgentIncident.accepts(incident)) out.addProperty("incident", incident);
 
         if (in.has("connection") && in.get("connection").isJsonObject()) {
             JsonObject c = in.getAsJsonObject("connection");

@@ -49,7 +49,7 @@ För hela order- och leveransflödet, se [domänkontrakten](../docs/MANAGER_CONT
 | Agent | POST index, heartbeat, orders/claim, orders/:id/status, delivery |
 | Lager/webb | GET stashes, index, orders, delivery, link, server, stash-defs, kits; POST server, stash-defs, kits, rescan, link/regenerate |
 | Order/webb | POST orders (lines: item, shulker eller kit), orders/clear, orders/:id/cancel, orders/:id/force-cancel, orders/:id/retry, orders/:id/approval, orders/:id/reconcile |
-| Drift/agent | POST bot/hello, bot/state, bot/results, bot/activity; GET bot/next |
+| Drift/agent | POST bot/hello, bot/state, bot/results, bot/activity, bot/next; GET bot/next |
 | Drift/webb | GET bots, bots/:id/settings, bots/:id/jobs, bots/:id/activity; POST bots/:id/settings |
 | Administration | GET/POST users; POST users/owner, users/:id, users/:id/actions enligt UserRoutes; GET audit |
 | Assets | GET /icon/:id och statiska resurser |
@@ -64,6 +64,14 @@ Browserläsning kräver session; writes kräver dessutom POST, JSON,
 nekas. Owner-only administration använder lösenordsbekräftelse.
 Agentanrop signeras genom Signer; replay/skew/key-generation kontrolleras.
 SignerTest och HTTP-regressionerna är protokollets körbara exempel.
+
+En aktuell signerad kontrollsession kan rapportera en incidentkod i
+`POST bot/next` under `activity.incident`. Manager visar giltiga koder i
+`GET operations` för användare med aktivitetstillgång till agenten.
+Koderna har inga koordinater eller credentials. Navigation som pausats,
+väntan på 6b6t-portalen, fel server, overifierat inventarium och journal som
+kräver avstämning har egna koder. Agentfrånvaro visas utifrån Managers
+observerade närvaro.
 
 Aktiva permissions: view, order, ordersAll, activity, settings, rescan, link,
 guildOrders, positions samt stash-/bot-scope. Nycklar lämnas inte ut till sub-users.

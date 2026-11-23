@@ -179,6 +179,8 @@ final class BotHub {
                 b.controlSession = controlSession;
                 b.controlEpoch = java.util.UUID.randomUUID().toString();
                 b.manifestScope = scope;
+                b.activity = null;
+                b.activityAt = 0;
             }
             if (player != null && !player.isEmpty()) b.player = player;
             b.plugin = plugin;

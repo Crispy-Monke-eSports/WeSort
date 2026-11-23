@@ -234,6 +234,65 @@ class AgentScopeTest {
     }
 
     @Test
+    void operationsReportsOnlyRecognizedIncidentsFromTheCurrentSignedControlSession() throws Exception {
+        String owner = login(null, OWNER_PW);
+        var hello = agentPost(agentA, agentKeyA, "/api/v1/bot/hello", helloBootstrap(agentA));
+        assertEquals(200, hello.status, hello.body);
+        var poll = JsonParser.parseString(helloBootstrap(agentA)).getAsJsonObject();
+        String epoch = hello.obj().get("controlEpoch").getAsString();
+        poll.addProperty("controlEpoch", epoch);
+        var activity = new JsonObject();
+        poll.add("activity", activity);
+        for (String code : List.of(
+                "WAITING_ON_6B6T_LOBBY",
+                "WRONG_SERVER",
+                "NAVIGATION_PAUSED",
+                "AUTH_FAILED",
+                "INVENTORY_UNVERIFIED",
+                "NEEDS_RECONCILIATION")) {
+            activity.addProperty("incident", code);
+            assertEquals(2, agentPost(agentA, agentKeyA, "/api/v1/bot/next", poll.toString()).status / 100);
+            var alerts = operationsAlerts(owner);
+            assertEquals(1, alerts.size());
+            var alert = alerts.get(0).getAsJsonObject();
+            assertEquals(code, alert.get("code").getAsString());
+            assertEquals(1, alert.get("count").getAsInt());
+        }
+        activity.addProperty("incident", "private coordinates");
+        poll.addProperty("controlEpoch", "expired");
+        assertEquals(409, agentPost(agentA, agentKeyA, "/api/v1/bot/next", poll.toString()).status);
+        assertEquals(
+                "NEEDS_RECONCILIATION",
+                operationsAlerts(owner).get(0).getAsJsonObject().get("code").getAsString());
+        poll.addProperty("controlEpoch", epoch);
+        assertEquals(2, agentPost(agentA, agentKeyA, "/api/v1/bot/next", poll.toString()).status / 100);
+        assertTrue(operationsAlerts(owner).isEmpty());
+
+        activity.addProperty("incident", "WAITING_ON_6B6T_LOBBY");
+        assertEquals(2, agentPost(agentA, agentKeyA, "/api/v1/bot/next", poll.toString()).status / 100);
+        setServer(owner, "warehouse.example");
+        defineStash(owner, "approved");
+        var assigned = agentPost(
+                agentA,
+                agentKeyA,
+                "/api/v1/bot/hello",
+                helloFor("1".repeat(64), "warehouse.example", "approved", agentA));
+        assertEquals(200, assigned.status, assigned.body);
+        assertTrue(operationsAlerts(owner).isEmpty(), "New physical scope must clear the previous scope's incident");
+        assertEquals(409, agentPost(agentA, agentKeyA, "/api/v1/bot/next", poll.toString()).status);
+    }
+
+    private JsonArray operationsAlerts(String owner) throws Exception {
+        var req = HttpRequest.newBuilder(URI.create(base + "/api/v1/operations"))
+                .header("Cookie", SessionStore.COOKIE + "=" + owner)
+                .GET()
+                .build();
+        var response = http.send(req, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, response.statusCode(), response.body());
+        return JsonParser.parseString(response.body()).getAsJsonObject().getAsJsonArray("alerts");
+    }
+
+    @Test
     void physicalWorkFailsClosedBeforeFirstSetup() throws Exception {
         // No server configured: every server-carrying agent call is refused with 400, not 409.
         assertEquals(400, botPost("/api/v1/heartbeat", heartbeat("s", "a")).status);

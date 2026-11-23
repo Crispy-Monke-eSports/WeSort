@@ -8,6 +8,7 @@ import com.google.gson.JsonPrimitive;
 import com.porter.wesort.WeSortAddon;
 import com.porter.wesort.compat.InventorySync;
 import com.porter.wesort.compat.PhysicalJournalRuntime;
+import com.porter.wesort.data.AgentIncident;
 import com.porter.wesort.stash.Order;
 import com.porter.wesort.stash.Stash;
 import com.porter.wesort.stash.StashIndex;
@@ -1015,23 +1016,29 @@ public class StashManager extends Module {
     private JsonObject controlActivity() {
         var sorter = WeSortAddon.sorter();
         var runner = sorter == null ? null : sorter.orders();
-        boolean needsReconciliation = InventorySync.failed() || PhysicalJournalRuntime.blocked();
-        String incident = null;
-        String task;
-        if (mc.player.getHealth() <= 0) {
-            task = "Player died";
-            incident = "DEATH";
-        } else if (needsReconciliation) {
-            task = "Needs physical reconciliation";
-            incident = "INVENTORY_UNVERIFIED";
-        } else if (com.porter.wesort.compat.NavigationRuntime.paused()) task = "Navigation paused";
-        else if (!InventorySync.ready()) task = "Awaiting server inventory";
+        AgentIncident incident = null;
+        if (mc.player.getHealth() <= 0) incident = AgentIncident.DEATH;
+        else if (PhysicalJournalRuntime.blocked()) incident = AgentIncident.NEEDS_RECONCILIATION;
+        else if (InventorySync.failed()) incident = AgentIncident.INVENTORY_UNVERIFIED;
+        else if (status.equals("wrong server")) incident = AgentIncident.WRONG_SERVER;
+        else if (status.equals("error 401") || status.equals("server signature invalid")) {
+            incident = AgentIncident.AUTH_FAILED;
+        } else if (com.porter.wesort.compat.NavigationRuntime.paused()) {
+            incident = AgentIncident.NAVIGATION_PAUSED;
+        } else if (sorter != null && sorter.portalAwaiting()) {
+            incident = AgentIncident.WAITING_ON_6B6T_LOBBY;
+        } else if (!InventorySync.ready()) {
+            incident = AgentIncident.INVENTORY_UNVERIFIED;
+        } else if (sorter != null
+                && acceptOrders.get()
+                && !orderIntakePaused.get()
+                && "no free inventory slot".equals(sorter.orderBlocker())) {
+            incident = AgentIncident.NO_CAPACITY;
+        }
+        String task = "Monitoring stock";
+        if (incident != null) task = incident.title();
         else if (runner != null && runner.running()) task = "Packing " + runner.info();
         else if (orderIntakePaused.get()) task = "New orders paused";
-        else if (sorter != null && acceptOrders.get() && "no free inventory slot".equals(sorter.orderBlocker())) {
-            task = "No free inventory slot";
-            incident = "NO_CAPACITY";
-        } else task = "Monitoring stock";
         var work = new JsonObject();
         work.addProperty("title", task);
         work.addProperty("level", incident == null ? "info" : "warn");
@@ -1039,7 +1046,7 @@ public class StashManager extends Module {
         tasks.add(work);
         var activity = new JsonObject();
         activity.add("current", tasks);
-        if (incident != null) activity.addProperty("incident", incident);
+        if (incident != null) activity.addProperty("incident", incident.name());
         return activity;
     }
 

@@ -362,6 +362,11 @@ final class OrderRunner {
         return order != null && state == State.Running;
     }
 
+    /** The current order must return staged packages and leftover carried items. */
+    boolean returning() {
+        return order != null && state == State.Returning;
+    }
+
     /** There is an order, finished or not, that the server has not been told the end of yet. */
     boolean holdsOrder() {
         return order != null;
@@ -463,6 +468,14 @@ final class OrderRunner {
         phase = "re-reading containers";
         epoch++;
 
+        // A crashed rollback must not redo the original manufacturing/packing
+        // plan. Restore only the exact staged receipts needed to reclaim items.
+        Stash.ActiveOrder savedRecovery = stash.activeOrder;
+        if (savedRecovery != null && savedRecovery.id.equals(o.id) && savedRecovery.recoveryPending) {
+            restoreRecovery(savedRecovery);
+            return null;
+        }
+
         // Craftable products are manufactured first; the ordinary packing
         // plan must not look for an output which does not yet physically exist.
         if (!o.craftJobs.isEmpty()) {
@@ -509,6 +522,27 @@ final class OrderRunner {
             }
         }
         return null;
+    }
+
+    private void restoreRecovery(Stash.ActiveOrder saved) {
+        units.clear();
+        for (Stash.ActiveOrder.UnitPlan p : saved.units) {
+            List<Order.Lot> lots = new ArrayList<>();
+            for (int i = 0; i < p.lotKeys.size(); i++) lots.add(new Order.Lot(p.lotKeys.get(i), p.lotCounts.get(i)));
+            Unit u = new Unit(p.kind == 0 ? Kind.Shulker : p.kind == 1 ? Kind.Empty : Kind.Bin, p.key, lots);
+            u.stagedSource = p.stagedSource;
+            u.stagedFingerprint = p.stagedFingerprint;
+            u.stagedSlot = p.stagedSlot;
+            u.reclaimed = p.reclaimed;
+            units.add(u);
+        }
+        shulkersDelivered = saved.shulkersDelivered;
+        delivered.putAll(saved.delivered);
+        pendingOutcome = saved.recoveryCancelled ? State.Cancelled : State.Failed;
+        state = State.Returning;
+        planned = true;
+        phase = "returning items to stash";
+        epoch++;
     }
 
     /** Only refusals that can never resolve by waiting (too big for any stock) fail the order at once. */
@@ -1361,15 +1395,15 @@ final class OrderRunner {
                 phase = "returning staged packages: waiting for verified delivery storage";
                 return new Idle();
             }
-            if (u.stagedSlot < source.contents.length
-                    && fingerprint(source.contents[u.stagedSlot]).equals(u.stagedFingerprint)) {
-                phase = "returning staged packages";
-                return new RecoverStage(source, u.stagedSlot, u.stagedFingerprint);
-            }
             if (owner.trackedPackage(u.stagedFingerprint)) {
                 u.reclaimed = true;
                 saveUnit(u);
                 continue;
+            }
+            if (u.stagedSlot < source.contents.length
+                    && fingerprint(source.contents[u.stagedSlot]).equals(u.stagedFingerprint)) {
+                phase = "returning staged packages";
+                return new RecoverStage(source, u.stagedSlot, u.stagedFingerprint);
             }
             phase = "verifying staged package return";
             return new Idle();
@@ -2282,6 +2316,16 @@ final class OrderRunner {
         // bot still holds order items.
         pendingOutcome = end == State.Failed || end == State.Cancelled ? end : null;
         state = pendingOutcome == null ? end : State.Returning;
+        Stash currentStash = owner.stash();
+        if (pendingOutcome != null
+                && currentStash != null
+                && currentStash.activeOrder != null
+                && currentStash.activeOrder.id.equals(order.id)) {
+            currentStash.activeOrder.recoveryPending = true;
+            currentStash.activeOrder.recoveryCancelled = end == State.Cancelled;
+            currentStash.markDirty();
+            currentStash.save();
+        }
         endCrafting("the order ended");
         owner.crafter().release();
         if (craftedTotal > 0) text = (text.isEmpty() ? "" : text + "; ") + "crafted " + craftedTotal + " Shulker Box";

@@ -304,7 +304,8 @@ public final class WeSortManager {
             throws IOException {
         var credentials = new AgentCredentials(config.dataDir());
         credentials.onRevocation(hub::retire);
-        Router router = new Router(new AccessControl(config), sessions, config, users, credentials, orders);
+        Router router =
+                new Router(new AccessControl(config), sessions, config, users, credentials, orders, new Signer(store.stock()));
         health.register(router);
         AuthRoutes authRoutes = new AuthRoutes(config, sessions, limiter, users, audit);
         authRoutes.register(router);

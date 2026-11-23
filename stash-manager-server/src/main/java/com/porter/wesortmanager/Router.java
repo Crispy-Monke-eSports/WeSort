@@ -104,7 +104,7 @@ final class Router implements HttpHandler {
     }
 
     private final AccessControl access;
-    private final Signer signer = new Signer();
+    private final Signer signer;
     private final SessionStore sessions;
     private final Config config;
     private final Users users;
@@ -133,6 +133,18 @@ final class Router implements HttpHandler {
             Users users,
             AgentCredentials agentCredentials,
             OrderStore orderStore) {
+        this(access, sessions, config, users, agentCredentials, orderStore, new Signer());
+    }
+
+    Router(
+            AccessControl access,
+            SessionStore sessions,
+            Config config,
+            Users users,
+            AgentCredentials agentCredentials,
+            OrderStore orderStore,
+            Signer signer) {
+        this.signer = signer;
         this.access = access;
         this.sessions = sessions;
         this.config = config;

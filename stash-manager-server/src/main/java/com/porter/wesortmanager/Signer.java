@@ -28,7 +28,8 @@ final class Signer {
     private static final Pattern BOT = Pattern.compile("^(-|[A-Za-z0-9_-]{1,64})$");
 
     private final LongSupplier clock;
-    /** nonce -> when it may be forgotten; insertion order = time order. Only nonces of valid signatures are kept. */
+    private final StockLedger durableNonces;
+    /** In-memory cache for isolated tests; production uses the durable nonce table. */
     private final LinkedHashMap<String, Long> nonces = new LinkedHashMap<>();
 
     Signer() {
@@ -36,7 +37,16 @@ final class Signer {
     }
 
     Signer(LongSupplier clock) {
+        this(clock, null);
+    }
+
+    Signer(StockLedger ledger) {
+        this(System::currentTimeMillis, ledger);
+    }
+
+    Signer(LongSupplier clock, StockLedger ledger) {
         this.clock = clock;
+        this.durableNonces = ledger;
     }
 
     long now() {
@@ -115,13 +125,23 @@ final class Signer {
             if (MessageDigest.isEqual(given, expected) && match < 0) match = i; // constant time per key
         }
         if (match < 0) return -1;
+        if (durableNonces != null) {
+            try {
+                return durableNonces.claimSignedNonce(a.nonce(), now, now + NONCE_TTL_MS, MAX_NONCES)
+                        ? match
+                        : -1;
+            } catch (java.sql.SQLException failed) {
+                // No authenticated mutation may proceed if its nonce cannot be committed.
+                System.err.println("Signed request rejected: nonce persistence unavailable");
+                return -1;
+            }
+        }
         synchronized (nonces) {
             for (Iterator<Map.Entry<String, Long>> it = nonces.entrySet().iterator(); it.hasNext(); ) {
-                Map.Entry<String, Long> e = it.next();
-                if (e.getValue() > now && nonces.size() <= MAX_NONCES) break;
-                it.remove();
+                if (it.next().getValue() <= now) it.remove();
             }
-            if (nonces.containsKey(a.nonce())) return -1;
+            // Do not evict any unexpired nonce to make room for another request.
+            if (nonces.size() >= MAX_NONCES || nonces.containsKey(a.nonce())) return -1;
             nonces.put(a.nonce(), now + NONCE_TTL_MS);
         }
         return match;

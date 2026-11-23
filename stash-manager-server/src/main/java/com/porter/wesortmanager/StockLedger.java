@@ -93,6 +93,9 @@ final class StockLedger {
                             "CREATE TABLE IF NOT EXISTS box_uuid_history(uuid TEXT NOT NULL,server TEXT NOT NULL,status TEXT NOT NULL,reason TEXT NOT NULL,source TEXT NOT NULL,path TEXT NOT NULL,recorded_at INTEGER NOT NULL,revision INTEGER NOT NULL)");
                     s.execute("CREATE INDEX IF NOT EXISTS box_uuid_history_uuid ON box_uuid_history(uuid)");
                     s.execute(
+                            "CREATE TABLE IF NOT EXISTS signed_request_nonces(nonce TEXT PRIMARY KEY,expires_at INTEGER NOT NULL)");
+                    s.execute("CREATE INDEX IF NOT EXISTS signed_request_nonces_expiry ON signed_request_nonces(expires_at)");
+                    s.execute(
                             "CREATE TABLE IF NOT EXISTS box_jobs(id TEXT PRIMARY KEY,server TEXT NOT NULL,stash TEXT NOT NULL,state TEXT NOT NULL,agent TEXT NOT NULL,token TEXT,deadline INTEGER NOT NULL,payload TEXT NOT NULL)");
                     s.execute(
                             "CREATE TABLE IF NOT EXISTS stock_meta(id INTEGER PRIMARY KEY CHECK(id=1),epoch TEXT NOT NULL,revision INTEGER NOT NULL)");
@@ -152,6 +155,29 @@ final class StockLedger {
         }
         return c;
     }
+    /** Claim a valid signed request before dispatch, atomically across threads and Manager restarts. */
+    boolean claimSignedNonce(String nonce, long now, long expiry, int capacity) throws SQLException {
+        try (var c = open();
+                var tx = new SqliteWriteTransaction(c)) {
+            try (var p = c.prepareStatement("DELETE FROM signed_request_nonces WHERE expires_at<=?")) {
+                p.setLong(1, now);
+                p.executeUpdate();
+            }
+            boolean claimed;
+            try (var p = c.prepareStatement("""
+                    INSERT OR IGNORE INTO signed_request_nonces(nonce,expires_at)
+                    SELECT ?,? WHERE (SELECT count(*) FROM signed_request_nonces)<?
+                    """)) {
+                p.setString(1, nonce);
+                p.setLong(2, expiry);
+                p.setInt(3, capacity);
+                claimed = p.executeUpdate() == 1;
+            }
+            tx.commit();
+            return claimed;
+        }
+    }
+
     /** Called inside the same transaction that releases/expires an automation lease. */
     void invalidateServer(Connection c, String server) throws SQLException {
         long next = Math.addExact(revision(c), 1);

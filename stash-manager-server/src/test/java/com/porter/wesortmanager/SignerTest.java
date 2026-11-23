@@ -5,9 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.HexFormat;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** The HMAC signing of bot requests and responses, with the shared test vector from PROTOCOL.md. */
 class SignerTest {
@@ -75,6 +77,29 @@ class SignerTest {
                 0,
                 s.verify(auth(k, now.get(), NONCE, BODY), "POST", "/api/v1/heartbeat", BODY, k),
                 "a nonce is forgotten after 5 minutes");
+    }
+
+    @Test
+    void productionNonceClaimSurvivesManagerRestart(@TempDir Path data) throws Exception {
+        AtomicLong now = new AtomicLong(1700000000000L);
+        byte[] key = Signer.deriveKey("test-key");
+        var signed = auth(key, now.get(), NONCE, BODY);
+        var first = new Signer(now::get, new StockLedger(data));
+        assertEquals(0, first.verify(signed, "POST", "/api/v1/heartbeat", BODY, key));
+
+        var restarted = new Signer(now::get, new StockLedger(data));
+        assertEquals(-1, restarted.verify(signed, "POST", "/api/v1/heartbeat", BODY, key));
+        now.addAndGet(Signer.NONCE_TTL_MS + 1);
+        assertEquals(0, restarted.verify(auth(key, now.get(), NONCE, BODY), "POST", "/api/v1/heartbeat", BODY, key));
+    }
+
+    @Test
+    void fullNonceTableNeverEvictsAStillValidRequest(@TempDir Path data) throws Exception {
+        var ledger = new StockLedger(data);
+        org.junit.jupiter.api.Assertions.assertTrue(ledger.claimSignedNonce("first", 100, 200, 1));
+        org.junit.jupiter.api.Assertions.assertFalse(ledger.claimSignedNonce("second", 101, 201, 1));
+        org.junit.jupiter.api.Assertions.assertFalse(ledger.claimSignedNonce("first", 101, 201, 1));
+        org.junit.jupiter.api.Assertions.assertTrue(ledger.claimSignedNonce("second", 200, 300, 1));
     }
 
     @Test

@@ -111,11 +111,7 @@ export function setCartScope(user: string): void {
 // ---------- multi-stash checkout: explicit per-group state machine ----------
 
 export type CheckoutStatus =
-  | "not_submitted"
-  | "submitting"
-  | "confirmed"
-  | "uncertain"
-  | "rejected";
+  "not_submitted" | "submitting" | "confirmed" | "uncertain" | "rejected";
 
 /** One stash's order: the EXACT request payload plus its Idempotency-Key. */
 export interface OrderBody {
@@ -127,14 +123,10 @@ export interface OrderBody {
   }[];
   /** Legacy free names (kept for persisted-group compat; new orders send null). */
   names:
-    | { mode: "all"; name: string }
-    | { mode: "each"; names: string[] }
-    | null;
+    { mode: "all"; name: string } | { mode: "each"; names: string[] } | null;
   /** W-064 label: the server generates `WeSort (X/Y) - text` from the frozen total. */
   packageLabel:
-    | { mode: "all"; text: string }
-    | { mode: "each"; texts: string[] }
-    | null;
+    { mode: "all"; text: string } | { mode: "each"; texts: string[] } | null;
   purpose: "SELF" | "GUILD";
   recipient: string | null;
   comment: string | null;

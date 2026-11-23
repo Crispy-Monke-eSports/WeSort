@@ -85,11 +85,9 @@ export function OperationsPage() {
     : [];
   const stock = (ops.data as any)?.stock as Record<string, number> | undefined;
   const agents = (ops.data as any)?.agents as
-    | Record<string, number>
-    | undefined;
+    Record<string, number> | undefined;
   const orderStates = (ops.data as any)?.orders as
-    | Record<string, number>
-    | undefined;
+    Record<string, number> | undefined;
 
   return (
     <Stack spacing={2}>

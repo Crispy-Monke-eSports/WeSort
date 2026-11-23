@@ -11,6 +11,8 @@ enum OrderStage {
     AWAITING_CUSTOMER,
     DELIVERED,
     FAILED,
+    RECOVERING,
+    /** Retained only for migration of persisted orders from older Manager versions. */
     NEEDS_RECONCILIATION,
     CANCELLED;
 
@@ -18,13 +20,14 @@ enum OrderStage {
         if (this == next) return true;
         return switch (this) {
             case CREATED -> next == RESERVED || next == CANCELLED || next == FAILED;
-            case RESERVED -> next == PACKING || next == CANCELLED || next == FAILED || next == NEEDS_RECONCILIATION;
-            case PACKING -> next == PICKUP_READY || next == CANCELLED || next == FAILED || next == NEEDS_RECONCILIATION;
-            case PICKUP_READY -> next == PICKED_UP || next == NEEDS_RECONCILIATION;
-            case PICKED_UP -> next == IN_TRANSIT || next == NEEDS_RECONCILIATION;
-            case IN_TRANSIT -> next == AWAITING_CUSTOMER || next == NEEDS_RECONCILIATION;
-            case AWAITING_CUSTOMER -> next == DELIVERED || next == NEEDS_RECONCILIATION;
-            case NEEDS_RECONCILIATION -> next == FAILED || next == CANCELLED || next == PICKUP_READY;
+            case RESERVED -> next == PACKING || next == CANCELLED || next == FAILED || next == RECOVERING;
+            case PACKING -> next == PICKUP_READY || next == CANCELLED || next == FAILED || next == RECOVERING;
+            case PICKUP_READY -> next == PICKED_UP || next == RECOVERING;
+            case PICKED_UP -> next == IN_TRANSIT || next == RECOVERING;
+            case IN_TRANSIT -> next == AWAITING_CUSTOMER || next == RECOVERING;
+            case AWAITING_CUSTOMER -> next == DELIVERED || next == RECOVERING;
+            case RECOVERING -> next == FAILED || next == CANCELLED;
+            case NEEDS_RECONCILIATION -> next == RECOVERING || next == FAILED || next == CANCELLED;
             case DELIVERED, FAILED, CANCELLED -> false;
         };
     }

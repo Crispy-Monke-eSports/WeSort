@@ -1649,9 +1649,8 @@ public class StashManager extends Module {
         }
 
         runner.dropSaved(order.id);
-        String why = runner.offer(order);
+        String why = runner.offer(order, recovering);
         if (why == null) {
-            if (recovering) runner.cancel(order.id);
             sorter.orderTaken();
             pendingOrders = Math.max(0, pendingOrders - 1);
         } else {

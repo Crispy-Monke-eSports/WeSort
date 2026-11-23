@@ -11,37 +11,16 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 import meteordevelopment.meteorclient.utils.Utils;
-import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.item.ItemStack;
 
 /**
- * What players mean by the words they put on signs and type into searches. Maps everyday terms ("redstone stuff",
- * "pvp", "building blocks", "valuables") onto the items they describe, so signs and searches can be written the way
- * people actually talk. Works on {@link StackInfo}, which only knows an item by its own name, never the anvil name.
+ * Item-search vocabulary for everyday terms ("redstone stuff", "pvp", "building blocks", "valuables").
+ * This does not read, write, or interpret Minecraft signs. Works on {@link StackInfo}, which only knows an item by its own name, never the anvil name.
  */
 public final class Categories {
     private Categories() {}
-
-    /**
-     * How well a sign line describes an item. Higher wins: an exact name, then all the words of the line found in the
-     * item's name, then a category the item belongs to, then a catch-all. 0 means the line doesn't describe it.
-     */
-    public static int signScore(String line, StackInfo item) {
-        return signScore(line, describe(item));
-    }
-
-    /**
-     * Same as {@link #signScore(String, StackInfo)}, for scoring one item against many lines: the item's normalised name and
-     * words are worked out once, and each line's split and normalisation is remembered.
-     */
-    public static int signScore(String line, Described item) {
-        int best = 0;
-        for (Part part : prepared(line)) best = Math.max(best, partScore(part, item));
-        return best;
-    }
 
     public static Described describe(StackInfo item) {
         return new Described(item);
@@ -50,10 +29,6 @@ public final class Categories {
     /** For callers that hold a plain stack. An empty stack describes nothing, and scores 0 everywhere. */
     public static Described describe(ItemStack stack) {
         return new Described(StackInfo.of(stack));
-    }
-
-    public static int signScore(String line, ItemStack stack) {
-        return signScore(line, describe(stack));
     }
 
     public static int searchScore(String query, ItemStack stack) {
@@ -203,26 +178,6 @@ public final class Categories {
             "keep whole",
             "loot shulker",
             "unsorted shulker");
-
-    /**
-     * A sign line asking for mixed shulkers whole, like "kits", instead of having them repacked.
-     */
-    public static boolean isKeepWhole(String line) {
-        for (String part : splitList(line)) {
-            if (KEEP_WHOLE.contains(singularPhrase(stripFiller(normalize(part))))) return true;
-        }
-        return false;
-    }
-
-    /**
-     * A sign line saying "anything goes here": misc, other, overflow and the like.
-     */
-    public static boolean isCatchAll(String line) {
-        for (String part : splitList(line)) {
-            if (CATCH_ALL.contains(stripFiller(normalize(part)))) return true;
-        }
-        return false;
-    }
 
     private static int partScore(String part, StackInfo item) {
         return partScore(Part.of(part), new Described(item));
@@ -822,7 +777,6 @@ public final class Categories {
             "general");
 
     private static final Map<String, Predicate<StackInfo>> CATEGORIES = new HashMap<>();
-    private static final List<Label> LABELS = new ArrayList<>();
 
     /**
      * Registers a category under all its names. Names are stored singular, so "tools" and "tool" both work.
@@ -1608,26 +1562,9 @@ public final class Categories {
         label("Building Blocks", building);
     }
 
-    /**
-     * A name for a new category, with what belongs in it. Registered as a sign word like any other, unless the sorter
-     * already knows it as one.
-     */
-    public record Label(String text, Predicate<StackInfo> test) {}
-
+    /** Register item-search vocabulary; never create Minecraft sign text. */
     private static void label(String text, Predicate<StackInfo> test) {
-        LABELS.add(new Label(text, test));
         CATEGORIES.putIfAbsent(singularPhrase(normalize(text)), test);
-    }
-
-    /**
-     * What a sign for this item could say, best first: the category names it fits, then its own name. Never a name
-     * someone gave it.
-     */
-    public static List<String> labelCandidates(StackInfo item) {
-        List<String> out = new ArrayList<>();
-        for (Label label : LABELS) if (label.test().test(item)) out.add(label.text());
-        out.add(item.name);
-        return out;
     }
 
     /**
@@ -1638,71 +1575,4 @@ public final class Categories {
         for (String name : names) add(test, name, name + " pot", name + " potion");
     }
 
-    // Telling whether a sign says anything we understand
-
-    /**
-     * Whether a sign line is something the sorter understands: a nickname, a category, a catch-all word, a kit, or words
-     * that are all found in some item's name, a potion or an enchantment. A date or a name alone is not.
-     */
-    public static boolean recognises(String line) {
-        Boolean known = RECOGNISED.get(line);
-        if (known == null) {
-            if (RECOGNISED.size() > 2048) RECOGNISED.clear();
-            known = false;
-            for (Part part : prepared(line)) {
-                if (partRecognised(part)) {
-                    known = true;
-                    break;
-                }
-            }
-            // Before a world is joined the vocabulary is incomplete (no enchantments), so a "no" isn't kept then
-            if (known || vocabulary != null) RECOGNISED.put(line, known);
-        }
-        return known;
-    }
-
-    private static final Map<String, Boolean> RECOGNISED = new ConcurrentHashMap<>();
-    private static volatile Set<String> vocabulary;
-
-    private static boolean partRecognised(Part part) {
-        // An enchantment with a level is understood as it is
-        if (levelledEnchant(part.full()) != null) return true;
-        String label = part.label();
-        if (label.isEmpty()) return false;
-        if (wholeKnown(part)
-                || CATCH_ALL.contains(label)
-                || KEEP_WHOLE.contains(part.labelKeys().getFirst())) return true;
-        if (nicknames(part) != null || lookup(CATEGORIES, part.labelKeys()) != null) return true;
-        for (String word : label.split(" ")) {
-            if (lookup(CATEGORIES, List.of(singular(word), altWord(word))) != null) return true;
-        }
-        return allIn(label, vocabulary());
-    }
-
-    /**
-     * Every word of every item name, potion and enchantment.
-     */
-    private static Set<String> vocabulary() {
-        Set<String> words = vocabulary;
-        if (words == null) {
-            StringBuilder all = new StringBuilder();
-            for (var key : BuiltInRegistries.ITEM.keySet()) all.append(' ').append(normalize(key.getPath()));
-            for (var key : BuiltInRegistries.POTION.keySet()) all.append(' ').append(normalize(key.getPath()));
-
-            // Enchantments are a data registry: only there once in a world, and only remembered then
-            boolean complete = false;
-            var level = Minecraft.getInstance().level;
-            if (level != null) {
-                var enchantments = level.registryAccess().lookup(Registries.ENCHANTMENT);
-                if (enchantments.isPresent()) {
-                    for (var key : enchantments.get().keySet()) all.append(' ').append(normalize(key.getPath()));
-                    complete = true;
-                }
-            }
-
-            words = Categories.words(all.toString());
-            if (complete) vocabulary = words;
-        }
-        return words;
-    }
 }

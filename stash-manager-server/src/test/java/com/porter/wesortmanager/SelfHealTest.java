@@ -257,6 +257,27 @@ class SelfHealTest {
     }
 
     @Test
+    void nextDeferredOrderClaimsAfterVerifiedRollbackInsteadOfWaitingForOwner() throws Exception {
+        observe("a", 10);
+        var first = orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 2)), null);
+        var active = orders.claim("s", "a");
+        assertEquals(first.id, active.id);
+        var next = orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 2)), null);
+        assertTrue(next.reservationDeferred);
+        assertEquals(first.id, orders.claim("s", "a").id);
+
+        var cancelled = orders.status(first.id, "cancelled", null, null, "Returned items", null);
+        time.set(cancelled.updatedAt + 1000);
+        observe("a", 10);
+        orders.selfHealAll();
+
+        var claimed = orders.claim("s", "a");
+        assertNotNull(claimed);
+        assertEquals(next.id, claimed.id);
+        assertNotNull(claimed.allocations);
+    }
+
+    @Test
     void staleSilentCancelIsFulfilledAutomatically() throws Exception {
         observe("a", 10);
         var order = orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 2)), null);

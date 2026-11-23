@@ -35,29 +35,25 @@ public final class PackageLabel {
      * or a broken surrogate. No whitespace is folded.
      */
     public static String text(String raw, String field) {
-        String value = raw == null ? "" : raw.strip();
-        if (value.isEmpty()) return DEFAULT_TEXT;
-        if (value.length() > MAX_TEXT)
-            throw new IllegalArgumentException(field + " is longer than " + MAX_TEXT + " characters");
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            if (c == '§') throw new IllegalArgumentException(field + " can't contain §");
-            if (Character.isISOControl(c))
+        if (raw == null) return DEFAULT_TEXT;
+        for (int i = 0; i < raw.length(); ) {
+            int codePoint = raw.codePointAt(i);
+            i += Character.charCount(codePoint);
+            if (codePoint == '§') throw new IllegalArgumentException(field + " can't contain §");
+            if (Character.isISOControl(codePoint))
                 throw new IllegalArgumentException(field + " can't contain control characters");
-            int type = Character.getType(c);
+            int type = Character.getType(codePoint);
             if (type == Character.FORMAT
                     || type == Character.LINE_SEPARATOR
                     || type == Character.PARAGRAPH_SEPARATOR
-                    || (type == Character.SURROGATE
-                            && !(Character.isHighSurrogate(c)
-                                    && i + 1 < value.length()
-                                    && Character.isLowSurrogate(value.charAt(i + 1)))
-                            && !(Character.isLowSurrogate(c)
-                                    && i > 0
-                                    && Character.isHighSurrogate(value.charAt(i - 1))))) {
+                    || type == Character.SURROGATE) {
                 throw new IllegalArgumentException(field + " can't contain invisible or direction-changing characters");
             }
         }
+        String value = raw.strip();
+        if (value.isEmpty()) return DEFAULT_TEXT;
+        if (value.length() > MAX_TEXT)
+            throw new IllegalArgumentException(field + " is longer than " + MAX_TEXT + " UTF-16 code units");
         return value;
     }
 

@@ -37,6 +37,11 @@ class PackageLabelTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> PackageLabel.text("a\uD800b", "packageLabel.text")); // broken surrogate
+        assertThrows(IllegalArgumentException.class, () -> PackageLabel.text("\t", "packageLabel.text"));
+        assertThrows(IllegalArgumentException.class, () -> PackageLabel.text("\u0085test", "packageLabel.text"));
+        assertThrows(IllegalArgumentException.class, () -> PackageLabel.text("test\uDB40\uDC01", "packageLabel.text"));
+        assertEquals("Kit 📦", PackageLabel.text("\u3000Kit 📦 ", "packageLabel.text"));
+        assertEquals("\u00a0", PackageLabel.text("\u00a0", "packageLabel.text"));
         assertEquals("abc", PackageLabel.text("  abc  ", "packageLabel.text"));
         assertEquals(PackageLabel.DEFAULT_TEXT, PackageLabel.text("   ", "packageLabel.text"));
     }

@@ -223,5 +223,10 @@ describe("W-064 label text pre-check mirrors the server", () => {
     expect(labelTextError("a\u0007b")).toMatch(/Control/);
     expect(labelTextError("a​b")).toMatch(/Invisible/);
     expect(labelTextError("a\ud800b")).toMatch(/surrogate/);
+    expect(labelTextError("\t")).toMatch(/Control/);
+    expect(labelTextError("\u0085test")).toMatch(/Control/);
+    expect(labelTextError("test\u{E0001}")).toMatch(/Invisible/);
+    expect(labelTextError("\uFEFF")).toMatch(/Invisible/);
+    expect(labelTextError("\u3000Kit 📦 ")).toBeNull();
   });
 });

@@ -80,9 +80,30 @@ async function main() {
       await page.getByRole('button', { name: 'Checkout', exact: true }).click();
       await page.getByRole('button', { name: 'Continue' }).click();
       await page.getByLabel('Comment (optional)').fill(notes[i]);
-      await page.getByRole('button', { name: 'Review' }).click();
+      const review = page.getByRole('button', { name: 'Review' });
+      if (i === 0) {
+        await page.getByRole('combobox', { name: /Box labels for/ }).click();
+        await page.getByRole('option', { name: 'Different text per box' }).click();
+        await page.getByRole('button', { name: 'Add box row' }).click();
+        const suffix = page.getByRole('textbox', { name: /box 1 text/ });
+        await suffix.fill('Bygg\u{E0001}');
+        await page.getByText('Invisible or direction-changing characters are not allowed').waitFor();
+        assert.equal(await review.isEnabled(), false);
+        await suffix.fill('Bygg 📦');
+        await page.getByText(/WeSort \(1\/1\) - Bygg 📦/).waitFor();
+      }
+      await review.click();
       await expect(page.locator('#order-review')).toContainText(notes[i]);
+      const placed = page.waitForResponse(response =>
+        new URL(response.url()).pathname === '/api/v1/orders' && response.request().method() === 'POST');
       await page.getByRole('button', { name: 'Place orders' }).click();
+      const response = await placed;
+      assert.equal(response.status(), 200);
+      if (i === 0) {
+        const { order } = await response.json();
+        assert.deepEqual(order.packageLabel, { mode: 'each', texts: ['Bygg 📦'] });
+        assert.equal(order.comment, notes[i]);
+      }
       await page.getByText(/Confirmed o-/).first().waitFor({ timeout: 15000 });
       await page.getByRole('button', { name: 'Done' }).click();
     }

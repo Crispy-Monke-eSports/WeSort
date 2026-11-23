@@ -61,6 +61,7 @@ import {
   isSingleContent,
   itemsPerBuyUnit,
   labelTextError,
+  trimLabelText,
   LABEL_MAX_TEXT,
   MAX_SHULKERS,
   mixedBoxedContents,
@@ -118,15 +119,11 @@ interface StashLabels {
   texts: string[];
 }
 
-function cleanLabel(s: string): string {
-  return (s ?? "").trim().slice(0, 33);
-}
-
 /** Per-stash package label (P1-11): the texts belong to THIS stash's order only. */
 function packageLabelFor(cfg: StashLabels): OrderBody["packageLabel"] {
-  if (cfg.mode === "all" && cleanLabel(cfg.text)) return { mode: "all", text: cleanLabel(cfg.text) };
-  if (cfg.mode === "each" && cfg.texts.some((t) => cleanLabel(t))) {
-    return { mode: "each", texts: cfg.texts.map(cleanLabel).slice(0, 54) };
+  if (cfg.mode === "all" && trimLabelText(cfg.text)) return { mode: "all", text: trimLabelText(cfg.text) };
+  if (cfg.mode === "each" && cfg.texts.some((t) => trimLabelText(t))) {
+    return { mode: "each", texts: cfg.texts.map(trimLabelText).slice(0, 54) };
   }
   return null;
 }
@@ -824,11 +821,12 @@ function serverOk(slices: SliceState[]): boolean {
  * W-064 box-label text field: 33-unit counter, server-mirroring validation and
  * a live `WeSort (1/Y) - text` preview (Y estimated; the server locks it).
  */
-function LabelTextField({ label, value, onChange, previewY }: {
-  label: string; value: string; onChange: (v: string) => void; previewY?: number;
+function LabelTextField({ label, value, onChange, previewX = 1, previewY }: {
+  label: string; value: string; onChange: (v: string) => void; previewX?: number; previewY?: number;
 }) {
   const error = labelTextError(value);
-  const units = (value ?? "").length; // UTF-16 units, like the server counts
+  const suffix = trimLabelText(value);
+  const units = suffix.length;
   return (
     <TextField
       label={label}
@@ -838,7 +836,7 @@ function LabelTextField({ label, value, onChange, previewY }: {
       fullWidth
       error={!!error}
       helperText={
-        error ?? `${units}/${LABEL_MAX_TEXT}${previewY && value.trim() ? ` · preview: WeSort (1/${previewY}) - ${value.trim()}` : ""}`
+        error ?? `${units}/${LABEL_MAX_TEXT}${previewY && previewX <= previewY ? ` · preview: WeSort (${previewX}/${previewY}) - ${suffix || "Beställning"}` : ""}`
       }
       slotProps={{ htmlInput: { maxLength: LABEL_MAX_TEXT + 8 } }}
     />
@@ -1316,7 +1314,7 @@ function CheckoutDialog(props: {
   const labelInvalid = perStash.some(([stash]) => {
     const cfg = props.labelsFor(stash);
     if (cfg.mode === "all") return !!labelTextError(cfg.text);
-    if (cfg.mode === "each") return cfg.texts.some((t) => t.trim() !== "" && !!labelTextError(t));
+    if (cfg.mode === "each") return cfg.texts.some((t) => !!labelTextError(t));
     return false;
   });
 
@@ -1399,6 +1397,7 @@ function CheckoutDialog(props: {
                           <LabelTextField
                             key={i}
                             label={`${stash} box ${i + 1} text`}
+                            previewX={i + 1}
                             previewY={est}
                             value={nm}
                             onChange={(v) => {
@@ -1434,17 +1433,17 @@ function CheckoutDialog(props: {
                 {(() => {
                   const cfg = props.labelsFor(stash);
                   const est = estFor(stash);
-                  if (cfg.mode === "all" && cleanLabel(cfg.text)) {
+                  if (cfg.mode === "all" && trimLabelText(cfg.text)) {
                     return (
                       <Typography variant="body2" color="text.secondary">
-                        Labels: “{cleanLabel(cfg.text)}” on every box (≈{est}; server freezes X/Y for this order).
+                        Labels: “{trimLabelText(cfg.text)}” on every box (≈{est}; server freezes X/Y for this order).
                       </Typography>
                     );
                   }
-                  if (cfg.mode === "each" && cfg.texts.some((t) => cleanLabel(t))) {
+                  if (cfg.mode === "each" && cfg.texts.some((t) => trimLabelText(t))) {
                     return (
                       <Typography variant="body2" color="text.secondary">
-                        Labels: {cfg.texts.map(cleanLabel).filter(Boolean).map((t) => `“${t}”`).join(", ")} (≈{est} boxes; order kept exactly).
+                        Labels: {cfg.texts.map((text, i) => `#${i + 1} “${trimLabelText(text) || "Beställning"}”`).join(", ")} (≈{est} boxes; order kept exactly).
                       </Typography>
                     );
                   }
@@ -1512,7 +1511,7 @@ function CheckoutDialog(props: {
       </DialogContent>
       <DialogActions>
         {step === 0 && <><Button onClick={props.onClose}>Close</Button><Button variant="contained" onClick={() => setStep(1)} disabled={!props.lines.length}>Continue</Button></>}
-        {step === 1 && <><Button onClick={() => setStep(0)}>Back</Button><Button variant="contained" onClick={() => setStep(2)} disabled={!props.lines.length}>Review</Button></>}
+        {step === 1 && <><Button onClick={() => setStep(0)}>Back</Button><Button variant="contained" onClick={() => setStep(2)} disabled={!props.lines.length || labelInvalid}>Review</Button></>}
         {step === 2 && (
           <>
             <Button onClick={() => setStep(1)}>Back</Button>

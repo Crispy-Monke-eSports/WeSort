@@ -358,6 +358,11 @@ export const LABEL_MAX_TEXT = 33;
 /** W-064: at most 54 boxes per order. */
 export const LABEL_MAX_BOXES = 54;
 
+/** After validation, the space characters removed by Java's String.strip. */
+export function trimLabelText(raw: string): string {
+  return raw.replace(/^[ \u1680\u2000-\u2006\u2008-\u200a\u205f\u3000]+|[ \u1680\u2000-\u2006\u2008-\u200a\u205f\u3000]+$/g, "");
+}
+
 /**
  * Client pre-check mirroring the server's PackageLabel.text rules (JS string
  * length is UTF-16 units, like Java's String.length). Returns the error or
@@ -365,16 +370,13 @@ export const LABEL_MAX_BOXES = 54;
  * surface as rejected groups with the server message).
  */
 export function labelTextError(raw: string): string | null {
-  const value = (raw ?? "").trim();
-  if (!value) return null; // blank falls back to the server default “Beställning”
-  if (value.length > LABEL_MAX_TEXT)
-    return `At most ${LABEL_MAX_TEXT} characters (${value.length} now; the full box name is capped at 50)`;
-  if (value.includes("§")) return "§ is not allowed in box text";
-  // eslint-disable-next-line no-control-regex
-  if (/[\u0000-\u001f\u007f]/.test(value)) return "Control characters are not allowed";
-  if (/[\u200b-\u200f\u2028-\u202f\u2060-\u206f\ufeff\u061c\u180e]/.test(value))
+  if (raw.includes("§")) return "§ is not allowed in box text";
+  if (/\p{Cc}/u.test(raw)) return "Control characters are not allowed";
+  if (/[\p{Cf}\p{Zl}\p{Zp}]/u.test(raw))
     return "Invisible or direction-changing characters are not allowed";
-  if (/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(value))
-    return "Broken surrogate pairs are not allowed";
+  if (/\p{Cs}/u.test(raw)) return "Broken surrogate pairs are not allowed";
+  const value = trimLabelText(raw);
+  if (value.length > LABEL_MAX_TEXT)
+    return `At most ${LABEL_MAX_TEXT} UTF-16 units (${value.length} now; the full box name is capped at 50)`;
   return null;
 }

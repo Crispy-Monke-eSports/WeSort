@@ -188,6 +188,10 @@ public class Stash {
             public boolean nameDone, named;
 
             public String nameFailure = "", namedKey = "";
+            /** Exact verified delivery source, slot and item fingerprint for rollback. */
+            public String stagedSource = "", stagedFingerprint = "";
+            public int stagedSlot = -1;
+            public boolean reclaimed;
         }
 
         public String id = "";
@@ -699,6 +703,12 @@ public class Stash {
                 if (u.named) unit.putBoolean("named", true);
                 if (!u.nameFailure.isEmpty()) unit.putString("nameFailure", u.nameFailure);
                 if (!u.namedKey.isEmpty()) unit.putString("namedKey", u.namedKey);
+                if (!u.stagedSource.isEmpty()) {
+                    unit.putString("stagedSource", u.stagedSource);
+                    unit.putString("stagedFingerprint", u.stagedFingerprint);
+                    unit.putInt("stagedSlot", u.stagedSlot);
+                }
+                if (u.reclaimed) unit.putBoolean("reclaimed", true);
                 planned.add(unit);
             }
             order.put("units", planned);
@@ -974,6 +984,10 @@ public class Stash {
                         u.named = flag(unit, "named");
                         u.nameFailure = text(unit, "nameFailure");
                         u.namedKey = text(unit, "namedKey");
+                        u.stagedSource = text(unit, "stagedSource");
+                        u.stagedFingerprint = text(unit, "stagedFingerprint");
+                        u.stagedSlot = number(unit.get("stagedSlot"), -1);
+                        u.reclaimed = flag(unit, "reclaimed");
                         active.units.add(u);
                     }
                 }

@@ -25,7 +25,7 @@ import java.util.function.LongSupplier;
  */
 final class AgentCredentials {
     private static final SecureRandom RANDOM = new SecureRandom();
-    static final int MAX_ACTIVE_SLOTS = 5;
+    static final int MAX_ACTIVE_SLOTS = 1;
     private static final int MAX_ENTRIES = 64;
     private final Path file;
     private final LongSupplier clock;
@@ -33,7 +33,7 @@ final class AgentCredentials {
     private boolean scopedOnly;
     private java.util.function.Consumer<String> revocationListener = id -> {};
 
-    /** Notify the in-memory fleet when the key behind an active session is revoked. */
+    /** Retire the single active session after its credential is durably revoked. */
     synchronized void onRevocation(java.util.function.Consumer<String> listener) {
         revocationListener = java.util.Objects.requireNonNull(listener);
     }
@@ -107,6 +107,8 @@ final class AgentCredentials {
                     throw new IllegalArgumentException();
                 }
             }
+            if (loaded.values().stream().filter(Slot::active).count() > MAX_ACTIVE_SLOTS)
+                throw new IllegalArgumentException("Only one active agent credential is supported");
             entries.putAll(loaded);
             scopedOnly = root.get("scopedOnly").getAsBoolean();
         } catch (RuntimeException invalid) {
@@ -135,14 +137,17 @@ final class AgentCredentials {
     synchronized String issue(String label) throws IOException {
         if (entries.size() >= MAX_ENTRIES) throw new IllegalArgumentException("Agent credential registry is full");
         long active = entries.values().stream().filter(Slot::active).count();
-        if (active >= MAX_ACTIVE_SLOTS) throw new IllegalArgumentException("Only five agent credentials may be active");
+        if (active >= MAX_ACTIVE_SLOTS) throw new IllegalArgumentException("Only one agent credential may be active");
         String id = UUID.randomUUID().toString();
         var random = new byte[32];
         RANDOM.nextBytes(random);
         String secret = Base64.getUrlEncoder().withoutPadding().encodeToString(random);
         var signingKey = Base64.getEncoder().encodeToString(Signer.deriveKey(secret));
-        entries.put(id, new Slot(id, label, signingKey, null));
-        save(scopedOnly);
+        var updated = new TreeMap<>(entries);
+        updated.put(id, new Slot(id, label, signingKey, null));
+        save(updated, scopedOnly);
+        entries.clear();
+        entries.putAll(updated);
         return id + "." + secret;
     }
 
@@ -161,8 +166,11 @@ final class AgentCredentials {
     synchronized boolean revoke(String id) throws IOException {
         var current = entries.get(id);
         if (current == null || !current.active()) return false;
-        entries.put(id, current.withKey(null).withBinding(null));
-        save(scopedOnly);
+        var updated = new TreeMap<>(entries);
+        updated.put(id, current.withKey(null).withBinding(null));
+        save(updated, scopedOnly);
+        entries.clear();
+        entries.putAll(updated);
         // A valid key no longer authorizes this bot. Remove its cached online
         // presence immediately, not after the long-poll online grace period.
         revocationListener.accept(id);
@@ -172,15 +180,15 @@ final class AgentCredentials {
     synchronized void requireScoped() throws IOException {
         if (entries.values().stream().noneMatch(Slot::active))
             throw new IllegalArgumentException("Issue an agent credential first");
-        save(true);
+        save(entries, true);
     }
 
-    private void save(boolean required) throws IOException {
+    private void save(Map<String, Slot> updated, boolean required) throws IOException {
         var root = new JsonObject();
         root.addProperty("version", 3);
         root.addProperty("scopedOnly", required);
         var slots = new com.google.gson.JsonArray();
-        for (var entry : entries.values()) {
+        for (var entry : updated.values()) {
             var row = new JsonObject();
             row.addProperty("id", entry.id());
             row.addProperty("label", entry.label());

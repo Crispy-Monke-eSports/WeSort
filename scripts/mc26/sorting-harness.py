@@ -102,6 +102,8 @@ class SortingHarness(world.Harness):
                 require(not last['sorterActive'] and last['inventoryReady']
                         and last['physicalJournal'] == 'READY',
                         'Sorter did not stop at a verified physical boundary')
+                require('[]' in self.rcon.command('data get entity ' + self.player + ' Inventory'),
+                        'Verified stop left the unfinished sorting batch in player inventory')
                 return
             require(not last.get('journalBlocked') and not last.get('inventoryFailure'),
                     'Sorter needs physical reconciliation; refusing to hide a real inventory failure: '

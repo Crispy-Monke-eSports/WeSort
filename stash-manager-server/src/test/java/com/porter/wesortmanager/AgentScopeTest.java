@@ -45,6 +45,8 @@ class AgentScopeTest {
     byte[] agentKeyA;
     AgentCredentials credentials;
     BotHub hub;
+    IndexStore store;
+    OrderStore orders;
     /** Example Minecraft UUID, never an authorization identity. */
     static final String PLAYER_A = "11111111-2222-4333-8444-555555555555";
 
@@ -72,9 +74,9 @@ class AgentScopeTest {
         String token = issued.issue("Bot");
         agentA = token.substring(0, token.indexOf('.'));
         agentKeyA = Signer.deriveKey(token.substring(token.indexOf('.') + 1));
-        IndexStore store = new IndexStore(data, CreativeTabs.NONE);
+        store = new IndexStore(data, CreativeTabs.NONE);
         store.load();
-        OrderStore orders = new OrderStore(data, store);
+        orders = new OrderStore(data, store);
         orders.load();
         IconService icons = new IconService(
                 data, id -> null, v -> false, new GameIcons(data.resolve("icons"), false, false), false);
@@ -325,6 +327,40 @@ class AgentScopeTest {
         // After setup the gate opens (the stash is still undefined: 404, not 400).
         setServer(owner, "s");
         assertEquals(404, botPost("/api/v1/heartbeat", heartbeat("s", "a")).status);
+    }
+
+    @Test
+    void queuedOrderDoesNotPrematurelyRevokeTheCurrentSortingLease() throws Exception {
+        String owner = login(null, OWNER_PW);
+        setServer(owner, "s");
+        defineStash(owner, "a");
+        StockFixtures.put(
+                store,
+                JsonParser.parseString("""
+                    {"version":1,"server":"s","stash":"a","items":[
+                      {"key":"minecraft:diamond","id":"minecraft:diamond","count":64,"maxStack":64}]}
+                    """).getAsJsonObject());
+        var request = new JsonObject();
+        request.addProperty("server", "s");
+        request.addProperty("agent", PLAYER_A);
+        request.addProperty("action", "acquire");
+        var acquired = botPost("/api/v1/automation", request.toString());
+        assertEquals(200, acquired.status, acquired.body);
+        var deferred = orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 1)), null);
+        assertTrue(deferred.reservationDeferred);
+
+        assertEquals(409, botPost("/api/v1/automation", request.toString()).status);
+        request.add("token", acquired.obj().get("token"));
+        var renewed = botPost("/api/v1/automation", request.toString());
+        assertEquals(200, renewed.status, renewed.body);
+        assertEquals(acquired.obj().get("token"), renewed.obj().get("token"));
+        request.addProperty("agent", PLAYER_B);
+        assertEquals(409, botPost("/api/v1/automation", request.toString()).status);
+        request.addProperty("agent", PLAYER_A);
+        request.addProperty("action", "release");
+        assertEquals(200, botPost("/api/v1/automation", request.toString()).status);
+        request.addProperty("action", "acquire");
+        assertEquals(409, botPost("/api/v1/automation", request.toString()).status);
     }
 
     @Test

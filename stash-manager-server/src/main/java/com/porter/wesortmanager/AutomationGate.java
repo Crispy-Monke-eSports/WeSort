@@ -1,6 +1,5 @@
 package com.porter.wesortmanager;
 
-import com.google.gson.*;
 import java.io.IOException;
 import java.sql.*;
 import java.util.*;
@@ -25,42 +24,54 @@ final class AutomationGate {
     }
 
     synchronized Lease current(String server) throws IOException {
-        try (var c = stock.open()) {
-            Lease lease = read(c, server);
-            if (lease != null && lease.state.equals("ACTIVE") && clock.getAsLong() >= lease.deadline) {
-                c.setAutoCommit(false);
-                try {
-                    markUncertain(c, server);
-                    c.commit();
-                } catch (Exception e) {
-                    c.rollback();
-                    throw e;
-                }
-                lease = read(c, server);
-            }
+        try (var c = stock.open();
+                var tx = new SqliteWriteTransaction(c)) {
+            var lease = current(c, server, clock.getAsLong());
+            tx.commit();
             return lease;
         } catch (SQLException e) {
             throw new IOException("Cannot verify automation exclusion", e);
         }
     }
 
+    private Lease current(Connection c, String server, long now) throws SQLException {
+        var lease = read(c, server);
+        if (lease != null && lease.state.equals("ACTIVE") && now >= lease.deadline) {
+            markUncertain(c, server);
+            return read(c, server);
+        }
+        return lease;
+    }
+
     /** Caller holds IndexStore's monitor and has checked every open order on this server. */
     synchronized Lease acquire(String server, String agent, String token) throws IOException {
-        Lease before = current(server);
-        if (before != null
-                && (!before.agent.equals(agent) || !before.token.equals(token) || !before.state.equals("ACTIVE")))
-            return null;
-        Lease lease = new Lease(
-                agent, before == null ? UUID.randomUUID().toString() : token, clock.getAsLong() + TTL, "ACTIVE");
         try (var c = stock.open();
-                var p = c.prepareStatement(
-                        "INSERT INTO automation_leases VALUES(?,?,?,?,?) ON CONFLICT(server) DO UPDATE SET deadline=excluded.deadline")) {
-            p.setString(1, server);
-            p.setString(2, agent);
-            p.setString(3, lease.token);
-            p.setLong(4, lease.deadline);
-            p.setString(5, lease.state);
-            p.executeUpdate();
+                var tx = new SqliteWriteTransaction(c)) {
+            long now = clock.getAsLong();
+            var before = current(c, server, now);
+            if (before != null
+                    && (!before.agent.equals(agent) || !before.token.equals(token) || !before.state.equals("ACTIVE"))) {
+                tx.commit(); // Persist any newly discovered expiry.
+                return null;
+            }
+            // Renewal is not a new acquisition. An old token may not revive a
+            // lease already released by recovery or a completed operation.
+            if (before == null && token != null) {
+                tx.commit();
+                return null;
+            }
+            var lease = new Lease(
+                    agent, before == null ? UUID.randomUUID().toString() : token, Math.addExact(now, TTL), "ACTIVE");
+            try (var p = c.prepareStatement(
+                    "INSERT INTO automation_leases VALUES(?,?,?,?,?) ON CONFLICT(server) DO UPDATE SET deadline=excluded.deadline")) {
+                p.setString(1, server);
+                p.setString(2, agent);
+                p.setString(3, lease.token);
+                p.setLong(4, lease.deadline);
+                p.setString(5, lease.state);
+                p.executeUpdate();
+            }
+            tx.commit();
             return lease;
         } catch (SQLException e) {
             throw new IOException("Cannot fence sorting", e);
@@ -68,28 +79,40 @@ final class AutomationGate {
     }
 
     synchronized boolean finish(String server, String agent, String token, boolean verified) throws IOException {
-        Lease before = current(server);
-        if (before == null || !before.agent.equals(agent) || !before.token.equals(token)) return false;
-        // An expired lease is an unknown physical outcome. It requires explicit reconciliation, not a late release.
-        if (!before.state.equals("ACTIVE")) return false;
-        try (var c = stock.open()) {
-            c.setAutoCommit(false);
-            try {
-                if (verified) {
-                    stock.invalidateServer(c, server);
-                    try (var p = c.prepareStatement("DELETE FROM automation_leases WHERE server=?")) {
-                        p.setString(1, server);
-                        p.executeUpdate();
-                    }
-                } else markUncertain(c, server);
-                c.commit();
-                return true;
-            } catch (Exception e) {
-                c.rollback();
-                throw e;
+        try (var c = stock.open();
+                var tx = new SqliteWriteTransaction(c)) {
+            var before = current(c, server, clock.getAsLong());
+            if (before == null
+                    || !before.agent.equals(agent)
+                    || !before.token.equals(token)
+                    || !before.state.equals("ACTIVE")) {
+                tx.commit();
+                return false;
             }
+            boolean unsettled = verified && unsettled(c, server);
+            if (verified && !unsettled) {
+                stock.invalidateServer(c, server);
+                try (var p = c.prepareStatement("DELETE FROM automation_leases WHERE server=?")) {
+                    p.setString(1, server);
+                    p.executeUpdate();
+                }
+            } else {
+                markUncertain(c, server);
+            }
+            tx.commit();
+            return !unsettled;
         } catch (SQLException e) {
             throw new IOException("Cannot finish sorting exclusion", e);
+        }
+    }
+
+    private static boolean unsettled(Connection c, String server) throws SQLException {
+        try (var p = c.prepareStatement(
+                "SELECT 1 FROM physical_operations WHERE server=? AND state NOT IN ('COMPLETED','FAILED') LIMIT 1")) {
+            p.setString(1, server);
+            try (var rows = p.executeQuery()) {
+                return rows.next();
+            }
         }
     }
 

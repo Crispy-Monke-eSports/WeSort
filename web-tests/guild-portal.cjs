@@ -79,6 +79,8 @@ async function main() {
       await expectCartLines(page, 1);
       await page.getByRole('button', { name: 'Checkout', exact: true }).click();
       await page.getByRole('button', { name: 'Continue' }).click();
+      await expect(page.getByRole('combobox', { name: 'Order for' })).toHaveCount(0);
+      await expect(page.getByRole('textbox', { name: 'Recipient (optional)' })).toHaveCount(0);
       await page.getByLabel('Comment (optional)').fill(notes[i]);
       const review = page.getByRole('button', { name: 'Review' });
       if (i === 0) {
@@ -99,10 +101,12 @@ async function main() {
       await page.getByRole('button', { name: 'Place orders' }).click();
       const response = await placed;
       assert.equal(response.status(), 200);
+      const { order } = await response.json();
+      assert.equal(response.request().postDataJSON().purpose, 'SELF');
+      assert.equal(response.request().postDataJSON().recipient, null);
+      assert.equal(order.comment, notes[i]);
       if (i === 0) {
-        const { order } = await response.json();
         assert.deepEqual(order.packageLabel, { mode: 'each', texts: ['Bygg 📦'] });
-        assert.equal(order.comment, notes[i]);
       }
       await page.getByText(/Confirmed o-/).first().waitFor({ timeout: 15000 });
       await page.getByRole('button', { name: 'Done' }).click();
@@ -141,6 +145,38 @@ async function main() {
     await expectCount(rows, 1);
     await expect(rows.first()).toContainText(members[0]);
     await expect(rows.first()).toContainText('minecraft:diamond');
+
+    const owner = await login('');
+    await inventorySearch(owner, 'diamond');
+    await owner.getByTestId('item-grid').locator('.MuiCard-root').first().getByRole('button', { name: 'Add' }).click();
+    await owner.getByRole('spinbutton', { name: 'Quantity (items)', exact: true }).fill('1');
+    await owner.getByRole('button', { name: 'Add to cart' }).click();
+    await owner.getByRole('button', { name: /cart/i }).click();
+    await owner.getByRole('button', { name: 'Checkout', exact: true }).click();
+    await owner.getByRole('button', { name: 'Continue' }).click();
+    await expect(owner.getByRole('combobox', { name: 'Order for' })).toContainText('Myself');
+    await owner.getByRole('combobox', { name: 'Order for' }).click();
+    await owner.getByRole('option', { name: 'The guild' }).click();
+    const recipient = owner.getByRole('textbox', { name: 'Recipient (optional)' });
+    const review = owner.getByRole('button', { name: 'Review' });
+    for (const invalidName of ['Portal Recipient', 'ValidSixteenNameX']) {
+      await recipient.fill(invalidName);
+      await owner.getByText('Enter a Minecraft name with 1–16 letters, digits or underscores.').waitFor();
+      assert.equal(await recipient.inputValue(), invalidName);
+      assert.equal(await review.isEnabled(), false);
+    }
+    await recipient.fill('portalrecipient');
+    await review.click();
+    await expect(owner.locator('#order-review')).toContainText('For the guild · recipient portalrecipient');
+    const placed = owner.waitForResponse(response =>
+      new URL(response.url()).pathname === '/api/v1/orders' && response.request().method() === 'POST');
+    await owner.getByRole('button', { name: 'Place orders' }).click();
+    const response = await placed;
+    assert.equal(response.status(), 200);
+    const { order } = await response.json();
+    assert.equal(order.purpose, 'GUILD');
+    assert.equal(order.recipient, 'PortalRecipient');
+    await owner.getByText(/Confirmed o-/).first().waitFor();
     assert.deepEqual(errors, []);
     assert.deepEqual(external, []);
   } finally {

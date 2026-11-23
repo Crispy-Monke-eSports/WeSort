@@ -396,6 +396,14 @@ try:
                 )[0]
                 == 200
             )
+        assert (
+            http(
+                "/api/v1/users/owner/minecraft",
+                {"account": "PortalRecipient"},
+                opener=browser,
+            )[0]
+            == 200
+        )
         completed = run(
             ["node", "web-tests/guild-portal.cjs"],
             input=json.dumps(
@@ -423,6 +431,9 @@ try:
         )
         ok(
             "Chromium: an officer searches by person and item and inspects the corresponding order audit"
+        )
+        ok(
+            "Chromium: Member checkout sends SELF; Owner checkout validates recipient names and confirms GUILD with the verified account"
         )
     digest = run(
         ["docker", "exec", container, "sha256sum", "/var/lib/wesort/config.properties"]

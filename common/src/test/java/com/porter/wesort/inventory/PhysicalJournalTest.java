@@ -140,6 +140,54 @@ class PhysicalJournalTest {
         }
     }
 
+    private static JsonObject rehash(JsonObject value) {
+        String previous = "";
+        for (var entry : value.getAsJsonArray("events")) {
+            var row = entry.getAsJsonObject();
+            row.addProperty("previous", previous);
+            row.remove("hash");
+            previous = com.porter.wesort.data.ContainerIdentity.hash(
+                    com.porter.wesort.data.CanonicalJson.stringify(row));
+            row.addProperty("hash", previous);
+        }
+        value.remove("checksum");
+        value.addProperty("checksum", com.porter.wesort.data.ContainerIdentity.hash(
+                com.porter.wesort.data.CanonicalJson.stringify(value)));
+        return value;
+    }
+
+    @Test
+    void validChecksumsCannotSubstituteForStateTransitions() throws Exception {
+        var journal = new PhysicalJournal(directory);
+        journal.start(context());
+        var forged = journal.current();
+        forged.addProperty("state", "COMPLETED");
+        forged.addProperty("phase", "COMPLETED");
+        assertThrows(IllegalArgumentException.class, () -> PhysicalJournal.validate(rehash(forged)));
+
+        var unknown = journal.current();
+        unknown.getAsJsonArray("events").get(0).getAsJsonObject().addProperty("type", "UNKNOWN");
+        assertThrows(IllegalArgumentException.class, () -> PhysicalJournal.validate(rehash(unknown)));
+
+        var fractional = journal.current();
+        fractional.getAsJsonArray("events").get(0).getAsJsonObject().addProperty("seq", 1.5);
+        assertThrows(IllegalArgumentException.class, () -> PhysicalJournal.validate(rehash(fractional)));
+    }
+
+    @Test
+    void batchedIntentsAndRepeatInspectionRemainValid() throws Exception {
+        var journal = new PhysicalJournal(directory);
+        journal.start(context());
+        journal.intent(intent());
+        journal.intent(intent());
+        journal.verified(frame(5, "after"), false);
+        journal.complete();
+        assertEquals(journal.current(), PhysicalJournal.validate(journal.current()));
+        journal.verified(frame(9, "after"), true);
+        journal.complete();
+        assertEquals(journal.current(), PhysicalJournal.validate(journal.current()));
+    }
+
     @Test
     void preconditionFailureIsDistinctFromUnknownPhysicalOutcome() throws Exception {
         var journal = new PhysicalJournal(directory);

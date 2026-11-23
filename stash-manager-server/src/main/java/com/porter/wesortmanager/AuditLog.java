@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -29,17 +30,40 @@ final class AuditLog {
         this.clock = clock;
     }
 
+    /**
+     * A corrupt audit file is an operational error, not an empty history. Reading into
+     * a temporary deque also keeps the previous view intact if a reload fails.
+     */
     synchronized void load() {
-        if (file == null || !Files.exists(file)) return;
+        if (file == null) return;
+        if (Files.isSymbolicLink(file))
+            throw new IllegalStateException("Audit log is a symbolic link: " + file.getFileName());
+        if (!Files.exists(file)) return;
         try {
             JsonArray list = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8))
                     .getAsJsonObject()
                     .getAsJsonArray("entries");
-            for (JsonElement e : list) if (e.isJsonObject()) entries.addLast(e.getAsJsonObject());
-            while (entries.size() > MAX) entries.pollFirst();
+            if (list == null) throw new IllegalArgumentException("Missing audit entries");
+            ArrayDeque<JsonObject> loaded = new ArrayDeque<>();
+            for (JsonElement e : list) {
+                if (!e.isJsonObject()) throw new IllegalArgumentException("Invalid audit entry");
+                JsonObject item = e.getAsJsonObject();
+                if (!item.has("at")
+                        || !item.get("at").isJsonPrimitive()
+                        || !item.getAsJsonPrimitive("at").isNumber()
+                        || !item.has("action")
+                        || !item.get("action").isJsonPrimitive()
+                        || !item.getAsJsonPrimitive("action").isString())
+                    throw new IllegalArgumentException("Audit entry missing timestamp or action");
+                loaded.addLast(item.deepCopy());
+            }
+            while (loaded.size() > MAX) loaded.pollFirst();
             AtomicFiles.ownerOnly(file);
+            entries.clear();
+            entries.addAll(loaded);
         } catch (IOException | RuntimeException e) {
-            System.err.println("Skipping " + file.getFileName() + " (the audit log starts empty): " + e);
+            throw new IllegalStateException(
+                    "Cannot load " + file.getFileName() + "; refusing to discard audit history", e);
         }
     }
 
@@ -56,9 +80,14 @@ final class AuditLog {
         o.addProperty("action", action);
         o.addProperty("detail", detail == null ? null : Http.truncate(clean(detail), MAX_DETAIL));
         o.addProperty("address", address);
-        entries.addLast(o);
-        while (entries.size() > MAX) entries.pollFirst();
-        save();
+        // The disk write must succeed before the new entry becomes visible to
+        // readers. A failed write must not create an in-memory-only audit event.
+        ArrayDeque<JsonObject> updated = new ArrayDeque<>(entries);
+        updated.addLast(o);
+        while (updated.size() > MAX) updated.pollFirst();
+        save(updated);
+        entries.clear();
+        entries.addAll(updated);
     }
 
     /** Control characters become spaces, so an entry is always one line. */
@@ -80,16 +109,17 @@ final class AuditLog {
         return entries.size();
     }
 
-    private void save() {
+    private void save(ArrayDeque<JsonObject> updated) {
         if (file == null) return;
         JsonArray list = new JsonArray();
-        entries.forEach(list::add);
+        updated.forEach(list::add);
         JsonObject root = new JsonObject();
         root.add("entries", list);
         try {
+            if (Files.isSymbolicLink(file)) throw new IOException("Audit log must not be a symbolic link");
             AtomicFiles.write(file, Json.GSON.toJson(root).getBytes(StandardCharsets.UTF_8), true);
         } catch (IOException e) {
-            System.err.println("Could not save " + file.getFileName() + ": " + e.getMessage());
+            throw new UncheckedIOException("Cannot persist " + file.getFileName(), e);
         }
     }
 }

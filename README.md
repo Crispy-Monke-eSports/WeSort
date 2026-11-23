@@ -99,18 +99,18 @@ utan att granska diffen först.
 
 ### Automatisk formatering i GitHub Actions
 
-Workflowen [`autofix.ci`](.github/workflows/autofix.yml) kontrollerar Java,
-webb och Markdown med Spotless och Prettier. Den inkluderar även Java-verktyget
-under `tools/mc26-toolchain/src/` via rotprojektet. Genererad kod lämnas orörd.
+Workflowen [`autofix.ci`](.github/workflows/autofix.yml) körs endast på pull
+requests och kontrollerar Java, webb och Markdown med Spotless och Prettier.
+Den inkluderar även Java-verktyget under `tools/mc26-toolchain/src/` via
+rotprojektet. Genererad kod lämnas orörd.
 
 - **Pull requests:** [autofix.ci](https://autofix.ci/) får
   formatteringsdiffen och skapar en rättningscommit i PR-grenen.
   Formatkontrollen blir röd på den ursprungliga committen och går igen
   på rättningscommitten. Workflowens PR-jobb har endast läsrättigheter.
-- **`main`:** vid varje push (eller manuell `workflow_dispatch`) körs
-  `spotlessCheck` för båda Gradle-byggena samt `bun run format:check`.
-  Jobbet har endast läsrättigheter. Eventuella avvikelser rättas via en PR,
-  inte genom en direkt push till den skyddade grenen.
+- **`main`:** formateringskontrollen körs enbart i `ci.yml`, inte i
+  autofix.ci. Eventuella avvikelser rättas via en PR, inte genom en direkt push
+  till den skyddade grenen.
 
 Den centrala [`ci.yml`](.github/workflows/ci.yml) börjar med jobbet
 **Java, web and Markdown formatting gate**. Både compile/unit/Docker och

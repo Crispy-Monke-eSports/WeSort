@@ -813,7 +813,7 @@ final class OrderStore {
             o.updatedAt = now;
             // The qualifying fresh readback already proves the old virtual hold
             // may be dropped. No physical inventory mutation is sent here.
-            if (held) o.releasedAt = now;
+            if (previous.allocations != null) o.releasedAt = now;
             o.record("order.auto-reconcile-abandon", Users.OWNER_ID, now);
             return o;
         }

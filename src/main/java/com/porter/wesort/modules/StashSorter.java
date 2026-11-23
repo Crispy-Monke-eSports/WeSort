@@ -9,7 +9,6 @@ import com.porter.wesort.craft.AnvilFinder;
 import com.porter.wesort.craft.TableFinder;
 import com.porter.wesort.data.ShulkerUuid;
 import com.porter.wesort.stash.Categories;
-import com.porter.wesort.stash.Containers;
 import com.porter.wesort.stash.DeliveryBook;
 import com.porter.wesort.stash.DeliveryRoom;
 import com.porter.wesort.stash.ItemPreviewScreen;
@@ -103,7 +102,6 @@ import net.minecraft.world.level.block.entity.BarrelBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import net.minecraft.world.level.block.entity.ShulkerBoxBlockEntity;
-import net.minecraft.world.level.block.entity.SignBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.ChestType;
 import net.minecraft.world.phys.AABB;
@@ -122,27 +120,10 @@ public class StashSorter extends Module {
     private final SettingGroup sgBot = settings.createGroup("Bot");
     private final SettingGroup sgGround = settings.createGroup("Ground");
     private final SettingGroup sgWatch = settings.createGroup("Watch");
-    private final SettingGroup sgLabels = settings.createGroup("Labels");
     private final SettingGroup sgShulkers = settings.createGroup("Shulkers");
     private final SettingGroup sgSlots = settings.createGroup("Slots");
     private final SettingGroup sgSearch = settings.createGroup("Search");
     private final SettingGroup sgRender = settings.createGroup("Render");
-
-    public enum Mode {
-        Tiers("Tiers"),
-        Signs("Signs");
-
-        private final String title;
-
-        Mode(String title) {
-            this.title = title;
-        }
-
-        @Override
-        public String toString() {
-            return title;
-        }
-    }
 
     /** 6b6t lobby handling: walk through the nether portal to the survival world before working. */
     public enum PortalMode {
@@ -270,13 +251,6 @@ public class StashSorter extends Module {
             .defaultValue(true)
             .build());
 
-    private final Setting<Mode> mode = sgGeneral.add(new EnumSetting.Builder<Mode>()
-            .name("mode")
-            .description("Automatic tier storage: group similar items in shulkers without signs.")
-            .defaultValue(Mode.Tiers)
-            .visible(() -> false)
-            .build());
-
     private final Setting<Pick> pick = sgGeneral.add(new EnumSetting.Builder<Pick>()
             .name("pick")
             .description(
@@ -352,14 +326,6 @@ public class StashSorter extends Module {
             .defaultValue(true)
             .build());
 
-    private final Setting<Boolean> unsignedOverflow = sgGeneral.add(new BoolSetting.Builder()
-            .name("unsigned-overflow")
-            .description(
-                    "Signs mode: when nowhere an item belongs has room, and no container is signed misc, other or overflow, puts it in a container with no sign at all (one already holding items first). Never in a container signed for something else.")
-            .defaultValue(true)
-            .visible(() -> mode.get() == Mode.Signs)
-            .build());
-
     private final Setting<LogLevel> logLevel = sgGeneral.add(new EnumSetting.Builder<LogLevel>()
             .name("log-level")
             .description(
@@ -419,24 +385,6 @@ public class StashSorter extends Module {
             .visible(collectGround::get)
             .build());
 
-    // Labels
-
-    private final Setting<Boolean> autoLabel = sgLabels.add(new BoolSetting.Builder()
-            .name("auto-label")
-            .description(
-                    "Signs mode: when items have no container signed for them, puts up a sign for them on an empty, unsigned chest next to the signed ones, using signs from your inventory or the stash. Never places or breaks a chest, and never breaks a sign.")
-            .defaultValue(true)
-            .build());
-
-    private final Setting<Integer> labelGap = sgLabels.add(new IntSetting.Builder()
-            .name("label-gap")
-            .description("Seconds to wait between putting up signs.")
-            .defaultValue(10)
-            .range(0, 300)
-            .sliderRange(0, 60)
-            .visible(autoLabel::get)
-            .build());
-
     // Watch
 
     private final Setting<Boolean> watch = sgWatch.add(new BoolSetting.Builder()
@@ -453,23 +401,6 @@ public class StashSorter extends Module {
             .range(0, 60)
             .sliderRange(0, 60)
             .visible(watch::get)
-            .build());
-
-    private final Setting<Boolean> watchSigns = sgWatch.add(new BoolSetting.Builder()
-            .name("watch-signs")
-            .description(
-                    "Signs mode, while sorting: notices when the text of a container's sign changes, and sorts by the new text after the delay below. A sign that's gone for a minute counts as removed.")
-            .defaultValue(true)
-            .build());
-
-    private final Setting<Integer> signDelay = sgWatch.add(new IntSetting.Builder()
-            .name("sign-delay")
-            .description(
-                    "Seconds a sign has to be left alone before the stash is sorted by what it says now. The container isn't used meanwhile.")
-            .defaultValue(10)
-            .range(0, 60)
-            .sliderRange(0, 60)
-            .visible(watchSigns::get)
             .build());
 
     // Shulkers
@@ -637,8 +568,6 @@ public class StashSorter extends Module {
         KitTake,
         KitUnpack,
         KitFill,
-        FetchSigns,
-        Label,
         Gather,
         Ground,
         Explore,
@@ -731,247 +660,6 @@ public class StashSorter extends Module {
     private int goalTick = -100, releaseTick = -100;
     // Set while the sorter presses keys itself
     private boolean foreignNow;
-
-    // Putting up signs for items nothing is signed for
-    private final StashLabeller labeller = new StashLabeller(new StashLabeller.Owner() {
-        @Override
-        public Stash stash() {
-            return stash;
-        }
-
-        @Override
-        public Set<Integer> carry() {
-            return carry;
-        }
-
-        @Override
-        public Set<Integer> keep() {
-            return parseSlots(keepSlots.get());
-        }
-
-        @Override
-        public List<Integer> activeCarried() {
-            return StashSorter.this.activeCarried();
-        }
-
-        @Override
-        public List<Integer> carriedSlots() {
-            return StashSorter.this.carriedSlots();
-        }
-
-        @Override
-        public List<Box> destinationsFor(ItemStack stack) {
-            return StashSorter.this.destinationsFor(stack);
-        }
-
-        @Override
-        public boolean isMisc(Box box) {
-            return StashSorter.this.isMisc(box);
-        }
-
-        @Override
-        public boolean mixedShulker(ItemStack stack) {
-            return StashSorter.mixedShulker(stack);
-        }
-
-        @Override
-        public boolean keepWholeExists() {
-            return !keepWholeBoxes().isEmpty();
-        }
-
-        @Override
-        public int misplacedCount(Box box) {
-            return StashSorter.this.misplacedCount(box);
-        }
-
-        @Override
-        public boolean signPending(Box box) {
-            return StashSorter.this.signPending(box);
-        }
-
-        @Override
-        public boolean rereadPending(Box box) {
-            return staleBoxes.contains(box) || deferredAccess.containsKey(box);
-        }
-
-        @Override
-        public boolean fetchBlocked(Box box) {
-            return blocked(box, Job.FetchSigns);
-        }
-
-        @Override
-        public Box nearest(List<Box> boxes) {
-            return StashSorter.this.nearest(boxes);
-        }
-
-        @Override
-        public int freeCarrySlot() {
-            return StashSorter.this.freeCarrySlot();
-        }
-
-        @Override
-        public boolean autoLabel() {
-            return autoLabel.get();
-        }
-
-        @Override
-        public boolean signsMode() {
-            return mode.get() == Mode.Signs;
-        }
-
-        @Override
-        public int gapTicks() {
-            return labelGap.get() * 20;
-        }
-
-        @Override
-        public boolean walk() {
-            return walkOn();
-        }
-
-        @Override
-        public boolean rotate() {
-            return rotate.get();
-        }
-
-        @Override
-        public int delay() {
-            return delay.get();
-        }
-
-        @Override
-        public int clock() {
-            return clock;
-        }
-
-        @Override
-        public int version() {
-            return version;
-        }
-
-        @Override
-        public boolean running() {
-            return gate == Gate.Running;
-        }
-
-        @Override
-        public boolean foreign() {
-            return foreignNow;
-        }
-
-        @Override
-        public void beginLabel(Box target) {
-            job = Job.Label;
-            StashSorter.this.target = target;
-            step = Step.Walking;
-            handle = null;
-            actions = 0;
-            jobCounted = false;
-            stepTicks = 0;
-            jobInterruptions = 0;
-            startSigSet = endSigSet = false;
-            settled = false;
-            openPos = null;
-            openMenuBefore = null;
-        }
-
-        @Override
-        public void endLabel() {
-            job = null;
-            StashSorter.this.target = null;
-            wait = delay.get();
-        }
-
-        @Override
-        public boolean fetchSigns(Box from) {
-            return start(Job.FetchSigns, from);
-        }
-
-        @Override
-        public void walkTo(BlockPos pos) {
-            if (!BARITONE) return;
-            walkNear(pos, 0);
-        }
-
-        @Override
-        public void releaseGoal() {
-            StashSorter.this.releaseGoal();
-        }
-
-        @Override
-        public boolean moving() {
-            return BARITONE && BaritoneHelper.isMoving();
-        }
-
-        @Override
-        public boolean leftArea() {
-            return StashSorter.this.leftArea();
-        }
-
-        @Override
-        public String blockName(Box box) {
-            return StashSorter.this.blockName(box);
-        }
-
-        @Override
-        public void pause(int ticks) {
-            wait = ticks;
-        }
-
-        @Override
-        public void closeOurWindow() {
-            if (mc.player.containerMenu != mc.player.inventoryMenu)
-                StashSorter.this.closeOurWindow(mc.player.containerMenu);
-        }
-
-        @Override
-        public boolean containerOpen() {
-            return mc.player.containerMenu != mc.player.inventoryMenu && ourMenu(mc.player.containerMenu);
-        }
-
-        @Override
-        public void held(int slot, ItemStack stack) {
-            stashHeld.put(slot, stack.copy());
-        }
-
-        @Override
-        public void labelled(Box box) {
-            stash.markDirty();
-            stash.save();
-            version++;
-            seenVersion = version;
-            clearStalled();
-            stuckCarried.clear();
-            stuckWarned = false;
-            stashWatch.settleNow(box);
-            idle = false;
-        }
-
-        @Override
-        public void say(String text) {
-            info("%s", text);
-        }
-
-        @Override
-        public void warn(String text) {
-            warning("%s", text);
-        }
-
-        @Override
-        public void alert(String text) {
-            StashSorter.this.alert("%s", text);
-        }
-
-        @Override
-        public void step(String text) {
-            StashSorter.this.step(text);
-        }
-
-        @Override
-        public void debug(String text) {
-            StashSorter.this.debug("%s", text);
-        }
-    });
 
     private int openClickTick = -100;
     private static final int OPEN_ANSWER_TICKS = 20 * 5;
@@ -1185,9 +873,7 @@ public class StashSorter extends Module {
 
     // Watching containers and signs: other players' lids and sign text, read from the client's own world
     private final StashWatch stashWatch = new StashWatch();
-    private static final int SIGN_POLL_TICKS = 10;
     private static final int LID_POLL_TICKS = 4;
-    private static final int SIGN_SWEEP_TICKS = 20 * 30;
     private static final int OWN_TOUCH_TICKS = 20 * 10;
     private static final int REREAD_COOLDOWN_TICKS = 20 * 60;
     // When the sorter or the player last had each container open, and when the sorter last read it
@@ -1196,13 +882,6 @@ public class StashSorter extends Module {
     // Containers someone else used, to be read again between jobs, and the ones held back by the cooldown
     private final Set<Box> staleBoxes = new LinkedHashSet<>();
     private final Map<Box, Integer> deferredAccess = new HashMap<>();
-    // Jobs ended because the container's sign is unsettled, which is no fault of the container
-    private boolean signAbort;
-    private final Set<Box> signAborted = new HashSet<>();
-    private final Set<Box> signHeld = new HashSet<>();
-    private final Map<Box, Integer> signAbortRuns = new HashMap<>();
-    private final Set<Box> signAbortReported = new HashSet<>();
-    private int nextSignSweep;
     // Jobs that opened a container and clicked nothing, with what the carry slots and the container held then: not
     // repeated until one of them changes, however often stalled is cleared meanwhile
     private final Map<String, Long> futile = new HashMap<>();
@@ -3200,7 +2879,6 @@ public class StashSorter extends Module {
 
     private Map<Box, Integer> misplacedCache;
     // bestSigned by item and components, and the room each container has for deposits, both for the pass only
-    private Map<DestKey, List<Box>> signedCache;
     private Map<Box, Integer> roomBase;
 
     /**

@@ -48,18 +48,26 @@ for (const width of widths) {
 await browser.close();
 
 async function capture(width, theme) {
-  const height = width === 390 ? 844 : width === 768 ? 1024 : width === 1440 ? 900 : 1080;
-  const tagBase = width === 1440 && theme === "light" ? `${width}-light` : `${width}`;
+  const height =
+    width === 390 ? 844 : width === 768 ? 1024 : width === 1440 ? 900 : 1080;
+  const tagBase =
+    width === 1440 && theme === "light" ? `${width}-light` : `${width}`;
   // Fresh profile per width: no cart/checkout state leaks between viewports.
   const context = await browser.newContext({ viewport: { width, height } });
   if (theme === "light") {
     // Same key the app's useColorScheme persists (mui-mode): pre-paint light.
     await context.addInitScript(() => {
-      try { localStorage.setItem("mui-mode", "light"); } catch { /* ignore */ }
+      try {
+        localStorage.setItem("mui-mode", "light");
+      } catch {
+        /* ignore */
+      }
     });
   }
   const page = await context.newPage();
-  page.on("pageerror", (e) => fail(`${tagBase}`, `pageerror: ${String(e).slice(0, 200)}`));
+  page.on("pageerror", (e) =>
+    fail(`${tagBase}`, `pageerror: ${String(e).slice(0, 200)}`),
+  );
   page.on("response", async (r) => {
     const url = r.url();
     if (!url.includes("/api/v1/")) return;
@@ -67,15 +75,26 @@ async function capture(width, theme) {
     if (r.status() >= 400) {
       // Expected-when-unreported: a bot that never pushed settings answers 404;
       // the UI must show the no-settings state (asserted visually).
-      if (r.status() === 404 && /\/api\/v1\/bots\/[^/]+\/settings/.test(url)) return;
-      fail(`${tagBase}`, `API ${r.status()} ${url.split("/api")[1]?.slice(0, 80)}`);
+      if (r.status() === 404 && /\/api\/v1\/bots\/[^/]+\/settings/.test(url))
+        return;
+      fail(
+        `${tagBase}`,
+        `API ${r.status()} ${url.split("/api")[1]?.slice(0, 80)}`,
+      );
       return;
     }
     if (url.includes("/api/v1/orders?")) {
       try {
         const body = JSON.stringify(await r.json());
-        console.log("API", r.status(), url.split("/api")[1].slice(0, 60), body.slice(200, 400));
-      } catch { /* ignore */ }
+        console.log(
+          "API",
+          r.status(),
+          url.split("/api")[1].slice(0, 60),
+          body.slice(200, 400),
+        );
+      } catch {
+        /* ignore */
+      }
     }
   });
   await page.goto(base + "/login");
@@ -90,9 +109,13 @@ async function capture(width, theme) {
     return;
   }
   // Theme proof: the toggle affordance matches the active scheme.
-  const toggleName = theme === "light" ? "Switch to dark theme" : "Switch to light theme";
+  const toggleName =
+    theme === "light" ? "Switch to dark theme" : "Switch to light theme";
   try {
-    await page.getByRole("button", { name: toggleName }).first().waitFor({ timeout: 8000 });
+    await page
+      .getByRole("button", { name: toggleName })
+      .first()
+      .waitFor({ timeout: 8000 });
   } catch {
     fail(`${tagBase}`, `theme toggle missing (${toggleName})`);
   }
@@ -108,7 +131,10 @@ async function capture(width, theme) {
       if (name === "settings-users") {
         await page.getByRole("tab", { name: "Users" }).click();
         await page.waitForTimeout(800);
-        await page.getByRole("button", { name: "Edit" }).first().waitFor({ timeout: 8000 });
+        await page
+          .getByRole("button", { name: "Edit" })
+          .first()
+          .waitFor({ timeout: 8000 });
         if (tag === "1440-settings-users") {
           // Validation-error dialog proof (masked password field, P0-03):
           // open reset, touch the field empty, keep the dialog unsubmitted.
@@ -116,7 +142,9 @@ async function capture(width, theme) {
           await page.getByLabel("New temporary password").click();
           await page.getByRole("heading", { name: /Reset password/ }).click();
           await page.waitForTimeout(400);
-          await page.screenshot({ path: path.join(outDir, "1440-resetpw.png") });
+          await page.screenshot({
+            path: path.join(outDir, "1440-resetpw.png"),
+          });
           console.log("shot 1440-resetpw.png");
           await page.getByRole("button", { name: "Cancel" }).click();
           await page.waitForTimeout(400);
@@ -124,26 +152,45 @@ async function capture(width, theme) {
       }
       if (name === "inventory-table") {
         const table = page.getByRole("button", { name: "Table view" });
-        if ((await table.count()) === 0) throw new Error("table toggle missing");
+        if ((await table.count()) === 0)
+          throw new Error("table toggle missing");
         await table.first().click();
         await page.waitForTimeout(800);
       }
       if (name === "inventory-detail") {
-        await page.locator('button:has-text("Add"):enabled').first().click({ timeout: 8000 });
+        await page
+          .locator('button:has-text("Add"):enabled')
+          .first()
+          .click({ timeout: 8000 });
         await page.waitForTimeout(800);
-        if ((await page.getByRole("dialog").count()) === 0) throw new Error("detail dialog did not open");
+        if ((await page.getByRole("dialog").count()) === 0)
+          throw new Error("detail dialog did not open");
       }
       if (name === "checkout") {
-        await page.locator('button:has-text("Add"):enabled').first().click({ timeout: 8000 });
-        await page.getByRole("dialog").getByRole("button", { name: "Add to cart" }).click({ timeout: 5000 });
-        await page.getByRole("button", { name: "Cart", exact: true }).click({ timeout: 5000 });
-        await page.getByRole("button", { name: "Checkout", exact: true }).click({ timeout: 5000 });
+        await page
+          .locator('button:has-text("Add"):enabled')
+          .first()
+          .click({ timeout: 8000 });
+        await page
+          .getByRole("dialog")
+          .getByRole("button", { name: "Add to cart" })
+          .click({ timeout: 5000 });
+        await page
+          .getByRole("button", { name: "Cart", exact: true })
+          .click({ timeout: 5000 });
+        await page
+          .getByRole("button", { name: "Checkout", exact: true })
+          .click({ timeout: 5000 });
         await page.waitForTimeout(800);
-        if ((await page.getByRole("dialog").count()) === 0) throw new Error("checkout dialog did not open");
+        if ((await page.getByRole("dialog").count()) === 0)
+          throw new Error("checkout dialog did not open");
       }
       // P1-06: no page may force the viewport wider (tables scroll internally).
-      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-      if (overflow > 1) throw new Error(`horizontal overflow: ${overflow}px past the viewport`);
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      );
+      if (overflow > 1)
+        throw new Error(`horizontal overflow: ${overflow}px past the viewport`);
       const shot = `${tag}.png`;
       await page.screenshot({ path: path.join(outDir, shot) });
       console.log("shot", shot);

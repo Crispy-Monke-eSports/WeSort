@@ -12,7 +12,12 @@
  * Unknown strings stay visible (never hidden) with a neutral chip.
  */
 
-export type OrderSeverity = "success" | "error" | "info" | "warning" | "default";
+export type OrderSeverity =
+  | "success"
+  | "error"
+  | "info"
+  | "warning"
+  | "default";
 
 export interface OrderUiState {
   severity: OrderSeverity;
@@ -38,27 +43,135 @@ export const ORDER_STATUSES = [
 ] as const;
 
 const STATES: Record<string, OrderUiState> = {
-  pending: { severity: "default", open: true, cancellable: true, retryable: false, needsAttention: false },
-  accepted: { severity: "info", open: true, cancellable: true, retryable: false, needsAttention: false },
-  in_progress: { severity: "info", open: true, cancellable: true, retryable: false, needsAttention: false },
+  pending: {
+    severity: "default",
+    open: true,
+    cancellable: true,
+    retryable: false,
+    needsAttention: false,
+  },
+  accepted: {
+    severity: "info",
+    open: true,
+    cancellable: true,
+    retryable: false,
+    needsAttention: false,
+  },
+  in_progress: {
+    severity: "info",
+    open: true,
+    cancellable: true,
+    retryable: false,
+    needsAttention: false,
+  },
   // PACKING/PICKUP fleet states surface as info; "packed" is the reported terminal.
-  packing: { severity: "info", open: true, cancellable: true, retryable: false, needsAttention: false },
-  packed: { severity: "success", open: false, cancellable: false, retryable: false, needsAttention: false },
-  picked_up: { severity: "info", open: false, cancellable: false, retryable: false, needsAttention: false },
-  in_transit: { severity: "info", open: false, cancellable: false, retryable: false, needsAttention: false },
-  awaiting_customer: { severity: "info", open: false, cancellable: false, retryable: false, needsAttention: false },
-  delivered: { severity: "success", open: false, cancellable: false, retryable: false, needsAttention: false },
-  failed: { severity: "error", open: false, cancellable: false, retryable: true, needsAttention: false },
-  cancelled: { severity: "default", open: false, cancellable: false, retryable: true, needsAttention: false },
-  "force-cancelled": { severity: "default", open: false, cancellable: false, retryable: false, needsAttention: false },
+  packing: {
+    severity: "info",
+    open: true,
+    cancellable: true,
+    retryable: false,
+    needsAttention: false,
+  },
+  packed: {
+    severity: "success",
+    open: false,
+    cancellable: false,
+    retryable: false,
+    needsAttention: false,
+  },
+  picked_up: {
+    severity: "info",
+    open: false,
+    cancellable: false,
+    retryable: false,
+    needsAttention: false,
+  },
+  in_transit: {
+    severity: "info",
+    open: false,
+    cancellable: false,
+    retryable: false,
+    needsAttention: false,
+  },
+  awaiting_customer: {
+    severity: "info",
+    open: false,
+    cancellable: false,
+    retryable: false,
+    needsAttention: false,
+  },
+  delivered: {
+    severity: "success",
+    open: false,
+    cancellable: false,
+    retryable: false,
+    needsAttention: false,
+  },
+  failed: {
+    severity: "error",
+    open: false,
+    cancellable: false,
+    retryable: true,
+    needsAttention: false,
+  },
+  cancelled: {
+    severity: "default",
+    open: false,
+    cancellable: false,
+    retryable: true,
+    needsAttention: false,
+  },
+  "force-cancelled": {
+    severity: "default",
+    open: false,
+    cancellable: false,
+    retryable: false,
+    needsAttention: false,
+  },
   // For old cached API responses, display the legacy state as an automated failure.
-  needs_reconciliation: { severity: "error", open: false, cancellable: false, retryable: true, needsAttention: false },
-  recovering: { severity: "info", open: true, cancellable: false, retryable: false, needsAttention: false },
+  needs_reconciliation: {
+    severity: "error",
+    open: false,
+    cancellable: false,
+    retryable: true,
+    needsAttention: false,
+  },
+  recovering: {
+    severity: "info",
+    open: true,
+    cancellable: false,
+    retryable: false,
+    needsAttention: false,
+  },
   // Legacy/alias strings some older payloads used: visible, never hidden.
-  completed: { severity: "success", open: false, cancellable: false, retryable: false, needsAttention: false },
-  done: { severity: "success", open: false, cancellable: false, retryable: false, needsAttention: false },
-  queued: { severity: "default", open: true, cancellable: true, retryable: false, needsAttention: false },
-  staging: { severity: "info", open: true, cancellable: true, retryable: false, needsAttention: false },
+  completed: {
+    severity: "success",
+    open: false,
+    cancellable: false,
+    retryable: false,
+    needsAttention: false,
+  },
+  done: {
+    severity: "success",
+    open: false,
+    cancellable: false,
+    retryable: false,
+    needsAttention: false,
+  },
+  queued: {
+    severity: "default",
+    open: true,
+    cancellable: true,
+    retryable: false,
+    needsAttention: false,
+  },
+  staging: {
+    severity: "info",
+    open: true,
+    cancellable: true,
+    retryable: false,
+    needsAttention: false,
+  },
 };
 
 const FALLBACK: OrderUiState = {
@@ -80,7 +193,10 @@ export function orderUiState(status: string | null | undefined): OrderUiState {
  * hide these by default so they show current errors only; the successor still
  * shows if it needs attention.
  */
-type AttentionOrder = { status?: unknown; retriedAs?: unknown } | null | undefined;
+type AttentionOrder =
+  | { status?: unknown; retriedAs?: unknown }
+  | null
+  | undefined;
 
 export function isSuperseded(order: AttentionOrder): boolean {
   return !!order?.retriedAs;

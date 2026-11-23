@@ -8,8 +8,15 @@ export function OrderStatusChip({ status }: { status: string }) {
 }
 
 /** Online/offline/unknown presence chip (shape + text, not color alone). */
-export function PresenceChip({ online, label }: { online: boolean | null | undefined; label?: string }) {
-  if (online == null) return <Chip size="small" variant="outlined" label={label ?? "unknown"} />;
+export function PresenceChip({
+  online,
+  label,
+}: {
+  online: boolean | null | undefined;
+  label?: string;
+}) {
+  if (online == null)
+    return <Chip size="small" variant="outlined" label={label ?? "unknown"} />;
   return (
     <Chip
       size="small"

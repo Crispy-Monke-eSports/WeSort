@@ -1,12 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { AUTH_CHECK_THROTTLE_MS, authCheckDue, parseUpdate, prefixesForChannels } from "../api/live";
+import {
+  AUTH_CHECK_THROTTLE_MS,
+  authCheckDue,
+  parseUpdate,
+  prefixesForChannels,
+} from "../api/live";
 
 describe("live channel mapping (SSE update → TanStack Query keys)", () => {
   it("parses update payloads, tolerating junk", () => {
-    expect(parseUpdate(JSON.stringify({ rev: 7, channels: ["orders"] }))).toEqual(["orders"]);
+    expect(
+      parseUpdate(JSON.stringify({ rev: 7, channels: ["orders"] })),
+    ).toEqual(["orders"]);
     expect(parseUpdate("not json")).toEqual([]);
     expect(parseUpdate(JSON.stringify({ rev: 1 }))).toEqual([]);
-    expect(parseUpdate(JSON.stringify({ channels: ["orders", 42, null] }))).toEqual(["orders"]);
+    expect(
+      parseUpdate(JSON.stringify({ channels: ["orders", 42, null] })),
+    ).toEqual(["orders"]);
   });
 
   it("orders invalidate order lists, stash summaries, operations and audit", () => {
@@ -41,14 +50,32 @@ describe("live channel mapping (SSE update → TanStack Query keys)", () => {
 
   it("operations refresh every owner queue", () => {
     const prefixes = prefixesForChannels(["operations"]);
-    for (const p of [["operations"], ["physical"], ["jobs"], ["handoffs"], ["custody"], ["deposits"], ["boxes", "jobs"]]) {
+    for (const p of [
+      ["operations"],
+      ["physical"],
+      ["jobs"],
+      ["handoffs"],
+      ["custody"],
+      ["deposits"],
+      ["boxes", "jobs"],
+    ]) {
       expect(prefixes).toContainEqual(p);
     }
   });
 
   it("settings changes update guild, kits, permissions, server and stash definitions", () => {
     const prefixes = prefixesForChannels(["settings"]);
-    for (const p of [["guild"], ["kits"], ["stash-defs"], ["users"], ["quotas"], ["server"], ["stashes"], ["auth"], ["agents"]]) {
+    for (const p of [
+      ["guild"],
+      ["kits"],
+      ["stash-defs"],
+      ["users"],
+      ["quotas"],
+      ["server"],
+      ["stashes"],
+      ["auth"],
+      ["agents"],
+    ]) {
       expect(prefixes).toContainEqual(p);
     }
   });

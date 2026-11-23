@@ -1,5 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { RouterProvider, createBrowserHistory, createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
+import {
+  RouterProvider,
+  createBrowserHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  redirect,
+} from "@tanstack/react-router";
 import React from "react";
 import { z } from "zod";
 import { AppShell } from "./components/layout/AppShell";
@@ -32,7 +39,11 @@ const shopSearch = z.object({
   avail: z.enum(["all", "available", "low", "empty"]).optional(),
 });
 
-const overviewRoute = createRoute({ getParentRoute: () => rootRoute, path: "/overview", component: OverviewPage });
+const overviewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/overview",
+  component: OverviewPage,
+});
 const inventoryRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/inventory",
@@ -46,9 +57,21 @@ const ordersRoute = createRoute({
   validateSearch: ordersSearch,
   component: OrdersPage,
 });
-const botsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/bots", component: BotsPage });
-const operationsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/operations", component: OperationsPage });
-const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: SettingsPage });
+const botsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/bots",
+  component: BotsPage,
+});
+const operationsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/operations",
+  component: OperationsPage,
+});
+const settingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings",
+  component: SettingsPage,
+});
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
@@ -73,8 +96,16 @@ const activityRedirect = createRoute({
 });
 
 const routeTree = rootRoute.addChildren([
-  indexRoute, loginRoute, overviewRoute, inventoryRoute, ordersRoute, botsRoute,
-  operationsRoute, settingsRoute, shopRedirect, activityRedirect,
+  indexRoute,
+  loginRoute,
+  overviewRoute,
+  inventoryRoute,
+  ordersRoute,
+  botsRoute,
+  operationsRoute,
+  settingsRoute,
+  shopRedirect,
+  activityRedirect,
 ]);
 
 export const router = createRouter({

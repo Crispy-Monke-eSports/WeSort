@@ -41,7 +41,8 @@ export function boxedContents(key: string, shulkers: ShulkerEntry[]): number {
   let n = 0;
   for (const e of shulkers) {
     let perBox = 0;
-    for (const c of e.contents ?? []) if (c?.key === key) perBox += Math.max(0, c.count);
+    for (const c of e.contents ?? [])
+      if (c?.key === key) perBox += Math.max(0, c.count);
     n += perBox * Math.max(0, e.count);
   }
   return n;
@@ -49,10 +50,14 @@ export function boxedContents(key: string, shulkers: ShulkerEntry[]): number {
 
 /** Deterministic JSON: object keys sorted recursively, so equal payloads hash equally. */
 export function stable(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+  if (value === null || typeof value !== "object")
+    return JSON.stringify(value) ?? "null";
   if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`;
   const o = value as Record<string, unknown>;
-  return `{${Object.keys(o).sort().map((k) => `${JSON.stringify(k)}:${stable(o[k])}`).join(",")}}`;
+  return `{${Object.keys(o)
+    .sort()
+    .map((k) => `${JSON.stringify(k)}:${stable(o[k])}`)
+    .join(",")}}`;
 }
 
 /** Short hex digest (FNV-1a, 64-bit) of a stable payload string: lookup key, not a secret. */
@@ -65,7 +70,10 @@ export function payloadHash(value: unknown): string {
     h1 = Math.imul(h1 ^ c, 16777619);
     h2 = Math.imul(h2 ^ c, 16777619) ^ (h1 >>> 0);
   }
-  return (h2 >>> 0).toString(16).padStart(8, "0") + (h1 >>> 0).toString(16).padStart(8, "0");
+  return (
+    (h2 >>> 0).toString(16).padStart(8, "0") +
+    (h1 >>> 0).toString(16).padStart(8, "0")
+  );
 }
 
 export interface BoxSource {
@@ -93,7 +101,10 @@ export function isSingleContent(box: ShulkerEntry, key: string): boolean {
 }
 
 /** Units of a key inside single-content boxes (safe to order as whole shulkers). */
-export function singleBoxedContents(key: string, shulkers: ShulkerEntry[]): number {
+export function singleBoxedContents(
+  key: string,
+  shulkers: ShulkerEntry[],
+): number {
   let n = 0;
   for (const e of shulkers) {
     if (!isSingleContent(e, key)) continue;
@@ -110,8 +121,18 @@ export function singleBoxedContents(key: string, shulkers: ShulkerEntry[]): numb
  * Never observed-only: a box reserved by another open order is not shown
  * as free. Missing keys count as zero (fully reserved or unknown).
  */
-export function netBoxes(boxKey: string, observed: number, availableShulkers: Record<string, number>): number {
-  return Math.max(0, Math.min(Math.max(0, observed), Math.max(0, availableShulkers[boxKey] ?? 0)));
+export function netBoxes(
+  boxKey: string,
+  observed: number,
+  availableShulkers: Record<string, number>,
+): number {
+  return Math.max(
+    0,
+    Math.min(
+      Math.max(0, observed),
+      Math.max(0, availableShulkers[boxKey] ?? 0),
+    ),
+  );
 }
 
 /** Reservation-safe single-content units of a key: whole boxes minus open-order holds. */
@@ -131,7 +152,10 @@ export function netBoxedContents(
 }
 
 /** Units of a key trapped inside mixed boxes: visible, but never auto-packed whole. */
-export function mixedBoxedContents(key: string, shulkers: ShulkerEntry[]): number {
+export function mixedBoxedContents(
+  key: string,
+  shulkers: ShulkerEntry[],
+): number {
   let n = 0;
   for (const e of shulkers) {
     let mine = 0;
@@ -147,7 +171,11 @@ export function mixedBoxedContents(key: string, shulkers: ShulkerEntry[]): numbe
 }
 
 /** Filled single-content groups holding an item, most per box first. cartPacked excludes boxes already taken as packed. */
-export function boxSources(key: string, shulkers: ShulkerEntry[], cartPacked: (boxKey: string) => number): BoxSource[] {
+export function boxSources(
+  key: string,
+  shulkers: ShulkerEntry[],
+  cartPacked: (boxKey: string) => number,
+): BoxSource[] {
   const out: BoxSource[] = [];
   for (const e of shulkers) {
     if (!isSingleContent(e, key)) continue;
@@ -182,12 +210,17 @@ export function takeBoxes(
 }
 
 /** Shulkers the lines need (packed and kit lines 1:1, item lines via ceil(count/maxStack) into 27-slot bins). */
-export function shulkersNeeded(lines: OrderLine[], maxStackOf: (key: string) => number, isBoxKey: (key: string) => boolean): number {
+export function shulkersNeeded(
+  lines: OrderLine[],
+  maxStackOf: (key: string) => number,
+  isBoxKey: (key: string) => boolean,
+): number {
   let units = 0;
   let slots = 0;
   for (const l of lines) {
     // One kit is exactly one box.
-    if (l.type === "shulker" || l.type === "kit" || isBoxKey(l.key)) units += l.count;
+    if (l.type === "shulker" || l.type === "kit" || isBoxKey(l.key))
+      units += l.count;
     else {
       const max = Math.max(1, maxStackOf(l.key));
       slots += Math.ceil(l.count / max);
@@ -215,7 +248,9 @@ export function perStashBoxUsage(
   for (const [stash, ls] of byStash) {
     out.set(
       stash,
-      shulkersNeeded(ls, maxStackOf, (k) => ls.some((l) => l.type === "shulker" && l.key === k)),
+      shulkersNeeded(ls, maxStackOf, (k) =>
+        ls.some((l) => l.type === "shulker" && l.key === k),
+      ),
     );
   }
   return out;
@@ -233,13 +268,26 @@ export function itemsPerBuyUnit(unit: BuyUnit, maxStack: number): number {
 }
 
 /** Whole-unit quantity converted to loose items (whole units only, at least one item). */
-export function buyUnitsToItems(n: number, unit: BuyUnit, maxStack: number): number {
+export function buyUnitsToItems(
+  n: number,
+  unit: BuyUnit,
+  maxStack: number,
+): number {
   return Math.max(1, Math.floor(n)) * itemsPerBuyUnit(unit, maxStack);
 }
 
 /** How many whole units of this kind fit in an item budget (at least one). */
-export function buyMaxUnits(maxItems: number, unit: BuyUnit, maxStack: number): number {
-  return Math.max(1, Math.floor(Math.max(1, Math.floor(maxItems)) / itemsPerBuyUnit(unit, maxStack)));
+export function buyMaxUnits(
+  maxItems: number,
+  unit: BuyUnit,
+  maxStack: number,
+): number {
+  return Math.max(
+    1,
+    Math.floor(
+      Math.max(1, Math.floor(maxItems)) / itemsPerBuyUnit(unit, maxStack),
+    ),
+  );
 }
 
 /** Display total for a shelf item: loose plus boxed (non-box keys only). */
@@ -256,7 +304,11 @@ export interface Availability {
   orderable: number;
 }
 
-export function availabilityOf(key: string, looseAvail: number, shulkers: ShulkerEntry[]): Availability {
+export function availabilityOf(
+  key: string,
+  looseAvail: number,
+  shulkers: ShulkerEntry[],
+): Availability {
   const boxed = singleBoxedContents(key, shulkers);
   const mixed = mixedBoxedContents(key, shulkers);
   return { loose: looseAvail, boxed, mixed, orderable: looseAvail + boxed };
@@ -264,7 +316,10 @@ export function availabilityOf(key: string, looseAvail: number, shulkers: Shulke
 
 /** Net orderable units of an item key inside one slice (loose + whole single-content boxes). */
 export function sliceAvailability(key: string, slice: StashSlice): number {
-  return Math.max(0, slice.availableItems[key] ?? 0) + singleBoxedContents(key, slice.shulkers);
+  return (
+    Math.max(0, slice.availableItems[key] ?? 0) +
+    singleBoxedContents(key, slice.shulkers)
+  );
 }
 
 /** Pick the slice holding the most orderable units of a key (ties: first). */
@@ -285,7 +340,9 @@ export function chooseSlice(
       for (const c of b.contents ?? []) perBox += Math.max(0, c?.count ?? 0);
       exact += perBox * Math.max(0, b.count - packedInCart(s.stash, b.key));
     }
-    const n = Math.max(0, (s.availableItems[key] ?? 0) - looseInCart(s.stash, key)) + exact;
+    const n =
+      Math.max(0, (s.availableItems[key] ?? 0) - looseInCart(s.stash, key)) +
+      exact;
     if (n > bestN) {
       bestN = n;
       best = s;
@@ -348,8 +405,10 @@ export function splitScopedItemLine(
   const take = takeBoxes(key, total, shulkers, cartPacked);
   if (take.remainder > looseAvail) return null;
   const kept = next.filter((l) => !inScope(l));
-  if (take.remainder > 0) kept.push({ type: "item", key, count: take.remainder, stash });
-  for (const t of take.took) kept.push({ type: "shulker", key: t.key, count: t.count, stash });
+  if (take.remainder > 0)
+    kept.push({ type: "item", key, count: take.remainder, stash });
+  for (const t of take.took)
+    kept.push({ type: "shulker", key: t.key, count: t.count, stash });
   return kept;
 }
 
@@ -360,7 +419,10 @@ export const LABEL_MAX_BOXES = 54;
 
 /** After validation, the space characters removed by Java's String.strip. */
 export function trimLabelText(raw: string): string {
-  return raw.replace(/^[ \u1680\u2000-\u2006\u2008-\u200a\u205f\u3000]+|[ \u1680\u2000-\u2006\u2008-\u200a\u205f\u3000]+$/g, "");
+  return raw.replace(
+    /^[ \u1680\u2000-\u2006\u2008-\u200a\u205f\u3000]+|[ \u1680\u2000-\u2006\u2008-\u200a\u205f\u3000]+$/g,
+    "",
+  );
 }
 
 /**

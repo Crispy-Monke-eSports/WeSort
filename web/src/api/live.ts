@@ -46,7 +46,12 @@ export function prefixesForChannels(channels: string[]): unknown[][] {
   const has = (...names: string[]) => names.some((n) => channels.includes(n));
   const out: unknown[][] = [];
   const add = (prefix: unknown[]) => {
-    if (!out.some((p) => p.length === prefix.length && p.every((v, i) => v === prefix[i]))) out.push(prefix);
+    if (
+      !out.some(
+        (p) => p.length === prefix.length && p.every((v, i) => v === prefix[i]),
+      )
+    )
+      out.push(prefix);
   };
   if (has("orders")) {
     add(["orders"]);
@@ -69,7 +74,18 @@ export function prefixesForChannels(channels: string[]): unknown[][] {
     add(["operations"]);
   }
   if (has("settings")) {
-    for (const key of [["guild"], ["kits"], ["stash-defs"], ["users"], ["quotas"], ["server"], ["stashes"], ["auth"], ["agents"]]) add(key);
+    for (const key of [
+      ["guild"],
+      ["kits"],
+      ["stash-defs"],
+      ["users"],
+      ["quotas"],
+      ["server"],
+      ["stashes"],
+      ["auth"],
+      ["agents"],
+    ])
+      add(key);
   }
   if (has("auth")) add(["auth"]);
   if (has("operations")) {
@@ -88,7 +104,9 @@ export function prefixesForChannels(channels: string[]): unknown[][] {
 
 /** Invalidates every live query (resync after reconnect). */
 export function invalidateLive(client: QueryClient, channels?: string[]) {
-  for (const prefix of channels ? prefixesForChannels(channels) : LIVE_PREFIXES) {
+  for (const prefix of channels
+    ? prefixesForChannels(channels)
+    : LIVE_PREFIXES) {
     void client.invalidateQueries({ queryKey: prefix });
   }
 }
@@ -100,7 +118,10 @@ interface LiveState {
   rev: number;
 }
 
-export const useLiveStore = create<LiveState>(() => ({ status: "offline", rev: 0 }));
+export const useLiveStore = create<LiveState>(() => ({
+  status: "offline",
+  rev: 0,
+}));
 
 function setLive(patch: Partial<LiveState>) {
   useLiveStore.setState(patch);

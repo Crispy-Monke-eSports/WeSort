@@ -14,28 +14,35 @@ Versions before 0.2.8 are listed on the [GitHub releases page](https://github.co
 Mirrors Stash Sorter plugin 1.12.2 (version 0.4.0-dev.10.11).
 
 ### Added (0.4.0-dev.10.11)
+
 - Stash Window: new in-game pages for the Stash Manager server. They need `connect-to-server` on and a login, and each one shows only when your account's permissions allow it. **Build Planner** (`planner`): pick a schematic from the game's `schematics` folder or upload one, see its materials against a stash (need, in stash, missing), order them part by part (`plannerOrder`), and Copy missing. **Bots** and **Activity** (`activity`; Activity also needs the picked bot to report activity). **Proxy** (`proxy`): the picked bot's proxy settings, in the same editor as Settings. **Console** (`console`): the picked bot's console, which asks for your password again when it wasn't typed in the last 15 minutes.
 - Stash Sorter: when it walks to a container to read it, it now stops as soon as the container is within `reach`, instead of walking to a spot right beside it. A container up high is opened from below, the way a player would, rather than needing a free spot next to it.
 
 ### Fixed (0.4.0-dev.10.10)
+
 - Stash Sorter: guards against a stash file with a container millions of blocks away (the case that stalled every scan in the proxy plugin). A box that stops being a delivery box (a different delivery container, the delivery storage forgetting its extra chests) gets every flag delivery set back, including "never gather for compacting" and drop-off, and a box that was never read (no contents and no read time) is removed instead of kept as an ordinary container. A delivery spot (the pick, or stash-manager's selector) that is not loaded and more than 128 blocks from you is refused with a message, and leaves no box behind. Extra delivery chests remember a container's earlier excluded and drop-off marks and give them back. Stash with no area: a never-read container more than 20000 blocks from every read, non-delivery container is removed on load and during scans (at least 5 such read containers are needed), after the stash file is copied to a `.prune-bak-` file (nothing is removed if the copy fails); the box is logged at INFO.
 - Stash Sorter: pruning of containers outside the stash area (dev.10.9) is softer. Only a never-read one is deleted. One that was read is kept in the file but skipped by scanning, reading, sorting, orders, crafting, kits, the Stash Manager index and the overlay (logged at INFO). The dimension guard is unchanged. Setting or changing the area works the same way: it deletes only never-read containers outside the new area (never a delivery container), and keeps the read ones, skipped as above.
 
 ### Fixed (0.4.0-dev.10.9)
+
 - Stash Sorter: the scan could stall for minutes on one container ("47/48 containers read" and nothing for a long time). Causes: a walk to a container that went nowhere only ended after 60 seconds (and then the container was dropped for good); a read that hung in any other way only ended at the 4 minute job watchdog; and the retry of a container that failed was a check for "the tick counter is a multiple of 1200 on a tick the idle code happens to run", which could miss for many minutes or never happen. Now a read gives up on a walk that gets no closer than a block in 30 seconds (the constant `SURVEY_WALK_STALL_TICKS`, not a setting), on a window that does not open in 4 seconds (as before, the container-delay wait does not count), and on anything else in 90 seconds. The container is skipped, the reason is logged at INFO and shown in the status line ("skipped chest at X Y Z: could not reach it (walk made no progress for 30s); will retry in 1 min"), the scan carries on with the rest, and the container is tried again after 1 minute, then 2 minutes, then every 5 minutes, checked every tick. A container that is read, or that a player used, starts again at 1 minute. A container with no path is skipped the same way instead of being given up on for good. Other jobs keep their old limits. A container outside the stash area (a foreign or damaged save, or a pick) is dropped on load and during scans, but only when the stash's dimension is known and is the one you are in; a container whose block is gone is forgotten at once instead of being walked to. Turning off the `barrels` setting no longer forgets indexed barrels: they are only skipped. Waiting containers keep their retry time when the sorter re-plans.
 
 ### Added (0.4.0-dev.10.8)
+
 - Stash Sorter: new setting "container-delay" (General, ticks, default 0, range 0-100) to control how fast the bot goes through containers. A container (chest, barrel, crafting table, anvil, or a shulker box the bot placed) is not opened until at least this many ticks after the last one was closed, and the first click in a freshly opened one waits this many ticks more than `delay`. The wait does not count toward the open timeouts. A higher value is slower but gentler on servers; 2b2t can kick or rubber-band when containers are opened very quickly. 0 keeps the old behaviour exactly.
 
 ### Fixed (0.4.0-dev.10.7)
+
 - Minecraft 1.21.11: the client could close with "Unreported exception thrown!" (a ConcurrentModificationException) while chests were read on a busy server. The cause is in the game itself, not in the Stash Sorter: a player head with only a name (common on 2b2t) is resolved on a worker thread, which looks the name up in the tab list while the render thread changes that list; the failed lookup is rethrown on the render thread when the head is drawn. The addon now has a small mixin (`qwerte.mixins.json`, 1.21.11 only) that makes that lookup walk a copy of the tab list when it is not on the render thread. 1.21.4 does not have this code and is unchanged.
 
 ### Fixed (0.4.0-dev.10.6)
+
 - Reset Pearl, Fast and Max: "a trapdoor will not open" aborted the climb. With no wait between trapdoor clicks, the lowest trapdoor still shown closed was clicked again every tick, and the server's answer takes a round trip or more, so the second click toggled the trapdoor back. A clicked trapdoor is now pending: it is not clicked again until the server's block update at its position has shown what the click did, or, if none comes, until a ping-aware timeout (twice the round trip plus one tick, at least 3) has passed and the client's state is looked at. Only a click judged not to have given the wanted state counts as a failure (3 stop the run), and the cover is closed the same way. Different trapdoors can still be clicked in the same tick (Max). The climb does not leave the shaft before the clicks are confirmed. Safe is unchanged.
 - Reset Pearl, Fast and Max: the wait on the edge is shorter. A player slowed by sneaking takes about 8 ticks to come to a position change under 0.0005 blocks; they now count as standing still under 0.004 blocks a tick (Safe keeps 0.0005), and the first part of the way back from the rim block, while the player's box is wholly on the rim, is walked instead of sneaked (the edge is always sneaked).
 - New opt-in setting "experimental-sprint-swim" (off by default): look straight up and sprint-swim up the shaft, roughly 1.6 times faster than holding jump but less precise.
 
 ### Fixed (0.4.0-dev.10.5)
+
 - Reset Pearl is back to the careful approach of 0.4.0-dev.10.2 in every speed mode: climb out onto the rim, sneak back to the edge, stop, throw an aimed pearl from the real position. The faster modes only remove waits and overlap safe steps (one trapdoor click a tick, two in Max; the elytra swap does not hold the climb; no fixed wait before the cover; the controls, the hotbar and the elytra come back at once while the pearl is checked; a shorter stop on the edge). Fast and Max no longer throw from inside the shaft or sprint-swim up: that throw could land on a wall and teleport you, and the sprint-swim drifted. The throw from inside the shaft is still there as the opt-in setting "experimental-climb-throw", off by default.
 - Reset Pearl, edge: the walk back from the rim block now faces the hang spot on the rim axis every tick, presses only forward, and lets go at the spot (about 0.27 blocks from the shaft's middle, measured along the rim), so there is no sideways drift and no reliance on the sneak edge stop alone. It never walks onto a covered shaft: if the block under the opening or at the feet is a closed trapdoor or anything solid, the run stops with "a closed trapdoor covers the shaft, not walking onto it". The rim you stood on when you saved the chamber (or the first one found) is saved with it and tried first; old saved chambers still load.
 - Reset Pearl: the keys of the climb (forward, jump) are let go when the pearl has been thrown early, instead of staying held while waiting for it. If the thrown pearl teleports you (it landed on a block instead of staying in the water), the run stops at once and says so.
@@ -43,11 +50,13 @@ Mirrors Stash Sorter plugin 1.12.2 (version 0.4.0-dev.10.11).
 - Reset Pearl: the timing summary is always written to latest.log as one line ("reset-pearl: timing (speed ...)"), with or without debug. The "debug" setting is saved with the module like every other setting; nothing resets it.
 
 ### Fixed (0.4.0-dev.10.4)
+
 - Stash Window: the window could not be moved or resized, and the grid's scroll bar could not be dragged. Cause: every drag asked the game's `MouseHandler.isLeftPressed()` whether the button was still down, and the game only updates that flag while no screen is open, so inside the window it was always false and each drag ended on its second frame. Drags now read the button from Meteor's input state (the same in both Minecraft versions), and a test keeps `isLeftPressed` out of the window's code.
 - Stash Window: the grid's scroll bar is wider and easier to grab (4 GUI pixels drawn, a wider grab zone), and it lights up under the pointer.
 - Stash Window: "Indexed 1 h ago ago" said "ago" twice. Fixed.
 
 ### Changed (0.4.0-dev.10.4)
+
 - Stash Window: a change in the header (a bot going online or offline, a permission change) no longer rebuilds the page while you are typing in one of its text boxes, so nothing you typed is lost; it waits until the box loses focus.
 - Stash Window: a visible resize grip (a triangle of dots) in the bottom-right corner; the whole 10 x 10 GUI pixel corner square resizes. The mouse cursor shows a resize arrow over the edges and corners (GLFW standard cursors on the game window; the diagonal ones need GLFW 3.4, older libraries show a crosshair there). It goes back to the arrow when the window closes.
 - Stash Window text is smaller, about the website's size next to the slots: new module setting `window-text-scale` (Auto, Small, Normal, Large; default Auto = 0.75 of the game's font, Normal = the game's font as before). The summary, hint and index line use the website's smaller text. Buttons and page buttons use the website's padding (4 / 10 CSS pixels).
@@ -56,26 +65,31 @@ Mirrors Stash Sorter plugin 1.12.2 (version 0.4.0-dev.10.11).
 - Stash Window stash page: the grid takes the whole width of the panel like the website. The details of a clicked item open in a drawer over the right side of the grid, with a close button; closed, it takes no room, and the grid is the same size either way. The summary reads "Showing 260 of 260 slots · total 414,749 items" in small text, and the page's spacing follows the website's CSS values.
 
 ### Fixed (0.4.0-dev.10.3.1)
+
 - Reset Pearl, Fast and Max: "could not get a pearl into your hand" aborted the run right after the climb began. The elytra swap and the move of the pearl into the hand were inventory clicks fired in adjacent ticks (the pearl move was repeated every tick while it was not in the hand, and each repeat used up one of 6 tries). A click sent before the server answered the one before carries a stale state id, the server rejects it and sends the whole inventory again, which undoes the client's own guess; with a click every tick each one was rejected in turn. Every inventory operation (elytra off, pearl into the hand, the pearl back, the elytra back) now goes through one queue: one in flight, the next only after its result shows in the slots and the server has had the time a rejection takes to come back (the ping plus a tick, or an earlier answer that keeps the result), with a fresh plan and a bounded number of retries if it does not. The elytra comes off first and the pearl move waits behind it; a pearl in the hotbar is only a held-item change and is selected at once. A try is only counted when an operation was really issued and its result never showed, not for the ticks spent waiting behind another one.
 - Reset Pearl: when a run is aborted after the trapdoors were opened and the player is already out of the shaft, the covers it opened are closed again (never the stasis trapdoor); inside the shaft they are left, and the warning says "The cover was left open."
 - Reset Pearl, debug: every inventory operation is logged with its kind, the slots and the items in them before and after the click, the menu state id, and its result.
 
 ### Changed (0.4.0-dev.10.3)
+
 - Reset Pearl is faster. New setting "speed": Safe, Fast (default) and Max. Safe keeps the waits of 0.4.0-dev.10.2. Fast: the climb is no longer held up for 3 ticks by the elytra swap; it swims up sprinting and looking straight up (faster than holding jump alone); it opens one trapdoor per tick instead of one every 3 ticks; it picks the pearl up early and throws it straight down the shaft from inside it as soon as the eyes are above the water (the throw is computed from the real position and speed one tick ahead, the pearl inherits the player's speed, and it only goes out when the whole path fits the shaft and is clear), so there is no sneak-walk back onto the edge and no second throw; the cover is closed without the 3-tick wait (it waits only while the player is still shown as sneaking); the controls, the hotbar slot and the elytra come back as soon as the cover is closed, during the pearl check. Max does two trapdoor clicks a tick, the shortest stops on the rim and a 10-tick pearl check. In every mode the stasis trapdoor is never closed, every click names its exact block, "Re-armed" is only said after the pearl check, and the elytra always goes back. If no throw on the way up fits, it falls back to the old hang-and-throw on the rim.
 - Reset Pearl, debug: a timing summary at the end of every run (ticks and ms for the pending start, the elytra, each phase, the throw, the cover closed, the pearl check and the elytra back), also as one line in latest.log.
 - The shaft depth sets the floor: swimming up takes roughly 6 ticks a block with jump alone and roughly 4 with the sprint-swim, so under 20 ticks to a closed cover is only possible when the rim is about 3 blocks or less above where you land.
 
 ### Fixed (0.4.0-dev.10.2)
+
 - Reset Pearl pulled its own new pearl: the cover step closed every trapdoor it had opened on the way out, including the stasis trapdoor at the water, which has to stay open for a pearl to stay in stasis. The trapdoors are now told apart: the stasis trapdoor is the lowest one in the water block, at the water surface or directly above it (up to the water top + 1), and everything above is a cover. The climb may open the stasis trapdoor and leaves it open; the cover step closes only covers that Reset Pearl itself opened, and never clicks a stasis trapdoor, whatever the setting. A shaft with a single high trapdoor is a cover with no stasis trapdoor (a plain water column), and a single trapdoor at the water has no cover. If two trapdoors are at the water the roles are ambiguous: "Set location here" refuses to save it and a run stops with a warning. The roles are worked out from the saved water level and trapdoor heights and from the live scan, so old saved chambers keep working.
 - Reset Pearl: every trapdoor click now names the exact block (no aiming), checks that it is the trapdoor of the role meant, in the shaft column, and not already as wanted, and looks at its state again two ticks later; a wrong result is retried within the existing limits.
 - Reset Pearl: "Re-armed <name>" is only said after the new pearl has been seen resting in the water for 15 ticks after the cover, with the player not moved. If the pearl vanished or the player was pulled, it says "The pearl was triggered during cover: <name> is not armed." instead. With debug on, each trapdoor's role (position, height against the water, open state) and every click (face, state before and after, result) is logged.
 - Note: a waterlogged trapdoor in the middle of the water column, below the surface, is not found by the shaft scan and is therefore never touched; one at the surface or directly above it is found and counts as the stasis trapdoor.
 
 ### Fixed (0.4.0-dev.10.1)
+
 - Stash Window: opening the window crashed the game (NullPointerException in WStashPage.calculateSize). The stash page was built without its item grid being handed to it, so the first layout failed. Fixed, and the stash page now waits until all its parts are built before laying them out.
 - Stash Window: an error in the window's layout or drawing can no longer crash the game. The window logs it ("stash-window:" in latest.log), closes any half-drawn clipping it left behind, and shows an error message instead; press Esc and open it again.
 
 ### Changed (0.4.0-dev.10)
+
 - Stash Window looks like the website, in game. It is its own window now: drag the header to move it, drag any edge or corner to resize it (minimum 240 x 170 GUI pixels, or the whole screen if that is smaller), double-click the header to maximize or restore it. Its place and size are remembered (in the module's data, like the session) and brought back onto the screen if the game window or the GUI scale got smaller. Everything in it is sized by Minecraft's GUI scale and drawn with the game's font, so it is crisp at GUI scale 2, 3 and Auto; the new `window-scale` setting (Auto, 1x to 4x) overrides that. Meteor's own GUI scale and font no longer apply to this window.
 - Stash Window, stash page: the header bar (title, Stash select, Streamer mode button, Theme select, user, Log out, an info row with when the index was read and how many containers it has, Rescan, a status badge) wraps onto more rows in a narrow window; page buttons are pills (Stash, Orders, Live, Settings, Users). The Items/Shulkers select is gone: the creative tabs of the website (Search, the tabs that have items, Shulkers when filled ones exist, Orders at the right end) are across the top, with the selected one joined to the panel. The search box and a sort select (Creative order, Count, Name A-Z, ID; Search and Shulkers sort by count, a creative tab by creative order, remembered separately) sit under the grid, with the website's summary line and a hint. The grid uses vanilla slots (18 GUI pixels) centred in a tile, reflows to the window's width and height as you resize, scrolls by whole rows (wheel, or drag the bar) and keeps the first visible item in view when the number of columns changes. The details of the selected item or shulker are a panel at the right, or under the grid when the window is narrow.
 - Stash Window counts: small, vanilla-style numbers in the bottom-right corner of the slot, white with a shadow, a whole multiple of the font's pixel size (1x at GUI scale 2, 2x at 3 and 4, 4x at 6), and never wider than the slot ("20k", "1.7k", "999M" fit; only a count wider than 24 font pixels, such as "12.3B" at GUI scale 1, is shrunk to fit). Durability bars and the enchantment glint are unchanged.
@@ -84,6 +98,7 @@ Mirrors Stash Sorter plugin 1.12.2 (version 0.4.0-dev.10.11).
 - Not in this build: the header's Bot select and bot status (the Live and Settings pages still have their own bot select), shulker face icons on filled shulkers, the website's exact spacing on the Orders, Live, Settings and Users pages, a font setting, and resize mouse cursors.
 
 ### Changed (0.4.0-dev.9.2)
+
 - Reset Pearl: "Set location here" works standing on the closed cover trapdoor above the shaft, or on the rim right next to it (the four neighbouring columns are checked; if more than one is a shaft it asks you to stand on the cover), as well as in the water. It scans down through the trapdoors and air to the water, and saves the shaft column at the water surface together with the water level and trapdoor heights. The status line reads "Saved <name>: shaft found, water at depth N, K trapdoor(s)", or says why nothing was saved (no water and trapdoor within 24 blocks). Old saved chambers load and work as before.
 - Reset Pearl: if the column you land in has no water, the shaft saved with the chamber is scanned instead (when it is within the detection radius). With "debug" on, the save scan logs the columns tried and why each was accepted or rejected.
 - Reset Pearl: a pull without any ender pearl no longer gives up. It waits (new setting "pearl-wait", default 20 s, 0 gives up at once) until a pearl is in your inventory (slots 0-35) or offhand, then starts: the scan, the timeout and every phase limit begin only then. While waiting no key is pressed and Baritone is not touched; a nearby player or hostile mob, damage, a screen, a dimension or world change, death or turning the module off still end it with a chat warning. Chat: "Waiting for a pearl (up to Ns)...", "Pearl received, re-arming...", "No pearl received in Ns, not re-arming <name>.". The pull cooldown now starts when the pull is accepted.
@@ -92,22 +107,27 @@ Mirrors Stash Sorter plugin 1.12.2 (version 0.4.0-dev.10.11).
 - Reset Pearl: "could not climb out of the chamber" now says why: gliding in the water, stuck with no upward progress, a closed trapdoor that would not open, a downward bubble column, or out of time. With debug on, the climb logs the pose, fall-flying, in-water and swimming flags, y and vertical speed four times a second, plus each swap step and each cancelled packet.
 
 ### Fixed (0.4.0-dev.9.1)
+
 - Reset Pearl: a pull was only recognised if you landed within the detection radius of the saved block in 3D, so a chamber saved from the rim or anywhere above the water was silently ignored. A pull now matches by column: within the detection radius sideways of the saved block, and from 16 blocks below to 4 above it. A saved server that differs only by a leading "connect." or "www." counts as the same server.
 - Reset Pearl: your own throw is now only recognised from a pearl this client saw appear next to you (new, fast, owned by you) or from a pearl use packet, never from an old pearl that falls or loads in later.
 - Reset Pearl: nothing after a detected pull is silent any more. A pull ignored for the cooldown or because of a recent own throw, a death while waiting, and every abort and give-up print a chat warning, and "Pulled into <name>: re-arming..." is printed when a pull is accepted.
 - Reset Pearl: starting underwater in a downward bubble column (magma) that swimming cannot beat now stops with a clear message after 2 seconds; Baritone is stopped if it comes on during the sequence.
 
 ### Added (0.4.0-dev.9.1)
+
 - Reset Pearl "debug" setting (Safety group, off by default): logs every decision (detection inputs, scan result, each phase, climb progress, aim, throw, cover, aborts) to the client log with a "reset-pearl:" prefix and to chat; per-tick reasons at most once a second.
 
 ### Fixed (0.4.0-dev.9)
+
 - Stash Window: nothing could be typed into the password boxes (login, change password, confirm password, your own password on the Account page, and a user's password in Users). They were made with no character filter, which Meteor's text box calls for every key. A test now fails the build if any text box is created like that again.
 
 ### Changed
+
 - Stash Manager (the bot side): `server-url` is now empty by default, so a fresh install sends nothing; the module's status shows "server URL not set". A config saved by an older version that set an `api-key` but kept the old default address (`http://127.0.0.1:8765`, which Meteor does not save) keeps that address.
 - The bot logs "Delivery report sent: N chests" at INFO when the server takes the delivery report (no positions or names; about once a minute, and always the first success after a failure), the same line as the Stash Sorter plugin 1.11.1.
 
 ### Added
+
 - Reset Pearl module: after you are pulled through a saved stasis chamber (a teleport of more than 8 blocks that ends within the detection radius of a chamber, with no pearl thrown by you in the last 5 seconds) it climbs out opening the trapdoors in the shaft, sneaks onto the edge of the rim, throws a fresh pearl straight down into the water and closes the trapdoors it opened. Chambers are saved from the module's settings ("Set location here"); it gives up on a timeout, a nearby hostile mob or player, damage, a screen, or having no pearl, and always lets go of the keys and the hotbar. The throw leans toward the middle of the shaft; a fall of more than about 10 ticks (roughly 15 blocks) from the rim to the water is refused, because the pearl's random spread then no longer fits a 1x1 shaft.
 - Stash Window module (`stash-window`, and the commands `.stash-window` / `.stash`): the Stash Manager website's stash view inside the game, as a window you open with the `open-window` keybind (while the module is on), the command, or the module's "Open window" button. It does not pause the game. To use a Stash Manager server (optional), turn on `connect-to-server`, set `server-url` (or copy the stash-manager module's with "Use stash-manager's URL") and log in with a website user name and password; a blank user name is the owner. You get the same permissions as on the website: the window only shows what your account may use. In this build it has the Browse page: the stash selector (the stash of the server you are playing on is picked first), a search (words must all match the name, English name, id or details; `@mod` limits to a mod), Items or Shulkers, sort by Creative, Count, Name or Id, the item grid with counts and durability bars, an item's details, a filled shulker's 27 slots, Inspect (the game's own tooltip, Esc comes back), and Rescan with the `rescan` permission (click twice). Orders, the live map, settings and users follow in later builds. Without a server the window works on its own (local mode, below); the Orders, Map, Settings and Users tabs show a hint until a server is connected.
 - Stash Window login: the password is sent once and never kept (the box is emptied when you submit). The session cookie is saved in the module's data (`modules.nbt`, not a setting) so you stay logged in after a restart, is only sent to the address it was issued for (changing `server-url` to another address forgets it), and is never shown, logged or put in chat. Redirects are not followed and no proxy is used. A 401 from the server shows the login again; a 429 shows how long to wait; an account that must change its password gets only the change-password form; actions the server wants confirmed ("confirm password") ask for the password and try again once. Log out ends the session on the server. Logging out on the website's "Log out everywhere" ends the window's session too (the window notices within 30 seconds). Plain http to an address outside your own network (not loopback, not a private/LAN address) is refused unless `allow-insecure-http` is on; when it is on, the window shows a warning on every page, and a saved session for such an address is not restored unless it is on. The session token is stored in Meteor's `modules.nbt` in plain text: do not share your `meteor-client` folder or Meteor profiles, and use the window's Log out (which ends the session on the server) to revoke it.
@@ -139,6 +159,7 @@ Mirrors Stash Sorter plugin 1.12.2 (version 0.4.0-dev.10.11).
 - Changing or clearing the delivery container turns the chests put up above the old one into ordinary stash containers, and the sorter then sorts what is in them; the log says how many. Going back to 0.4.0-dev.4 does the same. The 2-hour wait for delivery space is kept in memory only, so restarting the game starts it again.
 
 ### Changed
+
 - crafting: the per-order and per-hour caps count shulker boxes only; chests crafted for the delivery storage keep the grid fill limit alone.
 
 ## [0.4.0-dev.4] - 2026-11-05
@@ -146,12 +167,15 @@ Mirrors Stash Sorter plugin 1.12.2 (version 0.4.0-dev.10.11).
 Dev pre-release. Mirrors Stash Sorter plugin 1.8.1.
 
 ### Removed
+
 - Stash Manager website: the order note.
 
 ### Fixed
+
 - Stash Manager website: stashes from proxy bots showed only Search, Other and Shulkers. The server now fills in the creative tabs from vanilla tables for 1.21.4 and 1.21.11, also for indexes it already holds.
 
 ### Added
+
 - stash-manager: shulker names for orders. With an anvil set (Anvil group: `select-anvil`, then right-click an anvil; `clear-anvil`, `show-anvil`, `anvil-color`) the bot renames each shulker the order asks a name for before delivering it, about 1 XP level each. A shulker it can't name (no anvil, too few levels, anvil gone) is delivered unnamed, and the order says so.
 - Stash Manager website: name an order's shulkers, all with one name or each one separately next to the planned layout. Warns when the bot has no anvil or too few levels.
 - Stash Manager website: a Retry button on failed and cancelled orders places the same order again.
@@ -168,6 +192,7 @@ Dev pre-release. Mirrors Stash Sorter plugin 1.8.1.
 A big test build: the Stash Manager website and stash orders. Not fully tested in game yet.
 
 ### Added
+
 - **stash-manager** module: sends what is in the stash saved by stash-sorter to the Stash Manager server on your network (`server-url`, `api-key`). Only changes are sent, checked every `scan-interval` seconds. `include-excluded` lists excluded containers too.
 - stash-manager: **orders**. With `accept-orders` on, the bot takes orders placed on the website. It gathers the items from the stash, loose stacks first and then out of shulkers, packs them into empty shulkers and puts the shulkers into the delivery container. Leftovers go back to the container they came from, and so do the shulkers it unpacked. stash-sorter doesn't need to be on: stash-manager drives it, using stash-sorter's settings, and never sorts. To stop the bot, turn off `accept-orders` or stash-manager.
 - stash-manager: a delivery container (Delivery group: `select-delivery`, then right-click a container; `clear-delivery`; `show-delivery` and `delivery-color` outline it). It is never sorted into.
@@ -182,6 +207,7 @@ A big test build: the Stash Manager website and stash orders. Not fully tested i
   - Works behind an HTTPS reverse proxy listed in `allowedHosts`.
 
 ### Changed
+
 - stash-sorter: the delivery container is never sorted, compacted or used as a source, and items in it don't show in search.
 - stash-sorter: kits can be built for an order, matching the exact items asked for, and an order's shulker is never taken apart or filed away by the sorter.
 - stash-sorter: shulkers that came through ViaVersion, which keep their items in block entity data, no longer look empty.
@@ -189,20 +215,24 @@ A big test build: the Stash Manager website and stash orders. Not fully tested i
 ## [0.3.2-dev.4] - 2026-10-31
 
 ### Changed
+
 - auto-dirt: `skip-dirt-blocks` is now `dirt-blocks`, a list of the dirt-like blocks it never covers. Remove a block to cover it, for example Mycelium to pave a mushroom island. If you had `skip-dirt-blocks` off, remove the blocks you want covered from the list.
 - auto-dirt: with Grass Block as the `dirt-item` it now always puts grass on plain dirt, for example the dirt you uncover by mining mycelium, while grass, mycelium and the other `dirt-blocks` are still skipped.
 
 ## [0.3.2-dev.3] - 2026-10-31
 
 ### Added
+
 - auto-dirt: `skip-dirt-blocks` (on by default). Turn it off to cover dirt-like blocks too, such as mycelium, so a mushroom island can be paved with grass blocks. The `ignore` list still applies.
 
 ### Changed
+
 - auto-dirt: never places a block on the same block, so with Grass Block as `dirt-item` grass never goes on grass.
 
 ## [0.3.2-dev.2] - 2026-10-16
 
 ### Added
+
 - stash-sorter: `log-level` (Quiet, Normal, Debug) replaces the `debug` setting. Quiet shows what it is doing now and next, errors and alerts; alerts (things that need a person) are also whispered to the `whitelist`, queued and rate limited. Debug adds the reasons behind its decisions. Whatever a level hides still goes to the log file.
 - stash-sorter: "now / next" lines (`Stash: sorting: taking 5 stacks from "Diamonds" at x y z; next: ...`) for starting, exploring, reading, sorting, repacking, compacting, labelling, ground pickup, bundles, waiting, idle and done. An identical line is never repeated, and progress is said at most every 10 percent or 60 seconds.
 - stash-sorter: a shulker the sorter put down is saved in the stash file with what it is for, and what is carried is saved with it. After a disconnect or stopping the module the next start checks the shulker, finishes packing it, breaks and picks it up and puts it away, before everything is read again. A shulker in another dimension is kept and blocks new shulkers until you are back.
@@ -211,6 +241,7 @@ A big test build: the Stash Manager website and stash orders. Not fully tested i
 - stash-sorter: an "Unstuck" button drops whatever the sorter is doing and starts over. The unfinished shulker step is not resumed, the "no more shulkers until restarted" block is lifted, and a shulker of ours still standing is left where it is and listed with the orphaned shulkers. With the module off it only forgets the saved shulker step.
 
 ### Changed
+
 - stash-sorter: every start reads every container again. Old contents stay in use for search and planning, but nothing is taken from a container until it has been read. Containers other players used are marked this way too, instead of being forgotten.
 - stash-sorter: the planner works out how much room each container has once per pass and remembers which containers fit an item for the pass.
 - stash-sorter: compaction picks up its shulker instead of leaving it standing when fewer than 3 stacks of the item are left to pack.
@@ -218,12 +249,14 @@ A big test build: the Stash Manager website and stash orders. Not fully tested i
 - stash-sorter: the old `debug` setting is gone, set `log-level` to Debug instead.
 
 ### Fixed
+
 - stash-sorter: a shulker standing for a compaction when the connection dropped was forgotten with no record of it.
 - stash-sorter: a repacked shulker already picked up could be looked for on the ground and then abandoned, because the shulker count was off or a resume expected one more shulker than could be held. Picking up is now told from the count just before the break, and failing that, after 3 s with nothing dropped in sight, from the one held shulker that matches it, only near the spot and with the block gone. Matches Stash Sorter 1.4.0-dev.2.
 
 ## [0.3.2-dev.1] - 2026-10-15
 
 ### Added
+
 - stash-sorter: signs written in Unicode font letters (mathematical, fullwidth, circled, small capitals) are recognised, and signs naming an enchantment with a level (`Protection IV`, `Efficiency 5`) take enchanted books with exactly that level.
 - stash-sorter: bundles. A bundle with things in it that the sorter finds in the stash is emptied into free carry slots and the contents are sorted; empty bundles go to a chest signed `Bundles`, else one signed for shulkers or containers. Nothing is packed into bundles, and kits can't contain them.
 - stash-sorter: a stash perimeter (two corners stored with the stash). Set it with the `pick` modes Area corner 1 and 2 or the "Set corner 1/2 here" buttons, clear it with "Clear area". It replaces `radius` and `height`, the sorter explores its chunks so they load, walks anywhere inside it, and ground pickup uses it. The outline is drawn in `area-color` while stash-sorter or stash-overlay is on.
@@ -233,6 +266,7 @@ A big test build: the Stash Manager website and stash orders. Not fully tested i
 ## [0.3.1] - 2026-10-15
 
 ### Added
+
 - stash-sorter: picking up items other players left on the ground in the stash area (`collect-ground`, `collect-range`). Only with no other player loaded, only items lying still for 3 seconds, never your own drops or items from blocks you dug.
 - stash-sorter: scan-only mode (`sort-items` off). It reads unknown or stale containers and keeps the saved stash current, but never moves items. stash-overlay keeps working in it.
 
@@ -241,6 +275,7 @@ A big test build: the Stash Manager website and stash orders. Not fully tested i
 Includes everything from 0.2.8, which wasn't released separately.
 
 ### Added
+
 - stash-sorter: shulker compaction (`compact`, `compact-top-up-at`, `compact-exclude`, and the Compact skip pick mode).
 - stash-sorter: auto-labelling (`auto-label`, `label-gap`) and the Labels report button.
 - stash-sorter: watching chests and signs (`watch`, `watch-delay`, `watch-signs`, `sign-delay`).
@@ -251,6 +286,7 @@ Includes everything from 0.2.8, which wasn't released separately.
 - auto-till and auto-dirt: auto-hotbar with per-item slots, and restocking of bone meal, glowstone and hoes.
 
 ### Changed
+
 - stash-sorter: items are identified by item ID and never by their anvil name. Labels show `Diamond Sword (named steak)`.
 - stash-sorter: `End Blocks` only matches end blocks. Shulker boxes and elytra no longer match it.
 - stash-sorter: own gear (tools, armor, food, totems, ender pearls and the like) is never sorted unless the sorter took it from the stash.
@@ -260,6 +296,7 @@ Includes everything from 0.2.8, which wasn't released separately.
 - auto-till and auto-dirt: wait while stash-sorter is mid-job. Stash-sorter gives way to them only while they are actually working.
 
 ### Fixed
+
 - stash-sorter: no longer loops forever opening and closing the same chests. Only real sign text changes count, and stuck work is given up on.
 - stash-sorter: stacks the kit builder moves into carry slots are treated as stash stacks.
 
@@ -268,6 +305,7 @@ Includes everything from 0.2.8, which wasn't released separately.
 Not released separately. Included in 0.3.0.
 
 ### Added
+
 - auto-till and auto-dirt: work patterns (Nearest, Rows, Spiral Out, Spiral In) with row direction and lane width.
 - auto-till: ice water holes (`water-source` Ice) with ice restock.
 - auto-till: glowstone lighting for water holes (`light-holes`, `light-air-place`).
@@ -275,4 +313,5 @@ Not released separately. Included in 0.3.0.
 - auto-till: container restock for bone meal, glowstone and hoes.
 
 ### Fixed
+
 - auto-till: crash when the refill source changed mid-trip.

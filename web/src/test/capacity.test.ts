@@ -6,21 +6,38 @@ import type { CartLine } from "../lib/shop";
 // stash together), never per single addition. The server stays authoritative;
 // this is the client pre-check with real max stacks.
 
-const line = (stash: string, type: "item" | "shulker", key: string, count: number): CartLine =>
-  ({ type, key, count, stash });
+const line = (
+  stash: string,
+  type: "item" | "shulker",
+  key: string,
+  count: number,
+): CartLine => ({ type, key, count, stash });
 
-const maxOf = (stacks: Record<string, number>) => (key: string) => stacks[key] ?? 64;
+const maxOf = (stacks: Record<string, number>) => (key: string) =>
+  stacks[key] ?? 64;
 
 describe("per-stash box capacity (P1-08)", () => {
   it("counts packed boxes 1:1 and loose items through 27-slot bins", () => {
-    const lines = [line("a", "shulker", "box-1", 53), line("a", "item", "minecraft:cobblestone", 64)];
+    const lines = [
+      line("a", "shulker", "box-1", 53),
+      line("a", "item", "minecraft:cobblestone", 64),
+    ];
     // 53 packed + 1 loose stack (64/64) into bins = 54 total.
     expect(perStashBoxUsage(lines, maxOf({})).get("a")).toBe(54);
-    expect(shulkersNeeded(lines.map(({ type, key, count }) => ({ type, key, count })), maxOf({}), () => false)).toBe(54);
+    expect(
+      shulkersNeeded(
+        lines.map(({ type, key, count }) => ({ type, key, count })),
+        maxOf({}),
+        () => false,
+      ),
+    ).toBe(54);
   });
 
   it("rejects 55 packed boxes from one stash", () => {
-    const usage = perStashBoxUsage([line("a", "shulker", "box-1", 55)], maxOf({}));
+    const usage = perStashBoxUsage(
+      [line("a", "shulker", "box-1", 55)],
+      maxOf({}),
+    );
     expect(usage.get("a")).toBe(55);
     expect(usage.get("a")! > MAX_SHULKERS).toBe(true);
   });

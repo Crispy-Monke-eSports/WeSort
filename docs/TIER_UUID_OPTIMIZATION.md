@@ -49,10 +49,10 @@ If a physical order is already running, new orders are **persisted in a
 pending, unreserved queue** rather than failing with HTTP 409. They are
 labelled `reservationDeferred: true`, and the UI receives a clear message
 that no stock is guaranteed. Only a future claim under the observation lock
-may reserve *fresh* stock and begin packing, in FIFO order. The original
+may reserve _fresh_ stock and begin packing, in FIFO order. The original
 physical order's protected roots are not changed.
 
-If an agent disappears mid-cancel, an *unallocated* order can still be
+If an agent disappears mid-cancel, an _unallocated_ order can still be
 auto-cancelled after the existing timeout. An allocated order cannot
 honestly be declared cancelled without physical evidence. After ten minutes
 of no response it transitions from a stuck `CANCEL_REQUESTED` into

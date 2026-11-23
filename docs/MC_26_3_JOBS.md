@@ -8,7 +8,7 @@ utan dubbla actions. En ensam agent kan kedja alla steg utan överlämning.
 - **`Job`** (common): kategori `SCAN → SORT → PACK → PICKUP → DELIVER`
   med explicita prereqs (varje steg kräver föregående COMPLETED för samma
   `chain`) samt `RECONCILE` som override. Tillstånd `QUEUED → CLAIMED →
-  (PAUSED) → COMPLETED`, `NEEDS_RECONCILIATION` vid lease-timeout och
+(PAUSED) → COMPLETED`, `NEEDS_RECONCILIATION` vid lease-timeout och
   terminal `REVOKED`. `advance` upprätthåller grafen: claim sätter ägare,
   reassign (reconcile→QUEUED) rensar den.
 - **`JobScheduler`** (Manager): atomisk `claim` (högsta prioritet, exakt en

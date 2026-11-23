@@ -13,34 +13,34 @@ toggle, `public/init-mode.js`).
 
 ## 1. Color roles and text contrast
 
-| MD2 rule | Source | MUI v9 API | Implementation | Exception | Proof |
-|---|---|---|---|---|---|
-| Dark surface `#121212`-family, light surface white | m2 dark theme | `createTheme({ colorSchemes: { dark, light } })` | `dark.background #121614/#1b211e`, `light #f2f4f1/#ffffff` | Slightly green-tinted greys (product identity), documented here | `theme/wesortTheme.ts`, screenshots dark+light |
-| Text emphasis 87/60/38% | m2 text legibility | `palette.text.primary/secondary/disabled` | dark `68%/38%`, light `87%/60%/38%` | — | computed ratios below |
-| Contrast ≥ 4.5 body text | WCAG AA (MD2 references) | `palette.*.contrastText` | all pairs ≥ 5.1 except warning (fixed) and disabled (exempt) | light `warning.main #e65100` uses **black** text (5.54) instead of white (3.79) | python check, screenshots |
-| Disabled text exempt | WCAG inactive-component rule | default 38% opacity | 3.15 dark / 2.42 light, standard MUI/MD2 opacity | accepted: disabled is never the only signal | — |
-| Error/warning/info/success roles | m2 color system | `palette.error/warning/info/success` | real roles; no invented prices (product rule) | — | `status.tsx` mapping |
+| MD2 rule                                           | Source                       | MUI v9 API                                       | Implementation                                               | Exception                                                                       | Proof                                          |
+| -------------------------------------------------- | ---------------------------- | ------------------------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------------------------- | ---------------------------------------------- |
+| Dark surface `#121212`-family, light surface white | m2 dark theme                | `createTheme({ colorSchemes: { dark, light } })` | `dark.background #121614/#1b211e`, `light #f2f4f1/#ffffff`   | Slightly green-tinted greys (product identity), documented here                 | `theme/wesortTheme.ts`, screenshots dark+light |
+| Text emphasis 87/60/38%                            | m2 text legibility           | `palette.text.primary/secondary/disabled`        | dark `68%/38%`, light `87%/60%/38%`                          | —                                                                               | computed ratios below                          |
+| Contrast ≥ 4.5 body text                           | WCAG AA (MD2 references)     | `palette.*.contrastText`                         | all pairs ≥ 5.1 except warning (fixed) and disabled (exempt) | light `warning.main #e65100` uses **black** text (5.54) instead of white (3.79) | python check, screenshots                      |
+| Disabled text exempt                               | WCAG inactive-component rule | default 38% opacity                              | 3.15 dark / 2.42 light, standard MUI/MD2 opacity             | accepted: disabled is never the only signal                                     | —                                              |
+| Error/warning/info/success roles                   | m2 color system              | `palette.error/warning/info/success`             | real roles; no invented prices (product rule)                | —                                                                               | `status.tsx` mapping                           |
 
 ## 2. Typography roles and semantics
 
-| MD2 rule | Source | MUI v9 API | Implementation | Exception | Proof |
-|---|---|---|---|---|---|
-| H1 96/Light … H6 20/Medium, subtitle/body/caption | m2 type scale, `/inline-tools/typography/` | `createTheme` typography defaults (MUI v9 implements the MD scale) | **No** global h1–h4 overrides (previous 1.5/1.25/1.1/1rem compression removed) | `button` keeps `textTransform: none` + 600: long ops labels stay readable; uppercase MD2 buttons would clip in dense tables | `wesortTheme.ts`, tsc, screenshots |
-| Right semantic level, free visual variant | review requirement | `component` + `variant` props | page titles `component="h1" variant="h5"`; sections `h2/h6`; card names `h3/subtitle1`; stat figures `p/h4` | — | grep: no `variant="h1..h4"` on headings except intentional H4 figures |
-| Monospace IDs break, never clip | product rule | `sx wordBreak: break-all` | IDs/stash names in tables+cards | — | mobile overflow assertion (P1-06) |
+| MD2 rule                                          | Source                                     | MUI v9 API                                                         | Implementation                                                                                              | Exception                                                                                                                   | Proof                                                                 |
+| ------------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| H1 96/Light … H6 20/Medium, subtitle/body/caption | m2 type scale, `/inline-tools/typography/` | `createTheme` typography defaults (MUI v9 implements the MD scale) | **No** global h1–h4 overrides (previous 1.5/1.25/1.1/1rem compression removed)                              | `button` keeps `textTransform: none` + 600: long ops labels stay readable; uppercase MD2 buttons would clip in dense tables | `wesortTheme.ts`, tsc, screenshots                                    |
+| Right semantic level, free visual variant         | review requirement                         | `component` + `variant` props                                      | page titles `component="h1" variant="h5"`; sections `h2/h6`; card names `h3/subtitle1`; stat figures `p/h4` | —                                                                                                                           | grep: no `variant="h1..h4"` on headings except intentional H4 figures |
+| Monospace IDs break, never clip                   | product rule                               | `sx wordBreak: break-all`                                          | IDs/stash names in tables+cards                                                                             | —                                                                                                                           | mobile overflow assertion (P1-06)                                     |
 
 ## 3. Shape per component
 
-| MD2 rule | Source | MUI v9 API | Implementation | Exception | Proof |
-|---|---|---|---|---|---|
-| Card 4dp, elevation 1–2 resting | m2 cards | `MuiCard defaultProps elevation 2` + `borderRadius 4` | `wesortTheme.ts` | elevation 2 (raised card) allowed by MD2 | screenshots |
-| Buttons 4dp | m2 buttons | `MuiButton root borderRadius 4` | theme | — | screenshots |
-| Contained buttons have 2dp elevation (8dp pressed) | m2 buttons/behavior | default `disableElevation: false` | **removed** the global `disableElevation: true` | none | `wesortTheme.ts`, screenshots |
-| Chips are fully rounded (stadium), Body-2 label | m2 chips | MUI default Chip (no overrides) | **removed** `borderRadius: 4, fontWeight: 600` | none | `wesortTheme.ts`, screenshots |
-| Dialog 4dp | m2 dialogs | `MuiDialog paper borderRadius 4` | theme | — | screenshots |
-| Drawer: no rounding | m2 navigation drawer | `MuiDrawer paper borderRadius 0` | theme | — | screenshots |
-| Tooltip 4dp | m2 tooltips | `MuiTooltip tooltip borderRadius 4` | theme | — | theme file |
-| Table density 8px vertical rhythm | m2 data tables | `MuiTableCell padding 8px 12px` | theme | — | screenshots |
+| MD2 rule                                           | Source               | MUI v9 API                                            | Implementation                                  | Exception                                | Proof                         |
+| -------------------------------------------------- | -------------------- | ----------------------------------------------------- | ----------------------------------------------- | ---------------------------------------- | ----------------------------- |
+| Card 4dp, elevation 1–2 resting                    | m2 cards             | `MuiCard defaultProps elevation 2` + `borderRadius 4` | `wesortTheme.ts`                                | elevation 2 (raised card) allowed by MD2 | screenshots                   |
+| Buttons 4dp                                        | m2 buttons           | `MuiButton root borderRadius 4`                       | theme                                           | —                                        | screenshots                   |
+| Contained buttons have 2dp elevation (8dp pressed) | m2 buttons/behavior  | default `disableElevation: false`                     | **removed** the global `disableElevation: true` | none                                     | `wesortTheme.ts`, screenshots |
+| Chips are fully rounded (stadium), Body-2 label    | m2 chips             | MUI default Chip (no overrides)                       | **removed** `borderRadius: 4, fontWeight: 600`  | none                                     | `wesortTheme.ts`, screenshots |
+| Dialog 4dp                                         | m2 dialogs           | `MuiDialog paper borderRadius 4`                      | theme                                           | —                                        | screenshots                   |
+| Drawer: no rounding                                | m2 navigation drawer | `MuiDrawer paper borderRadius 0`                      | theme                                           | —                                        | screenshots                   |
+| Tooltip 4dp                                        | m2 tooltips          | `MuiTooltip tooltip borderRadius 4`                   | theme                                           | —                                        | theme file                    |
+| Table density 8px vertical rhythm                  | m2 data tables       | `MuiTableCell padding 8px 12px`                       | theme                                           | —                                        | screenshots                   |
 
 ## 4. Elevation and dark surfaces
 
@@ -120,8 +120,9 @@ intentional horizontal scroll. Proof: Playwright overflow spec + screenshots.
 ## 12. Light and dark
 
 Both `colorSchemes` complete; toggle in the account row (`useColorScheme`
-+ `setMode`, MUI-persisted `mui-mode`); `public/init-mode.js` sets
-`data-mui-color-scheme` pre-paint from the same key (no inline script, CSP
-`script-src 'self'` holds); `defaultMode="dark"`. Both themes captured for
-overview/inventory/orders/bots/operations/settings incl. dialogs and error
-states. Proof: `main.tsx`, `AppShell.tsx`, screenshot matrix.
+
+- `setMode`, MUI-persisted `mui-mode`); `public/init-mode.js` sets
+  `data-mui-color-scheme` pre-paint from the same key (no inline script, CSP
+  `script-src 'self'` holds); `defaultMode="dark"`. Both themes captured for
+  overview/inventory/orders/bots/operations/settings incl. dialogs and error
+  states. Proof: `main.tsx`, `AppShell.tsx`, screenshot matrix.

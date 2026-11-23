@@ -49,15 +49,15 @@ skriva en korrekt Host, Origin och X-Forwarded-For; skrubba inkommande
 forwardingheaders och skriv över dem med dess verifierade socketpeer. Endast
 exakta betrodda proxy-IP:n får anges i `WESORT_TRUSTED_PROXIES`.
 
-| Miljövariabel | Standard och betydelse |
-|---|---|
-| WESORT_IMAGE | Versionspinnad GHCR-tag i compose.yaml; kan överstyras med verifierad digest |
-| WESORT_BIND | 127.0.0.1: värdens portbindning, inte access-bypass |
-| WESORT_PORT | 8765: värdport; containerns HTTP-port är 8765 |
-| WESORT_ALLOWED_HOSTS | Tom: extra DNS-hostnames nekas; ange en uttrycklig lista |
-| WESORT_TRUSTED_PROXIES | Tom: inga forwardingheaders litas på |
-| WESORT_SECURE_COOKIES | true i produktion, false i lokal dev; sätts av deployment, aldrig av en HTTP-header |
-| WESORT_EULA | Tom/ej satt (nekar start), eller **true** efter att administratören accepterat Minecraft EULA. Kan även sättas som `eula=true` i Managers privata `config.properties` |
+| Miljövariabel          | Standard och betydelse                                                                                                                                                |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| WESORT_IMAGE           | Versionspinnad GHCR-tag i compose.yaml; kan överstyras med verifierad digest                                                                                          |
+| WESORT_BIND            | 127.0.0.1: värdens portbindning, inte access-bypass                                                                                                                   |
+| WESORT_PORT            | 8765: värdport; containerns HTTP-port är 8765                                                                                                                         |
+| WESORT_ALLOWED_HOSTS   | Tom: extra DNS-hostnames nekas; ange en uttrycklig lista                                                                                                              |
+| WESORT_TRUSTED_PROXIES | Tom: inga forwardingheaders litas på                                                                                                                                  |
+| WESORT_SECURE_COOKIES  | true i produktion, false i lokal dev; sätts av deployment, aldrig av en HTTP-header                                                                                   |
+| WESORT_EULA            | Tom/ej satt (nekar start), eller **true** efter att administratören accepterat Minecraft EULA. Kan även sättas som `eula=true` i Managers privata `config.properties` |
 
 ### Obligatorisk Minecraft-EULA och resurshämtning
 

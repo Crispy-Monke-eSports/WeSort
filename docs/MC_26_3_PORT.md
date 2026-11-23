@@ -7,18 +7,18 @@ Kontrollerad 2026-11-16 mot faktiska upstreamartefakter. Det separata projektet
 1.21.4/1.21.11-baslinjen. De äldre klienttargetsen har nu tagits bort. Lokal riktig klientstart passerar; detta är inte ett
 resultat för den ännu oportade WeSort-klienten eller fysisk lagerautomation.
 
-| Komponent | Låst provversion | Verifiering |
-|---|---|---|
-| Minecraft | 26.3, release 2026-09-15 | Officiell manifest, verklig klientstart |
-| Java | Temurin 25.0.5+8 | SHA256-verifierad JDK, faktisk runtime |
-| Gradle | 9.6.0 | Separat wrapper med distributionSha256Sum |
-| Fabric Loom | 1.17.21, `net.fabricmc.fabric-loom` | Bygg och runClient |
-| Fabric Loader | 0.19.5 | Faktiskt laddad i klient |
-| Mappings | Inga externa mappings/remap | Minecraft är unobfuscated; Mojangnamn direkt |
-| Meteor | 26.3-20261115.173242-22, runtime 26.3-22 | Oförändrad officiell JAR, fryst med källkod i `vendor` |
-| Baritone | dekrom 1.4.0-26.3, **api-fabric** | Kompilering och faktisk primary-provider |
-| Fabric API | Meteor-bundlad base 2.0.6+fcdff87f5d och resource-loader 3.0.4+ba0d6c0d5d | Laddade i klient |
-| Full Fabric API | 0.162.0+26.3 finns publicerad | Inte separat nödvändig eller testad i provet |
+| Komponent       | Låst provversion                                                          | Verifiering                                            |
+| --------------- | ------------------------------------------------------------------------- | ------------------------------------------------------ |
+| Minecraft       | 26.3, release 2026-09-15                                                  | Officiell manifest, verklig klientstart                |
+| Java            | Temurin 25.0.5+8                                                          | SHA256-verifierad JDK, faktisk runtime                 |
+| Gradle          | 9.6.0                                                                     | Separat wrapper med distributionSha256Sum              |
+| Fabric Loom     | 1.17.21, `net.fabricmc.fabric-loom`                                       | Bygg och runClient                                     |
+| Fabric Loader   | 0.19.5                                                                    | Faktiskt laddad i klient                               |
+| Mappings        | Inga externa mappings/remap                                               | Minecraft är unobfuscated; Mojangnamn direkt           |
+| Meteor          | 26.3-20261115.173242-22, runtime 26.3-22                                  | Oförändrad officiell JAR, fryst med källkod i `vendor` |
+| Baritone        | dekrom 1.4.0-26.3, **api-fabric**                                         | Kompilering och faktisk primary-provider               |
+| Fabric API      | Meteor-bundlad base 2.0.6+fcdff87f5d och resource-loader 3.0.4+ba0d6c0d5d | Laddade i klient                                       |
+| Full Fabric API | 0.162.0+26.3 finns publicerad                                             | Inte separat nödvändig eller testad i provet           |
 
 Meteors jar anger source commit `474da7c33d391109a4a1feea288ea93ea696cfa9`.
 Dekroms release anger source commit `843427f6ae042b4c13530a66c2c50f8c26975260`.
@@ -37,12 +37,12 @@ Officiella källor:
   och [Meteors källversionsmatris](https://github.com/MeteorDevelopment/meteor-client/blob/474da7c33d391109a4a1feea288ea93ea696cfa9/gradle/libs.versions.toml).
 - [Dekroms Baritone-release](https://github.com/dekrom/baritone/releases/tag/v1.4.0-26.3).
 
-| Hämtad artefakt | SHA256 |
-|---|---|
-| Meteor jar, build 22 | `a61ec522cb02a97a7dc9108c107dedeee75c4286c4d96f3efd7c253b03b7940a` |
-| Meteor sources, build 22 | `089418e278be1c362500e1634e34acd6398934bf26fad489c7597da4965f71e3` |
-| Baritone api-fabric 1.4.0-26.3 | `5cc0aa320970b6f8aa5f618ff233842b50680e1eb90917087f1883461181cb08` |
-| Gradle 9.6.0 bin | `bbaeb2fef8710818cf0e261201dab964c572f92b942812df0c3620d62a529a01` |
+| Hämtad artefakt                   | SHA256                                                             |
+| --------------------------------- | ------------------------------------------------------------------ |
+| Meteor jar, build 22              | `a61ec522cb02a97a7dc9108c107dedeee75c4286c4d96f3efd7c253b03b7940a` |
+| Meteor sources, build 22          | `089418e278be1c362500e1634e34acd6398934bf26fad489c7597da4965f71e3` |
+| Baritone api-fabric 1.4.0-26.3    | `5cc0aa320970b6f8aa5f618ff233842b50680e1eb90917087f1883461181cb08` |
+| Gradle 9.6.0 bin                  | `bbaeb2fef8710818cf0e261201dab964c572f92b942812df0c3620d62a529a01` |
 | Temurin Linux x64 25.0.5+8 tar.gz | `68982529869257d0ee6b824ec5aa270ff8b118bb438670da0b97ebdab178d7fb` |
 
 Baritone `standalone-fabric` har omdöpta publika API-metoder (`a()` i stället

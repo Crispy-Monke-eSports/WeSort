@@ -35,18 +35,18 @@ måste `execute if blocks … all` matcha kopian, och samtliga ursprungliga
 container-items måste vara identiska. Det jämför även golv, trappa, skyltar
 och tomma utrymmen, så en oavsiktlig placering upptäcks.
 
-| Prov | Kontroll |
-|---|---|
-| Rundtur mellan flera dubbelkistor | Riktig Baritone-gång, serverlevererat containerinnehåll vid varje stopp |
-| Laddad chunkgräns x=16 | Passeras under gång, inte genom teleport |
-| Höjd och arbetsyta | Riktig trappgång till y=67, öppning av upphöjd barrel och återkomst |
-| Barrel och shulker | Gång inom räckvidd och verklig öppning |
-| Cancel | Stillastående och inaktiv path efter avbrott, gamla inställningar återställda, nytt mål nekas tills resume |
-| Otillgänglig inhägnad | Rapporteras PAUSED när Baritone överger målet eller watchdog löper ut; ingen glasruta bryts |
-| Absolut timeout | Serverteleport håller en verklig pågående rutt från ankomst under hela produktionsgränsen på 60 sekunder; rörelse får inte förlänga deadline |
-| Dimensionsbyte | Riktig serverflytt till privat Nether-fixture stoppar den gamla rutten |
-| Oladdat mål | Testdrivern nekar före goal-start; ingen långdistansrutt godkänns av detta prov |
-| Lagerblock/items | Serverns fullständiga områdesjämförelse och inventory-NBT måste stämma före/efter |
+| Prov                              | Kontroll                                                                                                                                     |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Rundtur mellan flera dubbelkistor | Riktig Baritone-gång, serverlevererat containerinnehåll vid varje stopp                                                                      |
+| Laddad chunkgräns x=16            | Passeras under gång, inte genom teleport                                                                                                     |
+| Höjd och arbetsyta                | Riktig trappgång till y=67, öppning av upphöjd barrel och återkomst                                                                          |
+| Barrel och shulker                | Gång inom räckvidd och verklig öppning                                                                                                       |
+| Cancel                            | Stillastående och inaktiv path efter avbrott, gamla inställningar återställda, nytt mål nekas tills resume                                   |
+| Otillgänglig inhägnad             | Rapporteras PAUSED när Baritone överger målet eller watchdog löper ut; ingen glasruta bryts                                                  |
+| Absolut timeout                   | Serverteleport håller en verklig pågående rutt från ankomst under hela produktionsgränsen på 60 sekunder; rörelse får inte förlänga deadline |
+| Dimensionsbyte                    | Riktig serverflytt till privat Nether-fixture stoppar den gamla rutten                                                                       |
+| Oladdat mål                       | Testdrivern nekar före goal-start; ingen långdistansrutt godkänns av detta prov                                                              |
+| Lagerblock/items                  | Serverns fullständiga områdesjämförelse och inventory-NBT måste stämma före/efter                                                            |
 
 Enhetstester prövar fastkörning trots pågående beräkning, små positionsskak,
 äkta framsteg, absolut timeout trots rörelse och dimensionsbyte. Detta är

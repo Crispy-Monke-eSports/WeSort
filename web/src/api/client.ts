@@ -9,7 +9,10 @@ export interface ApiOptions {
 
 /** Central TypeScript client for the Java Manager API (same-origin cookies). */
 export async function api<T>(path: string, init?: ApiOptions): Promise<T> {
-  const headers: Record<string, string> = { Accept: "application/json", ...(init?.headers ?? {}) };
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    ...(init?.headers ?? {}),
+  };
   let body: string | undefined;
   if (init?.body !== undefined) {
     // Browser writes require the marker header, JSON, same origin (Router.BROWSER_WRITE).
@@ -19,7 +22,12 @@ export async function api<T>(path: string, init?: ApiOptions): Promise<T> {
   }
   let res: Response;
   try {
-    res = await fetch(path, { method: init?.method ?? (init?.body !== undefined ? "POST" : undefined), headers, body, credentials: "same-origin" });
+    res = await fetch(path, {
+      method: init?.method ?? (init?.body !== undefined ? "POST" : undefined),
+      headers,
+      body,
+      credentials: "same-origin",
+    });
   } catch (e) {
     throw networkError(e);
   }
@@ -38,7 +46,9 @@ export async function api<T>(path: string, init?: ApiOptions): Promise<T> {
     }
     const mustChange = !!json?.mustChange;
     const err = new Error(
-      mustChange ? "You must change your password before doing that." : (json?.error ?? "You don't have permission to do that."),
+      mustChange
+        ? "You must change your password before doing that."
+        : (json?.error ?? "You don't have permission to do that."),
     ) as ApiError;
     err.status = 403;
     err.body = json;
@@ -52,7 +62,10 @@ export async function api<T>(path: string, init?: ApiOptions): Promise<T> {
     json = null;
   }
   if (!res.ok) {
-    const err = new Error((json && (json.error || json.message)) || `Request failed (HTTP ${res.status}).`) as ApiError;
+    const err = new Error(
+      (json && (json.error || json.message)) ||
+        `Request failed (HTTP ${res.status}).`,
+    ) as ApiError;
     err.status = res.status;
     err.body = json;
     throw err;
@@ -61,7 +74,9 @@ export async function api<T>(path: string, init?: ApiOptions): Promise<T> {
 }
 
 function networkError(e: unknown): ApiError {
-  const err = new Error("Cannot reach the Manager. Check the connection and retry.") as ApiError;
+  const err = new Error(
+    "Cannot reach the Manager. Check the connection and retry.",
+  ) as ApiError;
   err.status = 0;
   (err as any).cause = e;
   return err;
@@ -69,7 +84,8 @@ function networkError(e: unknown): ApiError {
 
 /** Idempotency key for order submission (HTTP Idempotency-Key header; the server replays by receipt). */
 export function idempotencyKey(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto)
+    return crypto.randomUUID();
   return `id-${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
 }
 

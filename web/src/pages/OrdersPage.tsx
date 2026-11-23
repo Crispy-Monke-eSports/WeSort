@@ -35,7 +35,13 @@ import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
-import { keys, useAllOrders, useAuth, usePermissions, useStashes } from "../api/queries";
+import {
+  keys,
+  useAllOrders,
+  useAuth,
+  usePermissions,
+  useStashes,
+} from "../api/queries";
 import { ConfirmDialog } from "../components/dialogs";
 import { OrderStatusChip } from "../components/status";
 import { ORDER_STATUSES, isSuperseded, orderUiState } from "../lib/orderStatus";
@@ -45,8 +51,11 @@ function progressText(o: any): string {
   if (p == null) return "";
   if (typeof p === "string") return p;
   try {
-    if (typeof p.done === "number" && typeof p.total === "number") return `${p.done}/${p.total}`;
-  } catch { /* ignore */ }
+    if (typeof p.done === "number" && typeof p.total === "number")
+      return `${p.done}/${p.total}`;
+  } catch {
+    /* ignore */
+  }
   return "";
 }
 
@@ -61,7 +70,10 @@ export function OrdersPage() {
   const loggedIn = !!auth.data?.loggedIn && perms.can("view");
   const stashes = useStashes(loggedIn);
   const stashList = useMemo(() => stashes.data ?? [], [stashes.data]);
-  const visible = useMemo(() => stashList.filter((s) => perms.seesStash(s.stash)), [stashList, perms]);
+  const visible = useMemo(
+    () => stashList.filter((s) => perms.seesStash(s.stash)),
+    [stashList, perms],
+  );
   const { orders, failedStashes, loading } = useAllOrders(visible, loggedIn);
 
   const [statusFilter, setStatusFilter] = useState("all");
@@ -72,7 +84,12 @@ export function OrdersPage() {
   const [detail, setDetail] = useState<any | null>(null);
   const [actionMsg, setActionMsg] = useState("");
   const [confirm, setConfirm] = useState<null | {
-    title: string; intro?: string; changes?: string[]; confirmLabel: string; danger?: boolean; run: () => Promise<void>;
+    title: string;
+    intro?: string;
+    changes?: string[];
+    confirmLabel: string;
+    danger?: boolean;
+    run: () => Promise<void>;
   }>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [confirmError, setConfirmError] = useState("");
@@ -86,41 +103,82 @@ export function OrdersPage() {
     let list = orders;
     if (!perms.owner && !perms.can("ordersAll")) {
       const me = auth.data?.user?.id;
-      list = list.filter((o: any) => o.placedBy?.id === me || o.userId === me || o.placedBy?.name === auth.data?.user?.name);
+      list = list.filter(
+        (o: any) =>
+          o.placedBy?.id === me ||
+          o.userId === me ||
+          o.placedBy?.name === auth.data?.user?.name,
+      );
     }
     // Retried orders stand for their successor: hidden by default so the table shows current orders.
     if (hideSuperseded) list = list.filter((o: any) => !isSuperseded(o));
-    if (statusFilter !== "all") list = list.filter((o: any) => (o.status ?? "").toLowerCase() === statusFilter);
+    if (statusFilter !== "all")
+      list = list.filter(
+        (o: any) => (o.status ?? "").toLowerCase() === statusFilter,
+      );
     if (query.trim()) {
       const t = query.trim().toLowerCase();
-      list = list.filter((o: any) =>
-        String(o.id ?? "").toLowerCase().includes(t) ||
-        String(o.stash ?? o.stashName ?? "").toLowerCase().includes(t) ||
-        (o.lines ?? []).some((l: any) => String(l.key ?? "").toLowerCase().includes(t)) ||
-        String(o.recipient ?? "").toLowerCase().includes(t));
+      list = list.filter(
+        (o: any) =>
+          String(o.id ?? "")
+            .toLowerCase()
+            .includes(t) ||
+          String(o.stash ?? o.stashName ?? "")
+            .toLowerCase()
+            .includes(t) ||
+          (o.lines ?? []).some((l: any) =>
+            String(l.key ?? "")
+              .toLowerCase()
+              .includes(t),
+          ) ||
+          String(o.recipient ?? "")
+            .toLowerCase()
+            .includes(t),
+      );
     }
     return list;
   }, [orders, statusFilter, hideSuperseded, query, perms, auth.data]);
 
   function act(order: any, action: "cancel" | "force-cancel" | "retry") {
     setActionMsg("");
-    const verb = action === "cancel" ? "Request cancel for" : action === "force-cancel" ? "Force-cancel" : "Retry";
+    const verb =
+      action === "cancel"
+        ? "Request cancel for"
+        : action === "force-cancel"
+          ? "Force-cancel"
+          : "Retry";
     const danger = action === "force-cancel";
     setConfirm({
       title: `${verb} order ${order.id}?`,
-      intro: action === "retry"
-        ? "A terminal order is retried as a new order with the same lines. The old order stays finished."
-        : action === "force-cancel"
-          ? "Force-cancel ends the order even if the bot is mid-pack. This cannot be undone."
-          : "The bot is asked to stop work on this order and its reservations are released.",
-      changes: [`order: ${order.id}`, `stash: ${order.stash ?? "?"}`, `status: ${order.status ?? "?"}`],
+      intro:
+        action === "retry"
+          ? "A terminal order is retried as a new order with the same lines. The old order stays finished."
+          : action === "force-cancel"
+            ? "Force-cancel ends the order even if the bot is mid-pack. This cannot be undone."
+            : "The bot is asked to stop work on this order and its reservations are released.",
+      changes: [
+        `order: ${order.id}`,
+        `stash: ${order.stash ?? "?"}`,
+        `status: ${order.status ?? "?"}`,
+      ],
       confirmLabel: verb,
       danger,
       run: async () => {
-        const path = action === "retry" ? `/api/v1/orders/${order.id}/retry` : `/api/v1/orders/${order.id}/${action}`;
-        const res = await api<{ ok: boolean; order?: any }>(path, { method: "POST", body: {} });
-        setActionMsg(action === "retry" ? `Retried as ${res.order?.id ?? "a new order"}.` : `Order ${order.id}: ${action} sent.`);
-        if (order.stash) queryClient.invalidateQueries({ queryKey: keys.orders(order.stash) });
+        const path =
+          action === "retry"
+            ? `/api/v1/orders/${order.id}/retry`
+            : `/api/v1/orders/${order.id}/${action}`;
+        const res = await api<{ ok: boolean; order?: any }>(path, {
+          method: "POST",
+          body: {},
+        });
+        setActionMsg(
+          action === "retry"
+            ? `Retried as ${res.order?.id ?? "a new order"}.`
+            : `Order ${order.id}: ${action} sent.`,
+        );
+        if (order.stash)
+          queryClient.invalidateQueries({ queryKey: keys.orders(order.stash) });
         setDetail(null);
       },
     });
@@ -147,7 +205,10 @@ export function OrdersPage() {
       intro: "Only finished orders are removed. Open orders stay.",
       confirmLabel: "Clear finished",
       run: async () => {
-        const res = await api<{ removed: number }>("/api/v1/orders/clear", { method: "POST", body: { stash } });
+        const res = await api<{ removed: number }>("/api/v1/orders/clear", {
+          method: "POST",
+          body: { stash },
+        });
         setActionMsg(`Cleared ${res.removed} finished orders (${stash}).`);
         queryClient.invalidateQueries({ queryKey: keys.orders(stash) });
       },
@@ -156,113 +217,269 @@ export function OrdersPage() {
 
   return (
     <Stack spacing={2}>
-      <Typography variant="h5" component="h1">Orders</Typography>
+      <Typography variant="h5" component="h1">
+        Orders
+      </Typography>
       {failedStashes.length > 0 && (
-        <Alert severity="error">Could not load orders for {failedStashes.join(", ")} — the table below is partial.</Alert>
+        <Alert severity="error">
+          Could not load orders for {failedStashes.join(", ")} — the table below
+          is partial.
+        </Alert>
       )}
-      {actionMsg && <Alert severity="info" onClose={() => setActionMsg("")}>{actionMsg}</Alert>}
+      {actionMsg && (
+        <Alert severity="info" onClose={() => setActionMsg("")}>
+          {actionMsg}
+        </Alert>
+      )}
 
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-        <TextField label="Search orders" value={query} onChange={(e) => { setQuery(e.target.value); setPage(0); }} size="small" sx={{ minWidth: 220 }} placeholder="order id, stash, item, recipient…" />
+        <TextField
+          label="Search orders"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setPage(0);
+          }}
+          size="small"
+          sx={{ minWidth: 220 }}
+          placeholder="order id, stash, item, recipient…"
+        />
         <FormControl size="small" sx={{ minWidth: 160 }}>
           <InputLabel id="orders-status-label">Status</InputLabel>
-          <Select value={statusFilter} labelId="orders-status-label" id="orders-status" label="Status" onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}>
+          <Select
+            value={statusFilter}
+            labelId="orders-status-label"
+            id="orders-status"
+            label="Status"
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setPage(0);
+            }}
+          >
             {["all", ...ORDER_STATUSES].map((s) => (
-              <MenuItem key={s} value={s}>{s === "all" ? "All statuses" : s}</MenuItem>
+              <MenuItem key={s} value={s}>
+                {s === "all" ? "All statuses" : s}
+              </MenuItem>
             ))}
           </Select>
         </FormControl>
         <FormControlLabel
-          control={<Checkbox size="small" checked={hideSuperseded} onChange={(e) => { setHideSuperseded(e.target.checked); setPage(0); }} />}
+          control={
+            <Checkbox
+              size="small"
+              checked={hideSuperseded}
+              onChange={(e) => {
+                setHideSuperseded(e.target.checked);
+                setPage(0);
+              }}
+            />
+          }
           label="Hide superseded"
         />
       </Stack>
 
-      {!isXs && (<TableContainer component={Paper} id="order-list">
-        <Table size="small" aria-label="Orders table">
-          <TableHead>
-            <TableRow>
-              <TableCell>Order</TableCell>
-              <TableCell>Stash</TableCell>
-              <TableCell>Items</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Updated</TableCell>
-              <TableCell>Details</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {loading && (
-              <TableRow><TableCell colSpan={6}><LinearProgress /></TableCell></TableRow>
-            )}
-            {filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((o: any) => (
-              <TableRow hover key={`${o.stash}:${o.id}`} data-testid="order-card">
-                <TableCell sx={{ fontFamily: "monospace", fontSize: "0.8rem" }}>{o.id}</TableCell>
-                <TableCell sx={{ fontFamily: "monospace", fontSize: "0.8rem" }}>{o.stash ?? o.stashName ?? o.server}</TableCell>
-                <TableCell>
-                  {(o.lines ?? []).map((l: any) => `${l.key} ×${l.count}`).join(", ")}
-                  {o.comment ? <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>“{String(o.comment)}”</Typography> : null}
-                </TableCell>
-                <TableCell><OrderStatusChip status={String(o.status ?? "unknown")} /></TableCell>
-                <TableCell>{o.updatedAt ? new Date(o.updatedAt).toLocaleString() : "—"}</TableCell>
-                <TableCell><Button size="small" onClick={() => setDetail(o)} aria-label={`View order ${o.id}`}>View details</Button></TableCell>
+      {!isXs && (
+        <TableContainer component={Paper} id="order-list">
+          <Table size="small" aria-label="Orders table">
+            <TableHead>
+              <TableRow>
+                <TableCell>Order</TableCell>
+                <TableCell>Stash</TableCell>
+                <TableCell>Items</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Updated</TableCell>
+                <TableCell>Details</TableCell>
               </TableRow>
-            ))}
-            {!loading && filtered.length === 0 && (
-              <TableRow><TableCell colSpan={6}><Typography color="text.secondary">No orders match.</Typography></TableCell></TableRow>
-            )}
-          </TableBody>
-        </Table>
-        <TablePagination
-          component="div" count={filtered.length} page={page} rowsPerPage={rowsPerPage}
-          rowsPerPageOptions={[10, 25, 50, 100]}
-          onPageChange={(_, p) => setPage(p)}
-          onRowsPerPageChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(0); }}
-        />
-      </TableContainer>)}
+            </TableHead>
+            <TableBody>
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={6}>
+                    <LinearProgress />
+                  </TableCell>
+                </TableRow>
+              )}
+              {filtered
+                .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                .map((o: any) => (
+                  <TableRow
+                    hover
+                    key={`${o.stash}:${o.id}`}
+                    data-testid="order-card"
+                  >
+                    <TableCell
+                      sx={{ fontFamily: "monospace", fontSize: "0.8rem" }}
+                    >
+                      {o.id}
+                    </TableCell>
+                    <TableCell
+                      sx={{ fontFamily: "monospace", fontSize: "0.8rem" }}
+                    >
+                      {o.stash ?? o.stashName ?? o.server}
+                    </TableCell>
+                    <TableCell>
+                      {(o.lines ?? [])
+                        .map((l: any) => `${l.key} ×${l.count}`)
+                        .join(", ")}
+                      {o.comment ? (
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ display: "block" }}
+                        >
+                          “{String(o.comment)}”
+                        </Typography>
+                      ) : null}
+                    </TableCell>
+                    <TableCell>
+                      <OrderStatusChip status={String(o.status ?? "unknown")} />
+                    </TableCell>
+                    <TableCell>
+                      {o.updatedAt
+                        ? new Date(o.updatedAt).toLocaleString()
+                        : "—"}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="small"
+                        onClick={() => setDetail(o)}
+                        aria-label={`View order ${o.id}`}
+                      >
+                        View details
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              {!loading && filtered.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6}>
+                    <Typography color="text.secondary">
+                      No orders match.
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+          <TablePagination
+            component="div"
+            count={filtered.length}
+            page={page}
+            rowsPerPage={rowsPerPage}
+            rowsPerPageOptions={[10, 25, 50, 100]}
+            onPageChange={(_, p) => setPage(p)}
+            onRowsPerPageChange={(e) => {
+              setRowsPerPage(Number(e.target.value));
+              setPage(0);
+            }}
+          />
+        </TableContainer>
+      )}
 
       {/* Genuine mobile view: order cards instead of a squeezed table. */}
-      {isXs && (<Stack spacing={1} id="order-list-cards">
-        {loading && <LinearProgress />}
-        {filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((o: any) => (
-          <Card key={`${o.stash}:${o.id}`} data-testid="order-card">
-            <CardActionArea onClick={() => setDetail(o)} aria-label={`View order ${o.id}`}>
-              <CardContent sx={{ "&:last-child": { pb: 2 } }}>
-              <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-                <Typography variant="body2" sx={{ fontFamily: "monospace", flexGrow: 1, wordBreak: "break-all" }}>{o.id}</Typography>
-                <OrderStatusChip status={String(o.status ?? "unknown")} />
-              </Stack>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                {o.stash ?? o.stashName ?? o.server} · {(o.lines ?? []).map((l: any) => `${l.key} ×${l.count}`).join(", ")}
-              </Typography>
-              {o.comment ? (
-                <Typography variant="body2" color="text.secondary">“{String(o.comment)}”</Typography>
-              ) : null}
-              <Typography variant="caption" color="text.secondary">
-                {o.updatedAt ? new Date(o.updatedAt).toLocaleString() : "—"}
-              </Typography>
-              </CardContent>
-            </CardActionArea>
-          </Card>
-        ))}
-        {!loading && filtered.length === 0 && (
-          <Typography color="text.secondary">No orders match.</Typography>
-        )}
-        <TablePagination
-          component="div" count={filtered.length} page={page} rowsPerPage={rowsPerPage}
-          rowsPerPageOptions={[10, 25, 50, 100]}
-          onPageChange={(_, p) => setPage(p)}
-          onRowsPerPageChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(0); }}
-        />
-      </Stack>)}
+      {isXs && (
+        <Stack spacing={1} id="order-list-cards">
+          {loading && <LinearProgress />}
+          {filtered
+            .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+            .map((o: any) => (
+              <Card key={`${o.stash}:${o.id}`} data-testid="order-card">
+                <CardActionArea
+                  onClick={() => setDetail(o)}
+                  aria-label={`View order ${o.id}`}
+                >
+                  <CardContent sx={{ "&:last-child": { pb: 2 } }}>
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      sx={{ alignItems: "center" }}
+                    >
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          fontFamily: "monospace",
+                          flexGrow: 1,
+                          wordBreak: "break-all",
+                        }}
+                      >
+                        {o.id}
+                      </Typography>
+                      <OrderStatusChip status={String(o.status ?? "unknown")} />
+                    </Stack>
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{ mt: 0.5 }}
+                    >
+                      {o.stash ?? o.stashName ?? o.server} ·{" "}
+                      {(o.lines ?? [])
+                        .map((l: any) => `${l.key} ×${l.count}`)
+                        .join(", ")}
+                    </Typography>
+                    {o.comment ? (
+                      <Typography variant="body2" color="text.secondary">
+                        “{String(o.comment)}”
+                      </Typography>
+                    ) : null}
+                    <Typography variant="caption" color="text.secondary">
+                      {o.updatedAt
+                        ? new Date(o.updatedAt).toLocaleString()
+                        : "—"}
+                    </Typography>
+                  </CardContent>
+                </CardActionArea>
+              </Card>
+            ))}
+          {!loading && filtered.length === 0 && (
+            <Typography color="text.secondary">No orders match.</Typography>
+          )}
+          <TablePagination
+            component="div"
+            count={filtered.length}
+            page={page}
+            rowsPerPage={rowsPerPage}
+            rowsPerPageOptions={[10, 25, 50, 100]}
+            onPageChange={(_, p) => setPage(p)}
+            onRowsPerPageChange={(e) => {
+              setRowsPerPage(Number(e.target.value));
+              setPage(0);
+            }}
+          />
+        </Stack>
+      )}
       {perms.can("ordersAll") && (
         <Card>
           <CardContent>
-            <Typography variant="h6" component="h2" gutterBottom>Order administration</Typography>
+            <Typography variant="h6" component="h2" gutterBottom>
+              Order administration
+            </Typography>
             <Stack spacing={1}>
               {visible.map((s) => (
-                <Stack key={s.stash} direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ alignItems: { sm: "center" } }}>
-                  <Typography variant="body2" sx={{ fontFamily: "monospace", flexGrow: 1, wordBreak: "break-all" }}>{s.stash}</Typography>
-                  <Box><Button variant="outlined" size="small" onClick={() => clearFinished(s.stash)}>Clear finished</Button></Box>
+                <Stack
+                  key={s.stash}
+                  direction={{ xs: "column", sm: "row" }}
+                  spacing={1}
+                  sx={{ alignItems: { sm: "center" } }}
+                >
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      fontFamily: "monospace",
+                      flexGrow: 1,
+                      wordBreak: "break-all",
+                    }}
+                  >
+                    {s.stash}
+                  </Typography>
+                  <Box>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={() => clearFinished(s.stash)}
+                    >
+                      Clear finished
+                    </Button>
+                  </Box>
                 </Stack>
               ))}
             </Stack>
@@ -270,7 +487,13 @@ export function OrdersPage() {
         </Card>
       )}
 
-      <OrderDialog order={detail} onClose={() => setDetail(null)} canChange={canChange} canAudit={perms.can("ordersAll") || perms.owner} onAction={act} />
+      <OrderDialog
+        order={detail}
+        onClose={() => setDetail(null)}
+        canChange={canChange}
+        canAudit={perms.can("ordersAll") || perms.owner}
+        onAction={act}
+      />
       {confirm && (
         <ConfirmDialog
           open
@@ -281,7 +504,9 @@ export function OrdersPage() {
           danger={confirm.danger}
           busy={confirmBusy}
           error={confirmError}
-          onClose={() => { if (!confirmBusy) setConfirm(null); }}
+          onClose={() => {
+            if (!confirmBusy) setConfirm(null);
+          }}
           onConfirm={runConfirm}
         />
       )}
@@ -289,8 +514,18 @@ export function OrdersPage() {
   );
 }
 
-function OrderDialog({ order, onClose, canChange, canAudit, onAction }: {
-  order: any | null; onClose: () => void; canChange: boolean; canAudit: boolean; onAction: (o: any, a: "cancel" | "force-cancel" | "retry") => void;
+function OrderDialog({
+  order,
+  onClose,
+  canChange,
+  canAudit,
+  onAction,
+}: {
+  order: any | null;
+  onClose: () => void;
+  canChange: boolean;
+  canAudit: boolean;
+  onAction: (o: any, a: "cancel" | "force-cancel" | "retry") => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [audit, setAudit] = useState<any[] | null>(null);
@@ -299,14 +534,20 @@ function OrderDialog({ order, onClose, canChange, canAudit, onAction }: {
     setAudit(null);
     if (!orderId || !canAudit) return;
     let live = true;
-    api<any>(`/api/v1/audit/orders?order=${encodeURIComponent(String(orderId))}&limit=1`)
+    api<any>(
+      `/api/v1/audit/orders?order=${encodeURIComponent(String(orderId))}&limit=1`,
+    )
       .then((d) => {
         if (!live) return;
         const o = (d.orders ?? [])[0];
         setAudit(o?.physicalOperations ?? []);
       })
-      .catch(() => { if (live) setAudit([]); });
-    return () => { live = false; };
+      .catch(() => {
+        if (live) setAudit([]);
+      });
+    return () => {
+      live = false;
+    };
   }, [orderId, canAudit]);
   if (!order) return null;
   const status = String(order.status ?? "unknown").toLowerCase();
@@ -318,7 +559,11 @@ function OrderDialog({ order, onClose, canChange, canAudit, onAction }: {
 
   async function run(action: "cancel" | "force-cancel" | "retry") {
     setBusy(true);
-    try { await onAction(order, action); } finally { setBusy(false); }
+    try {
+      await onAction(order, action);
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -328,70 +573,167 @@ function OrderDialog({ order, onClose, canChange, canAudit, onAction }: {
         <Stack spacing={2}>
           <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
             <OrderStatusChip status={String(order.status ?? "unknown")} />
-            <Chip size="small" variant="outlined" label={order.stash ?? order.stashName ?? "?"} />
-            {order.recipient && <Chip size="small" variant="outlined" label={`for ${order.recipient}`} />}
+            <Chip
+              size="small"
+              variant="outlined"
+              label={order.stash ?? order.stashName ?? "?"}
+            />
+            {order.recipient && (
+              <Chip
+                size="small"
+                variant="outlined"
+                label={`for ${order.recipient}`}
+              />
+            )}
           </Stack>
           <Box>
             <Typography variant="body2" color="text.secondary">
               {order.purpose === "GUILD" ? "For the guild" : "For myself"}
-              {order.verifiedRecipient ? ` · verified recipient ${order.verifiedRecipient}` : ""}
+              {order.verifiedRecipient
+                ? ` · verified recipient ${order.verifiedRecipient}`
+                : ""}
               {` · ${order.deliveryMode ?? "WAREHOUSE_PICKUP"}`}
-              {order.destination?.player ? ` → player ${order.destination.player}` : order.destination?.stash ? ` → stash ${order.destination.stash}` : ""}
+              {order.destination?.player
+                ? ` → player ${order.destination.player}`
+                : order.destination?.stash
+                  ? ` → stash ${order.destination.stash}`
+                  : ""}
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Approval: {String(order.approvalState ?? "DIRECT")}
-              {order.decidedBy ? ` by ${order.decidedBy}${order.decidedAt ? ` at ${new Date(order.decidedAt).toLocaleString()}` : ""}` : ""}
+              {order.decidedBy
+                ? ` by ${order.decidedBy}${order.decidedAt ? ` at ${new Date(order.decidedAt).toLocaleString()}` : ""}`
+                : ""}
               {order.agent ? ` · bot ${order.agent}` : ""}
-              {order.state && order.state.toLowerCase() !== status ? ` · stage ${order.state}` : ""}
-              {order.packageTotal ? ` · ${order.packageTotal} box${order.packageTotal === 1 ? "" : "es"}` : ""}
+              {order.state && order.state.toLowerCase() !== status
+                ? ` · stage ${order.state}`
+                : ""}
+              {order.packageTotal
+                ? ` · ${order.packageTotal} box${order.packageTotal === 1 ? "" : "es"}`
+                : ""}
             </Typography>
             {order.cancelRequested && (
-              <Typography variant="body2" color="warning.main">Cancel requested — waiting for the bot to confirm.</Typography>
+              <Typography variant="body2" color="warning.main">
+                Cancel requested — waiting for the bot to confirm.
+              </Typography>
             )}
             {order.retriedAs && (
-              <Typography variant="body2" color="text.secondary">Retried as {order.retriedAs}.</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Retried as {order.retriedAs}.
+              </Typography>
             )}
           </Box>
           <Box>
-            <Typography variant="h6" component="h2" gutterBottom>Items</Typography>
+            <Typography variant="h6" component="h2" gutterBottom>
+              Items
+            </Typography>
             {lines.map((l: any, i: number) => (
-              <Typography key={i} variant="body2">×{l.count} {l.type === "shulker" ? `packed ${l.key}` : l.key}</Typography>
+              <Typography key={i} variant="body2">
+                ×{l.count} {l.type === "shulker" ? `packed ${l.key}` : l.key}
+              </Typography>
             ))}
             {order.packageLabel && (
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                Box text: {order.packageLabel.mode === "all" ? order.packageLabel.text : (order.packageLabel.texts ?? []).filter(Boolean).join(" / ") || "“Beställning”"} · server numbers every box WeSort (X/Y).
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ mt: 0.5 }}
+              >
+                Box text:{" "}
+                {order.packageLabel.mode === "all"
+                  ? order.packageLabel.text
+                  : (order.packageLabel.texts ?? [])
+                      .filter(Boolean)
+                      .join(" / ") || "“Beställning”"}{" "}
+                · server numbers every box WeSort (X/Y).
               </Typography>
             )}
-            {order.message && <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>{order.message}</Typography>}
-            {progressText(order) && <Typography variant="body2" color="text.secondary">Progress: {progressText(order)}</Typography>}
+            {order.message && (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                {order.message}
+              </Typography>
+            )}
+            {progressText(order) && (
+              <Typography variant="body2" color="text.secondary">
+                Progress: {progressText(order)}
+              </Typography>
+            )}
           </Box>
           <Divider />
           <Box>
-            <Typography variant="h6" component="h2" gutterBottom>Timeline</Typography>
+            <Typography variant="h6" component="h2" gutterBottom>
+              Timeline
+            </Typography>
             <Stack spacing={1}>
               {[
-                order.createdAt ? { at: order.createdAt, label: `Placed by ${order.placedBy?.name ?? order.requestedBy ?? "?"}` } : null,
-                order.claimedAt ? { at: order.claimedAt, label: `Claimed by bot${order.agent ? ` ${order.agent}` : ""}` } : null,
+                order.createdAt
+                  ? {
+                      at: order.createdAt,
+                      label: `Placed by ${order.placedBy?.name ?? order.requestedBy ?? "?"}`,
+                    }
+                  : null,
+                order.claimedAt
+                  ? {
+                      at: order.claimedAt,
+                      label: `Claimed by bot${order.agent ? ` ${order.agent}` : ""}`,
+                    }
+                  : null,
                 ...(audit ?? []).map((e: any) => ({
                   at: e.at ?? e.time ?? e.createdAt ?? 0,
-                  label: String(e.event ?? e.action ?? e.state ?? JSON.stringify(e)).slice(0, 160),
+                  label: String(
+                    e.event ?? e.action ?? e.state ?? JSON.stringify(e),
+                  ).slice(0, 160),
                 })),
-                order.manifestAcknowledgedAt ? { at: order.manifestAcknowledgedAt, label: "Staging manifest acknowledged" } : null,
-                order.releasedAt ? { at: order.releasedAt, label: "Released" } : null,
-                order.updatedAt ? { at: order.updatedAt, label: `Last update — ${order.status}` } : null,
-              ].filter((e) => e && e.at).map((e: any, i: number) => (
-                <Stack key={i} direction="row" spacing={1.5} sx={{ alignItems: "baseline" }}>
-                  <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: i === 2 ? "primary.main" : "action.disabled", flexShrink: 0, alignSelf: "center" }} />
-                  <Typography variant="body2" color="text.secondary" sx={{ minWidth: 150 }}>{new Date(e.at).toLocaleString()}</Typography>
-                  <Typography variant="body2">{e.label}</Typography>
-                </Stack>
-              ))}
+                order.manifestAcknowledgedAt
+                  ? {
+                      at: order.manifestAcknowledgedAt,
+                      label: "Staging manifest acknowledged",
+                    }
+                  : null,
+                order.releasedAt
+                  ? { at: order.releasedAt, label: "Released" }
+                  : null,
+                order.updatedAt
+                  ? {
+                      at: order.updatedAt,
+                      label: `Last update — ${order.status}`,
+                    }
+                  : null,
+              ]
+                .filter((e) => e && e.at)
+                .map((e: any, i: number) => (
+                  <Stack
+                    key={i}
+                    direction="row"
+                    spacing={1.5}
+                    sx={{ alignItems: "baseline" }}
+                  >
+                    <Box
+                      sx={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: "50%",
+                        bgcolor: i === 2 ? "primary.main" : "action.disabled",
+                        flexShrink: 0,
+                        alignSelf: "center",
+                      }}
+                    />
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{ minWidth: 150 }}
+                    >
+                      {new Date(e.at).toLocaleString()}
+                    </Typography>
+                    <Typography variant="body2">{e.label}</Typography>
+                  </Stack>
+                ))}
             </Stack>
             {canAudit && audit === null && <LinearProgress sx={{ mt: 1 }} />}
           </Box>
           {(order.phase || order.message) && (
             <Alert severity={status === "failed" ? "error" : "info"}>
-              {order.phase ? <strong>{order.phase}: </strong> : null}{order.message ?? progressText(order)}
+              {order.phase ? <strong>{order.phase}: </strong> : null}
+              {order.message ?? progressText(order)}
             </Alert>
           )}
         </Stack>
@@ -399,12 +741,31 @@ function OrderDialog({ order, onClose, canChange, canAudit, onAction }: {
       <DialogActions>
         {canChange && cancellable && (
           <>
-            <Button startIcon={<CancelIcon />} disabled={busy} onClick={() => run("cancel")}>Request cancel</Button>
-            <Button startIcon={<DeleteIcon />} color="error" disabled={busy} onClick={() => run("force-cancel")}>Force cancel</Button>
+            <Button
+              startIcon={<CancelIcon />}
+              disabled={busy}
+              onClick={() => run("cancel")}
+            >
+              Request cancel
+            </Button>
+            <Button
+              startIcon={<DeleteIcon />}
+              color="error"
+              disabled={busy}
+              onClick={() => run("force-cancel")}
+            >
+              Force cancel
+            </Button>
           </>
         )}
         {canChange && retryable && (
-          <Button variant="contained" disabled={busy} onClick={() => run("retry")}>Retry as new order</Button>
+          <Button
+            variant="contained"
+            disabled={busy}
+            onClick={() => run("retry")}
+          >
+            Retry as new order
+          </Button>
         )}
         <Button onClick={onClose}>Close</Button>
       </DialogActions>

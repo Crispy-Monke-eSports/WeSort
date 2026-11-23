@@ -9,8 +9,12 @@ export function iconUrl(id: string, mcVersion?: string | null): string {
   const hash = id.indexOf("#");
   const bare = (hash < 0 ? id : id.slice(0, hash)).trim();
   const colon = bare.indexOf(":");
-  const ns = colon < 0 ? "minecraft" : bare.slice(0, colon).trim() || "minecraft";
-  const path = (colon < 0 ? bare : bare.slice(colon + 1)).replace(/[^a-z0-9/_. -]/gi, "").trim() || "unknown";
+  const ns =
+    colon < 0 ? "minecraft" : bare.slice(0, colon).trim() || "minecraft";
+  const path =
+    (colon < 0 ? bare : bare.slice(colon + 1))
+      .replace(/[^a-z0-9/_. -]/gi, "")
+      .trim() || "unknown";
   const base = `/icon/${encodeURIComponent(ns)}/${encodeURIComponent(path)}.png`;
   return mcVersion ? `${base}?v=${encodeURIComponent(mcVersion)}-g1` : base;
 }
@@ -32,8 +36,11 @@ export function ItemIcon({
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const timer = useRef<number | null>(null);
-  const title = contents?.length ? `Contains: ${contents.map((c) => `${c.key} ×${c.count}`).join(", ")}` : id;
-  const initial = (label ?? id.split(":").pop() ?? "?").trim().charAt(0).toUpperCase() || "?";
+  const title = contents?.length
+    ? `Contains: ${contents.map((c) => `${c.key} ×${c.count}`).join(", ")}`
+    : id;
+  const initial =
+    (label ?? id.split(":").pop() ?? "?").trim().charAt(0).toUpperCase() || "?";
 
   useEffect(() => {
     setLoaded(false);
@@ -44,18 +51,40 @@ export function ItemIcon({
     };
   }, [id, mcVersion]);
 
-  const src = attempt === 0 ? iconUrl(id, mcVersion) : `${iconUrl(id, mcVersion)}${mcVersion ? "&" : "?"}retry=1`;
+  const src =
+    attempt === 0
+      ? iconUrl(id, mcVersion)
+      : `${iconUrl(id, mcVersion)}${mcVersion ? "&" : "?"}retry=1`;
 
   return (
     <Box
       component="span"
-      sx={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", width: size, height: size, flexShrink: 0 }}
+      sx={{
+        position: "relative",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: size,
+        height: size,
+        flexShrink: 0,
+      }}
       title={title}
     >
       <Box
         component="span"
         aria-hidden
-        sx={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "monospace", fontWeight: 700, fontSize: size * 0.45, color: "primary.light", opacity: 0.7 }}
+        sx={{
+          position: "absolute",
+          inset: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontFamily: "monospace",
+          fontWeight: 700,
+          fontSize: size * 0.45,
+          color: "primary.light",
+          opacity: 0.7,
+        }}
       >
         {initial}
       </Box>
@@ -77,7 +106,13 @@ export function ItemIcon({
               setFailed(true);
             }
           }}
-          sx={{ position: "absolute", inset: 0, opacity: loaded ? 1 : 0, transition: "opacity 0.2s", imageRendering: "pixelated" }}
+          sx={{
+            position: "absolute",
+            inset: 0,
+            opacity: loaded ? 1 : 0,
+            transition: "opacity 0.2s",
+            imageRendering: "pixelated",
+          }}
         />
       )}
     </Box>

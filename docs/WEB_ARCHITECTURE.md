@@ -91,3 +91,4 @@ Prerequisites: Java 21, Bun 1+, Node 22 (Playwright).
 
 ```bash
 ./gradlew --no-daemon -p stash-manager-server build   # backend + tests
+```

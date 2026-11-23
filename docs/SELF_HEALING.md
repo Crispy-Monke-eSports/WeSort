@@ -35,7 +35,7 @@ merely because the agent restarted.
 ## Limits and fail-closed behavior
 
 - An offline bot cannot physically put anything back. Recovery resumes upon
-  reconnect. Reservations for inaccessible or unverified items are *not*
+  reconnect. Reservations for inaccessible or unverified items are _not_
   discarded to make an error disappear.
 - The agent cannot move items out of an unloaded chest, invent spare chest
   capacity, or undo ingredients already consumed by crafting. It must verify

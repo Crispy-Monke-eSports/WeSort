@@ -12,7 +12,10 @@ describe("api client (Java BrowserWrite contract)", () => {
       "fetch",
       vi.fn(async (url: string, init: any) => {
         calls.push({ url, init });
-        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
       }),
     );
     await api("/api/v1/orders", {
@@ -36,22 +39,45 @@ describe("api client (Java BrowserWrite contract)", () => {
         return new Response(JSON.stringify({ ok: true }), { status: 200 });
       }),
     );
-    await api("/api/v1/orders", { method: "POST", headers: { "Idempotency-Key": "k" }, body: { lines: [] } });
+    await api("/api/v1/orders", {
+      method: "POST",
+      headers: { "Idempotency-Key": "k" },
+      body: { lines: [] },
+    });
     expect(body).not.toContain("Idempotency");
   });
 
   it("surfaces 401 as session expiry and 403 as permission denial", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 401 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{}", { status: 401 })),
+    );
     await expect(api("/x")).rejects.toMatchObject({ status: 401 });
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ok: false, error: "nope" }), { status: 403 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ ok: false, error: "nope" }), {
+            status: 403,
+          }),
+      ),
+    );
     await expect(api("/x")).rejects.toMatchObject({ status: 403 });
   });
 
   it("keeps line-level shortage info from the body", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => new Response(JSON.stringify({ ok: false, error: "short", line: 2 }), { status: 400 })),
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ ok: false, error: "short", line: 2 }), {
+            status: 400,
+          }),
+      ),
     );
-    await expect(api("/x")).rejects.toMatchObject({ status: 400, body: { line: 2 } });
+    await expect(api("/x")).rejects.toMatchObject({
+      status: 400,
+      body: { line: 2 },
+    });
   });
 });

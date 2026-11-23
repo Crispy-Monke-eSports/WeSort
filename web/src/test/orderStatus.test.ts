@@ -1,12 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { ORDER_STATUSES, isSuperseded, needsAttentionNow, orderUiState } from "../lib/orderStatus";
+import {
+  ORDER_STATUSES,
+  isSuperseded,
+  needsAttentionNow,
+  orderUiState,
+} from "../lib/orderStatus";
 
 // P2-17: the frontend status mapping must follow the backend contract
 // (OrderStore OPEN/FINISHED, OrderStage, retry gate) — not hand-written drift.
 describe("order status contract (P2-17)", () => {
   it("covers exactly the backend vocabulary", () => {
     expect([...ORDER_STATUSES].sort()).toEqual(
-      ["accepted", "cancelled", "delivered", "failed", "in_progress", "packed", "pending"].sort(),
+      [
+        "accepted",
+        "cancelled",
+        "delivered",
+        "failed",
+        "in_progress",
+        "packed",
+        "pending",
+      ].sort(),
     );
   });
 
@@ -22,7 +35,13 @@ describe("order status contract (P2-17)", () => {
   it("only failed/cancelled are retryable (backend retry gate)", () => {
     expect(orderUiState("failed").retryable).toBe(true);
     expect(orderUiState("cancelled").retryable).toBe(true);
-    for (const s of ["pending", "accepted", "in_progress", "packed", "delivered"]) {
+    for (const s of [
+      "pending",
+      "accepted",
+      "in_progress",
+      "packed",
+      "delivered",
+    ]) {
       expect(orderUiState(s).retryable).toBe(false);
     }
   });

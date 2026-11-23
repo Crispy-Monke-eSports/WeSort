@@ -6,25 +6,25 @@ WeSort har mod-id `wesort`, Java-paket `com.porter.wesort` och
 Qwertze och GPL/OFL-text är kvar; se UPSTREAM.md. Logotypens SVG-källa finns
 i branding/wesort.svg, med PNG-export för Fabric och SVG-favicon för webben.
 
-| Tillstånd | Ny plats/identitet |
-|---|---|
-| Meteor module settings | `wesort-stash-sorter`, `wesort-stash-overlay`, `wesort-stash-manager`, `wesort-stash-window` |
-| Klientstash, aktiv order, shulker/recovery, backups | `meteor-client/wesort/stashes/*.nbt` och backups bredvid |
-| Kits | `meteor-client/wesort/kits/*.nbt` |
-| Lokala containerobservationer | `meteor-client/wesort/local-index/*.nbt` |
-| Lokala order | `meteor-client/wesort/local-orders/*.json` |
-| Window-session och geometri | `wesortSession`/`wesortWindow` under den egna Meteor-modulen |
-| Klientens schema | `meteor-client/wesort/.wesort-installation`: `wesort-client:1` |
-| Manager utveckling | `wesort-manager-data/`, eller explicit ny `--data` |
-| Manager produktion, senare W-055 | dedikerad Linux Docker-volume via `--data /var/lib/wesort` |
-| Manager schema | `.wesort-installation`: `wesort-manager:1` |
-| Manager config/API-nyckel | `config.properties` under egen rot; nyckel genereras ny |
-| Users/sessions/ägarskap/audit | `users.json`, `sessions.json`, `owners.json`, `audit.json` under egen rot |
-| Index och orderhistorik | `indexes/`, `orders/` under egen rot |
-| Server-id-secret och ikoncache | `streamer-ids.key`, `icons/` under egen rot |
-| Webb-sessioncookie | `wesort_session` |
-| Webbläsarens val, cart, theme, streamer | endast `wesort.*` i localStorage |
-| Dev-harness nyckel | `WESORT_MANAGER_KEY`, explicit `--key` eller ny egen --data |
+| Tillstånd                                           | Ny plats/identitet                                                                           |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Meteor module settings                              | `wesort-stash-sorter`, `wesort-stash-overlay`, `wesort-stash-manager`, `wesort-stash-window` |
+| Klientstash, aktiv order, shulker/recovery, backups | `meteor-client/wesort/stashes/*.nbt` och backups bredvid                                     |
+| Kits                                                | `meteor-client/wesort/kits/*.nbt`                                                            |
+| Lokala containerobservationer                       | `meteor-client/wesort/local-index/*.nbt`                                                     |
+| Lokala order                                        | `meteor-client/wesort/local-orders/*.json`                                                   |
+| Window-session och geometri                         | `wesortSession`/`wesortWindow` under den egna Meteor-modulen                                 |
+| Klientens schema                                    | `meteor-client/wesort/.wesort-installation`: `wesort-client:1`                               |
+| Manager utveckling                                  | `wesort-manager-data/`, eller explicit ny `--data`                                           |
+| Manager produktion, senare W-055                    | dedikerad Linux Docker-volume via `--data /var/lib/wesort`                                   |
+| Manager schema                                      | `.wesort-installation`: `wesort-manager:1`                                                   |
+| Manager config/API-nyckel                           | `config.properties` under egen rot; nyckel genereras ny                                      |
+| Users/sessions/ägarskap/audit                       | `users.json`, `sessions.json`, `owners.json`, `audit.json` under egen rot                    |
+| Index och orderhistorik                             | `indexes/`, `orders/` under egen rot                                                         |
+| Server-id-secret och ikoncache                      | `streamer-ids.key`, `icons/` under egen rot                                                  |
+| Webb-sessioncookie                                  | `wesort_session`                                                                             |
+| Webbläsarens val, cart, theme, streamer             | endast `wesort.*` i localStorage                                                             |
+| Dev-harness nyckel                                  | `WESORT_MANAGER_KEY`, explicit `--key` eller ny egen --data                                  |
 
 Ingen gammal Qwerte-konfiguration, stash, kit, recovery, order, user, session,
 nyckel eller ikoncache läses/importeras/kopieras/raderas. Ursprungliga

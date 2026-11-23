@@ -13,7 +13,11 @@ import { useEffect, useState } from "react";
 /** Per-page confirm flow: `ask({...})` shows the dialog, `dialog` renders it. */
 export function useConfirm() {
   const [state, setState] = useState<null | {
-    title: string; intro?: string; changes?: string[]; confirmLabel: string; danger?: boolean;
+    title: string;
+    intro?: string;
+    changes?: string[];
+    confirmLabel: string;
+    danger?: boolean;
     run: () => Promise<void> | void;
   }>(null);
   const [busy, setBusy] = useState(false);
@@ -41,7 +45,9 @@ export function useConfirm() {
       danger={state.danger}
       busy={busy}
       error={error}
-      onClose={() => { if (!busy) setState(null); }}
+      onClose={() => {
+        if (!busy) setState(null);
+      }}
       onConfirm={run}
     />
   ) : null;
@@ -81,7 +87,8 @@ export function ConfirmDialog({
     <Dialog
       open={open}
       onClose={(_, reason) => {
-        if (busy && (reason === "backdropClick" || reason === "escapeKeyDown")) return;
+        if (busy && (reason === "backdropClick" || reason === "escapeKeyDown"))
+          return;
         onClose();
       }}
       aria-labelledby="confirm-dialog-title"
@@ -92,11 +99,20 @@ export function ConfirmDialog({
       <DialogTitle id="confirm-dialog-title">{title}</DialogTitle>
       <DialogContent>
         <Stack spacing={1.5} sx={{ mt: 0.5 }}>
-          {intro && <DialogContentText id="confirm-dialog-desc">{intro}</DialogContentText>}
+          {intro && (
+            <DialogContentText id="confirm-dialog-desc">
+              {intro}
+            </DialogContentText>
+          )}
           {changes && changes.length > 0 && (
             <Stack spacing={0.5} component="ul" sx={{ m: 0, pl: 2.5 }}>
               {changes.map((c) => (
-                <Typography component="li" variant="body2" key={c} sx={{ fontFamily: "monospace", wordBreak: "break-word" }}>
+                <Typography
+                  component="li"
+                  variant="body2"
+                  key={c}
+                  sx={{ fontFamily: "monospace", wordBreak: "break-word" }}
+                >
                   {c}
                 </Typography>
               ))}
@@ -115,7 +131,11 @@ export function ConfirmDialog({
           onClick={onConfirm}
           disabled={busy}
         >
-          {busy ? "Working…" : danger ? `Yes, ${confirmLabel.toLowerCase()}` : confirmLabel}
+          {busy
+            ? "Working…"
+            : danger
+              ? `Yes, ${confirmLabel.toLowerCase()}`
+              : confirmLabel}
         </Button>
       </DialogActions>
     </Dialog>
@@ -153,14 +173,15 @@ export function PasswordDialog({
       setValue("");
       setTouched(false);
     }
-  }, [open ]);
+  }, [open]);
   const tooShort = value.length > 0 && value.length < minLength;
   const invalid = value.length === 0 || tooShort;
   return (
     <Dialog
       open={open}
       onClose={(_, reason) => {
-        if (busy && (reason === "backdropClick" || reason === "escapeKeyDown")) return;
+        if (busy && (reason === "backdropClick" || reason === "escapeKeyDown"))
+          return;
         onClose();
       }}
       aria-labelledby="password-dialog-title"
@@ -174,8 +195,9 @@ export function PasswordDialog({
           <DialogContentText id="password-dialog-desc">
             {userName ? (
               <>
-                Set a new temporary password for <strong>{userName}</strong>. Their sessions end immediately and
-                they must change it at next sign-in.
+                Set a new temporary password for <strong>{userName}</strong>.
+                Their sessions end immediately and they must change it at next
+                sign-in.
               </>
             ) : (
               "Their sessions end immediately and they must change it at next sign-in."
@@ -210,7 +232,11 @@ export function PasswordDialog({
         <Button onClick={onClose} disabled={busy}>
           Cancel
         </Button>
-        <Button variant="contained" onClick={() => onConfirm(value)} disabled={invalid || busy}>
+        <Button
+          variant="contained"
+          onClick={() => onConfirm(value)}
+          disabled={invalid || busy}
+        >
           {busy ? "Working…" : "Set password"}
         </Button>
       </DialogActions>

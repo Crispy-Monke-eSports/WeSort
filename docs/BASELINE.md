@@ -7,16 +7,16 @@ Källdatum: 2026-11-16. Orörd revision:
 
 ## Låsta verktyg och beroenden
 
-| Del | Version |
-|---|---|
-| Bygg-JDK | Eclipse Temurin 21.0.9+10, Linux x86_64 (`.java-version`) |
-| Gradle | Wrapper 9.2.0, SHA-256 verifieras av wrappern |
-| Fabric Loader | 0.18.2 |
-| Fabric Loom | 1.14.10 (basens `1.14-SNAPSHOT` löste till denna) |
-| Klient 1.21.4 | Meteor 1.21.4-20250408.145004-42, Baritone API 1.3.0-1.21.4 |
+| Del            | Version                                                       |
+| -------------- | ------------------------------------------------------------- |
+| Bygg-JDK       | Eclipse Temurin 21.0.9+10, Linux x86_64 (`.java-version`)     |
+| Gradle         | Wrapper 9.2.0, SHA-256 verifieras av wrappern                 |
+| Fabric Loader  | 0.18.2                                                        |
+| Fabric Loom    | 1.14.10 (basens `1.14-SNAPSHOT` löste till denna)             |
+| Klient 1.21.4  | Meteor 1.21.4-20250408.145004-42, Baritone API 1.3.0-1.21.4   |
 | Klient 1.21.11 | Meteor 1.21.11-20260810.140237-86, Baritone API 1.3.0-1.21.11 |
-| Manager | Java 21, Gson 2.13.2 |
-| Tester | JUnit BOM 5.11.4 |
+| Manager        | Java 21, Gson 2.13.2                                          |
+| Tester         | JUnit BOM 5.11.4                                              |
 
 Meteor-versionerna är tidsstämplade snapshots, så en ny snapshot ersätter inte
 baslinjen. Minecraft-targets är endast **1.21.4 och 1.21.11**. 26.3 är ännu
@@ -40,11 +40,11 @@ python3 scripts/test-summary.py stash-manager-server/build
 
 ## Faktiska resultat från orörd bas
 
-| Bygge | Tester | Fel | Skips | Resultat |
-|---|---:|---:|---:|---|
-| Klient 1.21.4 | 625 | 0 | 0 | PASS |
-| Klient 1.21.11 | 625 | 0 | 0 | PASS |
-| Manager | 189 | 0 | 1 | PASS, 188 godkända |
+| Bygge          | Tester | Fel | Skips | Resultat           |
+| -------------- | -----: | --: | ----: | ------------------ |
+| Klient 1.21.4  |    625 |   0 |     0 | PASS               |
+| Klient 1.21.11 |    625 |   0 |     0 | PASS               |
+| Manager        |    189 |   0 |     1 | PASS, 188 godkända |
 
 Manager-skip: `SpecialModelsTest.realJars`, antagandet säger att ingen lokal
 1.21.4/1.21.11-clientjar hittades. Syntetiska asset-/ikonregressioner kördes.
@@ -61,12 +61,12 @@ shulkerpackning och lokal ordermodell. Managers tester kör riktig HTTP,
 signerade agentanrop, order, leveransinnehåll, auth, sessions och behörigheter.
 Detta verifierar inte fysisk interaktion i Minecraft.
 
-| Manuellt scenario | Status och fortsatt verifiering |
-|---|---|
-| Scan av chest/barrel och signkategorier | EJ KÖRT: behöver inloggad Minecraft-klient/testvärld |
-| Repack, kit och Baritone-stashresa | EJ KÖRT: samma beroende, verifiera boxinnehåll och slots |
-| Lokal order i Stash Window | EJ KÖRT: lägg seeds/dirt/pearls, packa och kontrollera leveranskistan |
-| Minecraft 26.3 / Docker / GHCR | EJ KÖRT: senare roadmapsteg |
+| Manuellt scenario                       | Status och fortsatt verifiering                                       |
+| --------------------------------------- | --------------------------------------------------------------------- |
+| Scan av chest/barrel och signkategorier | EJ KÖRT: behöver inloggad Minecraft-klient/testvärld                  |
+| Repack, kit och Baritone-stashresa      | EJ KÖRT: samma beroende, verifiera boxinnehåll och slots              |
+| Lokal order i Stash Window              | EJ KÖRT: lägg seeds/dirt/pearls, packa och kontrollera leveranskistan |
+| Minecraft 26.3 / Docker / GHCR          | EJ KÖRT: senare roadmapsteg                                           |
 
 Inga speltester påstås godkända. Baslinjen identifierar befintliga warnings och
 saknade integrationstester; ändringar efter basen får egna resultat per W-ID.

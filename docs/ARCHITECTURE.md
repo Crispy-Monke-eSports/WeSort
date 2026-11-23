@@ -5,12 +5,12 @@ lager på en Minecraft 26.3-server. Owner väljer server och lagerområden.
 En aktiv Fabric/Meteor/Baritone-agent med Java 25 utför lagerarbetet i de
 konfigurerade stasharna. 6b6t är målmiljön.
 
-| Komponent | Ansvar |
-|---|---|
-| Manager | Inbyggd React-webb och HTTP-API, medlemskonton, server/stashes, order, reservationer, audit och agentpolicy |
-| Agent | Läser fysiska slots, sorterar efter tiers och utför verifierade inventory-, crafting-, packnings- och anvilsteg |
-| Minecraft-server | Auktoritativt fysiskt inventory och världstillstånd. Serverbekräftad före-/efterbild behövs för ett fysiskt kvitto. |
-| Lokal Manager-volym | SQLite-lager, order- och driftdata, skyddade credentials och regenererbar ikoncache |
+| Komponent           | Ansvar                                                                                                              |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Manager             | Inbyggd React-webb och HTTP-API, medlemskonton, server/stashes, order, reservationer, audit och agentpolicy         |
+| Agent               | Läser fysiska slots, sorterar efter tiers och utför verifierade inventory-, crafting-, packnings- och anvilsteg     |
+| Minecraft-server    | Auktoritativt fysiskt inventory och världstillstånd. Serverbekräftad före-/efterbild behövs för ett fysiskt kvitto. |
+| Lokal Manager-volym | SQLite-lager, order- och driftdata, skyddade credentials och regenererbar ikoncache                                 |
 
 ## Identiteter och tillit
 

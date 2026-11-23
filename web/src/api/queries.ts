@@ -1,4 +1,9 @@
-import { useQueries, useQuery, useQueryClient, type UseQueryOptions } from "@tanstack/react-query";
+import {
+  useQueries,
+  useQuery,
+  useQueryClient,
+  type UseQueryOptions,
+} from "@tanstack/react-query";
 import { api } from "./client";
 import {
   AuthStateSchema,
@@ -50,7 +55,8 @@ export const keys = {
 export function useAuth() {
   return useQuery({
     queryKey: [...keys.auth],
-    queryFn: async () => AuthStateSchema.parse(await api<unknown>("/api/v1/auth/state")),
+    queryFn: async () =>
+      AuthStateSchema.parse(await api<unknown>("/api/v1/auth/state")),
     staleTime: 15_000,
     retry: 1,
   });
@@ -96,8 +102,21 @@ export function permissionsOf(auth: AuthState | undefined): Set<string> {
   const out = new Set<string>();
   const user = auth?.user;
   if (!user) return out;
-  for (const [k, v] of Object.entries(user.perms ?? {})) if (v === true) out.add(k);
-  if (user.owner) for (const p of ["view", "order", "ordersAll", "guildOrders", "positions", "activity", "settings", "rescan", "link"]) out.add(p);
+  for (const [k, v] of Object.entries(user.perms ?? {}))
+    if (v === true) out.add(k);
+  if (user.owner)
+    for (const p of [
+      "view",
+      "order",
+      "ordersAll",
+      "guildOrders",
+      "positions",
+      "activity",
+      "settings",
+      "rescan",
+      "link",
+    ])
+      out.add(p);
   return out;
 }
 
@@ -106,7 +125,9 @@ export function useStashes(enabled: boolean) {
     queryKey: [...keys.stashes],
     queryFn: async () => {
       const raw = await api<unknown>("/api/v1/stashes");
-      return (Array.isArray(raw) ? raw : []).map((s) => StashRefSchema.parse(s)) as StashRef[];
+      return (Array.isArray(raw) ? raw : []).map((s) =>
+        StashRefSchema.parse(s),
+      ) as StashRef[];
     },
     enabled,
     staleTime: 10_000,
@@ -139,7 +160,9 @@ export function useBots(enabled: boolean) {
     queryKey: [...keys.bots],
     queryFn: async () => {
       const raw = await api<unknown>("/api/v1/bots");
-      return (Array.isArray(raw) ? raw : []).map((b) => BotInfoSchema.parse(b)) as BotInfo[];
+      return (Array.isArray(raw) ? raw : []).map((b) =>
+        BotInfoSchema.parse(b),
+      ) as BotInfo[];
     },
     enabled,
     staleTime: 5_000,
@@ -151,7 +174,11 @@ export function useBotActivity(botId: string | null, enabled: boolean) {
   return useQuery({
     queryKey: botId ? keys.botActivity(botId) : ["bots", "none", "activity"],
     queryFn: async () =>
-      BotActivitySchema.parse(await api<unknown>(`/api/v1/bots/${encodeURIComponent(botId!)}/activity`)) as BotActivity,
+      BotActivitySchema.parse(
+        await api<unknown>(
+          `/api/v1/bots/${encodeURIComponent(botId!)}/activity`,
+        ),
+      ) as BotActivity,
     enabled: enabled && !!botId,
     staleTime: 5_000,
     retry: 1,
@@ -162,7 +189,13 @@ export function useBotSettings(botId: string | null, enabled: boolean) {
   return useQuery({
     queryKey: botId ? keys.botSettings(botId) : ["bots", "none", "settings"],
     // Schema and values for the plugin scope; may 404/409 when the bot offers nothing.
-    queryFn: () => api<{ schema: unknown[]; values: unknown; schemaHash?: string; valuesHash?: string }>(`/api/v1/bots/${encodeURIComponent(botId!)}/settings?scope=plugin`),
+    queryFn: () =>
+      api<{
+        schema: unknown[];
+        values: unknown;
+        schemaHash?: string;
+        valuesHash?: string;
+      }>(`/api/v1/bots/${encodeURIComponent(botId!)}/settings?scope=plugin`),
     enabled: enabled && !!botId,
     staleTime: 10_000,
     retry: false,
@@ -172,7 +205,8 @@ export function useBotSettings(botId: string | null, enabled: boolean) {
 export function useGuild(enabled: boolean) {
   return useQuery({
     queryKey: [...keys.guild],
-    queryFn: async () => GuildSchema.parse(await api<unknown>("/api/v1/guild")) as Guild,
+    queryFn: async () =>
+      GuildSchema.parse(await api<unknown>("/api/v1/guild")) as Guild,
     enabled,
     staleTime: 30_000,
     retry: 1,
@@ -182,7 +216,10 @@ export function useGuild(enabled: boolean) {
 export function useServer(enabled: boolean) {
   return useQuery({
     queryKey: [...keys.server],
-    queryFn: async () => ServerStateSchema.parse(await api<unknown>("/api/v1/server")) as ServerState,
+    queryFn: async () =>
+      ServerStateSchema.parse(
+        await api<unknown>("/api/v1/server"),
+      ) as ServerState,
     enabled,
     staleTime: 15_000,
     retry: 1,
@@ -193,7 +230,9 @@ export function useStashDefs(enabled: boolean) {
   return useQuery({
     queryKey: [...keys.stashDefs],
     queryFn: async () => {
-      const raw = (await api<unknown>("/api/v1/stash-defs")) as { defs?: unknown[] };
+      const raw = (await api<unknown>("/api/v1/stash-defs")) as {
+        defs?: unknown[];
+      };
       const list = Array.isArray(raw?.defs) ? raw.defs : [];
       return list.map((d) => StashDefSchema.parse(d)) as StashDef[];
     },
@@ -220,14 +259,20 @@ export function useKitTemplates(enabled: boolean) {
 
 export function useInvalidateOrders() {
   const qc = useQueryClient();
-  return (stash: string) => qc.invalidateQueries({ queryKey: keys.orders(stash) });
+  return (stash: string) =>
+    qc.invalidateQueries({ queryKey: keys.orders(stash) });
 }
 
 export interface OpsList {
   [key: string]: unknown;
 }
 
-function useOwnerList(key: readonly string[], path: string, enabled: boolean, query = "") {
+function useOwnerList(
+  key: readonly string[],
+  path: string,
+  enabled: boolean,
+  query = "",
+) {
   return useQuery({
     queryKey: [...key, query],
     queryFn: async () => (await api<unknown>(`${path}${query}`)) as OpsList,
@@ -254,7 +299,10 @@ export interface StashOrder {
  * (Two shapes under one key previously let Inventory and Orders poison
  * each other's cache on SPA navigation.)
  */
-export function ordersQueryOptions(stash: string, enabled: boolean): UseQueryOptions<OrdersResponse> {
+export function ordersQueryOptions(
+  stash: string,
+  enabled: boolean,
+): UseQueryOptions<OrdersResponse> {
   return {
     queryKey: keys.orders(stash),
     queryFn: async () =>
@@ -282,7 +330,9 @@ export function useAllOrders(
       (s): UseQueryOptions<OrdersResponse, Error, StashOrder[]> => ({
         ...ordersQueryOptions(s.stash, enabled),
         select: (d: OrdersResponse) =>
-          (d.orders ?? []).map((o: any) => ({ ...o, stash: s.stash }) as StashOrder),
+          (d.orders ?? []).map(
+            (o: any) => ({ ...o, stash: s.stash }) as StashOrder,
+          ),
       }),
     ),
   });
@@ -290,7 +340,9 @@ export function useAllOrders(
     .flatMap((r: { data?: StashOrder[] }) => r.data ?? [])
     .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
   const failedStashes = results
-    .map((r: { isError: boolean }, i: number) => (r.isError ? stashes[i].stash : null))
+    .map((r: { isError: boolean }, i: number) =>
+      r.isError ? stashes[i].stash : null,
+    )
     .filter((s): s is string => s != null);
   const loading = results.some((r: { isLoading: boolean }) => r.isLoading);
   return { orders, failedStashes, loading };
@@ -315,18 +367,42 @@ export function useJobQueue(enabled: boolean) {
   return useOwnerList([...keys.jobs], "/api/v1/jobs", enabled);
 }
 export function useHandoffs(enabled: boolean, order = "") {
-  return useOwnerList([...keys.handoffs], "/api/v1/handoffs", enabled, order ? `?order=${encodeURIComponent(order)}` : "");
+  return useOwnerList(
+    [...keys.handoffs],
+    "/api/v1/handoffs",
+    enabled,
+    order ? `?order=${encodeURIComponent(order)}` : "",
+  );
 }
 export function useCustody(enabled: boolean, order = "") {
-  return useOwnerList([...keys.custody], "/api/v1/custody", enabled, order ? `?order=${encodeURIComponent(order)}` : "");
+  return useOwnerList(
+    [...keys.custody],
+    "/api/v1/custody",
+    enabled,
+    order ? `?order=${encodeURIComponent(order)}` : "",
+  );
 }
 export function useDeposits(enabled: boolean, order = "") {
-  return useOwnerList([...keys.deposits], "/api/v1/deposits", enabled, order ? `?order=${encodeURIComponent(order)}` : "");
+  return useOwnerList(
+    [...keys.deposits],
+    "/api/v1/deposits",
+    enabled,
+    order ? `?order=${encodeURIComponent(order)}` : "",
+  );
 }
 export function useBoxJobs(enabled: boolean) {
   return useOwnerList([...keys.boxJobs], "/api/v1/boxes/jobs", enabled);
 }
-export function useAuditOrders(enabled: boolean, params: { limit?: number; order?: string; person?: string; item?: string; stash?: string }) {
+export function useAuditOrders(
+  enabled: boolean,
+  params: {
+    limit?: number;
+    order?: string;
+    person?: string;
+    item?: string;
+    stash?: string;
+  },
+) {
   const q = new URLSearchParams();
   if (params.limit) q.set("limit", String(params.limit));
   if (params.order) q.set("order", params.order);
@@ -336,7 +412,10 @@ export function useAuditOrders(enabled: boolean, params: { limit?: number; order
   const qs = q.toString();
   return useQuery({
     queryKey: [...keys.auditOrders, qs],
-    queryFn: async () => (await api<unknown>(`/api/v1/audit/orders${qs ? `?${qs}` : ""}`)) as OpsList,
+    queryFn: async () =>
+      (await api<unknown>(
+        `/api/v1/audit/orders${qs ? `?${qs}` : ""}`,
+      )) as OpsList,
     enabled,
     staleTime: 10_000,
     retry: 1,

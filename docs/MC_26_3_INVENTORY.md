@@ -59,7 +59,7 @@ syntetiskt testinventory journalförs i rapporten; credentials publiceras inte.
 | Verklig fördröjd servertrafik | Ingen andra withdrawal eller slutförd åtgärd före kvittens |
 | Saknat svar längre än timeout | Beständig paus, sena paket återupptar inte; uttrycklig läsning kan verifiera redan tillämpat eftertillstånd |
 | Namngiven fylld shulker | Place/open/break/pickup/return bevarar 64 dirt och exakt komponentfingerprint |
-| Chest, barrel, sign | Verkliga place/open/write/break/pickup; skylttext bekräftas av serverns blockentity och RCON |
+| Chest, barrel, vanlig skyltartikel | Verkliga place/open/break/pickup för kista och tunna; skyltredigering avvisas och skyltartikeln finns kvar enligt serverinventariet |
 | Enchantments, damage, custom names, bundle | Färska snapshots/index och oförändrade serverkomponenter före/efter |
 | För långt bort men laddad container | Nekas före interaktion |
 | Avbrott före leverans och riktig JVM-omstart | Pending bevaras, noll återspelade klick; serverns oförändrade förtillstånd nekas som falsk reconciliation |

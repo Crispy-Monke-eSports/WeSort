@@ -1,17 +1,16 @@
-# Manager API efter steg 0
+# WeSort Manager API
 
 Alla aktiva routes registreras av WeSortManager.routes.
-Detta protokoll är den bevarade baslinjen, inte framtida guildordermotor.
+För hela order- och leveransflödet, se [domänkontrakten](../docs/MANAGER_CONTRACTS.md).
 
-## En server, inget ägarskap, inga lagrade kit
+## En server, en agent och kit på beställning
 
 - Managern betjänar alltid exakt EN Minecraft-server, satt av ägaren i webb-UI:t
   (`GET/POST /api/v1/server`). Bot-anrop från en annan server avvisas med 409.
   Webbläsar-anrop tar bara `stash` (aldrig `server`); behörighetsscopet
   `stashes` är en lista av `{stash}`.
-- Ingen bot äger en stash: ägarskap (`Owners`, `stashes/release`,
-  ägar-/konfliktfält, 409 "stash name in use") är borttaget. Alla bottar kan
-  använda alla stashes.
+- Owner definierar flera stashes som den aktiva agenten kan arbeta i.
+  Fysiska direktiv gäller en specifik stash och revision.
 - Kit är on demand: ett kit är exakt en shulkerbox, packad vid beställning med
   mallens exakta slotplacering. Ägaren hanterar mallar (`GET/POST /api/v1/kits`,
   revisionsskyddade som stash-defs); ordrar tar `{"type":"kit","key":namn,"count":n}`

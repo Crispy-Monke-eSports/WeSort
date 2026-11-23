@@ -28,10 +28,6 @@ Ported from PR #89 (without merging it):
 - Tests: `OfflineOrderQueueTest`, the `StockAvailabilityTest` expiry case now
   queues-then-claims, and `StaticRoutesTest` (SPA routes + index.html on the classpath).
 
-PR #84 was NOT merged. No quota/delivery-stage dependency was needed: the
-offline queue was re-based onto `main`'s `OrderStore` (no quota parameters),
-keeping `main`'s order semantics untouched.
-
 ## Frontend (`web/`)
 
 React 19 + TypeScript (strict) + Vite + Material UI v9 (Material Design 2 theme,
@@ -68,7 +64,7 @@ Operations shows the global view plus owner queues (physical/jobs/handoffs/
 custody/deposits/box jobs/audit); Settings covers server, stash definitions
 (create/edit/delete, revision conflicts, deliveryDimension), users (roles,
 scopes, disable, reset, logout, delete), guild, security, connection and
-quotas. Feature status per screen is tracked in `docs/FEATURE_PARITY.md`.
+the active named agent key. Feature status per screen is tracked in `docs/FEATURE_PARITY.md`.
 
 API client (`src/api/client.ts`): same-origin cookies, JSON,
 `X-Stash-Manager: 1` on browser writes, 401 → login redirect (preserving the

@@ -88,7 +88,6 @@ The product is an operations dashboard, not a storefront: Overview, Inventory
 | Server (single) + change confirmation | `GET/POST /api/v1/server` | Server tab, owner-only, confirm dialog | screenshot | ✅ |
 | Stash definitions (create/edit/delete, revision conflicts, deliveryDimension) | `GET/POST /api/v1/stash-defs` | Stashes tab, owner-only, edit dialog | screenshot | ✅ |
 | Link addon / regenerate key | `GET /api/v1/link*` (link perm / owner) | Connection section, confirm on regenerate | screenshot | ✅ |
-| Quota usage display | `GET /api/v1/quotas/me` | Guild section usage list | screenshot | ✅ |
 | Audit log viewer (`GET /api/v1/audit`) | owner route | ❌ no UI (see limitations) | — | ❌ |
 | Minecraft disclaimer + branding | static assets | AppBar footer + login, byte-identical SVGs | smoke.cjs | ✅ |
 | Minecraft icons | `GET /icon/<ns>/<path>.png` | `iconUrl` + retry + letter fallback | unit + Java integration + live screenshots | ✅ |

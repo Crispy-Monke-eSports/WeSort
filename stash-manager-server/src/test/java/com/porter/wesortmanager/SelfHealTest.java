@@ -153,7 +153,7 @@ class SelfHealTest {
 
         orders.selfHealAll(); // Cancelling physical work fences rather than freeing stock.
         assertEquals("needs_reconciliation", orders.statusOf(order.id));
-        assertEquals(2, orders.reservedFor("s", "a").get("item:minecraft:diamond"));
+        assertEquals(2L, orders.reservedFor("s", "a").get("item:minecraft:diamond").longValue());
 
         var fenced = orders.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
         time.set(fenced.get("updatedAt").getAsLong() + 1000);
@@ -161,7 +161,7 @@ class SelfHealTest {
         orders.selfHealAll();
 
         assertEquals("cancelled", orders.statusOf(order.id));
-        assertEquals(0, orders.reservedFor("s", "a").getOrDefault("item:minecraft:diamond", 0L));
+        assertEquals(0L, orders.reservedFor("s", "a").getOrDefault("item:minecraft:diamond", 0L).longValue());
         var finished = orders.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
         assertTrue(finished.get("releasedAt").getAsLong() > 0);
     }
@@ -172,7 +172,7 @@ class SelfHealTest {
         var order = stuckOrder("a");
         orders.selfHealAll();
         assertEquals("needs_reconciliation", orders.statusOf(order.id));
-        assertEquals(2, orders.reservedFor("s", "a").get("item:minecraft:diamond"));
+        assertEquals(2L, orders.reservedFor("s", "a").get("item:minecraft:diamond").longValue());
     }
 
     @Test

@@ -435,7 +435,9 @@ final class OrderRunner {
         if (order != null) return order.id.equals(o.id) ? null : "already working on another order";
         Stash stash = owner.stash();
         if (stash == null || mc.level == null) return "no stash is loaded";
-        if (deliveryBox() == null) return "no delivery container is set";
+        if (deliveryBox() == null && !managerRecovery) return "no delivery container is set";
+        if (stash.activeOrder != null && !stash.activeOrder.id.equals(o.id))
+            return "another durable order checkpoint must be recovered first";
 
         order = o;
         state = State.Running;
@@ -1051,6 +1053,7 @@ final class OrderRunner {
     boolean cancel(String id) {
         if (order == null || !order.id.equals(id)) return false;
         if (state == State.Running) cancelRequested = true;
+        else if (state == State.Delivered) finish(State.Cancelled, "Cancelled before staging was confirmed");
         return true;
     }
 
@@ -1075,7 +1078,7 @@ final class OrderRunner {
 
     /** The server has the end of the order: it can be forgotten, and the next one claimed. */
     void ack(String id) {
-        if (order == null || !order.id.equals(id) || state == State.Running) return;
+        if (order == null || !order.id.equals(id) || state == State.Running || state == State.Returning) return;
         Stash stash = owner.stash();
         if (stash != null && stash.activeOrder != null && stash.activeOrder.id.equals(id)) {
             stash.activeOrder = null;
@@ -1090,13 +1093,37 @@ final class OrderRunner {
         return stash == null || stash.activeOrder == null ? null : stash.activeOrder.id;
     }
 
-    /** Drops saved state of an order the server no longer holds for this bot. */
-    void dropSaved(String keepId) {
+    /** Persist a cancellation of an interrupted order; a heartbeat is not a rollback receipt. */
+    boolean requestSavedCancellation(String id) {
         Stash stash = owner.stash();
-        if (stash != null && stash.activeOrder != null && !stash.activeOrder.id.equals(keepId)) {
+        if (stash == null || stash.activeOrder == null || !stash.activeOrder.id.equals(id)) return false;
+        stash.activeOrder.recoveryPending = true;
+        stash.activeOrder.recoveryCancelled = true;
+        stash.markDirty();
+        stash.save();
+        return true;
+    }
+
+    /** A signed exact terminal lookup is needed before deleting a checkpoint after restart. */
+    boolean acknowledgeSavedTerminal(String id, String managerState) {
+        Stash stash = owner.stash();
+        if (stash == null || !owner.cleanupComplete()) return false;
+        if (order != null && (!order.id.equals(id) || state == State.Running || state == State.Returning)) return false;
+        var saved = stash.activeOrder;
+        if (saved != null) {
+            if (!id.equals(saved.id)) return false;
+            boolean staged = "PICKUP_READY".equals(managerState) || "DELIVERED".equals(managerState);
+            long reclaimed = saved.units.stream().filter(unit -> unit.reclaimed).count();
+            if (staged && (saved.recoveryPending || reclaimed > 0)) return false;
+            if (!staged && (reclaimed < saved.shulkersDelivered
+                    || saved.units.stream().anyMatch(unit -> !unit.stagedSource.isEmpty() && !unit.reclaimed)))
+                return false;
             stash.activeOrder = null;
+            stash.markDirty();
             stash.save();
         }
+        if (order != null) reset();
+        return true;
     }
 
     Report report() {
@@ -1416,7 +1443,7 @@ final class OrderRunner {
 
     /** Returns the next verified rollback action; no packing work runs during recovery. */
     Intent recoveryStep() {
-        if (state != State.Returning || owner.rereading()) return new Idle();
+        if (state != State.Returning) return new Idle();
         Stash stash = owner.stash();
         if (stash == null) return new Idle();
         for (Unit u : units) {
@@ -2343,7 +2370,10 @@ final class OrderRunner {
     }
 
     private void finish(State end, String text) {
-        if (order == null || state != State.Running) return;
+        // A local Delivered means staged, not yet acknowledged by Manager.
+        // Rejected staging must be able to enter rollback from that state.
+        if (order == null || (state != State.Running
+                && !(state == State.Delivered && (end == State.Failed || end == State.Cancelled)))) return;
         if (craftInFlight && end != State.Delivered)
             text = "Manufacturing was interrupted; physical verification is required before cleanup: " + text;
         kits.dropOrderKit();

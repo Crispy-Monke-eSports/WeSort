@@ -234,6 +234,7 @@ public class StashManager extends Module {
     private String rejectedId, rejectedWhy, rejectedStatus = "failed";
     // The order whose full status report was refused, so its short form is sent
     private String minimalFor;
+    private boolean resumeProbe;
     private String ordersNote = "";
 
     // What the last heartbeat said about delivery.
@@ -416,6 +417,7 @@ public class StashManager extends Module {
         lastStatusSig = "";
         rejectedId = rejectedWhy = null;
         rejectedStatus = "failed";
+        resumeProbe = false;
         ordersNote = "";
         sentDelivery = "";
         resetDelivery();
@@ -1279,7 +1281,6 @@ public class StashManager extends Module {
                             "wesort-stash-manager: the server refused the status of order {} ({}): {}", id, code, body);
                 else if (code != 200 && code != 409) return false;
                 if (rejectedId != null && rejectedId.equals(id)) rejectedId = rejectedWhy = null;
-                if (end.equals("cancelled")) runner.dropSaved(null);
                 return true;
             });
             return true;
@@ -1293,6 +1294,9 @@ public class StashManager extends Module {
 
         // What the bot is doing, when it changed
         if (report != null) {
+            if (resumeProbe && stash != null && now - lastClaim >= CLAIM_MS)
+                return resumeOrder(base, key, now, sorter, runner, stash, report.id());
+            if (resumeProbe) return false;
             String sig = report.id() + "|" + report.status() + "|" + report.phase() + "|" + report.done() + "|"
                     + report.message();
             if (!sig.equals(lastStatusSig) && (report.terminal() || now - lastStatusAt >= STATUS_MS)) {
@@ -1304,49 +1308,40 @@ public class StashManager extends Module {
                         orderReportBytes(minimal ? minimalJson(report) : statusJson(report, runner)),
                         key,
                         (code, body) -> {
-                            // A report the server refuses (4xx other than a wrong key or "already finished"): said
-                            // again in short once,
-                            // then given up on, so the bot is never stuck on one it can't send
                             if (code >= 400 && code < 500 && code != 401 && code != 409) {
                                 WeSortAddon.LOG.warn(
                                         "wesort-stash-manager: the server refused the status of order {} ({}): {}",
-                                        report.id(),
-                                        code,
-                                        body);
+                                        report.id(), code, body);
                                 if (!minimal) {
                                     minimalFor = report.id();
                                     return false;
                                 }
-                                minimalFor = null;
                                 if (report.terminal()) {
-                                    runner.ack(report.id());
-                                    lastStatusSig = "";
-                                } else lastStatusSig = sig;
+                                    // A refusal is never proof of completed physical work.
+                                    resumeProbe = true;
+                                    return true;
+                                }
+                                minimalFor = null;
+                                lastStatusSig = sig;
                                 return true;
                             }
-                            // A successful HTTP response is not necessarily
-                            // a successful delivery. If the Manager cannot prove
-                            // physical staging it returns RECOVERING: keep local
-                            // package receipts and return every staged item.
-                            if (code == 200 && report.status().equals("delivered")) {
-                                try {
-                                    JsonObject accepted =
-                                            JsonParser.parseString(body).getAsJsonObject();
-                                    if (accepted.has("order")
-                                            && "RECOVERING"
-                                                    .equals(accepted.getAsJsonObject("order")
-                                                            .get("state")
-                                                            .getAsString())) {
-                                        runner.rollbackUnverifiedDelivery(report.id());
-                                        lastStatusSig = "";
-                                        return true;
-                                    }
-                                } catch (RuntimeException invalid) {
-                                    return false; // Do not forget a delivery without understanding its receipt.
-                                }
+                            if (code == 409) {
+                                resumeProbe = true;
+                                return true;
                             }
-                            // 409: the order is already finished or moved on, nothing more to say about it
-                            if (code != 200 && code != 409) return false;
+                            if (code != 200) return false;
+                            var receipt = com.porter.wesort.data.OrderReportReceipt.parse(body, report.id());
+                            if (receipt == null) return false;
+                            if (receipt.recovering() && report.status().equals("delivered")) {
+                                runner.rollbackUnverifiedDelivery(report.id());
+                                minimalFor = null;
+                                lastStatusSig = "";
+                                return true;
+                            }
+                            if (report.terminal() && !receipt.acknowledges(report.status())) {
+                                resumeProbe = true;
+                                return true;
+                            }
                             minimalFor = null;
                             lastStatusSig = sig;
                             if (report.terminal()) {
@@ -1360,7 +1355,14 @@ public class StashManager extends Module {
             return false;
         }
 
-        // Nothing in hand: take the oldest pending order, or the one still held from before a restart
+        // A checkpoint always takes precedence over new intake. A 204 is only
+        // "not claimable now", never evidence that its physical cargo is gone.
+        if (stash != null && runner.resumeId() != null) {
+            if (now - lastClaim >= CLAIM_MS)
+                return resumeOrder(base, key, now, sorter, runner, stash, runner.resumeId());
+            return false;
+        }
+        // Nothing in hand: take the oldest pending order.
         if (acceptOrders.get()
                 && !orderIntakePaused.get()
                 && blocker == null
@@ -1374,7 +1376,6 @@ public class StashManager extends Module {
             send(base, "/api/v1/orders/claim", bytes(o), key, (code, body) -> {
                 if (code == 204) {
                     pendingOrders = 0;
-                    runner.dropSaved(null);
                     return true;
                 }
                 if (code != 200) return false;
@@ -1384,6 +1385,44 @@ public class StashManager extends Module {
             return true;
         }
         return false;
+    }
+
+    private boolean resumeOrder(
+            URI base, String key, long now, StashSorter sorter, OrderRunner runner, Stash stash, String id) {
+        lastClaim = now;
+        var request = new JsonObject();
+        request.addProperty("server", stash.server);
+        request.addProperty("stash", stash.name);
+        request.addProperty("resumeId", id);
+        send(base, "/api/v1/orders/claim", bytes(request), key, (code, body) -> {
+            if (code == 204) return true; // Keep the durable checkpoint and retry.
+            if (code != 200) return false;
+            var receipt = com.porter.wesort.data.OrderReportReceipt.parse(body, id);
+            if (receipt == null) return false;
+            if (receipt.resumeComplete()) {
+                if (runner.acknowledgeSavedTerminal(id, receipt.state())) {
+                    resumeProbe = false;
+                    minimalFor = null;
+                    lastStatusSig = "";
+                    return true;
+                }
+                // If an old Manager terminated a failed order before rollback,
+                // finish the saved local cleanup rather than dropping its cargo.
+                if (!runner.holdsOrder() && !receipt.staged()) takeOrder(sorter, runner, body);
+                return true;
+            }
+            if (!receipt.recovering()) return false;
+            resumeProbe = false;
+            minimalFor = null;
+            lastStatusSig = "";
+            if (runner.holdsOrder()) {
+                runner.rollbackUnverifiedDelivery(id);
+                runner.cancel(id);
+                sorter.orderTaken();
+            } else takeOrder(sorter, runner, body);
+            return true;
+        });
+        return true;
     }
 
     private int[] deliveryPos() {
@@ -1650,8 +1689,9 @@ public class StashManager extends Module {
             JsonElement e = JsonParser.parseString(body);
             if (e.isJsonObject() && e.getAsJsonObject().has("order")) {
                 JsonObject offered = e.getAsJsonObject().getAsJsonObject("order");
-                recovering = offered.has("state")
-                        && "RECOVERING".equals(offered.get("state").getAsString());
+                recovering = (offered.has("state") && "RECOVERING".equals(offered.get("state").getAsString()))
+                        || (offered.has("resumeComplete") && offered.get("resumeComplete").getAsBoolean())
+                        || (offered.has("cancelRequested") && offered.get("cancelRequested").getAsBoolean());
                 order = Order.parse(offered);
             }
         } catch (RuntimeException e) {
@@ -1670,7 +1710,7 @@ public class StashManager extends Module {
                 // No id to report
             }
             WeSortAddon.LOG.warn("wesort-stash-manager: the server sent an order that could not be read ({})", id);
-            if (id != null && !id.isEmpty()) {
+            if (id != null && !id.isEmpty() && runner.resumeId() == null) {
                 rejectedId = id;
                 rejectedWhy = "couldn't read order";
                 rejectedStatus = "failed";
@@ -1678,15 +1718,20 @@ public class StashManager extends Module {
             return;
         }
 
-        runner.dropSaved(order.id);
+        String saved = runner.resumeId();
+        if (saved != null && !saved.equals(order.id)) return;
         String why = runner.offer(order, recovering);
         if (why == null) {
             sorter.orderTaken();
             pendingOrders = Math.max(0, pendingOrders - 1);
         } else {
-            rejectedId = order.id;
-            rejectedWhy = why;
-            rejectedStatus = "failed";
+            // A temporary inability to resume must not manufacture a failed
+            // receipt for cargo that remains in the durable checkpoint.
+            if (saved == null) {
+                rejectedId = order.id;
+                rejectedWhy = why;
+                rejectedStatus = "failed";
+            }
             WeSortAddon.LOG.warn("wesort-stash-manager: rejected order {}: {}", order.id, why);
             if (orderChat.get()) warning("Order %s can't be done: %s.", order.id, why);
         }
@@ -1711,13 +1756,12 @@ public class StashManager extends Module {
                         lastStatusSig = "";
                         nextAttemptAt = 0;
                     }
-                    // Not held here, but saved from before a restart: say it is cancelled and forget it
+                    // The saved packing plan may still have real staged items.
+                    // Persist rollback intent, then resume the exact order.
                     if (!sorter.orderCancel(cancelled)
-                            && cancelled.equals(sorter.orders().resumeId())
-                            && rejectedId == null) {
-                        rejectedId = cancelled;
-                        rejectedWhy = "cancelled";
-                        rejectedStatus = "cancelled";
+                            && sorter.orders().requestSavedCancellation(cancelled)) {
+                        lastClaim = 0;
+                        sorter.orderTaken();
                     }
                 }
             }

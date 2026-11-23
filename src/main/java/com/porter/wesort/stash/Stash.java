@@ -220,6 +220,7 @@ public class Stash {
         public boolean craftInFlight;
         /** Interrupted orders resume rollback, never replay their packing plan. */
         public boolean recoveryPending, recoveryCancelled;
+
         public final java.util.Map<String, Integer> craftUsed = new java.util.LinkedHashMap<>();
     }
 

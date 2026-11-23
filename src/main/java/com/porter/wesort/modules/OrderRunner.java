@@ -475,7 +475,8 @@ final class OrderRunner {
         // A crashed rollback must not redo the original manufacturing/packing
         // plan. Restore only the exact staged receipts needed to reclaim items.
         Stash.ActiveOrder savedRecovery = stash.activeOrder;
-        if (savedRecovery != null && savedRecovery.id.equals(o.id)
+        if (savedRecovery != null
+                && savedRecovery.id.equals(o.id)
                 && (savedRecovery.recoveryPending || managerRecovery)) {
             if (managerRecovery) {
                 savedRecovery.recoveryPending = true;

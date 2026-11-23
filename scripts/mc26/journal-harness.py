@@ -48,7 +48,10 @@ class JournalHarness(repack.RepackHarness):
             require(status == 200, 'Owner journal list unavailable')
             last = result
             row = next((row for row in result['operations'] if row['id'] == operation), None)
-            if row and row['managerState'] == 'NEEDS_RECONCILIATION':
+            # The Manager may already have auto-inspected this operation
+            # before the owner-facing list was polled. All these states
+            # belong to the unattended recovery protocol.
+            if row and row['managerState'] in ('RECOVERING', 'COMPLETED', 'FAILED'):
                 return row
             time.sleep(.25)
         # Name the miss: dump every Manager row (id/revision/state) so a wrong-id upload,
@@ -169,7 +172,7 @@ class JournalHarness(repack.RepackHarness):
             self.start_client()
             initial = self.command('state')['state']
             initial_detail = self.record_fence_state('restart', initial)
-            require(initial['physicalJournal'] == 'NEEDS_RECONCILIATION' and initial['attemptedClicks'] == 0,
+            require(initial['physicalJournal'] == 'AUTO_RECOVERING' and initial['attemptedClicks'] == 0,
                     'Restart reopened automation or replayed a click: ' + json.dumps(initial_detail))
             require(initial['sortingPermitted'] is False,
                     'Restart exposed an unsafe sorting permit: ' + json.dumps(initial_detail))
@@ -184,32 +187,35 @@ class JournalHarness(repack.RepackHarness):
             if self.phase in ('OPEN', 'TRANSFER', 'VERIFY', 'BREAK'):
                 require(row['possibleOrphans'], 'Manager did not list the possible standing shulker')
             if self.phase == 'SELECT':
-                status, _ = self.http('/api/v1/physical/inspect', {
-                    'operation': row['id'], 'revision': row['revision'], 'checksum': row['checksum']
-                })
-                require(status == 200, 'Owner could not request an inventory-only inspection')
-                end = time.monotonic() + 20
+                # No owner endpoint or manual trigger exists. The signed
+                # agent must receive the Manager's auto-issued, checksum-bound
+                # read-only inspection and prove no mutation was sent.
+                end = time.monotonic() + 35
+                inspected = None
                 while time.monotonic() < end:
                     _, reply = self.http('/api/v1/physical')
                     inspected = next(r for r in reply['operations'] if r['id'] == row['id'])
                     if inspected.get('inspectionState') == 'COMPLETED':
-                        require(inspected['managerState'] == 'FAILED', 'No-mutation inspection falsely completed repack')
-                        self.ok('Owner-approved fresh inventory verified that the SELECT operation sent no mutation')
+                        require(inspected['managerState'] == 'FAILED',
+                                'No-mutation inspection falsely completed repack')
+                        self.ok('Automatic fresh inventory readback proved SELECT sent no mutation')
                         break
                     time.sleep(.25)
                 else:
-                    raise RuntimeError('Safe SELECT recovery did not complete')
-            # A crash-recovered operation stays fenced after its no-mutation proof: the
-            # terminal FAILED state authorizes nothing new. Only an explicit operator
-            # release (off-to-on toggle, explicit sort-start) resumes automation — never a
-            # mirror round-trip, inspection result, publish or rescan.
+                    raise RuntimeError('Automatic safe SELECT recovery did not complete: '
+                                       + json.dumps(inspected))
+            # Without an operator, an inconclusive inspection remains fenced;
+            # a proven postcondition may reach READY automatically. The isolated
+            # fixture holds sorting off, so neither outcome authorizes a new move.
             fenced = self.command('state')['state']
             fenced_detail = self.record_fence_state('reconciled', fenced)
-            require(fenced['physicalJournal'] in ('NEEDS_RECONCILIATION', 'WAITING_MANAGER_RECEIPT'),
-                    'Client left the recovery fence without an explicit operator release: '
-                    + json.dumps(fenced_detail))
+            require(fenced['physicalJournal'] in ('AUTO_RECOVERING', 'WAITING_MANAGER_RECEIPT', 'READY'),
+                    'Client entered an unexpected journal state: ' + json.dumps(fenced_detail))
+            if fenced['physicalJournal'] == 'AUTO_RECOVERING':
+                require(fenced['journalBlocked'],
+                        'Unverified physical recovery lost its journal fence: ' + json.dumps(fenced_detail))
             require(fenced['sortingPermitted'] is False,
-                    'Sorter re-armed without an explicit operator release: ' + json.dumps(fenced_detail))
+                    'Sorter re-armed despite the isolated recovery hold: ' + json.dumps(fenced_detail))
             require(fenced['attemptedClicks'] == 0,
                     'Client replayed an inventory click: ' + json.dumps(fenced_detail))
             after = self.snapshot_after_restart(row)
@@ -220,8 +226,11 @@ class JournalHarness(repack.RepackHarness):
             soaked = self.command('state')['state']
             soaked_detail = self.record_fence_state('after-soak', soaked)
             require(soaked['sortingPermitted'] is False,
-                    'Sorting was re-authorized without an operator release during soak: '
+                    'Sorting was re-authorized during the isolated recovery hold: '
                     + json.dumps(soaked_detail))
+            if soaked['physicalJournal'] == 'AUTO_RECOVERING':
+                require(soaked['journalBlocked'],
+                        'Unverified recovery lost its fence during soak: ' + json.dumps(soaked_detail))
             require(soaked['attemptedClicks'] == 0,
                     'Client replayed an inventory click: ' + json.dumps(soaked_detail))
             require(self.totals(before) == self.totals(after), 'Crash changed authoritative recursive totals or metadata')
@@ -280,10 +289,8 @@ class DirectHarness(JournalHarness):
             self.start_client()
             self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key)
             row = self.wait_for_review(crashed['id'])
-            status, _ = self.http('/api/v1/physical/inspect', {
-                'operation': row['id'], 'revision': row['revision'], 'checksum': row['checksum']
-            })
-            require(status == 200, 'Owner could not request exact source and inventory readback')
+            # The Manager must dispatch inspection automatically on agent
+            # reconnect. No human endpoint or manual action is involved.
             end = time.monotonic() + 35
             while time.monotonic() < end:
                 _, reply = self.http('/api/v1/physical')
@@ -297,11 +304,9 @@ class DirectHarness(JournalHarness):
             else:
                 raise RuntimeError('Verified postcondition did not clear the operation fence')
             state = self.command('state')['state']
-            # The Manager marks the Owner inspection COMPLETED on receipt of the
-            # client's read-only verification. The client still needs one
-            # background agent upload round-trip to mirror the new revision and
-            # clear WAITING_MANAGER_RECEIPT. Poll briefly instead of asserting
-            # the receipt synchronously; any click replay still fails below.
+            # The Manager marks automatic inspection COMPLETED on receipt of
+            # the client's read-only proof. Await the signed mirror round-trip;
+            # no inventory click may be replayed.
             receipt_end = time.monotonic() + 30
             while not (state['attemptedClicks'] == 0 and state['physicalJournal'] == 'READY'):
                 require(state['attemptedClicks'] == 0,
@@ -332,7 +337,7 @@ class DirectHarness(JournalHarness):
                             'attemptedClicks': isolated['attemptedClicks'],
                             'screen': isolated['screen']}, indent=2) + '\n')
             # A new, explicitly requested move proves the same agent can operate
-            # again after Owner inspection, with no competing Manager scanner.
+            # again after autonomous inspection, with no competing Manager scanner.
             menu = self.command('open', x=0, y=64, z=3, slots=54, item='minecraft:air', count=0, second=1)['state']
             carry = inv.carry_slot(menu, 54, 'minecraft:diamond', 64)
             inv.click(self, menu, carry)

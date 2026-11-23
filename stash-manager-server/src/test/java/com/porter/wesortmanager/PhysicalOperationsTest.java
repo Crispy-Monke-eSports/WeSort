@@ -195,6 +195,65 @@ class PhysicalOperationsTest {
     }
 
     @Test
+    void obsoleteRequestCannotBlockNewRevision() throws Exception {
+        var operations = new PhysicalOperations(new StockLedger(data));
+        var local = journal();
+        intent(local);
+        local.block("Inspect original slot");
+        var receipt = operations.accept(agent, local.current());
+        var old = operations.inspectAutomatically(agent, receipt);
+        assertNotNull(old);
+
+        // A local readback with no valid Manager decision is not sufficient to release the fence.
+        local.verified(
+                frame("after"),
+                true,
+                playerInventory(),
+                java.util.UUID.randomUUID().toString());
+        local.complete();
+        var current = operations.accept(agent, local.current());
+        assertEquals("NEEDS_RECONCILIATION", current.get("state").getAsString());
+        assertNull(operations.decision(agent, local.id()));
+        var next = operations.inspectAutomatically(agent, current);
+        assertNotNull(next);
+        assertNotEquals(old.get("id"), next.get("id"));
+        assertEquals(current.get("revision"), next.get("revision"));
+        assertEquals(current.get("checksum"), next.get("checksum"));
+
+        // A late outcome for the old request must not replace the new decision.
+        operations.decisionResult(agent, old.get("id").getAsString(), "COMPLETED", "Late outcome");
+        assertEquals(next.get("id"), operations.decision(agent, local.id()).get("id"));
+        local.verified(frame("after"), true, playerInventory(), next.get("id").getAsString());
+        local.complete();
+        assertEquals(
+                "COMPLETED",
+                operations.accept(agent, local.current()).get("state").getAsString());
+        assertNull(operations.decision(agent, local.id()));
+    }
+
+    @Test
+    void completionWithoutAcceptedProofDoesNotPermanentlyBlockRecovery() throws Exception {
+        var clock = new AtomicLong(10_000);
+        var operations = new PhysicalOperations(new StockLedger(data), clock::get);
+        var local = journal();
+        intent(local);
+        local.block("Inspect original slot");
+        var receipt = operations.accept(agent, local.current());
+        var first = operations.inspectAutomatically(agent, receipt);
+        assertNotNull(first);
+        operations.decisionResult(agent, first.get("id").getAsString(), "COMPLETED", "No journal proof");
+        assertNull(operations.inspectAutomatically(agent, receipt));
+
+        clock.addAndGet(60_001);
+        var next = operations.inspectAutomatically(agent, receipt);
+        assertNotNull(next);
+        assertNotEquals(first.get("id"), next.get("id"));
+        assertEquals(
+                "RECOVERING",
+                operations.list().get(0).getAsJsonObject().get("managerState").getAsString());
+    }
+
+    @Test
     void failedAutomaticInspectionRetriesWithBackoff() throws Exception {
         var clock = new AtomicLong(10_000);
         var operations = new PhysicalOperations(new StockLedger(data), clock::get);

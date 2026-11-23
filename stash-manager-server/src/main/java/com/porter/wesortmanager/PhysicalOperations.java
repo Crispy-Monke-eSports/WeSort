@@ -7,7 +7,7 @@ import java.sql.*;
 import java.util.*;
 import java.util.function.LongSupplier;
 
-/** Append-only agent evidence, with separate Manager fences and explicit operator inspection requests. */
+/** Append-only agent evidence, with separate Manager fences and autonomous read-only inspection. */
 final class PhysicalOperations {
     static final class Conflict extends IOException {
         Conflict(String reason) {
@@ -314,9 +314,9 @@ final class PhysicalOperations {
     }
 
     /**
-     * Request the same revision-pinned, read-only inspection as the Owner UI,
-     * automatically when a fenced agent reconnects. Failed attempts are retried
-     * at most once per minute; existing pending/completed decisions are not replayed.
+     * Request a revision-pinned, read-only inspection when a fenced agent reconnects.
+     * A request for an older snapshot cannot block recovery of the current snapshot.
+     * An outcome without accepted journal proof is retried after the backoff.
      */
     synchronized JsonObject inspectAutomatically(String agent, JsonObject receipt) throws IOException {
         if (!"NEEDS_RECONCILIATION".equals(receipt.get("state").getAsString())) return null;
@@ -331,7 +331,8 @@ final class PhysicalOperations {
                     LEFT JOIN physical_decisions d ON d.id = (
                         SELECT id FROM physical_decisions
                         WHERE operation=o.id AND manager_run=? AND action='INSPECT'
-                        ORDER BY issued_at DESC LIMIT 1
+                          AND revision=o.revision AND checksum=o.checksum
+                        ORDER BY issued_at DESC,rowid DESC LIMIT 1
                     )
                     WHERE o.id=? AND o.agent=? AND o.state='NEEDS_RECONCILIATION'
                       AND o.revision=? AND o.checksum=?
@@ -344,8 +345,10 @@ final class PhysicalOperations {
             try (var rows = p.executeQuery()) {
                 if (!rows.next()) return null;
                 String prior = rows.getString(1);
-                if ("REQUESTED".equals(prior) || "COMPLETED".equals(prior)) return null;
-                if ("FAILED".equals(prior) && clock.getAsLong() - rows.getLong(2) < 60_000) return null;
+                if ("REQUESTED".equals(prior)) return null;
+                // A claimed completion is not proof of the physical postcondition.
+                // If the operation remains fenced, a fresh inspection is still needed.
+                if (prior != null && clock.getAsLong() - rows.getLong(2) < 60_000) return null;
             }
         } catch (SQLException failure) {
             throw new IOException("Cannot schedule automatic physical inspection", failure);
@@ -362,7 +365,9 @@ final class PhysicalOperations {
                 var p = c.prepareStatement(
                         "SELECT d.id,d.revision,d.checksum,d.issued_at FROM physical_decisions d JOIN "
                                 + "physical_operations o ON o.id=d.operation WHERE d.operation=? AND o.agent=? "
-                                + "AND d.state='REQUESTED' AND d.manager_run=? ORDER BY d.issued_at LIMIT 1")) {
+                                + "AND o.state='NEEDS_RECONCILIATION' AND d.revision=o.revision AND d.checksum=o.checksum "
+                                + "AND d.action='INSPECT' AND d.state='REQUESTED' AND d.manager_run=? "
+                                + "ORDER BY d.issued_at DESC,d.rowid DESC LIMIT 1")) {
             p.setString(1, operation);
             p.setString(2, agent);
             p.setString(3, ledger.boot());

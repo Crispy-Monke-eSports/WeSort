@@ -1712,15 +1712,7 @@ public class StashSorter extends Module {
                 for (Box box : stash.boxes) {
             box.unreachable = false;
             box.labelFailed = false;
-            readSigns(box);
 
-            // A sign somebody else has changed since is theirs now
-            Containers.Signs signs = Containers.read(stash, box);
-            if (box.autoLabel != null && signs != null && !signs.labels().contains(box.autoLabel)) {
-                box.autoLabel = null;
-                box.autoSignPos = null;
-                stash.markDirty();
-            }
         }
         // Everything given up on or unexplored before gets another try
         forgetExploration();
@@ -3178,21 +3170,6 @@ public class StashSorter extends Module {
     private static int bundleSize(ItemStack stack) {
         var contents = stack.get(DataComponents.BUNDLE_CONTENTS);
         return contents == null ? 0 : contents.size();
-    }
-
-    /**
-     * Where an empty bundle goes: a container signed for bundles, else one signed for shulkers or containers. Empty when
-     * there is none, and the usual rules apply.
-     */
-    private List<Box> bundleHomes(ItemStack bundle) {
-        List<Box> signed = new ArrayList<>();
-        for (Box box : stash.boxes) {
-            if (!box.sortable() || box.dropOff || isKitBox(box)) continue;
-            if (box.labels.stream()
-                    .anyMatch(label -> Categories.normalize(label).contains("bundle"))) signed.add(box);
-        }
-        if (!signed.isEmpty()) return signed;
-        return bestSigned(Items.SHULKER_BOX.getDefaultInstance());
     }
 
     /**
@@ -10202,13 +10179,6 @@ public class StashSorter extends Module {
         stalled.addAll(signHeld);
     }
 
-    /**
-     * A sign on this container is being changed, so what it takes is not settled.
-     */
-    private boolean signPending(Box box) {
-        return watchSigns.get() && mode.get() == Mode.Signs && stashWatch.pending(box);
-    }
-
     private boolean blocked(Box box, Job kind) {
         return stalled.contains(box) || signHeld.contains(box) || blockedByFutility(box, kind);
     }
@@ -10399,7 +10369,6 @@ public class StashSorter extends Module {
         if (now.size() != target.parts.size()) target.contents = null;
         target.parts.clear();
         target.parts.addAll(now);
-        readSigns(target);
         for (int i = stash.boxes.size() - 1; i >= 0; i--) {
             Box other = stash.boxes.get(i);
             if (other == target || other.parts.stream().noneMatch(target::has)) continue;
@@ -11032,15 +11001,6 @@ public class StashSorter extends Module {
     }
 
     /**
-     * Chests signed for kits, which take mixed shulkers whole.
-     */
-    private List<Box> keepWholeBoxes() {
-        return stash.boxes.stream()
-                .filter(b -> b.sortable() && !b.dropOff && b.labels.stream().anyMatch(Categories::isKeepWhole))
-                .toList();
-    }
-
-    /**
      * A shulker holding more than one kind of item.
      */
     private static boolean mixedShulker(ItemStack stack) {
@@ -11272,17 +11232,6 @@ public class StashSorter extends Module {
                 .thenComparingInt(b -> b.pos.getX())
                 .thenComparingInt(b -> b.pos.getZ()));
         for (int i = 0; i < sorted.size(); i++) sorted.get(i).order = i;
-    }
-
-    /**
-     * Signs on the side of a container facing away from it, or standing on top of it. Each line is a label, and so
-     * are all the lines of a sign read together, for labels split across lines.
-     */
-    private void readSigns(Box box) {
-        Containers.Signs signs = Containers.read(stash, box);
-        if (signs == null) return;
-        box.labels.clear();
-        box.labels.addAll(signs.labels());
     }
 
     // Picking containers
@@ -12546,9 +12495,6 @@ public class StashSorter extends Module {
             deliveryWatch.tickLids(stash, clock, 20L * 5, this::openedByUs, this::deliveryTouched);
         }
 
-        if (sorting() && signsWatched() && clock % SIGN_POLL_TICKS == 0) {
-            stashWatch.pollSigns(stash, clock, b -> job == Job.Label && b == target);
-        }
     }
 
     /**
@@ -12619,82 +12565,6 @@ public class StashSorter extends Module {
             idle = false;
             info("A player used the chest at %s, re-checking it.", box.pos.toShortString());
         }
-    }
-
-    /**
-     * Signs are watched for changes: while sorting by signs, and in scan-only mode, which keeps the saved labels current.
-     */
-    private boolean signsWatched() {
-        return watchSigns.get() && (mode.get() == Mode.Signs || !sorting());
-    }
-
-    /**
-     * Between jobs: signs that have been left alone for a while are read again and what they changed is sorted, and now
-     * and then all of them, which catches what was missed (a chunk loading in).
-     */
-    private void applySignChanges() {
-        if (!signsWatched()) return;
-
-        if (clock >= nextSignSweep) {
-            nextSignSweep = clock + SIGN_SWEEP_TICKS;
-            for (Box box : new ArrayList<>(stash.boxes)) {
-                if (!stashWatch.pending(box)) checkSigns(box);
-            }
-        }
-
-        for (Box box : stashWatch.settled(clock, signDelay.get() * 20L)) {
-            signAbortRuns.remove(box);
-            if (signHeld.remove(box)) stalled.remove(box);
-            // A job on it was ended because its sign was unsettled, and it was left out of the plans meanwhile: it gets
-            // another look even if the text turns out the same
-            if (signAborted.remove(box)) {
-                clearStalled();
-                idle = false;
-            } else if (!stuckCarried.isEmpty()) idle = false;
-            checkSigns(box);
-        }
-
-        // A sign gone or blank for the whole grace period is really gone
-        for (Box box : stashWatch.goneLongEnough(clock)) checkSigns(box);
-    }
-
-    /**
-     * Compares what the signs of a container say now with what we have, and applies the difference.
-     */
-    private void checkSigns(Box box) {
-        List<String> now = stashWatch.labelChange(box, clock);
-        if (now == null) return;
-
-        List<String> before = new ArrayList<>(box.labels);
-        box.labels.clear();
-        box.labels.addAll(now);
-
-        // A player's text on a sign the sorter wrote is theirs from then on
-        if (box.autoLabel != null && !now.contains(box.autoLabel)) {
-            box.autoLabel = null;
-            box.autoSignPos = null;
-        }
-
-        // What was sorted by the old sign is sorted again by the new one: the planner already moves whatever is in the
-        // wrong container, so it only has to be told to look
-        stash.markDirty();
-        version++;
-        seenVersion = version;
-        clearStalled();
-        stuckCarried.clear();
-        stuckWarned = false;
-        compacted.remove(box);
-        signHeld.remove(box);
-        signAbortRuns.remove(box);
-        futile.clear();
-        idle = false;
-
-        String was = before.isEmpty() ? "no sign" : before.getFirst(), is = now.isEmpty() ? "no sign" : now.getFirst();
-        if (sorting()) info("Sign at %s changed: \"%s\" -> \"%s\", re-sorting.", box.pos.toShortString(), was, is);
-        else
-            info(
-                    "Sign at [%d, %d, %d] changed: \"%s\" -> \"%s\" (scan only).",
-                    box.pos.getX(), box.pos.getY(), box.pos.getZ(), was, is);
     }
 
     // Searching
@@ -12802,19 +12672,7 @@ public class StashSorter extends Module {
         WTable results = list.add(theme.table()).expandX().widget();
         search.action = () -> fillResults(theme, results, search.get());
 
-        list.add(theme.horizontalSeparator("Labels"));
-        WVerticalList report = list.add(theme.verticalList()).expandX().widget();
-        WButton refreshReport = list.add(theme.button("Labels report")).widget();
-        refreshReport.tooltip = "What's homeless, what the sorter has labelled itself, and the chests it gave up on.";
-        refreshReport.action = () -> fillReport(theme, report);
-        fillReport(theme, report);
-
         return list;
-    }
-
-    private void fillReport(GuiTheme theme, WVerticalList report) {
-        report.clear();
-        for (String line : labeller.report()) report.add(theme.label(line)).expandX();
     }
 
     private String statusText() {

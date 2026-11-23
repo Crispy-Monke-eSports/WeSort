@@ -41,7 +41,7 @@ final class OrderStore {
 
     static final int SHULKER_SLOTS = 27;
     static final Set<String> OPEN = Set.of("pending", "accepted", "in_progress");
-    static final Set<String> FINISHED = Set.of("delivered", "packed", "failed", "cancelled", "needs_reconciliation");
+    static final Set<String> FINISHED = Set.of("delivered", "packed", "failed", "cancelled");
     static final Set<String> REPORTED_TERMINAL = Set.of("delivered", "failed", "cancelled", "needs_reconciliation");
     private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -789,65 +789,50 @@ final class OrderStore {
     /** One order's automatic step, or null when it stays as it is. Copy-on-write: the caller saves. */
     private Order healed(Book book, Order previous, long now) throws IOException, OrderException {
         if (previous.stage() == OrderStage.NEEDS_RECONCILIATION) {
-            // Never turn a matching source fingerprint into a fictitious packed order.
-            // Every journal must be settled and every reserved source observed again
-            // after the fence, even when the observed slot contents have changed.
-            if (index.stock().unsettledPhysicalOrder(previous.id)) return null;
-            boolean held = previous.allocations != null && !previous.allocations.isEmpty();
-            if (held) {
-                PhysicalReservations observed = PhysicalReservations.read(index.stock(), book.server, null);
-                if (!observed.refreshedAfter(previous.allocations, previous.updatedAt)) return null;
-            } else if (now - previous.updatedAt < AUTO_CANCEL_AFTER_MS) {
-                // No slot-level proof exists for legacy orders. They retain no
-                // protected physical roots, but need a grace period after restart.
-                return null;
-            }
+            // Migrate a pre-upgrade order to the same automatic rollback
+            // protocol as new failures. Never expose the old operator state.
             Order o = Order.fromJson(previous.snapshot());
-            boolean cancel = previous.cancelRequestedAt > 0;
-            o.advance(cancel ? OrderStage.CANCELLED : OrderStage.FAILED);
-            o.status = cancel ? "cancelled" : "failed";
-            o.cancelRequested = false;
-            o.message = cancel
-                    ? "Auto-cancelled after physical work settled and inventory was rescanned"
-                    : "Auto-failed after physical verification; packing was not proven";
+            o.advance(OrderStage.RECOVERING);
+            o.status = "in_progress";
+            o.cancelRequested = true;
+            if (o.cancelRequestedAt == 0) o.cancelRequestedAt = now;
+            o.phase = "returning items to stash";
+            o.message = "Automatic rollback requested after interrupted physical operation";
             o.updatedAt = now;
-            // The qualifying fresh readback already proves the old virtual hold
-            // may be dropped. No physical inventory mutation is sent here.
-            if (previous.allocations != null) o.releasedAt = now;
-            o.record("order.auto-reconcile-abandon", Users.OWNER_ID, now);
+            o.record("order.auto-recovery.migrate", Users.OWNER_ID, now);
             return o;
         }
-        if ((previous.status.equals("accepted")
-                        || previous.status.equals("in_progress")
-                        || previous.status.equals("packed"))
-                // Live physical work is not a failure. Only an actual Manager
-                // reconciliation fence authorizes this terminal transition.
+        if (previous.stage() != OrderStage.RECOVERING
+                && (previous.status.equals("accepted") || previous.status.equals("in_progress"))
                 && index.stock().reconciliationRequiredPhysicalOrder(previous.id)) {
             Order o = Order.fromJson(previous.snapshot());
-            o.advance(OrderStage.NEEDS_RECONCILIATION);
-            o.status = "needs_reconciliation";
-            o.message = "physical work left unsettled; verify before pickup";
+            o.advance(OrderStage.RECOVERING);
+            o.status = "in_progress";
+            o.cancelRequested = true;
+            o.cancelRequestedAt = now;
+            o.phase = "returning items to stash";
+            o.message = "Physical operation interrupted; automatic rollback requested";
             o.updatedAt = now;
-            o.record("order.auto-reconcile", Users.OWNER_ID, now);
+            o.record("order.auto-recovery", Users.OWNER_ID, now);
             return o;
         }
         if (previous.cancelRequested
                 && previous.allocations != null
                 && isExecuting(previous)
+                && previous.stage() != OrderStage.RECOVERING
                 && previous.cancelRequestedAt > 0
                 && now - previous.cancelRequestedAt > AUTO_CANCEL_AFTER_MS
                 && now - previous.updatedAt > AUTO_CANCEL_AFTER_MS) {
-            // Never pretend an allocated physical order was safely cancelled.
-            // An absent/silent bot cannot prove what it moved; retain all holds
-            // and require an explicit reconciliation instead of CANCEL_REQUESTED forever.
-            Order pending = Order.fromJson(previous.snapshot());
-            pending.advance(OrderStage.NEEDS_RECONCILIATION);
-            pending.status = "needs_reconciliation";
-            pending.cancelRequested = false;
-            pending.message = "Cancel timed out: physical allocations remain protected pending reconciliation";
-            pending.updatedAt = now;
-            pending.record("order.cancel.reconciliation-required", Users.OWNER_ID, now);
-            return pending;
+            // Keep the allocation and original agent, rather than treating a
+            // missing bot acknowledgement as permission to abandon items.
+            Order o = Order.fromJson(previous.snapshot());
+            o.advance(OrderStage.RECOVERING);
+            o.status = "in_progress";
+            o.phase = "returning items to stash";
+            o.message = "Cancel timed out; automatic rollback requested";
+            o.updatedAt = now;
+            o.record("order.auto-rollback", Users.OWNER_ID, now);
+            return o;
         }
         if (previous.cancelRequested
                 && previous.allocations == null
@@ -1941,7 +1926,7 @@ final class OrderStore {
             Order o = Order.fromJson(previous.snapshot());
             if (FINISHED.contains(o.status)) throw new OrderException(409, "order is already " + o.status, -1);
             if (o.allocations != null) {
-                throw new OrderException(409, "The assigned agent must finish or reconcile its physical work", -1);
+                throw new OrderException(409, "The agent must finish automatic physical rollback first", -1);
             }
             if (!o.cancelRequested || o.status.equals("pending")) {
                 throw new OrderException(
@@ -2283,6 +2268,9 @@ final class OrderStore {
 
     private boolean orderSourcesReady(Order order, IndexStore.OrderCounts counts, String agent) throws IOException {
         if (order.agent != null && !order.agent.equals(agent)) return false;
+        // A recovering agent must be allowed to retrieve its existing items
+        // even after source fingerprints changed during the interruption.
+        if (order.stage() == OrderStage.RECOVERING) return order.agent != null && order.agent.equals(agent);
         if (order.allocations == null) {
             return matchesSources(order)
                     && order.lines.stream().allMatch(line -> counts.total(line.type, line.key) >= line.count);
@@ -2389,14 +2377,19 @@ final class OrderStore {
             o.advance(next);
             o.status = switch (next) {
                 case PICKUP_READY -> "packed";
-                case NEEDS_RECONCILIATION -> "needs_reconciliation";
+                case RECOVERING -> "in_progress";
+                case FAILED -> "failed";
                 default -> status;
             };
             if (phase != null) o.phase = phase;
             if (progress != null) o.progress = progress;
             if (message != null) o.message = message;
-            if (next == OrderStage.NEEDS_RECONCILIATION) o.result = null;
-            else if (result != null) o.result = result;
+            if (next == OrderStage.RECOVERING) {
+                o.result = null;
+                o.cancelRequested = true;
+                if (o.cancelRequestedAt == 0) o.cancelRequestedAt = System.currentTimeMillis();
+                o.phase = "returning items to stash";
+            } else if (result != null) o.result = result;
             o.updatedAt = System.currentTimeMillis();
             if (next != previous.stage()) o.record("order.transition", agent, o.updatedAt);
             // Only a verified staging manifest authorizes UUID removal. Persist the intent
@@ -2471,10 +2464,11 @@ final class OrderStore {
     }
 
     private OrderStage reportedStage(Order order, String status, JsonObject result) throws IOException {
-        if (status.equals("accepted") || status.equals("in_progress")) return OrderStage.PACKING;
-        if (status.equals("needs_reconciliation") || index.stock().unsettledPhysicalOrder(order.id)) {
-            return OrderStage.NEEDS_RECONCILIATION;
-        }
+        if (status.equals("accepted") || status.equals("in_progress"))
+            return order.stage() == OrderStage.RECOVERING ? OrderStage.RECOVERING : OrderStage.PACKING;
+        // Legacy agents may still report this outcome. It is an automatic
+        // failure, not a human-facing reconciliation workflow.
+        if (status.equals("needs_reconciliation")) return OrderStage.FAILED;
         if (status.equals("delivered")) {
             int packages = result != null && result.has("shulkers")
                     ? result.get("shulkers").getAsInt()
@@ -2483,9 +2477,13 @@ final class OrderStore {
                 order.manifest =
                         index.stock().stagingManifest(order.server, order.stash, order.id, order.agent, packages);
             }
-            return order.manifest != null && allLinesStaged(order.lines, result)
+            // Missing verification must never be presented as packed stock.
+            // Reserved roots remain held until journal settlement and rescan.
+            return order.manifest != null
+                            && allLinesStaged(order.lines, result)
+                            && !index.stock().unsettledPhysicalOrder(order.id)
                     ? OrderStage.PICKUP_READY
-                    : OrderStage.NEEDS_RECONCILIATION;
+                    : OrderStage.FAILED;
         }
         return status.equals("cancelled") ? OrderStage.CANCELLED : OrderStage.FAILED;
     }

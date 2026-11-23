@@ -1020,12 +1020,6 @@ public class StashSorter extends Module {
         }
 
         @Override
-        public boolean isMisc(Box box) {
-            // Sign-defined catch-all chests are no longer a concept.
-            return false;
-        }
-
-        @Override
         public boolean isKitBox(Box box) {
             return StashSorter.this.isKitBox(box);
         }

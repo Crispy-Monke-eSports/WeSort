@@ -2,7 +2,7 @@ import { z } from "zod";
 
 /* Exact TypeScript models of the Java Manager's JSON responses.
  * Field names and shapes verified against AuthRoutes, Users, BrowserRoutes,
- * OrderRoutes/OrderStore, DashboardRoutes/BotHub, GuildRoutes, QuotaRoutes,
+ * OrderRoutes/OrderStore, DashboardRoutes/BotHub, GuildRoutes,
  * UserRoutes and OrderAuditRoutes. Unknown extra fields are ignored. */
 
 // ---------- auth ----------
@@ -248,7 +248,7 @@ export const BotActivitySchema = z.object({
 });
 export type BotActivity = z.infer<typeof BotActivitySchema>;
 
-// ---------- guild / quotas / users ----------
+// ---------- guild / users ----------
 
 export const GuildSchema = z.object({
   name: z.string().default(""),
@@ -257,9 +257,6 @@ export const GuildSchema = z.object({
   approvalPolicy: z.string().nullable().optional(),
 });
 export type Guild = z.infer<typeof GuildSchema>;
-
-export const QuotaMeSchema = z.object({ usage: z.record(z.string(), z.unknown()).default({}) }).catchall(z.unknown());
-export type QuotaMe = z.infer<typeof QuotaMeSchema>;
 
 export const ManagedUserSchema = z.object({
   id: z.string(),

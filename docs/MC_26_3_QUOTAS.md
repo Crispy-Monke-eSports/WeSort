@@ -1,40 +1,28 @@
-# W-059: frivilliga uttagsgränser per medlem från samma guildlager
+# W-059: withdrawal quotas discontinued
 
-Alla stashes tillhör en guild med gemensamt saldo, men en administratör kan
-**valfritt** aktivera uttagsgränser per medlem, roll, item/kit och tidsperiod.
-Avstängd kvotpolicy innebär ingen artificiell individuell begränsning;
-individuell audit och rollfördelning gäller alltid. Kvoter skapar aldrig
-privata inventarier eller itemkonton — de begränsar bara hur mycket av
-guildens gemensamma lager en medlem får ta ut.
+> **Decision 2026-11-23:** WeSort Manager targets **one agent on 6b6t**,
+> a single shared guild inventory, and only Owner/Member accounts.
+> Personal withdrawal quotas are **not** part of this product.
 
-## Manager-sidan (denna commit)
+The previously implemented, disabled-by-default quota policy, member
+usage ledger and `/api/v1/quotas*` endpoints were disconnected from the
+live order placement flow. They have been removed, including their
+corresponding frontend hook and tests. Issue
+[#60](https://github.com/Crispy-Monke-eSports/WeSort/issues/60)
+was closed as `not planned`.
 
-- **`QuotaRule`** (`common/.../data`) är en regel `{subject, key, max,
-  windowSeconds}`. Subject är ett medlem-id, en roll eller `*` (alla); key är
-  en linjereferens (`item:<key>`, `shulker:<key>` eller `*`). Precedens:
-  medlemsspecifik > roll > `*`.
-- **`Quotas`** (Manager) håller policy (`enabled`, `revision`, `rules`) och
-  användning (`consumed`/`reserved` per medlem/key i fasta tidsfönster).
-  `checkAndReserve` kontrollerar och reserverar idempotent per order-id;
-  `release` (cancel/deny) och `consume` (verifierad leverans) påverkar kvoten
-  exakt en gång, även över omstart. `reservedQuota`/`consumedQuota` är skilda
-  från fysisk inventoryreservation.
-- **`QuotaRoutes`**: Owner `GET/POST /api/v1/quotas` (policy + revision) och
-  medlem `GET /api/v1/quotas/me` (egen förbrukning). Owner-updatering kräver
-  `expectedRevision` (409 vid stale).
+Removing quotas does **not** remove stock safety or audit obligations:
 
-## Testbevis
+- Items and shulker roots must still be reserved atomically against fresh,
+  observed physical inventory. No double allocation or unverified stock.
+- Every member order retains authenticated actor, intended recipient,
+  item lines, quantity, purpose and actual verified receipt.
+- Managers cannot infer successful delivery from an agent report alone.
+  Unknown physical outcomes stay `NEEDS_RECONCILIATION`.
+- These constraints are tracked in
+  [#140](https://github.com/Crispy-Monke-eSports/WeSort/issues/140),
+  [#27](https://github.com/Crispy-Monke-eSports/WeSort/issues/27) and
+  [#47](https://github.com/Crispy-Monke-eSports/WeSort/issues/47).
 
-- `QuotaRuleTest`: precedens (medlem > roll > `*`), key-täckning, validering.
-- `QuotasTest`: avstängd = ingen gräns, aktiverad blockerar parallellt
-  överdrag, release/consume idempotent (exakt en gång), persistens över
-  omstart, policyrevisionskonflikt.
-- Manager- och common-byggena samt hela managersviten är gröna.
-
-## Gränser och återstår
-
-Återstår: koppling av kvotkontrollen till orderläggning (SELF → faktisk
-mottagare, GUILD → beställande medlem), release vid cancel/deny och consume
-vid verifierad leverans i orderlivscykeln (W-026/W-058), räkning av kits/fulla
-shulkers och deras ingående föremål utan dubbelräkning (W-024/W-040), loggad
-motiverad admin-override samt webb-/DOM-adminvy.
+The former quota implementation and its tests remain available in Git
+history; they are not an active specification.

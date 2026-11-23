@@ -313,7 +313,6 @@ public final class WeSortManager {
         new OperationsRoutes(store, orders, hub).register(router);
         new StockRoutes(store, orders).register(router, audit);
         new BoxRoutes(store, audit, orders, config, stashDefs).register(router);
-        new QuotaRoutes(new Quotas(config.dataDir()), audit).register(router);
         new CustodyRoutes(new PackageCustody(config.dataDir()), audit, config).register(router);
         new DeliveryPointRoutes(new DeliveryPoints(config.dataDir()), audit).register(router);
         new ServerRoutes(config, audit).register(router);

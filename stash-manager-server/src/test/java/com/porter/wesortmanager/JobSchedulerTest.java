@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.google.gson.JsonObject;
 import com.porter.wesort.data.Job;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
@@ -36,13 +38,15 @@ class JobSchedulerTest {
         s.submit(Job.Category.SCAN, "o-1", "", 0, "owner");
         var first = s.claim(A1);
         assertTrue(first.get("job").isJsonObject(), "the first agent gets the only job");
-        assertTrue(s.claim(A2).get("job").isJsonNull(), "no job is left for a second agent");
+        assertThrows(JobScheduler.Conflict.class, () -> s.claim(A2), "only one physical work slot exists");
         assertThrows(JobScheduler.Conflict.class, () -> s.claim(A1), "one agent cannot hold two jobs");
 
         s.submit(Job.Category.SCAN, "o-2", "", 0, "owner");
-        var second = s.claim(A2);
+        assertThrows(JobScheduler.Conflict.class, () -> s.claim(A2));
+        s.complete(id(first), A1, token(first));
+        var second = s.claim(A1);
         assertTrue(second.get("job").isJsonObject());
-        assertNotEquals(id(first), id(second), "two agents never claim the same job");
+        assertNotEquals(id(first), id(second), "the same agent can claim the next job");
     }
 
     @Test
@@ -90,7 +94,7 @@ class JobSchedulerTest {
                 () -> s.complete(job.id(), A1, token),
                 "a lapsed lease cannot be completed");
         assertEquals(Job.State.NEEDS_RECONCILIATION, s.get(job.id()).state());
-        assertTrue(s.claim(A2).get("job").isJsonNull(), "an uncertain job is never blindly reassigned");
+        assertThrows(JobScheduler.Conflict.class, () -> s.claim(A2), "an uncertain job blocks every claimant");
 
         s.reconcile(job.id(), Job.State.QUEUED, "owner");
         var re = s.claim(A2);
@@ -137,6 +141,54 @@ class JobSchedulerTest {
             s.complete(job.id(), A1, token(claimed));
         }
         assertTrue(s.claim(A1).get("job").isJsonNull(), "everything is done");
+    }
+
+    @Test
+    void pausedLeaseExpiryFencesEveryClaimantAndSurvivesRestart() throws Exception {
+        var s = scheduler();
+        var job = s.submit(Job.Category.SCAN, "o-1", "", 0, "owner");
+        var claim = s.claim(A1);
+        s.pause(job.id(), A1);
+        s.submit(Job.Category.SCAN, "o-2", "", 0, "owner");
+        clock.set(JobScheduler.TTL);
+        var restarted = scheduler();
+        assertEquals(Job.State.NEEDS_RECONCILIATION, restarted.get(job.id()).state());
+        assertThrows(JobScheduler.Conflict.class, () -> restarted.claim(A2));
+        assertThrows(JobScheduler.Conflict.class, () -> restarted.complete(job.id(), A1, token(claim)));
+    }
+
+    @Test
+    void writeFailureCannotPublishClaimOrCompletionAndExactReplayIsIdempotent() throws Exception {
+        var s = scheduler();
+        var job = s.submit(Job.Category.SCAN, "o-1", "", 0, "owner");
+        Path file = data.resolve("jobs.json");
+        Path saved = data.resolve("jobs.saved");
+        Files.move(file, saved);
+        Files.createDirectory(file);
+        Files.writeString(file.resolve("obstruction"), "write failure");
+        assertThrows(IOException.class, () -> s.claim(A1));
+        assertEquals(Job.State.QUEUED, s.get(job.id()).state());
+        Files.delete(file.resolve("obstruction"));
+        Files.delete(file);
+        Files.move(saved, file);
+
+        var claim = s.claim(A1);
+        Files.move(file, saved);
+        Files.createDirectory(file);
+        Files.writeString(file.resolve("obstruction"), "write failure");
+        assertThrows(IOException.class, () -> s.complete(job.id(), A1, token(claim)));
+        assertEquals(Job.State.CLAIMED, s.get(job.id()).state());
+        assertThrows(JobScheduler.Conflict.class, () -> s.claim(A2));
+        Files.delete(file.resolve("obstruction"));
+        Files.delete(file);
+        Files.move(saved, file);
+
+        var completed = s.complete(job.id(), A1, token(claim));
+        var restarted = scheduler();
+        assertEquals(completed, restarted.complete(job.id(), A1, token(claim)));
+        assertThrows(JobScheduler.Conflict.class, () -> restarted.complete(job.id(), A2, token(claim)));
+        assertThrows(JobScheduler.Conflict.class, () -> restarted.complete(job.id(), A1, "old"));
+        assertEquals(s.queue(), restarted.queue());
     }
 
     @Test

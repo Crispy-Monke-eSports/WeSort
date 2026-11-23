@@ -67,7 +67,7 @@ public record Job(
                         || next == State.COMPLETED
                         || next == State.NEEDS_RECONCILIATION
                         || next == State.REVOKED;
-            case PAUSED -> next == State.CLAIMED || next == State.REVOKED;
+            case PAUSED -> next == State.CLAIMED || next == State.NEEDS_RECONCILIATION || next == State.REVOKED;
             case NEEDS_RECONCILIATION -> next == State.QUEUED || next == State.COMPLETED || next == State.REVOKED;
             case COMPLETED, REVOKED -> false;
         };

@@ -16,7 +16,7 @@ import java.util.UUID;
 import java.util.function.LongSupplier;
 
 /**
- * W-034: the fleet-wide job scheduler. Jobs are submitted with a category (SCAN → SORT → PACK → PICKUP → DELIVER,
+ * W-034: the single-agent job scheduler. Jobs are submitted with a category (SCAN → SORT → PACK → PICKUP → DELIVER,
  * or the RECONCILE override) and a work-unit {@code chain}; a step is only claimable once its predecessor for the
  * same chain is COMPLETED, so a lone agent can chain every step without a handover. A claim is atomic — exactly one
  * agent owns a job, and an agent holds at most one physical transaction at a time. Each claim carries a lease with a
@@ -77,8 +77,7 @@ final class JobScheduler {
         var job = new Job(null, category, chain, detail == null ? "" : detail, null, Job.State.QUEUED, priority, 1);
         var events = new JsonArray();
         events.add(event("submitted", by));
-        jobs.put(job.id(), new Entry(job, 0, null, events));
-        save();
+        commit(job.id(), new Entry(job, 0, null, events));
         return job;
     }
 
@@ -90,7 +89,7 @@ final class JobScheduler {
     synchronized JsonObject claim(String agent) throws IOException {
         UUID.fromString(agent);
         expire();
-        if (busy(agent)) throw new Conflict("The agent already holds an active or uncertain job");
+        if (busy()) throw new Conflict("An active or uncertain job already holds the single physical work slot");
         Job candidate = null;
         for (var entry : jobs.values()) {
             var j = entry.job();
@@ -109,8 +108,7 @@ final class JobScheduler {
         long deadline = clock.getAsLong() + TTL;
         var events = jobs.get(candidate.id()).events().deepCopy();
         events.add(event("claimed", agent));
-        jobs.put(candidate.id(), new Entry(claimed, deadline, token, events));
-        save();
+        commit(candidate.id(), new Entry(claimed, deadline, token, events));
         out.add("job", claimed.json());
         out.addProperty("token", token);
         out.addProperty("deadline", deadline);
@@ -124,15 +122,17 @@ final class JobScheduler {
         long deadline = clock.getAsLong() + TTL;
         var events = entry.events().deepCopy();
         events.add(event("renewed", agent));
-        jobs.put(jobId, new Entry(entry.job(), deadline, token, events));
-        save();
+        commit(jobId, new Entry(entry.job(), deadline, token, events));
         return entry.job();
     }
 
     synchronized Job complete(String jobId, String agent, String token) throws IOException {
         expire();
-        var entry = held(jobId, agent);
-        if (!entry.token().equals(token)) throw new Conflict("Lease token mismatch");
+        var entry = require(jobId);
+        if (entry.token() == null || !entry.token().equals(token) || !agent.equals(entry.job().agent()))
+            throw new Conflict("Lease token or agent mismatch");
+        if (entry.job().state() == Job.State.COMPLETED) return entry.job();
+        entry = held(jobId, agent);
         return advanceTo(jobId, entry, entry.job().advance(Job.State.COMPLETED, agent), "completed", agent);
     }
 
@@ -203,9 +203,9 @@ final class JobScheduler {
         return entry;
     }
 
-    private boolean busy(String agent) {
+    private boolean busy() {
         return jobs.values().stream()
-                .anyMatch(e -> !e.job().terminal() && agent.equals(e.job().agent()));
+                .anyMatch(e -> e.job().held() || e.job().state() == Job.State.NEEDS_RECONCILIATION);
     }
 
     private boolean prerequisitesMet(Job job) {
@@ -223,26 +223,26 @@ final class JobScheduler {
     private void expire() throws IOException {
         long now = clock.getAsLong();
         boolean changed = false;
-        for (var entry : new ArrayList<>(jobs.entrySet())) {
+        var updated = new LinkedHashMap<>(jobs);
+        for (var entry : jobs.entrySet()) {
             var e = entry.getValue();
             var j = e.job();
             if (j.held() && e.deadline() > 0 && now >= e.deadline()) {
                 var events = e.events().deepCopy();
                 events.add(event("expired", j.agent()));
-                jobs.put(
+                updated.put(
                         entry.getKey(),
                         new Entry(j.advance(Job.State.NEEDS_RECONCILIATION, null), 0, e.token(), events));
                 changed = true;
             }
         }
-        if (changed) save();
+        if (changed) commit(updated);
     }
 
     private Job advanceTo(String jobId, Entry entry, Job next, String event, String by) throws IOException {
         var events = entry.events().deepCopy();
         events.add(event(event, by));
-        jobs.put(jobId, new Entry(next, entry.deadline(), entry.token(), events));
-        save();
+        commit(jobId, new Entry(next, entry.deadline(), entry.token(), events));
         return next;
     }
 
@@ -260,11 +260,17 @@ final class JobScheduler {
         return o;
     }
 
-    private void save() throws IOException {
+    private void commit(String id, Entry entry) throws IOException {
+        var updated = new LinkedHashMap<>(jobs);
+        updated.put(id, entry);
+        commit(updated);
+    }
+
+    private void commit(Map<String, Entry> updated) throws IOException {
         var root = new JsonObject();
         root.addProperty("schema", SCHEMA);
         var list = new JsonArray();
-        for (var entry : jobs.values()) {
+        for (var entry : updated.values()) {
             var o = entry.job().json();
             o.addProperty("deadline", entry.deadline());
             o.addProperty("token", entry.token());
@@ -273,5 +279,7 @@ final class JobScheduler {
         }
         root.add("jobs", list);
         AtomicFiles.write(file, root.toString().getBytes(StandardCharsets.UTF_8), true);
+        jobs.clear();
+        jobs.putAll(updated);
     }
 }

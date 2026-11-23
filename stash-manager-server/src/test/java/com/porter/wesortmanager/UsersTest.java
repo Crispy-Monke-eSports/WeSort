@@ -439,8 +439,7 @@ class UsersTest {
         var trail = "/api/v1/audit/orders?order=" + id + "&person=Builder";
         assertEquals(403, get(member, trail).status);
         assertEquals(403, get(officer, trail).status);
-        var auditOrder =
-                get(owner, trail).obj().getAsJsonArray("orders").get(0).getAsJsonObject();
+        var auditOrder = get(owner, trail).obj().getAsJsonArray("orders").get(0).getAsJsonObject();
         assertEquals(3, auditOrder.getAsJsonArray("events").size());
         assertEquals(
                 "order.approve",

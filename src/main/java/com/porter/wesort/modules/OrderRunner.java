@@ -54,6 +54,9 @@ final class OrderRunner {
         /** How many containers are waiting to be read again. */
         int staleCount();
 
+        /** All items carried for this order have been returned to verified stash storage. */
+        boolean cleanupComplete();
+
         double distance(Box box);
 
         Set<Integer> carry();
@@ -134,7 +137,7 @@ final class OrderRunner {
         Delivered,
         Failed,
         Cancelled,
-        NeedsReconciliation
+        Returning
     }
 
     /** The WeSort UUID carried by a shulker stack, or null. */
@@ -266,6 +269,8 @@ final class OrderRunner {
 
     private Order order;
     private State state = State.Running;
+    /** Final outcome is not reported until the sorter has put back loose order stock. */
+    private State pendingOutcome;
     private final List<Unit> units = new ArrayList<>();
     private int index;
     private int shulkersDelivered;
@@ -385,6 +390,7 @@ final class OrderRunner {
         planWaitSince = 0;
         lastForwardAt = 0;
         state = State.Running;
+        pendingOutcome = null;
         epoch++;
     }
 
@@ -410,6 +416,7 @@ final class OrderRunner {
 
         order = o;
         state = State.Running;
+        pendingOutcome = null;
         units.clear();
         index = 0;
         shulkersDelivered = 0;
@@ -449,9 +456,10 @@ final class OrderRunner {
             if (prior != null
                     && prior.id.equals(o.id)
                     && (prior.craftInFlight || prior.craftIndex > 0 || prior.craftMade > 0)) {
-                state = State.NeedsReconciliation;
-                phase = "crafting needs reconciliation";
-                message = "A manufacturing step may have consumed ingredients before restart; inspect physical stock";
+                // Never repeat a manufacturing mutation after restart. The
+                // physical journal is inspected separately; the current
+                // order aborts and rolls back carried ingredients.
+                finish(State.Failed, "Manufacturing interrupted; returning leftover ingredients");
                 return null;
             }
             Stash.ActiveOrder active = new Stash.ActiveOrder();
@@ -881,7 +889,7 @@ final class OrderRunner {
                     || outcome.crafted() <= 0
                     || outcome.consumed().isEmpty()) {
                 finish(
-                        State.NeedsReconciliation,
+                        State.Failed,
                         "Crafting interrupted or unverifiable: "
                                 + (outcome.failure() == null ? "no verified output" : outcome.failure()));
                 return;
@@ -889,7 +897,7 @@ final class OrderRunner {
             for (var e : outcome.consumed().entrySet()) {
                 long used = (long) craftUsed.getOrDefault(e.getKey(), 0) + e.getValue();
                 if (used > task.materials().getOrDefault(e.getKey(), 0)) {
-                    finish(State.NeedsReconciliation, "Craft used more than the reserved material budget");
+                    finish(State.Failed, "Craft used more than the reserved material budget");
                     return;
                 }
             }
@@ -1005,6 +1013,12 @@ final class OrderRunner {
 
     Report report() {
         if (order == null) return null;
+        if (state == State.Returning && owner.cleanupComplete()) {
+            state = pendingOutcome == null ? State.Failed : pendingOutcome;
+            pendingOutcome = null;
+            phase = state == State.Cancelled ? "cancelled" : "failed";
+            epoch++;
+        }
         // The wait for the re-read only runs out when it has stopped making progress: a big rescan can take long
         if (state == State.Running && !planned) {
             long now = System.currentTimeMillis();
@@ -1030,7 +1044,7 @@ final class OrderRunner {
             case Delivered -> "delivered";
             case Failed -> "failed";
             case Cancelled -> "cancelled";
-            case NeedsReconciliation -> "needs_reconciliation";
+            case Returning -> "in_progress";
         };
         String shown = state == State.Running && owner.rereading() ? "re-reading containers" : phase;
         return new Report(
@@ -1281,8 +1295,8 @@ final class OrderRunner {
         }
         if (cancelRequested) {
             finish(
-                    craftInFlight ? State.NeedsReconciliation : State.Cancelled,
-                    craftInFlight ? "Crafting was interrupted by cancellation" : "cancelled");
+                    State.Cancelled,
+                    craftInFlight ? "Crafting interrupted by cancellation; returning materials" : "cancelled");
             return new Idle();
         }
         if (!owner.gate() || mc.player == null) {
@@ -1330,7 +1344,7 @@ final class OrderRunner {
                 phase = "crafting " + task.item();
                 return new Craft(task.item(), remaining);
             }
-            finish(State.NeedsReconciliation, "Inconsistent crafting progress");
+            finish(State.Failed, "Inconsistent crafting progress");
             return new Idle();
         }
 
@@ -2161,12 +2175,14 @@ final class OrderRunner {
 
     private void finish(State end, String text) {
         if (order == null || state != State.Running) return;
-        if (craftInFlight && end != State.NeedsReconciliation) {
-            end = State.NeedsReconciliation;
-            text = "Manufacturing was interrupted; physical reconciliation required: " + text;
-        }
+        if (craftInFlight && end != State.Delivered)
+            text = "Manufacturing was interrupted; physical verification is required before cleanup: " + text;
         kits.dropOrderKit();
-        state = end;
+        // Failed/cancelled orders stay active while the sorter puts back all
+        // tracked inventory. Never acknowledge a terminal outcome while the
+        // bot still holds order items.
+        pendingOutcome = end == State.Failed || end == State.Cancelled ? end : null;
+        state = pendingOutcome == null ? end : State.Returning;
         endCrafting("the order ended");
         owner.crafter().release();
         if (craftedTotal > 0) text = (text.isEmpty() ? "" : text + "; ") + "crafted " + craftedTotal + " Shulker Box";
@@ -2175,7 +2191,9 @@ final class OrderRunner {
             text = text.isEmpty() ? unnamedNote : text + "; " + unnamedNote;
         text = cut(text);
         message = text;
-        phase = end == State.Delivered ? "ready for pickup" : end.name().toLowerCase();
+        phase = state == State.Returning
+                ? "returning items to stash"
+                : end == State.Delivered ? "ready for pickup" : end.name().toLowerCase();
         epoch++;
         say("Order " + order.id + " " + phase + (text.isEmpty() ? "." : ": " + text));
     }

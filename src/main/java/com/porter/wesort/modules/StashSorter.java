@@ -682,7 +682,7 @@ public class StashSorter extends Module {
 
         @Override
         public boolean drivingInput() {
-            return labeller.drivingInput() || placer.drivingInput() || ledgeSneaking;
+            return placer.drivingInput() || ledgeSneaking;
         }
 
         @Override
@@ -1032,11 +1032,6 @@ public class StashSorter extends Module {
         @Override
         public boolean isKitShulker(ItemStack stack) {
             return StashSorter.this.isKitShulker(stack);
-        }
-
-        @Override
-        public boolean signPending(Box box) {
-            return StashSorter.this.signPending(box);
         }
 
         @Override
@@ -1714,8 +1709,7 @@ public class StashSorter extends Module {
         if (!user) return;
 
         int added = addNearbyBoxes();
-        labeller.reset();
-        for (Box box : stash.boxes) {
+                for (Box box : stash.boxes) {
             box.unreachable = false;
             box.labelFailed = false;
             readSigns(box);
@@ -1833,7 +1827,6 @@ public class StashSorter extends Module {
         }
         ownedMenu = null;
         gate = Gate.Running;
-        labeller.deactivate();
         ledgeGuard(false);
         ground.abort();
         // Emptying a bundle: whatever is on the cursor goes into a carry slot
@@ -2081,7 +2074,7 @@ public class StashSorter extends Module {
             }
             case Running -> {
                 // Stay-on mode with nothing to do holds nothing of anyone's, so there's nothing to give way
-                if (foreign != null && !restingIdle() && !(job == Job.Label && labeller.critical())) {
+                if (foreign != null && !restingIdle()) {
                     beginYield(foreign);
                     return;
                 }
@@ -2102,7 +2095,6 @@ public class StashSorter extends Module {
             remindStuck();
             releaseDeferred();
             applyStale();
-            applySignChanges();
             // The perimeter changed while a job was under way: containers outside it go, the ones inside come in
             if (areaDirty) applyArea();
             // Chunks of the perimeter that loaded since, with containers in them
@@ -2160,10 +2152,6 @@ public class StashSorter extends Module {
         }
         if (job == Job.Unbundle) {
             unbundleTick();
-            return;
-        }
-        if (job == Job.Label) {
-            labeller.tick();
             return;
         }
         if (job == Job.Name) {
@@ -2276,7 +2264,6 @@ public class StashSorter extends Module {
         if (menu == ownedMenu) return true;
         if (job == null || job == Job.Ground || job == Job.Explore || job == Job.Unbundle) return false;
         // A chest that opens while a sign is going up is the click's doing, and ours to close
-        if (job == Job.Label) return labeller.ownsChest(menu);
         if (handle != null) return handle == Handle.Open && menu instanceof ShulkerBoxMenu;
         // Whatever opened soon after our own click on the box is ours, whatever it turns out to be (the wrong size, an
         // ender chest, a plugin menu): it is closed and the click made again, never waited on as somebody else's
@@ -2489,7 +2476,6 @@ public class StashSorter extends Module {
         wait = 0;
         releaseGoal();
         ledgeGuard(false);
-        if (job == Job.Label) labeller.yielded();
         if (job == Job.ChestPlace) placer.release();
         if (job != null) {
             yielder.interrupted();
@@ -2578,10 +2564,6 @@ public class StashSorter extends Module {
     private void resumeJob() {
         wait = delay.get();
         if (job == null) return;
-        if (job == Job.Label) {
-            labeller.resume();
-            return;
-        }
         if (handle != null) {
             resumeHandle();
             return;
@@ -3025,7 +3007,6 @@ public class StashSorter extends Module {
         if (compactor.active() && (!rereading || compactor.plan.finishOnly) && compactor.next()) return true;
 
         // Something nothing is signed for gets a new category on an empty chest, before it's put away
-        if (!rereading && labeller.next()) return true;
 
         if (!rereading && repackOn() && nextRepackJob()) return true;
 
@@ -3232,7 +3213,7 @@ public class StashSorter extends Module {
             if (!fullBundle(stack)
                     || kitBuilder.holds(slot)
                     || kitBuilder.material(stack)
-                    || labeller.reservedSlot(slot)
+                    
                     || setAside.contains(slot)
                     || ticks < unbundleBlocked.getOrDefault(slot, -1)) continue;
 
@@ -6002,7 +5983,7 @@ public class StashSorter extends Module {
                     || crafter.holds(slot)
                     || crafter.reserved(slot)
                     || slot == anvilSlot
-                    || labeller.reservedSlot(slot)
+                    
                     || stuckCarried.containsKey(slot)) continue;
             String uuid = uuidOf(stack);
             // The box fetched for renaming, even mid-scan: it still needs its new name
@@ -12315,8 +12296,7 @@ public class StashSorter extends Module {
             returnGaveUp.clear();
             returnWarned.clear();
             stashHeld.clear();
-            labeller.reset();
-            compactor.reset();
+                        compactor.reset();
             swapBackFrom = swapBackTo = -1;
             hotbarDisplaced = ItemStack.EMPTY;
             stashWatch.clear();
@@ -12351,11 +12331,6 @@ public class StashSorter extends Module {
         }
 
         @EventHandler
-        private void onOpenScreen(OpenScreenEvent event) {
-            if (sorting() && job == Job.Label) labeller.onScreen(event);
-        }
-
-        @EventHandler
         private void onInteract(InteractBlockEvent event) {
             if (mc.player == null) return;
             interactPos = event.result.getBlockPos();
@@ -12385,7 +12360,6 @@ public class StashSorter extends Module {
             }
             // Safeguard for the sneak: it never outlives the module
             if (ledgeSneaking && !running()) ledgeGuard(false);
-            labeller.restoreHand();
             placer.restoreHand();
             restoreHotbar();
 
@@ -12397,14 +12371,9 @@ public class StashSorter extends Module {
                     swapBackFrom = swapBackTo = -1;
                     hotbarDisplaced = ItemStack.EMPTY;
                     // Dead, or in another dimension: a sign being put up is lost with the old player
-                    labeller.abandon();
                     placer.abandon();
                     chestSession = false;
                     chestHolding = false;
-                    if (job == Job.Label) {
-                        job = null;
-                        target = null;
-                    }
                     // A crafting table being gathered, crafted or placed is lost with the old player: whoever waited
                     // for it is told
                     boolean tableWork = tableSession || (placingTable && job == Job.AnvilPlace);
@@ -12932,7 +12901,7 @@ public class StashSorter extends Module {
         Set<Integer> setAside = compactor.reserved();
         for (int slot : carriedSlots()) {
             // Signs kept for labelling, and what compacting is gathering and packing, are not put away
-            if (labeller.reservedSlot(slot) || setAside.contains(slot)) continue;
+            if (setAside.contains(slot)) continue;
             // A bundle with things in it is emptied, not put away
             if (fullBundle(mc.player.getInventory().getItem(slot))
                     || orderRunner.claims(mc.player.getInventory().getItem(slot))) continue;
@@ -12964,7 +12933,7 @@ public class StashSorter extends Module {
 
     private boolean isOwn(int slot, ItemStack stack) {
         // Moved out of the way of a sign or a shulker
-        if (labeller.displaced(slot) || (slot == swapBackFrom && swapBackFrom != -1)) return true;
+        if (slot == swapBackFrom && swapBackFrom != -1) return true;
         if (!ownKind(stack)) return false;
         ItemStack held = stashHeld.get(slot);
         return held == null || !ItemStack.isSameItemSameComponents(stack, held);

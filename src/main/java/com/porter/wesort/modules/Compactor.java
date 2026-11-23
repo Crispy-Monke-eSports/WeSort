@@ -3,7 +3,6 @@ package com.porter.wesort.modules;
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 import com.porter.wesort.data.ShulkerUuid;
-import com.porter.wesort.stash.Categories;
 import com.porter.wesort.stash.StackInfo;
 import com.porter.wesort.stash.StackInfo.BulkKey;
 import com.porter.wesort.stash.Stash;
@@ -12,7 +11,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
@@ -48,13 +46,9 @@ final class Compactor {
 
         List<Box> destinationsFor(ItemStack stack);
 
-        boolean isMisc(Box box);
-
         boolean isKitBox(Box box);
 
         boolean isKitShulker(ItemStack stack);
-
-        boolean signPending(Box box);
 
         boolean gatherBlocked(Box box);
 
@@ -344,7 +338,6 @@ final class Compactor {
                 && !b.stale
                 && !b.dropOff
                 && !b.noCompact
-                && !owner.signPending(b)
                 && !owner.isKitBox(b)
                 && !b.protectedStorage;
     }
@@ -354,7 +347,7 @@ final class Compactor {
      */
     private boolean hasHome(ItemStack stack) {
         List<Box> homes = owner.destinationsFor(stack);
-        return !homes.isEmpty() && homes.stream().noneMatch(owner::isMisc);
+        return !homes.isEmpty();
     }
 
     // Reservation
@@ -630,7 +623,6 @@ final class Compactor {
             if (!box.sortable()
                     || box.stale
                     || box.noCompact
-                    || owner.signPending(box)
                     || owner.fetchBlocked(box)
                     || owner.isKitBox(box)) continue;
             for (int i = 0; i < box.contents.length; i++) {

@@ -251,8 +251,8 @@ final class OrderRunner {
     private record RawKey(
             net.minecraft.world.item.Item item, net.minecraft.core.component.DataComponentMap components) {}
 
-    private static final long PAUSE_TIMEOUT_MS = 2 * 60 * 60 * 1000L;
-    private static final long REREAD_TIMEOUT_MS = 30 * 60 * 1000L;
+    private static final long PAUSE_TIMEOUT_MS = 5 * 60 * 1000L;
+    private static final long REREAD_TIMEOUT_MS = 5 * 60 * 1000L;
     private static final int MAX_FULL_TRIES = 2;
     /** Times one shulker asks the delivery storage to grow before the order waits instead. */
     private static final int MAX_EXPANDS = 6;
@@ -263,9 +263,9 @@ final class OrderRunner {
     private static final int MAX_NAME_TRIES = 2;
     private static final int MAX_CRAFT_TRIES = 2;
     /** Transient hiccups (lag, a container that opens slowly, items still being re-read) wait this long and try again. */
-    private static final long RETRY_WAIT_MS = 60_000L;
-    /** One shulker waits at most this long in total before it is skipped so the rest of the order can deliver. */
-    private static final long UNIT_WAIT_MAX_MS = 2 * 60 * 60 * 1000L;
+    private static final long RETRY_WAIT_MS = 20_000L;
+    /** An irrecoverable unit fails the whole order so partially staged packages are rolled back. */
+    private static final long UNIT_WAIT_MAX_MS = 3 * 60 * 1000L;
 
     private static final String SHULKER_BOX = "minecraft:shulker_box";
     /** Bottles of enchanting are thrown for the XP a rename costs: top up to this level when short. */
@@ -328,8 +328,8 @@ final class OrderRunner {
     // time the order moved forward at all. An order that never moves still lets go after a backstop.
     private long planWaitSince;
     private long lastForwardAt;
-    /** An order with no forward progress at all still lets go after this long, so it can't block the queue forever. */
-    private static final long ORDER_STALL_MAX_MS = 2 * 60 * 60 * 1000L;
+    /** Bounded waiting: orders with no progress fail and enter rollback instead of monopolizing the queue. */
+    private static final long ORDER_STALL_MAX_MS = 10 * 60 * 1000L;
 
     private Survey lastSurvey;
     private int lastSurveyTick = -1;
@@ -2043,7 +2043,7 @@ final class OrderRunner {
         if (u.waitSince == 0) u.waitSince = now;
         if (now - u.waitSince > UNIT_WAIT_MAX_MS) {
             u.waitSince = 0;
-            skip(why + " (gave up waiting)");
+            finish(State.Failed, why + " (unit could not be completed; rolling back order)");
             return new Idle();
         }
         noteProblem(why + " (trying again)");

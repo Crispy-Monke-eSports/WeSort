@@ -33,6 +33,12 @@ final class StockLedger {
             boolean shared) {}
 
     private static final int APPLICATION_ID = 0x57535254;
+    /** A fully initialized v7 database must never recreate missing authoritative tables. */
+    private static final Set<String> REQUIRED_V7_TABLES = Set.of(
+            "physical_operations", "physical_decisions", "kit_jobs", "kit_meta",
+            "kit_template_versions", "kit_templates", "physical_snapshots", "physical_slots",
+            "return_intake", "automation_leases", "box_uuids", "box_uuid_history",
+            "box_jobs", "stock_meta", "stock_sources", "stock_parts", "stock_members", "stock_indexes");
     private final Path file;
     private final LongSupplier clock;
     private final long maxAge;
@@ -61,11 +67,17 @@ final class StockLedger {
                         throw new IOException("Foreign guild database format");
                 }
                 s.execute("PRAGMA journal_mode=WAL");
+                int schema;
                 try (var r = s.executeQuery("PRAGMA user_version")) {
-                    if (r.next() && r.getInt(1) > 7) throw new IOException("Unsupported guild database schema");
+                    if (!r.next()) throw new IOException("Missing guild database schema");
+                    schema = r.getInt(1);
+                    if (schema > 7) throw new IOException("Unsupported guild database schema");
                 }
                 s.execute("BEGIN IMMEDIATE");
                 try {
+                    // Validate before any schema repair or recovery writes. A missing
+                    // lease or journal table is not equivalent to an empty table.
+                    if (existed) validateExistingDatabase(c, schema);
                     s.execute(
                             "CREATE TABLE IF NOT EXISTS physical_operations(id TEXT PRIMARY KEY,server TEXT NOT NULL,agent TEXT NOT NULL,stash TEXT NOT NULL,revision INTEGER NOT NULL,checksum TEXT NOT NULL,payload TEXT NOT NULL,state TEXT NOT NULL,last_seen INTEGER NOT NULL,fence_revision INTEGER NOT NULL)");
                     s.execute(
@@ -135,6 +147,41 @@ final class StockLedger {
         }
     }
 
+    private static void validateExistingDatabase(Connection c, int schema) throws SQLException, IOException {
+        try (var s = c.createStatement();
+                var rows = s.executeQuery("PRAGMA quick_check")) {
+            if (!rows.next() || !"ok".equals(rows.getString(1)) || rows.next())
+                throw new IOException("Guild database failed integrity check");
+        }
+        // Older supported schemas are migrated by the existing initialization.
+        // Once v7 is committed, missing tables/metadata indicate data loss.
+        if (schema < 7) return;
+        var missing = new TreeSet<>(REQUIRED_V7_TABLES);
+        try (var s = c.createStatement();
+                var rows = s.executeQuery("SELECT name FROM sqlite_schema WHERE type='table'")) {
+            while (rows.next()) missing.remove(rows.getString(1));
+        }
+        if (!missing.isEmpty()) throw new IOException("Guild database is missing authoritative tables: " + missing);
+        try (var s = c.createStatement();
+                var rows = s.executeQuery("SELECT id,epoch,revision FROM stock_meta")) {
+            if (!rows.next() || rows.getInt(1) != 1 || rows.getLong(3) < 0)
+                throw new IOException("Invalid guild stock metadata");
+            String epoch = rows.getString(2);
+            try {
+                if (epoch == null || !UUID.fromString(epoch).toString().equals(epoch))
+                    throw new IllegalArgumentException("Invalid epoch");
+            } catch (IllegalArgumentException invalid) {
+                throw new IOException("Invalid guild stock epoch", invalid);
+            }
+            if (rows.next()) throw new IOException("Duplicate guild stock metadata");
+        }
+        try (var s = c.createStatement();
+                var rows = s.executeQuery("SELECT id,revision FROM kit_meta")) {
+            if (!rows.next() || rows.getInt(1) != 1 || rows.getLong(2) < 0 || rows.next())
+                throw new IOException("Invalid guild kit metadata");
+        }
+    }
+
     private static long policy() {
         String value = System.getenv().getOrDefault("WESORT_STOCK_MAX_AGE_SECONDS", "300");
         long seconds = Long.parseLong(value);
@@ -149,6 +196,13 @@ final class StockLedger {
             s.execute("PRAGMA foreign_keys=ON");
             s.execute("PRAGMA busy_timeout=5000");
             s.execute("PRAGMA synchronous=FULL");
+        } catch (SQLException failure) {
+            try {
+                c.close();
+            } catch (SQLException closeFailure) {
+                failure.addSuppressed(closeFailure);
+            }
+            throw failure;
         }
         return c;
     }

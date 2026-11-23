@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""W-019: actual Signs/Tiers sorting, blocked capacity and protected sources in vanilla 26.3."""
+"""Physical tier sorting, blocked capacity and protected sources in vanilla 26.3."""
 import argparse
 from collections import Counter
 import importlib.util
@@ -15,16 +15,12 @@ require = world.require
 
 class SortingHarness(world.Harness):
     locations = list(range(0, 33, 3))
-    labels = {3: 'dias', 6: 'building blocks', 9: 'diamond swords', 12: 'dias', 15: 'dias', 18: 'misc', 24: 'strength', 27: 'egaps'}
     def fixture(self):
         super().fixture()
         self.rcon.command('fill -1 64 -4 35 66 4 minecraft:air')
         self.rcon.command('kill @e[type=minecraft:item]')
         for x in self.locations:
             self.rcon.command(f'setblock {x} 64 3 minecraft:barrel')
-            if x in self.labels:
-                self.rcon.command(f'setblock {x} 65 3 minecraft:oak_sign')
-                self.rcon.command(f'data merge block {x} 65 3 {{front_text:{{messages:[{{text:"{self.labels[x]}"}},{{text:""}},{{text:""}},{{text:""}}]}}}}')
         self.setitem(0, 0, 'diamond', 32); self.setitem(0, 1, 'dirt', 16)
         self.setitem(0, 2, 'diamond_sword[minecraft:custom_name={text:"Do not rename"},minecraft:damage=3,minecraft:enchantments={"minecraft:unbreaking":1}]', 1)
         self.setitem(0, 3, 'enchanted_golden_apple', 4)
@@ -135,12 +131,9 @@ class SortingHarness(world.Harness):
             before_clicks = self.command('state')['state']['attemptedClicks']
             self.teleport(0.5, 2); self.command('sort-config')
             self.command('open', x=0, y=64, z=3, slots=27, item='minecraft:diamond', count=32)
-            labels = ['dias', 'building blocks', 'diamond swords', 'egaps', 'strength', 'Unbreaking I', 'Do not rename', 'misc']
-            diagnostic = self.command('sort-explain', labels=labels)['state']
+            diagnostic = self.command('sort-explain')['state']
             (self.evidence / 'sort-diagnostics.json').write_text(json.dumps(diagnostic, indent=2) + '\n')
             probes = diagnostic['probes']
-            require(next(p for p in probes if p['item'].startswith('minecraft:diamond_sword'))['scores']['Unbreaking I'] > 0, 'Actual enchantment category missing')
-            require(next(p for p in probes if p['item'].startswith('minecraft:potion'))['scores']['strength'] > 0, 'Actual potion category missing')
             require(any(c['reason'] == 'PROTECTED' for c in probes[0]['candidates']) and any(c['reason'] == 'EXCLUDED' for c in probes[0]['candidates']), 'Protection diagnostics missing')
             self.command('close')
             activated = self.command('sort-start')['state']['sorterStorage']

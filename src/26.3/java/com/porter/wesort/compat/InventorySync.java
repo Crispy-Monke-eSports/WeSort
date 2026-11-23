@@ -420,9 +420,9 @@ public final class InventorySync {
                             case STOP_DESTROY_BLOCK -> !WorldInteractionGuard.allowBreakStop(action.getPos());
                             default -> false;
                         })
-                // Sign text travels in its own packet: it needs a live SIGN permit like any mutation.
-                || (event.packet instanceof ServerboundSignUpdatePacket sign
-                        && !WorldInteractionGuard.allowSign(sign.pos()))) {
+                // WeSort no longer issues sign-write permissions. Fail closed on
+                // any sign text packet while the dedicated Manager agent is active.
+                || (event.packet instanceof ServerboundSignUpdatePacket && WorldInteractionGuard.dedicated())) {
             if (event.packet instanceof ServerboundUseItemOnPacket && expectSpot != null)
                 intentCounted("place-packet-guard-denied");
             event.cancel();

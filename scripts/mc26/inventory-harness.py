@@ -230,23 +230,21 @@ class InventoryHarness(world.Harness):
         self.ok('named filled shulker place/open/break/pickup/return preserves server-confirmed contents and component fingerprint')
 
     def block_round_trips(self):
-        for source_slot, item in enumerate(['minecraft:chest', 'minecraft:barrel', 'minecraft:oak_sign']):
+        # Neither the Agent nor the E2E control channel is allowed to write Minecraft signs.
+        rejected = self.command(
+            'sign', x=0, y=65, z=-3, lines=['WeSort', 'Should not write', '', ''],
+            allow_failure=True)
+        require(not rejected['success'] and 'Unsupported action' in rejected['message'],
+                'Minecraft sign editing is still exposed by the Agent')
+        for source_slot, item in enumerate(['minecraft:chest', 'minecraft:barrel']):
             self.teleport(6.5, -1.5)
             state = self.command('open', x=6, y=64, z=-3, slots=27, item='minecraft:chest', count=1, capture=False)['state']
             fingerprint = state['slots'][source_slot]['fingerprint']
             taken = self.click(state, source_slot)['state']
             self.select_item(taken, 27, item)
             self.command('place', x=6, y=64, z=0, block=item)
-            if item == 'minecraft:oak_sign':
-                self.command('close')  # close the placement editor before explicitly opening the controlled write
-                lines = ['WeSort', 'Verified', '26.3', '']
-                self.command('sign', x=6, y=64, z=0, lines=lines)
-                actual = self.rcon.command('data get block 6 64 0 front_text.messages')
-                require(all(text in actual for text in lines if text), 'Sign text not present in authoritative server NBT')
-                (self.evidence / 'sign-text.json').write_text(json.dumps({'expected': lines, 'server': actual}, indent=2) + '\n')
-            else:
-                self.command('open', x=6, y=64, z=0, slots=27, item='minecraft:air', count=0, capture=False)
-                self.command('close')
+            self.command('open', x=6, y=64, z=0, slots=27, item='minecraft:air', count=0, capture=False)
+            self.command('close')
             self.break_and_pick_up((6, 64, 0), item, fingerprint)
             self.teleport(6.5, -1.5)
             # The staging first slot may be empty while its chest item is in the player inventory.
@@ -258,7 +256,10 @@ class InventoryHarness(world.Harness):
             self.command('close')
         loose = self.rcon.command('execute if entity @e[type=minecraft:item] run time query gametime')
         require('time is ' not in loose, 'Unexpected loose item entities remain after pickup')
-        self.ok('real chest/barrel/sign place/open/write/break/pickup round trips; no loose drops or component changes')
+        # Signs remain ordinary stock items; the Agent must never place or edit them.
+        signs = self.rcon.command('data get block 6 64 -3 Items')
+        require('minecraft:oak_sign' in signs, 'Ordinary sign item vanished from the storage inventory')
+        self.ok('real chest/barrel place/open/break/pickup round trips and untouched sign inventory; no loose drops')
 
     def limited_range(self):
         self.teleport(0.5, -1.5)

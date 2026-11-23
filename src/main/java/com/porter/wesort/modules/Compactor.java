@@ -3,7 +3,6 @@ package com.porter.wesort.modules;
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 import com.porter.wesort.data.ShulkerUuid;
-import com.porter.wesort.stash.Categories;
 import com.porter.wesort.stash.StackInfo;
 import com.porter.wesort.stash.StackInfo.BulkKey;
 import com.porter.wesort.stash.Stash;
@@ -12,7 +11,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
@@ -48,13 +46,9 @@ final class Compactor {
 
         List<Box> destinationsFor(ItemStack stack);
 
-        boolean isMisc(Box box);
-
         boolean isKitBox(Box box);
 
         boolean isKitShulker(ItemStack stack);
-
-        boolean signPending(Box box);
 
         boolean gatherBlocked(Box box);
 
@@ -336,17 +330,11 @@ final class Compactor {
     }
 
     /**
-     * A container its stacks and shulkers may be taken from: not a drop-off, a kit chest, one marked compactSkip, or one
-     * whose sign is changing.
+     * A container its stacks and shulkers may be taken from: not a drop-off, protected storage,
+     * a Manager-assigned kit chest or one marked compactSkip.
      */
     private boolean source(Box b) {
-        return b.sortable()
-                && !b.stale
-                && !b.dropOff
-                && !b.noCompact
-                && !owner.signPending(b)
-                && !owner.isKitBox(b)
-                && b.labels.stream().noneMatch(Categories::isKeepWhole);
+        return b.sortable() && !b.stale && !b.dropOff && !b.noCompact && !owner.isKitBox(b) && !b.protectedStorage;
     }
 
     /**
@@ -354,7 +342,7 @@ final class Compactor {
      */
     private boolean hasHome(ItemStack stack) {
         List<Box> homes = owner.destinationsFor(stack);
-        return !homes.isEmpty() && homes.stream().noneMatch(owner::isMisc);
+        return !homes.isEmpty();
     }
 
     // Reservation
@@ -621,29 +609,18 @@ final class Compactor {
     }
 
     /**
-     * An unnamed empty shulker in the stash that may be taken: in a chest signed for shulkers first, then the nearest,
-     * never one in a kit chest or a container marked compactSkip.
+     * An unnamed empty shulker from the nearest safe unprotected inventory container,
+     * never from a kit chest or a container marked compactSkip.
      */
     private Found findEmptyShulker() {
         Found best = null;
-        boolean bestSigned = false;
         for (Box box : owner.stash().boxes) {
-            if (!box.sortable()
-                    || box.stale
-                    || box.noCompact
-                    || owner.signPending(box)
-                    || owner.fetchBlocked(box)
-                    || owner.isKitBox(box)) continue;
-            if (box.labels.stream().anyMatch(Categories::isKeepWhole)) continue;
-            boolean signed =
-                    box.labels.stream().anyMatch(l -> l.toLowerCase(Locale.ROOT).contains("shulker"));
+            if (!box.sortable() || box.stale || box.noCompact || owner.fetchBlocked(box) || owner.isKitBox(box))
+                continue;
             for (int i = 0; i < box.contents.length; i++) {
                 if (!emptyShulker(box.contents[i])) continue;
-                if (best == null
-                        || (signed && !bestSigned)
-                        || (signed == bestSigned && owner.closer(box, best.box()))) {
+                if (best == null || owner.closer(box, best.box())) {
                     best = new Found(box, i);
-                    bestSigned = signed;
                 }
                 break;
             }

@@ -33,7 +33,6 @@ public class Stash {
     public static class Box {
         public final BlockPos pos;
         public final List<BlockPos> parts;
-        public final List<String> labels = new ArrayList<>();
         public ItemStack[] contents;
         public boolean excluded;
         public boolean dropOff;
@@ -61,11 +60,6 @@ public class Stash {
         public boolean observationUnreachable;
         public boolean unreachable;
         public int order;
-        // The text of the sign the sorter put up on this container itself, and where, saved with the stash
-        public String autoLabel;
-        public BlockPos autoSignPos;
-        // Putting a sign on it failed this run
-        public boolean labelFailed;
         // Never used to gather stacks or shulkers for compacting
         public boolean noCompact;
         public boolean protectedStorage;
@@ -609,8 +603,6 @@ public class Stash {
             if (box.wasExcluded) tag.putBoolean("wasExcluded", true);
             if (box.wasDropOff) tag.putBoolean("wasDropOff", true);
             if (box.noCompact) tag.putBoolean("noCompact", true);
-            if (box.autoLabel != null) tag.putString("autoLabel", box.autoLabel);
-            if (box.autoSignPos != null) tag.put("autoSignPos", positions(List.of(box.autoSignPos)));
 
             if (box.known()) {
                 tag.putInt("size", box.contents.length);
@@ -1051,11 +1043,6 @@ public class Stash {
                     box.wasExcluded = flag(tag, "wasExcluded");
                     box.wasDropOff = flag(tag, "wasDropOff");
                     box.noCompact = flag(tag, "noCompact");
-                    box.autoLabel = string(tag.get("autoLabel"));
-                    if (tag.get("autoSignPos") instanceof ListTag sign) {
-                        List<BlockPos> at = readPositions(sign);
-                        if (!at.isEmpty()) box.autoSignPos = at.getFirst();
-                    }
 
                     int size = number(tag.get("size"), -1);
                     if (size >= 0) {

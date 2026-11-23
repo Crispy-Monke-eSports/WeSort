@@ -35,7 +35,6 @@ public final class Kits {
     private static final List<Kit> kits = new ArrayList<>();
     private static final Map<StackKey, Match> matches = new HashMap<>();
     private static final Match NONE = new Match(null, false, false);
-    private static final Map<String, Boolean> labels = new HashMap<>();
     private static String loadedFor;
     private static int version;
 
@@ -74,7 +73,6 @@ public final class Kits {
     private static void changed() {
         version++;
         matches.clear();
-        labels.clear();
     }
 
     private static Kit assigned;
@@ -246,38 +244,20 @@ public final class Kits {
     // Chests
 
     /**
-     * Whether a sign line names the chest of some saved kit.
+     * A kit staging container is identified by the Manager's assigned physical
+     * source, never by arbitrary text on a nearby Minecraft sign.
      */
-    public static boolean isKitLabel(String label) {
-        ensureLoaded();
-        if (kits.isEmpty()) return false;
-        return labels.computeIfAbsent(label, l -> {
-            for (Kit kit : kits) if (kit.labelMatches(l)) return true;
-            return false;
-        });
-    }
-
     public static boolean isKitBox(Box box) {
-        if (assigned != null && sourceId(box).equals(destination)) return true;
-        for (String label : box.labels) if (isKitLabel(label)) return true;
-        return false;
+        return assigned != null && sourceId(box).equals(destination);
     }
 
-    public static boolean isHome(Box box, Kit kit) {
-        if (kit == assigned) return sourceId(box).equals(destination);
-        for (String label : box.labels) if (kit.labelMatches(label)) return true;
-        return false;
-    }
-
-    /**
-     * The chests a finished kit goes to: signed with its name.
-     */
+    /** Only the current signed Manager assignment may designate a kit home. */
     public static List<Box> homes(Kit kit, Stash stash) {
-        List<Box> homes = new ArrayList<>();
-        if (stash == null) return homes;
+        if (stash == null || kit == null || kit != assigned || !buildable(kit)) return List.of();
+        List<Box> found = new ArrayList<>();
         for (Box box : com.porter.wesort.compat.ObservationRuntime.boxes(stash))
-            if (box.sortable() && !box.dropOff && isHome(box, kit)) homes.add(box);
-        return homes;
+            if (box.sortable() && !box.dropOff && sourceId(box).equals(destination)) found.add(box);
+        return found;
     }
 
     /**

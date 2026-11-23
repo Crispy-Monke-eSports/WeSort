@@ -436,6 +436,25 @@ public final class WorldTestDriver {
                         com.porter.wesort.compat.PhysicalJournalRuntime.releaseReconciled();
                     respond(true, "actual StashSorter configured", state());
                 }
+                case "sort-stop-when-idle" -> {
+                    // End an E2E sorting phase only between physical operations. A
+                    // fixture must not stop the module with an unverified click,
+                    // open menu, or unfinished durable journal; those are genuine
+                    // reconciliation conditions, not a reason to weaken the fence.
+                    var sorter = com.porter.wesort.WeSortAddon.sorter();
+                    if (sorter.isActive()
+                            && (sorter.physicalWorkInProgress()
+                                    || !InventorySync.ready()
+                                    || PhysicalJournalRuntime.unfinished()
+                                    || !PhysicalJournalRuntime.status().equals("READY")
+                                    || mc.player.containerMenu != mc.player.inventoryMenu
+                                    || !mc.player.containerMenu.getCarried().isEmpty())) {
+                        respond(false, "Physical sorting is not yet safe to stop", state());
+                        return;
+                    }
+                    if (sorter.isActive()) sorter.toggle();
+                    respond(true, "actual StashSorter stopped between verified operations", state());
+                }
                 case "sort-stop" -> {
                     var sorter = com.porter.wesort.WeSortAddon.sorter();
                     if (sorter.isActive()) sorter.toggle();

@@ -83,22 +83,24 @@ class BootstrapRuntimeTest {
         assertEquals(".Bedrock Gamer", credentials.find(id).binding().playerName());
         credentials.notePlayer(id, "bad\nname");
         assertEquals(".Bedrock Gamer", credentials.find(id).binding().playerName());
-        // Labels, not bindings, distinguish new slots.
+        // Exactly one active agent key per Manager. Revoke before rotating.
+        assertThrows(IllegalArgumentException.class, () -> credentials.issue("spare"));
+        assertTrue(credentials.revoke(id));
+        assertNull(credentials.find(id));
         String anotherKey = credentials.issue("agent0");
         String anotherId = anotherKey.substring(0, anotherKey.indexOf('.'));
         assertTrue(anotherKey.startsWith(anotherId + "."));
         assertNotNull(credentials.find(anotherId));
-        for (int i = 2; i < AgentCredentials.MAX_ACTIVE_SLOTS; i++) {
-            credentials.issue("Agent" + i);
-        }
         assertThrows(IllegalArgumentException.class, () -> credentials.issue("Agent5"));
         assertThrows(IllegalArgumentException.class, () -> credentials.issue(""));
         assertTrue(credentials.revoke(anotherId));
         assertNull(credentials.find(anotherId));
-        assertNotNull(credentials.issue("Agent5"));
+        String replacementKey = credentials.issue("Agent5");
+        String replacementId = replacementKey.substring(0, replacementKey.indexOf('.'));
+        assertNotNull(credentials.find(replacementId));
         // Only credentials persist across restarts, not transient player presence.
         var reopened = new AgentCredentials(data, clock::get);
-        assertNull(reopened.find(id).binding());
+        assertNull(reopened.find(replacementId).binding());
         assertTrue(reopened.scopedOnly());
     }
 

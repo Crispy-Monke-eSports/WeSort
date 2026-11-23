@@ -11,12 +11,11 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <p>Mutations bump named channels; each connected browser stream holds a queue and gets the event
  * within milliseconds. Channels are coarse on purpose — the page refetches through TanStack Query,
- * which de-duplicates and keeps the cache consistent — so a bump is always safe to send even when
- * nothing visible changed.
+ * which de-duplicates and keeps the cache consistent — but rejected writes do not produce a bump.
  *
  * <p>Static on purpose: the stores and the hub stay free of wiring, and bumps from new routes work
- * without registration. {@link Router} calls {@link #routeChanged} after every handled mutating API
- * call, so new endpoints are live by default.
+ * without registration. {@link Router} calls {@link #routeChanged} only after a mutating API
+ * call has returned a successful HTTP response. Transaction-level publication remains a follow-up.
  */
 final class LiveEvents {
     /** One broadcast: the revision after the bump and the channels it touches. */
@@ -80,7 +79,7 @@ final class LiveEvents {
     }
 
     /**
-     * Channel bumps for a handled mutating API call. Heartbeats only refresh presence (throttled);
+     * Channel bumps for a successful mutating API call. Heartbeats only refresh presence (throttled);
      * everything else pushes immediately.
      */
     static void routeChanged(String path, String method) {
@@ -119,7 +118,6 @@ final class LiveEvents {
         }
         if (path.startsWith("/api/v1/kits")
                 || path.startsWith("/api/v1/guild")
-                || path.startsWith("/api/v1/quotas")
                 || path.startsWith("/api/v1/stash-defs")
                 || path.startsWith("/api/v1/server")
                 || path.startsWith("/api/v1/agents")

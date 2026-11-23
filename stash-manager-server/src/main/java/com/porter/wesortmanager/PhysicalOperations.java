@@ -296,6 +296,12 @@ final class PhysicalOperations {
                 var out = new JsonObject();
                 out.addProperty("id", decision);
                 out.addProperty("operation", id);
+                // The first automatically dispatched decision must carry exactly
+                // the same revision and checksum as decisions loaded on later
+                // polls. Without them the client rejects this valid recovery
+                // request as stale and reports a permanent inspection failure.
+                out.addProperty("revision", revision);
+                out.addProperty("checksum", checksum);
                 out.addProperty("action", "INSPECT");
                 return out;
             } catch (Exception failure) {

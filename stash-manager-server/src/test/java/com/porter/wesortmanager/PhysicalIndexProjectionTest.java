@@ -18,8 +18,9 @@ class PhysicalIndexProjectionTest {
     Path data;
 
     private static JsonObject index(long count) {
-        return JsonParser.parseString("{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"items\":[{\"key\":\"minecraft:diamond\",\"id\":\"minecraft:diamond\",\"count\":"
-                        + count + "}]}")
+        return JsonParser.parseString(
+                        "{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"items\":[{\"key\":\"minecraft:diamond\",\"id\":\"minecraft:diamond\",\"count\":"
+                                + count + "}]}")
                 .getAsJsonObject();
     }
 
@@ -57,7 +58,16 @@ class PhysicalIndexProjectionTest {
 
         assertTrue(Files.isRegularFile(mirror));
         assertEquals(2, ledger.revision());
-        assertEquals(32, ledger.sources().getFirst().value().getAsJsonArray("items").get(0).getAsJsonObject().get("count").getAsLong());
+        assertEquals(
+                32,
+                ledger.sources()
+                        .getFirst()
+                        .value()
+                        .getAsJsonArray("items")
+                        .get(0)
+                        .getAsJsonObject()
+                        .get("count")
+                        .getAsLong());
     }
 
     @Test

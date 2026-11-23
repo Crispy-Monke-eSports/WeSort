@@ -699,9 +699,8 @@ public final class IndexStore {
                 // The snapshot and physical stock revision were already committed
                 // to guild.sqlite. Do not ask the agent to retry that accepted
                 // observation just because a redundant JSON mirror is unwritable.
-                System.err.println(
-                        "Could not update optional physical index mirror " + mirror.getFileName() + ": "
-                                + failure.getMessage());
+                System.err.println("Could not update optional physical index mirror " + mirror.getFileName() + ": "
+                        + failure.getMessage());
             }
         }
     }

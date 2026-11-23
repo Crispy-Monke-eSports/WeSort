@@ -33,7 +33,9 @@ class AgentCredentialsTest {
         AgentCredentials restarted = new AgentCredentials(data);
         assertEquals(null, restarted.find(firstId));
         assertNotNull(restarted.find(secondId));
-        assertEquals(1, restarted.all().stream().filter(AgentCredentials.Slot::active).count());
+        assertEquals(
+                1,
+                restarted.all().stream().filter(AgentCredentials.Slot::active).count());
     }
 
     @Test

@@ -190,6 +190,9 @@ class OrderNamesTest {
         assertEquals("accepted", claimed.status);
         assertEquals(409, assertThrows(OrderStore.OrderException.class, () -> orders.retry(claimed.id)).status);
         OrderStore.Order delivered = orders.status(claimed.id, "delivered", null, null, null, null);
+        // A claimed order without a native staging receipt is rolled back, not silently delivered.
+        assertEquals(OrderStage.RECOVERING, delivered.stage());
+        assertEquals("in_progress", delivered.status);
         assertEquals(409, assertThrows(OrderStore.OrderException.class, () -> orders.retry(delivered.id)).status);
         assertEquals(404, assertThrows(OrderStore.OrderException.class, () -> orders.retry("o-000000000000")).status);
     }

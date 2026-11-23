@@ -3,9 +3,6 @@ name: autofix.ci
 
 on:
   pull_request:
-  push:
-    branches: [main]
-  workflow_dispatch:
 
 # Pull requests run untrusted code: no write token is available to their job.
 permissions:
@@ -18,7 +15,6 @@ concurrency:
 jobs:
   pull-request:
     name: Format Java, web and Markdown in PRs (autofix.ci)
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -55,36 +51,3 @@ jobs:
             echo '::error::Java, web or Markdown files need formatting; autofix.ci has been asked to commit the fixes. The corrected PR commit will be rechecked.'
             exit 1
           fi
-
-  main:
-    name: Check Java, web and Markdown on main
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    runs-on: ubuntu-26.04
-    # Protected main is read-only; formatting fixes must go through a PR.
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6
-        with:
-          distribution: temurin
-          java-version: '25.0.5+8'
-      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
-        with:
-          cache-read-only: true
-      - uses: ./.github/actions/configure-gradle-mirror
-      - name: Require formatted client, Minecraft 26.3, and shared Java
-        run: ./gradlew --no-daemon spotlessCheck
-      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6
-        with:
-          distribution: temurin
-          java-version: '21'
-      - name: Require formatted Manager Java
-        run: ./gradlew --no-daemon -p stash-manager-server spotlessCheck
-      - uses: oven-sh/setup-bun@v2
-      - name: Install web formatting dependencies
-        run: cd web && bun install --frozen-lockfile
-      - name: Require formatted web UI and all Markdown
-        run: cd web && bun run format:check

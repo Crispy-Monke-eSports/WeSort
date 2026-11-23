@@ -451,9 +451,7 @@ class AgentScopeTest {
         setServer(owner, "s");
         defineStash(owner, "a");
 
-        assertEquals(
-                200,
-                agentPost(agentA, agentKeyA, "/api/v1/bot/hello", helloBootstrap(agentA)).status);
+        assertEquals(200, agentPost(agentA, agentKeyA, "/api/v1/bot/hello", helloBootstrap(agentA)).status);
         assertTrue(hub.online(hub.bot(agentA)));
 
         assertTrue(credentials.revoke(agentA));
@@ -462,16 +460,13 @@ class AgentScopeTest {
         byte[] replacementKey = Signer.deriveKey(token.substring(token.indexOf('.') + 1));
 
         // The previously verified agent cannot continue after key revocation.
-        assertEquals(
-                401,
-                agentPost(agentA, agentKeyA, "/api/v1/bot/hello", helloBootstrap(agentA)).status);
+        assertEquals(401, agentPost(agentA, agentKeyA, "/api/v1/bot/hello", helloBootstrap(agentA)).status);
         assertEquals(null, hub.bot(agentA));
 
         // The replacement must establish its own authenticated Manager session.
         assertEquals(
                 200,
-                agentPost(replacementId, replacementKey, "/api/v1/bot/hello", helloBootstrap(replacementId))
-                        .status);
+                agentPost(replacementId, replacementKey, "/api/v1/bot/hello", helloBootstrap(replacementId)).status);
         assertTrue(hub.online(hub.bot(replacementId)));
     }
 

@@ -40,10 +40,8 @@ class ManagerLinkScopeTest {
     void missingConnectionCannotCertifyAnyReply() {
         assertFalse(ManagerLinkScope.matches("", ""));
         assertFalse(ManagerLinkScope.matches(null, ""));
+        assertFalse(ManagerLinkScope.matches(ManagerLinkScope.of("http://127.0.0.1:8765", "6b6t.org", "key"), ""));
         assertFalse(ManagerLinkScope.matches(
-                ManagerLinkScope.of("http://127.0.0.1:8765", "6b6t.org", "key"), ""));
-        assertFalse(ManagerLinkScope.matches(
-                ManagerLinkScope.of("", "6b6t.org", "key"),
-                ManagerLinkScope.of("", "6b6t.org", "key")));
+                ManagerLinkScope.of("", "6b6t.org", "key"), ManagerLinkScope.of("", "6b6t.org", "key")));
     }
 }

@@ -1803,8 +1803,7 @@ public class StashManager extends Module {
                 || mc.level == null
                 || serverUrl.get().isBlank()
                 || apiKey.get().isBlank()) return "";
-        return com.porter.wesort.commands.ManagerLinkScope.of(
-                serverUrl.get(), Stash.currentServer(), apiKey.get());
+        return com.porter.wesort.commands.ManagerLinkScope.of(serverUrl.get(), Stash.currentServer(), apiKey.get());
     }
 
     // Kit jobs were removed: the Manager no longer assigns kits. Local shulker-packing for orders is untouched.
@@ -1858,8 +1857,8 @@ public class StashManager extends Module {
         int gen = generation;
         // Capture the *request's* endpoint and signing credential, not whichever
         // settings happen to be configured by the time its reply arrives.
-        String requestScope = com.porter.wesort.commands.ManagerLinkScope.of(
-                base.toString(), Stash.currentServer(), key);
+        String requestScope =
+                com.porter.wesort.commands.ManagerLinkScope.of(base.toString(), Stash.currentServer(), key);
 
         executor.execute(() -> {
             int code;

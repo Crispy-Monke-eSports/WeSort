@@ -21,8 +21,6 @@ public final class ManagerLinkScope {
 
     /** An empty or stale scope cannot authenticate a reply or continue physical work. */
     public static boolean matches(String requestedScope, String currentScope) {
-        return requestedScope != null
-                && !requestedScope.isEmpty()
-                && requestedScope.equals(currentScope);
+        return requestedScope != null && !requestedScope.isEmpty() && requestedScope.equals(currentScope);
     }
 }

@@ -323,7 +323,11 @@ final class Router implements HttpHandler {
                 case OPEN -> {}
             }
             match.route.handle(ex);
-            LiveEvents.routeChanged(path, method);
+            // An HTTP error is not evidence of an accepted mutation. Rejected order
+            // writes and failed validations must not invalidate every browser cache.
+            // A later transactional event outbox will publish only committed changes.
+            int responseCode = ex.getResponseCode();
+            if (responseCode >= 200 && responseCode < 300) LiveEvents.routeChanged(path, method);
         } catch (Http.TooLarge e) {
             safeError(ex, 413, "body too large (bot/* 1 MiB, others 8 MiB)");
         } catch (IOException e) {

@@ -2391,7 +2391,7 @@ public class StashSorter extends Module {
         if (job == null) return false;
         return switch (job) {
             case Unbundle -> true;
-            case Label, Ground, Explore -> false;
+            case Ground, Explore -> false;
             default -> step == Step.Working;
         };
     }
@@ -9477,7 +9477,6 @@ public class StashSorter extends Module {
                 && next != Job.Fetch
                 && next != Job.Compact
                 && next != Job.Survey
-                && next != Job.FetchSigns
                 && next != Job.Gather;
         if (jobCounted) {
             passJobs++;
@@ -9651,10 +9650,6 @@ public class StashSorter extends Module {
                                 "repacking: fetching a mixed shulker from %s at %s; next: clean it beside the chest.",
                                 home(box), xyz(box.pos)));
                 }
-                case FetchSigns ->
-                    step(String.format(
-                            "labelling: fetching signs from %s at %s; next: put up the signs.",
-                            home(box), xyz(box.pos)));
                 case Gather -> {
                     /* said by the compactor */
                 }
@@ -9711,7 +9706,7 @@ public class StashSorter extends Module {
         }
 
         // Opened it and got nothing done: not repeated until the carry slots or the container change
-        if (actions == 0 && !signAbort && job != null && job != Job.Survey && target != null && !target.unreachable) {
+        if (actions == 0 && job != null && job != Job.Survey && target != null && !target.unreachable) {
             futile.put(futileKey(target, job), futileSig(target));
         }
         if (job == Job.Survey && target != null && target.known()) {
@@ -9734,16 +9729,16 @@ public class StashSorter extends Module {
 
         // Going back and forth between containers while the backlog doesn't shrink: given up on, however each job looks
         boolean circle =
-                jobCounted && visits >= 4 && job != Job.Survey && target != null && !target.unreachable && !signAbort;
+                jobCounted && visits >= 4 && job != Job.Survey && target != null && !target.unreachable;
         if (circle) {
             circular.add(target);
             stalled.add(target);
-        } else if (job == Job.Survey && target != null && (!target.known() || target.stale) && !signAbort) {
+        } else if (job == Job.Survey && target != null && (!target.known() || target.stale)) {
             surveyFailed(target, "the window closed before it could be read");
         } else if (job != null && job != Job.Survey && target != null && !target.unreachable) {
-            if (unconfirmed && !signAbort) {
+            if (unconfirmed) {
                 if (unconfirmedRuns.merge(target, 1, Integer::sum) >= 2) stalled.add(target);
-            } else if (!progressed && !signAbort) stalled.add(target);
+            } else if (!progressed) stalled.add(target);
             else if (progressed) {
                 unconfirmedRuns.remove(target);
                 clearStalled();
@@ -9924,21 +9919,6 @@ public class StashSorter extends Module {
     }
 
     private void tickWorking() {
-        // A sign on this container changed: what it takes depends on it now, so don't carry on with the old idea
-        if (signPending(target)) {
-            // Not the container's fault: it is looked at again once its sign has settled, so it is not stalled
-            signAbort = true;
-            signAborted.add(target);
-                    debug("Sign at %s reported changing, waiting for it to settle.", target.pos.toShortString());
-            // The same container aborted again and again without a click: held until its sign text really changes
-            if (actions == 0 && signAbortRuns.merge(target, 1, Integer::sum) >= 2) {
-                signHeld.add(target);
-                stalled.add(target);
-            }
-            finishJob();
-            return;
-        }
-
         AbstractContainerMenu menu = mc.player.containerMenu;
         if (!(menu instanceof ChestMenu) || menu.slots.size() - 36 != target.parts.size() * 27) {
             // A double chest that grew or shrank since it was saved shows the wrong size: bring the
@@ -9986,7 +9966,6 @@ public class StashSorter extends Module {
                     Recover,
                     KitUnpack,
                     KitFill,
-                    Label,
                     Ground,
                     Explore,
                     Unbundle,
@@ -9995,7 +9974,6 @@ public class StashSorter extends Module {
                     Craft,
                     AnvilPlace,
                     ChestPlace -> false;
-            case FetchSigns -> labeller.fetchSignsOne(target, actions);
             case Gather -> compactor.gatherOne(target);
             case KitTake -> kitBuilder.takeOne(target);
             case CraftTake -> crafter.takeOne(target);
@@ -10043,13 +10021,12 @@ public class StashSorter extends Module {
     private int chained;
 
     private boolean chainJob() {
-        if (!sorting() || signAbort || target == null || job == null || actions == 0) return false;
+        if (!sorting() || target == null || job == null || actions == 0) return false;
         if (job != Job.Deposit && job != Job.Take && job != Job.Dump && job != Job.Compact) return false;
         // Only after a part that got somewhere, and never on a container given up on, with a sign changing, in the
         // middle of a swap, and not more than 4 times in a row
         if (!(endSigSet && startSigSet && startSig != endSig) || chained >= CHAIN_MAX || swapStep != 0) return false;
-        if (stalled.contains(target) || circular.contains(target))
-            return false;
+        if (stalled.contains(target) || circular.contains(target)) return false;
         if (kitBuilder.active() || compactor.active() || target.unreachable || target.stale || foreignNow) return false;
         if (!(mc.player.containerMenu instanceof ChestMenu)
                 || !mc.player.containerMenu.getCarried().isEmpty()) return false;

@@ -37,6 +37,7 @@ class SortingHarness(world.Harness):
             self.setitem(0, 6 + slot, item, count)
             # Reserve an exact named variant held only in the ordinary stock barrel.
             self.setitem(6, slot, f'{item}[minecraft:custom_name={{text:"Order {item}"}}]', count)
+        self.setitem(0, 9, 'oak_sign', 3)
         for slot in range(27): self.setitem(3, slot, 'diamond', 60 if slot == 0 else 64)
         self.setitem(12, 0, 'diamond', 5); self.setitem(15, 0, 'diamond', 7); self.setitem(30, 0, 'diamond', 9)
         self.setitem(15, 1, 'shulker_box[minecraft:custom_name={text:"Reserved kit"},minecraft:container=[{slot:0,item:{id:"minecraft:diamond",count:8}}]]', 1)
@@ -227,7 +228,9 @@ class SortingHarness(world.Harness):
                 'Sorter moved excluded or protected kit stock')
             require(self.authoritative_totals() == baseline_totals,
                 'Tier sorting changed authoritative recursive counts or item metadata')
-            self.ok('tier-only sorting empties deposit with exact server item conservation, preserving protected stock')
+            require(sum(self.count(x, 'oak_sign') for x in self.locations if x != 0) == 3,
+                'The tier sorter did not store all ordinary signs as inventory items')
+            self.ok('tier-only sorting empties deposit, preserves protected stock and stores signs as ordinary inventory')
             # The web Manager is still active and would immediately renew a new
             # autonomous sorting lease after the local sorter stops. Explicitly
             # disable only the isolated test's Manager physical sorting, leaving

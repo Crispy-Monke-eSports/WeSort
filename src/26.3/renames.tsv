@@ -16,5 +16,3 @@ onRenderBefore(GuiGraphicsExtractor context, float delta)	onRenderBefore(GuiGrap
 .handleInventoryMouseClick(	.handleContainerInput(
 bundle.items()	bundle.itemCopies().toList()
 mc.player.swing(InteractionHand.MAIN_HAND)	mc.player.swing(InteractionHand.MAIN_HAND, mc.player.getMainHandItem().getInteractAnimation(), false)
-new ServerboundSignUpdatePacket(spot, editorFront, lines[0], lines[1], lines[2], lines[3])	new ServerboundSignUpdatePacket(spot, java.util.List.of(lines), editorFront ? net.minecraft.world.level.block.entity.SignTextSlot.FRONT : net.minecraft.world.level.block.entity.SignTextSlot.BACK)
-text.getMessage(i, false)	text.getMessages(false).get(i)

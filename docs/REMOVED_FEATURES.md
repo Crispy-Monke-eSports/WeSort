@@ -17,9 +17,10 @@ Den 1.21.11-mixin som skyddar läsning av player heads behålls.
 Restocker/StorageList granskades: endast AutoTill/AutoDirt använde dem.
 Inga gemensamma container-, hotbar- eller navigeringsfunktioner behövde flyttas.
 BaritoneHelper, AutoHotbar, Containers, ChestStack, ContainerPacing, PlaceSearch,
-SurveyRetry, WalkProgress, SnapshotSearch, signkategorier och hela craft/stash
-behålls. Seeds, dirt och pearls är fortsatt vanliga items; inga itemfilter eller
-recept har tagits bort. Farming som signkategori är därför kvar.
+SurveyRetry, WalkProgress, SnapshotSearch och craft/stash behölls. Seeds,
+dirt och pearls är vanliga lagervaror. Senare avvecklade #153 även
+Minecraft-skyltbaserade kategorier. Tiers, vanlig skyltartikel,
+anvilnamn och signerad Manager-trafik ingår i dagens flöde.
 
 13 pearl-testklasser (129 tester) togs bort tillsammans med hela målpaketet.
 Övriga 496 klienttester behålls. 1.21.4: 496 körda, 0 fel/skips. Manager är

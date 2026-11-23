@@ -7,6 +7,7 @@ import com.porter.wesort.modules.StashManager;
 import com.porter.wesort.modules.StashSorter;
 import com.porter.wesort.stash.Stash;
 import com.porter.wesort.stash.StashIndex;
+import com.porter.wesort.stash.StashWatch;
 import java.nio.file.*;
 import java.util.*;
 import meteordevelopment.meteorclient.MeteorClient;
@@ -31,6 +32,8 @@ public final class WorldTestDriver {
     private long deadline;
     private int stable;
     private Stash stash;
+    private final StashWatch lidWatch = new StashWatch();
+    private long lidTick;
     private String interaction = "";
     private long openEpoch;
     private String crashPhysicalPhase;
@@ -118,6 +121,24 @@ public final class WorldTestDriver {
             if (mc.level == null || mc.player == null) return;
             switch (command.get("action").getAsString()) {
                 case "state" -> respond(true, "connected", state());
+                case "watch-lid" -> {
+                    BlockPos pos = position(command);
+                    Stash.Box watched = stash == null ? null : stash.boxAt(pos);
+                    var block = mc.level.getBlockState(pos);
+                    var open = net.minecraft.world.level.block.BarrelBlock.OPEN;
+                    if (watched == null
+                            || !block.hasProperty(open)
+                            || block.getValue(open) != command.get("open").getAsBoolean()) {
+                        respond(false, "Waiting for native barrel state", null);
+                        return;
+                    }
+                    var observed = new JsonObject();
+                    observed.addProperty("reread", false);
+                    lidWatch.tickLids(stash, ++lidTick, 0, box -> box != watched, box -> {
+                        if (box == watched) observed.addProperty("reread", true);
+                    });
+                    respond(true, "observed native barrel lid", observed);
+                }
                 case "arm-physical-crash" -> {
                     crashPhysicalPhase = com.porter.wesort.inventory.PhysicalWork.Phase.valueOf(
                                     command.get("phase").getAsString())

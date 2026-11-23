@@ -102,6 +102,10 @@ class InventoryHarness(world.Harness):
 
     def fixture(self):
         super().fixture()
+        result = self.rcon.command(
+            'setblock 0 65 -3 minecraft:oak_sign{front_text:{messages:[{text:"Do not sort"},{text:"Tier 999"},'
+            '{text:""},{text:""}]}}')
+        require('Changed the block' in result, 'Inert sign fixture was not installed')
         for slot, item in enumerate(['chest', 'barrel', 'oak_sign']):
             reply = self.rcon.command(f'item replace block 6 64 -3 container.{slot} with minecraft:{item} 1')
             require('Replaced 1 slot' in reply, 'Staging fixture rejected: ' + reply)
@@ -230,6 +234,8 @@ class InventoryHarness(world.Harness):
         self.ok('named filled shulker place/open/break/pickup/return preserves server-confirmed contents and component fingerprint')
 
     def block_round_trips(self):
+        sign_before = self.rcon.command('data get block 0 65 -3 front_text')
+        require('Tier 999' in sign_before, 'The real server sign text is missing')
         # Neither the Agent nor the E2E control channel is allowed to write Minecraft signs.
         rejected = self.command(
             'sign', x=0, y=65, z=-3, lines=['WeSort', 'Should not write', '', ''],
@@ -259,7 +265,35 @@ class InventoryHarness(world.Harness):
         # Signs remain ordinary stock items; the Agent must never place or edit them.
         signs = self.rcon.command('data get block 6 64 -3 Items')
         require('minecraft:oak_sign' in signs, 'Ordinary sign item vanished from the storage inventory')
-        self.ok('real chest/barrel place/open/break/pickup round trips and untouched sign inventory; no loose drops')
+        require(self.rcon.command('data get block 0 65 -3 front_text') == sign_before,
+                'A server-side sign was replaced or its text changed during normal inventory handling')
+        self.ok('real chest/barrel round trips leave the normal sign item and existing world sign unchanged')
+
+    def foreign_lid_observation(self):
+        # The private server supplies the same native OPEN state as a player
+        # opening and closing a nearby barrel. Keep it empty and isolated.
+        position = {'x': 18, 'y': 64, 'z': -3}
+        self.rcon.command('setblock 18 64 -3 minecraft:barrel[facing=up,open=false]')
+        self.teleport(18.5, -1.5)
+        self.command('open', **position, slots=27, item='minecraft:air', count=0)
+        self.command('close')
+        for opened in (True, False):
+            self.rcon.command(f'setblock 18 64 -3 minecraft:barrel[facing=up,open={str(opened).lower()}]')
+            seen = {}
+            def update():
+                response = self.command('watch-lid', **position, open=opened, allow_failure=True)
+                if response['success']:
+                    seen.update(response['state'])
+                    return True
+                return False
+            self.wait_server(update, 'Client did not receive the native barrel lid state')
+            require(seen['reread'] == (not opened), 'Foreign barrel lid did not schedule one reread after close')
+        state = self.command('watch-lid', **position, open=False)['state']
+        require(not state['reread'], 'Closed barrel kept scheduling duplicate rereads')
+        self.rcon.command('setblock 18 64 -3 minecraft:air')
+        self.wait_server(lambda: self.command('forget', **position, allow_failure=True)['success'],
+                         'Client did not observe removal of the test barrel')
+        self.ok('server native barrel lid transition schedules one readback after close')
 
     def limited_range(self):
         self.teleport(0.5, -1.5)
@@ -333,6 +367,7 @@ class InventoryHarness(world.Harness):
             before = self.physical_snapshot()
             (self.evidence / 'server-before.json').write_text(json.dumps(before, indent=2) + '\n')
             self.start_manager(); self.start_client()
+            self.foreign_lid_observation()
             index = self.observe()
             self.command('screenshot')
             world.shutil.copyfile(self.game_dir / 'screenshots/fixture.png', self.evidence / 'fixture.png')

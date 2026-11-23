@@ -2,11 +2,9 @@
 
 ## Operator behavior
 
-Agent storage is organized by **tiers**, without requiring chest signs. The old
-`Signs` setting is kept only for loading existing Meteor configuration; a new
-run migrates it to `Tiers`, and the signed Manager settings API no longer
-exposes sign mode. A server-side `sort-enabled` setting defaults to true for
-new Agents. If the operator previously disabled that setting explicitly,
+Agent storage is organized by **tiers**. Minecraft signs are ordinary inventory
+items. The signed Manager settings API exposes tier sorting through
+`sort-enabled`, which defaults to true for new Agents. If the operator previously disabled that setting explicitly,
 the saved value is still respected.
 
 **Physical optimization is not an unconditional override of safety controls.**
@@ -27,7 +25,7 @@ remain in the deposit chest; no inventory operation is forced.
 
 ### Shulker packing and UUID names
 
-- `repack` and `compact` may run in Tiers mode, not just Signs mode.
+- Tier sorting can run repacking and compaction.
 - Mixed normal boxes, and mixed boxes with a **canonical** WeSort UUID name,
   can be cleaned; content groups are compared by the exact `BulkKey`, not
   by a chest sign.

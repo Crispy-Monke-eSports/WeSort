@@ -129,8 +129,9 @@ final class JobScheduler {
     synchronized Job complete(String jobId, String agent, String token) throws IOException {
         expire();
         var entry = require(jobId);
-        if (entry.token() == null || !entry.token().equals(token) || !agent.equals(entry.job().agent()))
-            throw new Conflict("Lease token or agent mismatch");
+        if (entry.token() == null
+                || !entry.token().equals(token)
+                || !agent.equals(entry.job().agent())) throw new Conflict("Lease token or agent mismatch");
         if (entry.job().state() == Job.State.COMPLETED) return entry.job();
         entry = held(jobId, agent);
         return advanceTo(jobId, entry, entry.job().advance(Job.State.COMPLETED, agent), "completed", agent);

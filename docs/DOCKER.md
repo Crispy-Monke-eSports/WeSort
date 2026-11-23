@@ -188,14 +188,16 @@ För att även prova medlemsflödet i Chromium mot samma container:
 ```sh
 npm ci --prefix web-tests
 npm exec --prefix web-tests -- playwright install --with-deps chromium
-python3 scripts/docker-smoke.py --image wesort-manager:dev --browser --report /tmp/wesort-docker-browser.json
+python3 scripts/docker-smoke.py --compose-file compose.yaml --image wesort-manager:dev --browser --report /tmp/wesort-docker-browser.json
 ```
 
 Testet skapar egna unika Compose-projekt/volymer och städar endast dessa.
 Det bygger inte/pushar inte GHCR själv. Det verifierar non-root/read-only,
 mode 700/600, riktig health/webb/API, säker bootstrap över Docker bridge,
-CSRF/spoof/replay, extern signerad protokollagent, felaktig signatur/Bearer,
-processlås, SIGTERM/omstart, persistent keys/Owner/sessions/index/order/audit,
+CSRF, replay, signerad agentnärvaro, färsk stock, riktiga 26.3-ikoner och
+nekade dubbla agentsessioner, fel server och felaktiga credentials. Det
+verifierar processlås, SIGTERM, omstart och att den aktuella agentnyckeln,
+Owner, sessioner, index, order och audit finns kvar efter omstart,
 samt en riktig TLS-proxy med betrodd exakt IP, Secure-cookie och Host/Origin.
 TLS-testcontainern/certifikaten är testhjälpare och ingår inte i produktimagen.
 

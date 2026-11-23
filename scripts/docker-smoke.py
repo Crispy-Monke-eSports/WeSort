@@ -228,31 +228,46 @@ try:
     )
     assert http("/api/v1/stashes", opener=browser)[1] == []
     assert "apiKey" not in http("/api/v1/link", opener=browser)[1]
-    key_command = ["docker", "exec", container, "/opt/wesort/entrypoint", "agent-key"]
-    old_key = run(key_command).stdout.strip()
-    status, rotation, _, _ = http("/api/v1/link/regenerate", {}, opener=browser)
-    assert status == 200 and "apiKey" not in rotation
-    key = run(key_command).stdout.strip()
+    cli = ["docker", "exec", container, "/opt/wesort/entrypoint"]
+    shared_key = run(cli + ["agent-key"]).stdout.strip()
+    old_key = run(cli + ["agent-issue", "smoke-primary"]).stdout.strip()
+    old_id = old_key.split(".", 1)[0]
+    assert run(cli + ["agent-issue", "smoke-duplicate"], check=False).returncode != 0
+    run(cli + ["agent-require-scoped"])
+    assert run(cli + ["agent-key"], check=False).returncode != 0
+
+    hello_path = "/api/v1/bot/hello"
+    hello = {
+        "botId": old_id,
+        "plugin": {"id": "wesort", "version": "smoke"},
+        "runtime": {"version": "smoke", "mc": "26.3"},
+        "controlSession": "a" * 64,
+    }
+    assert agent(network, shared_key, hello_path, hello)["status"] == 401
+    status, operations, _, _ = http("/api/v1/operations", opener=browser)
+    assert status == 200 and not operations["agents"] and not operations["stock"]
+
+    assert agent(network, old_key, hello_path, hello)["status"] == 200
+    competing_hello = dict(hello, controlSession="b" * 64)
+    assert agent(network, old_key, hello_path, competing_hello)["status"] == 409
+    assert http("/api/v1/operations", opener=browser)[1]["agents"] == {"ONLINE": 1}
+    assert http("/api/v1/operations", opener=browser)[1]["stock"] == {}
+    run(cli + ["agent-revoke", old_id])
+    assert agent(network, old_key, hello_path, hello)["status"] == 401
+    assert http("/api/v1/operations", opener=browser)[1]["agents"] == {}
+
+    key = run(cli + ["agent-issue", "smoke-replacement"]).stdout.strip()
     assert key and key != old_key
-    assert (
-        agent(network, old_key, "/api/v1/bot/hello", {"botId": "old"})["status"] == 401
-    )
-    assert (
-        agent(network, key, "/api/v1/bot/hello", {"botId": "current"})["status"] == 200
-    )
+    current_hello = dict(hello, botId=key.split(".", 1)[0])
+    assert agent(network, key, hello_path, current_hello)["status"] == 200
     log_result = run(["docker", "logs", container])
     logs = log_result.stdout + log_result.stderr
-    assert (
-        token not in logs
-        and key not in logs
-        and old_key not in logs
-        and password not in logs
-    )
+    assert not any(secret in logs for secret in (token, key, old_key, shared_key, password))
     ok(
         "Docker bridge Owner bootstrap: local CLI capability, origin checks, replay denied, no secrets in logs"
     )
     ok(
-        "agent credential retrieval is confined to local CLI and rotation immediately retires the old control key"
+        "readiness precedes agent presence and stock; named signing, duplicate key/session rejection and revocation verified"
     )
     # Single-server operation: the owner sets the one Minecraft server first,
     # then defines the stash region the bot may report for.
@@ -272,7 +287,13 @@ try:
         == 200
     )
     index = fake.protocol_observation(fake.build_index())
+    wrong_server = dict(index, server="wrong.example.invalid")
+    assert agent(network, key, "/api/v1/index", wrong_server)["status"] == 409
     assert agent(network, key, "/api/v1/index", index)["status"] == 200
+    assert http("/api/v1/operations", opener=browser)[1]["stock"].get("FRESH", 0) > 0
+    icon_status, _, icon_headers, icon = http("/icon/minecraft/diamond.png", opener=browser)
+    assert icon_status == 200 and icon_headers.get_content_type() == "image/png"
+    assert icon.startswith(b"\x89PNG\r\n\x1a\n")
     assert (
         agent(
             network,
@@ -311,7 +332,7 @@ try:
         == order_id
     )
     ok(
-        "external agent container: signed index, heartbeat and order/claim; invalid signatures and Bearer rejected"
+        "external named agent: fresh stock, signed heartbeat and order/claim, real 26.3 icon, wrong server and credentials denied"
     )
     if args.browser:
         portal_stash = "portal-nether"
@@ -442,6 +463,9 @@ try:
         == digest
     )
     assert http("/api/v1/auth/login", {"password": password}, opener=browser)[0] == 200
+    assert agent(network, shared_key, hello_path, current_hello)["status"] == 401
+    assert agent(network, old_key, hello_path, hello)["status"] == 401
+    assert agent(network, key, hello_path, current_hello)["status"] == 200
     assert len(http("/api/v1/stashes", opener=browser)[1]) == (2 if args.browser else 1)
     assert (
         order_id

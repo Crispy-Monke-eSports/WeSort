@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  AuthUserSchema,
   KitTemplateSchema,
+  ManagedUserSchema,
   OrderLineSchema,
   OrdersResponseSchema,
   StashRefSchema,
@@ -75,5 +77,35 @@ describe("kit contracts (on-demand: one kit is one box)", () => {
       key: "minecraft:diamond",
       count: 16,
     });
+  });
+});
+
+describe("permission defaults in Zod 4", () => {
+  const identity = { id: "member", name: "Member" };
+  const noPermissions = {
+    view: false,
+    order: false,
+    ordersAll: false,
+    guildOrders: false,
+    positions: false,
+    activity: false,
+    settings: false,
+    rescan: false,
+    link: false,
+    stashes: null,
+    bots: null,
+  };
+
+  it("parses omitted and partial permissions through the schema defaults", () => {
+    for (const schema of [AuthUserSchema, ManagedUserSchema]) {
+      expect(schema.parse(identity).perms).toEqual(noPermissions);
+      expect(schema.parse({ ...identity, perms: {} }).perms).toEqual(
+        noPermissions,
+      );
+      expect(schema.parse({ ...identity, perms: { view: true } }).perms).toEqual(
+        { ...noPermissions, view: true },
+      );
+      expect(schema.safeParse({ ...identity, perms: null }).success).toBe(false);
+    }
   });
 });

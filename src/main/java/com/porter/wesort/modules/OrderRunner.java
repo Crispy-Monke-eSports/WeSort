@@ -1063,6 +1063,16 @@ final class OrderRunner {
         if (!owner.gate() && !kits.active()) reset();
     }
 
+    /**
+     * The Manager rejected a reported delivery because the native staging
+     * manifest was not proven. Keep the staged receipts and retrieve every
+     * package; do not forget the order on a successful HTTP response.
+     */
+    void rollbackUnverifiedDelivery(String id) {
+        if (order != null && order.id.equals(id) && state == State.Delivered)
+            finish(State.Failed, "Manager could not verify the staging receipt; returning all packages");
+    }
+
     /** The server has the end of the order: it can be forgotten, and the next one claimed. */
     void ack(String id) {
         if (order == null || !order.id.equals(id) || state == State.Running) return;

@@ -96,7 +96,10 @@ class LoginSecurityTest {
             sequentialAttempt(limiter, ip, false);
             limiter.failure(ip, false);
         }
-        assertEquals(2 * LoginLimiter.GLOBAL_LOCK_MS, sequentialAttempt(limiter, "10.9.9.9", false), "the next pause doubles");
+        assertEquals(
+                2 * LoginLimiter.GLOBAL_LOCK_MS,
+                sequentialAttempt(limiter, "10.9.9.9", false),
+                "the next pause doubles");
     }
 
     @Test
@@ -129,7 +132,10 @@ class LoginSecurityTest {
             assertEquals(0, sequentialAttempt(limiter, "127.0.0.1", true));
             limiter.failure("127.0.0.1", true);
         }
-        assertEquals(0, sequentialAttempt(limiter, "10.0.0.1", false), "loopback failures don't count toward the global pause");
+        assertEquals(
+                0,
+                sequentialAttempt(limiter, "10.0.0.1", false),
+                "loopback failures don't count toward the global pause");
     }
 
     @Test

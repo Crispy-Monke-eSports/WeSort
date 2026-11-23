@@ -275,9 +275,10 @@ final class AuthRoutes {
         // Use the immutable account id for known users, just as password confirmation does.
         // Unknown names use a separate namespace; they cannot consume another account's counter.
         String address = LoginLimiter.key(remote(ex));
-        String key = address + "|" + (userId != null
-                ? userId
-                : "unknown:" + String.valueOf(username).toLowerCase(java.util.Locale.ROOT));
+        String key = address + "|"
+                + (userId != null
+                        ? userId
+                        : "unknown:" + String.valueOf(username).toLowerCase(java.util.Locale.ROOT));
         boolean loopback = fromLoopback(ex) && !proxied(ex.getRequestHeaders());
         long wait = limiter.begin(key, address, loopback);
         if (wait > 0) {

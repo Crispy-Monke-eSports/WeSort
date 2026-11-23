@@ -190,6 +190,7 @@ public class Stash {
             public String nameFailure = "", namedKey = "";
             /** Exact verified delivery source, slot and item fingerprint for rollback. */
             public String stagedSource = "", stagedFingerprint = "";
+
             public int stagedSlot = -1;
             public boolean reclaimed;
         }

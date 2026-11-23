@@ -103,7 +103,8 @@ final class OrderRunner {
         XpBottles xpBottleSource();
     }
 
-    sealed interface Intent permits Idle, Build, Fetch, RecoverStage, Deliver, Rename, Craft, FindAnvil, Expand, Recheck, XpBottles {}
+    sealed interface Intent
+            permits Idle, Build, Fetch, RecoverStage, Deliver, Rename, Craft, FindAnvil, Expand, Recheck, XpBottles {}
 
     /** Nothing for the sorter to do for the order now. */
     record Idle() implements Intent {}
@@ -216,6 +217,7 @@ final class OrderRunner {
         long waitSince;
         /** A physical receipt for a package staged before this order failed. */
         String stagedSource = "", stagedFingerprint = "";
+
         int stagedSlot = -1;
         boolean reclaimed;
         ItemStack[] deliveryBefore;
@@ -282,6 +284,7 @@ final class OrderRunner {
     private State state = State.Running;
     /** Final outcome is not reported until the sorter has put back loose order stock. */
     private State pendingOutcome;
+
     private final List<Unit> units = new ArrayList<>();
     private int index;
     private int shulkersDelivered;
@@ -1270,7 +1273,8 @@ final class OrderRunner {
         if (!running() || index >= units.size() || units.get(index).verifying) return;
         Unit u = units.get(index);
         u.base = countIn(u, contents);
-        u.deliveryBefore = java.util.Arrays.stream(contents).map(ItemStack::copy).toArray(ItemStack[]::new);
+        u.deliveryBefore =
+                java.util.Arrays.stream(contents).map(ItemStack::copy).toArray(ItemStack[]::new);
     }
 
     /** The delivery container had no room for the shulker. */
@@ -1328,7 +1332,8 @@ final class OrderRunner {
     }
 
     private static String fingerprint(ItemStack stack) {
-        return com.porter.wesort.compat.SlotRuntime.snapshot(new ItemStack[] {stack}).fingerprint();
+        return com.porter.wesort.compat.SlotRuntime.snapshot(new ItemStack[] {stack})
+                .fingerprint();
     }
 
     private int countIn(Unit u, ItemStack[] contents) {
@@ -1378,8 +1383,7 @@ final class OrderRunner {
         }
         // A delivered unit without a unique delivery receipt must never be
         // silently abandoned. Keep its reservation until the agent can recover.
-        return shulkersDelivered == 0
-                || units.stream().filter(u -> u.reclaimed).count() >= shulkersDelivered;
+        return shulkersDelivered == 0 || units.stream().filter(u -> u.reclaimed).count() >= shulkersDelivered;
     }
 
     Intent next() {

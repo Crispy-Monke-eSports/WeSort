@@ -1620,7 +1620,8 @@ public class StashManager extends Module {
             JsonElement e = JsonParser.parseString(body);
             if (e.isJsonObject() && e.getAsJsonObject().has("order")) {
                 JsonObject offered = e.getAsJsonObject().getAsJsonObject("order");
-                recovering = offered.has("state") && "RECOVERING".equals(offered.get("state").getAsString());
+                recovering = offered.has("state")
+                        && "RECOVERING".equals(offered.get("state").getAsString());
                 order = Order.parse(offered);
             }
         } catch (RuntimeException e) {

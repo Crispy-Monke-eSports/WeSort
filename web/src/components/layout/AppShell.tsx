@@ -132,19 +132,20 @@ export function AppShell() {
     navigate({ to: "/login", search: { redirect: "/overview" } });
   }
 
+  // Authentication has its own centered, stacked brand mark instead of the app chrome.
+  if (location.pathname === "/login") {
+    return (
+      <Box component="main" sx={{ minHeight: "100vh", px: 2, py: 2 }}>
+        <CssBaseline />
+        <Outlet />
+        <ToastHost />
+      </Box>
+    );
+  }
+
   const drawer = (
     <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <Toolbar sx={{ alignItems: "center", gap: 1 }}>
-        <Box
-          component="img"
-          src="/wesort-lockup.svg"
-          alt="WeSort"
-          sx={{ height: 28, maxWidth: "100%", objectFit: "contain" }}
-          onError={(e) => {
-            (e.target as HTMLImageElement).style.display = "none";
-          }}
-        />
-      </Toolbar>
+      <Toolbar />
       <Divider />
       <List sx={{ flexGrow: 1 }}>
         {visibleNav.map((n) => {
@@ -199,9 +200,30 @@ export function AppShell() {
               <MenuIcon />
             </IconButton>
           )}
-          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            WeSort Operations
-          </Typography>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              flexGrow: 1,
+              minWidth: 0,
+              mr: 1,
+            }}
+          >
+            <Box
+              component="img"
+              src="/wesort-horizontal.svg"
+              alt="WeSort"
+              data-testid="header-brand"
+              sx={{
+                display: "block",
+                height: { xs: 36, sm: 44 },
+                width: "auto",
+                maxWidth: "100%",
+                objectFit: "contain",
+                objectPosition: "left center",
+              }}
+            />
+          </Box>
           {user ? (
             <>
               <LiveBadge />
@@ -210,9 +232,11 @@ export function AppShell() {
                 size="small"
                 variant="outlined"
                 sx={{
+                  display: { xs: "none", sm: "inline-flex" },
                   color: "inherit",
                   borderColor: "rgba(255,255,255,0.4)",
                   mr: 1,
+                  maxWidth: 160,
                 }}
               />
               <IconButton

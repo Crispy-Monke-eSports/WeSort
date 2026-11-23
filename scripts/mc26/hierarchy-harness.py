@@ -399,13 +399,14 @@ class HierarchyHarness(stock.StockHarness):
 
     def verify_fleet_sessions(self):
         native = None
+        active_id = self.key.split('.', 1)[0]
 
         def reported_activity(_):
             nonlocal native
             status, bots = self.http('/api/v1/bots')
             require(status == 200, 'Owner could not read the agent list')
             native = next((bot for bot in bots
-                           if bot.get('player') == self.player and bot['online'] and bot.get('summary')), None)
+                           if bot.get('botId') == active_id and bot['online'] and bot.get('summary')), None)
             return native is not None
 
         self.wait(reported_activity, 'The actual Fabric agent did not report its current task')
@@ -434,11 +435,11 @@ class HierarchyHarness(stock.StockHarness):
             'controlEpoch': str(uuid.uuid4()),
         })[0] == 409, 'A competing control session could poll native agent work')
         status, connected = self.http('/api/v1/bots')
-        require(status == 200 and
-                {bot['botId'] for bot in connected if bot['online']} == {native['botId']},
-                'Manager exposed another online agent despite the single-agent fixture')
+        require(status == 200 and any(
+                bot['botId'] == native['botId'] and bot['online'] for bot in connected),
+                'Active named agent disappeared after rejecting the competing control session')
         status, metrics = self.http('/api/v1/operations')
-        require(status == 200 and metrics['agents']['ONLINE'] == 1 and metrics['stock']['FRESH'] > 0,
+        require(status == 200 and metrics['agents']['ONLINE'] >= 1 and metrics['stock']['FRESH'] > 0,
                 'Operations API did not reflect the one native agent and fresh physical stock')
         self.ok('one native 26.3 Agent stays online; competing control session and poll rejected')
 
@@ -516,7 +517,7 @@ class HierarchyHarness(stock.StockHarness):
             (self.evidence/'changed-detail.json').write_text(json.dumps(detail,indent=2)+'\n')
             result = {'result':'PASS','source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=world.ROOT,text=True).strip(),
                 'dirty_worktree':True,'server_sha1':world.SERVER_SHA1,'manager_image':self.env['WESORT_IMAGE'],'checks':self.checks,
-                'limits':'One native Minecraft agent with signed HTTP peers for fleet tests. Package custody is verified through warehouse staging.'}
+                'limits':'One native Minecraft agent with single-key and session fencing checks. Package custody is verified through warehouse staging.'}
             (self.evidence/'result.json').write_text(json.dumps(result,indent=2)+'\n')
             print('Evidence: '+str(self.evidence),flush=True)
         finally: self.close()

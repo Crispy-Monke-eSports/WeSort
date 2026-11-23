@@ -2499,7 +2499,9 @@ final class OrderStore {
             if (!entry.isJsonObject()) return false;
             var line = entry.getAsJsonObject();
             var key = line.get("key");
-            if (key == null || !key.isJsonPrimitive() || !key.getAsJsonPrimitive().isString()) return false;
+            if (key == null
+                    || !key.isJsonPrimitive()
+                    || !key.getAsJsonPrimitive().isString()) return false;
             var count = outstanding.remove(key.getAsString());
             if (count == null || count.longValue() != exactPositiveCount(line.get("delivered"))) return false;
         }
@@ -2508,7 +2510,9 @@ final class OrderStore {
 
     /** Never let Gson's narrowing conversions truncate fractions or wrap overflowing quantities. */
     static long exactPositiveCount(JsonElement value) {
-        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()) return -1;
+        if (value == null
+                || !value.isJsonPrimitive()
+                || !value.getAsJsonPrimitive().isNumber()) return -1;
         try {
             long count = value.getAsBigDecimal().longValueExact();
             return count > 0 ? count : -1;

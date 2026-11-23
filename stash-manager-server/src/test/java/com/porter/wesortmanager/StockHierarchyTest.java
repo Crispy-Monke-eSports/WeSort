@@ -474,8 +474,7 @@ class StockHierarchyTest {
     void malformedLineCountsNeverBecomeSuccessfulPackingReceipts() {
         var lines = List.of(new OrderStore.Line("shulker", "kit", 2));
         for (String invalid : List.of("2.5", "18446744073709551618", "\"2\"", "null", "true", "{}", "[]")) {
-            var result = JsonParser.parseString(
-                    "{\"lines\":[{\"key\":\"kit\",\"delivered\":" + invalid + "}]}")
+            var result = JsonParser.parseString("{\"lines\":[{\"key\":\"kit\",\"delivered\":" + invalid + "}]}")
                     .getAsJsonObject();
             assertFalse(OrderStore.allLinesStaged(lines, result), invalid);
         }
@@ -483,7 +482,8 @@ class StockHierarchyTest {
             var result = JsonParser.parseString("{\"lines\":[" + invalid + "]}").getAsJsonObject();
             assertFalse(OrderStore.allLinesStaged(lines, result), invalid);
         }
-        var valid = JsonParser.parseString("{\"lines\":[{\"key\":\"kit\",\"delivered\":2}]}").getAsJsonObject();
+        var valid = JsonParser.parseString("{\"lines\":[{\"key\":\"kit\",\"delivered\":2}]}")
+                .getAsJsonObject();
         assertTrue(OrderStore.allLinesStaged(lines, valid));
     }
 

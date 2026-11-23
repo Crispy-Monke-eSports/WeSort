@@ -55,7 +55,9 @@ async function main() {
     const box = await mark.boundingBox();
     assert.ok(
       box &&
-        (horizontal ? box.width / box.height > 2 : box.width / box.height < 1.3),
+        (horizontal
+          ? box.width / box.height > 2
+          : box.width / box.height < 1.3),
       "Brand orientation does not match " + testId,
     );
     assert.ok(

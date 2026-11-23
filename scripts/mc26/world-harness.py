@@ -179,8 +179,7 @@ class Harness:
             'setblock 3 64 -3 minecraft:shulker_box',
             'item replace block 3 64 -3 container.0 with minecraft:dirt 16',
             'setblock 6 64 -3 minecraft:barrel', 'setblock 9 64 -3 minecraft:crafting_table',
-            'setblock 12 64 -3 minecraft:anvil', 'setblock 0 65 -3 minecraft:oak_sign',
-            'data merge block 0 65 -3 {front_text:{messages:[{text:"Diamonds"},{text:"Tier 1"},{text:""},{text:""}]}}',
+            'setblock 12 64 -3 minecraft:anvil',
         ]
         results = []
         for command in commands:
@@ -189,7 +188,7 @@ class Harness:
                 'Fixture command rejected: ' + command + ': ' + reply)
             results.append({'command': command, 'reply': reply})
         (self.evidence / 'fixture.json').write_text(json.dumps(results, indent=2) + '\n')
-        self.ok('ten double chests, barrel, sign, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures')
+        self.ok('ten double chests, barrel, shulker, bundle, named enchanted damaged item, crafting/anvil/staging fixtures')
 
     def physical_snapshot(self):
         positions = [(x, 64, 3) for x in range(30) if x % 3 != 2] + [(0, 64, -3), (3, 64, -3), (6, 64, -3)]

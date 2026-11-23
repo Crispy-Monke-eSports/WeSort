@@ -300,22 +300,14 @@ cannot replace the prefix or renumber boxes. Legacy orders using
 precondition for `PICKUP_READY` in the new flow; a failed rename never
 delivers an unmarked box.
 
-## W-062 opt-in per-server transport profile
+## 6b6t navigation and delivery boundary
 
-`/tpa` and `/home` are two independent, default-OFF capabilities per
-verified Minecraft server profile, never generic Minecraft or Baritone
-features. Owner `GET /api/v1/transport` lists the profiles; Owner
-`POST /api/v1/transport` updates one server's `allowTpa`, `allowHome`,
-`tpaVerified` and `homeVerified` with an `expectedRevision` (409 on a stale
-revision). A fresh profile and a clean install have both flags off.
-"Configured" (`allowTpa`/`allowHome`) is kept separate from "verified
-supported" (`tpaVerified`/`homeVerified`), so no support is ever advertised
-without actual server testing. The only transport operations are the typed
-`TPA_REQUEST(target)`, `HOME_GO(home)` and `TPA_ACCEPT(requestId)` in
-`TransportCommands`; there is no arbitrary `/command`, forwarded player
-message or unsanitized field, and a command transmission is never itself
-proof of arrival — the agent acknowledges arrival only from the actual
-server-delivered position and dimension.
+WeSort Manager does **not** expose `/api/v1/transport` or manage
+general-purpose `/tpa` and `/home` profiles. The single Fabric agent
+uses guarded Baritone navigation and the dedicated 6b6t lobby-portal
+bootstrap. Long-distance pickup/delivery and verified arrival remain
+explicit work under W-035/W-036/W-038/W-039; emitting a chat command
+or starting a route is never proof of delivery.
 
 ## W-059 optional withdrawal quotas
 
@@ -403,22 +395,16 @@ no-show is traceable and the stock is not returned until an explicit
 advance the handoff; a second agent cannot take over the cargo. Owner
 `GET /api/v1/handoffs` lists handoffs (optionally by `order`).
 
-## W-044 backup and restore
+## Backups and crash recovery
 
-The Manager host administrator takes and restores whole-data backups
-against a **stopped** Manager, never over HTTP. `backup` snapshots every
-guild-owned file in the persistent data directory — users, roles, quota
-policy, order comments, audit, stock, package journals and credentials —
-into an owner-only `backups/<id>/` directory with a `manifest.json`
-recording each file's SHA-256 and, for schema-versioned stores, its
-`schema`. The snapshot is staged and renamed atomically, is retried while
-the directory keeps changing, and is pruned to a bounded retention.
-`backup-list` enumerates backups; `backup-restore <id>` verifies every
-checksum and the manifest format before rewriting the data files (it
-refuses an entry that escapes the directory). Regenerable caches (icons,
-the downloaded Minecraft client) and transient locks/sockets are never
-backed up, and no Qwerte data is ever read. On restart, any job whose
-lease lapsed while the Manager was down is moved to
-`NEEDS_RECONCILIATION` before the first claim, so an uncertain physical
-step is never blindly resumed or double-delivered.
+Manager does **not** provide an in-process backup/restore command or
+backup REST endpoint. The former unused `Backups` utility has been removed.
+An operator may copy the private Manager data volume only when the Manager
+process has been fully **stopped**, including the SQLite database and any
+WAL files; a live filesystem copy is not an atomic SQLite backup.
 
+This is separate from **mandatory crash recovery**: physical intents,
+leases, stock reservations and order reconciliation must survive process
+failure. An unknown physical outcome must remain blocked as
+`NEEDS_RECONCILIATION` until server-observed state permits safe progress.
+The transactional persistence refactor is tracked in #140.

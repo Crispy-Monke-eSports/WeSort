@@ -4,8 +4,10 @@ import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.util.ArrayDeque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.LongSupplier;
 
 /**
@@ -30,6 +32,8 @@ final class LoginLimiter {
     static final long GLOBAL_LOCK_MS = 15 * 60_000;
     static final long MAX_GLOBAL_LOCK_MS = 60 * 60_000;
     private static final int MAX_TRACKED = 10_000;
+    private static final int MAX_IN_FLIGHT = 8;
+    private static final long BUSY_RETRY_MS = 1_000;
 
     private static final class Entry {
         int failures;
@@ -40,6 +44,7 @@ final class LoginLimiter {
 
     private final LongSupplier clock;
     private final Map<String, Entry> byAddress = new HashMap<>();
+    private final Set<String> inFlight = new HashSet<>();
     private final ArrayDeque<Long> recentFailures = new ArrayDeque<>();
     private long globalLockedUntil;
     private long nextGlobalLockMs = GLOBAL_LOCK_MS;
@@ -65,22 +70,32 @@ final class LoginLimiter {
     }
 
     /**
-     * Call before checking a password. Returns 0 when the attempt may go ahead, otherwise how many milliseconds to
-     * wait (the reply is 429 with Retry-After). Loopback is never limited.
+     * Reserve one remote password check before running the expensive hash. A
+     * second request from the same address cannot race past the failure counter.
+     * Every admitted non-loopback attempt must call end in a finally block.
      */
-    synchronized long tryAcquire(String key, boolean loopback) {
+    synchronized long begin(String accountKey, String addressKey, boolean loopback) {
         if (loopback) return 0;
         long now = clock.getAsLong();
         if (globalLockedUntil > now) return globalLockedUntil - now;
-        Entry e = byAddress.get(key);
-        if (e != null && e.lockedUntil > now) return e.lockedUntil - now;
-        if (e == null) {
-            if (byAddress.size() >= MAX_TRACKED) prune(now);
-            e = new Entry();
-            byAddress.put(key, e);
+        long wait = Math.max(waitFor(accountKey, now), waitFor(addressKey, now));
+        if (wait > 0) return wait;
+        if (inFlight.size() >= MAX_IN_FLIGHT || inFlight.contains(addressKey)) return BUSY_RETRY_MS;
+        if (byAddress.size() >= MAX_TRACKED - 2 * MAX_IN_FLIGHT) {
+            prune(now);
+            if (byAddress.size() >= MAX_TRACKED - 2 * MAX_IN_FLIGHT) return BUSY_RETRY_MS;
         }
-        e.lastAttempt = now;
+        inFlight.add(addressKey);
         return 0;
+    }
+
+    private long waitFor(String key, long now) {
+        Entry entry = byAddress.get(key);
+        return entry == null ? 0 : Math.max(0, entry.lockedUntil - now);
+    }
+
+    synchronized void end(String addressKey, boolean loopback) {
+        if (!loopback) inFlight.remove(addressKey);
     }
 
     synchronized void failure(String key, boolean loopback) {
@@ -97,7 +112,7 @@ final class LoginLimiter {
             recentFailures.pollFirst();
         recentFailures.addLast(now);
         if (recentFailures.size() >= GLOBAL_FAILURES) {
-            globalLockedUntil = now + nextGlobalLockMs;
+            globalLockedUntil = Math.max(globalLockedUntil, now + nextGlobalLockMs);
             System.err.println(
                     java.time.Instant.now() + " Website login paused for " + nextGlobalLockMs / 60_000 + " min after "
                             + GLOBAL_FAILURES + " wrong passwords in 10 min (the server PC itself can still log in).");

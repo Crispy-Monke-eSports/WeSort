@@ -303,227 +303,218 @@ final class StockLedger {
                 stash = index.get("stash").getAsString();
         try (var c = open();
                 var tx = new SqliteWriteTransaction(c)) {
-                long before = revision(c), next = Math.addExact(before, 1);
-                long now = clock.getAsLong();
-                Map<String, Long> memberTimes = new HashMap<>();
-                // Root-level box UUIDs seen in fresh snapshots this batch: source -> uuid -> box.
-                Map<String, Map<String, ObservedBox>> freshBoxes = new LinkedHashMap<>();
-                for (JsonObject source : sources) {
-                    String id = source.get("id").getAsString(),
-                            dimension = source.get("dimension").getAsString();
-                    String proof = source.get("session").getAsString() + ":" + number(source, "sequence");
-                    JsonObject snapshot = source.has("slotSnapshot")
-                            ? source.remove("slotSnapshot").getAsJsonObject()
-                            : null;
-                    if (snapshot != null) {
-                        source.addProperty("slotSchema", 1);
-                        source.addProperty(
-                                "slotFingerprint", snapshot.get("fingerprint").getAsString());
-                        source.addProperty(
-                                "slotCount",
-                                snapshot.getAsJsonArray("positions").size());
+            long before = revision(c), next = Math.addExact(before, 1);
+            long now = clock.getAsLong();
+            Map<String, Long> memberTimes = new HashMap<>();
+            // Root-level box UUIDs seen in fresh snapshots this batch: source -> uuid -> box.
+            Map<String, Map<String, ObservedBox>> freshBoxes = new LinkedHashMap<>();
+            for (JsonObject source : sources) {
+                String id = source.get("id").getAsString(),
+                        dimension = source.get("dimension").getAsString();
+                String proof = source.get("session").getAsString() + ":" + number(source, "sequence");
+                JsonObject snapshot = source.has("slotSnapshot")
+                        ? source.remove("slotSnapshot").getAsJsonObject()
+                        : null;
+                if (snapshot != null) {
+                    source.addProperty("slotSchema", 1);
+                    source.addProperty(
+                            "slotFingerprint", snapshot.get("fingerprint").getAsString());
+                    source.addProperty(
+                            "slotCount", snapshot.getAsJsonArray("positions").size());
+                }
+                String json = source.toString();
+                long base = number(source, "baseRevision");
+                boolean fresh = source.get("state").getAsString().equals("FRESH"), sameProof = false;
+                long oldRevision = 0, verified = 0;
+                String verifiedRun = "", previousProof = "";
+                JsonObject previous = null;
+                try (var p = c.prepareStatement(
+                        "SELECT payload,revision,proof,verified_at,run FROM stock_sources WHERE id=?")) {
+                    p.setString(1, id);
+                    try (var r = p.executeQuery()) {
+                        if (r.next()) {
+                            previous = JsonParser.parseString(r.getString(1)).getAsJsonObject();
+                            oldRevision = r.getLong(2);
+                            previousProof = r.getString(3);
+                            sameProof = proof.equals(previousProof);
+                            verified = r.getLong(4);
+                            verifiedRun = r.getString(5);
+                        }
                     }
-                    String json = source.toString();
-                    long base = number(source, "baseRevision");
-                    boolean fresh = source.get("state").getAsString().equals("FRESH"), sameProof = false;
-                    long oldRevision = 0, verified = 0;
-                    String verifiedRun = "", previousProof = "";
-                    JsonObject previous = null;
+                }
+                long overlappingRevision = oldRevision;
+                for (var item : source.getAsJsonArray("parts")) {
+                    var pos = item.getAsJsonArray();
                     try (var p = c.prepareStatement(
-                            "SELECT payload,revision,proof,verified_at,run FROM stock_sources WHERE id=?")) {
-                        p.setString(1, id);
+                            "SELECT s.revision FROM stock_parts p JOIN stock_sources s ON s.id=p.source WHERE p.server=? AND p.dimension=? AND p.x=? AND p.y=? AND p.z=?")) {
+                        p.setString(1, server);
+                        p.setString(2, dimension);
+                        for (int i = 0; i < 3; i++) p.setInt(3 + i, pos.get(i).getAsInt());
                         try (var r = p.executeQuery()) {
-                            if (r.next()) {
-                                previous =
-                                        JsonParser.parseString(r.getString(1)).getAsJsonObject();
-                                oldRevision = r.getLong(2);
-                                previousProof = r.getString(3);
-                                sameProof = proof.equals(previousProof);
-                                verified = r.getLong(4);
-                                verifiedRun = r.getString(5);
-                            }
+                            if (r.next()) overlappingRevision = Math.max(overlappingRevision, r.getLong(1));
                         }
                     }
-                    long overlappingRevision = oldRevision;
-                    for (var item : source.getAsJsonArray("parts")) {
-                        var pos = item.getAsJsonArray();
-                        try (var p = c.prepareStatement(
-                                "SELECT s.revision FROM stock_parts p JOIN stock_sources s ON s.id=p.source WHERE p.server=? AND p.dimension=? AND p.x=? AND p.y=? AND p.z=?")) {
-                            p.setString(1, server);
-                            p.setString(2, dimension);
-                            for (int i = 0; i < 3; i++)
-                                p.setInt(3 + i, pos.get(i).getAsInt());
-                            try (var r = p.executeQuery()) {
-                                if (r.next()) overlappingRevision = Math.max(overlappingRevision, r.getLong(1));
-                            }
+                }
+                if (fresh && sameProof) {
+                    // A retry cannot change quantities, renew age, or revive a previous connection/run.
+                    if (overlappingRevision > oldRevision
+                            || !run.equals(verifiedRun)
+                            || !previous.get("fingerprint").equals(source.get("fingerprint"))
+                            || !previous.get("kind").equals(source.get("kind"))
+                            || !previous.get("items").equals(source.get("items"))
+                            || !previous.get("shulkers").equals(source.get("shulkers"))
+                            || !previous.get("state").getAsString().equals("FRESH")) throw new Conflict(before, epoch);
+                    boolean protectedBefore = previous.has("protected")
+                            && previous.get("protected").getAsBoolean();
+                    boolean protectedNow =
+                            source.has("protected") && source.get("protected").getAsBoolean();
+                    if (protectedBefore && !protectedNow) throw new Conflict(before, epoch);
+                    if (protectedNow && !protectedBefore) {
+                        previous.addProperty("protected", true);
+                        try (var p = c.prepareStatement("UPDATE stock_sources SET payload=?,revision=? WHERE id=?")) {
+                            p.setString(1, previous.toString());
+                            p.setLong(2, next);
+                            p.setString(3, id);
+                            p.executeUpdate();
                         }
-                    }
-                    if (fresh && sameProof) {
-                        // A retry cannot change quantities, renew age, or revive a previous connection/run.
-                        if (overlappingRevision > oldRevision
-                                || !run.equals(verifiedRun)
-                                || !previous.get("fingerprint").equals(source.get("fingerprint"))
-                                || !previous.get("kind").equals(source.get("kind"))
-                                || !previous.get("items").equals(source.get("items"))
-                                || !previous.get("shulkers").equals(source.get("shulkers"))
-                                || !previous.get("state").getAsString().equals("FRESH"))
-                            throw new Conflict(before, epoch);
-                        boolean protectedBefore = previous.has("protected")
-                                && previous.get("protected").getAsBoolean();
-                        boolean protectedNow = source.has("protected")
-                                && source.get("protected").getAsBoolean();
-                        if (protectedBefore && !protectedNow) throw new Conflict(before, epoch);
-                        if (protectedNow && !protectedBefore) {
-                            previous.addProperty("protected", true);
-                            try (var p =
-                                    c.prepareStatement("UPDATE stock_sources SET payload=?,revision=? WHERE id=?")) {
-                                p.setString(1, previous.toString());
-                                p.setLong(2, next);
-                                p.setString(3, id);
-                                p.executeUpdate();
-                            }
-                        }
-                        memberTimes.put(id, verified);
-                        continue;
-                    }
-                    if (fresh
-                            && (overlappingRevision > base
-                                    || !source.get("epoch").getAsString().isEmpty()
-                                            && !epoch.equals(source.get("epoch").getAsString())
-                                    || overlappingRevision > 0
-                                            && !epoch.equals(source.get("epoch").getAsString())))
-                        throw new Conflict(before, epoch);
-                    if (fresh) {
-                        verified = Math.min(now, number(source, "observedAt"));
-                        verifiedRun = run;
-                    } else if (previous != null) {
-                        // Loss of access is not an empty inventory. Preserve last quantities as explicitly unknown.
-                        source.add("items", previous.get("items"));
-                        source.add("shulkers", previous.get("shulkers"));
-                        for (String field : List.of("slotSchema", "slotFingerprint", "slotCount"))
-                            if (previous.has(field)) source.add(field, previous.get(field));
-                        proof = previousProof;
-                        json = source.toString();
                     }
                     memberTimes.put(id, verified);
-                    String state = source.get("state").getAsString();
-                    boolean physicalFailure = state.equals("UNREACHABLE") || state.equals("MISSING");
-                    long sourceRevision = fresh
-                                    || physicalFailure
-                                            && (previous == null
-                                                    || !previous.get("state")
-                                                            .getAsString()
-                                                            .equals(state))
-                            ? next
-                            : oldRevision;
-                    try (var p = c.prepareStatement(
-                            "INSERT INTO stock_sources VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,revision=excluded.revision,proof=excluded.proof,verified_at=excluded.verified_at,run=excluded.run")) {
-                        p.setString(1, id);
-                        p.setString(2, server);
-                        p.setString(3, dimension);
-                        p.setString(4, json);
-                        p.setLong(5, sourceRevision);
-                        p.setString(6, proof);
-                        p.setLong(7, verified);
-                        p.setString(8, verifiedRun);
-                        p.executeUpdate();
-                    }
-                    if (fresh) saveSlots(c, id, snapshot, sourceRevision);
-                    if (snapshot != null && fresh) collectObservedBoxUuids(snapshot, id, freshBoxes);
-                    for (var item : source.getAsJsonArray("parts")) {
-                        var pos = item.getAsJsonArray();
-                        if (physicalFailure) {
-                            try (var parent = c.prepareStatement(
-                                    "SELECT s.id,s.payload FROM stock_parts p JOIN stock_sources s ON s.id=p.source WHERE p.server=? AND p.dimension=? AND p.x=? AND p.y=? AND p.z=? AND s.id<>?")) {
-                                parent.setString(1, server);
-                                parent.setString(2, dimension);
-                                for (int i = 0; i < 3; i++)
-                                    parent.setInt(3 + i, pos.get(i).getAsInt());
-                                parent.setString(6, id);
-                                try (var r = parent.executeQuery()) {
-                                    if (r.next()) {
-                                        var uncertain = JsonParser.parseString(r.getString(2))
-                                                .getAsJsonObject();
-                                        if (!uncertain
-                                                .get("state")
-                                                .getAsString()
-                                                .equals(state)) {
-                                            uncertain.addProperty("state", state);
-                                            try (var update = c.prepareStatement(
-                                                    "UPDATE stock_sources SET payload=?,revision=? WHERE id=?")) {
-                                                update.setString(1, uncertain.toString());
-                                                update.setLong(2, next);
-                                                update.setString(3, r.getString(1));
-                                                update.executeUpdate();
-                                            }
+                    continue;
+                }
+                if (fresh
+                        && (overlappingRevision > base
+                                || !source.get("epoch").getAsString().isEmpty()
+                                        && !epoch.equals(source.get("epoch").getAsString())
+                                || overlappingRevision > 0
+                                        && !epoch.equals(source.get("epoch").getAsString())))
+                    throw new Conflict(before, epoch);
+                if (fresh) {
+                    verified = Math.min(now, number(source, "observedAt"));
+                    verifiedRun = run;
+                } else if (previous != null) {
+                    // Loss of access is not an empty inventory. Preserve last quantities as explicitly unknown.
+                    source.add("items", previous.get("items"));
+                    source.add("shulkers", previous.get("shulkers"));
+                    for (String field : List.of("slotSchema", "slotFingerprint", "slotCount"))
+                        if (previous.has(field)) source.add(field, previous.get(field));
+                    proof = previousProof;
+                    json = source.toString();
+                }
+                memberTimes.put(id, verified);
+                String state = source.get("state").getAsString();
+                boolean physicalFailure = state.equals("UNREACHABLE") || state.equals("MISSING");
+                long sourceRevision = fresh
+                                || physicalFailure
+                                        && (previous == null
+                                                || !previous.get("state")
+                                                        .getAsString()
+                                                        .equals(state))
+                        ? next
+                        : oldRevision;
+                try (var p = c.prepareStatement(
+                        "INSERT INTO stock_sources VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,revision=excluded.revision,proof=excluded.proof,verified_at=excluded.verified_at,run=excluded.run")) {
+                    p.setString(1, id);
+                    p.setString(2, server);
+                    p.setString(3, dimension);
+                    p.setString(4, json);
+                    p.setLong(5, sourceRevision);
+                    p.setString(6, proof);
+                    p.setLong(7, verified);
+                    p.setString(8, verifiedRun);
+                    p.executeUpdate();
+                }
+                if (fresh) saveSlots(c, id, snapshot, sourceRevision);
+                if (snapshot != null && fresh) collectObservedBoxUuids(snapshot, id, freshBoxes);
+                for (var item : source.getAsJsonArray("parts")) {
+                    var pos = item.getAsJsonArray();
+                    if (physicalFailure) {
+                        try (var parent = c.prepareStatement(
+                                "SELECT s.id,s.payload FROM stock_parts p JOIN stock_sources s ON s.id=p.source WHERE p.server=? AND p.dimension=? AND p.x=? AND p.y=? AND p.z=? AND s.id<>?")) {
+                            parent.setString(1, server);
+                            parent.setString(2, dimension);
+                            for (int i = 0; i < 3; i++)
+                                parent.setInt(3 + i, pos.get(i).getAsInt());
+                            parent.setString(6, id);
+                            try (var r = parent.executeQuery()) {
+                                if (r.next()) {
+                                    var uncertain = JsonParser.parseString(r.getString(2))
+                                            .getAsJsonObject();
+                                    if (!uncertain.get("state").getAsString().equals(state)) {
+                                        uncertain.addProperty("state", state);
+                                        try (var update = c.prepareStatement(
+                                                "UPDATE stock_sources SET payload=?,revision=? WHERE id=?")) {
+                                            update.setString(1, uncertain.toString());
+                                            update.setLong(2, next);
+                                            update.setString(3, r.getString(1));
+                                            update.executeUpdate();
                                         }
                                     }
                                 }
                             }
                         }
-                        try (var p = c.prepareStatement(
-                                "INSERT INTO stock_parts VALUES(?,?,?,?,?,?) ON CONFLICT(server,dimension,x,y,z) DO UPDATE SET source=excluded.source WHERE ?=1")) {
-                            p.setString(1, server);
-                            p.setString(2, dimension);
-                            for (int i = 0; i < 3; i++)
-                                p.setInt(3 + i, pos.get(i).getAsInt());
-                            p.setString(6, id);
-                            p.setInt(7, fresh ? 1 : 0);
-                            p.executeUpdate();
-                        }
                     }
-                }
-                try (var p = c.prepareStatement("UPDATE stock_members SET present=0 WHERE server=? AND stash=?")) {
-                    p.setString(1, server);
-                    p.setString(2, stash);
-                    p.executeUpdate();
-                }
-                reconcileObservedBoxUuids(c, server, freshBoxes, next, now);
-                sweepMissingBoxUuids(c, server, freshBoxes, next, now);
-                for (var source : sources)
                     try (var p = c.prepareStatement(
-                            "INSERT INTO stock_members VALUES(?,?,?,1,?,?,?) ON CONFLICT(server,stash,source) DO UPDATE SET present=1,payload=excluded.payload,revision=excluded.revision,verified_at=excluded.verified_at")) {
+                            "INSERT INTO stock_parts VALUES(?,?,?,?,?,?) ON CONFLICT(server,dimension,x,y,z) DO UPDATE SET source=excluded.source WHERE ?=1")) {
                         p.setString(1, server);
-                        p.setString(2, stash);
-                        p.setString(3, source.get("id").getAsString());
-                        p.setString(4, source.toString());
-                        p.setLong(5, next);
-                        p.setLong(6, memberTimes.get(source.get("id").getAsString()));
+                        p.setString(2, dimension);
+                        for (int i = 0; i < 3; i++) p.setInt(3 + i, pos.get(i).getAsInt());
+                        p.setString(6, id);
+                        p.setInt(7, fresh ? 1 : 0);
                         p.executeUpdate();
                     }
+                }
+            }
+            try (var p = c.prepareStatement("UPDATE stock_members SET present=0 WHERE server=? AND stash=?")) {
+                p.setString(1, server);
+                p.setString(2, stash);
+                p.executeUpdate();
+            }
+            reconcileObservedBoxUuids(c, server, freshBoxes, next, now);
+            sweepMissingBoxUuids(c, server, freshBoxes, next, now);
+            for (var source : sources)
                 try (var p = c.prepareStatement(
-                        "SELECT s.id,s.payload FROM stock_sources s WHERE NOT EXISTS(SELECT 1 FROM stock_members m WHERE m.source=s.id AND m.present=1)")) {
-                    try (var rows = p.executeQuery()) {
-                        while (rows.next()) {
-                            JsonObject withdrawn =
-                                    JsonParser.parseString(rows.getString(2)).getAsJsonObject();
-                            if (withdrawn.get("state").getAsString().equals("WITHDRAWN")) continue;
-                            withdrawn.addProperty("state", "WITHDRAWN");
-                            try (var update =
-                                    c.prepareStatement("UPDATE stock_sources SET payload=?,revision=? WHERE id=?")) {
-                                update.setString(1, withdrawn.toString());
-                                update.setLong(2, next);
-                                update.setString(3, rows.getString(1));
-                                update.executeUpdate();
-                            }
+                        "INSERT INTO stock_members VALUES(?,?,?,1,?,?,?) ON CONFLICT(server,stash,source) DO UPDATE SET present=1,payload=excluded.payload,revision=excluded.revision,verified_at=excluded.verified_at")) {
+                    p.setString(1, server);
+                    p.setString(2, stash);
+                    p.setString(3, source.get("id").getAsString());
+                    p.setString(4, source.toString());
+                    p.setLong(5, next);
+                    p.setLong(6, memberTimes.get(source.get("id").getAsString()));
+                    p.executeUpdate();
+                }
+            try (var p = c.prepareStatement(
+                    "SELECT s.id,s.payload FROM stock_sources s WHERE NOT EXISTS(SELECT 1 FROM stock_members m WHERE m.source=s.id AND m.present=1)")) {
+                try (var rows = p.executeQuery()) {
+                    while (rows.next()) {
+                        JsonObject withdrawn =
+                                JsonParser.parseString(rows.getString(2)).getAsJsonObject();
+                        if (withdrawn.get("state").getAsString().equals("WITHDRAWN")) continue;
+                        withdrawn.addProperty("state", "WITHDRAWN");
+                        try (var update =
+                                c.prepareStatement("UPDATE stock_sources SET payload=?,revision=? WHERE id=?")) {
+                            update.setString(1, withdrawn.toString());
+                            update.setLong(2, next);
+                            update.setString(3, rows.getString(1));
+                            update.executeUpdate();
                         }
                     }
                 }
-                index.addProperty("stockRevision", next);
-                index.addProperty("stockEpoch", epoch);
-                try (var p = c.prepareStatement(
-                        "INSERT INTO stock_indexes VALUES(?,?,?,?) ON CONFLICT(server,stash) DO UPDATE SET payload=excluded.payload,revision=excluded.revision")) {
-                    p.setString(1, server);
-                    p.setString(2, stash);
-                    p.setString(3, index.toString());
-                    p.setLong(4, next);
-                    p.executeUpdate();
-                }
-                try (var p = c.prepareStatement("UPDATE stock_meta SET revision=? WHERE id=1")) {
-                    p.setLong(1, next);
-                    p.executeUpdate();
-                }
-                tx.commit();
+            }
+            index.addProperty("stockRevision", next);
+            index.addProperty("stockEpoch", epoch);
+            try (var p = c.prepareStatement(
+                    "INSERT INTO stock_indexes VALUES(?,?,?,?) ON CONFLICT(server,stash) DO UPDATE SET payload=excluded.payload,revision=excluded.revision")) {
+                p.setString(1, server);
+                p.setString(2, stash);
+                p.setString(3, index.toString());
+                p.setLong(4, next);
+                p.executeUpdate();
+            }
+            try (var p = c.prepareStatement("UPDATE stock_meta SET revision=? WHERE id=1")) {
+                p.setLong(1, next);
+                p.executeUpdate();
+            }
+            tx.commit();
         } catch (SQLException e) {
             throw new IOException("Observation transaction failed", e);
         }
@@ -883,29 +874,28 @@ final class StockLedger {
         UUID.fromString(uuid);
         try (var c = open();
                 var tx = new SqliteWriteTransaction(c)) {
-                try (var read =
-                        c.prepareStatement("SELECT source,path,status FROM box_uuids WHERE uuid=? AND server=?")) {
-                    read.setString(1, uuid);
-                    read.setString(2, server);
-                    try (var rows = read.executeQuery()) {
-                        if (!rows.next()) {
-                            tx.commit();
-                            return;
-                        }
-                        long revision = revision(c);
-                        deregisterInTx(
-                                c,
-                                server,
-                                uuid,
-                                rows.getString(3),
-                                rows.getString(1),
-                                rows.getString(2),
-                                reason == null ? "DEREGISTERED" : reason,
-                                revision,
-                                clock.getAsLong());
+            try (var read = c.prepareStatement("SELECT source,path,status FROM box_uuids WHERE uuid=? AND server=?")) {
+                read.setString(1, uuid);
+                read.setString(2, server);
+                try (var rows = read.executeQuery()) {
+                    if (!rows.next()) {
+                        tx.commit();
+                        return;
                     }
+                    long revision = revision(c);
+                    deregisterInTx(
+                            c,
+                            server,
+                            uuid,
+                            rows.getString(3),
+                            rows.getString(1),
+                            rows.getString(2),
+                            reason == null ? "DEREGISTERED" : reason,
+                            revision,
+                            clock.getAsLong());
                 }
-                tx.commit();
+            }
+            tx.commit();
         } catch (SQLException failure) {
             throw new IOException("Cannot deregister box UUID", failure);
         }

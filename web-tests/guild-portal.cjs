@@ -1,7 +1,7 @@
 // Run through docker-smoke.py --browser. Manager and its HTTP sessions are real.
 // Covers the React/MUI dashboard: two members log in, search shared stock,
 // add to the draft, walk cart -> details -> review -> place, and see private
-// order histories (member isolation); an officer audits by person and item.
+// order histories (member isolation); only Owner audits by person and item.
 // Any page error or request leaving the Manager origin fails the run.
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -184,7 +184,7 @@ async function main() {
       await expect(page.getByText(notes[1 - i], { exact: false })).toHaveCount(
         0,
       );
-      // No audit surface for members (backend ORDERS_ALL, UI-gated too).
+      // No audit surface for members (Owner-only backend and UI).
       // Members lack the activity perm so Operations is not in their nav;
       // reach it directly and verify no audit tab or operator queues render.
       await page.goto(url + "/operations");
@@ -201,15 +201,29 @@ async function main() {
         .waitFor();
     }
 
-    // Officer: same login, then audit by person + item finds the one order.
+    // Officer: Operations is available, but guild-wide audit is Owner-only.
     const reviewer = await login(officer);
     await reviewer
       .getByRole("navigation")
       .getByRole("link", { name: "Operations", exact: true })
       .click();
     await expectHeading(reviewer, "Operations");
-    await reviewer.getByRole("tab", { name: "Order audit" }).click();
-    const audit = reviewer.locator("#order-audit");
+    await expect(
+      reviewer.getByRole("tab", { name: "Order audit" }),
+    ).toHaveCount(0);
+    await expect(reviewer.locator("#order-audit")).toHaveCount(0);
+    const denied = await reviewer.request.get(url + "/api/v1/audit/orders");
+    assert.equal(denied.status(), 403);
+
+    // Owner can audit by person and item, then place a guild order.
+    const owner = await login("");
+    await owner
+      .getByRole("navigation")
+      .getByRole("link", { name: "Operations", exact: true })
+      .click();
+    await expectHeading(owner, "Operations");
+    await owner.getByRole("tab", { name: "Order audit" }).click();
+    const audit = owner.locator("#order-audit");
     await audit.getByLabel("Person").fill(members[0]);
     await audit.getByLabel("Item").fill("diamond");
     await audit.getByRole("button", { name: "Search", exact: true }).click();
@@ -218,7 +232,6 @@ async function main() {
     await expect(rows.first()).toContainText(members[0]);
     await expect(rows.first()).toContainText("minecraft:diamond");
 
-    const owner = await login("");
     await inventorySearch(owner, "diamond");
     await owner
       .getByTestId("item-grid")

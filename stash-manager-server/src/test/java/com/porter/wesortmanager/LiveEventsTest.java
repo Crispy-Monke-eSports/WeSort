@@ -195,10 +195,8 @@ class LiveEventsTest {
             assertTrue(hello.contains("event: hello"), hello);
 
             // Guild validation returns 400 before any persistent change.
-            int rejected = post(
-                    session,
-                    "/api/v1/guild",
-                    "{\"name\":\"\",\"description\":\"\",\"expectedRevision\":1}");
+            int rejected =
+                    post(session, "/api/v1/guild", "{\"name\":\"\",\"description\":\"\",\"expectedRevision\":1}");
             assertEquals(400, rejected, "invalid guild writes must be rejected");
             String unexpected = frames.poll(750, TimeUnit.MILLISECONDS);
             assertTrue(
@@ -206,9 +204,7 @@ class LiveEventsTest {
                     "a rejected write must not broadcast an update: " + unexpected);
 
             int accepted = post(
-                    session,
-                    "/api/v1/guild",
-                    "{\"name\":\"6b6t Guild\",\"description\":\"\",\"expectedRevision\":1}");
+                    session, "/api/v1/guild", "{\"name\":\"6b6t Guild\",\"description\":\"\",\"expectedRevision\":1}");
             assertEquals(200, accepted, "valid guild write must succeed");
 
             String update = null;

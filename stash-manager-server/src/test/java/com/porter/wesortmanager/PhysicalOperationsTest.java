@@ -205,7 +205,11 @@ class PhysicalOperationsTest {
         assertNotNull(old);
 
         // A local readback with no valid Manager decision is not sufficient to release the fence.
-        local.verified(frame("after"), true, playerInventory(), java.util.UUID.randomUUID().toString());
+        local.verified(
+                frame("after"),
+                true,
+                playerInventory(),
+                java.util.UUID.randomUUID().toString());
         local.complete();
         var current = operations.accept(agent, local.current());
         assertEquals("NEEDS_RECONCILIATION", current.get("state").getAsString());
@@ -221,7 +225,9 @@ class PhysicalOperationsTest {
         assertEquals(next.get("id"), operations.decision(agent, local.id()).get("id"));
         local.verified(frame("after"), true, playerInventory(), next.get("id").getAsString());
         local.complete();
-        assertEquals("COMPLETED", operations.accept(agent, local.current()).get("state").getAsString());
+        assertEquals(
+                "COMPLETED",
+                operations.accept(agent, local.current()).get("state").getAsString());
         assertNull(operations.decision(agent, local.id()));
     }
 
@@ -242,7 +248,9 @@ class PhysicalOperationsTest {
         var next = operations.inspectAutomatically(agent, receipt);
         assertNotNull(next);
         assertNotEquals(first.get("id"), next.get("id"));
-        assertEquals("RECOVERING", operations.list().get(0).getAsJsonObject().get("managerState").getAsString());
+        assertEquals(
+                "RECOVERING",
+                operations.list().get(0).getAsJsonObject().get("managerState").getAsString());
     }
 
     @Test

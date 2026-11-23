@@ -11,8 +11,8 @@
     "test:watch": "vitest",
     "e2e": "playwright test",
     "lint": "tsc --noEmit",
-    "format": "prettier --write \"../**/*.md\" \"**/*.{js,cjs,mjs,jsx,ts,tsx,css,html,json}\" \"../web-tests/**/*.{js,cjs,mjs,jsx,ts,tsx,css,html,json}\" \"../stash-manager-server/src/main/resources/web/**/*.{js,cjs,mjs,jsx,ts,tsx,css,html,json}\"",
-    "format:check": "prettier --check \"../**/*.md\" \"**/*.{js,cjs,mjs,jsx,ts,tsx,css,html,json}\" \"../web-tests/**/*.{js,cjs,mjs,jsx,ts,tsx,css,html,json}\" \"../stash-manager-server/src/main/resources/web/**/*.{js,cjs,mjs,jsx,ts,tsx,css,html,json}\"",
+    "format": "prettier --no-editorconfig --write \"../**/*.md\" \"**/*.{js,cjs,mjs,jsx,ts,tsx,css,html,json}\" \"../web-tests/**/*.{js,cjs,mjs,jsx,ts,tsx,css,html,json}\" \"../stash-manager-server/src/main/resources/web/**/*.{js,cjs,mjs,jsx,ts,tsx,css,html,json}\"",
+    "format:check": "prettier --no-editorconfig --check \"../**/*.md\" \"**/*.{js,cjs,mjs,jsx,ts,tsx,css,html,json}\" \"../web-tests/**/*.{js,cjs,mjs,jsx,ts,tsx,css,html,json}\" \"../stash-manager-server/src/main/resources/web/**/*.{js,cjs,mjs,jsx,ts,tsx,css,html,json}\"",
     "clean": "rm -f ../stash-manager-server/src/main/resources/web/assets/index-*.js ../stash-manager-server/src/main/resources/web/assets/index-*.css"
   },
   "dependencies": {

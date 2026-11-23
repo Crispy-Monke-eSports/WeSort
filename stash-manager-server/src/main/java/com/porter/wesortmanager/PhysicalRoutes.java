@@ -77,6 +77,7 @@ final class PhysicalRoutes {
             }
             var store = operations();
             JsonObject receipt;
+            JsonObject decision;
             JsonObject result = body.has("result") ? body.getAsJsonObject("result") : null;
             // Serialized with the index lock: order reconciliation checks unsettled operations
             // and commits under the same lock, so a journal write cannot land in between.
@@ -89,8 +90,9 @@ final class PhysicalRoutes {
                             result.get("state").getAsString(),
                             result.get("detail").getAsString());
                 }
+                decision = store.decision(agent, receipt.get("id").getAsString());
+                if (decision == null) decision = store.inspectAutomatically(agent, receipt);
             }
-            var decision = store.decision(agent, receipt.get("id").getAsString());
             var response = new JsonObject();
             response.add("receipt", receipt);
             if (decision != null) response.add("decision", decision);

@@ -172,10 +172,22 @@ class JournalHarness(repack.RepackHarness):
             self.start_client()
             initial = self.command('state')['state']
             initial_detail = self.record_fence_state('restart', initial)
-            require(initial['physicalJournal'] == 'AUTO_RECOVERING' and initial['attemptedClicks'] == 0,
-                    'Restart reopened automation or replayed a click: ' + json.dumps(initial_detail))
-            require(initial['sortingPermitted'] is False,
-                    'Restart exposed an unsafe sorting permit: ' + json.dumps(initial_detail))
+            require(initial['physicalJournal'] in ('AUTO_RECOVERING', 'READY')
+                    and initial['attemptedClicks'] == 0,
+                    'Restart replayed a click or entered an unexpected recovery state: '
+                    + json.dumps(initial_detail))
+            if initial['physicalJournal'] == 'READY':
+                # At SELECT/PLACE the journal can be safely failed locally
+                # before any INTENT was emitted. Do not demand a manual fence
+                # or invent an inspection for a non-mutating operation.
+                require(not any(event['type'] == 'INTENT' for event in crashed['events']),
+                        'Unverified physical intent was released on restart: '
+                        + json.dumps(initial_detail))
+                require(not initial['journalBlocked'] and not initial['sorterActive'],
+                        'Safe no-mutation abort restarted sorting: ' + json.dumps(initial_detail))
+            else:
+                require(initial['sortingPermitted'] is False,
+                        'Unverified restart exposed a sorting permit: ' + json.dumps(initial_detail))
             self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key)
             row = self.wait_for_review(crashed['id'])
             require(row['interruptedPhase'] == self.phase, 'Manager omitted the interrupted phase')
@@ -187,23 +199,30 @@ class JournalHarness(repack.RepackHarness):
             if self.phase in ('OPEN', 'TRANSFER', 'VERIFY', 'BREAK'):
                 require(row['possibleOrphans'], 'Manager did not list the possible standing shulker')
             if self.phase == 'SELECT':
-                # No owner endpoint or manual trigger exists. The signed
-                # agent must receive the Manager's auto-issued, checksum-bound
-                # read-only inspection and prove no mutation was sent.
-                end = time.monotonic() + 35
-                inspected = None
-                while time.monotonic() < end:
-                    _, reply = self.http('/api/v1/physical')
-                    inspected = next(r for r in reply['operations'] if r['id'] == row['id'])
-                    if inspected.get('inspectionState') == 'COMPLETED':
-                        require(inspected['managerState'] == 'FAILED',
-                                'No-mutation inspection falsely completed repack')
-                        self.ok('Automatic fresh inventory readback proved SELECT sent no mutation')
-                        break
-                    time.sleep(.25)
+                if initial['physicalJournal'] == 'READY':
+                    # The startup journal proved no packet was sent; Manager
+                    # records the terminal safe failure without an inspection.
+                    require(row['managerState'] == 'FAILED',
+                            'Safe no-mutation SELECT was not recorded as failed: '
+                            + json.dumps(row))
+                    self.ok('SELECT safely failed before any mutation without operator input')
                 else:
-                    raise RuntimeError('Automatic safe SELECT recovery did not complete: '
-                                       + json.dumps(inspected))
+                    # If a fence existed, the signed client must complete the
+                    # Manager's automatic, revision-bound read-only inspection.
+                    end = time.monotonic() + 35
+                    inspected = None
+                    while time.monotonic() < end:
+                        _, reply = self.http('/api/v1/physical')
+                        inspected = next(r for r in reply['operations'] if r['id'] == row['id'])
+                        if inspected.get('inspectionState') == 'COMPLETED':
+                            require(inspected['managerState'] == 'FAILED',
+                                    'No-mutation inspection falsely completed repack')
+                            self.ok('Automatic inventory readback proved SELECT sent no mutation')
+                            break
+                        time.sleep(.25)
+                    else:
+                        raise RuntimeError('Automatic safe SELECT recovery did not complete: '
+                                           + json.dumps(inspected))
             # Without an operator, an inconclusive inspection remains fenced;
             # a proven postcondition may reach READY automatically. The isolated
             # fixture holds sorting off, so neither outcome authorizes a new move.

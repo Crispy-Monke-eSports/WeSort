@@ -55,7 +55,10 @@ export function prefixesForChannels(channels: string[]): unknown[][] {
     "auth",
     "operations",
   ]);
-  if (channels.length === 0 || channels.some((channel) => !known.has(channel))) {
+  if (
+    channels.length === 0 ||
+    channels.some((channel) => !known.has(channel))
+  ) {
     return LIVE_PREFIXES.map((prefix) => [...prefix]);
   }
   const has = (...names: string[]) => names.some((n) => channels.includes(n));

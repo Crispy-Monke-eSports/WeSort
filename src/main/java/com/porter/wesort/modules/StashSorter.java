@@ -1228,8 +1228,8 @@ public class StashSorter extends Module {
 
         @Override
         public void uncertain(String reason) {
-            PhysicalJournalRuntime.block("Kit packing needs physical reconciliation");
-            warning("Kit packing paused for reconciliation: %s", reason);
+            PhysicalJournalRuntime.block("Kit packing paused for verified automatic recovery");
+            warning("Kit packing paused for automatic recovery: %s", reason);
         }
 
         @Override
@@ -1609,7 +1609,7 @@ public class StashSorter extends Module {
             return com.porter.wesort.compat.NavigationRuntime.status();
         return InventorySync.ready()
                 ? null
-                : (InventorySync.failed() ? "NEEDS_RECONCILIATION" : "awaiting server inventory");
+                : (InventorySync.failed() ? "AUTO_RECOVERING" : "awaiting server inventory");
     }
 
     @Override
@@ -1618,12 +1618,6 @@ public class StashSorter extends Module {
         if (driven) {
             driven = false;
             teardown();
-        }
-        // An explicit off-to-on cycle is an operator release of a crash-recovery fence:
-        // automatic restores (no deactivate seen since startup) never release it.
-        if (sawDeactivate) {
-            sawDeactivate = false;
-            com.porter.wesort.compat.PhysicalJournalRuntime.releaseReconciled();
         }
         setup();
     }
@@ -1777,7 +1771,6 @@ public class StashSorter extends Module {
 
     @Override
     public void onDeactivate() {
-        sawDeactivate = true;
         PhysicalJournalRuntime.block("Automation stopped during physical work");
         teardown();
     }
@@ -1794,7 +1787,7 @@ public class StashSorter extends Module {
                 usedBaritone = false;
             }
             warning(
-                    "Inventory readback is pending or uncertain; no cleanup clicks were sent. Inspect the source and use .wesort-reconcile.");
+                    "Inventory readback is pending or uncertain; automatic recovery will retry when the source is available.");
             gate = Gate.Running;
             yielder.reset();
             return;
@@ -3747,9 +3740,6 @@ public class StashSorter extends Module {
 
     // Set up and not yet torn down, driven or not
     private boolean setUp;
-    // Seen a deactivate since startup: distinguishes an explicit operator off-to-on
-    // cycle (which releases a crash-recovery fence) from an automatic restore.
-    private boolean sawDeactivate;
     // Why the loop can't be driven now, for the blocker
     private String driveBlocked;
 
@@ -8435,7 +8425,7 @@ public class StashSorter extends Module {
         repackWork.reconcile(why);
         PhysicalJournalRuntime.block(why);
         dropLost = true;
-        alertError("Shulker operation NEEDS_RECONCILIATION: %s. No physical retry is sent.", why);
+        alertError("Shulker operation waiting for automatic recovery: %s. No unverified physical retry is sent.", why);
     }
 
     /**

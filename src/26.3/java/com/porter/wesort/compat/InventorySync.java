@@ -831,6 +831,10 @@ public final class InventorySync {
                 origin = null;
                 recoveringReceipt = false;
             } catch (Exception e) {
+                // Preserve the original exception for CI evidence while keeping
+                // automated physical input fenced. The generic gate reason alone
+                // cannot distinguish a mismatched receipt from an I/O failure.
+                MeteorClient.LOG.error("Cannot commit the verified inventory readback", e);
                 gate.fail("Cannot commit the verified inventory readback");
                 PhysicalJournalRuntime.inspectionFailed("The fresh readback could not be signed off");
                 reportFailure();

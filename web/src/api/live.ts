@@ -36,13 +36,28 @@ const LIVE_PREFIXES: readonly unknown[][] = [
   ["kits"],
   ["stash-defs"],
   ["users"],
-  ["quotas"],
   ["auth"],
   ["agents"],
 ];
 
 /** TanStack Query key prefixes invalidated for a set of live channels. */
 export function prefixesForChannels(channels: string[]): unknown[][] {
+  // Queue overflow and unknown channels require a complete resync, even
+  // when the same debounced batch also contains known updates.
+  const known = new Set([
+    "orders",
+    "index",
+    "stock",
+    "stashes",
+    "bots",
+    "presence",
+    "settings",
+    "auth",
+    "operations",
+  ]);
+  if (channels.length === 0 || channels.some((channel) => !known.has(channel))) {
+    return LIVE_PREFIXES.map((prefix) => [...prefix]);
+  }
   const has = (...names: string[]) => names.some((n) => channels.includes(n));
   const out: unknown[][] = [];
   const add = (prefix: unknown[]) => {
@@ -79,7 +94,6 @@ export function prefixesForChannels(channels: string[]): unknown[][] {
       ["kits"],
       ["stash-defs"],
       ["users"],
-      ["quotas"],
       ["server"],
       ["stashes"],
       ["auth"],

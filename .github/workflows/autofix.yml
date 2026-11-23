@@ -12,12 +12,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: java-format-${{ github.event_name }}-${{ github.ref }}
+  group: code-format-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   pull-request:
-    name: Format Java in pull requests (autofix.ci)
+    name: Format Java, web and Markdown in PRs (autofix.ci)
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-26.04
     steps:
@@ -40,19 +40,24 @@ jobs:
           java-version: '21'
       - name: Format and verify Manager Java
         run: ./gradlew --no-daemon -p stash-manager-server spotlessApply spotlessCheck
+      - uses: oven-sh/setup-bun@v2
+      - name: Install web formatting dependencies
+        run: cd web && bun install --frozen-lockfile
+      - name: Apply Prettier to web UI and all Markdown
+        run: cd web && bun run format
       - name: Commit formatting changes to the PR branch
         uses: autofix-ci/action@c5b2d67aa2274e7b5a18224e8171550871fc7e4a # v1.3.4
-      - name: Require formatted Java in the PR
+      - name: Require formatted Java, web and Markdown in the PR
         shell: bash
         run: |
-          if ! git diff --quiet -- '*.java'; then
-            git diff --stat -- '*.java'
-            echo '::error::Java files need formatting; autofix.ci has been asked to commit the fixes. The corrected PR commit will be rechecked.'
+          if ! git diff --quiet -- '*.java' '*.md' 'web/**' 'web-tests/**' 'stash-manager-server/src/main/resources/web/**'; then
+            git diff --stat -- '*.java' '*.md' 'web/**' 'web-tests/**' 'stash-manager-server/src/main/resources/web/**'
+            echo '::error::Java, web or Markdown files need formatting; autofix.ci has been asked to commit the fixes. The corrected PR commit will be rechecked.'
             exit 1
           fi
 
   main:
-    name: Format Java on main (auto-commit)
+    name: Format Java, web and Markdown on main (auto-commit)
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-26.04
     # Only this job can push to main; it never runs for PRs.
@@ -79,21 +84,26 @@ jobs:
           java-version: '21'
       - name: Format and verify Manager Java
         run: ./gradlew --no-daemon -p stash-manager-server spotlessApply spotlessCheck
+      - uses: oven-sh/setup-bun@v2
+      - name: Install web formatting dependencies
+        run: cd web && bun install --frozen-lockfile
+      - name: Apply Prettier to web UI and all Markdown
+        run: cd web && bun run format
       - name: Commit and push formatting fixes to main
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Stage only tracked Java files changed by the formatters.
-          git add -u -- '*.java'
+          # Stage only tracked Java, web UI and Markdown files changed by the formatters.
+          git add -u -- '*.java' '*.md' 'web/**' 'web-tests/**' 'stash-manager-server/src/main/resources/web/**'
           if git diff --cached --quiet; then
-            echo 'All Java files already follow Spotless.'
+            echo 'All Java, web and Markdown files already follow Spotless and Prettier.'
             exit 0
           fi
 
           git -c user.name='github-actions[bot]' \
               -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
-              commit -m 'style: apply Spotless Java formatting'
+              commit -m 'style: apply Spotless and Prettier formatting'
 
           # No force push: fail if main advanced or branch rules prohibit updates.
           git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:refs/heads/main

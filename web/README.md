@@ -47,3 +47,11 @@ a verification gate, not best-effort capture (page/API/capture failures are red)
 - Explicitly remaining: W-063 stock-UUID lifecycle + return intake; Manager-side
   module-allowlist audit surface; per-bot jobs view; audit-log viewer UI.
   These are tracked as NOT READY in the PR report, not silently claimed.
+
+## Formatting
+
+Run `bun run format` to apply Prettier to the React UI, web regression tests,
+Manager-served HTML/CSS/JavaScript, and **all Markdown files** in the repository.
+Run `bun run format:check` to verify formatting locally, as the CI formatting
+gate does. Prettier uses its built-in defaults without a configuration file;
+Java formatting remains handled by Spotless.

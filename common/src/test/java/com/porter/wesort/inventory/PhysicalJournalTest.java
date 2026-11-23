@@ -146,13 +146,14 @@ class PhysicalJournalTest {
             var row = entry.getAsJsonObject();
             row.addProperty("previous", previous);
             row.remove("hash");
-            previous = com.porter.wesort.data.ContainerIdentity.hash(
-                    com.porter.wesort.data.CanonicalJson.stringify(row));
+            previous =
+                    com.porter.wesort.data.ContainerIdentity.hash(com.porter.wesort.data.CanonicalJson.stringify(row));
             row.addProperty("hash", previous);
         }
         value.remove("checksum");
-        value.addProperty("checksum", com.porter.wesort.data.ContainerIdentity.hash(
-                com.porter.wesort.data.CanonicalJson.stringify(value)));
+        value.addProperty(
+                "checksum",
+                com.porter.wesort.data.ContainerIdentity.hash(com.porter.wesort.data.CanonicalJson.stringify(value)));
         return value;
     }
 

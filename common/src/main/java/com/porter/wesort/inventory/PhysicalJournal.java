@@ -318,12 +318,11 @@ public final class PhysicalJournal {
             if (evidence == null) throw new IllegalArgumentException("Missing physical evidence");
             String nextPhase = row.get("phase").getAsString();
             PhysicalWork.Phase.valueOf(nextPhase);
-            boolean fenced = List.of("NEEDS_RECONCILIATION", "COMPLETED", "FAILED")
-                    .contains(state == null ? "" : state);
+            boolean fenced =
+                    List.of("NEEDS_RECONCILIATION", "COMPLETED", "FAILED").contains(state == null ? "" : state);
             if (sequence == 1 && !type.equals("PLANNED"))
                 throw new IllegalArgumentException("Physical journal must begin with a plan");
-            if (sequence > 1 && !type.equals("PHASE") && !type.equals("COMPLETED")
-                    && !nextPhase.equals(phase))
+            if (sequence > 1 && !type.equals("PHASE") && !type.equals("COMPLETED") && !nextPhase.equals(phase))
                 throw new IllegalArgumentException("Unexpected physical phase change");
             switch (type) {
                 case "PLANNED" -> {
@@ -361,7 +360,8 @@ public final class PhysicalJournal {
                     state = "COMPLETED";
                 }
                 case "FAILED" -> {
-                    if (pending != 0) throw new IllegalArgumentException("Physical intent cannot fail without reconciliation");
+                    if (pending != 0)
+                        throw new IllegalArgumentException("Physical intent cannot fail without reconciliation");
                     state = "FAILED";
                 }
                 default -> throw new IllegalArgumentException("Unknown physical event");
@@ -389,12 +389,15 @@ public final class PhysicalJournal {
                 verified = pending;
             }
         }
-        if (exactLong(value, "revision") != sequence
-                || exactLong(value, "verifiedThrough") != verified)
+        if (exactLong(value, "revision") != sequence || exactLong(value, "verifiedThrough") != verified)
             throw new IllegalArgumentException("Invalid journal revision");
-        if (!state.equals(value.get("state").getAsString()) || !phase.equals(value.get("phase").getAsString())
-                || !Objects.equals(interruptedPhase, value.has("interruptedPhase")
-                        ? value.get("interruptedPhase").getAsString() : null))
+        if (!state.equals(value.get("state").getAsString())
+                || !phase.equals(value.get("phase").getAsString())
+                || !Objects.equals(
+                        interruptedPhase,
+                        value.has("interruptedPhase")
+                                ? value.get("interruptedPhase").getAsString()
+                                : null))
             throw new IllegalArgumentException("Physical journal header disagrees with evidence");
         return value;
     }
@@ -402,7 +405,9 @@ public final class PhysicalJournal {
     private static long exactLong(JsonObject object, String field) {
         try {
             var element = object.get(field);
-            if (element == null || !element.isJsonPrimitive() || !element.getAsJsonPrimitive().isNumber())
+            if (element == null
+                    || !element.isJsonPrimitive()
+                    || !element.getAsJsonPrimitive().isNumber())
                 throw new IllegalArgumentException("Invalid journal number");
             return element.getAsBigDecimal().longValueExact();
         } catch (ArithmeticException invalid) {

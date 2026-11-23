@@ -29,6 +29,7 @@ class OrderReportReceiptTest {
     void resumeCompleteRequiresARealTerminalDisposition() {
         assertNull(OrderReportReceipt.parse(reply("o-one", "RECOVERING", "in_progress", true), "o-one"));
         assertNull(OrderReportReceipt.parse(reply("o-one", "CANCELLED", "packed", true), "o-one"));
-        assertTrue(OrderReportReceipt.parse(reply("o-one", "CANCELLED", "cancelled", true), "o-one").resumeComplete());
+        assertTrue(OrderReportReceipt.parse(reply("o-one", "CANCELLED", "cancelled", true), "o-one")
+                .resumeComplete());
     }
 }

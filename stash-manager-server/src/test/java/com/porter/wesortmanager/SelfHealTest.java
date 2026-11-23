@@ -190,7 +190,9 @@ class SelfHealTest {
 
         var restarted = new OrderStore(data, store);
         restarted.load();
-        assertEquals("RECOVERING", restarted.resumeClaim("s", "a", agent, first.id).get("state").getAsString());
+        assertEquals(
+                "RECOVERING",
+                restarted.resumeClaim("s", "a", agent, first.id).get("state").getAsString());
         restarted.status(first.id, "cancelled", null, null, "Returned", null, agent, "rollback-receipt");
         var terminal = restarted.resumeClaim("s", "a", agent, first.id);
         assertTrue(terminal.get("resumeComplete").getAsBoolean());

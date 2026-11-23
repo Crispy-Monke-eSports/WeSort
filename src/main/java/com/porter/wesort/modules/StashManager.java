@@ -1311,7 +1311,9 @@ public class StashManager extends Module {
                             if (code >= 400 && code < 500 && code != 401 && code != 409) {
                                 WeSortAddon.LOG.warn(
                                         "wesort-stash-manager: the server refused the status of order {} ({}): {}",
-                                        report.id(), code, body);
+                                        report.id(),
+                                        code,
+                                        body);
                                 if (!minimal) {
                                     minimalFor = report.id();
                                     return false;
@@ -1689,9 +1691,12 @@ public class StashManager extends Module {
             JsonElement e = JsonParser.parseString(body);
             if (e.isJsonObject() && e.getAsJsonObject().has("order")) {
                 JsonObject offered = e.getAsJsonObject().getAsJsonObject("order");
-                recovering = (offered.has("state") && "RECOVERING".equals(offered.get("state").getAsString()))
-                        || (offered.has("resumeComplete") && offered.get("resumeComplete").getAsBoolean())
-                        || (offered.has("cancelRequested") && offered.get("cancelRequested").getAsBoolean());
+                recovering = (offered.has("state")
+                                && "RECOVERING".equals(offered.get("state").getAsString()))
+                        || (offered.has("resumeComplete")
+                                && offered.get("resumeComplete").getAsBoolean())
+                        || (offered.has("cancelRequested")
+                                && offered.get("cancelRequested").getAsBoolean());
                 order = Order.parse(offered);
             }
         } catch (RuntimeException e) {
@@ -1758,8 +1763,7 @@ public class StashManager extends Module {
                     }
                     // The saved packing plan may still have real staged items.
                     // Persist rollback intent, then resume the exact order.
-                    if (!sorter.orderCancel(cancelled)
-                            && sorter.orders().requestSavedCancellation(cancelled)) {
+                    if (!sorter.orderCancel(cancelled) && sorter.orders().requestSavedCancellation(cancelled)) {
                         lastClaim = 0;
                         sorter.orderTaken();
                     }

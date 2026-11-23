@@ -1115,8 +1115,9 @@ final class OrderRunner {
             boolean staged = "PICKUP_READY".equals(managerState) || "DELIVERED".equals(managerState);
             long reclaimed = saved.units.stream().filter(unit -> unit.reclaimed).count();
             if (staged && (saved.recoveryPending || reclaimed > 0)) return false;
-            if (!staged && (reclaimed < saved.shulkersDelivered
-                    || saved.units.stream().anyMatch(unit -> !unit.stagedSource.isEmpty() && !unit.reclaimed)))
+            if (!staged
+                    && (reclaimed < saved.shulkersDelivered
+                            || saved.units.stream().anyMatch(unit -> !unit.stagedSource.isEmpty() && !unit.reclaimed)))
                 return false;
             stash.activeOrder = null;
             stash.markDirty();
@@ -2372,8 +2373,9 @@ final class OrderRunner {
     private void finish(State end, String text) {
         // A local Delivered means staged, not yet acknowledged by Manager.
         // Rejected staging must be able to enter rollback from that state.
-        if (order == null || (state != State.Running
-                && !(state == State.Delivered && (end == State.Failed || end == State.Cancelled)))) return;
+        if (order == null
+                || (state != State.Running
+                        && !(state == State.Delivered && (end == State.Failed || end == State.Cancelled)))) return;
         if (craftInFlight && end != State.Delivered)
             text = "Manufacturing was interrupted; physical verification is required before cleanup: " + text;
         kits.dropOrderKit();

@@ -2085,7 +2085,10 @@ final class OrderStore {
             synchronized (book) {
                 Order order = find(book, id);
                 if (order == null)
-                    order = book.archived.stream().filter(row -> id.equals(row.id)).findFirst().orElse(null);
+                    order = book.archived.stream()
+                            .filter(row -> id.equals(row.id))
+                            .findFirst()
+                            .orElse(null);
                 if (order == null || !agent.equals(order.agent)) return null;
                 if (FINISHED.contains(order.status)) {
                     if (index.stock().unsettledPhysicalOrder(id)) return null;

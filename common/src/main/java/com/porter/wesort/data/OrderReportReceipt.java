@@ -11,7 +11,8 @@ public record OrderReportReceipt(String state, String status, boolean resumeComp
             if (!expectedId.equals(order.get("id").getAsString())) return null;
             String state = order.get("state").getAsString();
             String status = order.get("status").getAsString();
-            boolean complete = order.has("resumeComplete") && order.get("resumeComplete").getAsBoolean();
+            boolean complete =
+                    order.has("resumeComplete") && order.get("resumeComplete").getAsBoolean();
             var receipt = new OrderReportReceipt(state, status, complete);
             if (complete && !receipt.staged() && !receipt.acknowledges("failed") && !receipt.acknowledges("cancelled"))
                 return null;

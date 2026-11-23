@@ -24,6 +24,15 @@ const brandingLockup = fs.readFileSync(
   "utf8",
 );
 
+const horizontalSvg = fs.readFileSync(
+  path.join(root, "wesort-horizontal.svg"),
+  "utf8",
+);
+const brandingHorizontal = fs.readFileSync(
+  path.join(brandingRoot, "wesort-horizontal.svg"),
+  "utf8",
+);
+
 const gitBlobSha = (content) =>
   crypto
     .createHash("sha1")
@@ -53,6 +62,34 @@ assert.equal(
 );
 assert.match(officialSvg, /id="brand-color"[^>]*fill="#E66A00"/);
 assert.match(lockupSvg, /id="brand-suffix"/);
+assert.equal(
+  horizontalSvg,
+  brandingHorizontal,
+  "Horizontal branding and web resource must match",
+);
+const artwork = (svg) =>
+  svg.slice(
+    svg.indexOf('<g id="brand-sign">'),
+    svg.indexOf("<!-- Outlined Press Start"),
+  );
+assert.equal(
+  artwork(horizontalSvg),
+  artwork(lockupSvg),
+  "Horizontal lockup must preserve the entire WE sign",
+);
+const glyphs = (svg) =>
+  [...svg.matchAll(/<path id="suffix-[sort]"[^>]*\/>/g)].map((m) => m[0]);
+assert.equal(glyphs(lockupSvg).length, 4);
+assert.deepEqual(
+  glyphs(horizontalSvg),
+  glyphs(lockupSvg),
+  "SORT must use the original Press Start 2P outlines",
+);
+assert.match(horizontalSvg, /viewBox="65 45 2300 755"/);
+assert.match(
+  horizontalSvg,
+  /id="brand-suffix"[^>]*transform="translate\(310 -1881\) scale\(2\.4\)"/,
+);
 
 // No competing implementation: the monolithic app.js/style.css and legacy init scripts are gone.
 for (const legacy of [
@@ -104,8 +141,12 @@ assert.ok(
   "Emotion runtime missing from the bundle",
 );
 assert.ok(
-  bundle.includes("wesort-lockup.svg") || html.includes("wesort-lockup.svg"),
-  "Brand lockup not referenced",
+  bundle.includes("wesort-lockup.svg") && bundle.includes("login-brand"),
+  "Stacked login brand not referenced",
+);
+assert.ok(
+  bundle.includes("wesort-horizontal.svg") && bundle.includes("header-brand"),
+  "Horizontal header brand not referenced",
 );
 const notice =
   "NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.";

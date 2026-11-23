@@ -203,8 +203,8 @@ class LiveEventsTest {
                     unexpected == null || !unexpected.contains("event: update"),
                     "a rejected write must not broadcast an update: " + unexpected);
 
-            int accepted =
-                    post(session, "/api/v1/guild", "{\"name\":\"6b6t Guild\",\"description\":\"\",\"expectedRevision\":1}");
+            int accepted = post(
+                    session, "/api/v1/guild", "{\"name\":\"6b6t Guild\",\"description\":\"\",\"expectedRevision\":1}");
             assertEquals(200, accepted, "valid guild write must succeed");
 
             String update = null;

@@ -982,12 +982,12 @@ public class StashManager extends Module {
                             || !key.equals(apiKey.get().trim())
                             || !observed.player().equals(mc.player.getUUID())
                             || !observed.server().equals(Stash.currentServer())
-                            || current == null
-                            || observed.stash() == null
-                            || !observed.stash().equals(current.stash())
+                            || !java.util.Objects.equals(observed.stash(), current == null ? null : current.stash())
                             || !observed.dimension().equals(StashIndex.dimension())) return false;
                     var poll = JsonParser.parseString(body).getAsJsonObject();
-                    if (poll.has("pendingManifest")) {
+                    // Settings are safe before a warehouse is assigned. A manifest
+                    // requires the exact physical scope registered in hello.
+                    if (observed.stash() != null && poll.has("pendingManifest")) {
                         var hint = poll.getAsJsonObject("pendingManifest");
                         String orderId = text(hint, "orderId");
                         int count = hint.get("packageCount").getAsInt();
@@ -1935,15 +1935,17 @@ public class StashManager extends Module {
                         }
                     }
                     // Isolated replies do not change physical backoff or operational status.
-                    if (finalCode == 409) {
+                    if (finalCode == 409 && isWrongServer(finalText)) {
                         deliverySync.forget();
                         deliverySync.retryLater(System.currentTimeMillis());
-                        if (isWrongServer(finalText))
-                            warning(
-                                    "This Manager serves another Minecraft server: %s. Set server-url to the right Manager.",
-                                    finalText);
+                        warning(
+                                "This Manager serves another Minecraft server: %s. Set server-url to the right Manager.",
+                                finalText);
+                        setStatus("wrong server");
                         return;
                     }
+                    // The signed 409 for a lost control epoch must reach the
+                    // callback, which discards the old epoch and sends a new hello.
                     if (finalBad) {
                         reply.done(-2, "");
                         return;

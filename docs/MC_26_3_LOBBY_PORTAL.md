@@ -81,6 +81,21 @@ heartbeats and index uploads. If the Agent reports `wrong server`, verify
 that the configured Manager Minecraft address matches
 `Stash.currentServer()` (including port).
 
+### Control before warehouse assignment
+
+A signed control session can report activity and acknowledge typed settings
+before Manager assigns a stash. Physical manifest requests still require a
+matching server, stash, dimension and active control epoch. When a Manager
+restart clears the epoch, the agent processes the signed conflict and sends
+a new hello. The world harness exercises that transition with a real Fabric
+client, then verifies that signed index publication and server inventory
+readback still work after assignment.
+
+The portal loop logs the current reason when a screen, player input,
+another Baritone goal, a navigation guard or the physical journal blocks
+progress. These status messages contain a reason code and exclude player
+names, positions and credentials.
+
 ## Regression checks
 
 - `PortalEntryTest`: approach orientation on both portal axes, free

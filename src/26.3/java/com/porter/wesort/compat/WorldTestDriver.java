@@ -547,6 +547,7 @@ public final class WorldTestDriver {
                     respond(true, "exported live vanilla 26.3 metadata and recipes", state());
                 }
                 case "publish" -> publish(command);
+                case "connect" -> connectManager(command);
                 case "screenshot" ->
                     net.minecraft.client.Screenshot.grab(
                             mc.gameDirectory,
@@ -684,7 +685,6 @@ public final class WorldTestDriver {
         }
     }
 
-    @SuppressWarnings("unchecked")
     private void publish(JsonObject command) throws Exception {
         if (stash == null) stash = Stash.load("e2e-fixture");
         if (stash == null || stash.boxes.isEmpty()) {
@@ -694,6 +694,11 @@ public final class WorldTestDriver {
         stash.save();
         StashSorter sorter = com.porter.wesort.WeSortAddon.sorter();
         sorter.selectE2eFixtureStash(stash.name);
+        connectManager(command);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void connectManager(JsonObject command) throws Exception {
         StashManager manager = Modules.get().get(StashManager.class);
         ((Setting<String>) manager.settings.get("server-url"))
                 .set(command.get("url").getAsString());

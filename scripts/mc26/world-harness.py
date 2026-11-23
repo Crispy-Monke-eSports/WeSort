@@ -213,7 +213,7 @@ class Harness:
         # What the test client reports as its server: the address it connected to.
         return '127.0.0.1:' + str(self.server_port)
 
-    def start_manager(self):
+    def start_manager(self, *, define_fixture=True):
         # Docker readiness and Owner bootstrap are real requirements, not fixed sleeps.
         # Preserve bounded diagnostics from the *compose up* command only: generic
         # run() can return tokens/keys for bootstrap and must never log those values.
@@ -281,14 +281,18 @@ class Harness:
                 time.sleep(1)
         status, srv = self.http('/api/v1/server', {'server': self.manager_server_name()})
         require(status == 200 and srv.get('configured'), 'Manager server setup failed: %s %s' % (status, srv))
-        status, _ = self.http('/api/v1/stash-defs', {'action': 'create', 'name': 'e2e-fixture',
-            'dimension': 'minecraft:overworld',
-            'pos1': {'x': -32, 'y': 40, 'z': -32}, 'pos2': {'x': 63, 'y': 90, 'z': 32}})
-        require(status == 200, 'e2e-fixture stash def failed: %s' % status)
+        if define_fixture:
+            self.define_fixture()
         status, link = self.http('/api/v1/link')
         require(status == 200 and 'apiKey' not in link, 'Owner link exposed an agent secret')
         self.key = self.run(self.compose + ['exec', '-T', 'manager', '/opt/wesort/entrypoint', 'agent-key']).strip()
         self.ok('Docker Manager from explicit image with fresh volume and safe Owner setup, no Discord')
+
+    def define_fixture(self):
+        status, _ = self.http('/api/v1/stash-defs', {'action': 'create', 'name': 'e2e-fixture',
+            'dimension': 'minecraft:overworld',
+            'pos1': {'x': -32, 'y': 40, 'z': -32}, 'pos2': {'x': 63, 'y': 90, 'z': 32}})
+        require(status == 200, 'e2e-fixture stash def failed: %s' % status)
 
     def start_client(self):
         log = (self.evidence / 'client.log').open('w'); self.logs.append(log)
@@ -379,6 +383,44 @@ class Harness:
         self.ok('barrel and placed shulker opened with real slot/state ids and item component fingerprints')
         return snapshots[-1]['state']['index']
 
+    def verify_unassigned_control(self):
+        cli = self.compose + ['exec', '-T', 'manager', '/opt/wesort/entrypoint']
+        self.key = self.run(cli + ['agent-issue', 'world-agent']).strip()
+        self.run(cli + ['agent-require-scoped'])
+        self.command('connect', url=f'http://127.0.0.1:{self.manager_port}', key=self.key)
+        bot = '/api/v1/bots/' + self.key.split('.', 1)[0]
+
+        def wait_for_control():
+            until = time.monotonic() + 90
+            while time.monotonic() < until:
+                try:
+                    status, settings = self.http(bot + '/settings?scope=plugin', timeout=5)
+                    if status == 200 and settings.get('online') and settings.get('values'):
+                        return settings['values']
+                except (OSError, urllib.error.URLError):
+                    pass
+                time.sleep(0.5)
+            raise RuntimeError('Signed control did not register without an assigned stash')
+
+        wait_for_control()
+        self.run(self.compose + ['restart', 'manager'])
+        values = wait_for_control()
+        interval = values['scan-interval'] + 1
+        status, reply = self.http(bot + '/settings', {'scope': 'plugin', 'changes': [
+            {'path': 'scan-interval', 'value': interval, 'expect': values['scan-interval']},
+        ]})
+        require(status == 200 and len(reply['jobs']) == 1, 'Could not queue settings after Manager restart')
+        job = reply['jobs'][0]['id']
+        until = time.monotonic() + 35
+        while time.monotonic() < until:
+            status, jobs = self.http(bot + '/jobs?ids=' + job)
+            if status == 200 and jobs and jobs[0]['status'] == 'done':
+                require(jobs[0]['value'] == interval, 'Wrong acknowledged agent setting')
+                self.ok('named Fabric agent reconnects after Manager restart and acknowledges signed settings before stash assignment')
+                return
+            time.sleep(0.5)
+        raise RuntimeError('Signed settings were not acknowledged without a stash')
+
     def verify_manager_index(self, client_index):
         self.command('publish', url='http://127.0.0.1:' + str(self.manager_port), key=self.key)
         query = urllib.parse.urlencode({'server': client_index['server'], 'stash': 'e2e-fixture'})
@@ -429,7 +471,9 @@ class Harness:
             self.start_server(); self.fixture()
             before = self.physical_snapshot()
             (self.evidence / 'server-before.json').write_text(json.dumps(before, indent=2) + '\n')
-            self.start_manager(); self.start_client()
+            self.start_manager(define_fixture=False); self.start_client()
+            self.verify_unassigned_control()
+            self.define_fixture()
             client_index = self.observe()
             self.command('screenshot')
             shutil.copyfile(self.game_dir / 'screenshots/fixture.png', self.evidence / 'fixture.png')

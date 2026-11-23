@@ -199,14 +199,19 @@ final class BotHub {
         return 200;
     }
 
+    boolean currentControlSession(Bot bot, String session, String epoch) {
+        synchronized (bot) {
+            return session != null
+                    && epoch != null
+                    && session.equals(bot.controlSession)
+                    && epoch.equals(bot.controlEpoch)
+                    && online(bot, now());
+        }
+    }
+
     ManifestScope manifestScope(Bot bot, String session, String epoch) {
         synchronized (bot) {
-            if (session == null
-                    || epoch == null
-                    || !session.equals(bot.controlSession)
-                    || !epoch.equals(bot.controlEpoch)
-                    || !online(bot, now())) return null;
-            return bot.manifestScope;
+            return currentControlSession(bot, session, epoch) ? bot.manifestScope : null;
         }
     }
 

@@ -33,9 +33,8 @@ public final class PhysicalJournalRuntime {
         try {
             journal = new PhysicalJournal(DataDirectory.clientFolder(MeteorClient.FOLDER.toPath(), "physical-journal"));
             recoveryFence = journal.blocked();
-            // A crash-restarted operation keeps automation fenced even after its inspection
-            // proves no mutation: terminal FAILED is not an authorization for new work. Only
-            // an explicit operator release clears this (see releaseReconciled).
+            // An uncertain operation stays fenced until an exact read-only inspection
+            // proves it safe. No mutation is ever retransmitted during recovery.
             var current = journal.current();
             reconcileRequired = current != null && current.has("interruptedPhase");
         } catch (Exception invalid) {
@@ -181,10 +180,11 @@ public final class PhysicalJournalRuntime {
             if (journal.lastIntentEvidence() == null) {
                 journal.inspectedWithoutMutation(frame, playerInventory, decisionId);
                 journal.failBeforeMutation("Read-only inspection verified that no WeSort mutation was transmitted");
-                // A crash-recovered operation stays fenced after its no-mutation proof: the
-                // terminal FAILED state authorizes nothing new. Only releaseReconciled()
-                // (explicit operator action) resumes automation, never a mirror round-trip.
-                if (!reconcileRequired) recoveryFence = false;
+                // The inspection proves no mutation was sent, including after a
+                // restart. The Manager must still accept this revision before
+                // other physical work may acquire its lease.
+                reconcileRequired = false;
+                recoveryFence = false;
                 finishInspection(true, "No transmitted mutation; operation failed safely");
                 return;
             }

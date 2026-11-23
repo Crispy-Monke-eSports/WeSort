@@ -15,7 +15,12 @@ const LABEL: Record<LiveStatus, string> = {
  */
 export function LiveBadge() {
   const status = useLiveStore((s) => s.status);
-  const color = status === "live" ? "success" : status === "connecting" ? "warning" : "default";
+  const color =
+    status === "live"
+      ? "success"
+      : status === "connecting"
+        ? "warning"
+        : "default";
   return (
     <Tooltip
       title={

@@ -9,10 +9,10 @@ välja en ändrar inte vem som äger övrigt lager.
 
 - **`DeliveryPoint`** (common): server + dimension + x/y/z + `type`
   (`CHEST`/`PLAYER_MEETING`) + `access` (`MEMBER`/`PROJECT`/`INTERNAL`)
-  + `status` (`PENDING`/`VERIFIED`/`PAUSED`) + `revision`. Validerar
-  dimension, koordinatgränser och att en `MEMBER`-punkt har en medlem
-  (och att ingen annan punkt har en). `jsonRedacted()` tar bort koordinater
-  och dimension.
+  - `status` (`PENDING`/`VERIFIED`/`PAUSED`) + `revision`. Validerar
+    dimension, koordinatgränser och att en `MEMBER`-punkt har en medlem
+    (och att ingen annan punkt har en). `jsonRedacted()` tar bort koordinater
+    och dimension.
 - **`DeliveryPoints`** (Manager): JSON-lager med create/update/pause,
   optimistisk revision (409 vid stale), append-only ändringshistorik och
   persistens över omstart. `selectable(principal)` ger ägaren alla

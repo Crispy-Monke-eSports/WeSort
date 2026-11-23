@@ -10,7 +10,11 @@ export interface CartLine extends OrderLine {
 const CartLineSchema = z.object({
   type: z.enum(["item", "shulker", "kit", "craft"]),
   key: z.string().min(1).max(512),
-  count: z.number().int().min(1).max(2 ** 31 - 1),
+  count: z
+    .number()
+    .int()
+    .min(1)
+    .max(2 ** 31 - 1),
   stash: z.string().min(1).max(256),
 });
 
@@ -53,7 +57,10 @@ export const useCart = create<CartState>()(
       setLines: (lines) => {
         const scope = get().activeScope;
         if (!scope) return;
-        set((s) => ({ carts: { ...s.carts, [scope]: lines }, badLines: { ...s.badLines, [scope]: -1 } }));
+        set((s) => ({
+          carts: { ...s.carts, [scope]: lines },
+          badLines: { ...s.badLines, [scope]: -1 },
+        }));
       },
       clear: () => {
         const scope = get().activeScope;
@@ -85,7 +92,12 @@ export const useCart = create<CartState>()(
       partialize: (s) => ({ carts: s.carts }) as CartState,
       merge: (persisted, current) => {
         const parsed = PersistedSchema.safeParse(persisted);
-        return { ...current, carts: parsed.success ? parsed.data.carts : {}, badLines: {}, activeScope: "" };
+        return {
+          ...current,
+          carts: parsed.success ? parsed.data.carts : {},
+          badLines: {},
+          activeScope: "",
+        };
       },
     },
   ),
@@ -98,16 +110,31 @@ export function setCartScope(user: string): void {
 
 // ---------- multi-stash checkout: explicit per-group state machine ----------
 
-export type CheckoutStatus = "not_submitted" | "submitting" | "confirmed" | "uncertain" | "rejected";
+export type CheckoutStatus =
+  | "not_submitted"
+  | "submitting"
+  | "confirmed"
+  | "uncertain"
+  | "rejected";
 
 /** One stash's order: the EXACT request payload plus its Idempotency-Key. */
 export interface OrderBody {
   stash: string;
-  lines: { type: "item" | "shulker" | "kit" | "craft"; key: string; count: number }[];
+  lines: {
+    type: "item" | "shulker" | "kit" | "craft";
+    key: string;
+    count: number;
+  }[];
   /** Legacy free names (kept for persisted-group compat; new orders send null). */
-  names: { mode: "all"; name: string } | { mode: "each"; names: string[] } | null;
+  names:
+    | { mode: "all"; name: string }
+    | { mode: "each"; names: string[] }
+    | null;
   /** W-064 label: the server generates `WeSort (X/Y) - text` from the frozen total. */
-  packageLabel: { mode: "all"; text: string } | { mode: "each"; texts: string[] } | null;
+  packageLabel:
+    | { mode: "all"; text: string }
+    | { mode: "each"; texts: string[] }
+    | null;
   purpose: "SELF" | "GUILD";
   recipient: string | null;
   comment: string | null;
@@ -142,7 +169,10 @@ const CheckoutGroupSchema = z.object({
     packageLabel: z
       .union([
         z.object({ mode: z.literal("all"), text: z.string().max(33) }),
-        z.object({ mode: z.literal("each"), texts: z.array(z.string().max(33)).max(54) }),
+        z.object({
+          mode: z.literal("each"),
+          texts: z.array(z.string().max(33)).max(54),
+        }),
       ])
       .nullable(),
     purpose: z.enum(["SELF", "GUILD"]),
@@ -151,7 +181,13 @@ const CheckoutGroupSchema = z.object({
   }),
   hash: z.string(),
   key: z.string(),
-  status: z.enum(["not_submitted", "submitting", "confirmed", "uncertain", "rejected"]),
+  status: z.enum([
+    "not_submitted",
+    "submitting",
+    "confirmed",
+    "uncertain",
+    "rejected",
+  ]),
   orderId: z.string().optional(),
   error: z.string().optional(),
   updatedAt: z.number(),
@@ -168,10 +204,18 @@ interface CheckoutState {
 }
 
 /** An interrupted HTTP request can have committed: preserve its exact key/body for retry. */
-export function recoverCheckoutGroups(groups: CheckoutGroup[]): CheckoutGroup[] {
-  return groups.map((g) => g.status === "submitting"
-    ? { ...g, status: "uncertain", error: "Result unknown after reload; retry with the original key." }
-    : g);
+export function recoverCheckoutGroups(
+  groups: CheckoutGroup[],
+): CheckoutGroup[] {
+  return groups.map((g) =>
+    g.status === "submitting"
+      ? {
+          ...g,
+          status: "uncertain",
+          error: "Result unknown after reload; retry with the original key.",
+        }
+      : g,
+  );
 }
 
 export const useCheckout = create<CheckoutState>()(
@@ -180,7 +224,9 @@ export const useCheckout = create<CheckoutState>()(
       pending: {},
       getPending: (user) => get().pending[scopeKey(user || "anon")] ?? [],
       setPending: (user, groups) =>
-        set((s) => ({ pending: { ...s.pending, [scopeKey(user || "anon")]: groups } })),
+        set((s) => ({
+          pending: { ...s.pending, [scopeKey(user || "anon")]: groups },
+        })),
     }),
     {
       name: "wesort.checkout.v1",
@@ -189,7 +235,8 @@ export const useCheckout = create<CheckoutState>()(
         const parsed = CheckoutPersistedSchema.safeParse(persisted);
         if (!parsed.success) return { ...current, pending: {} };
         const pending: Record<string, CheckoutGroup[]> = {};
-        for (const [user, groups] of Object.entries(parsed.data.pending)) pending[user] = recoverCheckoutGroups(groups);
+        for (const [user, groups] of Object.entries(parsed.data.pending))
+          pending[user] = recoverCheckoutGroups(groups);
         return { ...current, pending };
       },
     },

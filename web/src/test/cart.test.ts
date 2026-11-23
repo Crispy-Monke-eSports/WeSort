@@ -5,13 +5,36 @@ function linesOf() {
   return useCart.getState().lines();
 }
 
-const dia = (stash: string, count: number) => ({ type: "item" as const, key: "minecraft:diamond", count, stash });
-const box = (stash: string, key: string, count: number) => ({ type: "shulker" as const, key, count, stash });
+const dia = (stash: string, count: number) => ({
+  type: "item" as const,
+  key: "minecraft:diamond",
+  count,
+  stash,
+});
+const box = (stash: string, key: string, count: number) => ({
+  type: "shulker" as const,
+  key,
+  count,
+  stash,
+});
 
 describe("recovering an interrupted checkout", () => {
   it("preserves the key and exact request when a submitting group survives a reload", () => {
-    const group = { body: { stash: "a", lines: [], names: null, packageLabel: null, purpose: "SELF" as const,
-      recipient: null, comment: null }, hash: "hash", key: "same-key", status: "submitting" as const, updatedAt: 1 };
+    const group = {
+      body: {
+        stash: "a",
+        lines: [],
+        names: null,
+        packageLabel: null,
+        purpose: "SELF" as const,
+        recipient: null,
+        comment: null,
+      },
+      hash: "hash",
+      key: "same-key",
+      status: "submitting" as const,
+      updatedAt: 1,
+    };
     const [recovered] = recoverCheckoutGroups([group]);
     expect(recovered.status).toBe("uncertain");
     expect(recovered.key).toBe(group.key);
@@ -77,7 +100,12 @@ describe("cart isolation (per user; lines carry their stash)", () => {
       activeScope: "",
     });
     // Simulate corrupt storage: merge must drop it instead of crashing.
-    const merged = (useCart as any).persist.getOptions().merge({ carts: { bad: [{ type: "nope", key: "", count: -1 }] } }, useCart.getState());
+    const merged = (useCart as any).persist
+      .getOptions()
+      .merge(
+        { carts: { bad: [{ type: "nope", key: "", count: -1 }] } },
+        useCart.getState(),
+      );
     expect(merged.carts).toEqual({});
   });
 });

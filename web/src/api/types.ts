@@ -70,23 +70,47 @@ export const StashRefSchema = z.object({
   itemTypes: z.number().default(0),
   itemTotal: z.number().default(0),
   delivery: z
-    .object({ x: z.number(), y: z.number(), z: z.number(), dimension: z.string().nullable().optional() })
+    .object({
+      x: z.number(),
+      y: z.number(),
+      z: z.number(),
+      dimension: z.string().nullable().optional(),
+    })
     .nullable()
     .optional(),
-  naming: z.object({ anvil: z.boolean().default(false), anvilSource: z.string().nullable().optional() }).nullable().optional(),
-  crafting: z.object({ enabled: z.boolean().default(false) }).nullable().optional(),
+  naming: z
+    .object({
+      anvil: z.boolean().default(false),
+      anvilSource: z.string().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
+  crafting: z
+    .object({ enabled: z.boolean().default(false) })
+    .nullable()
+    .optional(),
   deliveryStorage: z.unknown().nullable().optional(),
   orderBlocker: z.string().nullable().optional(),
   // Java serializes these stall flags as booleans or epoch timestamps (or explicit nulls).
-  rescanPending: z.union([z.boolean(), z.number()]).nullish().transform((v) => (typeof v === "number" ? v > 0 : (v ?? false))),
-  rescanBlocked: z.union([z.boolean(), z.number()]).nullish().transform((v) => (typeof v === "number" ? v > 0 : (v ?? false))),
+  rescanPending: z
+    .union([z.boolean(), z.number()])
+    .nullish()
+    .transform((v) => (typeof v === "number" ? v > 0 : (v ?? false))),
+  rescanBlocked: z
+    .union([z.boolean(), z.number()])
+    .nullish()
+    .transform((v) => (typeof v === "number" ? v > 0 : (v ?? false))),
   owner: z.string().nullable().optional(),
   conflict: z.unknown().nullable().optional(),
   orders: StashSummarySchema.optional(),
 });
 export type StashRef = z.infer<typeof StashRefSchema>;
 
-export const VecSchema = z.object({ x: z.number().int(), y: z.number().int(), z: z.number().int() });
+export const VecSchema = z.object({
+  x: z.number().int(),
+  y: z.number().int(),
+  z: z.number().int(),
+});
 export type Vec = z.infer<typeof VecSchema>;
 
 export const StashDefSchema = z.object({
@@ -106,10 +130,17 @@ export const StashDefSchema = z.object({
 });
 export type StashDef = z.infer<typeof StashDefSchema>;
 
-export const ServerStateSchema = z.object({ server: z.string().default(""), configured: z.boolean().default(false) });
+export const ServerStateSchema = z.object({
+  server: z.string().default(""),
+  configured: z.boolean().default(false),
+});
 export type ServerState = z.infer<typeof ServerStateSchema>;
 
-const BoxContentSchema = z.object({ slot: z.number(), key: z.string(), count: z.number() });
+const BoxContentSchema = z.object({
+  slot: z.number(),
+  key: z.string(),
+  count: z.number(),
+});
 
 export const IndexItemSchema = z.object({
   key: z.string(),
@@ -202,7 +233,13 @@ export const OrderStatusSchema = z.object({
   // follows the chain). Present in backend toJson; parsed here so lists can hide superseded orders.
   retriedAs: z.string().nullable().optional(),
   requestedBy: z.string().nullable().optional(),
-  placedBy: z.object({ id: z.string().nullable().optional(), name: z.string().nullable().optional() }).nullable().optional(),
+  placedBy: z
+    .object({
+      id: z.string().nullable().optional(),
+      name: z.string().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
   names: z.unknown().nullable().optional(),
   history: z.array(z.unknown()).optional(),
   events: z.array(z.unknown()).optional(),

@@ -1,64 +1,150 @@
 // Static regression for the React/TypeScript storefront (served by Java from /web).
 // No JSDOM execution: the app is a Vite bundle. Asserts branding/license parity,
 // the SPA shell, hashed-asset wiring and that no retired implementation remains.
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const crypto = require('node:crypto');
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const crypto = require("node:crypto");
 
-const root = path.join(__dirname, '../stash-manager-server/src/main/resources/web');
-const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+const root = path.join(
+  __dirname,
+  "../stash-manager-server/src/main/resources/web",
+);
+const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
 
-const brandingRoot = path.join(__dirname, '../branding');
-const officialSvg = fs.readFileSync(path.join(brandingRoot, 'wesort.svg'), 'utf8');
-const webSvg = fs.readFileSync(path.join(root, 'wesort.svg'), 'utf8');
-const lockupSvg = fs.readFileSync(path.join(root, 'wesort-lockup.svg'), 'utf8');
-const brandingLockup = fs.readFileSync(path.join(brandingRoot, 'wesort-lockup.svg'), 'utf8');
+const brandingRoot = path.join(__dirname, "../branding");
+const officialSvg = fs.readFileSync(
+  path.join(brandingRoot, "wesort.svg"),
+  "utf8",
+);
+const webSvg = fs.readFileSync(path.join(root, "wesort.svg"), "utf8");
+const lockupSvg = fs.readFileSync(path.join(root, "wesort-lockup.svg"), "utf8");
+const brandingLockup = fs.readFileSync(
+  path.join(brandingRoot, "wesort-lockup.svg"),
+  "utf8",
+);
 
-const gitBlobSha = content => crypto.createHash('sha1')
-  .update(Buffer.from('blob ' + Buffer.byteLength(content) + '\0'))
-  .update(content)
-  .digest('hex');
+const gitBlobSha = (content) =>
+  crypto
+    .createHash("sha1")
+    .update(Buffer.from("blob " + Buffer.byteLength(content) + "\0"))
+    .update(content)
+    .digest("hex");
 
-assert.equal(gitBlobSha(officialSvg), '0288c2962a8eb9572f70d45f15da78bd2cc798ec',
-  'WeSort SVG must remain byte-identical to the official WeAB.nu logo');
-assert.equal(webSvg, officialSvg, 'Web favicon must use the official WeAB.nu SVG');
-assert.equal(brandingLockup, lockupSvg, 'Website and branding lockup must stay identical');
-assert.equal(gitBlobSha(lockupSvg), 'a02e1a50008cd0af1e420ad90b2046c546219511',
-  'The audited vector lockup has changed');
+assert.equal(
+  gitBlobSha(officialSvg),
+  "0288c2962a8eb9572f70d45f15da78bd2cc798ec",
+  "WeSort SVG must remain byte-identical to the official WeAB.nu logo",
+);
+assert.equal(
+  webSvg,
+  officialSvg,
+  "Web favicon must use the official WeAB.nu SVG",
+);
+assert.equal(
+  brandingLockup,
+  lockupSvg,
+  "Website and branding lockup must stay identical",
+);
+assert.equal(
+  gitBlobSha(lockupSvg),
+  "a02e1a50008cd0af1e420ad90b2046c546219511",
+  "The audited vector lockup has changed",
+);
 assert.match(officialSvg, /id="brand-color"[^>]*fill="#E66A00"/);
 assert.match(lockupSvg, /id="brand-suffix"/);
 
 // No competing implementation: the monolithic app.js/style.css and legacy init scripts are gone.
-for (const legacy of ['app.js', 'style.css', 'theme-init.js', 'streamer-init.js']) {
-  assert.equal(fs.existsSync(path.join(root, legacy)), false, `Retired web file still served: ${legacy}`);
+for (const legacy of [
+  "app.js",
+  "style.css",
+  "theme-init.js",
+  "streamer-init.js",
+]) {
+  assert.equal(
+    fs.existsSync(path.join(root, legacy)),
+    false,
+    `Retired web file still served: ${legacy}`,
+  );
 }
 
 // SPA shell: #root mount, Vite hashed assets, brand lockup reference.
-assert.match(html, /<div id="root"><\/div>/, 'SPA mount missing');
+assert.match(html, /<div id="root"><\/div>/, "SPA mount missing");
 // The CSP style nonce Meta must survive the build (the Manager replaces it per request).
-assert.ok(html.includes('__WESORT_STYLE_NONCE__'), 'Emotion CSP nonce placeholder missing from index.html');
-const assets = [...html.matchAll(/assets\/index-[A-Za-z0-9_-]+\.(js|css)/g)].map(m => m[0]);
-assert.ok(assets.some(a => a.endsWith('.js')), 'Hashed JS bundle missing from index.html');
+assert.ok(
+  html.includes("__WESORT_STYLE_NONCE__"),
+  "Emotion CSP nonce placeholder missing from index.html",
+);
+const assets = [
+  ...html.matchAll(/assets\/index-[A-Za-z0-9_-]+\.(js|css)/g),
+].map((m) => m[0]);
+assert.ok(
+  assets.some((a) => a.endsWith(".js")),
+  "Hashed JS bundle missing from index.html",
+);
 for (const asset of new Set(assets)) {
-  assert.ok(fs.existsSync(path.join(root, asset)), `Referenced asset missing: ${asset}`);
+  assert.ok(
+    fs.existsSync(path.join(root, asset)),
+    `Referenced asset missing: ${asset}`,
+  );
 }
 // The Minecraft non-affiliation notice ships in the bundle.
-const bundle = assets.filter(a => a.endsWith('.js')).map(a => fs.readFileSync(path.join(root, a), 'utf8')).join('\n');
-const styles = assets.filter(a => a.endsWith('.css')).map(a => fs.readFileSync(path.join(root, a), 'utf8')).join('\n');
+const bundle = assets
+  .filter((a) => a.endsWith(".js"))
+  .map((a) => fs.readFileSync(path.join(root, a), "utf8"))
+  .join("\n");
+const styles = assets
+  .filter((a) => a.endsWith(".css"))
+  .map((a) => fs.readFileSync(path.join(root, a), "utf8"))
+  .join("\n");
 // MUI styles are runtime-injected Emotion (no separate CSS bundle by design): the bundle
 // must contain the Emotion cache runtime, and the served CSP must carry the matching nonce.
-assert.ok(bundle.includes('@emotion') || bundle.includes('emotion'), 'Emotion runtime missing from the bundle');
-assert.ok(bundle.includes('wesort-lockup.svg') || html.includes('wesort-lockup.svg'), 'Brand lockup not referenced');
-const notice = 'NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.';
-assert.ok(bundle.includes(notice), 'Minecraft disclaimer missing from the bundle');
+assert.ok(
+  bundle.includes("@emotion") || bundle.includes("emotion"),
+  "Emotion runtime missing from the bundle",
+);
+assert.ok(
+  bundle.includes("wesort-lockup.svg") || html.includes("wesort-lockup.svg"),
+  "Brand lockup not referenced",
+);
+const notice =
+  "NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.";
+assert.ok(
+  bundle.includes(notice),
+  "Minecraft disclaimer missing from the bundle",
+);
 // Retired endpoints and the old guild-stock DOM must not come back through the bundle.
-for (const retired of ['/api/v1/stock', '/api/v1/planner', '/api/v1/console', '/api/v1/viewer', 'stock-balances', 'picker-body']) {
-  assert.equal(bundle.includes(retired), false, `Retired reference still in bundle: ${retired}`);
+for (const retired of [
+  "/api/v1/stock",
+  "/api/v1/planner",
+  "/api/v1/console",
+  "/api/v1/viewer",
+  "stock-balances",
+  "picker-body",
+]) {
+  assert.equal(
+    bundle.includes(retired),
+    false,
+    `Retired reference still in bundle: ${retired}`,
+  );
 }
 // Unified shop markers from PR #89 survive the migration.
-for (const marker of ['item-grid', 'cart-lines', 'cart-place', 'order-list', 'order-audit', 'order-card', 'Idempotency-Key', '/icon/']) {
-  assert.ok(bundle.includes(marker), `Shop marker missing from bundle: ${marker}`);
+for (const marker of [
+  "item-grid",
+  "cart-lines",
+  "cart-place",
+  "order-list",
+  "order-audit",
+  "order-card",
+  "Idempotency-Key",
+  "/icon/",
+]) {
+  assert.ok(
+    bundle.includes(marker),
+    `Shop marker missing from bundle: ${marker}`,
+  );
 }
 
-console.log('Web regression passed: branding, SPA shell, hashed assets, Emotion CSP nonce, disclaimer, no retired implementation.');
+console.log(
+  "Web regression passed: branding, SPA shell, hashed assets, Emotion CSP nonce, disclaimer, no retired implementation.",
+);

@@ -53,19 +53,19 @@ pushad commit och innehåller actions.jsonl, serverns före/efter-NBT,
 klientloggar före/efter omstart, Manager-index och riktig skärmdump. Endast
 syntetiskt testinventory journalförs i rapporten; credentials publiceras inte.
 
-| Scenario | Verifiering |
-|---|---|
-| PICKUP, cursor, spelarens slots, QUICK_MOVE | Full serverläsning och oberoende RCON-NBT efter varje flytt; dubbelkistans menu-slot 0 motsvarar den fysiska högra halvan |
-| Verklig fördröjd servertrafik | Ingen andra withdrawal eller slutförd åtgärd före kvittens |
-| Saknat svar längre än timeout | Beständig paus, sena paket återupptar inte; uttrycklig läsning kan verifiera redan tillämpat eftertillstånd |
-| Namngiven fylld shulker | Place/open/break/pickup/return bevarar 64 dirt och exakt komponentfingerprint |
-| Chest, barrel, vanlig skyltartikel | Kista och tunna placeras, läses och plockas upp. Redigeringsåtgärden avvisas. En fysisk skylts text och vanliga skyltartiklar förblir oförändrade enligt servern. |
-| Tunnlock | Harnessen växlar den privata serverns riktiga lockstate. Klientens bevakning begär en enda omläsning efter stängning. |
-| Enchantments, damage, custom names, bundle | Färska snapshots/index och oförändrade serverkomponenter före/efter |
-| För långt bort men laddad container | Nekas före interaktion |
-| Avbrott före leverans och riktig JVM-omstart | Pending bevaras, noll återspelade klick; serverns oförändrade förtillstånd nekas som falsk reconciliation |
-| Försök att kringgå testdriverns spärr | Produktionsmixin stoppar före prediction och paket |
-| Totals/Manager | Alla ursprungliga servercontainers återställda exakt; signerad verklig agent publicerar matchande 26.3-index; osäker åtgärd ändrar inte publicerat index |
+| Scenario                                     | Verifiering                                                                                                                                                       |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PICKUP, cursor, spelarens slots, QUICK_MOVE  | Full serverläsning och oberoende RCON-NBT efter varje flytt; dubbelkistans menu-slot 0 motsvarar den fysiska högra halvan                                         |
+| Verklig fördröjd servertrafik                | Ingen andra withdrawal eller slutförd åtgärd före kvittens                                                                                                        |
+| Saknat svar längre än timeout                | Beständig paus, sena paket återupptar inte; uttrycklig läsning kan verifiera redan tillämpat eftertillstånd                                                       |
+| Namngiven fylld shulker                      | Place/open/break/pickup/return bevarar 64 dirt och exakt komponentfingerprint                                                                                     |
+| Chest, barrel, vanlig skyltartikel           | Kista och tunna placeras, läses och plockas upp. Redigeringsåtgärden avvisas. En fysisk skylts text och vanliga skyltartiklar förblir oförändrade enligt servern. |
+| Tunnlock                                     | Harnessen växlar den privata serverns riktiga lockstate. Klientens bevakning begär en enda omläsning efter stängning.                                             |
+| Enchantments, damage, custom names, bundle   | Färska snapshots/index och oförändrade serverkomponenter före/efter                                                                                               |
+| För långt bort men laddad container          | Nekas före interaktion                                                                                                                                            |
+| Avbrott före leverans och riktig JVM-omstart | Pending bevaras, noll återspelade klick; serverns oförändrade förtillstånd nekas som falsk reconciliation                                                         |
+| Försök att kringgå testdriverns spärr        | Produktionsmixin stoppar före prediction och paket                                                                                                                |
+| Totals/Manager                               | Alla ursprungliga servercontainers återställda exakt; signerad verklig agent publicerar matchande 26.3-index; osäker åtgärd ändrar inte publicerat index          |
 
 Enhetstester prövar protokollspärrens negativa fall separat. Baseline-klienter
 behåller sin befintliga implementation; spärrens Minecraft-adapter är 26.3.

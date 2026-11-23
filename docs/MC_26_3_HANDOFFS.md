@@ -7,7 +7,7 @@ utan verifierad pickup är aldrig DELIVERED.
 ## Manager-sidan (denna commit)
 
 - **`Handoff`** (common): tillståndsmaskin `SCHEDULED → AWAITING_RECIPIENT
-  → DELIVERED` (endast med explicit kvittens i `confirmedBy`), `NO_SHOW`,
+→ DELIVERED` (endast med explicit kvittens i `confirmedBy`), `NO_SHOW`,
   `NEEDS_RECONCILIATION` och `RETURNED`. `advance(DELIVERED, …)` kräver
   en icke-tom kvittensaktör; ett drop kan aldrig nå DELIVERED.
 - **`Handoffs`** (Manager): `schedule`/`arrive`/`confirm` (idempotent

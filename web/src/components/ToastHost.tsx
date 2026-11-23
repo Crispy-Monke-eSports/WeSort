@@ -22,7 +22,10 @@ export function ToastHost() {
   useEffect(() => {
     const push = (t: ToastItem) => {
       setItems((prev) => [...prev.slice(-2), t]);
-      window.setTimeout(() => setItems((prev) => prev.filter((x) => x.id !== t.id)), 4000);
+      window.setTimeout(
+        () => setItems((prev) => prev.filter((x) => x.id !== t.id)),
+        4000,
+      );
     };
     toastListeners.push(push);
     return () => {
@@ -37,7 +40,10 @@ export function ToastHost() {
       onClose={() => setCurrentClosed()}
       anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
     >
-      <Alert severity={current?.kind === "err" ? "error" : "success"} variant="filled">
+      <Alert
+        severity={current?.kind === "err" ? "error" : "success"}
+        variant="filled"
+      >
         {current?.text ?? ""}
       </Alert>
     </Snackbar>

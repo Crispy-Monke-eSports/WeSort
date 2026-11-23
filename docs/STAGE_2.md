@@ -4,14 +4,14 @@ Steget omfattar W-013, W-014, W-045, W-015, W-016 och W-017 från issue #1.
 Arbetet ligger direkt på main, i separata W-ID-commits som pushas före nästa
 issue. Inga GitHub-checklistor eller issuestatusar ändras av implementationen.
 
-| Issue | Kod och verkligt underlag |
-|---|---|
+| Issue | Kod och verkligt underlag                                                                                                                                |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | W-013 | `d5c44d0`: låst Java 25.0.5+8, Gradle 9.6, Loom 1.17.21, Loader 0.19.5, Meteor 26.3 build 22 och riktig Baritone 1.4.0-26.3; minimal verklig klientstart |
-| W-014 | `2e95e52`: hela addonens 26.3-build, versionsadaptrar och riktig GUI-/klientstart; även start i användarens anvisade Prism-instans |
-| W-045 | `76ea83c`: reproducerbar privat vanilla-server, extern Fabric-agent, fixturelager och egen Docker Manager-volym |
-| W-015 | `3516dad`: verkliga inventory-/blockoperationer, full serverläsning, timeout, beständig pending och riktig JVM-omstart utan återspelning |
-| W-016 | `4bfe2c5`: riktig Baritone-rundtur, höjd/chunkgräns, otillgängligt mål, cancel, faktisk 60-sekunderstimeout och dimensionsbyte |
-| W-017 | Denna commit: genererade 26.3-resurser, kanoniska komponentvarianter, isolerad officiell assetcache, verklig Docker-/webb-/Stash Window-verifiering |
+| W-014 | `2e95e52`: hela addonens 26.3-build, versionsadaptrar och riktig GUI-/klientstart; även start i användarens anvisade Prism-instans                       |
+| W-045 | `76ea83c`: reproducerbar privat vanilla-server, extern Fabric-agent, fixturelager och egen Docker Manager-volym                                          |
+| W-015 | `3516dad`: verkliga inventory-/blockoperationer, full serverläsning, timeout, beständig pending och riktig JVM-omstart utan återspelning                 |
+| W-016 | `4bfe2c5`: riktig Baritone-rundtur, höjd/chunkgräns, otillgängligt mål, cancel, faktisk 60-sekunderstimeout och dimensionsbyte                           |
+| W-017 | Denna commit: genererade 26.3-resurser, kanoniska komponentvarianter, isolerad officiell assetcache, verklig Docker-/webb-/Stash Window-verifiering      |
 
 Detaljer: [toolchain/port](MC_26_3_PORT.md), [testvärld](MC_26_3_E2E.md),
 [inventory](MC_26_3_INVENTORY.md), [navigation](MC_26_3_NAVIGATION.md) och

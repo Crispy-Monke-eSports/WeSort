@@ -4,7 +4,9 @@ import { iconUrl } from "../components/icons";
 describe("iconUrl (Java /icon/<namespace>/<path>.png)", () => {
   it("builds namespaced URLs", () => {
     expect(iconUrl("minecraft:diamond")).toBe("/icon/minecraft/diamond.png");
-    expect(iconUrl("minecraft:shulker_box")).toBe("/icon/minecraft/shulker_box.png");
+    expect(iconUrl("minecraft:shulker_box")).toBe(
+      "/icon/minecraft/shulker_box.png",
+    );
   });
 
   it("strips variant suffixes from the path", () => {
@@ -12,7 +14,9 @@ describe("iconUrl (Java /icon/<namespace>/<path>.png)", () => {
   });
 
   it("appends the game-jar cache token when the index version is known", () => {
-    expect(iconUrl("minecraft:diamond", "26.3")).toBe("/icon/minecraft/diamond.png?v=26.3-g1");
+    expect(iconUrl("minecraft:diamond", "26.3")).toBe(
+      "/icon/minecraft/diamond.png?v=26.3-g1",
+    );
     expect(iconUrl("minecraft:diamond")).toBe("/icon/minecraft/diamond.png");
   });
 

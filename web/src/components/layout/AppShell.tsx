@@ -39,12 +39,42 @@ import { ToastHost } from "../ToastHost";
 const DRAWER_WIDTH = 240;
 
 const NAV = [
-  { to: "/overview", label: "Overview", icon: <DashboardIcon />, perm: "view" as const },
-  { to: "/inventory", label: "Inventory", icon: <InventoryIcon />, perm: "view" as const },
-  { to: "/orders", label: "Orders", icon: <ReceiptIcon />, perm: "view" as const },
-  { to: "/bots", label: "Bots", icon: <SmartToyIcon />, perm: "activity" as const },
-  { to: "/operations", label: "Operations", icon: <TimelineIcon />, perm: "activity" as const },
-  { to: "/settings", label: "Settings", icon: <SettingsIcon />, perm: "settings" as const },
+  {
+    to: "/overview",
+    label: "Overview",
+    icon: <DashboardIcon />,
+    perm: "view" as const,
+  },
+  {
+    to: "/inventory",
+    label: "Inventory",
+    icon: <InventoryIcon />,
+    perm: "view" as const,
+  },
+  {
+    to: "/orders",
+    label: "Orders",
+    icon: <ReceiptIcon />,
+    perm: "view" as const,
+  },
+  {
+    to: "/bots",
+    label: "Bots",
+    icon: <SmartToyIcon />,
+    perm: "activity" as const,
+  },
+  {
+    to: "/operations",
+    label: "Operations",
+    icon: <TimelineIcon />,
+    perm: "activity" as const,
+  },
+  {
+    to: "/settings",
+    label: "Settings",
+    icon: <SettingsIcon />,
+    perm: "settings" as const,
+  },
 ];
 
 export function AppShell() {
@@ -66,11 +96,19 @@ export function AppShell() {
   function toggleMode() {
     setMode(dark ? "light" : "dark");
   }
-  const visibleNav = NAV.filter((n) => (n.perm === "view" ? perms.can("view") || perms.owner : perms.can(n.perm) || perms.owner));
+  const visibleNav = NAV.filter((n) =>
+    n.perm === "view"
+      ? perms.can("view") || perms.owner
+      : perms.can(n.perm) || perms.owner,
+  );
 
   // Auth gate: unauthenticated users go to login (except on /login itself).
   useEffect(() => {
-    if (auth.isSuccess && !auth.data.loggedIn && location.pathname !== "/login") {
+    if (
+      auth.isSuccess &&
+      !auth.data.loggedIn &&
+      location.pathname !== "/login"
+    ) {
       void navigate({ to: "/login", search: { redirect: location.pathname } });
     }
   }, [auth.isSuccess, auth.data, location.pathname, navigate]);
@@ -79,7 +117,10 @@ export function AppShell() {
   useEffect(() => {
     const onAuth = () => {
       const here = window.location.pathname;
-      void navigate({ to: "/login", search: { redirect: here === "/login" ? "/overview" : here } });
+      void navigate({
+        to: "/login",
+        search: { redirect: here === "/login" ? "/overview" : here },
+      });
     };
     window.addEventListener("wesort:unauthorized", onAuth);
     return () => window.removeEventListener("wesort:unauthorized", onAuth);
@@ -107,10 +148,17 @@ export function AppShell() {
       <Divider />
       <List sx={{ flexGrow: 1 }}>
         {visibleNav.map((n) => {
-          const active = location.pathname === n.to || (n.to === "/overview" && location.pathname === "/");
+          const active =
+            location.pathname === n.to ||
+            (n.to === "/overview" && location.pathname === "/");
           return (
             <ListItem key={n.to} disablePadding>
-              <ListItemButton component={Link} to={n.to} selected={active} onClick={() => setMobileOpen(false)}>
+              <ListItemButton
+                component={Link}
+                to={n.to}
+                selected={active}
+                onClick={() => setMobileOpen(false)}
+              >
                 <ListItemIcon sx={{ minWidth: 40 }}>{n.icon}</ListItemIcon>
                 <ListItemText primary={n.label} />
               </ListItemButton>
@@ -123,8 +171,13 @@ export function AppShell() {
         <Typography variant="caption" color="text.secondary">
           WeSort Manager · Minecraft 26.3
         </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-          NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ display: "block" }}
+        >
+          NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH
+          MOJANG OR MICROSOFT.
         </Typography>
       </Box>
     </Box>
@@ -136,7 +189,13 @@ export function AppShell() {
       <AppBar position="fixed" sx={{ zIndex: (t) => t.zIndex.drawer + 1 }}>
         <Toolbar>
           {!isDesktop && (
-            <IconButton color="inherit" edge="start" onClick={() => setMobileOpen(true)} aria-label="Open navigation" sx={{ mr: 1 }}>
+            <IconButton
+              color="inherit"
+              edge="start"
+              onClick={() => setMobileOpen(true)}
+              aria-label="Open navigation"
+              sx={{ mr: 1 }}
+            >
               <MenuIcon />
             </IconButton>
           )}
@@ -150,25 +209,43 @@ export function AppShell() {
                 label={user.owner ? "Owner" : (user.name ?? user.id)}
                 size="small"
                 variant="outlined"
-                sx={{ color: "inherit", borderColor: "rgba(255,255,255,0.4)", mr: 1 }}
+                sx={{
+                  color: "inherit",
+                  borderColor: "rgba(255,255,255,0.4)",
+                  mr: 1,
+                }}
               />
               <IconButton
                 color="inherit"
                 onClick={toggleMode}
-                aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
+                aria-label={
+                  dark ? "Switch to light theme" : "Switch to dark theme"
+                }
                 title={dark ? "Light theme" : "Dark theme"}
                 sx={{ mr: 0.5 }}
               >
                 {dark ? <Brightness7Icon /> : <Brightness4Icon />}
               </IconButton>
-              <IconButton color="inherit" onClick={(e) => setAnchor(e.currentTarget)} aria-label="Account menu">
-                <Avatar sx={{ width: 32, height: 32, bgcolor: "secondary.main" }}>
+              <IconButton
+                color="inherit"
+                onClick={(e) => setAnchor(e.currentTarget)}
+                aria-label="Account menu"
+              >
+                <Avatar
+                  sx={{ width: 32, height: 32, bgcolor: "secondary.main" }}
+                >
                   <AccountCircleIcon />
                 </Avatar>
               </IconButton>
-              <Menu anchorEl={anchor} open={Boolean(anchor)} onClose={() => setAnchor(null)}>
+              <Menu
+                anchorEl={anchor}
+                open={Boolean(anchor)}
+                onClose={() => setAnchor(null)}
+              >
                 <MenuItem disabled>
-                  <Typography variant="body2">{user.name ?? user.id}</Typography>
+                  <Typography variant="body2">
+                    {user.name ?? user.id}
+                  </Typography>
                 </MenuItem>
                 <MenuItem onClick={doLogout}>
                   <ListItemIcon>
@@ -179,18 +256,35 @@ export function AppShell() {
               </Menu>
             </>
           ) : (
-            <IconButton color="inherit" onClick={() => navigate({ to: "/login", search: { redirect: location.pathname } })} aria-label="Sign in">
+            <IconButton
+              color="inherit"
+              onClick={() =>
+                navigate({
+                  to: "/login",
+                  search: { redirect: location.pathname },
+                })
+              }
+              aria-label="Sign in"
+            >
               <AccountCircleIcon />
             </IconButton>
           )}
           {isDesktop && (
-            <IconButton color="inherit" edge="end" aria-label="Collapse navigation" sx={{ display: "none" }}>
+            <IconButton
+              color="inherit"
+              edge="end"
+              aria-label="Collapse navigation"
+              sx={{ display: "none" }}
+            >
               <ChevronLeftIcon />
             </IconButton>
           )}
         </Toolbar>
       </AppBar>
-      <Box component="nav" sx={{ width: { md: DRAWER_WIDTH }, flexShrink: { md: 0 } }}>
+      <Box
+        component="nav"
+        sx={{ width: { md: DRAWER_WIDTH }, flexShrink: { md: 0 } }}
+      >
         {!isDesktop && (
           <Drawer
             variant="temporary"
@@ -203,12 +297,26 @@ export function AppShell() {
           </Drawer>
         )}
         {isDesktop && (
-          <Drawer variant="permanent" open sx={{ "& .MuiDrawer-paper": { width: DRAWER_WIDTH } }}>
+          <Drawer
+            variant="permanent"
+            open
+            sx={{ "& .MuiDrawer-paper": { width: DRAWER_WIDTH } }}
+          >
             {drawer}
           </Drawer>
         )}
       </Box>
-      <Box component="main" sx={{ flexGrow: 1, minWidth: 0, maxWidth: "100%", p: { xs: 2, md: 3 }, width: { md: `calc(100% - ${DRAWER_WIDTH}px)` }, mt: 8 }}>
+      <Box
+        component="main"
+        sx={{
+          flexGrow: 1,
+          minWidth: 0,
+          maxWidth: "100%",
+          p: { xs: 2, md: 3 },
+          width: { md: `calc(100% - ${DRAWER_WIDTH}px)` },
+          mt: 8,
+        }}
+      >
         <Outlet />
       </Box>
       <ToastHost />

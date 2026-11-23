@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
-const recipient = z.string().max(16).regex(/^[A-Za-z0-9_]*$/);
+const recipient = z
+  .string()
+  .max(16)
+  .regex(/^[A-Za-z0-9_]*$/);
 const comment = z.string().max(500);
 const namesAll = z.string().max(50);
 

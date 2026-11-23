@@ -8,7 +8,9 @@
 
 export function stashListOf(perms: any): string[] {
   const s = perms?.stashes;
-  return Array.isArray(s) ? s.map((x: any) => String(x?.stash ?? x)).filter(Boolean) : [];
+  return Array.isArray(s)
+    ? s.map((x: any) => String(x?.stash ?? x)).filter(Boolean)
+    : [];
 }
 
 export function botListOf(perms: any): string[] {
@@ -50,7 +52,10 @@ export function buildUserPerms(
 ): Record<string, unknown> {
   const perms: Record<string, unknown> = {};
   for (const f of flagFields) perms[f] = !!flags[f];
-  perms.stashes = stashMode === "all" ? null : [...new Set(stashes)].sort().map((stash) => ({ stash }));
+  perms.stashes =
+    stashMode === "all"
+      ? null
+      : [...new Set(stashes)].sort().map((stash) => ({ stash }));
   perms.bots = botMode === "all" ? null : [...new Set(bots)].sort();
   return perms;
 }
@@ -69,7 +74,9 @@ export function scopeDiff(
 ): string[] {
   const out: string[] = [];
   if (JSON.stringify(beforeStashes) !== JSON.stringify(nextStashes)) {
-    out.push(`stashes: ${scopeLabel(beforeStashes)} → ${scopeLabel(nextStashes)}`);
+    out.push(
+      `stashes: ${scopeLabel(beforeStashes)} → ${scopeLabel(nextStashes)}`,
+    );
   }
   if (JSON.stringify(beforeBots) !== JSON.stringify(nextBots)) {
     out.push(`bots: ${scopeLabel(beforeBots)} → ${scopeLabel(nextBots)}`);

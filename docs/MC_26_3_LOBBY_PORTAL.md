@@ -9,7 +9,7 @@ cross the lobby portal before any warehouse inventory interaction.
 - **Per-login state:** `PortalWorldSession` is re-armed by `GameLeftEvent`.
   Every new login starts with a fresh world snapshot; a stale `portalArrived`
   state from the previous connection cannot skip the lobby. Unrelated world
-  reloads *before* an entry attempt do not count as successful crossing.
+  reloads _before_ an entry attempt do not count as successful crossing.
 - **Bootstrap without a stash:** the always-subscribed sorter tracker drives
   portal navigation for a configured, active Manager Agent even before
   `bot/hello` has assigned a stash or a sorting permit exists. Normal inventory

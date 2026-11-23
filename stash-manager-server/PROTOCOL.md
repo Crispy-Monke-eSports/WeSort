@@ -27,7 +27,7 @@ För hela order- och leveransflödet, se [domänkontrakten](../docs/MANAGER_CONT
   (`{stash, dimension, pos1, pos2, dropoff(+Dimension), delivery(+Dimension), anvil, table, revision}`)
   i heartbeat-svaret och exekverar headless.
 - Omkollning är inverterad: agenten rapporterar vilka kistor som finns (`chests:
-  [{x, y, z, readAt}]` i heartbeat) och Managern svarar med positionerna den vill
+[{x, y, z, readAt}]` i heartbeat) och Managern svarar med positionerna den vill
   ha omlästa (`recheck: [{x, y, z}]` i svaret, äldst först, max 128). En kista
   efterfrågas en gång per läsning — och igen när själva begäran blivit äldre än
   tröskeln, så en laggig server aldrig tappar en kista vars läsningar misslyckas.
@@ -43,19 +43,19 @@ För hela order- och leveransflödet, se [domänkontrakten](../docs/MANAGER_CONT
   `RESCAN_BLOCKED`, `UNKNOWN`, `MISSING`, `APPROVAL_PENDING` och
   `CANCEL_REQUESTED`.
 
-| Område | Aktiva routes |
-|---|---|
-| Browser-auth | GET auth/state; POST auth/setup, auth/login, auth/logout, auth/logout-all, auth/password, auth/confirm, auth/lock |
-| Agent | POST index, heartbeat, orders/claim, orders/:id/status, delivery |
-| Lager/webb | GET stashes, index, orders, delivery, link, server, stash-defs, kits; POST server, stash-defs, kits, rescan, link/regenerate |
-| Order/webb | POST orders (lines: item, shulker eller kit), orders/clear, orders/:id/cancel, orders/:id/force-cancel, orders/:id/retry, orders/:id/approval, orders/:id/reconcile |
-| Drift/agent | POST bot/hello, bot/state, bot/results, bot/activity, bot/next; GET bot/next |
-| Drift/webb | GET bots, bots/:id/settings, bots/:id/jobs, bots/:id/activity; POST bots/:id/settings |
-| Administration | GET/POST users; POST users/owner, users/:id, users/:id/actions enligt UserRoutes; GET audit |
-| Assets | GET /icon/:id och statiska resurser |
+| Område         | Aktiva routes                                                                                                                                                       |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Browser-auth   | GET auth/state; POST auth/setup, auth/login, auth/logout, auth/logout-all, auth/password, auth/confirm, auth/lock                                                   |
+| Agent          | POST index, heartbeat, orders/claim, orders/:id/status, delivery                                                                                                    |
+| Lager/webb     | GET stashes, index, orders, delivery, link, server, stash-defs, kits; POST server, stash-defs, kits, rescan, link/regenerate                                        |
+| Order/webb     | POST orders (lines: item, shulker eller kit), orders/clear, orders/:id/cancel, orders/:id/force-cancel, orders/:id/retry, orders/:id/approval, orders/:id/reconcile |
+| Drift/agent    | POST bot/hello, bot/state, bot/results, bot/activity, bot/next; GET bot/next                                                                                        |
+| Drift/webb     | GET bots, bots/:id/settings, bots/:id/jobs, bots/:id/activity; POST bots/:id/settings                                                                               |
+| Administration | GET/POST users; POST users/owner, users/:id, users/:id/actions enligt UserRoutes; GET audit                                                                         |
+| Assets         | GET /icon/:id och statiska resurser                                                                                                                                 |
 
 API-routes börjar med `/api/v1/`. Se exakta regex/actions i respektive
-*Routes.java. Egen agent-settings använder endast `scope=plugin`; andra scopes
+\*Routes.java. Egen agent-settings använder endast `scope=plugin`; andra scopes
 avvisas. Jobbkön kan bara bära settingsändringar. Gamla planner-, console- och
 viewer-routes saknas och ger 404. Inga kommandon kan köas via gammalt API.
 
@@ -185,7 +185,19 @@ applying the change on the game thread.
 `POST /api/v1/bot/results` accepts one leased receipt per request.
 
 ```json
-{"botId":"fixture","controlSession":"<64 lowercase hex characters>","results":[{"id":"<job id>","sequence":1,"lease":"<lease UUID>","ok":true,"value":12}]}
+{
+  "botId": "fixture",
+  "controlSession": "<64 lowercase hex characters>",
+  "results": [
+    {
+      "id": "<job id>",
+      "sequence": 1,
+      "lease": "<lease UUID>",
+      "ok": true,
+      "value": 12
+    }
+  ]
+}
 ```
 
 Manager replies 200 to an identical replay. A conflicting receipt,
@@ -222,8 +234,7 @@ After validating the reply, the agent sends the same scope and order
 fields plus `manifestHash` to signed `POST /api/v1/bot/manifest/ack`.
 Manager commits `acknowledgedAt` with the order and audits the first
 acknowledgement. A repeated receipt returns the same timestamp after a
-new control registration or Manager restart. A mismatched hash returns
-409.
+new control registration or Manager restart. A mismatched hash returns 409.
 
 A control poll with the current epoch may carry `pendingManifest` with an
 order ID and package count. Manager derives the hint from the durable
@@ -397,12 +408,13 @@ the stock (a withdrawal) or a `TRANSFER` to an internal guild stash (a
 relocation that does not change the guild total); the kind is explicit.
 `POST /api/v1/deposits/agent` (signed) begins, confirms or reconciles a
 deposit keyed by `packageId`; `begin` is idempotent per package + order
-+ kind + destination. `DELIVERED` is reached only with a server-
-confirmed, non-empty chest content `snapshot`, so a double report or
-reconnect never double-delivers: replaying a confirmation returns the
-same record. An uncertain outcome goes to `NEEDS_RECONCILIATION`, and a
-second agent cannot complete another agent's deposit. Owner
-`GET /api/v1/deposits` lists the ledger (optionally by `order`).
+
+- kind + destination. `DELIVERED` is reached only with a server-
+  confirmed, non-empty chest content `snapshot`, so a double report or
+  reconnect never double-delivers: replaying a confirmation returns the
+  same record. An uncertain outcome goes to `NEEDS_RECONCILIATION`, and a
+  second agent cannot complete another agent's deposit. Owner
+  `GET /api/v1/deposits` lists the ledger (optionally by `order`).
 
 ## W-034 job scheduler
 

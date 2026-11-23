@@ -7,7 +7,12 @@ test("editing a flag preserves stash and bot scopes", async ({ page }) => {
     r.fulfill({
       json: {
         loggedIn: true,
-        user: { id: "owner", name: "Owner", owner: true, perms: { view: true, order: true } },
+        user: {
+          id: "owner",
+          name: "Owner",
+          owner: true,
+          perms: { view: true, order: true },
+        },
       },
     }),
   );

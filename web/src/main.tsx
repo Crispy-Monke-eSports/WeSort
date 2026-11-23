@@ -13,8 +13,14 @@ import { wesortTheme } from "./theme/wesortTheme";
  * would block every MUI runtime style.
  */
 function emotionCache() {
-  const nonce = document.querySelector('meta[name="emotion-nonce"]')?.getAttribute("content") ?? undefined;
-  return createCache({ key: "mui", nonce: nonce === "__WESORT_STYLE_NONCE__" ? undefined : nonce });
+  const nonce =
+    document
+      .querySelector('meta[name="emotion-nonce"]')
+      ?.getAttribute("content") ?? undefined;
+  return createCache({
+    key: "mui",
+    nonce: nonce === "__WESORT_STYLE_NONCE__" ? undefined : nonce,
+  });
 }
 
 function Root() {

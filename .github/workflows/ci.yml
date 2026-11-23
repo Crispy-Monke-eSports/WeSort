@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   format:
-    name: Java formatting gate
+    name: Java, web and Markdown formatting gate
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
@@ -44,6 +44,11 @@ jobs:
           java-version: '21'
       - name: Require formatted Manager Java
         run: ./gradlew --no-daemon -p stash-manager-server spotlessCheck
+      - uses: oven-sh/setup-bun@v2
+      - name: Install web formatting dependencies
+        run: cd web && bun install --frozen-lockfile
+      - name: Require formatted web UI and all Markdown
+        run: cd web && bun run format:check
   verify:
     name: Compile, unit and Docker smoke
     needs: format
@@ -72,5 +77,5 @@ jobs:
           E2E_RESULT: ${{ needs.e2e.result }}
         shell: bash
         run: |
-          echo "Java format: $FORMAT_RESULT; verification: $VERIFY_RESULT; full E2E: $E2E_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          echo "Java/web/Markdown format: $FORMAT_RESULT; verification: $VERIFY_RESULT; full E2E: $E2E_RESULT" >> "$GITHUB_STEP_SUMMARY"
           [[ "$FORMAT_RESULT" == success && "$VERIFY_RESULT" == success && "$E2E_RESULT" == success ]]

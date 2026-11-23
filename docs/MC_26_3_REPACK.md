@@ -59,23 +59,23 @@ inte koordinera okonfigurerade spelare eller andra program.
 `scripts/mc26/repack-harness.py` använder egna nya vanilla 26.3-världar,
 Fabric/Meteor/WeSort och faktisk produktionsautomation. Fallen är:
 
-| Fall | Förväntat verifierat utfall |
-| --- | --- |
-| mixed | Främmande dirt och exakt namngivet skadat svärd tas ur boxen; diamond-boxen plockas upp och lagras |
-| partial | 60 + 10 diamonds blir 64 + 6 i korrekta boxslots |
-| bulk | Ny bulkbox packas av två lösa fulla stacks |
-| compact | 27 fulla stacks konsolideras till en lagrad box |
-| rounds | Begränsade carry-slots tvingar flera verifierade bulkronder med boxen kvar i världen mellan dem |
-| no-tool | Explicit förvillkorsfel; boxens inre metadata oförändrad |
-| no-empty | Explicit boxbrist; items förblir lösa och bevarade |
-| full-stash | Korrekt kategoriserade fulla destinationer ger recovery-spärr |
-| full-inventory | Fyllt inventory under den fysiska operationen ger recovery-spärr |
-| lag | Fördröjd trafik passerar endast med verkliga readbacks |
-| abort | Avbruten nedlänk lämnar spärr; återställd länk orsakar inga nya automatiska clicks |
-| reserved | Signerad Docker Manager-order på boxinnehåll stoppar riktig repack före mutation |
-| blocked | Adventure-mode nekar placering med explicit förvillkorsfel |
-| named | Även en oskyddad namngiven mixed box behåller hela sin metadata och layout |
-| identical | En redan buren personlig box med exakt samma slutliga innehåll förväxlas inte med arbetsboxen |
+| Fall           | Förväntat verifierat utfall                                                                        |
+| -------------- | -------------------------------------------------------------------------------------------------- |
+| mixed          | Främmande dirt och exakt namngivet skadat svärd tas ur boxen; diamond-boxen plockas upp och lagras |
+| partial        | 60 + 10 diamonds blir 64 + 6 i korrekta boxslots                                                   |
+| bulk           | Ny bulkbox packas av två lösa fulla stacks                                                         |
+| compact        | 27 fulla stacks konsolideras till en lagrad box                                                    |
+| rounds         | Begränsade carry-slots tvingar flera verifierade bulkronder med boxen kvar i världen mellan dem    |
+| no-tool        | Explicit förvillkorsfel; boxens inre metadata oförändrad                                           |
+| no-empty       | Explicit boxbrist; items förblir lösa och bevarade                                                 |
+| full-stash     | Korrekt kategoriserade fulla destinationer ger recovery-spärr                                      |
+| full-inventory | Fyllt inventory under den fysiska operationen ger recovery-spärr                                   |
+| lag            | Fördröjd trafik passerar endast med verkliga readbacks                                             |
+| abort          | Avbruten nedlänk lämnar spärr; återställd länk orsakar inga nya automatiska clicks                 |
+| reserved       | Signerad Docker Manager-order på boxinnehåll stoppar riktig repack före mutation                   |
+| blocked        | Adventure-mode nekar placering med explicit förvillkorsfel                                         |
+| named          | Även en oskyddad namngiven mixed box behåller hela sin metadata och layout                         |
+| identical      | En redan buren personlig box med exakt samma slutliga innehåll förväxlas inte med arbetsboxen      |
 
 Varje fall jämför oberoende RCON-server-SNBT före/efter med rekursiva antal
 **och komponenter**, inklusive boxar som står kvar och faktiska itemdrops.

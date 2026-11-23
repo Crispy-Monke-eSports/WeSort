@@ -13,12 +13,12 @@ Befintliga `OrderStore`, `IndexStore` och `AuditLog` använder separata JSON-
 filer. Synkronisering per stash och AtomicFiles.write ger varken global
 serialisering eller rollback av flera filer vid diskfel/processkrasch.
 
-| Alternativ | Bedömning |
-|---|---|
-| Behålla separata JSON-filer | Behåll som steg-0-baslinje, otillräckligt för atomisk global domänmotor |
-| Gemensam egen JSON-WAL/snapshot | Kräver egen logg, recovery, låsning och migrationsmotor; onödig felrisk |
-| Lokal inbäddad SQLite | Vald: en filgrupp på lokal volym, transaktioner/constraints utan extra tjänst |
-| PostgreSQL/separat backend | Ingen nödvändighet vid en process/1–5 agenter; större driftkrav |
+| Alternativ                      | Bedömning                                                                     |
+| ------------------------------- | ----------------------------------------------------------------------------- |
+| Behålla separata JSON-filer     | Behåll som steg-0-baslinje, otillräckligt för atomisk global domänmotor       |
+| Gemensam egen JSON-WAL/snapshot | Kräver egen logg, recovery, låsning och migrationsmotor; onödig felrisk       |
+| Lokal inbäddad SQLite           | Vald: en filgrupp på lokal volym, transaktioner/constraints utan extra tjänst |
+| PostgreSQL/separat backend      | Ingen nödvändighet vid en process/1–5 agenter; större driftkrav               |
 
 SQLite tillåter en samtidig writer och flera readers. `BEGIN IMMEDIATE` tar
 skrivtransaktionen före läsning av kvot/stock; annan writer väntar eller får

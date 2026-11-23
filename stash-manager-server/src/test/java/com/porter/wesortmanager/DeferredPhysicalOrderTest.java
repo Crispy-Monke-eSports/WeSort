@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.porter.wesort.data.PhysicalSlots;
+import com.porter.wesort.inventory.PhysicalJournal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -88,6 +89,45 @@ class DeferredPhysicalOrderTest {
         var cancelled = restarted.cancel(second.id);
         assertEquals("cancelled", cancelled.status);
         assertEquals(holdsBefore, restarted.heldRoots("s").size());
+    }
+
+    @Test
+    void activePhysicalJournalMustNotReconcileAnOrderDuringPolling() throws Exception {
+        var placed = orders.place("s", "a", diamonds(20), null);
+        var claimed = orders.claim("s", "a");
+        assertEquals(placed.id, claimed.id);
+        assertEquals("accepted", claimed.status);
+
+        String agent = "00000000-0000-0000-0000-000000000001";
+        var journal = new PhysicalJournal(data.resolve("active-order-journal"));
+        journal.start(JsonParser.parseString(
+                        "{\"server\":\"s\",\"stash\":\"a\",\"dimension\":\"minecraft:overworld\",\"agent\":\""
+                                + agent + "\",\"kind\":\"DIRECT\",\"orderId\":\"" + placed.id + "\"}")
+                .getAsJsonObject());
+        var intent = new JsonObject();
+        intent.add("origin", journal.context());
+        intent.add("before", JsonParser.parseString("{\"menu\":1,\"slots\":[\"before\",\"\"],\"cursor\":\"\"}"));
+        intent.add("expected", JsonParser.parseString("{\"menu\":1,\"slots\":[\"after\",\"\"],\"cursor\":\"\"}"));
+        journal.intent(intent);
+        var operations = new PhysicalOperations(index.stock());
+        assertEquals("IN_PROGRESS", operations.accept(agent, journal.current()).get("state").getAsString());
+        assertTrue(index.stock().unsettledPhysicalOrder(placed.id));
+
+        // The dashboard polls while the agent physically stages the package.
+        // An unfinished but healthy operation must never invalidate the order.
+        var running = orders.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
+        assertEquals("PACKING", running.get("state").getAsString());
+        assertEquals("accepted", running.get("status").getAsString());
+        assertFalse(index.stock().reconciliationRequiredPhysicalOrder(placed.id));
+
+        // A genuine Manager fence still blocks pickup and keeps reservations held.
+        journal.block("The physical postcondition could not be verified");
+        assertEquals("NEEDS_RECONCILIATION",
+                operations.accept(agent, journal.current()).get("state").getAsString());
+        var fenced = orders.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
+        assertEquals("NEEDS_RECONCILIATION", fenced.get("state").getAsString());
+        assertEquals("needs_reconciliation", fenced.get("status").getAsString());
+        assertFalse(orders.heldRoots("s").isEmpty());
     }
 
     @Test

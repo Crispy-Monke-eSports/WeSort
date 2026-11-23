@@ -92,7 +92,8 @@ class SelfHealTest {
         assertEquals("RECOVERING", row.get("state").getAsString());
         assertEquals("in_progress", orders.statusOf(old.id));
         assertTrue(row.get("cancelRequested").getAsBoolean());
-        assertEquals(2L, orders.reservedFor("s", "a").get("item:minecraft:diamond").longValue());
+        assertEquals(
+                2L, orders.reservedFor("s", "a").get("item:minecraft:diamond").longValue());
     }
 
     @Test
@@ -102,11 +103,16 @@ class SelfHealTest {
         orders.selfHealAll();
         var finished = orders.status(old.id, "cancelled", null, null, "Returned to stash", null, old.agent, "r2");
         assertEquals("cancelled", finished.status);
-        assertEquals(2L, orders.reservedFor("s", "a").get("item:minecraft:diamond").longValue());
+        assertEquals(
+                2L, orders.reservedFor("s", "a").get("item:minecraft:diamond").longValue());
         time.set(finished.updatedAt + 1000);
         observe("a", 10);
         orders.selfHealAll();
-        assertEquals(0L, orders.reservedFor("s", "a").getOrDefault("item:minecraft:diamond", 0L).longValue());
+        assertEquals(
+                0L,
+                orders.reservedFor("s", "a")
+                        .getOrDefault("item:minecraft:diamond", 0L)
+                        .longValue());
     }
 
     @Test
@@ -137,7 +143,8 @@ class SelfHealTest {
         orders.selfHealAll();
         var recovery = orders.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
         assertEquals("RECOVERING", recovery.get("state").getAsString());
-        assertEquals(2L, orders.reservedFor("s", "a").get("item:minecraft:diamond").longValue());
+        assertEquals(
+                2L, orders.reservedFor("s", "a").get("item:minecraft:diamond").longValue());
         time.set(recovery.get("updatedAt").getAsLong() + 1000);
         observe("a", 10);
         orders.selfHealAll();
@@ -148,7 +155,11 @@ class SelfHealTest {
         observe("a", 10);
         orders.selfHealAll();
         assertEquals("cancelled", orders.statusOf(order.id));
-        assertEquals(0L, orders.reservedFor("s", "a").getOrDefault("item:minecraft:diamond", 0L).longValue());
+        assertEquals(
+                0L,
+                orders.reservedFor("s", "a")
+                        .getOrDefault("item:minecraft:diamond", 0L)
+                        .longValue());
     }
 
     @Test
@@ -194,7 +205,8 @@ class SelfHealTest {
         time.set(System.currentTimeMillis() + 1000);
         observe("a", 10);
         orders.selfHealAll();
-        assertEquals(2L, orders.reservedFor("s", "a").get("item:minecraft:diamond").longValue());
+        assertEquals(
+                2L, orders.reservedFor("s", "a").get("item:minecraft:diamond").longValue());
         var finished = orders.status(stuck.id, "failed", null, null, "Rolled back", null, stuck.agent, "r3");
         time.set(finished.updatedAt + 1000);
         observe("a", 10);
@@ -234,8 +246,14 @@ class SelfHealTest {
         operations.accept(agent, journal.current());
         orders.releaseFromFreshObservation("s");
         assertEquals("in_progress", orders.statusOf(order.id));
-        assertEquals("RECOVERING", orders.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject()
-                .get("state").getAsString());
+        assertEquals(
+                "RECOVERING",
+                orders.listJson("s", "a")
+                        .getAsJsonArray("orders")
+                        .get(0)
+                        .getAsJsonObject()
+                        .get("state")
+                        .getAsString());
     }
 
     @Test

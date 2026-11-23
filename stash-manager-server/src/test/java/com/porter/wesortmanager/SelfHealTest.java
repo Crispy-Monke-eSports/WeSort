@@ -175,7 +175,7 @@ class SelfHealTest {
     }
 
     @Test
-    void unsettledPhysicalWorkAutoFlagsOpenOrders() throws Exception {
+    void fencedPhysicalWorkAutoFlagsOpenOrders() throws Exception {
         observe("a", 10);
         var order = orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 2)), null);
         String agent = UUID.randomUUID().toString();
@@ -197,7 +197,12 @@ class SelfHealTest {
                 JsonParser.parseString("{\"menu\":1,\"slots\":[\"\",\"\"],\"cursor\":\"\"}")
                         .getAsJsonObject());
         journal.intent(intent);
-        new PhysicalOperations(ledger).accept(agent, journal.current());
+        var operations = new PhysicalOperations(ledger);
+        operations.accept(agent, journal.current());
+        orders.releaseFromFreshObservation("s");
+        assertEquals("accepted", orders.statusOf(order.id));
+        journal.block("Physical verification failed");
+        operations.accept(agent, journal.current());
         orders.releaseFromFreshObservation("s");
         assertEquals("needs_reconciliation", orders.statusOf(order.id));
     }

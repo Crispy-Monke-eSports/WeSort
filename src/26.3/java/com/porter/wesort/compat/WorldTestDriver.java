@@ -442,8 +442,20 @@ public final class WorldTestDriver {
                     // open menu, or unfinished durable journal; those are genuine
                     // reconciliation conditions, not a reason to weaken the fence.
                     var sorter = com.porter.wesort.WeSortAddon.sorter();
+                    // An empty cursor and a closed menu do not mean the sort batch
+                    // has been deposited: between two verified clicks the sorter
+                    // can hold the next batch in normal player inventory slots.
+                    // Stopping there silently strands items outside the stash.
+                    boolean carryingBatch = false;
+                    for (int slot = 0; slot < 36; slot++) {
+                        if (!mc.player.getInventory().getItem(slot).isEmpty()) {
+                            carryingBatch = true;
+                            break;
+                        }
+                    }
                     if (sorter.isActive()
                             && (sorter.physicalWorkInProgress()
+                                    || carryingBatch
                                     || !InventorySync.ready()
                                     || PhysicalJournalRuntime.unfinished()
                                     || !PhysicalJournalRuntime.status().equals("READY")

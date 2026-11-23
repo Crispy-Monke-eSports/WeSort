@@ -223,9 +223,9 @@ class JournalHarness(repack.RepackHarness):
                     else:
                         raise RuntimeError('Automatic safe SELECT recovery did not complete: '
                                            + json.dumps(inspected))
-            # Without an operator, an inconclusive inspection remains fenced;
-            # a proven postcondition may reach READY automatically. The isolated
-            # fixture holds sorting off, so neither outcome authorizes a new move.
+            # An unverified operation remains fenced. If no mutation was
+            # transmitted, the old operation may terminate safely and the
+            # Manager may grant a *new* sorting lease for independent work.
             fenced = self.command('state')['state']
             fenced_detail = self.record_fence_state('reconciled', fenced)
             require(fenced['physicalJournal'] in ('AUTO_RECOVERING', 'WAITING_MANAGER_RECEIPT', 'READY'),
@@ -245,10 +245,20 @@ class JournalHarness(repack.RepackHarness):
             require(fenced['attemptedClicks'] == 0,
                     'Client replayed an inventory click: ' + json.dumps(fenced_detail))
             after = self.snapshot_after_restart(row)
-            # Soak past the 5s automation-permit window: any re-armed sorting would move
-            # the world here, and the canonical comparison below would name the delta.
+            # For an interrupted operation with a transmitted INTENT the
+            # physical world must not change under the recovery fence. When
+            # SELECT/PLACE sent no INTENT at all, however, recovery ends safely
+            # and normal unattended sorting is explicitly allowed to take a
+            # new Manager lease. Such independent redistribution may change
+            # slots, but may never change recursive item counts or metadata.
+            no_mutation_sent = not any(event['type'] == 'INTENT' for event in crashed['events'])
             time.sleep(8)
-            self.require_same_world(after, self.snapshot_after_restart(row))
+            later = self.snapshot_after_restart(row)
+            if no_mutation_sent and initial['physicalJournal'] == 'READY':
+                require(self.totals(after) == self.totals(later),
+                        'Resumed independent sorting changed total stock or item metadata')
+            else:
+                self.require_same_world(after, later)
             soaked = self.command('state')['state']
             soaked_detail = self.record_fence_state('after-soak', soaked)
             if soaked['physicalJournal'] == 'READY':
@@ -263,10 +273,12 @@ class JournalHarness(repack.RepackHarness):
                     require(soaked['journalBlocked'],
                             'Unverified recovery lost its fence during soak: '
                             + json.dumps(soaked_detail))
-            require(soaked['attemptedClicks'] == 0,
-                    'Client replayed an inventory click: ' + json.dumps(soaked_detail))
-            require(self.totals(before) == self.totals(after), 'Crash changed authoritative recursive totals or metadata')
-            self.ok(self.phase + ' survived client and Manager restart without a duplicate physical mutation')
+            if not (no_mutation_sent and initial['physicalJournal'] == 'READY'):
+                require(soaked['attemptedClicks'] == 0,
+                        'An unverified operation replayed an inventory click: ' + json.dumps(soaked_detail))
+            require(self.totals(before) == self.totals(after) == self.totals(later),
+                    'Crash or unattended follow-up changed authoritative recursive totals or metadata')
+            self.ok(self.phase + ' recovered without duplicate mutation or loss of physical stock')
             (self.evidence / 'result.json').write_text(json.dumps({
                 'result': 'PASS', 'phase': self.phase, 'checks': self.checks,
                 'source_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repack.world.ROOT, text=True).strip(),

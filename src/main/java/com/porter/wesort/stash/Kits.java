@@ -251,6 +251,15 @@ public final class Kits {
         return assigned != null && sourceId(box).equals(destination);
     }
 
+    /** Only the current signed Manager assignment may designate a kit home. */
+    public static List<Box> homes(Kit kit, Stash stash) {
+        if (stash == null || kit == null || kit != assigned || !buildable(kit)) return List.of();
+        List<Box> found = new ArrayList<>();
+        for (Box box : com.porter.wesort.compat.ObservationRuntime.boxes(stash))
+            if (box.sortable() && !box.dropOff && sourceId(box).equals(destination)) found.add(box);
+        return found;
+    }
+
     /**
      * Finished copies of a kit sitting in the stash, named or not.
      */

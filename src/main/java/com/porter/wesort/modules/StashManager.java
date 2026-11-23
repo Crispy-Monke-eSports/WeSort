@@ -1615,10 +1615,14 @@ public class StashManager extends Module {
 
     private void takeOrder(StashSorter sorter, OrderRunner runner, String body) {
         Order order = null;
+        boolean recovering = false;
         try {
             JsonElement e = JsonParser.parseString(body);
-            if (e.isJsonObject() && e.getAsJsonObject().has("order"))
-                order = Order.parse(e.getAsJsonObject().getAsJsonObject("order"));
+            if (e.isJsonObject() && e.getAsJsonObject().has("order")) {
+                JsonObject offered = e.getAsJsonObject().getAsJsonObject("order");
+                recovering = offered.has("state") && "RECOVERING".equals(offered.get("state").getAsString());
+                order = Order.parse(offered);
+            }
         } catch (RuntimeException e) {
             // Treated as no usable order below
         }
@@ -1646,6 +1650,7 @@ public class StashManager extends Module {
         runner.dropSaved(order.id);
         String why = runner.offer(order);
         if (why == null) {
+            if (recovering) runner.cancel(order.id);
             sorter.orderTaken();
             pendingOrders = Math.max(0, pendingOrders - 1);
         } else {

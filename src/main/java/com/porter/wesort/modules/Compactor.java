@@ -346,7 +346,7 @@ final class Compactor {
                 && !b.noCompact
                 && !owner.signPending(b)
                 && !owner.isKitBox(b)
-                && b.labels.stream().noneMatch(Categories::isKeepWhole);
+                && !b.protectedStorage;
     }
 
     /**
@@ -626,7 +626,6 @@ final class Compactor {
      */
     private Found findEmptyShulker() {
         Found best = null;
-        boolean bestSigned = false;
         for (Box box : owner.stash().boxes) {
             if (!box.sortable()
                     || box.stale
@@ -634,16 +633,11 @@ final class Compactor {
                     || owner.signPending(box)
                     || owner.fetchBlocked(box)
                     || owner.isKitBox(box)) continue;
-            if (box.labels.stream().anyMatch(Categories::isKeepWhole)) continue;
-            boolean signed =
-                    box.labels.stream().anyMatch(l -> l.toLowerCase(Locale.ROOT).contains("shulker"));
             for (int i = 0; i < box.contents.length; i++) {
                 if (!emptyShulker(box.contents[i])) continue;
                 if (best == null
-                        || (signed && !bestSigned)
-                        || (signed == bestSigned && owner.closer(box, best.box()))) {
+                        || owner.closer(box, best.box())) {
                     best = new Found(box, i);
-                    bestSigned = signed;
                 }
                 break;
             }

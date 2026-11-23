@@ -49,6 +49,11 @@ public final class WorldInteractionGuard {
      * actual Manager order IDs retain precedence.
      */
     public static String currentJob() {
+        // A read-only recovery opening must still have a real, scoped job
+        // identity when sorting is paused. An exact USE permit is issued only
+        // for the original recorded source by InventorySync. This does not
+        // authorize PLACE, BREAK, or an inventory mutation.
+        if (InventorySync.recoveryPending()) return "inventory-readback";
         var manager = Modules.get().get(StashManager.class);
         if (manager == null) return "unknown";
         var sorter = com.porter.wesort.WeSortAddon.sorter();

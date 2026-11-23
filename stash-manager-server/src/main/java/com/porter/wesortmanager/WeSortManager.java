@@ -184,6 +184,19 @@ public final class WeSortManager {
                 throw e;
             }
             server.start();
+            // Progress recovery even without a dashboard poll or a new inventory frame.
+            var recovery = Executors.newSingleThreadScheduledExecutor(daemonThreads());
+            recovery.scheduleWithFixedDelay(
+                    () -> {
+                        try {
+                            orders.selfHealAll();
+                        } catch (IOException | RuntimeException failure) {
+                            System.err.println("Automatic order recovery failed: " + failure.getMessage());
+                        }
+                    },
+                    0,
+                    15,
+                    TimeUnit.SECONDS);
 
             // Only once the port is ours: clean up the old icon cache, then queue every missing icon.
             int migrated = icons.migrateCache();
@@ -202,6 +215,7 @@ public final class WeSortManager {
                                     System.err.println("Could not close local control socket");
                                 }
                                 server.stop(1);
+                                recovery.shutdownNow();
                                 icons.close();
                                 pool.shutdown();
                                 try {

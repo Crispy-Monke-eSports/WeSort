@@ -48,7 +48,10 @@ class JournalHarness(repack.RepackHarness):
             require(status == 200, 'Owner journal list unavailable')
             last = result
             row = next((row for row in result['operations'] if row['id'] == operation), None)
-            if row and row['managerState'] == 'NEEDS_RECONCILIATION':
+            # The Manager may already have auto-inspected this operation
+            # before the owner-facing list was polled. All these states
+            # belong to the unattended recovery protocol.
+            if row and row['managerState'] in ('RECOVERING', 'COMPLETED', 'FAILED'):
                 return row
             time.sleep(.25)
         # Name the miss: dump every Manager row (id/revision/state) so a wrong-id upload,
@@ -169,10 +172,22 @@ class JournalHarness(repack.RepackHarness):
             self.start_client()
             initial = self.command('state')['state']
             initial_detail = self.record_fence_state('restart', initial)
-            require(initial['physicalJournal'] == 'NEEDS_RECONCILIATION' and initial['attemptedClicks'] == 0,
-                    'Restart reopened automation or replayed a click: ' + json.dumps(initial_detail))
-            require(initial['sortingPermitted'] is False,
-                    'Restart exposed an unsafe sorting permit: ' + json.dumps(initial_detail))
+            require(initial['physicalJournal'] in ('AUTO_RECOVERING', 'READY')
+                    and initial['attemptedClicks'] == 0,
+                    'Restart replayed a click or entered an unexpected recovery state: '
+                    + json.dumps(initial_detail))
+            if initial['physicalJournal'] == 'READY':
+                # At SELECT/PLACE the journal can be safely failed locally
+                # before any INTENT was emitted. Do not demand a manual fence
+                # or invent an inspection for a non-mutating operation.
+                require(not any(event['type'] == 'INTENT' for event in crashed['events']),
+                        'Unverified physical intent was released on restart: '
+                        + json.dumps(initial_detail))
+                require(not initial['journalBlocked'] and not initial['sorterActive'],
+                        'Safe no-mutation abort restarted sorting: ' + json.dumps(initial_detail))
+            else:
+                require(initial['sortingPermitted'] is False,
+                        'Unverified restart exposed a sorting permit: ' + json.dumps(initial_detail))
             self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key)
             row = self.wait_for_review(crashed['id'])
             require(row['interruptedPhase'] == self.phase, 'Manager omitted the interrupted phase')
@@ -184,48 +199,86 @@ class JournalHarness(repack.RepackHarness):
             if self.phase in ('OPEN', 'TRANSFER', 'VERIFY', 'BREAK'):
                 require(row['possibleOrphans'], 'Manager did not list the possible standing shulker')
             if self.phase == 'SELECT':
-                status, _ = self.http('/api/v1/physical/inspect', {
-                    'operation': row['id'], 'revision': row['revision'], 'checksum': row['checksum']
-                })
-                require(status == 200, 'Owner could not request an inventory-only inspection')
-                end = time.monotonic() + 20
-                while time.monotonic() < end:
-                    _, reply = self.http('/api/v1/physical')
-                    inspected = next(r for r in reply['operations'] if r['id'] == row['id'])
-                    if inspected.get('inspectionState') == 'COMPLETED':
-                        require(inspected['managerState'] == 'FAILED', 'No-mutation inspection falsely completed repack')
-                        self.ok('Owner-approved fresh inventory verified that the SELECT operation sent no mutation')
-                        break
-                    time.sleep(.25)
+                if initial['physicalJournal'] == 'READY':
+                    # The startup journal proved no packet was sent; Manager
+                    # records the terminal safe failure without an inspection.
+                    require(row['managerState'] == 'FAILED',
+                            'Safe no-mutation SELECT was not recorded as failed: '
+                            + json.dumps(row))
+                    self.ok('SELECT safely failed before any mutation without operator input')
                 else:
-                    raise RuntimeError('Safe SELECT recovery did not complete')
-            # A crash-recovered operation stays fenced after its no-mutation proof: the
-            # terminal FAILED state authorizes nothing new. Only an explicit operator
-            # release (off-to-on toggle, explicit sort-start) resumes automation — never a
-            # mirror round-trip, inspection result, publish or rescan.
+                    # If a fence existed, the signed client must complete the
+                    # Manager's automatic, revision-bound read-only inspection.
+                    end = time.monotonic() + 35
+                    inspected = None
+                    while time.monotonic() < end:
+                        _, reply = self.http('/api/v1/physical')
+                        inspected = next(r for r in reply['operations'] if r['id'] == row['id'])
+                        if inspected.get('inspectionState') == 'COMPLETED':
+                            require(inspected['managerState'] == 'FAILED',
+                                    'No-mutation inspection falsely completed repack')
+                            self.ok('Automatic inventory readback proved SELECT sent no mutation')
+                            break
+                        time.sleep(.25)
+                    else:
+                        raise RuntimeError('Automatic safe SELECT recovery did not complete: '
+                                           + json.dumps(inspected))
+            # An unverified operation remains fenced. If no mutation was
+            # transmitted, the old operation may terminate safely and the
+            # Manager may grant a *new* sorting lease for independent work.
             fenced = self.command('state')['state']
             fenced_detail = self.record_fence_state('reconciled', fenced)
-            require(fenced['physicalJournal'] in ('NEEDS_RECONCILIATION', 'WAITING_MANAGER_RECEIPT'),
-                    'Client left the recovery fence without an explicit operator release: '
-                    + json.dumps(fenced_detail))
-            require(fenced['sortingPermitted'] is False,
-                    'Sorter re-armed without an explicit operator release: ' + json.dumps(fenced_detail))
+            require(fenced['physicalJournal'] in ('AUTO_RECOVERING', 'WAITING_MANAGER_RECEIPT', 'READY'),
+                    'Client entered an unexpected journal state: ' + json.dumps(fenced_detail))
+            if fenced['physicalJournal'] == 'AUTO_RECOVERING':
+                require(fenced['journalBlocked'],
+                        'Unverified physical recovery lost its journal fence: ' + json.dumps(fenced_detail))
+            # After verified READY the idle sorter can report that no lease
+            # is required; only an unresolved journal must deny permits.
+            if fenced['physicalJournal'] != 'READY':
+                require(fenced['sortingPermitted'] is False,
+                        'Unverified recovery exposed a sorting permit: ' + json.dumps(fenced_detail))
+            else:
+                require(not fenced['journalBlocked'] and not fenced['sorterActive'],
+                        'Verified recovery unexpectedly restarted physical sorting: '
+                        + json.dumps(fenced_detail))
             require(fenced['attemptedClicks'] == 0,
                     'Client replayed an inventory click: ' + json.dumps(fenced_detail))
             after = self.snapshot_after_restart(row)
-            # Soak past the 5s automation-permit window: any re-armed sorting would move
-            # the world here, and the canonical comparison below would name the delta.
+            # For an interrupted operation with a transmitted INTENT the
+            # physical world must not change under the recovery fence. When
+            # SELECT/PLACE sent no INTENT at all, however, recovery ends safely
+            # and normal unattended sorting is explicitly allowed to take a
+            # new Manager lease. Such independent redistribution may change
+            # slots, but may never change recursive item counts or metadata.
+            no_mutation_sent = not any(event['type'] == 'INTENT' for event in crashed['events'])
             time.sleep(8)
-            self.require_same_world(after, self.snapshot_after_restart(row))
+            later = self.snapshot_after_restart(row)
+            if no_mutation_sent and initial['physicalJournal'] == 'READY':
+                require(self.totals(after) == self.totals(later),
+                        'Resumed independent sorting changed total stock or item metadata')
+            else:
+                self.require_same_world(after, later)
             soaked = self.command('state')['state']
             soaked_detail = self.record_fence_state('after-soak', soaked)
-            require(soaked['sortingPermitted'] is False,
-                    'Sorting was re-authorized without an operator release during soak: '
-                    + json.dumps(soaked_detail))
-            require(soaked['attemptedClicks'] == 0,
-                    'Client replayed an inventory click: ' + json.dumps(soaked_detail))
-            require(self.totals(before) == self.totals(after), 'Crash changed authoritative recursive totals or metadata')
-            self.ok(self.phase + ' survived client and Manager restart without a duplicate physical mutation')
+            if soaked['physicalJournal'] == 'READY':
+                require(not soaked['journalBlocked'] and not soaked['sorterActive'],
+                        'Recovered journal restarted physical sorting during soak: '
+                        + json.dumps(soaked_detail))
+            else:
+                require(soaked['sortingPermitted'] is False,
+                        'Unverified recovery was re-authorized during soak: '
+                        + json.dumps(soaked_detail))
+                if soaked['physicalJournal'] == 'AUTO_RECOVERING':
+                    require(soaked['journalBlocked'],
+                            'Unverified recovery lost its fence during soak: '
+                            + json.dumps(soaked_detail))
+            if not (no_mutation_sent and initial['physicalJournal'] == 'READY'):
+                require(soaked['attemptedClicks'] == 0,
+                        'An unverified operation replayed an inventory click: ' + json.dumps(soaked_detail))
+            require(self.totals(before) == self.totals(after) == self.totals(later),
+                    'Crash or unattended follow-up changed authoritative recursive totals or metadata')
+            self.ok(self.phase + ' recovered without duplicate mutation or loss of physical stock')
             (self.evidence / 'result.json').write_text(json.dumps({
                 'result': 'PASS', 'phase': self.phase, 'checks': self.checks,
                 'source_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repack.world.ROOT, text=True).strip(),
@@ -280,10 +333,8 @@ class DirectHarness(JournalHarness):
             self.start_client()
             self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key)
             row = self.wait_for_review(crashed['id'])
-            status, _ = self.http('/api/v1/physical/inspect', {
-                'operation': row['id'], 'revision': row['revision'], 'checksum': row['checksum']
-            })
-            require(status == 200, 'Owner could not request exact source and inventory readback')
+            # The Manager must dispatch inspection automatically on agent
+            # reconnect. No human endpoint or manual action is involved.
             end = time.monotonic() + 35
             while time.monotonic() < end:
                 _, reply = self.http('/api/v1/physical')
@@ -297,11 +348,9 @@ class DirectHarness(JournalHarness):
             else:
                 raise RuntimeError('Verified postcondition did not clear the operation fence')
             state = self.command('state')['state']
-            # The Manager marks the Owner inspection COMPLETED on receipt of the
-            # client's read-only verification. The client still needs one
-            # background agent upload round-trip to mirror the new revision and
-            # clear WAITING_MANAGER_RECEIPT. Poll briefly instead of asserting
-            # the receipt synchronously; any click replay still fails below.
+            # The Manager marks automatic inspection COMPLETED on receipt of
+            # the client's read-only proof. Await the signed mirror round-trip;
+            # no inventory click may be replayed.
             receipt_end = time.monotonic() + 30
             while not (state['attemptedClicks'] == 0 and state['physicalJournal'] == 'READY'):
                 require(state['attemptedClicks'] == 0,
@@ -332,7 +381,7 @@ class DirectHarness(JournalHarness):
                             'attemptedClicks': isolated['attemptedClicks'],
                             'screen': isolated['screen']}, indent=2) + '\n')
             # A new, explicitly requested move proves the same agent can operate
-            # again after Owner inspection, with no competing Manager scanner.
+            # again after autonomous inspection, with no competing Manager scanner.
             menu = self.command('open', x=0, y=64, z=3, slots=54, item='minecraft:air', count=0, second=1)['state']
             carry = inv.carry_slot(menu, 54, 'minecraft:diamond', 64)
             inv.click(self, menu, carry)

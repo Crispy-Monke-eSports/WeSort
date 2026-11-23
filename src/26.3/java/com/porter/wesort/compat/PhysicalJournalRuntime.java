@@ -33,9 +33,8 @@ public final class PhysicalJournalRuntime {
         try {
             journal = new PhysicalJournal(DataDirectory.clientFolder(MeteorClient.FOLDER.toPath(), "physical-journal"));
             recoveryFence = journal.blocked();
-            // A crash-restarted operation keeps automation fenced even after its inspection
-            // proves no mutation: terminal FAILED is not an authorization for new work. Only
-            // an explicit operator release clears this (see releaseReconciled).
+            // An uncertain operation stays fenced until an exact read-only inspection
+            // proves it safe. No mutation is ever retransmitted during recovery.
             var current = journal.current();
             reconcileRequired = current != null && current.has("interruptedPhase");
         } catch (Exception invalid) {
@@ -74,7 +73,7 @@ public final class PhysicalJournalRuntime {
     public static String status() {
         return !failure.isEmpty()
                 ? failure
-                : blocked() ? "NEEDS_RECONCILIATION" : awaitingMirror() ? "WAITING_MANAGER_RECEIPT" : "READY";
+                : blocked() ? "AUTO_RECOVERING" : awaitingMirror() ? "WAITING_MANAGER_RECEIPT" : "READY";
     }
 
     private static JsonObject context() {
@@ -100,7 +99,7 @@ public final class PhysicalJournalRuntime {
         }
         for (String key : List.of("server", "dimension", "agent", "kind", "jobId", "orderId"))
             if (!Objects.equals(previous.get(key), context.get(key)))
-                throw new IllegalStateException("Another physical operation needs reconciliation");
+                throw new IllegalStateException("Another physical operation is being recovered automatically");
     }
 
     public static void adoptPending(JsonObject pending) throws Exception {
@@ -119,7 +118,7 @@ public final class PhysicalJournalRuntime {
         evidence.add("before", pending.get("expected").deepCopy());
         evidence.addProperty("beforeUnknown", true);
         journal.intent(evidence);
-        journal.block("Existing WeSort pending action requires fresh read-only reconciliation; never retransmit it");
+        journal.block("Existing WeSort pending action requires automatic read-only recovery; never retransmit it");
         recoveryFence = true;
     }
 
@@ -165,7 +164,7 @@ public final class PhysicalJournalRuntime {
             if (inspection != null && frame.get("menu").getAsInt() != 0) {
                 if (!mc.player.containerMenu.getCarried().isEmpty()) {
                     finishInspection(
-                            false, "The recorded source still has an occupied cursor; operator decision required");
+                            false, "Recorded source still has an occupied cursor; automatic verification will retry");
                     return;
                 }
                 inspectedSource = frame.deepCopy();
@@ -181,10 +180,11 @@ public final class PhysicalJournalRuntime {
             if (journal.lastIntentEvidence() == null) {
                 journal.inspectedWithoutMutation(frame, playerInventory, decisionId);
                 journal.failBeforeMutation("Read-only inspection verified that no WeSort mutation was transmitted");
-                // A crash-recovered operation stays fenced after its no-mutation proof: the
-                // terminal FAILED state authorizes nothing new. Only releaseReconciled()
-                // (explicit operator action) resumes automation, never a mirror round-trip.
-                if (!reconcileRequired) recoveryFence = false;
+                // The inspection proves no mutation was sent, including after a
+                // restart. The Manager must still accept this revision before
+                // other physical work may acquire its lease.
+                reconcileRequired = false;
+                recoveryFence = false;
                 finishInspection(true, "No transmitted mutation; operation failed safely");
                 return;
             }
@@ -199,12 +199,21 @@ public final class PhysicalJournalRuntime {
                 recoveryFence = false;
                 finishInspection(true, "Exact original source and postcondition verified; no mutation replayed");
             } else {
-                journal.block(
-                        "Last step verified; unfinished packing/standing-box decisions still require an operator");
-                recoveryFence = true;
-                finishInspection(
-                        false,
-                        "Last exact step is verified; the complete operation remains fenced for manual recovery");
+                // The last native mutation was verified, but the higher-level
+                // repack may still have a world shulker to collect. Only release
+                // the journal when the sorter has durable recovery state and
+                // will finish that state before the next order.
+                var sorter = com.porter.wesort.WeSortAddon.sorter();
+                if (sorter != null && sorter.pendingPhysicalRecovery()) {
+                    journal.complete();
+                    reconcileRequired = false;
+                    recoveryFence = false;
+                    finishInspection(true, "Exact physical step verified; sorter will resume its saved recovery");
+                } else {
+                    journal.block("Automatic shulker recovery requires a durable workspace checkpoint");
+                    recoveryFence = true;
+                    finishInspection(false, "Cannot safely recover without a saved physical workspace");
+                }
             }
             return;
         }
@@ -238,19 +247,8 @@ public final class PhysicalJournalRuntime {
             journal.block(reason);
             if (unfinished()) recoveryFence = true;
         } catch (Exception failed) {
-            failed("Cannot persist physical reconciliation fence");
+            failed("Cannot persist automatic physical recovery fence");
         }
-    }
-
-    /**
-     * Explicit operator release after a crash-recovered operation was inspected. Called only
-     * from deliberate operator actions (module off-to-on, explicit sort-start), never from
-     * mirror round-trips, inspection results, or automatic restores. Recomputes the fence
-     * instead of blindly clearing it, so a live failure or blocked journal stays fenced.
-     */
-    public static void releaseReconciled() {
-        reconcileRequired = false;
-        recoveryFence = !failure.isEmpty() || journal != null && journal.blocked();
     }
 
     public static void failed(String reason) {

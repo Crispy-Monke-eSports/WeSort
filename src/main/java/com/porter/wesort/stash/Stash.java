@@ -188,6 +188,11 @@ public class Stash {
             public boolean nameDone, named;
 
             public String nameFailure = "", namedKey = "";
+            /** Exact verified delivery source, slot and item fingerprint for rollback. */
+            public String stagedSource = "", stagedFingerprint = "";
+
+            public int stagedSlot = -1;
+            public boolean reclaimed;
         }
 
         public String id = "";
@@ -213,6 +218,9 @@ public class Stash {
         public int craftIndex, craftMade;
 
         public boolean craftInFlight;
+        /** Interrupted orders resume rollback, never replay their packing plan. */
+        public boolean recoveryPending, recoveryCancelled;
+
         public final java.util.Map<String, Integer> craftUsed = new java.util.LinkedHashMap<>();
     }
 
@@ -699,6 +707,12 @@ public class Stash {
                 if (u.named) unit.putBoolean("named", true);
                 if (!u.nameFailure.isEmpty()) unit.putString("nameFailure", u.nameFailure);
                 if (!u.namedKey.isEmpty()) unit.putString("namedKey", u.namedKey);
+                if (!u.stagedSource.isEmpty()) {
+                    unit.putString("stagedSource", u.stagedSource);
+                    unit.putString("stagedFingerprint", u.stagedFingerprint);
+                    unit.putInt("stagedSlot", u.stagedSlot);
+                }
+                if (u.reclaimed) unit.putBoolean("reclaimed", true);
                 planned.add(unit);
             }
             order.put("units", planned);
@@ -713,6 +727,8 @@ public class Stash {
             if (activeOrder.craftIndex > 0) order.putInt("craftIndex", activeOrder.craftIndex);
             if (activeOrder.craftMade > 0) order.putInt("craftMade", activeOrder.craftMade);
             if (activeOrder.craftInFlight) order.putBoolean("craftInFlight", true);
+            if (activeOrder.recoveryPending) order.putBoolean("recoveryPending", true);
+            if (activeOrder.recoveryCancelled) order.putBoolean("recoveryCancelled", true);
             if (!activeOrder.craftUsed.isEmpty()) {
                 ListTag used = new ListTag();
                 for (var e : activeOrder.craftUsed.entrySet()) {
@@ -974,6 +990,10 @@ public class Stash {
                         u.named = flag(unit, "named");
                         u.nameFailure = text(unit, "nameFailure");
                         u.namedKey = text(unit, "namedKey");
+                        u.stagedSource = text(unit, "stagedSource");
+                        u.stagedFingerprint = text(unit, "stagedFingerprint");
+                        u.stagedSlot = number(unit.get("stagedSlot"), -1);
+                        u.reclaimed = flag(unit, "reclaimed");
                         active.units.add(u);
                     }
                 }
@@ -991,6 +1011,8 @@ public class Stash {
                 active.craftIndex = number(order.get("craftIndex"), 0);
                 active.craftMade = number(order.get("craftMade"), 0);
                 active.craftInFlight = flag(order, "craftInFlight");
+                active.recoveryPending = flag(order, "recoveryPending");
+                active.recoveryCancelled = flag(order, "recoveryCancelled");
                 if (order.get("craftUsed") instanceof ListTag used)
                     for (Tag t : used)
                         if (t instanceof CompoundTag row)

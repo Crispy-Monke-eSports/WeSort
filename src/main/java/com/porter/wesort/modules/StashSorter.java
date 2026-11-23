@@ -1228,8 +1228,8 @@ public class StashSorter extends Module {
 
         @Override
         public void uncertain(String reason) {
-            PhysicalJournalRuntime.block("Kit packing needs physical reconciliation");
-            warning("Kit packing paused for reconciliation: %s", reason);
+            PhysicalJournalRuntime.block("Kit packing paused for verified automatic recovery");
+            warning("Kit packing paused for automatic recovery: %s", reason);
         }
 
         @Override
@@ -1329,6 +1329,41 @@ public class StashSorter extends Module {
         @Override
         public int staleCount() {
             return staleBoxes().size();
+        }
+
+        @Override
+        public boolean cleanupComplete() {
+            // Returning a stack is a real inventory operation: wait for
+            // native readback and the sorter to finish closing its window.
+            if (mc.player == null
+                    || !InventorySync.ready()
+                    || PhysicalJournalRuntime.blocked()
+                    || job != null
+                    || pendingResume != null
+                    || kitBuilder.active()
+                    || crafter.active()) return false;
+            leftoverSlots();
+            return orderHeld.isEmpty();
+        }
+
+        @Override
+        public boolean trackedPackage(String fingerprint) {
+            if (mc.player == null) return false;
+            for (var entry : heldFrom.entrySet()) {
+                Box source = entry.getValue();
+                int slot = entry.getKey();
+                if (source == null
+                        || !(source.delivery || source.deliveryExtra)
+                        || !orderHeld.containsKey(slot)
+                        || slot < 0
+                        || slot >= mc.player.getInventory().getContainerSize()) continue;
+                ItemStack carried = mc.player.getInventory().getItem(slot);
+                if (!carried.isEmpty()
+                        && com.porter.wesort.compat.SlotRuntime.snapshot(new ItemStack[] {carried})
+                                .fingerprint()
+                                .equals(fingerprint)) return true;
+            }
+            return false;
         }
 
         @Override
@@ -1574,7 +1609,7 @@ public class StashSorter extends Module {
             return com.porter.wesort.compat.NavigationRuntime.status();
         return InventorySync.ready()
                 ? null
-                : (InventorySync.failed() ? "NEEDS_RECONCILIATION" : "awaiting server inventory");
+                : (InventorySync.failed() ? "AUTO_RECOVERING" : "awaiting server inventory");
     }
 
     @Override
@@ -1583,12 +1618,6 @@ public class StashSorter extends Module {
         if (driven) {
             driven = false;
             teardown();
-        }
-        // An explicit off-to-on cycle is an operator release of a crash-recovery fence:
-        // automatic restores (no deactivate seen since startup) never release it.
-        if (sawDeactivate) {
-            sawDeactivate = false;
-            com.porter.wesort.compat.PhysicalJournalRuntime.releaseReconciled();
         }
         setup();
     }
@@ -1742,7 +1771,6 @@ public class StashSorter extends Module {
 
     @Override
     public void onDeactivate() {
-        sawDeactivate = true;
         PhysicalJournalRuntime.block("Automation stopped during physical work");
         teardown();
     }
@@ -1759,7 +1787,7 @@ public class StashSorter extends Module {
                 usedBaritone = false;
             }
             warning(
-                    "Inventory readback is pending or uncertain; no cleanup clicks were sent. Inspect the source and use .wesort-reconcile.");
+                    "Inventory readback is pending or uncertain; automatic recovery will retry when the source is available.");
             gate = Gate.Running;
             yielder.reset();
             return;
@@ -2862,6 +2890,10 @@ public class StashSorter extends Module {
         // A shulker step that was saved comes before anything else
         if (startResume()) return true;
 
+        // Rollback precedes sorting and the next order. No new physical
+        // allocation can run while staged packages or loose items remain.
+        if (orderRunner.returning() && scanOnlyOrderStep()) return true;
+
         // An order in hand comes before the sorter's own work: reading stale containers, exploring, sorting,
         // compacting,
         // labelling, saved kits, the ground. They wait until it is finished or parked
@@ -3319,7 +3351,7 @@ public class StashSorter extends Module {
     }
 
     private boolean orderWork() {
-        return orderKit() || orderRunner.running() || crafter.active();
+        return orderKit() || orderRunner.running() || orderRunner.returning() || crafter.active();
     }
 
     private void noteOrderHeld(int slot, ItemStack baseline) {
@@ -3433,6 +3465,14 @@ public class StashSorter extends Module {
         if (orderKit() && !orderRunner.running()) kitBuilder.dropOrderKit();
 
         List<Integer> left = returnCandidates();
+        OrderRunner.Intent recovery = orderRunner.returning() ? orderRunner.recoveryStep() : new OrderRunner.Idle();
+        if (orderRunner.returning()) {
+            returning = !left.isEmpty();
+            // Deposit already recovered cargo before withdrawing another staged
+            // package. A full carry inventory must never cause a second fetch.
+            if (returning) return returnLeftovers(left);
+            return runOrder(recovery);
+        }
 
         // A source shulker with nothing more the kit needs goes back at once, while the kit is still being built
         List<Integer> spent = spentSources(left);
@@ -3700,9 +3740,6 @@ public class StashSorter extends Module {
 
     // Set up and not yet torn down, driven or not
     private boolean setUp;
-    // Seen a deactivate since startup: distinguishes an explicit operator off-to-on
-    // cycle (which releases a crash-recovery fence) from an automatic restore.
-    private boolean sawDeactivate;
     // Why the loop can't be driven now, for the blocker
     private String driveBlocked;
 
@@ -4056,6 +4093,14 @@ public class StashSorter extends Module {
             case OrderRunner.Idle idleStep -> false;
             case OrderRunner.Build build -> runKit(build.intent());
             case OrderRunner.Fetch fetch -> fetch(fetch.box(), fetch.slot());
+            case OrderRunner.RecoverStage recovery -> {
+                wantSlot = recovery.slot();
+                fetchWants = stack -> !stack.isEmpty()
+                        && com.porter.wesort.compat.SlotRuntime.snapshot(new ItemStack[] {stack})
+                                .fingerprint()
+                                .equals(recovery.fingerprint());
+                yield start(Job.Fetch, recovery.box());
+            }
             case OrderRunner.Deliver deliver -> {
                 recheckOnly = false;
                 lastDeliveryBox = deliver.box();
@@ -7042,7 +7087,7 @@ public class StashSorter extends Module {
         }
         // Only a read after the settle wait, or of a freshly opened window, is the server's word and not our own
         // prediction
-        if (settled || actions == 0) orderRunner.deliveryClosed(target.contents);
+        if (settled || actions == 0) orderRunner.deliveryClosed(target, target.contents);
         return false;
     }
 
@@ -7059,8 +7104,12 @@ public class StashSorter extends Module {
         if (carry.isEmpty()) return "no free inventory slot";
         if (ensureStash() == null) return "no stash";
         if (orderRunner.deliveryBox() == null) return "no delivery box";
+        if (pendingPhysicalRecovery()) return "finishing automatically recovered physical work";
         if (kitBuilder.active() && !orderKit()) return "busy: building a kit";
-        return orderRunner.holdsOrder() ? "busy" : null;
+        // The previous order cannot yield the queue while its carried items
+        // still have to be returned to stash storage.
+        leftoverSlots();
+        return orderRunner.holdsOrder() || !orderHeld.isEmpty() ? "busy" : null;
     }
 
     /**
@@ -8376,7 +8425,7 @@ public class StashSorter extends Module {
         repackWork.reconcile(why);
         PhysicalJournalRuntime.block(why);
         dropLost = true;
-        alertError("Shulker operation NEEDS_RECONCILIATION: %s. No physical retry is sent.", why);
+        alertError("Shulker operation waiting for automatic recovery: %s. No unverified physical retry is sent.", why);
     }
 
     /**
@@ -11874,6 +11923,13 @@ public class StashSorter extends Module {
     /** Stable job identity for world permits throughout one physical repack operation. */
     public String activeRepackJobId() {
         return repackWork != null && !repackWork.terminal() ? repackWork.id() : null;
+    }
+
+    /** A durable shulker/workspace checkpoint must finish before another order is claimed. */
+    public boolean pendingPhysicalRecovery() {
+        return pendingResume != null
+                || stash != null && stash.inFlight != null
+                || repackWork != null && !repackWork.terminal();
     }
 
     public com.google.gson.JsonObject physicalJournalContext() {

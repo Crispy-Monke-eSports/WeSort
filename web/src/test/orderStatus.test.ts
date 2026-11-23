@@ -6,7 +6,7 @@ import { ORDER_STATUSES, isSuperseded, needsAttentionNow, orderUiState } from ".
 describe("order status contract (P2-17)", () => {
   it("covers exactly the backend vocabulary", () => {
     expect([...ORDER_STATUSES].sort()).toEqual(
-      ["accepted", "cancelled", "delivered", "failed", "in_progress", "needs_reconciliation", "packed", "pending"].sort(),
+      ["accepted", "cancelled", "delivered", "failed", "in_progress", "packed", "pending"].sort(),
     );
   });
 
@@ -22,22 +22,23 @@ describe("order status contract (P2-17)", () => {
   it("only failed/cancelled are retryable (backend retry gate)", () => {
     expect(orderUiState("failed").retryable).toBe(true);
     expect(orderUiState("cancelled").retryable).toBe(true);
-    for (const s of ["pending", "accepted", "in_progress", "packed", "needs_reconciliation", "delivered"]) {
+    for (const s of ["pending", "accepted", "in_progress", "packed", "delivered"]) {
       expect(orderUiState(s).retryable).toBe(false);
     }
   });
 
   it("finished states are terminal", () => {
-    for (const s of ["packed", "needs_reconciliation", "delivered", "failed", "cancelled"]) {
+    for (const s of ["packed", "delivered", "failed", "cancelled"]) {
       const st = orderUiState(s);
       expect(st.open).toBe(false);
       expect(st.cancellable).toBe(false);
     }
   });
 
-  it("reconciliation and failures need attention; packed/delivered do not", () => {
-    expect(orderUiState("failed").needsAttention).toBe(true);
-    expect(orderUiState("needs_reconciliation").needsAttention).toBe(true);
+  it("recovering and terminal failures require no operator action", () => {
+    expect(orderUiState("failed").needsAttention).toBe(false);
+    expect(orderUiState("needs_reconciliation").needsAttention).toBe(false);
+    expect(orderUiState("recovering").open).toBe(true);
     expect(orderUiState("packed").needsAttention).toBe(false);
     expect(orderUiState("delivered").needsAttention).toBe(false);
     expect(orderUiState("pending").needsAttention).toBe(false);
@@ -60,9 +61,9 @@ describe("attention lists (superseded retries)", () => {
   it("superseded failures are hidden from the attention list by default", () => {
     expect(needsAttentionNow("failed", { retriedAs: "o-new" })).toBe(false);
     expect(needsAttentionNow("cancelled", { retriedAs: "o-new" })).toBe(false);
-    expect(needsAttentionNow("failed", { retriedAs: null })).toBe(true);
-    expect(needsAttentionNow("failed", null)).toBe(true);
-    expect(needsAttentionNow("needs_reconciliation", null)).toBe(true);
+    expect(needsAttentionNow("failed", { retriedAs: null })).toBe(false);
+    expect(needsAttentionNow("failed", null)).toBe(false);
+    expect(needsAttentionNow("needs_reconciliation", null)).toBe(false);
     expect(needsAttentionNow("packed", { retriedAs: "o-new" })).toBe(false);
     expect(needsAttentionNow("uncertain", null)).toBe(true);
   });

@@ -31,7 +31,6 @@ public class WeSortAddon extends MeteorAddon {
 
         // Commands: connection only (address, port, API key). The Manager owns regions, planning and settings.
         Commands.add(new com.porter.wesort.commands.WeSortConnectCommand());
-        Commands.add(new com.porter.wesort.commands.InventoryReconcileCommand());
         Commands.add(new com.porter.wesort.commands.NavigationCommand());
         Commands.add(new com.porter.wesort.commands.SortWhyCommand());
         ClientRuntimeProbe.afterInitialize();

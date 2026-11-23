@@ -92,7 +92,7 @@ class DeferredPhysicalOrderTest {
     }
 
     @Test
-    void activePhysicalJournalMustNotReconcileAnOrderDuringPolling() throws Exception {
+    void activePhysicalJournalOnlyRequestsAutomaticRollbackWhenFenced() throws Exception {
         var placed = orders.place("s", "a", diamonds(20), null);
         var claimed = orders.claim("s", "a");
         assertEquals(placed.id, claimed.id);
@@ -133,13 +133,13 @@ class DeferredPhysicalOrderTest {
                 "NEEDS_RECONCILIATION",
                 operations.accept(agent, journal.current()).get("state").getAsString());
         var fenced = orders.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
-        assertEquals("NEEDS_RECONCILIATION", fenced.get("state").getAsString());
-        assertEquals("needs_reconciliation", fenced.get("status").getAsString());
+        assertEquals("RECOVERING", fenced.get("state").getAsString());
+        assertEquals("in_progress", fenced.get("status").getAsString());
         assertFalse(orders.heldRoots("s").isEmpty());
     }
 
     @Test
-    void longStuckPhysicalCancelBecomesProtectedReconciliationAfterRestart() throws Exception {
+    void longStuckPhysicalCancelRequestsProtectedAutomaticRollbackAfterRestart() throws Exception {
         var first = orders.place("s", "a", diamonds(20), null);
         assertNotNull(orders.claim("s", "a").allocations);
         var cancellation = orders.cancel(first.id);
@@ -162,9 +162,9 @@ class DeferredPhysicalOrderTest {
         restarted.load();
         JsonObject current =
                 restarted.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
-        assertEquals("needs_reconciliation", current.get("status").getAsString());
-        assertEquals("NEEDS_RECONCILIATION", current.get("state").getAsString());
-        assertFalse(current.get("cancelRequested").getAsBoolean());
+        assertEquals("in_progress", current.get("status").getAsString());
+        assertEquals("RECOVERING", current.get("state").getAsString());
+        assertTrue(current.get("cancelRequested").getAsBoolean());
         assertTrue(current.get("allocations").isJsonArray());
         // Do not silently release a physical hold when the bot was unreachable.
         assertFalse(restarted.heldRoots("s").isEmpty());

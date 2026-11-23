@@ -306,6 +306,50 @@ final class PhysicalOperations {
         }
     }
 
+    /**
+     * Request the same revision-pinned, read-only inspection as the Owner UI,
+     * automatically when a fenced agent reconnects. Failed attempts are retried
+     * at most once per minute; existing pending/completed decisions are not replayed.
+     */
+    synchronized JsonObject inspectAutomatically(String agent, JsonObject receipt) throws IOException {
+        if (!"NEEDS_RECONCILIATION".equals(receipt.get("state").getAsString())) return null;
+        UUID.fromString(agent);
+        String operation = receipt.get("id").getAsString();
+        long revision = receipt.get("revision").getAsLong();
+        String checksum = receipt.get("checksum").getAsString();
+        try (var c = ledger.open();
+                var p = c.prepareStatement("""
+                    SELECT d.state,d.issued_at
+                    FROM physical_operations o
+                    LEFT JOIN physical_decisions d ON d.id = (
+                        SELECT id FROM physical_decisions
+                        WHERE operation=o.id AND manager_run=? AND action='INSPECT'
+                        ORDER BY issued_at DESC LIMIT 1
+                    )
+                    WHERE o.id=? AND o.agent=? AND o.state='NEEDS_RECONCILIATION'
+                      AND o.revision=? AND o.checksum=?
+                    """)) {
+            p.setString(1, ledger.boot());
+            p.setString(2, operation);
+            p.setString(3, agent);
+            p.setLong(4, revision);
+            p.setString(5, checksum);
+            try (var rows = p.executeQuery()) {
+                if (!rows.next()) return null;
+                String prior = rows.getString(1);
+                if ("REQUESTED".equals(prior) || "COMPLETED".equals(prior)) return null;
+                if ("FAILED".equals(prior) && clock.getAsLong() - rows.getLong(2) < 60_000) return null;
+            }
+        } catch (SQLException failure) {
+            throw new IOException("Cannot schedule automatic physical inspection", failure);
+        }
+        try {
+            return inspect(operation, revision, checksum, "system:self-heal");
+        } catch (Conflict changed) {
+            return null; // The operation advanced since the readback receipt.
+        }
+    }
+
     synchronized JsonObject decision(String agent, String operation) throws IOException {
         try (var c = ledger.open();
                 var p = c.prepareStatement(

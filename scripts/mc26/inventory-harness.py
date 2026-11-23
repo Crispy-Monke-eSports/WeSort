@@ -230,6 +230,12 @@ class InventoryHarness(world.Harness):
         self.ok('named filled shulker place/open/break/pickup/return preserves server-confirmed contents and component fingerprint')
 
     def block_round_trips(self):
+        # Neither the Agent nor the E2E control channel is allowed to write Minecraft signs.
+        rejected = self.command(
+            'sign', x=0, y=65, z=-3, lines=['WeSort', 'Should not write', '', ''],
+            allow_failure=True)
+        require(not rejected['success'] and 'Unsupported action' in rejected['message'],
+                'Minecraft sign editing is still exposed by the Agent')
         for source_slot, item in enumerate(['minecraft:chest', 'minecraft:barrel']):
             self.teleport(6.5, -1.5)
             state = self.command('open', x=6, y=64, z=-3, slots=27, item='minecraft:chest', count=1, capture=False)['state']

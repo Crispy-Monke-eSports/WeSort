@@ -290,11 +290,13 @@ class StockLedgerTest {
     void missingJournalTableInCurrentSchemaFailsClosedWithoutRecreatingIt() throws Exception {
         var first = ledger();
         first.accept(observation(first, "a", 64, 0, 1, 0));
-        try (var c = first.open(); var s = c.createStatement()) {
+        try (var c = first.open();
+                var s = c.createStatement()) {
             s.execute("DROP TABLE physical_operations");
         }
         assertThrows(java.io.IOException.class, this::ledger);
-        try (var c = first.open(); var s = c.createStatement();
+        try (var c = first.open();
+                var s = c.createStatement();
                 var rows = s.executeQuery("SELECT count(*) FROM sqlite_schema WHERE name='physical_operations'")) {
             assertTrue(rows.next());
             assertEquals(0, rows.getInt(1));
@@ -305,11 +307,13 @@ class StockLedgerTest {
     void missingStockMetadataCannotSilentlyResetTheEpochAndRevision() throws Exception {
         var first = ledger();
         first.accept(observation(first, "a", 64, 0, 1, 0));
-        try (var c = first.open(); var s = c.createStatement()) {
+        try (var c = first.open();
+                var s = c.createStatement()) {
             s.execute("DELETE FROM stock_meta");
         }
         assertThrows(java.io.IOException.class, this::ledger);
-        try (var c = first.open(); var s = c.createStatement();
+        try (var c = first.open();
+                var s = c.createStatement();
                 var rows = s.executeQuery("SELECT count(*) FROM stock_meta")) {
             assertTrue(rows.next());
             assertEquals(0, rows.getInt(1));

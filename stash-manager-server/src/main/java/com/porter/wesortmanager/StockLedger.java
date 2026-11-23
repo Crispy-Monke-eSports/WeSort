@@ -35,10 +35,25 @@ final class StockLedger {
     private static final int APPLICATION_ID = 0x57535254;
     /** A fully initialized v7 database must never recreate missing authoritative tables. */
     private static final Set<String> REQUIRED_V7_TABLES = Set.of(
-            "physical_operations", "physical_decisions", "kit_jobs", "kit_meta",
-            "kit_template_versions", "kit_templates", "physical_snapshots", "physical_slots",
-            "return_intake", "automation_leases", "box_uuids", "box_uuid_history",
-            "box_jobs", "stock_meta", "stock_sources", "stock_parts", "stock_members", "stock_indexes");
+            "physical_operations",
+            "physical_decisions",
+            "kit_jobs",
+            "kit_meta",
+            "kit_template_versions",
+            "kit_templates",
+            "physical_snapshots",
+            "physical_slots",
+            "return_intake",
+            "automation_leases",
+            "box_uuids",
+            "box_uuid_history",
+            "box_jobs",
+            "stock_meta",
+            "stock_sources",
+            "stock_parts",
+            "stock_members",
+            "stock_indexes");
+
     private final Path file;
     private final LongSupplier clock;
     private final long maxAge;

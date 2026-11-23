@@ -1347,6 +1347,26 @@ public class StashSorter extends Module {
         }
 
         @Override
+        public boolean trackedPackage(String fingerprint) {
+            if (mc.player == null) return false;
+            for (var entry : heldFrom.entrySet()) {
+                Box source = entry.getValue();
+                int slot = entry.getKey();
+                if (source == null
+                        || !(source.delivery || source.deliveryExtra)
+                        || !orderHeld.containsKey(slot)
+                        || slot < 0
+                        || slot >= mc.player.getInventory().getContainerSize()) continue;
+                ItemStack carried = mc.player.getInventory().getItem(slot);
+                if (!carried.isEmpty()
+                        && com.porter.wesort.compat.SlotRuntime.snapshot(new ItemStack[] {carried})
+                                .fingerprint()
+                                .equals(fingerprint)) return true;
+            }
+            return false;
+        }
+
+        @Override
         public double distance(Box box) {
             return mc.player.getEyePosition().distanceToSqr(Vec3.atCenterOf(nearestPart(box)));
         }
@@ -2877,6 +2897,10 @@ public class StashSorter extends Module {
         // A shulker step that was saved comes before anything else
         if (startResume()) return true;
 
+        // Rollback precedes sorting and the next order. No new physical
+        // allocation can run while staged packages or loose items remain.
+        if (orderRunner.returning() && scanOnlyOrderStep()) return true;
+
         // An order in hand comes before the sorter's own work: reading stale containers, exploring, sorting,
         // compacting,
         // labelling, saved kits, the ground. They wait until it is finished or parked
@@ -3334,7 +3358,7 @@ public class StashSorter extends Module {
     }
 
     private boolean orderWork() {
-        return orderKit() || orderRunner.running() || crafter.active();
+        return orderKit() || orderRunner.running() || orderRunner.returning() || crafter.active();
     }
 
     private void noteOrderHeld(int slot, ItemStack baseline) {
@@ -3448,6 +3472,12 @@ public class StashSorter extends Module {
         if (orderKit() && !orderRunner.running()) kitBuilder.dropOrderKit();
 
         List<Integer> left = returnCandidates();
+        OrderRunner.Intent recovery = orderRunner.returning() ? orderRunner.recoveryStep() : new OrderRunner.Idle();
+        if (orderRunner.returning()) {
+            returning = !left.isEmpty();
+            if (returning && returnLeftovers(left)) return true;
+            return runOrder(recovery);
+        }
 
         // A source shulker with nothing more the kit needs goes back at once, while the kit is still being built
         List<Integer> spent = spentSources(left);
@@ -4071,6 +4101,14 @@ public class StashSorter extends Module {
             case OrderRunner.Idle idleStep -> false;
             case OrderRunner.Build build -> runKit(build.intent());
             case OrderRunner.Fetch fetch -> fetch(fetch.box(), fetch.slot());
+            case OrderRunner.RecoverStage recovery -> {
+                wantSlot = recovery.slot();
+                fetchWants = stack -> !stack.isEmpty()
+                        && com.porter.wesort.compat.SlotRuntime.snapshot(new ItemStack[] {stack})
+                                .fingerprint()
+                                .equals(recovery.fingerprint());
+                yield start(Job.Fetch, recovery.box());
+            }
             case OrderRunner.Deliver deliver -> {
                 recheckOnly = false;
                 lastDeliveryBox = deliver.box();
@@ -7057,7 +7095,7 @@ public class StashSorter extends Module {
         }
         // Only a read after the settle wait, or of a freshly opened window, is the server's word and not our own
         // prediction
-        if (settled || actions == 0) orderRunner.deliveryClosed(target.contents);
+        if (settled || actions == 0) orderRunner.deliveryClosed(target, target.contents);
         return false;
     }
 

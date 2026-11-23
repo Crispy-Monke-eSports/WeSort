@@ -65,7 +65,7 @@ public final class Categories {
     }
 
     /**
-     * A sign line part, normalised once. The full text as written ("ender chests") and the same with filler words like
+     * A user search query part, normalised once. The full text as written ("ender chests") and the same with filler words like
      * "chest" or "of" taken out ("ender"), each with the keys it can be looked up by: both ways of undoing a plural
      * ("axes" is "axe" and "ax"), and with the spaces taken out ("e gaps" is "egap").
      */
@@ -102,7 +102,7 @@ public final class Categories {
     }
 
     /**
-     * Whether the sign text as written means something on its own: a nickname, a category, a catch-all word or kit, or
+     * Whether the search query as written means something on its own: a nickname, a category, a catch-all word or kit, or
      * words that are all found in the name of some item. Then it's read as written, and not with its filler words
      * dropped, which could cut "ender chests" down to "ender".
      */
@@ -184,10 +184,10 @@ public final class Categories {
     }
 
     /**
-     * 100 an exact name, 60 the sign's nickname for it ("egaps", "obby"), 50 the sign's words all in its name, 40 a
-     * category it belongs to, 1 a catch-all, 25 a loose category word of several. A sign that means something as it's
+     * 100 an exact name, 60 a query nickname ("egaps", "obby"), 50 the query's words all in its name, 40 a
+     * category it belongs to, 1 a catch-all, 25 a loose category word of several. A query that means something as it's
      * written is only ever read that way: a nickname or category that the item isn't in scores 0, and the loose words
-     * are for signs that nothing else understood.
+     * are for queries that nothing else understood.
      */
     private static int partScore(Part part, Described described) {
         if (part.label().isEmpty() || described.item == null) return 0;
@@ -259,7 +259,7 @@ public final class Categories {
     private record Levelled(String name, int level) {}
 
     /**
-     * A sign line that ends in a level (roman I to X, or 1 to 10) after the name of an enchantment. Null for anything else.
+     * A search phrase that ends in a level (roman I to X, or 1 to 10) after the name of an enchantment. Null for anything else.
      */
     private static Levelled levelledEnchant(String full) {
         java.util.regex.Matcher m = LEVELLED.matcher(full);
@@ -282,7 +282,7 @@ public final class Categories {
     }
 
     /**
-     * A sign naming an enchantment with a level: an enchanted book holding it at exactly that level scores 50, gear with it
+     * A query naming an enchantment with a level: an enchanted book holding it at exactly that level scores 50, gear with it
      * at that level 20 (below the gear categories), anything else 0. Null when the text isn't such a sign.
      */
     private static Integer enchantLevelScore(String full, StackInfo item) {
@@ -299,7 +299,7 @@ public final class Categories {
     }
 
     /**
-     * An enchanted book with that enchantment is exactly what the sign asks for. Gear with it matches too, but below the
+     * An enchanted book with that enchantment is exactly what the query asks for. Gear with it matches too, but below the
      * gear categories, so it only ends up here when there is no chest for the gear itself.
      */
     private static int enchantScore(String name, StackInfo item) {
@@ -313,7 +313,7 @@ public final class Categories {
         StackInfo item = described.item;
         if (label.equals(described.name()) || label.equals(described.id())) return 100;
 
-        // Nicknames are the whole sign text, never part of a word
+        // Nicknames are the whole search phrase, never part of a word
         Set<String> nicknamed = lookup(SHORTHANDS, keys);
         if (nicknamed != null && nicknamed.contains(item.id)) return 60;
 
@@ -376,9 +376,9 @@ public final class Categories {
     private static final java.util.regex.Pattern MARKS = java.util.regex.Pattern.compile("\\p{M}+");
 
     /**
-     * Sign and search text as plain lower-case letters: "font" letters (mathematical bold, sans-serif, monospace,
+     * Search text as plain lower-case letters: "font" letters (mathematical bold, sans-serif, monospace,
      * fullwidth, circled...) become the letters they stand for through NFKC, small capitals are mapped to plain
-     * letters, accents and other combining marks are dropped. Used for signs and search queries only, never item names.
+     * letters, accents and other combining marks are dropped. Used for search queries only, never item names.
      */
     public static String fold(String text) {
         boolean ascii = true;
@@ -701,7 +701,7 @@ public final class Categories {
         nick("gold_ingot", "gold", "gold ingot");
         nick("copper_ingot", "copper", "copper ingot");
 
-        // More slang and shorthand. Each name is the whole text of a sign line (or of one part of "a, b & c"), plural
+        // More slang and shorthand. Each name is the whole text of a query (or of one part of "a, b & c"), plural
         // or
         // not, and short ones like "ec" or "rs" are only ever that: nothing is matched inside a longer word
         nick("ender_chest", "ec", "ender chests", "echests");
@@ -1508,8 +1508,7 @@ public final class Categories {
         potionKind(potions, "slowness", "slowness");
         potionKind(potions, "luck", "luck");
 
-        // The names the sorter writes on a sign for a new category, narrowest first so a torch is "Light" and not
-        // "Decoration". Each is also a word the sorter understands on a sign, as any other category name
+        // Search category synonyms for Minecraft items, e.g. Light, Decorations and Tools.
         label("Light", light);
         label("Templates", templates);
         label("Gems", gems);

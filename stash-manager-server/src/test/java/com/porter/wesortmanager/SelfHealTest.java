@@ -294,7 +294,8 @@ class SelfHealTest {
 
         assertEquals(next.id, orders.claim("s", "a").id);
         assertEquals("pending", orders.statusOf(shortage.id));
-        assertEquals(2L, orders.reservedFor("s", "a").get("item:minecraft:diamond").longValue());
+        assertEquals(
+                2L, orders.reservedFor("s", "a").get("item:minecraft:diamond").longValue());
         var finished = orders.status(next.id, "cancelled", null, null, "Returned", null);
         time.set(finished.updatedAt + 1000);
         observe("a", 5);
@@ -311,7 +312,8 @@ class SelfHealTest {
         for (var entry : book.getAsJsonArray("orders")) {
             var row = entry.getAsJsonObject();
             if (shortage.id.equals(row.get("id").getAsString()))
-                row.addProperty("deferredBlockedAt", System.currentTimeMillis() - OrderStore.DEFERRED_RETRY_AFTER_MS - 1000);
+                row.addProperty(
+                        "deferredBlockedAt", System.currentTimeMillis() - OrderStore.DEFERRED_RETRY_AFTER_MS - 1000);
         }
         Files.writeString(file, book.toString());
         var restarted = new OrderStore(data, store);

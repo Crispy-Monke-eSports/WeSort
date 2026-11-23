@@ -397,7 +397,8 @@ final class OrderStore {
             r.queuedOffline = o.has("queuedOffline") && o.get("queuedOffline").getAsBoolean();
             r.reservationDeferred =
                     o.has("reservationDeferred") && o.get("reservationDeferred").getAsBoolean();
-            r.deferredBlockedAt = o.has("deferredBlockedAt") ? o.get("deferredBlockedAt").getAsLong() : 0;
+            r.deferredBlockedAt =
+                    o.has("deferredBlockedAt") ? o.get("deferredBlockedAt").getAsLong() : 0;
             r.createdAt = o.get("createdAt").getAsLong();
             r.updatedAt = o.get("updatedAt").getAsLong();
             r.status = o.get("status").getAsString();
@@ -762,6 +763,7 @@ final class OrderStore {
 
     /** Timeout for unconfirmed cancellations and legacy, unallocated orders. */
     static final long AUTO_CANCEL_AFTER_MS = 10 * 60 * 1000;
+
     static final long DEFERRED_RETRY_AFTER_MS = 5 * 60 * 1000;
 
     /**
@@ -2192,7 +2194,8 @@ final class OrderStore {
             next.stage = OrderStage.FAILED;
             next.status = "failed";
             next.phase = "stock unavailable";
-            next.message = "Automatically failed: stock could not be reserved after repeated attempts. No items were taken.";
+            next.message =
+                    "Automatically failed: stock could not be reserved after repeated attempts. No items were taken.";
             next.record("order.queue.auto-fail", Users.OWNER_ID, now);
         }
         update(book, queued, next);

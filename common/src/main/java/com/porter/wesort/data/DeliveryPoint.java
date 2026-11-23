@@ -183,7 +183,8 @@ public record DeliveryPoint(
     private static String memberId(JsonObject o) {
         var e = o.get("member");
         if (e == null || e.isJsonNull()) return null;
-        if (!e.isJsonPrimitive() || !e.getAsJsonPrimitive().isString()
+        if (!e.isJsonPrimitive()
+                || !e.getAsJsonPrimitive().isString()
                 || !e.getAsString().matches("u-[0-9a-f]{12}"))
             throw new IllegalArgumentException("member must be an immutable Member account ID");
         return e.getAsString();

@@ -165,31 +165,63 @@ class DeliveryPointTest {
     @Test
     void physicalOrRecipientChangesInvalidatePreviouslyVerifiedDestination() {
         var p = DeliveryPoint.create(body(
-                "server", "2b2t.org", "dimension", "minecraft:overworld",
-                "x", 10, "y", 64, "z", 20, "type", "CHEST",
-                "access", "MEMBER", "member", "u-111111111111", "status", "VERIFIED"));
+                "server",
+                "2b2t.org",
+                "dimension",
+                "minecraft:overworld",
+                "x",
+                10,
+                "y",
+                64,
+                "z",
+                20,
+                "type",
+                "CHEST",
+                "access",
+                "MEMBER",
+                "member",
+                "u-111111111111",
+                "status",
+                "VERIFIED"));
         for (var change : java.util.List.of(
-                body("x", 11), body("y", 65), body("z", 21),
-                body("server", "other.example"), body("dimension", "minecraft:the_nether"),
-                body("type", "PLAYER_MEETING"), body("member", "u-222222222222"))) {
+                body("x", 11),
+                body("y", 65),
+                body("z", 21),
+                body("server", "other.example"),
+                body("dimension", "minecraft:the_nether"),
+                body("type", "PLAYER_MEETING"),
+                body("member", "u-222222222222"))) {
             change.addProperty("status", "VERIFIED");
             assertEquals(DeliveryPoint.Status.PENDING, p.updated(change).status(), change.toString());
         }
         assertEquals(DeliveryPoint.Status.VERIFIED, p.updated(body("x", 10)).status());
-        assertEquals(DeliveryPoint.Status.PAUSED, p.updated(body("x", 11, "status", "PAUSED")).status());
+        assertEquals(
+                DeliveryPoint.Status.PAUSED,
+                p.updated(body("x", 11, "status", "PAUSED")).status());
     }
 
     @Test
     void coordinateParsingCannotTruncateOrWrapAndNamesCannotGrantAccess() {
         var p = DeliveryPoint.create(body(
-                "server", "2b2t.org", "dimension", "minecraft:overworld",
-                "x", 10, "y", 64, "z", 20, "type", "CHEST", "access", "PROJECT"));
+                "server",
+                "2b2t.org",
+                "dimension",
+                "minecraft:overworld",
+                "x",
+                10,
+                "y",
+                64,
+                "z",
+                20,
+                "type",
+                "CHEST",
+                "access",
+                "PROJECT"));
         for (String invalid : java.util.List.of("1.5", "4294967296", "\"1\"", "null")) {
             var update = JsonParser.parseString("{\"x\":" + invalid + "}").getAsJsonObject();
             assertThrows(IllegalArgumentException.class, () -> p.updated(update), invalid);
         }
-        assertThrows(IllegalArgumentException.class,
-                () -> p.updated(body("access", "MEMBER", "member", "alice")));
+        assertThrows(IllegalArgumentException.class, () -> p.updated(body("access", "MEMBER", "member", "alice")));
     }
 
     @Test

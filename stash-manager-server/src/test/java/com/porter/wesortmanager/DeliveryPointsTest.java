@@ -17,7 +17,8 @@ class DeliveryPointsTest {
     private final Users.Principal owner = new Users.Principal("owner", "Owner", true, Users.Perms.ALL, false);
     private final Users.Principal member =
             new Users.Principal("u-111111111111", "alice", false, Users.PRESETS.get("member"), false);
-    private final Users.Principal other = new Users.Principal("u-222222222222", "bob", false, Users.PRESETS.get("member"), false);
+    private final Users.Principal other =
+            new Users.Principal("u-222222222222", "bob", false, Users.PRESETS.get("member"), false);
 
     private static JsonObject body(Object... kv) {
         var o = new JsonObject();
@@ -129,7 +130,9 @@ class DeliveryPointsTest {
             assertNotEquals("INTERNAL", o.get("access").getAsString());
             assertFalse(o.has("x") || o.has("z") || o.has("dimension"), o.toString());
         }
-        assertFalse(forAlice.toString().contains("bob") || forAlice.toString().contains("u-222222222222"), forAlice.toString());
+        assertFalse(
+                forAlice.toString().contains("bob") || forAlice.toString().contains("u-222222222222"),
+                forAlice.toString());
     }
 
     @Test
@@ -138,9 +141,12 @@ class DeliveryPointsTest {
         var p = points.create(verified("2b2t.org", "MEMBER", member.id()), "owner");
         var renamed = new Users.Principal(member.id(), "new-name", false, member.perms(), false);
         var recycled = new Users.Principal(other.id(), member.name(), false, member.perms(), false);
-        assertEquals(p.id(), points.selectable(renamed).get(0).getAsJsonObject().get("id").getAsString());
+        assertEquals(
+                p.id(),
+                points.selectable(renamed).get(0).getAsJsonObject().get("id").getAsString());
         assertEquals(0, points.selectable(recycled).size());
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(
+                IllegalArgumentException.class,
                 () -> points.create(verified("2b2t.org", "MEMBER", member.name()), "owner"));
     }
 

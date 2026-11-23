@@ -1332,6 +1332,21 @@ public class StashSorter extends Module {
         }
 
         @Override
+        public boolean cleanupComplete() {
+            // Returning a stack is a real inventory operation: wait for
+            // native readback and the sorter to finish closing its window.
+            if (mc.player == null
+                    || !InventorySync.ready()
+                    || PhysicalJournalRuntime.blocked()
+                    || job != null
+                    || pendingResume != null
+                    || kitBuilder.active()
+                    || crafter.active()) return false;
+            leftoverSlots();
+            return orderHeld.isEmpty();
+        }
+
+        @Override
         public double distance(Box box) {
             return mc.player.getEyePosition().distanceToSqr(Vec3.atCenterOf(nearestPart(box)));
         }
@@ -7060,7 +7075,10 @@ public class StashSorter extends Module {
         if (ensureStash() == null) return "no stash";
         if (orderRunner.deliveryBox() == null) return "no delivery box";
         if (kitBuilder.active() && !orderKit()) return "busy: building a kit";
-        return orderRunner.holdsOrder() ? "busy" : null;
+        // The previous order cannot yield the queue while its carried items
+        // still have to be returned to stash storage.
+        leftoverSlots();
+        return orderRunner.holdsOrder() || !orderHeld.isEmpty() ? "busy" : null;
     }
 
     /**

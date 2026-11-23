@@ -64,8 +64,6 @@ final class OperationsRoutes {
             }
         }
         var states = perms.ordersAll() ? orders.activeStates(viewer) : Map.<String, Integer>of();
-        var reconciliation = states.get(OrderStage.NEEDS_RECONCILIATION.name());
-        if (reconciliation != null) alerts.put("NEEDS_RECONCILIATION", reconciliation);
         if (perms.ordersAll()) {
             int approvals = orders.pendingApprovals(viewer);
             if (approvals > 0) alerts.put("APPROVAL_PENDING", approvals);

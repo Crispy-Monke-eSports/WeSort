@@ -178,7 +178,12 @@ class PhysicalOperationsTest {
         var decision = operations.inspectAutomatically(agent, receipt);
         assertNotNull(decision);
         assertEquals("INSPECT", decision.get("action").getAsString());
-        assertEquals(decision.get("id"), operations.decision(agent, local.id()).get("id"));
+        assertEquals(receipt.get("revision"), decision.get("revision"));
+        assertEquals(receipt.get("checksum"), decision.get("checksum"));
+        var replay = operations.decision(agent, local.id());
+        assertEquals(decision.get("id"), replay.get("id"));
+        assertEquals(decision.get("revision"), replay.get("revision"));
+        assertEquals(decision.get("checksum"), replay.get("checksum"));
         assertNull(operations.inspectAutomatically(agent, receipt)); // No duplicate pending request.
 
         local.verified(

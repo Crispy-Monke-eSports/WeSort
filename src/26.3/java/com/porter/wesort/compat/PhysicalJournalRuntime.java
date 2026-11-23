@@ -199,12 +199,21 @@ public final class PhysicalJournalRuntime {
                 recoveryFence = false;
                 finishInspection(true, "Exact original source and postcondition verified; no mutation replayed");
             } else {
-                journal.block(
-                        "Last step verified; unfinished packing/standing-box decisions still require an operator");
-                recoveryFence = true;
-                finishInspection(
-                        false,
-                        "Last exact step is verified; the complete operation remains fenced for manual recovery");
+                // The last native mutation was verified, but the higher-level
+                // repack may still have a world shulker to collect. Only release
+                // the journal when the sorter has durable recovery state and
+                // will finish that state before the next order.
+                var sorter = com.porter.wesort.WeSortAddon.sorter();
+                if (sorter != null && sorter.pendingPhysicalRecovery()) {
+                    journal.complete();
+                    reconcileRequired = false;
+                    recoveryFence = false;
+                    finishInspection(true, "Exact physical step verified; sorter will resume its saved recovery");
+                } else {
+                    journal.block("Automatic shulker recovery requires a durable workspace checkpoint");
+                    recoveryFence = true;
+                    finishInspection(false, "Cannot safely recover without a saved physical workspace");
+                }
             }
             return;
         }

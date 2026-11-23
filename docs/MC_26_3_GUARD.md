@@ -30,11 +30,14 @@ väg förbi. Ett förbjudet paket avbryts **före** klientprediktion.
 
 ## NavigationGuard
 
-`NavigationGuard` kontrollerar varje cell i en pågående rutt och de närmaste
-granncellerna för passiva utlösare. `NavigationRuntime` pausar med
-`PAUSED_NAVIGATION_UNSAFE_BLOCK` innan kontorstek kontakt med en otillåten
-tryckplatta/tripwire eller en dörr/grind/redstone-block. Ingen genväg genom
-basen godtas; rutten kräver uttrycklig resume.
+`NavigationGuard` kontrollerar laddade celler vid fötterna, huvudet och
+golvet längs rutten. Agenten får gå över tryckplattor, tripwire, detector
+rails och sculkblock som reagerar på att agenten passerar. Servern kan
+aktivera blocken och eventuell kopplad redstone under passagen. Spärren
+för aktiv användning och brytning gäller även dessa block.
+
+`NavigationRuntime` pausar med `PAUSED_NAVIGATION_UNSAFE_BLOCK` om rutten
+kräver passage genom en spärrad dörr, grind eller ett annat spärrat block.
 
 ## Dedikerad Baritone-profil
 
@@ -54,7 +57,7 @@ och pausar som `PAUSED_NAVIGATION_OTHER_PROCESS`, även mellan WeSort-jobb.
 | Prov | Kontroll |
 |---|---|
 | Staketgrind, trapdoor, spak | Klienten vägrar use/break; serverns blockstates matchar referensen |
-| Tryckplatta i rutten | Baritone pausar före kontakt; serverns tryckplatta förblir `powered=false` |
+| Tryckplatta i rutten | Baritone når och passerar plattan. Servern bekräftar att plattan aktiveras och sedan släpper. |
 | Osäker Bot-profil + externt mål | `allowBreakAnyway` töms, externt mål avbryts, `PAUSED_NAVIGATION_OTHER_PROCESS` |
 
 `mc26-navigation.yml` kör samma prov med Xvfb/Mesa i CI.

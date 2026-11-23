@@ -16,13 +16,19 @@ class BlockSafetyTest {
     }
 
     @Test
-    void passiveTriggersAreSensitive() {
-        assertTrue(BlockSafety.passiveTrigger("stone_pressure_plate"));
-        assertTrue(BlockSafety.passiveTrigger("tripwire"));
-        assertTrue(BlockSafety.passiveTrigger("detector_rail"));
-        assertTrue(BlockSafety.passiveTrigger("sculk_sensor"));
-        assertTrue(BlockSafety.passiveTrigger("sculk_shrieker"));
-        assertFalse(BlockSafety.passiveTrigger("stone"));
+    void passiveTriggersAllowWalkingButRemainSensitiveToActiveInteraction() {
+        for (String id : new String[] {
+            "minecraft:dark_oak_pressure_plate",
+            "minecraft:heavy_weighted_pressure_plate",
+            "minecraft:tripwire",
+            "minecraft:detector_rail",
+            "minecraft:sculk_sensor",
+            "minecraft:calibrated_sculk_sensor",
+            "minecraft:sculk_shrieker"
+        }) {
+            assertTrue(BlockSafety.safetySensitive(id), id);
+            assertFalse(BlockSafety.blocksNavigation(id), id);
+        }
     }
 
     @Test
@@ -49,11 +55,12 @@ class BlockSafetyTest {
         assertTrue(BlockSafety.safetySensitive("minecraft:tripwire"));
         assertTrue(BlockSafety.safetySensitive("minecraft:redstone_wire"));
         assertTrue(BlockSafety.safetySensitive("minecraft:stone_button"));
-        assertTrue(BlockSafety.passiveTrigger("minecraft:stone_pressure_plate"));
-        assertTrue(BlockSafety.passiveTrigger("minecraft:tripwire"));
+        assertTrue(BlockSafety.blocksNavigation("minecraft:oak_fence_gate"));
+        assertTrue(BlockSafety.blocksNavigation("minecraft:redstone_wire"));
+        assertTrue(BlockSafety.blocksNavigation("minecraft:nether_portal"));
         assertFalse(BlockSafety.safetySensitive("minecraft:stone"));
         assertFalse(BlockSafety.safetySensitive("minecraft:chest"));
-        assertFalse(BlockSafety.passiveTrigger("minecraft:stone"));
+        assertFalse(BlockSafety.blocksNavigation("minecraft:stone"));
         // Other namespaces classify the same way (syntactic, path-based).
         assertTrue(BlockSafety.safetySensitive("othermod:oak_door"));
         assertTrue(BlockSafety.safetySensitive("othermod:lever"));

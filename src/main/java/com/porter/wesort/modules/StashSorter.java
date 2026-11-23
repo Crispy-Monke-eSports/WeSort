@@ -1272,7 +1272,7 @@ public class StashSorter extends Module {
 
         @Override
         public boolean keepWhole(Box box) {
-            return box.labels.stream().anyMatch(Categories::isKeepWhole);
+            return box.protectedStorage || Kits.isKitBox(box);
         }
 
         @Override
@@ -1320,7 +1320,7 @@ public class StashSorter extends Module {
 
         @Override
         public boolean keepWhole(Box box) {
-            return box.labels.stream().anyMatch(Categories::isKeepWhole);
+            return box.protectedStorage || Kits.isKitBox(box);
         }
 
         @Override
@@ -3068,9 +3068,8 @@ public class StashSorter extends Module {
                 stuckWarned = true;
                 lastStuckWarn = clock;
                 alert(
-                        "Found nowhere with room for %d stacks I'm carrying (no container they belong in has space, and none signed misc/other/overflow does%s), keeping them in your inventory and carrying on with the rest.",
-                        carried.size(),
-                        unsignedOverflow.get() && mode.get() == Mode.Signs ? ", and no unsigned container does" : "");
+                        "Found nowhere with room for %d carried stacks in tier storage or safe overflow; leaving them in inventory.",
+                        carried.size());
             }
         }
 
@@ -3498,7 +3497,6 @@ public class StashSorter extends Module {
                 && !box.dropOff
                 && !box.unreachable
                 && !isKitBox(box)
-                && box.labels.stream().noneMatch(Categories::isKeepWhole)
                 && !blocked(box, Job.Return)
                 && roomFor(box, stack);
     }
@@ -4490,7 +4488,7 @@ public class StashSorter extends Module {
 
         @Override
         public boolean keepWhole(Box box) {
-            return box.labels.stream().anyMatch(Categories::isKeepWhole);
+            return box.protectedStorage || Kits.isKitBox(box);
         }
 
         @Override
@@ -9555,13 +9553,9 @@ public class StashSorter extends Module {
         return pos.getX() + " " + pos.getY() + " " + pos.getZ();
     }
 
-    /**
-     * The container as a sign or its block: "Diamonds", or chest.
-     */
+    /** The actual container block, never nearby sign text. */
     private String home(Box box) {
-        return box.labels.isEmpty() || box.labels.getFirst().isBlank()
-                ? blockName(box)
-                : "\"" + box.labels.getFirst() + "\"";
+        return blockName(box);
     }
 
     /**
@@ -10659,14 +10653,6 @@ public class StashSorter extends Module {
                                                     p.getX(), p.getY(), p.getZ()))
                                             .toList())
                             .id());
-            JsonArray labels = new JsonArray();
-            box.labels.forEach(labels::add);
-            entry.add("labels", labels);
-            int score = box.labels.stream()
-                    .mapToInt(label -> Categories.signScore(label, stack))
-                    .max()
-                    .orElse(0);
-            entry.addProperty("score", score);
             String reason = box.delivery
                     ? "OUTBOUND_STAGING"
                     : box.protectedStorage
@@ -10682,9 +10668,7 @@ public class StashSorter extends Module {
                                                             : !box.sortable()
                                                                     ? "UNAVAILABLE"
                                                                     : box == overflow
-                                                                            ? (isMisc(box)
-                                                                                    ? "MISC_OVERFLOW"
-                                                                                    : "UNSIGNED_OVERFLOW")
+                                                                            ? "TIER_OVERFLOW"
                                                                             : !chosen.contains(box)
                                                                                     ? "NO_MATCH_OR_BETTER_DESTINATION"
                                                                                     : !roomFor(box, stack)
@@ -10718,102 +10702,8 @@ public class StashSorter extends Module {
     }
 
     private List<Box> computeDestinations(ItemStack stack) {
-        if (mode.get() == Mode.Tiers) return tierBoxes.getOrDefault(tier(stack), List.of());
-
-        // An empty bundle goes to a chest signed for bundles, else one signed for shulkers or containers
-        if (isBundle(stack)) {
-            List<Box> bundles = bundleHomes(stack);
-            if (!bundles.isEmpty()) return bundles;
-        }
-
-        // A finished kit, or one part built with more than one kind of item, goes to the chest signed with its name.
-        // With no such chest it's treated like any other shulker.
-        Kits.Match kit = Kits.match(stack);
-        Kit owner = kit != null && kit.claims() ? kit.kit() : kitBuilder.heldKit(stack);
-        if (owner != null) {
-            List<Box> homes = Kits.homes(owner, stash);
-            if (!homes.isEmpty()) return homes;
-        }
-
-        // A shulker goes where what it's mostly full of goes: a shulker of totems belongs with the totems. Only when
-        // no sign describes its contents does it fall back to signs about shulkers themselves, like "shulkers" or
-        // "kits".
-        // Mixed shulkers go whole to a chest signed for kits, when there is one
-        if (mixedShulker(stack)) {
-            List<Box> kits = keepWholeBoxes();
-            if (!kits.isEmpty()) return kits;
-        }
-
-        ItemStack inside = Categories.dominantContent(stack);
-        if (inside != null) {
-            List<Box> byContents = bestSigned(inside);
-            if (!byContents.isEmpty()) return byContents;
-        }
-
-        return bestSigned(stack);
-    }
-
-    /**
-     * The containers whose signs describe this item best, all tied, or empty if no sign describes it.
-     */
-    private List<Box> bestSigned(ItemStack stack) {
-        Map<DestKey, List<Box>> cache = signedCache;
-        if (cache == null || stack.isEmpty()) return computeBestSigned(stack);
-        return cache.computeIfAbsent(DestKey.of(stack), k -> computeBestSigned(stack));
-    }
-
-    private List<Box> computeBestSigned(ItemStack stack) {
-        int best = 0;
-        List<Box> result = new ArrayList<>();
-        Categories.Described item = Categories.describe(stack);
-        for (Box box : stash.boxes) {
-            if (!box.sortable() || box.dropOff) continue;
-
-            // Kit chests only take their kits, not loose items that happen to match the name
-            if (isKitBox(box)) continue;
-
-            int score = 0;
-            for (String label : box.labels) score = Math.max(score, Categories.signScore(label, item));
-
-            if (score > best) {
-                best = score;
-                result.clear();
-            }
-            if (score == best && score > 0) result.add(box);
-        }
-        if (result.size() > 1) reportTie(stack, result);
-        return result;
-    }
-
-    // Item id plus the tied containers' positions already reported as fitting two differently signed containers
-    // equally.
-    // Only cleared when the module is switched on again, so each tie is said once per run (or again when the tied set
-    // changes)
-    private final Set<String> tiesReported = new HashSet<>();
-
-    /**
-     * Two containers with different signs describe an item equally well: it goes to the nearest. Several containers with
-     * the same sign are no tie, that is just a category with more than one chest.
-     */
-    private void reportTie(ItemStack stack, List<Box> tied) {
-        Set<String> first = new HashSet<>(tied.getFirst().labels);
-        boolean different = false;
-        for (Box other : tied) if (!new HashSet<>(other.labels).equals(first)) different = true;
-        if (!different) return;
-        String key = idOf(stack) + "|"
-                + tied.stream().map(b -> b.pos.toString()).sorted().collect(java.util.stream.Collectors.joining(";"));
-        if (tiesReported.add(key)) {
-            warning(
-                    "%s fits %d containers with different signs equally well (%s), it goes to the nearest.",
-                    StackInfo.label(stack),
-                    tied.size(),
-                    String.join(
-                            " / ",
-                            tied.stream()
-                                    .map(b -> b.labels.isEmpty() ? "?" : b.labels.getFirst())
-                                    .distinct()
-                                    .toList()));
-        }
+        // Tier storage is the sole sorter; sign text never authorizes a destination.
+        return tierBoxes.getOrDefault(tier(stack), List.of());
     }
 
     /**
@@ -10827,31 +10717,15 @@ public class StashSorter extends Module {
         // A bundle with things in it is taken out to be emptied, wherever it is
         if (fullBundle(stack)) return true;
 
-        // A kit, or part of one, in its own chest is where it belongs
-        if (mode.get() == Mode.Signs) {
-            Kits.Match kit = Kits.match(stack);
-            if (kit != null && Kits.isHome(box, kit.kit())) return false;
-        }
-
         List<Box> places = destinationsFor(stack);
         return !places.isEmpty() && !places.contains(box);
     }
 
-    /**
-     * A container signed for anything: misc, other, overflow and the like.
-     */
-    private boolean isMisc(Box box) {
-        return box.labels.stream().anyMatch(Categories::isCatchAll);
-    }
-
-    /**
-     * Free slots in the containers that take anything (signed misc, other, overflow, or unsigned), outside drop-offs and
-     * {@code except}, less what we're already carrying.
-     */
+    /** Free slots in non-protected ordinary containers. */
     private int spareRoom(Box except) {
         int free = 0;
         for (Box box : stash.boxes)
-            if (box != except && (takesAnything(box, true) || takesAnything(box, false))) free += box.free();
+            if (box != except && takesAnything(box)) free += box.free();
         return free - carriedSlots().size();
     }
 
@@ -10867,54 +10741,19 @@ public class StashSorter extends Module {
         return spareBox() != null;
     }
 
-    /**
-     * Where a stack with no room in the containers it belongs in can be put down: a container signed misc, other or
-     * overflow first; failing that an unsigned one with space, which is a free container waiting for a sign.
-     */
+    /** Choose a spare container by free capacity, independent of sign text. */
     private Box spareBox() {
-        Box misc =
-                nearest(stash.boxes.stream().filter(b -> takesAnything(b, true)).toList());
-        if (misc != null) return misc;
-
-        // Unsigned: one already in use before an empty one, which a sign could still be put on
-        List<Box> unsigned =
-                stash.boxes.stream().filter(b -> takesAnything(b, false)).toList();
-        Box used = nearest(
-                unsigned.stream().filter(b -> b.free() < b.contents.length).toList());
-        return used != null ? used : nearest(unsigned);
+        List<Box> candidates = stash.boxes.stream().filter(this::takesAnything).toList();
+        Box used = nearest(candidates.stream().filter(b -> b.free() < b.contents.length).toList());
+        return used != null ? used : nearest(candidates);
     }
 
-    private boolean takesAnything(Box b, boolean signedMisc) {
-        if (!b.sortable() || b.dropOff || b.free() <= 0 || blocked(b, Job.Dump) || isKitBox(b))
-            return false;
-        if (signedMisc) return isMisc(b);
-
-        // Tiers has no signs to respect: any container with space will do
-        if (mode.get() == Mode.Tiers) return true;
-
-        // Only in Signs mode, and only a container whose signs can be read now: no sign, not even a blank one
-        if (!unsignedOverflow.get() || mode.get() != Mode.Signs || !b.labels.isEmpty()) return false;
-        return noSignNow(b);
-    }
-
-    /**
-     * Whether there is no sign block at all on any side of the container (or on top of it) right now. A blank sign
-     * counts: it's a sign that's about to be written. False if any of the places isn't loaded.
-     */
-    private boolean noSignNow(Box box) {
-        for (BlockPos part : box.parts) {
-            for (Direction dir : HORIZONTALS) {
-                BlockPos signPos = part.relative(dir);
-                if (!mc.level.isLoaded(signPos)) return false;
-                // Any sign beside it counts, whichever way it faces, hanging ones too
-                if (mc.level.getBlockEntity(signPos) instanceof SignBlockEntity) return false;
-            }
-
-            BlockPos above = part.above();
-            if (!mc.level.isLoaded(above)) return false;
-            if (mc.level.getBlockEntity(above) instanceof SignBlockEntity) return false;
-        }
-        return true;
+    private boolean takesAnything(Box box) {
+        return box.sortable()
+                && !box.dropOff
+                && box.free() > 0
+                && !blocked(box, Job.Dump)
+                && !isKitBox(box);
     }
 
     /**

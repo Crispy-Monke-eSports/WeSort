@@ -13,7 +13,7 @@ import net.minecraft.world.phys.BlockHitResult;
 /**
  * Fail-closed world-interaction policy for the dedicated agent profile (W-061).
  *
- * <p>When the bot is Manager-driven, every automatic block use, break or sign-write needs a live,
+ * <p>When the bot is Manager-driven, every automatic block use, break or placement needs a live,
  * exact permit: one packed position, one operation, the expected block id, the authorizing job and
  * an expiry. WeSort action code issues short scoped permits around the single action it performs;
  * anything else — a foreign shulker, a base block, a door, redstone, a changed blockstate, an
@@ -75,11 +75,6 @@ public final class WorldInteractionGuard {
         return PERMITS.permit(pos.asLong(), Operation.BREAK, blockId(pos), currentJob(), PERMIT_TTL_MS, now());
     }
 
-    /** Issues a scoped SIGN permit for one sign-text write at an already-placed sign. */
-    public static AutoCloseable permitSign(BlockPos pos) {
-        return PERMITS.permit(pos.asLong(), Operation.SIGN, blockId(pos), currentJob(), PERMIT_TTL_MS, now());
-    }
-
     /**
      * Issues a scoped PLACE permit for one placement into an empty cell: the support click passes
      * while the permit lives. Used fire-and-forget at rotation-deferred call sites (the 10s TTL
@@ -106,11 +101,6 @@ public final class WorldInteractionGuard {
     /** Fire-and-forget PLACE authorization (see {@link #permitPlace}). */
     public static void authorizePlace(BlockPos emptyCell) {
         PERMITS.permit(emptyCell.asLong(), Operation.PLACE, blockId(emptyCell), currentJob(), PERMIT_TTL_MS, now());
-    }
-
-    /** Fire-and-forget SIGN authorization (see {@link #permitSign}). */
-    public static void authorizeSign(BlockPos pos) {
-        PERMITS.permit(pos.asLong(), Operation.SIGN, blockId(pos), currentJob(), PERMIT_TTL_MS, now());
     }
 
     public static boolean allowUse(BlockHitResult hit) {
@@ -340,27 +330,6 @@ public final class WorldInteractionGuard {
         long now = now();
         return PERMITS.allows(now, target.asLong(), Operation.PLACE, blockId(target), job)
                 || (beforeBlock != null && PERMITS.allows(now, target.asLong(), Operation.PLACE, beforeBlock, job));
-    }
-
-    /** Sign text goes in its own packet: it needs its own permit, like any other mutation. */
-    public static boolean allowSign(BlockPos position) {
-        if (!dedicated()) return true;
-        String job = currentJob();
-        if (job == null || job.isEmpty() || job.equals("unknown")) {
-            denied("sign-unknown-job");
-            return false;
-        }
-        if (mc.level == null || !mc.level.isLoaded(position)) {
-            denied("sign-unloaded");
-            return false;
-        }
-        if (!safeBlock(position)) {
-            denied("sign-safety-sensitive");
-            return false;
-        }
-        boolean ok = PERMITS.allows(now(), position.asLong(), Operation.SIGN, blockId(position), job);
-        if (!ok) denied("sign-no-permit");
-        return ok;
     }
 
     /** The authorizing job of the live permit, for deny audit (null when there is none). */

@@ -1063,6 +1063,24 @@ final class StockLedger {
         }
     }
 
+    /** Only a Manager-fenced physical operation is grounds for failing an active order.
+     * A live PLANNED, IN_PROGRESS or VERIFYING operation is expected during packing. */
+    boolean reconciliationRequiredPhysicalOrder(String order) throws IOException {
+        try (var c = open();
+                var p = c.prepareStatement("""
+                SELECT 1 FROM physical_operations
+                WHERE state='NEEDS_RECONCILIATION'
+                  AND json_extract(payload,'$.context.orderId')=? LIMIT 1
+                """)) {
+            p.setString(1, order);
+            try (var rows = p.executeQuery()) {
+                return rows.next();
+            }
+        } catch (SQLException failure) {
+            throw new IOException("Cannot verify physical reconciliation fence", failure);
+        }
+    }
+
     JsonArray orderOperationHistory(String order, String server, String stash) throws IOException {
         var history = new JsonArray();
         try (var connection = open();

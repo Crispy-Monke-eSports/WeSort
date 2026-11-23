@@ -446,6 +446,36 @@ class AgentScopeTest {
     }
 
     @Test
+    void rotatingTheOnlyAgentKeyRequiresAFreshSignedHello() throws Exception {
+        String owner = login(null, OWNER_PW);
+        setServer(owner, "s");
+        defineStash(owner, "a");
+
+        assertEquals(
+                200,
+                agentPost(agentA, agentKeyA, "/api/v1/bot/hello", helloBootstrap(agentA)).status);
+        assertTrue(hub.online(hub.bot(agentA)));
+
+        assertTrue(credentials.revoke(agentA));
+        String token = credentials.issue("replacement");
+        String replacementId = token.substring(0, token.indexOf('.'));
+        byte[] replacementKey = Signer.deriveKey(token.substring(token.indexOf('.') + 1));
+
+        // The previously verified agent cannot continue after key revocation.
+        assertEquals(
+                401,
+                agentPost(agentA, agentKeyA, "/api/v1/bot/hello", helloBootstrap(agentA)).status);
+        assertEquals(null, hub.bot(agentA));
+
+        // The replacement must establish its own authenticated Manager session.
+        assertEquals(
+                200,
+                agentPost(replacementId, replacementKey, "/api/v1/bot/hello", helloBootstrap(replacementId))
+                        .status);
+        assertTrue(hub.online(hub.bot(replacementId)));
+    }
+
+    @Test
     void helloBindingIsVerifiedAndStashesAnnounced() throws Exception {
         String owner = login(null, OWNER_PW);
         setServer(owner, "s");

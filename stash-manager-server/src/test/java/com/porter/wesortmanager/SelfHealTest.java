@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 
-/** The Manager resolves stuck orders itself: reconcile route, auto-heal sweep and ops signals. */
+/** The Manager resolves stuck orders itself: automatic rollback, protected holds and ops signals. */
 class SelfHealTest {
     @TempDir
     Path data;
@@ -77,98 +77,78 @@ class SelfHealTest {
         var order = orders.place("s", stash, List.of(new OrderStore.Line("item", "minecraft:diamond", 2)), null);
         String agent = UUID.randomUUID().toString();
         assertNotNull(orders.claimPayload("s", stash, agent));
-        return orders.status(order.id, "needs_reconciliation", null, null, null, null, agent, "r1");
+        var legacy = orders.status(order.id, "in_progress", null, null, null, null, agent, "r1");
+        legacy.stage = OrderStage.NEEDS_RECONCILIATION;
+        legacy.status = "needs_reconciliation";
+        return legacy;
     }
 
     @Test
-    void reconcileNeedsProofForPickupReadyButAbandonIsFree() throws Exception {
+    void legacyRecoveryMigratesWithoutOwner() throws Exception {
         observe("a", 10);
-        var order = stuckOrder("a");
-        // No fresh observation since the order was placed: pickup cannot be proven.
-        var denied = assertThrows(
-                OrderStore.OrderException.class, () -> orders.reconcile(order.id, "pickup_ready", "owner"));
-        assertEquals(409, denied.status);
-        // Abandoning never risks stock.
-        var cancelled = orders.reconcile(order.id, "cancelled", "owner");
-        assertEquals("cancelled", cancelled.status);
-        // A cancelled order releases its hold on the next fresh observation.
-        time.set(cancelled.updatedAt + 1000);
-        observe("a", 10);
-        orders.releaseFromFreshObservation("s");
-
-        var second = stuckOrder("a");
-        time.set(second.updatedAt + 1000);
-        observe("a", 10);
-        var ready = orders.reconcile(second.id, "pickup_ready", "owner");
-        assertEquals("packed", ready.status);
-        assertEquals(OrderStage.PICKUP_READY, ready.stage());
+        var old = stuckOrder("a");
+        orders.selfHealAll();
+        var row = orders.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
+        assertEquals("RECOVERING", row.get("state").getAsString());
+        assertEquals("in_progress", orders.statusOf(old.id));
+        assertTrue(row.get("cancelRequested").getAsBoolean());
+        assertEquals(2L, orders.reservedFor("s", "a").get("item:minecraft:diamond").longValue());
     }
 
     @Test
-    void reconcileRejectsAnythingUnprovable() throws Exception {
+    void agentRollbackAcknowledgementWaitsForFreshRescan() throws Exception {
         observe("a", 10);
-        var open = orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 2)), null);
-        assertEquals(
-                409,
-                assertThrows(OrderStore.OrderException.class, () -> orders.reconcile(open.id, "cancelled", "owner"))
-                        .status);
-        assertEquals(
-                404,
-                assertThrows(
-                                OrderStore.OrderException.class,
-                                () -> orders.reconcile("o-000000000000", "cancelled", "owner"))
-                        .status);
-        observe("b", 10);
-        var stuck = stuckOrder("b");
-        assertEquals(
-                400,
-                assertThrows(OrderStore.OrderException.class, () -> orders.reconcile(stuck.id, "deliver", "owner"))
-                        .status);
+        var old = stuckOrder("a");
+        orders.selfHealAll();
+        var finished = orders.status(old.id, "cancelled", null, null, "Returned to stash", null, old.agent, "r2");
+        assertEquals("cancelled", finished.status);
+        assertEquals(2L, orders.reservedFor("s", "a").get("item:minecraft:diamond").longValue());
+        time.set(finished.updatedAt + 1000);
+        observe("a", 10);
+        orders.selfHealAll();
+        assertEquals(0L, orders.reservedFor("s", "a").getOrDefault("item:minecraft:diamond", 0L).longValue());
     }
 
     @Test
-    void freshObservationFailsUnprovenPackingInsteadOfInventingPickup() throws Exception {
+    void freshObservationCannotFalselyCompleteRollback() throws Exception {
         observe("a", 10);
         var order = stuckOrder("a");
         time.set(order.updatedAt + 1000);
         observe("a", 10);
         orders.selfHealAll();
-        assertEquals("failed", orders.statusOf(order.id));
+        assertEquals("in_progress", orders.statusOf(order.id));
         var stored = orders.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
-        assertTrue(stored.get("releasedAt").getAsLong() > 0);
-        orders.selfHealAll(); // Idempotent across periodic sweeps.
-        assertEquals("failed", orders.statusOf(order.id));
+        assertEquals("RECOVERING", stored.get("state").getAsString());
+        assertFalse(stored.has("releasedAt"));
+        orders.selfHealAll();
+        assertEquals("in_progress", orders.statusOf(order.id));
     }
 
     @Test
-    void timedOutPhysicalCancelSettlesAfterFreshObservationWithoutOwner() throws Exception {
+    void timedOutCancelRequestsRollbackAndBlocksNextOrder() throws Exception {
         observe("a", 10);
         var order = orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 2)), null);
-        orders.claim("s", "a");
+        String agent = UUID.randomUUID().toString();
+        orders.claimPayload("s", "a", agent);
         var cancelled = orders.cancel(order.id);
-        assertNotNull(cancelled.allocations);
         long old = System.currentTimeMillis() - 11 * 60 * 1000;
         cancelled.cancelRequestedAt = old;
         cancelled.updatedAt = old;
-
-        orders.selfHealAll(); // Cancelling physical work fences rather than freeing stock.
-        assertEquals("needs_reconciliation", orders.statusOf(order.id));
-        assertEquals(
-                2L, orders.reservedFor("s", "a").get("item:minecraft:diamond").longValue());
-
-        var fenced = orders.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
-        time.set(fenced.get("updatedAt").getAsLong() + 1000);
+        orders.selfHealAll();
+        var recovery = orders.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
+        assertEquals("RECOVERING", recovery.get("state").getAsString());
+        assertEquals(2L, orders.reservedFor("s", "a").get("item:minecraft:diamond").longValue());
+        time.set(recovery.get("updatedAt").getAsLong() + 1000);
         observe("a", 10);
         orders.selfHealAll();
+        assertEquals("in_progress", orders.statusOf(order.id));
 
+        var acknowledged = orders.status(order.id, "cancelled", null, null, "Returned to stash", null, agent, "done");
+        time.set(acknowledged.updatedAt + 1000);
+        observe("a", 10);
+        orders.selfHealAll();
         assertEquals("cancelled", orders.statusOf(order.id));
-        assertEquals(
-                0L,
-                orders.reservedFor("s", "a")
-                        .getOrDefault("item:minecraft:diamond", 0L)
-                        .longValue());
-        var finished = orders.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
-        assertTrue(finished.get("releasedAt").getAsLong() > 0);
+        assertEquals(0L, orders.reservedFor("s", "a").getOrDefault("item:minecraft:diamond", 0L).longValue());
     }
 
     @Test
@@ -176,7 +156,7 @@ class SelfHealTest {
         observe("a", 10);
         var order = stuckOrder("a");
         orders.selfHealAll();
-        assertEquals("needs_reconciliation", orders.statusOf(order.id));
+        assertEquals("in_progress", orders.statusOf(order.id));
         assertEquals(
                 2L, orders.reservedFor("s", "a").get("item:minecraft:diamond").longValue());
     }
@@ -207,16 +187,20 @@ class SelfHealTest {
     }
 
     @Test
-    void reconcileAbandonReleasesHoldOnFreshObservation() throws Exception {
+    void legacyRollbackRetainsHoldUntilAgentCompletesCleanup() throws Exception {
         observe("a", 10);
         var stuck = stuckOrder("a");
-        var failed = orders.reconcile(stuck.id, "failed", "owner");
-        assertEquals("failed", failed.status);
-        assertEquals(OrderStage.FAILED, failed.stage);
-        time.set(failed.updatedAt + 1000);
+        orders.selfHealAll();
+        time.set(System.currentTimeMillis() + 1000);
         observe("a", 10);
-        orders.releaseFromFreshObservation("s");
-        assertTrue(failed.releasedAt > 0, "hold released by the regular sweep");
+        orders.selfHealAll();
+        assertEquals(2L, orders.reservedFor("s", "a").get("item:minecraft:diamond").longValue());
+        var finished = orders.status(stuck.id, "failed", null, null, "Rolled back", null, stuck.agent, "r3");
+        time.set(finished.updatedAt + 1000);
+        observe("a", 10);
+        orders.selfHealAll();
+        var current = orders.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
+        assertTrue(current.get("releasedAt").getAsLong() > 0);
     }
 
     @Test
@@ -249,7 +233,9 @@ class SelfHealTest {
         journal.block("Physical verification failed");
         operations.accept(agent, journal.current());
         orders.releaseFromFreshObservation("s");
-        assertEquals("needs_reconciliation", orders.statusOf(order.id));
+        assertEquals("in_progress", orders.statusOf(order.id));
+        assertEquals("RECOVERING", orders.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject()
+                .get("state").getAsString());
     }
 
     @Test

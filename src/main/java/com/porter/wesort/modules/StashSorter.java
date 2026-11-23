@@ -7114,6 +7114,7 @@ public class StashSorter extends Module {
         if (carry.isEmpty()) return "no free inventory slot";
         if (ensureStash() == null) return "no stash";
         if (orderRunner.deliveryBox() == null) return "no delivery box";
+        if (pendingPhysicalRecovery()) return "finishing automatically recovered physical work";
         if (kitBuilder.active() && !orderKit()) return "busy: building a kit";
         // The previous order cannot yield the queue while its carried items
         // still have to be returned to stash storage.
@@ -11932,6 +11933,13 @@ public class StashSorter extends Module {
     /** Stable job identity for world permits throughout one physical repack operation. */
     public String activeRepackJobId() {
         return repackWork != null && !repackWork.terminal() ? repackWork.id() : null;
+    }
+
+    /** A durable shulker/workspace checkpoint must finish before another order is claimed. */
+    public boolean pendingPhysicalRecovery() {
+        return pendingResume != null
+                || stash != null && stash.inFlight != null
+                || repackWork != null && !repackWork.terminal();
     }
 
     public com.google.gson.JsonObject physicalJournalContext() {

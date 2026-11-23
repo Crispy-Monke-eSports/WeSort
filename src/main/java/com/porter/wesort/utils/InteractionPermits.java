@@ -7,17 +7,16 @@ import java.util.Objects;
 
 /**
  * Fail-closed interaction permits for the dedicated agent profile: every automatic block use, break or
- * sign-write needs a live, exact permit. There is no wildcard, no category and no "harmless type": a
+ * placement needs a live, exact permit. There is no wildcard, no category and no "harmless type": a
  * permit names one packed position, one operation, the expected block id and the authorizing job, and it
  * expires. Anything without a matching live permit is denied. Pure Java (positions are packed longs), so
  * the semantics are unit-tested without Minecraft.
  */
 public final class InteractionPermits {
-    /** The exact handling a permit covers. USE opens/activates the block; BREAK destroys it; SIGN writes text. */
+    /** The exact handling a permit covers. USE opens/activates; BREAK destroys; PLACE places into an empty cell. */
     public enum Operation {
         USE,
         BREAK,
-        SIGN,
         /**
          * Uses this block as the support to place into the adjacent cell: the clicked block keeps its
          * USE-gate for activation, while one placement into the named air cell is allowed.

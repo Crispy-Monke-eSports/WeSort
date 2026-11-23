@@ -310,79 +310,90 @@ final class Users {
         this.clock = clock;
     }
 
-    /** Reads users.json. A broken file is an error: starting without the sub-users would silently lock them out. */
+    /** Validate the complete persisted registry before publishing any account or permission. */
     synchronized void load() throws IOException {
-        if (file == null || !Files.exists(file)) return;
-        AtomicFiles.ownerOnly(file);
-        JsonObject root;
-        try {
-            root = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8))
-                    .getAsJsonObject();
-        } catch (RuntimeException e) {
-            throw new IOException(
-                    file.getFileName() + " is not valid JSON (" + e.getMessage() + "); fix or delete it", e);
+        if (file == null) return;
+        if (Files.isSymbolicLink(file)) throw new IOException("Invalid user registry location");
+        if (!Files.exists(file, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+            if (!users.isEmpty() || !minecraftAccounts.isEmpty() || !DEFAULT_OWNER_NAME.equals(ownerName))
+                throw new IOException("Previously loaded user registry is missing");
+            return;
         }
         try {
-            String on = root.has("ownerName") ? root.get("ownerName").getAsString() : DEFAULT_OWNER_NAME;
-            ownerName = NAME.matcher(on).matches() ? on : DEFAULT_OWNER_NAME;
-            JsonArray list = root.has("users") ? root.getAsJsonArray("users") : new JsonArray();
+            var root = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8)).getAsJsonObject();
+            if (longOf(root, "version") != 1) throw new IllegalArgumentException("Unsupported user schema");
+            String nextOwner = requiredText(root, "ownerName");
+            if (!NAME.matcher(nextOwner).matches()) throw new IllegalArgumentException("Invalid Owner name");
+            var loaded = new LinkedHashMap<String, User>();
+            var accounts = new LinkedHashMap<String, String>();
+            var names = new java.util.HashSet<String>();
+            names.add(nextOwner.toLowerCase(Locale.ROOT));
+            JsonArray list = root.getAsJsonArray("users");
+            if (list == null || list.size() > MAX_USERS) throw new IllegalArgumentException("Invalid user list");
             for (JsonElement e : list) {
-                JsonObject o = e.getAsJsonObject();
-                String id = o.get("id").getAsString();
-                String name = o.get("name").getAsString();
-                if (!ID.matcher(id).matches()
-                        || users.containsKey(id)
-                        || !NAME.matcher(name).matches()
-                        || byNameLocked(name) != null
-                        || sameName(name, ownerName)) {
-                    System.err.println(file.getFileName() + ": skipping a user with a bad or duplicate id or name");
-                    continue;
-                }
-                String hash = o.get("hash").getAsString();
-                if (!Auth.wellFormed(hash))
-                    System.err.println(
-                            file.getFileName() + ": " + name + " has a broken password hash and can't log in");
-                Perms perms;
-                try {
-                    perms = Perms.parse(o.get("perms"));
-                } catch (IllegalArgumentException ex) {
-                    System.err.println(file.getFileName() + ": " + name + " has broken permissions (" + ex.getMessage()
-                            + "); they are all off");
-                    perms = Perms.NONE;
-                }
-                users.put(
-                        id,
-                        new User(
-                                id,
-                                name,
-                                hash,
-                                perms,
-                                o.has("disabled") && o.get("disabled").getAsBoolean(),
-                                o.has("mustChange") && o.get("mustChange").getAsBoolean(),
-                                longOf(o, "createdAt"),
-                                longOf(o, "lastLoginAt"),
-                                longOf(o, "passwordChangedAt")));
+                var o = e.getAsJsonObject();
+                String id = requiredText(o, "id");
+                String name = requiredText(o, "name");
+                if (!ID.matcher(id).matches() || loaded.containsKey(id) || !NAME.matcher(name).matches()
+                        || !names.add(name.toLowerCase(Locale.ROOT)))
+                    throw new IllegalArgumentException("Invalid or duplicate account");
+                String hash = requiredText(o, "hash");
+                if (!Auth.wellFormed(hash)) throw new IllegalArgumentException("Invalid password hash");
+                var persistedPerms = o.getAsJsonObject("perms");
+                // The current writer always includes these fields. Missing scope
+                // fields must never silently become unlimited privileges.
+                for (String key : List.of("view", "order", "ordersAll", "activity", "settings", "rescan",
+                        "link", "guildOrders", "positions")) requiredBoolean(persistedPerms, key);
+                if (!persistedPerms.has("stashes") || !persistedPerms.has("bots"))
+                    throw new IllegalArgumentException("Missing permission scope");
+                loaded.put(id, new User(id, name, hash, Perms.parse(persistedPerms),
+                        requiredBoolean(o, "disabled"), requiredBoolean(o, "mustChange"),
+                        longOf(o, "createdAt"), longOf(o, "lastLoginAt"), longOf(o, "passwordChangedAt")));
             }
             if (root.has("minecraftAccounts")) {
-                for (var entry : root.getAsJsonObject("minecraftAccounts").entrySet()) {
-                    String account = entry.getValue().getAsString();
+                var mappings = root.getAsJsonObject("minecraftAccounts");
+                for (var entry : mappings.entrySet()) {
+                    String account = requiredText(mappings, entry.getKey());
                     if (!account.matches("[A-Za-z0-9_]{1,16}")
-                            || minecraftAccounts.values().stream().anyMatch(account::equalsIgnoreCase)) {
-                        throw new IllegalArgumentException("Invalid or duplicate Minecraft account mapping");
-                    }
-                    if (OWNER_ID.equals(entry.getKey()) || users.containsKey(entry.getKey()))
-                        minecraftAccounts.put(entry.getKey(), account);
+                            || accounts.values().stream().anyMatch(account::equalsIgnoreCase)
+                            || !(OWNER_ID.equals(entry.getKey()) || loaded.containsKey(entry.getKey())))
+                        throw new IllegalArgumentException("Invalid Minecraft account mapping");
+                    accounts.put(entry.getKey(), account);
                 }
             }
-        } catch (RuntimeException e) {
-            throw new IOException(
-                    file.getFileName() + " has an unexpected layout (" + e.getMessage() + "); fix or delete it", e);
+            AtomicFiles.ownerOnly(file);
+            ownerName = nextOwner;
+            users.clear();
+            users.putAll(loaded);
+            minecraftAccounts.clear();
+            minecraftAccounts.putAll(accounts);
+        } catch (RuntimeException invalid) {
+            // Do not include arbitrary registry values or password hashes in startup logs.
+            throw new IOException("Cannot validate users.json; refusing to discard or widen account permissions");
         }
     }
 
+    private static String requiredText(JsonObject o, String key) {
+        var e = o.get(key);
+        if (!(e instanceof JsonPrimitive p) || !p.isString())
+            throw new IllegalArgumentException("Invalid user field");
+        return p.getAsString();
+    }
+
+    private static boolean requiredBoolean(JsonObject o, String key) {
+        var e = o.get(key);
+        if (!(e instanceof JsonPrimitive p) || !p.isBoolean())
+            throw new IllegalArgumentException("Invalid user flag");
+        return p.getAsBoolean();
+    }
+
     private static long longOf(JsonObject o, String key) {
-        JsonElement e = o.get(key);
-        return e == null || e.isJsonNull() ? 0 : e.getAsLong();
+        var e = o.get(key);
+        if (!(e instanceof JsonPrimitive p) || !p.isNumber())
+            throw new IllegalArgumentException("Invalid user number");
+        long n = p.getAsBigDecimal().longValueExact();
+        if (n < 0) throw new IllegalArgumentException("Negative user number");
+        return n;
     }
 
     private void save() throws IOException {

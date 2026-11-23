@@ -226,13 +226,7 @@ public final class WeSortManager {
                     "  Link agents through the authenticated Owner portal; persistent API credentials are never logged.");
             if (config.allowRemote)
                 System.out.println("  WARNING: allowRemote=true, non-LAN addresses are not blocked.");
-            if (config.allowBearer) {
-                System.out.println(
-                        "  WARNING: allowBearer=true: the API key is sent in clear text by old bots (Bearer). Update every bot, then set allowBearer=false.");
-            } else {
-                System.out.println(
-                        "  Bots must sign their requests (allowBearer=false). Older addons/plugins get 401 until updated; allowBearer=true in config.properties lets them in meanwhile.");
-            }
+            System.out.println("  Agent requests require an HMAC signature.");
             if (config.dashboardPassword() == null) {
                 System.out.println(
                         "  Owner setup required: run the local bootstrap command through docker compose exec.");

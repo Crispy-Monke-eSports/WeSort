@@ -203,7 +203,7 @@ def verify_response(k, nonce, status, header, body, now_ms=None):
 
 class Client:
     """Talks to the server the way the bots do: every request signed (X-SM-Auth), every response verified (X-SM-Sig).
-    bearer=True sends the old "Authorization: Bearer" header instead (only for testing allowBearer)."""
+    bearer=True sends the retired Authorization header for negative authentication tests."""
 
     def __init__(self, url, key, bearer=False):
         self.url = url.rstrip("/")
@@ -397,7 +397,6 @@ def main():
     p.add_argument("--data", help="server data dir, to read the API key from config.properties")
     p.add_argument("--stash", default=STASH)
     p.add_argument("--server", default=SERVER)
-    p.add_argument("--bearer", action="store_true", help="send the old Bearer header instead of signing (tests allowBearer)")
     p.add_argument("--player", default=PLAYER, help="the bot's player name (stash ownership; default FakeBot)")
     p.add_argument("--no-delivery", action="store_true", help="heartbeats say no delivery container is set (delivery: null)")
     p.add_argument("--delivery", help="delivery container as x,y,z[,dimension] (default 120,64,-340,minecraft:overworld)")
@@ -460,7 +459,7 @@ def main():
     elif args.crafting:
         enabled, _, table = args.crafting.partition(":")
         CRAFTING = {"enabled": enabled == "true", "table": table == "true"}
-    c = Client(args.url, load_key(args), bearer=args.bearer)
+    c = Client(args.url, load_key(args))
     sample_hash = build_index()["indexHash"]
 
     if args.cmd == "push":

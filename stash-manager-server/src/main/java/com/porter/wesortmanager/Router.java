@@ -30,7 +30,7 @@ final class Router implements HttpHandler {
     enum Guard {
         /** Only the access check (LAN address + Host allowlist): static files, auth state. */
         OPEN,
-        /** A bot: Authorization: Bearer <apiKey>, otherwise 401. Never needs a website login. */
+        /** An agent with a valid HMAC signature. Browser sessions use a different guard. */
         ADDON_KEY,
         /** A logged-in browser (wesort_session cookie), otherwise 401 {"error":"login required"}. Every browser GET. */
         SESSION,
@@ -42,7 +42,7 @@ final class Router implements HttpHandler {
 
     /**
      * The permission a logged-in route needs before its handler runs. Handlers check the finer rules themselves
-     * (own orders, stash and bot scope, proxy and console levels, Admin unlocked).
+     * (own orders, stash and bot scope, and Owner confirmation).
      */
     enum Perm {
         /** Any logged-in user, even one that must change the password first (only the auth routes). */
@@ -50,7 +50,7 @@ final class Router implements HttpHandler {
         VIEW("view", "view stashes"),
         ICONS("view", "see item icons"),
         ORDER("order", "place orders"),
-        /** order, ordersAll or plannerOrder (cancel and retry: own orders, or any with ordersAll). */
+        /** Cancel and retry own orders, or any order with ordersAll. */
         ORDER_OWN_OR_ALL("order", "change orders"),
         ORDERS_ALL("ordersAll", "change other users' orders"),
         ACTIVITY("activity", "view bots"),
@@ -141,26 +141,10 @@ final class Router implements HttpHandler {
         this.orderStore = orderStore;
     }
 
-    /** The access rules (the same-origin checks of a long-lived browser GET such as the viewer stream). */
-    AccessControl access() {
-        return access;
-    }
-
-    /**
-     * Whether a session may still use something it was let in for: the session is live (its user not deleted or
-     * disabled, its password unchanged), no password change is pending, the permission is still granted and, with a
-     * botId, the bot is still in the user's scope. For long-lived responses (the viewer stream) that re-check while
-     * they run, with the same resolve every request goes through.
-     */
-    /** Who a session token belongs to now (the same resolve as every request), or null. */
-    Users.Principal current(String token) {
-        return resolve(sessions, users, config, token);
-    }
-
-    boolean stillAllowed(String token, Perm perm, String botId) {
+    /** Rechecks the active browser session and permission while an SSE stream is open. */
+    boolean stillAllowed(String token, Perm perm) {
         Users.Principal p = resolve(sessions, users, config, token);
-        if (p == null || (p.mustChange() && perm != Perm.ANY) || !perm.allows(p)) return false;
-        return botId == null || p.perms().seesBot(botId);
+        return p != null && (!p.mustChange() || perm == Perm.ANY) && perm.allows(p);
     }
 
     /** Who made this logged-in request (set before every SESSION / BROWSER_WRITE handler runs). */
@@ -371,8 +355,7 @@ final class Router implements HttpHandler {
     }
 
     /**
-     * A bot request: X-SM-Auth (HMAC, PROTOCOL.md "Signed requests"); the response is then signed too. The old Bearer
-     * header only with allowBearer=true and never on bot/*. False after answering 401.
+     * Verifies the agent request and sets the signing material for its response.
      */
     private boolean botAuth(HttpExchange ex, String path) throws IOException {
         boolean dashboard = path.startsWith("/api/v1/bot/");
@@ -419,21 +402,7 @@ final class Router implements HttpHandler {
             if (named) Http.attr(ex, SCOPED_AGENT, credential);
             return true;
         }
-        if (!dashboard && config.allowBearer && !agentCredentials.scopedOnly()) {
-            long generation = access.keyGeneration(ex);
-            if (generation >= 0) {
-                Http.attr(ex, KEY_GENERATION, generation);
-                return true;
-            }
-        }
-        Http.error(
-                ex,
-                401,
-                ex.getRequestHeaders().containsKey("Authorization")
-                        ? (dashboard || !config.allowBearer
-                                ? "Bearer is not accepted: update the bot (requests must be signed)"
-                                : "missing or wrong API key")
-                        : "missing signature (X-SM-Auth)");
+        Http.error(ex, 401, "missing signature (X-SM-Auth)");
         return false;
     }
 

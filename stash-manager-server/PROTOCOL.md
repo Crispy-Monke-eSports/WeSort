@@ -230,8 +230,8 @@ Configured server, defined stashes, control sessions, signed physical
 work, journal and replay protection remain independently enforced.
 
 The host can issue, rotate and revoke key slots and make scoped
-credentials mandatory. In that mode the legacy identifier `-` and
-legacy Bearer credentials are denied. The credential registry,
+credentials mandatory. That mode also rejects the shared HMAC identifier
+`-`. All agent requests require HMAC signing. The credential registry,
 scoped-only mode and revocations persist in the Manager volume. Names
 are display-only and are not persisted as credential ownership.
 Provisioning returns each secret once through the local CLI.

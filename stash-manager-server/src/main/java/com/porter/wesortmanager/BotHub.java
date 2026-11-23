@@ -507,8 +507,6 @@ final class BotHub {
         }
     }
 
-    /** The viewer session the bot must use now, or null when nobody is watching. */
-
     /** bot/activity: stores the snapshot and adds its new events (de-duplicated by at, source and text). */
     void activity(Bot b, JsonObject snapshot, JsonArray events) {
         long now = now();

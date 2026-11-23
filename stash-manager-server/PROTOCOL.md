@@ -252,6 +252,22 @@ the signed named-agent client/bootstrap and existing integration tests
 are migrated. A subsequent change must eliminate that fallback before
 claiming exclusive single-agent authentication.
 
+### Stale reply fencing in WeSort Agent
+
+The Fabric Agent binds every outgoing signed request to the Manager URL,
+current Minecraft server and a one-way fingerprint of the exact signing
+credential. A verified response from that **old** connection is discarded
+if any of these settings change before the response is processed; it cannot
+mark a replacement key as online, accept stale remote settings or authorize
+physical work. The physical sorting lease uses the same connection
+fingerprint plus player UUID. Manager independently rejects signed calls
+made with a revoked agent credential and requires a fresh signed hello
+after key replacement.
+
+Agent unit tests cover rekey, retarget, wrong-server and blank-scope
+responses. Manager HTTP tests cover old-key revocation and fresh-key hello.
+These tests **do not** substitute for a real 6b6t inventory/portal E2E test.
+
 `POST /api/v1/stock/return-intake` records an Owner's return decision
 for a freshly verified root shulker in an ordinary visible chest or
 barrel. The browser sends `source`, `path`, `slotRevision`, `expectedDecisionRevision`, and an

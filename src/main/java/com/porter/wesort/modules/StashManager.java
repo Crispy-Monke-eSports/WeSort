@@ -497,7 +497,9 @@ public class StashManager extends Module {
     }
 
     private String sortingScope() {
-        return serverUrl.get() + "|" + Stash.currentServer() + "|" + (mc.player == null ? "" : mc.player.getUUID());
+        // A previously issued physical sorting lease cannot survive a Manager
+        // endpoint or API credential change, even for the same Minecraft player.
+        return linkScope() + "|" + (mc.player == null ? "" : mc.player.getUUID());
     }
 
     private boolean serviceSorting() {
@@ -1801,8 +1803,7 @@ public class StashManager extends Module {
                 || mc.level == null
                 || serverUrl.get().isBlank()
                 || apiKey.get().isBlank()) return "";
-        return serverUrl.get().trim() + "|" + Stash.currentServer() + "|"
-                + com.porter.wesort.data.ContainerIdentity.hash(apiKey.get().trim());
+        return com.porter.wesort.commands.ManagerLinkScope.of(serverUrl.get(), Stash.currentServer(), apiKey.get());
     }
 
     // Kit jobs were removed: the Manager no longer assigns kits. Local shulker-packing for orders is untouched.
@@ -1854,6 +1855,10 @@ public class StashManager extends Module {
 
         inFlight = true;
         int gen = generation;
+        // Capture the *request's* endpoint and signing credential, not whichever
+        // settings happen to be configured by the time its reply arrives.
+        String requestScope =
+                com.porter.wesort.commands.ManagerLinkScope.of(base.toString(), Stash.currentServer(), key);
 
         executor.execute(() -> {
             int code;
@@ -1901,6 +1906,15 @@ public class StashManager extends Module {
             mc.execute(() -> {
                 if (gen != generation) return;
                 inFlight = false;
+                if (!com.porter.wesort.commands.ManagerLinkScope.matches(requestScope, linkScope())) {
+                    // Even an authentic reply signed with the *old* key must not
+                    // verify a new connection, apply old control jobs or continue
+                    // physical work after a rekey, retarget or server switch.
+                    backoff = 0;
+                    nextAttemptAt = 0;
+                    controlRegistered = false;
+                    return;
+                }
 
                 if (isolated) {
                     // A signed control reply confirms Manager presence, even before the

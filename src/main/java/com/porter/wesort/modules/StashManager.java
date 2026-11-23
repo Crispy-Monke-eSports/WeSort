@@ -1410,7 +1410,12 @@ public class StashManager extends Module {
                 }
                 // If an old Manager terminated a failed order before rollback,
                 // finish the saved local cleanup rather than dropping its cargo.
-                if (!runner.holdsOrder() && !receipt.staged()) takeOrder(sorter, runner, body);
+                if (!receipt.staged()) {
+                    if (runner.holdsOrder()) {
+                        runner.cancel(id);
+                        sorter.orderTaken();
+                    } else takeOrder(sorter, runner, body);
+                }
                 return true;
             }
             if (!receipt.recovering()) return false;

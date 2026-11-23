@@ -428,6 +428,10 @@ final class OrderRunner {
      *         reconnect the plan waits for them, and nothing is rejected for what is not known yet.
      */
     String offer(Order o) {
+        return offer(o, false);
+    }
+
+    String offer(Order o, boolean managerRecovery) {
         if (order != null) return order.id.equals(o.id) ? null : "already working on another order";
         Stash stash = owner.stash();
         if (stash == null || mc.level == null) return "no stash is loaded";
@@ -471,8 +475,29 @@ final class OrderRunner {
         // A crashed rollback must not redo the original manufacturing/packing
         // plan. Restore only the exact staged receipts needed to reclaim items.
         Stash.ActiveOrder savedRecovery = stash.activeOrder;
-        if (savedRecovery != null && savedRecovery.id.equals(o.id) && savedRecovery.recoveryPending) {
+        if (savedRecovery != null && savedRecovery.id.equals(o.id)
+                && (savedRecovery.recoveryPending || managerRecovery)) {
+            if (managerRecovery) {
+                savedRecovery.recoveryPending = true;
+                savedRecovery.recoveryCancelled = true;
+                stash.markDirty();
+                stash.save();
+            }
             restoreRecovery(savedRecovery);
+            return null;
+        }
+        if (managerRecovery) {
+            // The Manager has fenced an interrupted order, but no local packing
+            // plan survived. Never reconstruct and restart the old plan from
+            // changed stock; reclaim only tracked carry inventory.
+            Stash.ActiveOrder recovering = new Stash.ActiveOrder();
+            recovering.id = o.id;
+            recovering.recoveryPending = true;
+            recovering.recoveryCancelled = true;
+            stash.activeOrder = recovering;
+            stash.markDirty();
+            stash.save();
+            restoreRecovery(recovering);
             return null;
         }
 

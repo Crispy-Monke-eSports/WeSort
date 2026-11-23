@@ -301,8 +301,8 @@ class StockHierarchyTest {
         var result = new JsonObject();
         result.addProperty("shulkers", 1);
         var uncertain = orders.status(order.id, "delivered", null, null, null, result, agent, "receipt-a");
-        assertEquals(OrderStage.NEEDS_RECONCILIATION, uncertain.stage());
-        assertEquals("needs_reconciliation", uncertain.status);
+        assertEquals(OrderStage.RECOVERING, uncertain.stage());
+        assertEquals("in_progress", uncertain.status);
         var restarted = new OrderStore(data, store);
         restarted.load();
         assertEquals(

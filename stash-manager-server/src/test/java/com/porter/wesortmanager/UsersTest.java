@@ -243,7 +243,8 @@ class UsersTest {
         assertEquals(200, get(persistedOwnerSession, "/api/v1/users").status);
         String untaggedOwner = sessions.create(Users.OWNER_ID);
         assertEquals(401, get(untaggedOwner, "/api/v1/users").status);
-        assertFalse(get(untaggedOwner, "/api/v1/auth/state").obj().get("loggedIn").getAsBoolean());
+        assertFalse(
+                get(untaggedOwner, "/api/v1/auth/state").obj().get("loggedIn").getAsBoolean());
         // The owner logs in with no username or with the owner's name.
         assertNotNull(owner());
         assertNotNull(login("owner", OWNER_PW));

@@ -131,7 +131,8 @@ class AuthTest {
         var store = new SessionStore(dir, () -> 1);
         String token = store.create();
         Path file = dir.resolve("sessions.json");
-        var rows = com.google.gson.JsonParser.parseString(Files.readString(file)).getAsJsonArray();
+        var rows =
+                com.google.gson.JsonParser.parseString(Files.readString(file)).getAsJsonArray();
         rows.add(new com.google.gson.JsonObject());
         Files.writeString(file, rows.toString());
 

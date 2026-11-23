@@ -199,7 +199,8 @@ final class SessionStore {
     synchronized int removeUser(String user, String keepToken) throws IOException {
         String keep = keepToken == null ? null : hash(keepToken);
         var next = new HashMap<>(sessions);
-        next.entrySet().removeIf(e -> e.getValue().user.equals(user) && !e.getKey().equals(keep));
+        next.entrySet()
+                .removeIf(e -> e.getValue().user.equals(user) && !e.getKey().equals(keep));
         int removed = sessions.size() - next.size();
         if (removed > 0) commit(next);
         return removed;

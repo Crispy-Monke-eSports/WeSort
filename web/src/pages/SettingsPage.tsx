@@ -30,7 +30,7 @@ import Typography from "@mui/material/Typography";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
-import { useAuth, useBots, useGuild, useKitTemplates, usePermissions, useQuotaMe, useServer, useStashDefs } from "../api/queries";
+import { useAuth, useBots, useGuild, useKitTemplates, usePermissions, useServer, useStashDefs } from "../api/queries";
 import { ConfirmDialog, PasswordDialog, useConfirm } from "../components/dialogs";
 import { botListOf, buildUserPerms, presetMatches, scopeDiff, stashListOf } from "../lib/userScopes";
 import type { KitTemplate, StashDef } from "../api/types";
@@ -45,7 +45,7 @@ const vecText = (v?: { x: number; y: number; z: number } | null) => (v ? `${v.x}
 
 /**
  * Settings: server, stash definitions (create/edit/delete with revision conflicts),
- * users & permissions, guild, security, connection and quotas. Owner-only writes.
+ * users & permissions, guild, security and connection. Owner-only writes.
  */
 export function SettingsPage() {
   const auth = useAuth();
@@ -923,7 +923,6 @@ function GuildSection() {
   const auth = useAuth();
   const perms = usePermissions(auth.data);
   const guild = useGuild(!!auth.data?.loggedIn);
-  const quotaMe = useQuotaMe(!!auth.data?.loggedIn && perms.can("view"));
   const [name, setName] = useState("");
   const [msg, setMsg] = useState<{ severity: "success" | "error"; text: string } | null>(null);
 
@@ -950,17 +949,6 @@ function GuildSection() {
         <Typography color="text.secondary">Only the owner can change guild settings.</Typography>
       )}
       {msg && <Alert severity={msg.severity} onClose={() => setMsg(null)}>{msg.text}</Alert>}
-      {quotaMe.data && Object.keys((quotaMe.data as any).usage ?? {}).length > 0 && (
-        <>
-          <Divider />
-          <Typography variant="h6" component="h2">Your withdrawal usage</Typography>
-          <Stack spacing={0.5}>
-            {Object.entries((quotaMe.data as any).usage).map(([k, v]) => (
-              <Typography key={k} variant="caption" sx={{ fontFamily: "monospace" }}>{k}: {JSON.stringify(v)}</Typography>
-            ))}
-          </Stack>
-        </>
-      )}
     </Stack>
   );
 }

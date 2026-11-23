@@ -334,9 +334,7 @@ class AgentScopeTest {
         String owner = login(null, OWNER_PW);
         setServer(owner, "s");
         defineStash(owner, "a");
-        StockFixtures.put(
-                store,
-                JsonParser.parseString("""
+        StockFixtures.put(store, JsonParser.parseString("""
                     {"version":1,"server":"s","stash":"a","items":[
                       {"key":"minecraft:diamond","id":"minecraft:diamond","count":64,"maxStack":64}]}
                     """).getAsJsonObject());

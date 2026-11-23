@@ -94,7 +94,8 @@ final class StockLedger {
                     s.execute("CREATE INDEX IF NOT EXISTS box_uuid_history_uuid ON box_uuid_history(uuid)");
                     s.execute(
                             "CREATE TABLE IF NOT EXISTS signed_request_nonces(nonce TEXT PRIMARY KEY,expires_at INTEGER NOT NULL)");
-                    s.execute("CREATE INDEX IF NOT EXISTS signed_request_nonces_expiry ON signed_request_nonces(expires_at)");
+                    s.execute(
+                            "CREATE INDEX IF NOT EXISTS signed_request_nonces_expiry ON signed_request_nonces(expires_at)");
                     s.execute(
                             "CREATE TABLE IF NOT EXISTS box_jobs(id TEXT PRIMARY KEY,server TEXT NOT NULL,stash TEXT NOT NULL,state TEXT NOT NULL,agent TEXT NOT NULL,token TEXT,deadline INTEGER NOT NULL,payload TEXT NOT NULL)");
                     s.execute(

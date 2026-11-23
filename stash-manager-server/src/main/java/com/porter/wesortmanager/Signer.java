@@ -127,9 +127,7 @@ final class Signer {
         if (match < 0) return -1;
         if (durableNonces != null) {
             try {
-                return durableNonces.claimSignedNonce(a.nonce(), now, now + NONCE_TTL_MS, MAX_NONCES)
-                        ? match
-                        : -1;
+                return durableNonces.claimSignedNonce(a.nonce(), now, now + NONCE_TTL_MS, MAX_NONCES) ? match : -1;
             } catch (java.sql.SQLException failed) {
                 // No authenticated mutation may proceed if its nonce cannot be committed.
                 System.err.println("Signed request rejected: nonce persistence unavailable");

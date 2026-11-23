@@ -30,18 +30,53 @@ public final class InteractionPermits {
     private record Key(long pos, Operation op) {}
 
     private final Map<Key, Permit> permits = new LinkedHashMap<>();
+    private Object world, player, connection;
+    private String job;
+
+    /**
+     * Bind the whole permit set to a live client world, player, connection and job.
+     * Object identity is intentional: a new connection/respawn at identical coordinates
+     * must never restore an authorization from the old one.
+     */
+    public synchronized boolean scope(Object world, Object player, Object connection, String job) {
+        boolean changed = this.world != world
+                || this.player != player
+                || this.connection != connection
+                || !Objects.equals(this.job, job);
+        if (changed) {
+            permits.clear();
+            this.world = world;
+            this.player = player;
+            this.connection = connection;
+            this.job = job;
+        }
+        return changed;
+    }
+
+    public synchronized void clear() {
+        permits.clear();
+        world = player = connection = null;
+        job = null;
+    }
 
     /**
      * Issues a permit and returns a scope that revokes it on close. Permits also expire, so a leaked
      * scope can never authorize forever; a restart clears everything (in-memory only).
      */
-    public AutoCloseable permit(long pos, Operation op, String expectedBlock, String job, long ttlMs, long now) {
+    public synchronized AutoCloseable permit(long pos, Operation op, String expectedBlock, String job, long ttlMs, long now) {
         String block = expectedBlock == null ? "" : expectedBlock;
         String owner = job == null || job.isEmpty() ? "unknown" : job;
         long expiresAt = now + Math.max(1, ttlMs);
         Key key = new Key(pos, op);
-        permits.put(key, new Permit(pos, op, block, owner, expiresAt));
-        return () -> permits.remove(key);
+        var issued = new Permit(pos, op, block, owner, expiresAt);
+        permits.put(key, issued);
+        return () -> revoke(key, issued);
+    }
+
+    private synchronized void revoke(Key key, Permit issued) {
+        // Closing an old rotation-deferred scope must not revoke a newer
+        // permit for the same cell (even one with identical field values).
+        if (permits.get(key) == issued) permits.remove(key);
     }
 
     /**
@@ -49,7 +84,7 @@ public final class InteractionPermits {
      * whose authorizing job is exactly the job asking now. Expired permits are
      * pruned on read. The job is a verified boundary, not metadata: a permit for
      * job A never authorizes job B, a job change or abort invalidates every
-     * permit of the old job at once, and "unknown" never authorizes anything.
+     * permit of the old job at once through scope(), and "unknown" never authorizes anything.
      *
      * <p>Permits are deliberately NOT consumed on first approval. One logical
      * action is checked up to three times (mixin entry, packet gate,
@@ -59,7 +94,7 @@ public final class InteractionPermits {
      * re-activation by the same live job is idempotent, and the permit expires
      * within seconds, lives only in memory and is replaced on reissue.
      */
-    public boolean allows(long now, long pos, Operation op, String actualBlock, String job) {
+    public synchronized boolean allows(long now, long pos, Operation op, String actualBlock, String job) {
         prune(now);
         Permit p = permits.get(new Key(pos, op));
         if (p == null || now >= p.expiresAt()) return false;
@@ -70,20 +105,20 @@ public final class InteractionPermits {
     }
 
     /** The authorizing job of the live permit, or null when there is none (for deny audit). */
-    public String jobOf(long now, long pos, Operation op) {
+    public synchronized String jobOf(long now, long pos, Operation op) {
         prune(now);
         Permit p = permits.get(new Key(pos, op));
         return p == null || now >= p.expiresAt() ? null : p.job();
     }
 
     /** The expected block of the live permit, or null when there is none (for deny audit). */
-    public String expected(long now, long pos, Operation op) {
+    public synchronized String expected(long now, long pos, Operation op) {
         prune(now);
         Permit p = permits.get(new Key(pos, op));
         return p == null || now >= p.expiresAt() ? null : p.expectedBlock();
     }
 
-    public int live(long now) {
+    public synchronized int live(long now) {
         prune(now);
         return permits.size();
     }

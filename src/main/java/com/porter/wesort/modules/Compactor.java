@@ -334,12 +334,7 @@ final class Compactor {
      * whose sign is changing.
      */
     private boolean source(Box b) {
-        return b.sortable()
-                && !b.stale
-                && !b.dropOff
-                && !b.noCompact
-                && !owner.isKitBox(b)
-                && !b.protectedStorage;
+        return b.sortable() && !b.stale && !b.dropOff && !b.noCompact && !owner.isKitBox(b) && !b.protectedStorage;
     }
 
     /**
@@ -620,15 +615,11 @@ final class Compactor {
     private Found findEmptyShulker() {
         Found best = null;
         for (Box box : owner.stash().boxes) {
-            if (!box.sortable()
-                    || box.stale
-                    || box.noCompact
-                    || owner.fetchBlocked(box)
-                    || owner.isKitBox(box)) continue;
+            if (!box.sortable() || box.stale || box.noCompact || owner.fetchBlocked(box) || owner.isKitBox(box))
+                continue;
             for (int i = 0; i < box.contents.length; i++) {
                 if (!emptyShulker(box.contents[i])) continue;
-                if (best == null
-                        || owner.closer(box, best.box())) {
+                if (best == null || owner.closer(box, best.box())) {
                     best = new Found(box, i);
                 }
                 break;

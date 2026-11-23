@@ -102,5 +102,4 @@ public final class StashWatch {
         }
         return open;
     }
-
 }

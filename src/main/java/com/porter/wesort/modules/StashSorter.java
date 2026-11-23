@@ -12,7 +12,6 @@ import com.porter.wesort.stash.Categories;
 import com.porter.wesort.stash.DeliveryBook;
 import com.porter.wesort.stash.DeliveryRoom;
 import com.porter.wesort.stash.ItemPreviewScreen;
-import com.porter.wesort.stash.Kit;
 import com.porter.wesort.stash.Kits;
 import com.porter.wesort.stash.PlacedShulkerRecovery;
 import com.porter.wesort.stash.StackInfo;
@@ -46,7 +45,6 @@ import java.util.regex.Pattern;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.entity.player.InteractBlockEvent;
 import meteordevelopment.meteorclient.events.game.GameLeftEvent;
-import meteordevelopment.meteorclient.events.game.OpenScreenEvent;
 import meteordevelopment.meteorclient.events.game.ReceiveMessageEvent;
 import meteordevelopment.meteorclient.events.packets.PacketEvent;
 import meteordevelopment.meteorclient.events.render.Render3DEvent;
@@ -1700,9 +1698,8 @@ public class StashSorter extends Module {
         if (!user) return;
 
         int added = addNearbyBoxes();
-                for (Box box : stash.boxes) {
+        for (Box box : stash.boxes) {
             box.unreachable = false;
-
         }
         // Everything given up on or unexplored before gets another try
         forgetExploration();
@@ -1727,10 +1724,7 @@ public class StashSorter extends Module {
             info("New stash \"%s\": scanning %d containers, then sorting.", stash.name, stash.boxes.size());
         else if (unknown > 0)
             info("Stash \"%s\": %d containers, scanning %d new ones first.", stash.name, stash.boxes.size(), unknown);
-        else
-            info(
-                    "Stash \"%s\": %d containers, sorting by %s.",
-                    stash.name, stash.boxes.size(), "tier");
+        else info("Stash \"%s\": %d containers, sorting by %s.", stash.name, stash.boxes.size(), "tier");
 
         // What is going to happen, and in what order
         List<String> plan = new ArrayList<>();
@@ -2861,8 +2855,7 @@ public class StashSorter extends Module {
     private Box nearestTakeSource() {
         if (freeCarrySlot() == -1) return null;
         return nearest(stash.boxes.stream()
-                .filter(b ->
-                        b.sortable() && !b.stale && !blocked(b, Job.Take) && takeableSlot(b) != -1)
+                .filter(b -> b.sortable() && !b.stale && !blocked(b, Job.Take) && takeableSlot(b) != -1)
                 .toList());
     }
 
@@ -3079,8 +3072,7 @@ public class StashSorter extends Module {
             Box best = null;
             int bestSlot = -1;
             for (Box box : stash.boxes) {
-                if (!box.sortable() || box.stale || blocked(box, Job.Fetch) || isKitBox(box))
-                    continue;
+                if (!box.sortable() || box.stale || blocked(box, Job.Fetch) || isKitBox(box)) continue;
                 for (int i = 0; i < box.contents.length; i++) {
                     if (!strays(box.contents[i]).isEmpty() && (best == null || closer(box, best))) {
                         best = box;
@@ -3171,7 +3163,6 @@ public class StashSorter extends Module {
             if (!fullBundle(stack)
                     || kitBuilder.holds(slot)
                     || kitBuilder.material(stack)
-                    
                     || setAside.contains(slot)
                     || ticks < unbundleBlocked.getOrDefault(slot, -1)) continue;
 
@@ -5939,7 +5930,6 @@ public class StashSorter extends Module {
                     || crafter.holds(slot)
                     || crafter.reserved(slot)
                     || slot == anvilSlot
-                    
                     || stuckCarried.containsKey(slot)) continue;
             String uuid = uuidOf(stack);
             // The box fetched for renaming, even mid-scan: it still needs its new name
@@ -7114,11 +7104,7 @@ public class StashSorter extends Module {
         for (BlockPos pos : positions) {
             if (pos == null) continue;
             Box box = stash.boxAt(pos);
-            if (box == null
-                    || box.excluded
-                    || box.foreign
-                    || box.unreachable
-                    || failedSurvey.contains(box)) continue;
+            if (box == null || box.excluded || box.foreign || box.unreachable || failedSurvey.contains(box)) continue;
             if (!box.stale) {
                 box.stale = true;
                 marked++;
@@ -7224,11 +7210,8 @@ public class StashSorter extends Module {
                 Box from = null;
                 int fromSlot = -1;
                 for (Box box : stash.boxes) {
-                    if (!box.sortable()
-                            || box.stale
-                            || box.dropOff
-                            || blocked(box, Job.Fetch)
-                            || isKitBox(box)) continue;
+                    if (!box.sortable() || box.stale || box.dropOff || blocked(box, Job.Fetch) || isKitBox(box))
+                        continue;
                     for (int i = 0; i < box.contents.length; i++) {
                         ItemStack s = box.contents[i];
                         boolean usable = bulkWithRoom(s, key) || (startNew && emptyShulker(s));
@@ -7978,8 +7961,7 @@ public class StashSorter extends Module {
 
         for (int i = 0; i < 27; i++) {
             ItemStack s = menu.getSlot(i).getItem();
-            if (s.isEmpty()
-                    || (!fullBundle(s) && s.is(mainItem))) continue;
+            if (s.isEmpty() || (!fullBundle(s) && s.is(mainItem))) continue;
             stashHeld.put(into, s.copy());
             InvUtils.move().fromId(i).toId(inventoryToMenu(into, 27));
             moved++;
@@ -8651,11 +8633,7 @@ public class StashSorter extends Module {
     private List<Box> staleBoxes() {
         if (stash == null) return List.of();
         return stash.boxes.stream()
-                .filter(b -> b.stale
-                        && !b.excluded
-                        && !b.foreign
-                        && !b.unreachable
-                        && !failedSurvey.contains(b))
+                .filter(b -> b.stale && !b.excluded && !b.foreign && !b.unreachable && !failedSurvey.contains(b))
                 .toList();
     }
 
@@ -9603,16 +9581,13 @@ public class StashSorter extends Module {
                         List<Box> homes =
                                 destinationsFor(mc.player.getInventory().getItem(slot));
                         if (homes.contains(box) || next == Job.Dump) n++;
-                        for (Box other : homes)
-                            if (other != box && !blocked(other, Job.Deposit)) others.add(other);
+                        for (Box other : homes) if (other != box && !blocked(other, Job.Deposit)) others.add(other);
                     }
                     Box source = next == Job.Dump
                             ? null
                             : nearest(stash.boxes.stream()
-                                    .filter(b -> b.sortable()
-                                            && !blocked(b, Job.Take)
-                                            && b != box
-                                            && takeableSlot(b) != -1)
+                                    .filter(b ->
+                                            b.sortable() && !blocked(b, Job.Take) && b != box && takeableSlot(b) != -1)
                                     .toList());
                     String after = others.isEmpty() ? "" : others.size() + " more stops, then ";
                     step(String.format(
@@ -9717,8 +9692,7 @@ public class StashSorter extends Module {
         }
 
         // Going back and forth between containers while the backlog doesn't shrink: given up on, however each job looks
-        boolean circle =
-                jobCounted && visits >= 4 && job != Job.Survey && target != null && !target.unreachable;
+        boolean circle = jobCounted && visits >= 4 && job != Job.Survey && target != null && !target.unreachable;
         if (circle) {
             circular.add(target);
             stalled.add(target);
@@ -10719,8 +10693,7 @@ public class StashSorter extends Module {
     /** Free slots in non-protected ordinary containers. */
     private int spareRoom(Box except) {
         int free = 0;
-        for (Box box : stash.boxes)
-            if (box != except && takesAnything(box)) free += box.free();
+        for (Box box : stash.boxes) if (box != except && takesAnything(box)) free += box.free();
         return free - carriedSlots().size();
     }
 
@@ -10730,8 +10703,7 @@ public class StashSorter extends Module {
      */
     private boolean canPlace(ItemStack stack) {
         for (Box box : destinationsFor(stack)) {
-            if (!blocked(box, Job.Deposit) && (roomFor(box, stack) || misplacedCount(box) > 0))
-                return true;
+            if (!blocked(box, Job.Deposit) && (roomFor(box, stack) || misplacedCount(box) > 0)) return true;
         }
         return spareBox() != null;
     }
@@ -10739,16 +10711,13 @@ public class StashSorter extends Module {
     /** Choose a spare container by free capacity, independent of sign text. */
     private Box spareBox() {
         List<Box> candidates = stash.boxes.stream().filter(this::takesAnything).toList();
-        Box used = nearest(candidates.stream().filter(b -> b.free() < b.contents.length).toList());
+        Box used = nearest(
+                candidates.stream().filter(b -> b.free() < b.contents.length).toList());
         return used != null ? used : nearest(candidates);
     }
 
     private boolean takesAnything(Box box) {
-        return box.sortable()
-                && !box.dropOff
-                && box.free() > 0
-                && !blocked(box, Job.Dump)
-                && !isKitBox(box);
+        return box.sortable() && !box.dropOff && box.free() > 0 && !blocked(box, Job.Dump) && !isKitBox(box);
     }
 
     /**
@@ -11531,7 +11500,7 @@ public class StashSorter extends Module {
         if (stash != null) {
             for (Box box : stash.boxes) {
                 box.unreachable = false;
-                }
+            }
         }
     }
 
@@ -12020,7 +11989,7 @@ public class StashSorter extends Module {
             returnGaveUp.clear();
             returnWarned.clear();
             stashHeld.clear();
-                        compactor.reset();
+            compactor.reset();
             swapBackFrom = swapBackTo = -1;
             hotbarDisplaced = ItemStack.EMPTY;
             stashWatch.clear();
@@ -12269,7 +12238,6 @@ public class StashSorter extends Module {
         if (clock % LID_POLL_TICKS == 0 && !stash.deliveryStorage.isEmpty()) {
             deliveryWatch.tickLids(stash, clock, 20L * 5, this::openedByUs, this::deliveryTouched);
         }
-
     }
 
     /**

@@ -207,7 +207,6 @@ export function OperationsPage() {
           </CardContent>
         </Card>
       )}
-      {confirm.dialog}
     </Stack>
   );
 }

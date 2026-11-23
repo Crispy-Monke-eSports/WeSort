@@ -1,6 +1,7 @@
 package com.porter.wesortmanager;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.gson.JsonArray;
@@ -502,6 +503,10 @@ class AgentScopeTest {
                                 "{\"botId\":\"00000000-0000-4000-8000-000000000000\",\"controlSession\":\""
                                         + "1".repeat(64) + "\"}")
                         .status);
+        // Only one active named credential is allowed. Revoke the old bot
+        // before issuing a fresh key that has no registered session.
+        assertThrows(IllegalArgumentException.class, () -> credentials.issue("spare"));
+        assertTrue(credentials.revoke(agentA));
         // A valid unused key still cannot poll an unregistered bot session (409).
         String freshToken = credentials.issue("spare");
         String freshId = freshToken.substring(0, freshToken.indexOf('.'));

@@ -237,6 +237,21 @@ scoped-only mode and revocations persist in the Manager volume. Names
 are display-only and are not persisted as credential ownership.
 Provisioning returns each secret once through the local CLI.
 
+### One active named agent credential
+
+The 6b6t Manager admits **at most one active named key slot**. Issuing a
+replacement requires revoking the previous slot first. A persisted
+credential file with more than one active key fails startup instead of
+silently choosing an agent. Failed persistence must not issue an in-memory
+key or retire a previously valid key. Revocation invalidates cached bot
+presence only after durable credential persistence succeeds.
+
+This is a **provisioning constraint**, not yet the complete single-agent
+execution fence: the earlier shared signing-key path still exists until
+the signed named-agent client/bootstrap and existing integration tests
+are migrated. A subsequent change must eliminate that fallback before
+claiming exclusive single-agent authentication.
+
 `POST /api/v1/stock/return-intake` records an Owner's return decision
 for a freshly verified root shulker in an ordinary visible chest or
 barrel. The browser sends `source`, `path`, `slotRevision`, `expectedDecisionRevision`, and an

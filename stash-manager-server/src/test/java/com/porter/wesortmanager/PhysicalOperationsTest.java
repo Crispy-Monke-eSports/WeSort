@@ -157,7 +157,7 @@ class PhysicalOperationsTest {
                 () -> store.inspect(id, 1, record.get("checksum").getAsString(), "owner"));
         clock.addAndGet(15_000);
         assertEquals(
-                "NEEDS_RECONCILIATION",
+                "RECOVERING",
                 store.list().get(0).getAsJsonObject().get("managerState").getAsString());
         journal.verified(frame("after"), false);
         journal.complete();

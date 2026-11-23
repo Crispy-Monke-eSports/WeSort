@@ -29,11 +29,39 @@ async function main() {
     const page = await context.newPage();
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(url);
+    await assertBrand(page, "login-brand", "/wesort-lockup.svg", false);
+    assert.equal(
+      await page.getByTestId("header-brand").count(),
+      0,
+      "Login must use only the stacked mark",
+    );
     await page.locator("#auth-username").fill(username);
     await page.locator("#auth-password").fill(password);
     await page.locator("#auth-submit").click();
     await page.waitForURL(/\/overview/, { timeout: 20000 });
+    await assertBrand(page, "header-brand", "/wesort-horizontal.svg", true);
+    assert.equal(await page.getByTestId("login-brand").count(), 0);
     return page;
+  }
+  async function assertBrand(page, testId, source, horizontal) {
+    const mark = page.getByTestId(testId);
+    await mark.waitFor({ state: "visible" });
+    assert.equal(await mark.getAttribute("src"), source);
+    assert.equal(await mark.getAttribute("alt"), "WeSort");
+    await page.waitForFunction((id) => {
+      const img = document.querySelector('[data-testid="' + id + '"]');
+      return img?.complete && img.naturalWidth > 0;
+    }, testId);
+    const box = await mark.boundingBox();
+    assert.ok(
+      box &&
+        (horizontal ? box.width / box.height > 2 : box.width / box.height < 1.3),
+      "Brand orientation does not match " + testId,
+    );
+    assert.ok(
+      box.x >= 0 && box.x + box.width <= (page.viewportSize()?.width ?? 1280),
+      "Brand overflows viewport",
+    );
   }
   async function inventorySearch(page, text) {
     const openNavigation = page.getByRole("button", {

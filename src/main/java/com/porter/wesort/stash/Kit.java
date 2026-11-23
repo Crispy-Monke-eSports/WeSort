@@ -262,16 +262,6 @@ public final class Kit {
 
     // Naming
 
-    /**
-     * A sign line naming this kit's chest: the kit's name, or the name with "kit" or "kits" after it.
-     */
-    public boolean labelMatches(String label) {
-        String line = com.porter.wesort.data.KitTemplate.nameKey(label);
-        String mine = com.porter.wesort.data.KitTemplate.nameKey(name);
-        if (line.isEmpty() || mine.isEmpty()) return false;
-        return line.equals(mine) || line.equals(mine + " kit") || line.equals(mine + " kits");
-    }
-
     public boolean sameName(String other) {
         return com.porter.wesort.data.KitTemplate.nameKey(name)
                 .equals(com.porter.wesort.data.KitTemplate.nameKey(other));

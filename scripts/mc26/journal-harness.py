@@ -214,8 +214,15 @@ class JournalHarness(repack.RepackHarness):
             if fenced['physicalJournal'] == 'AUTO_RECOVERING':
                 require(fenced['journalBlocked'],
                         'Unverified physical recovery lost its journal fence: ' + json.dumps(fenced_detail))
-            require(fenced['sortingPermitted'] is False,
-                    'Sorter re-armed despite the isolated recovery hold: ' + json.dumps(fenced_detail))
+            # After verified READY the idle sorter can report that no lease
+            # is required; only an unresolved journal must deny permits.
+            if fenced['physicalJournal'] != 'READY':
+                require(fenced['sortingPermitted'] is False,
+                        'Unverified recovery exposed a sorting permit: ' + json.dumps(fenced_detail))
+            else:
+                require(not fenced['journalBlocked'] and not fenced['sorterActive'],
+                        'Verified recovery unexpectedly restarted physical sorting: '
+                        + json.dumps(fenced_detail))
             require(fenced['attemptedClicks'] == 0,
                     'Client replayed an inventory click: ' + json.dumps(fenced_detail))
             after = self.snapshot_after_restart(row)
@@ -225,12 +232,18 @@ class JournalHarness(repack.RepackHarness):
             self.require_same_world(after, self.snapshot_after_restart(row))
             soaked = self.command('state')['state']
             soaked_detail = self.record_fence_state('after-soak', soaked)
-            require(soaked['sortingPermitted'] is False,
-                    'Sorting was re-authorized during the isolated recovery hold: '
-                    + json.dumps(soaked_detail))
-            if soaked['physicalJournal'] == 'AUTO_RECOVERING':
-                require(soaked['journalBlocked'],
-                        'Unverified recovery lost its fence during soak: ' + json.dumps(soaked_detail))
+            if soaked['physicalJournal'] == 'READY':
+                require(not soaked['journalBlocked'] and not soaked['sorterActive'],
+                        'Recovered journal restarted physical sorting during soak: '
+                        + json.dumps(soaked_detail))
+            else:
+                require(soaked['sortingPermitted'] is False,
+                        'Unverified recovery was re-authorized during soak: '
+                        + json.dumps(soaked_detail))
+                if soaked['physicalJournal'] == 'AUTO_RECOVERING':
+                    require(soaked['journalBlocked'],
+                            'Unverified recovery lost its fence during soak: '
+                            + json.dumps(soaked_detail))
             require(soaked['attemptedClicks'] == 0,
                     'Client replayed an inventory click: ' + json.dumps(soaked_detail))
             require(self.totals(before) == self.totals(after), 'Crash changed authoritative recursive totals or metadata')

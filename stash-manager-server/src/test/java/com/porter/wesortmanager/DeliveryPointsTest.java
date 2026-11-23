@@ -16,8 +16,8 @@ class DeliveryPointsTest {
 
     private final Users.Principal owner = new Users.Principal("owner", "Owner", true, Users.Perms.ALL, false);
     private final Users.Principal member =
-            new Users.Principal("u-1", "alice", false, Users.PRESETS.get("member"), false);
-    private final Users.Principal other = new Users.Principal("u-2", "bob", false, Users.PRESETS.get("member"), false);
+            new Users.Principal("u-111111111111", "alice", false, Users.PRESETS.get("member"), false);
+    private final Users.Principal other = new Users.Principal("u-222222222222", "bob", false, Users.PRESETS.get("member"), false);
 
     private static JsonObject body(Object... kv) {
         var o = new JsonObject();
@@ -95,8 +95,8 @@ class DeliveryPointsTest {
     @Test
     void selectableHidesInternalAndOtherMembersPoints() throws Exception {
         var points = new DeliveryPoints(data);
-        points.create(verified("2b2t.org", "MEMBER", "u-1"), "owner"); // alice's own
-        points.create(verified("2b2t.org", "MEMBER", "u-2"), "owner"); // bob's
+        points.create(verified("2b2t.org", "MEMBER", "u-111111111111"), "owner"); // alice's own
+        points.create(verified("2b2t.org", "MEMBER", "u-222222222222"), "owner"); // bob's
         points.create(verified("2b2t.org", "PROJECT", null), "owner");
         points.create(verified("2b2t.org", "INTERNAL", null), "owner"); // secret stash
         points.create(
@@ -129,7 +129,29 @@ class DeliveryPointsTest {
             assertNotEquals("INTERNAL", o.get("access").getAsString());
             assertFalse(o.has("x") || o.has("z") || o.has("dimension"), o.toString());
         }
-        assertFalse(forAlice.toString().contains("bob") || forAlice.toString().contains("u-2"), forAlice.toString());
+        assertFalse(forAlice.toString().contains("bob") || forAlice.toString().contains("u-222222222222"), forAlice.toString());
+    }
+
+    @Test
+    void recycledDisplayNameNeverInheritsAnotherMembersDestination() throws Exception {
+        var points = new DeliveryPoints(data);
+        var p = points.create(verified("2b2t.org", "MEMBER", member.id()), "owner");
+        var renamed = new Users.Principal(member.id(), "new-name", false, member.perms(), false);
+        var recycled = new Users.Principal(other.id(), member.name(), false, member.perms(), false);
+        assertEquals(p.id(), points.selectable(renamed).get(0).getAsJsonObject().get("id").getAsString());
+        assertEquals(0, points.selectable(recycled).size());
+        assertThrows(IllegalArgumentException.class,
+                () -> points.create(verified("2b2t.org", "MEMBER", member.name()), "owner"));
+    }
+
+    @Test
+    void changedVerifiedPointBecomesUnselectableAndPersists() throws Exception {
+        var points = new DeliveryPoints(data);
+        var p = points.create(verified("2b2t.org", "PROJECT", null), "owner");
+        var moved = points.update(p.id(), body("x", 11, "status", "VERIFIED"), p.revision(), "owner");
+        assertEquals(DeliveryPoint.Status.PENDING, moved.status());
+        assertEquals(0, points.selectable(owner).size());
+        assertEquals(0, new DeliveryPoints(data).selectable(owner).size());
     }
 
     @Test

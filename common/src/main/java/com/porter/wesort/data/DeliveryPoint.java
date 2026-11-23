@@ -67,7 +67,7 @@ public record DeliveryPoint(
                 integer(o, "z"),
                 enumerated(o, "type", Type.class),
                 enumerated(o, "access", Access.class),
-                member(o),
+                memberId(o),
                 o.has("status") ? enumerated(o, "status", Status.class) : Status.PENDING,
                 1);
     }
@@ -91,7 +91,7 @@ public record DeliveryPoint(
 
     /** An optimistic update: present fields replace the current value and the revision increments. */
     public DeliveryPoint updated(JsonObject request) {
-        return new DeliveryPoint(
+        var proposed = new DeliveryPoint(
                 id,
                 request.has("server") ? str(request, "server") : server,
                 request.has("dimension") ? str(request, "dimension") : dimension,
@@ -100,9 +100,32 @@ public record DeliveryPoint(
                 request.has("z") ? integer(request, "z") : z,
                 request.has("type") ? enumerated(request, "type", Type.class) : type,
                 request.has("access") ? enumerated(request, "access", Access.class) : access,
-                request.has("member") ? member(request) : member,
+                request.has("member") ? memberId(request) : member,
                 request.has("status") ? enumerated(request, "status", Status.class) : status,
                 Math.addExact(revision, 1));
+        boolean changed = !server.equals(proposed.server())
+                || !dimension.equals(proposed.dimension())
+                || x != proposed.x()
+                || y != proposed.y()
+                || z != proposed.z()
+                || type != proposed.type()
+                || access != proposed.access()
+                || !java.util.Objects.equals(member, proposed.member());
+        if (!changed || proposed.status() != Status.VERIFIED) return proposed;
+        // Verification describes a particular physical target and recipient scope.
+        // Do not carry it forward even if the update explicitly submits VERIFIED.
+        return new DeliveryPoint(
+                id,
+                proposed.server(),
+                proposed.dimension(),
+                proposed.x(),
+                proposed.y(),
+                proposed.z(),
+                proposed.type(),
+                proposed.access(),
+                proposed.member(),
+                Status.PENDING,
+                proposed.revision());
     }
 
     public JsonObject json() {
@@ -142,7 +165,11 @@ public record DeliveryPoint(
         var e = o.get(field);
         if (e == null || !e.isJsonPrimitive() || !e.getAsJsonPrimitive().isNumber())
             throw new IllegalArgumentException(field + " is required");
-        return e.getAsInt();
+        try {
+            return e.getAsBigDecimal().intValueExact();
+        } catch (ArithmeticException | NumberFormatException invalid) {
+            throw new IllegalArgumentException(field + " must be an exact integer");
+        }
     }
 
     private static <T extends Enum<T>> T enumerated(JsonObject o, String field, Class<T> type) {
@@ -153,8 +180,12 @@ public record DeliveryPoint(
         }
     }
 
-    private static String member(JsonObject o) {
+    private static String memberId(JsonObject o) {
         var e = o.get("member");
-        return e == null || e.isJsonNull() ? null : e.getAsString();
+        if (e == null || e.isJsonNull()) return null;
+        if (!e.isJsonPrimitive() || !e.getAsJsonPrimitive().isString()
+                || !e.getAsString().matches("u-[0-9a-f]{12}"))
+            throw new IllegalArgumentException("member must be an immutable Member account ID");
+        return e.getAsString();
     }
 }

@@ -137,9 +137,8 @@ final class DeliveryPoints {
                 continue;
             }
             if (point.access() == DeliveryPoint.Access.INTERNAL) continue;
-            if (point.access() == DeliveryPoint.Access.MEMBER
-                    && !point.member().equals(p.id())
-                    && !point.member().equalsIgnoreCase(p.name())) continue;
+            // Display names are mutable and can be reused by a different account.
+            if (point.access() == DeliveryPoint.Access.MEMBER && !point.member().equals(p.id())) continue;
             out.add(point.jsonRedacted());
         }
         return out;

@@ -1321,10 +1321,13 @@ public class StashManager extends Module {
                             // package receipts and return every staged item.
                             if (code == 200 && report.status().equals("delivered")) {
                                 try {
-                                    JsonObject accepted = JsonParser.parseString(body).getAsJsonObject();
+                                    JsonObject accepted =
+                                            JsonParser.parseString(body).getAsJsonObject();
                                     if (accepted.has("order")
-                                            && "RECOVERING".equals(accepted.getAsJsonObject("order")
-                                                    .get("state").getAsString())) {
+                                            && "RECOVERING"
+                                                    .equals(accepted.getAsJsonObject("order")
+                                                            .get("state")
+                                                            .getAsString())) {
                                         runner.rollbackUnverifiedDelivery(report.id());
                                         lastStatusSig = "";
                                         return true;

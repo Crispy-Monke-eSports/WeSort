@@ -143,6 +143,8 @@ def agent(network, key, path, body=None, **options):
     return json.loads(run(command, input=payload).stdout)
 
 
+source_commit = run(["git", "rev-parse", "HEAD"]).stdout.strip()
+dirty_worktree = bool(run(["git", "status", "--porcelain"]).stdout.strip())
 container = None
 try:
     run(compose + ["up", "-d", "--no-build"])
@@ -414,6 +416,9 @@ try:
                 + completed.stderr.replace(password, "<test password>")
             )
         ok(
+            "Chromium: inventory with a decoded Minecraft 26.3 icon and working order dialog at 390×844, 768×1024, 1440×900 and 1920×1080"
+        )
+        ok(
             "Chromium: two members log in, search shared stock, browse the stash, reserve stock and see private order histories"
         )
         ok(
@@ -602,6 +607,9 @@ try:
         )
     report = {
         "image": args.image,
+        "image_id": info["Image"],
+        "source_commit": source_commit,
+        "dirty_worktree": dirty_worktree,
         "platform": "linux/amd64",
         "checks": checks,
         "result": "PASS",

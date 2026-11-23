@@ -14,8 +14,8 @@ async function main() {
   const browser = await chromium.launch({ executablePath: process.env.WESORT_CHROMIUM || undefined });
   const errors = [];
   const external = [];
-  async function login(username) {
-    const context = await browser.newContext();
+  async function login(username, viewport) {
+    const context = await browser.newContext({ viewport });
     await context.route('**/*', route => {
       if (new URL(route.request().url()).origin === url) return route.continue();
       external.push(new URL(route.request().url()).origin);
@@ -31,7 +31,9 @@ async function main() {
     return page;
   }
   async function inventorySearch(page, text) {
-    await page.getByRole('navigation').getByRole('link', { name: 'Inventory', exact: true }).click();
+    const openNavigation = page.getByRole('button', { name: 'Open navigation' });
+    if (await openNavigation.isVisible()) await openNavigation.click();
+    await page.locator('.MuiDrawer-paper').getByRole('link', { name: 'Inventory', exact: true }).click();
     await expectHeading(page, 'Inventory');
     await page.getByLabel('Search items').first().fill(text);
   }
@@ -39,6 +41,26 @@ async function main() {
     await page.getByRole('heading', { name }).first().waitFor({ timeout: 10000 });
   }
   try {
+    for (const [width, height] of [[390, 844], [768, 1024], [1440, 900], [1920, 1080]]) {
+      const page = await login(members[0], { width, height });
+      try {
+        await inventorySearch(page, 'diamond');
+        await page.waitForFunction(() => {
+          const icon = document.querySelector('[data-testid="item-grid"] img[src^="/icon/minecraft/diamond.png"]');
+          return icon?.complete && icon.naturalWidth > 0;
+        });
+        assert.ok(
+          await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+          `Inventory overflows the ${width}×${height} viewport`,
+        );
+        await page.getByTestId('item-grid').locator('.MuiCard-root').first()
+          .getByRole('button', { name: 'Add' }).click();
+        await page.getByRole('spinbutton', { name: 'Quantity (items)', exact: true }).waitFor();
+      } finally {
+        await page.context().close();
+      }
+    }
+
     const pages = [];
     for (const username of members) {
       const page = await login(username);

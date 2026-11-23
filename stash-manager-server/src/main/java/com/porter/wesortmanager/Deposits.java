@@ -73,8 +73,7 @@ final class Deposits {
         var d = Deposit.begin(packageId, orderId, kind, destination, agent);
         var events = new JsonArray();
         events.add(event("DEPOSITING", agent, null));
-        deposits.put(packageId, new Entry(d, events));
-        save();
+        commit(packageId, new Entry(d, events));
         return d;
     }
 
@@ -97,8 +96,7 @@ final class Deposits {
         var confirmed = advance(d, Deposit.State.DELIVERED, agent);
         var events = entry.events().deepCopy();
         events.add(event("DELIVERED", agent, snapshot));
-        deposits.put(packageId, new Entry(confirmed, events));
-        save();
+        commit(packageId, new Entry(confirmed, events));
         return confirmed;
     }
 
@@ -112,8 +110,7 @@ final class Deposits {
         var ev = event("NEEDS_RECONCILIATION", agent, null);
         ev.addProperty("reason", reason == null ? "" : reason);
         events.add(ev);
-        deposits.put(packageId, new Entry(reconciled, events));
-        save();
+        commit(packageId, new Entry(reconciled, events));
         return reconciled;
     }
 
@@ -156,11 +153,20 @@ final class Deposits {
         return o;
     }
 
-    private void save() throws IOException {
+    /** Publish only a fully persisted state; a failed write must not advance custody or delivery. */
+    private void commit(String id, Entry entry) throws IOException {
+        var updated = new LinkedHashMap<>(deposits);
+        updated.put(id, entry);
+        save(updated);
+        deposits.clear();
+        deposits.putAll(updated);
+    }
+
+    private void save(Map<String, Entry> updated) throws IOException {
         var root = new JsonObject();
         root.addProperty("schema", SCHEMA);
         var list = new JsonArray();
-        for (var entry : deposits.values()) {
+        for (var entry : updated.values()) {
             var o = entry.deposit().json();
             o.add("events", entry.events().deepCopy());
             list.add(o);

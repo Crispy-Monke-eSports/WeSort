@@ -160,8 +160,7 @@ final class PackageCustody {
                 0,
                 new JsonArray());
         p = append(p, "STAGED", null, location, new JsonObject());
-        packages.put(packageId, p);
-        save();
+        commit(packageId, p);
         return p;
     }
 
@@ -186,8 +185,7 @@ final class PackageCustody {
             }
         }
         p = append(p, next.name(), agent, location, evidence == null ? new JsonObject() : evidence);
-        packages.put(packageId, p);
-        save();
+        commit(packageId, p);
         return p;
     }
 
@@ -228,11 +226,20 @@ final class PackageCustody {
                 events);
     }
 
-    private void save() throws IOException {
+    /** Publish only a fully persisted state; a failed write must not advance custody or delivery. */
+    private void commit(String id, Package entry) throws IOException {
+        var updated = new LinkedHashMap<>(packages);
+        updated.put(id, entry);
+        save(updated);
+        packages.clear();
+        packages.putAll(updated);
+    }
+
+    private void save(Map<String, Package> updated) throws IOException {
         var root = new JsonObject();
         root.addProperty("schema", SCHEMA);
         var list = new JsonArray();
-        packages.values().forEach(p -> list.add(p.json()));
+        updated.values().forEach(p -> list.add(p.json()));
         root.add("packages", list);
         AtomicFiles.write(file, root.toString().getBytes(StandardCharsets.UTF_8), true);
     }

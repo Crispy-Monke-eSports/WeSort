@@ -58,8 +58,7 @@ final class DeliveryPoints {
 
     synchronized DeliveryPoint create(JsonObject request, String by) throws IOException {
         var point = DeliveryPoint.create(request);
-        points.put(point.id(), new Entry(point, history("created", by)));
-        save();
+        commit(point.id(), new Entry(point, history("created", by)));
         return point;
     }
 
@@ -71,8 +70,7 @@ final class DeliveryPoints {
         var point = entry.point().updated(request);
         var history = entry.history().deepCopy();
         history.add(event("updated", by));
-        points.put(id, new Entry(point, history));
-        save();
+        commit(id, new Entry(point, history));
         return point;
     }
 
@@ -95,8 +93,7 @@ final class DeliveryPoints {
                 Math.addExact(point.revision(), 1));
         var history = entry.history().deepCopy();
         history.add(event("paused", by));
-        points.put(id, new Entry(paused, history));
-        save();
+        commit(id, new Entry(paused, history));
         return paused;
     }
 
@@ -165,11 +162,20 @@ final class DeliveryPoints {
         return o;
     }
 
-    private void save() throws IOException {
+    /** Publish only a fully persisted state; a failed write must not advance custody or delivery. */
+    private void commit(String id, Entry entry) throws IOException {
+        var updated = new LinkedHashMap<>(points);
+        updated.put(id, entry);
+        save(updated);
+        points.clear();
+        points.putAll(updated);
+    }
+
+    private void save(Map<String, Entry> updated) throws IOException {
         var root = new JsonObject();
         root.addProperty("schema", SCHEMA);
         var list = new JsonArray();
-        for (var entry : points.values()) {
+        for (var entry : updated.values()) {
             var o = entry.point().json();
             o.add("history", entry.history().deepCopy());
             list.add(o);

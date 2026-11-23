@@ -62,8 +62,7 @@ final class Handoffs {
         var handoff = Handoff.schedule(orderId, recipient, meetingPoint, agent);
         var events = new JsonArray();
         events.add(event("SCHEDULED", agent));
-        handoffs.put(handoff.id(), new Entry(handoff, events));
-        save();
+        commit(handoff.id(), new Entry(handoff, events));
         return handoff;
     }
 
@@ -164,8 +163,7 @@ final class Handoffs {
     private Handoff advanceTo(String id, Entry entry, Handoff next, String event, String actor) throws IOException {
         var events = entry.events().deepCopy();
         events.add(event(event, actor));
-        handoffs.put(id, new Entry(next, events));
-        save();
+        commit(id, new Entry(next, events));
         return next;
     }
 
@@ -177,11 +175,20 @@ final class Handoffs {
         return o;
     }
 
-    private void save() throws IOException {
+    /** Publish only a fully persisted state; a failed write must not advance custody or delivery. */
+    private void commit(String id, Entry entry) throws IOException {
+        var updated = new LinkedHashMap<>(handoffs);
+        updated.put(id, entry);
+        save(updated);
+        handoffs.clear();
+        handoffs.putAll(updated);
+    }
+
+    private void save(Map<String, Entry> updated) throws IOException {
         var root = new JsonObject();
         root.addProperty("schema", SCHEMA);
         var list = new JsonArray();
-        for (var entry : handoffs.values()) {
+        for (var entry : updated.values()) {
             var o = entry.handoff().json();
             o.add("events", entry.events().deepCopy());
             list.add(o);

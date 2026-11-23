@@ -127,13 +127,52 @@ class SelfHealTest {
     }
 
     @Test
-    void freshObservationAutoHealsProvenOrders() throws Exception {
+    void freshObservationFailsUnprovenPackingInsteadOfInventingPickup() throws Exception {
         observe("a", 10);
         var order = stuckOrder("a");
         time.set(order.updatedAt + 1000);
         observe("a", 10);
-        orders.releaseFromFreshObservation("s");
-        assertEquals("packed", orders.statusOf(order.id));
+        orders.selfHealAll();
+        assertEquals("failed", orders.statusOf(order.id));
+        var stored = orders.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
+        assertTrue(stored.get("releasedAt").getAsLong() > 0);
+        orders.selfHealAll(); // Idempotent across periodic sweeps.
+        assertEquals("failed", orders.statusOf(order.id));
+    }
+
+    @Test
+    void timedOutPhysicalCancelSettlesAfterFreshObservationWithoutOwner() throws Exception {
+        observe("a", 10);
+        var order = orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 2)), null);
+        orders.claim("s", "a");
+        var cancelled = orders.cancel(order.id);
+        assertNotNull(cancelled.allocations);
+        long old = System.currentTimeMillis() - 11 * 60 * 1000;
+        cancelled.cancelRequestedAt = old;
+        cancelled.updatedAt = old;
+
+        orders.selfHealAll(); // Cancelling physical work fences rather than freeing stock.
+        assertEquals("needs_reconciliation", orders.statusOf(order.id));
+        assertEquals(2, orders.reservedFor("s", "a").get("item:minecraft:diamond"));
+
+        var fenced = orders.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
+        time.set(fenced.get("updatedAt").getAsLong() + 1000);
+        observe("a", 10);
+        orders.selfHealAll();
+
+        assertEquals("cancelled", orders.statusOf(order.id));
+        assertEquals(0, orders.reservedFor("s", "a").getOrDefault("item:minecraft:diamond", 0L));
+        var finished = orders.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
+        assertTrue(finished.get("releasedAt").getAsLong() > 0);
+    }
+
+    @Test
+    void unresolvedPhysicalOrderStaysProtectedUntilVerified() throws Exception {
+        observe("a", 10);
+        var order = stuckOrder("a");
+        orders.selfHealAll();
+        assertEquals("needs_reconciliation", orders.statusOf(order.id));
+        assertEquals(2, orders.reservedFor("s", "a").get("item:minecraft:diamond"));
     }
 
     @Test

@@ -102,10 +102,12 @@ describe("permission defaults in Zod 4", () => {
       expect(schema.parse({ ...identity, perms: {} }).perms).toEqual(
         noPermissions,
       );
-      expect(schema.parse({ ...identity, perms: { view: true } }).perms).toEqual(
-        { ...noPermissions, view: true },
+      expect(
+        schema.parse({ ...identity, perms: { view: true } }).perms,
+      ).toEqual({ ...noPermissions, view: true });
+      expect(schema.safeParse({ ...identity, perms: null }).success).toBe(
+        false,
       );
-      expect(schema.safeParse({ ...identity, perms: null }).success).toBe(false);
     }
   });
 });

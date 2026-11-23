@@ -3475,7 +3475,9 @@ public class StashSorter extends Module {
         OrderRunner.Intent recovery = orderRunner.returning() ? orderRunner.recoveryStep() : new OrderRunner.Idle();
         if (orderRunner.returning()) {
             returning = !left.isEmpty();
-            if (returning && returnLeftovers(left)) return true;
+            // Deposit already recovered cargo before withdrawing another staged
+            // package. A full carry inventory must never cause a second fetch.
+            if (returning) return returnLeftovers(left);
             return runOrder(recovery);
         }
 

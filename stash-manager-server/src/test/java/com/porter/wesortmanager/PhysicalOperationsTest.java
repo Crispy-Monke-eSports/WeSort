@@ -165,4 +165,47 @@ class PhysicalOperationsTest {
                 "NEEDS_RECONCILIATION",
                 store.accept(agent, journal.current()).get("state").getAsString());
     }
+    @Test
+    void fencedJournalRequestsReadOnlyInspectionWithoutOwner() throws Exception {
+        var ledger = new StockLedger(data);
+        var operations = new PhysicalOperations(ledger);
+        var local = journal();
+        intent(local);
+        local.block("Agent restarted during a physical move");
+        var receipt = operations.accept(agent, local.current());
+
+        var decision = operations.inspectAutomatically(agent, receipt);
+        assertNotNull(decision);
+        assertEquals("INSPECT", decision.get("action").getAsString());
+        assertEquals(
+                decision.get("id"),
+                operations.decision(agent, local.id()).get("id"));
+        assertNull(operations.inspectAutomatically(agent, receipt)); // No duplicate pending request.
+
+        local.verified(frame("after"), true, playerInventory(), decision.get("id").getAsString());
+        local.complete();
+        var finished = operations.accept(agent, local.current());
+        assertEquals("COMPLETED", finished.get("state").getAsString());
+        assertNull(operations.inspectAutomatically(agent, finished));
+    }
+
+    @Test
+    void failedAutomaticInspectionRetriesWithBackoff() throws Exception {
+        var clock = new AtomicLong(10_000);
+        var operations = new PhysicalOperations(new StockLedger(data), clock::get);
+        var local = journal();
+        intent(local);
+        local.block("Inspect original slot");
+        var receipt = operations.accept(agent, local.current());
+
+        var first = operations.inspectAutomatically(agent, receipt);
+        assertNotNull(first);
+        operations.decisionResult(agent, first.get("id").getAsString(), "FAILED", "Bot is away from the stash");
+        assertNull(operations.inspectAutomatically(agent, receipt));
+        clock.addAndGet(60_001);
+        var again = operations.inspectAutomatically(agent, receipt);
+        assertNotNull(again);
+        assertNotEquals(first.get("id").getAsString(), again.get("id").getAsString());
+    }
+
 }

@@ -1942,63 +1942,6 @@ final class OrderStore {
         }
     }
 
-    /**
-     * Owner/member resolution of a NEEDS_RECONCILIATION order without touching the game.
-     * Abandon it (FAILED/CANCELLED: reservations release through the regular fresh-observation
-     * sweep) or return it to PICKUP_READY when the server itself can prove the stock: a fresh
-     * observation covering the allocations and no unsettled physical operation for the order.
-     * 409 for anything the data cannot prove.
-     */
-    Order reconcile(String id, String target, String actor) throws OrderException, IOException {
-        synchronized (index) {
-            Book b = byOrderId.get(id);
-            if (b == null) throw new OrderException(404, "no such order", -1);
-            synchronized (b) {
-                Order previous = find(b, id);
-                if (previous == null) throw new OrderException(404, "no such order", -1);
-                if (previous.stage() != OrderStage.NEEDS_RECONCILIATION)
-                    throw new OrderException(409, "only orders needing reconciliation can be reconciled", -1);
-                Order o = Order.fromJson(previous.snapshot());
-                OrderStage next = switch (target == null ? "" : target) {
-                    case "cancelled" -> OrderStage.CANCELLED;
-                    case "failed" -> OrderStage.FAILED;
-                    case "pickup_ready" -> OrderStage.PICKUP_READY;
-                    default -> throw new OrderException(400, "target must be cancelled, failed or pickup_ready", -1);
-                };
-                o.advance(next);
-                if (next == OrderStage.PICKUP_READY) {
-                    if (!provenStock(b, o))
-                        throw new OrderException(
-                                409, "physical state still uncertain; resolve after a fresh observation", -1);
-                    o.status = "packed";
-                    o.message = "reconciled from a fresh observation; ready for pickup";
-                } else {
-                    o.status = next == OrderStage.CANCELLED ? "cancelled" : "failed";
-                    o.message = "reconciled from the website; reservations release on the next fresh observation";
-                }
-                o.updatedAt = System.currentTimeMillis();
-                o.record("order.reconcile", actor, o.updatedAt);
-                update(b, previous, o);
-                return o;
-            }
-        }
-    }
-
-    /** The server's own proof that an order's stock is verified: a fresh observation newer
-     * than the order's last change, with every allocated stack still present under the same
-     * fingerprint, and no unsettled physical operation for the order. */
-    private boolean provenStock(Book b, Order o) {
-        try {
-            if (o.allocations == null || o.allocations.isEmpty()) return false;
-            PhysicalReservations observations = PhysicalReservations.read(index.stock(), b.server, null);
-            return observations.refreshedAfter(o.allocations, o.updatedAt)
-                    && observations.matches(o.allocations)
-                    && !index.stock().unsettledPhysicalOrder(o.id);
-        } catch (IOException | RuntimeException e) {
-            return false;
-        }
-    }
-
     /** Who placed an order: Users.OWNER_ID for old orders without a record; null for an unknown order. */
     String placedBy(String id) {
         Book b = byOrderId.get(id);

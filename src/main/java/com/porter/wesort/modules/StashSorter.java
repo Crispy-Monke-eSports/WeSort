@@ -1261,7 +1261,7 @@ public class StashSorter extends Module {
 
         @Override
         public boolean usable(Box box) {
-            return !blocked(box, Job.Take) && !signPending(box) && !box.unreachable;
+            return !blocked(box, Job.Take) && !box.unreachable;
         }
 
         @Override
@@ -1315,7 +1315,7 @@ public class StashSorter extends Module {
 
         @Override
         public boolean usable(Box box) {
-            return !blocked(box, Job.Take) && !signPending(box) && !box.unreachable;
+            return !blocked(box, Job.Take) && !box.unreachable;
         }
 
         @Override
@@ -1707,7 +1707,6 @@ public class StashSorter extends Module {
         int added = addNearbyBoxes();
                 for (Box box : stash.boxes) {
             box.unreachable = false;
-            box.labelFailed = false;
 
         }
         // Everything given up on or unexplored before gets another try
@@ -2752,7 +2751,7 @@ public class StashSorter extends Module {
         else {
             // Containers that couldn't be read are tried again on their schedule (releaseDueSurveys, every tick)
             for (Box box : stash.boxes) {
-                if (box.excluded || box.unreachable || failedSurvey.contains(box) || signPending(box)) continue;
+                if (box.excluded || box.unreachable || failedSurvey.contains(box)) continue;
                 if (!box.known() || box.stale) {
                     Box found = box;
                     why = "the container at " + xyz(found.pos) + " is " + (box.known() ? "stale" : "unread");
@@ -2835,7 +2834,6 @@ public class StashSorter extends Module {
         } finally {
             destCache = null;
             misplacedCache = null;
-            signedCache = null;
             roomBase = null;
         }
     }
@@ -2869,7 +2867,7 @@ public class StashSorter extends Module {
         if (freeCarrySlot() == -1) return null;
         return nearest(stash.boxes.stream()
                 .filter(b ->
-                        b.sortable() && !b.stale && !blocked(b, Job.Take) && !signPending(b) && takeableSlot(b) != -1)
+                        b.sortable() && !b.stale && !blocked(b, Job.Take) && takeableSlot(b) != -1)
                 .toList());
     }
 
@@ -2893,7 +2891,6 @@ public class StashSorter extends Module {
                             && !b.foreign
                             && !b.unreachable
                             && !failedSurvey.contains(b)
-                            && !signPending(b)
                             && inReach(b))
                     .toList());
             if (close != null) return start(Job.Survey, close);
@@ -2905,7 +2902,7 @@ public class StashSorter extends Module {
         if (!running()) return false;
 
         Box unread = nearest(stash.boxes.stream()
-                .filter(b -> !b.known() && !b.unreachable && !failedSurvey.contains(b) && !signPending(b))
+                .filter(b -> !b.known() && !b.unreachable && !failedSurvey.contains(b))
                 .toList());
         if (unread != null) return start(Job.Survey, unread);
 
@@ -2933,7 +2930,6 @@ public class StashSorter extends Module {
         plan();
         destCache = new HashMap<>();
         misplacedCache = new HashMap<>();
-        signedCache = new HashMap<>();
         roomBase = null;
 
         // Jobs started since the backlog (stacks out of place, and carried) last reached a new low: a pass that keeps
@@ -3023,7 +3019,6 @@ public class StashSorter extends Module {
             for (int slot : carried) {
                 for (Box box : destinationsFor(mc.player.getInventory().getItem(slot))) {
                     if (!blocked(box, Job.Deposit)
-                            && !signPending(box)
                             && (roomFor(box, mc.player.getInventory().getItem(slot)) || misplacedCount(box) > 0))
                         places.add(box);
                 }
@@ -3037,8 +3032,6 @@ public class StashSorter extends Module {
                 for (int slot : carried) {
                     for (Box box : destinationsFor(mc.player.getInventory().getItem(slot))) {
                         if (circular.contains(box)
-                                && !signPending(box)
-                                && !signHeld.contains(box)
                                 && !blockedByFutility(box, Job.Deposit)
                                 && (roomFor(box, mc.player.getInventory().getItem(slot)) || misplacedCount(box) > 0))
                             places.add(box);
@@ -3092,7 +3085,7 @@ public class StashSorter extends Module {
             Box best = null;
             int bestSlot = -1;
             for (Box box : stash.boxes) {
-                if (!box.sortable() || box.stale || blocked(box, Job.Fetch) || signPending(box) || isKitBox(box))
+                if (!box.sortable() || box.stale || blocked(box, Job.Fetch) || isKitBox(box))
                     continue;
                 for (int i = 0; i < box.contents.length; i++) {
                     if (!strays(box.contents[i]).isEmpty() && (best == null || closer(box, best))) {
@@ -3119,7 +3112,6 @@ public class StashSorter extends Module {
                 .filter(b -> b.sortable()
                         && !b.dropOff
                         && !blocked(b, Job.Compact)
-                        && !signPending(b)
                         && !compacted.contains(b)
                         && mergeable(b) != null)
                 .toList());
@@ -3129,7 +3121,6 @@ public class StashSorter extends Module {
         }
 
         // A sign that is being changed decides what is left to do: wait for it before calling it done
-        if (watchSigns.get() && mode.get() == Mode.Signs && stashWatch.anyPending()) return false;
 
         // Everything is put away: whatever others left on the ground comes before compacting
         if (startGround()) return true;
@@ -3509,7 +3500,6 @@ public class StashSorter extends Module {
                 && !isKitBox(box)
                 && box.labels.stream().noneMatch(Categories::isKeepWhole)
                 && !blocked(box, Job.Return)
-                && !signPending(box)
                 && roomFor(box, stack);
     }
 
@@ -4490,7 +4480,7 @@ public class StashSorter extends Module {
 
         @Override
         public boolean usable(Box box) {
-            return !blocked(box, Job.Take) && !blocked(box, Job.CraftTake) && !signPending(box) && !box.unreachable;
+            return !blocked(box, Job.Take) && !blocked(box, Job.CraftTake) && !box.unreachable;
         }
 
         @Override
@@ -5863,7 +5853,7 @@ public class StashSorter extends Module {
         int bestSlot = -1, bestCount = 0;
         for (Box box : stash.boxes) {
             if (!box.sortable() || box.stale || box.unreachable) continue;
-            if (blocked(box, Job.Fetch) || signPending(box)) continue;
+            if (blocked(box, Job.Fetch)) continue;
             if (isKitBox(box) || box.contents == null) continue;
             for (int i = 0; i < box.contents.length; i++) {
                 ItemStack s = box.contents[i];
@@ -7135,8 +7125,7 @@ public class StashSorter extends Module {
                     || box.excluded
                     || box.foreign
                     || box.unreachable
-                    || failedSurvey.contains(box)
-                    || signPending(box)) continue;
+                    || failedSurvey.contains(box)) continue;
             if (!box.stale) {
                 box.stale = true;
                 marked++;
@@ -7246,7 +7235,6 @@ public class StashSorter extends Module {
                             || box.stale
                             || box.dropOff
                             || blocked(box, Job.Fetch)
-                            || signPending(box)
                             || isKitBox(box)) continue;
                     for (int i = 0; i < box.contents.length; i++) {
                         ItemStack s = box.contents[i];
@@ -7311,7 +7299,6 @@ public class StashSorter extends Module {
 
         // Tier mode must never depend on signs. Actual kit and reserved boxes
         // are already excluded above; old sign-only whole-box labels are irrelevant.
-        if (mode.get() == Mode.Signs && !keepWholeBoxes().isEmpty()) return List.of();
 
         List<Integer> out = new ArrayList<>();
         ItemStack[] inside = inside(shulker);
@@ -8675,8 +8662,7 @@ public class StashSorter extends Module {
                         && !b.excluded
                         && !b.foreign
                         && !b.unreachable
-                        && !failedSurvey.contains(b)
-                        && !signPending(b))
+                        && !failedSurvey.contains(b))
                 .toList();
     }
 
@@ -9630,14 +9616,13 @@ public class StashSorter extends Module {
                                 destinationsFor(mc.player.getInventory().getItem(slot));
                         if (homes.contains(box) || next == Job.Dump) n++;
                         for (Box other : homes)
-                            if (other != box && !blocked(other, Job.Deposit) && !signPending(other)) others.add(other);
+                            if (other != box && !blocked(other, Job.Deposit)) others.add(other);
                     }
                     Box source = next == Job.Dump
                             ? null
                             : nearest(stash.boxes.stream()
                                     .filter(b -> b.sortable()
                                             && !blocked(b, Job.Take)
-                                            && !signPending(b)
                                             && b != box
                                             && takeableSlot(b) != -1)
                                     .toList());
@@ -9729,7 +9714,6 @@ public class StashSorter extends Module {
         if (actions == 0 && !signAbort && job != null && job != Job.Survey && target != null && !target.unreachable) {
             futile.put(futileKey(target, job), futileSig(target));
         }
-        if (actions > 0 && target != null) signAbortRuns.remove(target);
         if (job == Job.Survey && target != null && target.known()) {
             scanned++;
             if (!target.stale) surveyRetry.succeed(target);
@@ -9772,7 +9756,6 @@ public class StashSorter extends Module {
         startSigSet = endSigSet = false;
 
         if (stash.isDirty()) stash.save();
-        signAbort = false;
         job = null;
         target = null;
         wait = delay.get();
@@ -9946,8 +9929,7 @@ public class StashSorter extends Module {
             // Not the container's fault: it is looked at again once its sign has settled, so it is not stalled
             signAbort = true;
             signAborted.add(target);
-            if (signAbortReported.add(target))
-                debug("Sign at %s reported changing, waiting for it to settle.", target.pos.toShortString());
+                    debug("Sign at %s reported changing, waiting for it to settle.", target.pos.toShortString());
             // The same container aborted again and again without a click: held until its sign text really changes
             if (actions == 0 && signAbortRuns.merge(target, 1, Integer::sum) >= 2) {
                 signHeld.add(target);
@@ -10066,7 +10048,7 @@ public class StashSorter extends Module {
         // Only after a part that got somewhere, and never on a container given up on, with a sign changing, in the
         // middle of a swap, and not more than 4 times in a row
         if (!(endSigSet && startSigSet && startSig != endSig) || chained >= CHAIN_MAX || swapStep != 0) return false;
-        if (stalled.contains(target) || circular.contains(target) || signHeld.contains(target) || signPending(target))
+        if (stalled.contains(target) || circular.contains(target))
             return false;
         if (kitBuilder.active() || compactor.active() || target.unreachable || target.stale || foreignNow) return false;
         if (!(mc.player.containerMenu instanceof ChestMenu)
@@ -10116,14 +10098,8 @@ public class StashSorter extends Module {
         cancelRetries.clear();
         stashWatch.clear();
         deliveryWatch.clear();
-        signHeld.clear();
-        signAborted.clear();
-        signAbortRuns.clear();
-        signAbortReported.clear();
         staleBoxes.clear();
         deferredAccess.clear();
-        signAbort = false;
-        nextSignSweep = clock + SIGN_SWEEP_TICKS;
         futile.clear();
         noOpReported.clear();
         failedSurvey.clear();
@@ -10172,11 +10148,10 @@ public class StashSorter extends Module {
      */
     private void clearStalled() {
         stalled.clear();
-        stalled.addAll(signHeld);
     }
 
     private boolean blocked(Box box, Job kind) {
-        return stalled.contains(box) || signHeld.contains(box) || blockedByFutility(box, kind);
+        return stalled.contains(box) || blockedByFutility(box, kind);
     }
 
     private boolean blockedByFutility(Box box, Job kind) {
@@ -10455,7 +10430,7 @@ public class StashSorter extends Module {
             base = new HashMap<>();
             for (Box box : stash.boxes) {
                 // Only where a deposit could go: not a container being skipped
-                if (box.sortable() && !box.dropOff && !blocked(box, Job.Deposit) && !signPending(box))
+                if (box.sortable() && !box.dropOff && !blocked(box, Job.Deposit))
                     base.put(box, box.free() + misplacedCount(box));
             }
             if (destCache != null) roomBase = base;
@@ -10909,7 +10884,7 @@ public class StashSorter extends Module {
      */
     private boolean canPlace(ItemStack stack) {
         for (Box box : destinationsFor(stack)) {
-            if (!blocked(box, Job.Deposit) && !signPending(box) && (roomFor(box, stack) || misplacedCount(box) > 0))
+            if (!blocked(box, Job.Deposit) && (roomFor(box, stack) || misplacedCount(box) > 0))
                 return true;
         }
         return spareBox() != null;
@@ -10933,7 +10908,7 @@ public class StashSorter extends Module {
     }
 
     private boolean takesAnything(Box b, boolean signedMisc) {
-        if (!b.sortable() || b.dropOff || b.free() <= 0 || blocked(b, Job.Dump) || signPending(b) || isKitBox(b))
+        if (!b.sortable() || b.dropOff || b.free() <= 0 || blocked(b, Job.Dump) || isKitBox(b))
             return false;
         if (signedMisc) return isMisc(b);
 
@@ -11745,8 +11720,7 @@ public class StashSorter extends Module {
         if (stash != null) {
             for (Box box : stash.boxes) {
                 box.unreachable = false;
-                box.labelFailed = false;
-            }
+                }
         }
     }
 
@@ -11847,11 +11821,6 @@ public class StashSorter extends Module {
             return false;
         }
 
-        if (sorting() && mode.get() == Mode.Signs && stash.boxes.stream().allMatch(b -> b.labels.isEmpty())) {
-            alertError("None of the containers have signs on them. Put signs on them, or use Tiers mode.");
-            turnOff();
-            return false;
-        }
         return true;
     }
 

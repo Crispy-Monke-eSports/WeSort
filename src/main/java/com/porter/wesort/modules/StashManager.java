@@ -1315,6 +1315,24 @@ public class StashManager extends Module {
                                 } else lastStatusSig = sig;
                                 return true;
                             }
+                            // A successful HTTP response is not necessarily
+                            // a successful delivery. If the Manager cannot prove
+                            // physical staging it returns RECOVERING: keep local
+                            // package receipts and return every staged item.
+                            if (code == 200 && report.status().equals("delivered")) {
+                                try {
+                                    JsonObject accepted = JsonParser.parseString(body).getAsJsonObject();
+                                    if (accepted.has("order")
+                                            && "RECOVERING".equals(accepted.getAsJsonObject("order")
+                                                    .get("state").getAsString())) {
+                                        runner.rollbackUnverifiedDelivery(report.id());
+                                        lastStatusSig = "";
+                                        return true;
+                                    }
+                                } catch (RuntimeException invalid) {
+                                    return false; // Do not forget a delivery without understanding its receipt.
+                                }
+                            }
                             // 409: the order is already finished or moved on, nothing more to say about it
                             if (code != 200 && code != 409) return false;
                             minimalFor = null;

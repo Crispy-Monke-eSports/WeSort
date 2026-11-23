@@ -58,7 +58,8 @@ class DeliveryLedgerPersistenceTest {
         assertThrows(IOException.class, () -> store.confirm(pkg, "agent-1", snapshot));
         restore("deposits.json", saved);
 
-        assertEquals(Deposit.State.DELIVERED, store.confirm(pkg, "agent-1", snapshot).state());
+        assertEquals(
+                Deposit.State.DELIVERED, store.confirm(pkg, "agent-1", snapshot).state());
         assertEquals(store.list("o-1"), new Deposits(data).list("o-1"));
     }
 
@@ -76,7 +77,8 @@ class DeliveryLedgerPersistenceTest {
         assertEquals(before, store.list("o-1"));
         restore("handoffs.json", saved);
 
-        assertEquals(Handoff.State.DELIVERED, store.confirm(handoff.id(), "owner").state());
+        assertEquals(
+                Handoff.State.DELIVERED, store.confirm(handoff.id(), "owner").state());
         assertEquals(store.list("o-1"), new Handoffs(data).list("o-1"));
     }
 
@@ -122,7 +124,9 @@ class DeliveryLedgerPersistenceTest {
         assertEquals(before, store.list());
         restore("delivery-points.json", saved);
 
-        assertEquals(DeliveryPoint.Status.PAUSED, store.pause(point.id(), point.revision(), "owner").status());
+        assertEquals(
+                DeliveryPoint.Status.PAUSED,
+                store.pause(point.id(), point.revision(), "owner").status());
         assertEquals(store.list(), new DeliveryPoints(data).list());
     }
 }

@@ -1,46 +1,38 @@
-# W-062: valfria /tpa och /home per serverprofil, styrda från Manager
+# 6b6t transport scope: single agent, verified arrival
 
-WeSort ska kunna köras på olika anarkiservrar med olika kommandon/
-pluginfunktioner (2b2t, 6b6t är exempel, inte bevis). `/tpa` och `/home`
-är server-/pluginfunktioner, inte generiska Minecraft 26.3- eller
-Baritone-funktioner, och är därför ett **opt-in transportalternativ** som
-aldrig krävs för normal lagerdrift. Ingen server-till-server-teleport och
-ingen genväg runt order-, positions- eller inventorysäkerhet.
+> **Current product decision (2026-11-23):** WeSort supports one active
+> Minecraft 26.3 Fabric/Meteor/Baritone agent. The optional, per-server
+> `/tpa` and `/home` transport-profile subsystem (former W-062) has
+> been discontinued. This file documents the new boundary, not a supported
+> transport API.
 
-## Manager-sidan (denna commit)
+## Existing verified building blocks
 
-- **`TransportProfiles`** håller en persistent, per-serverprofil med två
-  oberoende, **default OFF**-flaggor (`allowTpa`, `allowHome`) och två
-  separata bekräftelseflaggor (`tpaVerified`, `homeVerified`). Ny profil och
-  helt ren installation har båda av. Varje uppdatering ökar `revision` och
-  kräver `expectedRevision` (409 vid stale).
-- **`TransportCommands`** (`common/.../data`) är den slutna allowlistan av
-  typade operationer: `TPA_REQUEST(target)`, `HOME_GO(home)` och
-  `TPA_ACCEPT(requestId)`. Målspelare, hemnamn och request-id valideras
-  strikt (inga mellanslag, `§`, kontroll-/bidi-/formattecken, längdgränser);
-  inga godtyckliga `/command`, vidarebefordrade meddelanden eller osanerade
-  fält kan skickas.
-- **`TransportRoutes`**: Owner `GET /api/v1/transport` (listar profiler)
-  och Owner `POST /api/v1/transport` (uppdaterar en servers flaggor med
-  revision). Maskeras för forced streamer. Konfigurerat stöd skiljs från
-  verifierat stöd; inget annonseras som fungerande utan faktiskt testad
-  server.
+- `PortalEntry` and `PortalWorldSession` implement a guarded 6b6t
+  login-lobby portal bootstrap. These are **not** the deleted upstream
+  generic Meteor portal or a general-purpose teleport facility.
+- `NavigationRuntime`, `NavigationGuard` and `InventorySync` protect
+  local Baritone movement and block/inventory actions from stale or
+  unverified physical operations.
+- `StashManager` reports signed Manager presence independently of whether
+  the agent has safely reached its warehouse.
 
-## Testbevis
+## Not implemented or guaranteed
 
-- `TransportCommandsTest`: typade operationer normaliseras, godtyckliga
-  kommandon/osanerade fält/okända typer nekas, längdgränser gäller.
-- `TransportProfilesTest`: default OFF, revision/409-konflikt, oberoende
-  profiler per server, persistens över omstart och okänd server börjar OFF.
-- Manager- och common-byggena samt hela managersviten är gröna.
+- There is no `/api/v1/transport`, `TransportProfiles`,
+  `TransportRoutes` or general typed TPA/home-command dispatcher.
+- Chat responses, sending commands, a claimed destination or an in-progress
+  Baritone path do not establish delivery or safe arrival.
+- Neither the private vanilla 26.3 harness nor the existing lobby tests
+  prove autonomous full-distance delivery on the live 6b6t server.
 
-## Gränser och återstår
+## Required delivery work
 
-Återstår: agentens faktiska sändning/kvittens av typade kommandon (via
-W-027:s signerade bot-protokoll), ankomstvalidering från verklig
-serverlevererad position/dimension (aldrig enbart chatrespons),
-`TPA_ACCEPT` endast för en uttryckligen förväntad request, hemregistrering
-som separat behörig operatörsprocess, fallback till gång/portal (W-036),
-koppling till W-061/W-052 vid osäkert inventory/PvP, samt riktig 26.3-E2E
-på server med och utan stöd. Funktionen får aldrig bli ett beroende som
-kräver serverplugin.
+W-035/W-036 must implement a **single-agent** pickup/courier path with
+explicit waypoint/dimension verification, durable custody and safe pause on
+disconnect, death, PvP, lag, world transfer or unknown inventory. W-038 and
+W-039 require independent, server-observed chest or recipient receipts.
+Completion is gated by real 26.3 E2E, plus an explicit 6b6t live check
+tracked in [#141](https://github.com/Crispy-Monke-eSports/WeSort/issues/141).
+
+Previous experimental TPA/home design survives only in Git history.

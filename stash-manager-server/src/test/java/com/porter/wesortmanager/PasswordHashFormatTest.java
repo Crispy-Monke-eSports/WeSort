@@ -18,12 +18,12 @@ class PasswordHashFormatTest {
             assertFalse(Auth.verify("test-password-123", bad));
         }
         for (String bad : new String[] {
-                fields[0] + "$10$%%%$" + fields[3],
-                fields[0] + "$10$AA$" + fields[3],
-                fields[0] + "$10$" + fields[2] + "$AA",
-                valid + "$",
-                valid + " ",
-                fields[0] + "$10$" + Base64.getEncoder().encodeToString(new byte[256]) + "$" + fields[3]
+            fields[0] + "$10$%%%$" + fields[3],
+            fields[0] + "$10$AA$" + fields[3],
+            fields[0] + "$10$" + fields[2] + "$AA",
+            valid + "$",
+            valid + " ",
+            fields[0] + "$10$" + Base64.getEncoder().encodeToString(new byte[256]) + "$" + fields[3]
         }) {
             assertFalse(Auth.wellFormed(bad));
             assertFalse(Auth.verify("test-password-123", bad));

@@ -659,7 +659,11 @@ public final class IndexStore {
 
     // ---------- updates ----------
 
-    /** Serializes physical acceptance with availability decisions; then updates the legacy JSON mirror. */
+    /**
+     * Commits server-observed physical inventory to SQLite before updating the
+     * in-memory projection and optional JSON cache. A failed cache write must not
+     * turn a committed physical observation into a failed agent acknowledgement.
+     */
     public synchronized void putIndex(JsonObject index) throws IOException, FullException {
         String versionError = validate(index);
         if (versionError != null) throw new IllegalArgumentException(versionError);
@@ -667,7 +671,8 @@ public final class IndexStore {
         // Bound index count before committing the authoritative physical observation.
         getOrCreate(index.get("server").getAsString(), index.get("stash").getAsString());
         index.addProperty("receivedAt", now);
-        if (index.has("physicalSources")) {
+        boolean physical = index.has("physicalSources");
+        if (physical) {
             stock().accept(index);
             physicalIndexes.add(new StashKey(
                     index.get("server").getAsString(), index.get("stash").getAsString()));
@@ -685,8 +690,19 @@ public final class IndexStore {
         synchronized (s.writeLock) {
             // A newer index may already be on disk; never let an older one overwrite it.
             if (version <= s.writtenVersion) return;
-            AtomicFiles.write(dir.resolve(fileName(s.server, s.stash)), b.disk);
-            s.writtenVersion = version;
+            Path mirror = dir.resolve(fileName(s.server, s.stash));
+            try {
+                AtomicFiles.write(mirror, b.disk);
+                s.writtenVersion = version;
+            } catch (IOException failure) {
+                if (!physical) throw failure;
+                // The snapshot and physical stock revision were already committed
+                // to guild.sqlite. Do not ask the agent to retry that accepted
+                // observation just because a redundant JSON mirror is unwritable.
+                System.err.println(
+                        "Could not update optional physical index mirror " + mirror.getFileName() + ": "
+                                + failure.getMessage());
+            }
         }
     }
 

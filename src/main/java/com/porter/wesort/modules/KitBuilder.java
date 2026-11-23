@@ -489,11 +489,9 @@ final class KitBuilder {
         return new Plan(k, base, distance);
     }
 
-    /** Boxes signed for empty shulkers first, then the nearest. */
+    /** Choose physical empty-shulker sources by distance, not by nearby sign text. */
     private double emptyRank(Spot spot) {
-        boolean signed =
-                spot.box.labels.stream().anyMatch(l -> Categories.normalize(l).startsWith("empty shulker"));
-        return (signed ? 0 : 1_000_000_000.0) + owner.distance(spot.box);
+        return owner.distance(spot.box);
     }
 
     /**

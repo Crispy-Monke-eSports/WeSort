@@ -61,6 +61,7 @@ import {
   isSingleContent,
   itemsPerBuyUnit,
   labelTextError,
+  trimLabelText,
   LABEL_MAX_TEXT,
   MAX_SHULKERS,
   mixedBoxedContents,
@@ -118,15 +119,11 @@ interface StashLabels {
   texts: string[];
 }
 
-function cleanLabel(s: string): string {
-  return (s ?? "").trim().slice(0, 33);
-}
-
 /** Per-stash package label (P1-11): the texts belong to THIS stash's order only. */
 function packageLabelFor(cfg: StashLabels): OrderBody["packageLabel"] {
-  if (cfg.mode === "all" && cleanLabel(cfg.text)) return { mode: "all", text: cleanLabel(cfg.text) };
-  if (cfg.mode === "each" && cfg.texts.some((t) => cleanLabel(t))) {
-    return { mode: "each", texts: cfg.texts.map(cleanLabel).slice(0, 54) };
+  if (cfg.mode === "all" && trimLabelText(cfg.text)) return { mode: "all", text: trimLabelText(cfg.text) };
+  if (cfg.mode === "each" && cfg.texts.some((t) => trimLabelText(t))) {
+    return { mode: "each", texts: cfg.texts.map(trimLabelText).slice(0, 54) };
   }
   return null;
 }
@@ -159,6 +156,7 @@ export function InventoryPage() {
 
   const canView = !!auth.data?.loggedIn && perms.can("view");
   const canOrder = perms.can("order");
+  const canSetGuildDetails = perms.can("guildOrders");
   const stashes = useStashes(canView);
   const stashList = useMemo(() => stashes.data ?? [], [stashes.data]);
 
@@ -500,6 +498,9 @@ export function InventoryPage() {
   const [purpose, setPurpose] = useState<"SELF" | "GUILD">("SELF");
   const [recipient, setRecipient] = useState("");
   const [comment, setComment] = useState("");
+  const recipientName = recipient.trim();
+  const recipientInvalid = recipientName !== "" && !/^[A-Za-z0-9_]{1,16}$/.test(recipientName);
+  const guildDetailsForbidden = !canSetGuildDetails && (purpose === "GUILD" || recipientName !== "");
   // W-064, P1-11: box labels are PER STASH, because checkout creates one
   // backend order per stash and the server freezes WeSort (X/Y) numbering per
   // order. A shared label array across stashes would misattribute texts to
@@ -526,7 +527,7 @@ export function InventoryPage() {
       names: null,
       packageLabel: packageLabelFor(labelsFor(stash)),
       purpose,
-      recipient: recipient.trim() ? recipient.trim().slice(0, 16) : null,
+      recipient: recipientName || null,
       comment: comment.trim() ? comment.trim().slice(0, 500) : null,
     }));
   }
@@ -566,7 +567,7 @@ export function InventoryPage() {
 
   /** Place the whole cart: one order per stash, confirmed lines removed, failures kept. */
   async function place(): Promise<void> {
-    if (!cartLines.length || placing || !canOrder) return;
+    if (!cartLines.length || placing || !canOrder || recipientInvalid || guildDetailsForbidden) return;
     setPlacing(true);
     const bodies = buildBodies();
     const persisted = getPending(userId);
@@ -806,6 +807,7 @@ export function InventoryPage() {
         open={checkoutOpen} onClose={() => setCheckoutOpen(false)} step={step} setStep={setStep}
         lines={cartLines} groups={groups} placing={placing} retrying={retrying} onPlace={place}
         purpose={purpose} setPurpose={setPurpose} recipient={recipient} setRecipient={setRecipient}
+        canSetGuildDetails={canSetGuildDetails} recipientInvalid={recipientInvalid} guildDetailsForbidden={guildDetailsForbidden}
         comment={comment} setComment={setComment} labelsFor={labelsFor} setLabelsFor={setLabelsFor}
         estBoxes={Object.fromEntries(boxUsage)}
         overLimit={overLimitStashes}
@@ -824,11 +826,12 @@ function serverOk(slices: SliceState[]): boolean {
  * W-064 box-label text field: 33-unit counter, server-mirroring validation and
  * a live `WeSort (1/Y) - text` preview (Y estimated; the server locks it).
  */
-function LabelTextField({ label, value, onChange, previewY }: {
-  label: string; value: string; onChange: (v: string) => void; previewY?: number;
+function LabelTextField({ label, value, onChange, previewX = 1, previewY }: {
+  label: string; value: string; onChange: (v: string) => void; previewX?: number; previewY?: number;
 }) {
   const error = labelTextError(value);
-  const units = (value ?? "").length; // UTF-16 units, like the server counts
+  const suffix = trimLabelText(value);
+  const units = suffix.length;
   return (
     <TextField
       label={label}
@@ -838,7 +841,7 @@ function LabelTextField({ label, value, onChange, previewY }: {
       fullWidth
       error={!!error}
       helperText={
-        error ?? `${units}/${LABEL_MAX_TEXT}${previewY && value.trim() ? ` · preview: WeSort (1/${previewY}) - ${value.trim()}` : ""}`
+        error ?? `${units}/${LABEL_MAX_TEXT}${previewY && previewX <= previewY ? ` · preview: WeSort (${previewX}/${previewY}) - ${suffix || "Beställning"}` : ""}`
       }
       slotProps={{ htmlInput: { maxLength: LABEL_MAX_TEXT + 8 } }}
     />
@@ -1292,6 +1295,7 @@ function CheckoutDialog(props: {
   lines: CartLine[]; groups: CheckoutGroup[]; placing: boolean; retrying: string[]; onPlace: () => void;
   purpose: "SELF" | "GUILD"; setPurpose: (v: "SELF" | "GUILD") => void;
   recipient: string; setRecipient: (v: string) => void;
+  canSetGuildDetails: boolean; recipientInvalid: boolean; guildDetailsForbidden: boolean;
   comment: string; setComment: (v: string) => void;
   labelsFor: (stash: string) => StashLabels; setLabelsFor: (stash: string, next: StashLabels) => void;
   estBoxes: Record<string, number>; overLimit: string[];
@@ -1316,9 +1320,10 @@ function CheckoutDialog(props: {
   const labelInvalid = perStash.some(([stash]) => {
     const cfg = props.labelsFor(stash);
     if (cfg.mode === "all") return !!labelTextError(cfg.text);
-    if (cfg.mode === "each") return cfg.texts.some((t) => t.trim() !== "" && !!labelTextError(t));
+    if (cfg.mode === "each") return cfg.texts.some((t) => !!labelTextError(t));
     return false;
   });
+  const invalidDetails = labelInvalid || props.recipientInvalid || props.guildDetailsForbidden;
 
   return (
     <Dialog open={props.open} onClose={props.onClose} maxWidth="md" fullWidth>
@@ -1347,14 +1352,30 @@ function CheckoutDialog(props: {
 
         {step === 1 && (
           <Stack spacing={2}>
-            <FormControl size="small" fullWidth>
-              <InputLabel id="order-for-label">Order for</InputLabel>
-              <Select labelId="order-for-label" id="order-for" value={props.purpose} label="Order for" onChange={(e) => props.setPurpose(e.target.value as "SELF" | "GUILD")}>
-                <MenuItem value="SELF">Myself</MenuItem>
-                <MenuItem value="GUILD">The guild</MenuItem>
-              </Select>
-            </FormControl>
-            <TextField label="Recipient (optional)" value={props.recipient} onChange={(e) => props.setRecipient(e.target.value)} size="small" slotProps={{ htmlInput: { maxLength: 16 } }} helperText="Letters, digits and underscore, at most 16 characters" />
+            {props.canSetGuildDetails && (
+              <>
+                <FormControl size="small" fullWidth>
+                  <InputLabel id="order-for-label">Order for</InputLabel>
+                  <Select labelId="order-for-label" id="order-for" value={props.purpose} label="Order for" onChange={(e) => props.setPurpose(e.target.value as "SELF" | "GUILD")}>
+                    <MenuItem value="SELF">Myself</MenuItem>
+                    <MenuItem value="GUILD">The guild</MenuItem>
+                  </Select>
+                </FormControl>
+                <TextField
+                  label="Recipient (optional)" value={props.recipient} onChange={(e) => props.setRecipient(e.target.value)}
+                  size="small" error={props.recipientInvalid}
+                  helperText={props.recipientInvalid ? "Enter a Minecraft name with 1–16 letters, digits or underscores." : "Use a Minecraft account verified by the Owner."}
+                />
+              </>
+            )}
+            {props.guildDetailsForbidden && (
+              <Alert severity="warning" action={<Button color="inherit" onClick={() => {
+                props.setPurpose("SELF");
+                props.setRecipient("");
+              }}>Use my account</Button>}>
+                Your current permissions only allow orders for yourself.
+              </Alert>
+            )}
             <TextField label="Comment (optional)" value={props.comment} onChange={(e) => props.setComment(e.target.value)} size="small" multiline rows={2} slotProps={{ htmlInput: { maxLength: 500 } }} />
             <Typography variant="body2" color="text.secondary">
               Box labels are set <strong>per stash order</strong>: each stash below becomes its own backend
@@ -1399,6 +1420,7 @@ function CheckoutDialog(props: {
                           <LabelTextField
                             key={i}
                             label={`${stash} box ${i + 1} text`}
+                            previewX={i + 1}
                             previewY={est}
                             value={nm}
                             onChange={(v) => {
@@ -1434,17 +1456,17 @@ function CheckoutDialog(props: {
                 {(() => {
                   const cfg = props.labelsFor(stash);
                   const est = estFor(stash);
-                  if (cfg.mode === "all" && cleanLabel(cfg.text)) {
+                  if (cfg.mode === "all" && trimLabelText(cfg.text)) {
                     return (
                       <Typography variant="body2" color="text.secondary">
-                        Labels: “{cleanLabel(cfg.text)}” on every box (≈{est}; server freezes X/Y for this order).
+                        Labels: “{trimLabelText(cfg.text)}” on every box (≈{est}; server freezes X/Y for this order).
                       </Typography>
                     );
                   }
-                  if (cfg.mode === "each" && cfg.texts.some((t) => cleanLabel(t))) {
+                  if (cfg.mode === "each" && cfg.texts.some((t) => trimLabelText(t))) {
                     return (
                       <Typography variant="body2" color="text.secondary">
-                        Labels: {cfg.texts.map(cleanLabel).filter(Boolean).map((t) => `“${t}”`).join(", ")} (≈{est} boxes; order kept exactly).
+                        Labels: {cfg.texts.map((text, i) => `#${i + 1} “${trimLabelText(text) || "Beställning"}”`).join(", ")} (≈{est} boxes; order kept exactly).
                       </Typography>
                     );
                   }
@@ -1512,13 +1534,13 @@ function CheckoutDialog(props: {
       </DialogContent>
       <DialogActions>
         {step === 0 && <><Button onClick={props.onClose}>Close</Button><Button variant="contained" onClick={() => setStep(1)} disabled={!props.lines.length}>Continue</Button></>}
-        {step === 1 && <><Button onClick={() => setStep(0)}>Back</Button><Button variant="contained" onClick={() => setStep(2)} disabled={!props.lines.length}>Review</Button></>}
+        {step === 1 && <><Button onClick={() => setStep(0)}>Back</Button><Button variant="contained" onClick={() => setStep(2)} disabled={!props.lines.length || invalidDetails}>Review</Button></>}
         {step === 2 && (
           <>
             <Button onClick={() => setStep(1)}>Back</Button>
             <Button
               variant="contained" onClick={props.onPlace}
-              disabled={props.placing || !props.lines.length || !props.canOrder || labelInvalid || props.overLimit.length > 0}
+              disabled={props.placing || !props.lines.length || !props.canOrder || invalidDetails || props.overLimit.length > 0}
             >
               {props.placing ? "Placing…" : "Place orders"}
             </Button>

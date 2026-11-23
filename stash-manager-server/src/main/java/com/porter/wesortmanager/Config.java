@@ -21,9 +21,9 @@ public final class Config {
     private static final String PASSWORD_KEY = "dashboardPassword";
 
     /** The current API key. generation goes up by one each time the key is regenerated. */
-    public record KeyState(String key, byte[] bytes, long generation, byte[] signingKey) {
+    public record KeyState(String key, long generation, byte[] signingKey) {
         KeyState(String key, long generation) {
-            this(key, key.getBytes(StandardCharsets.UTF_8), generation, Signer.deriveKey(key));
+            this(key, generation, Signer.deriveKey(key));
         }
     }
 
@@ -34,8 +34,6 @@ public final class Config {
     public final boolean generatedKey;
     /** Explicit Minecraft EULA approval; mandatory before starting Manager. */
     public final boolean eulaAccepted;
-    /** allowBearer=: accept the old Authorization: Bearer header on index/heartbeat/order requests (never on bot/*). */
-    public final boolean allowBearer;
 
     public final boolean secureCookies;
     /**
@@ -65,11 +63,9 @@ public final class Config {
             List<String> allowedHosts,
             boolean generatedKey,
             boolean eulaAccepted,
-            boolean allowBearer,
             List<String> trustedProxies,
             boolean secureCookies) {
         this.secureCookies = secureCookies;
-        this.allowBearer = allowBearer;
         this.trustedProxies = List.copyOf(trustedProxies);
         this.file = file;
         this.eulaAccepted = eulaAccepted;
@@ -173,8 +169,6 @@ public final class Config {
             if (generated) writeKeyLine(file, apiKey);
             appendMissing(file, props);
         }
-        boolean allowBearer =
-                Boolean.parseBoolean(props.getProperty("allowBearer", "false").trim());
         List<String> trustedProxies = new ArrayList<>();
         for (String a : props.getProperty("trustedProxies", "").split(",")) {
             String t = a.trim().toLowerCase(Locale.ROOT);
@@ -195,7 +189,6 @@ public final class Config {
                 allowedHosts,
                 generated,
                 eulaAccepted,
-                allowBearer,
                 trustedProxies,
                 Boolean.parseBoolean(props.getProperty("secureCookies", "false")));
         String password = props.getProperty(PASSWORD_KEY, "").trim();
@@ -276,12 +269,6 @@ public final class Config {
         # Local game installations and user-supplied client JARs are NOT supported.
         eula=false
         """;
-    private static final String BEARER_BLOCK = """
-        # Bots sign every request with the API key (the key itself is never sent). true also accepts the old
-        # "Authorization: Bearer <key>" header from older addons/plugins on index, heartbeat and order requests
-        # (never on the dashboard). The key then crosses the network in clear text: update every bot and set false.
-        allowBearer=false
-        """;
     private static final String PROXY_BLOCK = """
         # IP addresses (comma separated) of a reverse proxy or tunnel in front of this server, such as the machine
         # running cloudflared. Requests from exactly these addresses have their real client address read from
@@ -292,7 +279,6 @@ public final class Config {
     private static void appendMissing(Path file, Properties props) throws IOException {
         StringBuilder add = new StringBuilder();
         if (!props.containsKey("eula")) add.append('\n').append(EULA_BLOCK);
-        if (!props.containsKey("allowBearer")) add.append('\n').append(BEARER_BLOCK);
         if (!props.containsKey("trustedProxies")) add.append('\n').append(PROXY_BLOCK);
         if (add.isEmpty()) return;
         String text = Files.readString(file, StandardCharsets.UTF_8);
@@ -312,9 +298,7 @@ public final class Config {
             # Address to bind to. 0.0.0.0 listens on every network interface.
             bind=%s
 
-            # Key the WeSort addon's stash-manager module must send (Authorization: Bearer <key>).
-            # The website's "Link addon" panel shows it and can make a new one.
-            # You can also delete this line and restart to make a new key.
+            # Local shared HMAC key for deployments that have not enabled named-key enforcement.
             apiKey=%s
 
             # By default only loopback and private/LAN addresses may connect.
@@ -324,7 +308,7 @@ public final class Config {
             # Extra host names (comma separated) the browser may use to reach this server,
             # e.g. a DNS name on your LAN. IP addresses, localhost and this machine's name always work.
             allowedHosts=%s
-            """ + "\n" + EULA_BLOCK + "\n" + BEARER_BLOCK + "\n" + PROXY_BLOCK)
+            """ + "\n" + EULA_BLOCK + "\n" + PROXY_BLOCK)
                 .formatted(port, clean(bind), clean(apiKey), allowRemote, clean(allowedHosts));
         AtomicFiles.write(file, text.getBytes(StandardCharsets.UTF_8), true);
     }

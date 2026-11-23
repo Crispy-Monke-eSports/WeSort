@@ -3782,7 +3782,7 @@ public class StashSorter extends Module {
     private boolean portalEntering;
     private boolean portalOtherSide;
     private boolean portalHoldingForward;
-    private boolean portalNoBaritoneWarned;
+    private String portalBlocker;
 
     /** The Manager can be disabled during a manual crossing; never leave a synthetic key held. */
     void stopPortalNavigation() {
@@ -3795,6 +3795,12 @@ public class StashSorter extends Module {
             portalEntering = false;
             portalLastScan = 0;
         }
+    }
+
+    private void reportPortalBlocker(String reason) {
+        if (reason.equals(portalBlocker)) return;
+        portalBlocker = reason;
+        WeSortAddon.LOG.info("6b6t portal waiting: {}", reason);
     }
 
     private boolean portalModeOn() {
@@ -3927,6 +3933,7 @@ public class StashSorter extends Module {
 
         if (portalSession.observe(mc.level, Stash.currentDimension(), mc.player.getX(), mc.player.getZ())) {
             stopPortalNavigation();
+            portalBlocker = null;
             info("6b6t: confirmed survival transfer. Starting normal work.");
             return false;
         }
@@ -4002,31 +4009,13 @@ public class StashSorter extends Module {
 
         // Keep observing portal completion even when ordinary navigation is paused.
         // Never restart movement under a genuine safety pause.
-        if (com.porter.wesort.compat.NavigationRuntime.paused()) {
+        String blocker = portalMovementBlocker();
+        if (blocker != null) {
             portalForward(false);
+            reportPortalBlocker(blocker);
             return true;
         }
-
-        if (!BARITONE) {
-            portalForward(false);
-            if (!portalNoBaritoneWarned) {
-                portalNoBaritoneWarned = true;
-                warning("6b6t lobby mode needs Baritone to reach the survival portal.");
-            }
-            return true;
-        }
-
-        // Do not override a person, an open screen, or another Baritone process.
-        if (mc.screen != null
-                || Input.isPressed(mc.options.keyDown)
-                || Input.isPressed(mc.options.keyLeft)
-                || Input.isPressed(mc.options.keyRight)
-                || Input.isPressed(mc.options.keyJump)
-                || BaritoneHelper.controlledByOther(
-                        ourGoal == null ? null : (baritone.api.pathing.goals.Goal) ourGoal)) {
-            portalForward(false);
-            return true;
-        }
+        portalBlocker = null;
 
         if (portalEntering) {
             if (portalTarget == null) {
@@ -4070,6 +4059,22 @@ public class StashSorter extends Module {
             }
         }
         return true;
+    }
+
+    private String portalMovementBlocker() {
+        if (com.porter.wesort.compat.NavigationRuntime.paused()) {
+            return com.porter.wesort.compat.NavigationRuntime.status();
+        }
+        if (!BARITONE) return "BARITONE_UNAVAILABLE";
+        if (mc.screen != null) return "SCREEN_OPEN";
+        if (Input.isPressed(mc.options.keyDown)
+                || Input.isPressed(mc.options.keyLeft)
+                || Input.isPressed(mc.options.keyRight)
+                || Input.isPressed(mc.options.keyJump)) return "MANUAL_MOVEMENT";
+        if (BaritoneHelper.controlledByOther(ourGoal == null ? null : (baritone.api.pathing.goals.Goal) ourGoal)) {
+            return "BARITONE_BUSY";
+        }
+        return null;
     }
 
     /** wesort-stash-manager's setting: orders may unpack shulkers with a custom name. */
@@ -11987,6 +11992,7 @@ public class StashSorter extends Module {
                     if (portalTick()) return;
                 } else {
                     portalForward(false);
+                    if (portalAwaiting()) reportPortalBlocker("PHYSICAL_JOURNAL");
                 }
             }
             if (portalHoldingForward && (manager == null || !manager.dedicatedProfile())) stopPortalNavigation();
@@ -12061,7 +12067,8 @@ public class StashSorter extends Module {
             portalLastPosition = null;
             portalLastScan = 0;
             portalEntryTicks = portalStuckTicks = portalTouchTicks = 0;
-            portalEntering = portalOtherSide = portalNoBaritoneWarned = false;
+            portalEntering = portalOtherSide = false;
+            portalBlocker = null;
             portalWaitWarnedAt = 0;
             // Whatever walk was ours is over with the world, and Baritone gets its settings back
             ourGoal = null;

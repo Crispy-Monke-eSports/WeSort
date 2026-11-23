@@ -96,24 +96,25 @@ final class SessionStore {
     }
 
     /** Starts an owner session and returns its token (for the cookie). */
-    synchronized String create() {
+    synchronized String create() throws IOException {
         return create(Users.OWNER_ID);
     }
 
     /** Starts a session for this user and returns its token (for the cookie). */
-    synchronized String create(String user) {
+    synchronized String create(String user) throws IOException {
         return create(user, null);
     }
 
     /** Starts a session for this user, made with the password whose {@link Auth#tag} is cred. */
-    synchronized String create(String user, String cred) {
+    synchronized String create(String user, String cred) throws IOException {
         long now = clock.getAsLong();
-        prune();
+        var next = new HashMap<>(sessions);
+        next.values().removeIf(session -> now >= session.expires);
         // This user's own least recently used session goes first.
         int own = 0;
         String ownOldest = null;
         long ownSeen = Long.MAX_VALUE;
-        for (Map.Entry<String, Session> e : sessions.entrySet()) {
+        for (Map.Entry<String, Session> e : next.entrySet()) {
             if (!e.getValue().user.equals(user)) continue;
             own++;
             if (e.getValue().lastSeen < ownSeen) {
@@ -122,28 +123,30 @@ final class SessionStore {
             }
         }
         if (own >= MAX_PER_USER) {
-            sessions.remove(ownOldest);
-            elevatedUntil.remove(ownOldest);
+            next.remove(ownOldest);
         }
-        if (sessions.size() >= MAX_SESSIONS) {
+        if (next.size() >= MAX_SESSIONS) {
             // Drop the least recently used session to stay bounded.
             String oldest = null;
             long seen = Long.MAX_VALUE;
-            for (Map.Entry<String, Session> e : sessions.entrySet()) {
+            for (Map.Entry<String, Session> e : next.entrySet()) {
                 if (e.getValue().lastSeen < seen) {
                     seen = e.getValue().lastSeen;
                     oldest = e.getKey();
                 }
             }
-            sessions.remove(oldest);
+            next.remove(oldest);
         }
         byte[] bytes = new byte[32];
         RANDOM.nextBytes(bytes);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
         Session s = new Session(user, now, now + LIFETIME_MS, now);
         s.cred = cred;
-        sessions.put(hash(token), s);
-        save();
+        next.put(hash(token), s);
+        persist(next);
+        sessions.clear();
+        sessions.putAll(next);
+        elevatedUntil.keySet().retainAll(sessions.keySet());
         return token;
     }
 
@@ -292,10 +295,10 @@ final class SessionStore {
         return sessions.values().removeIf(s -> now >= s.expires);
     }
 
-    private void save() {
+    private void persist(Map<String, Session> snapshot) throws IOException {
         if (file == null) return;
         JsonArray list = new JsonArray();
-        for (Map.Entry<String, Session> e : sessions.entrySet()) {
+        for (Map.Entry<String, Session> e : snapshot.entrySet()) {
             JsonObject o = new JsonObject();
             o.addProperty("hash", e.getKey());
             o.addProperty("user", e.getValue().user);
@@ -305,9 +308,13 @@ final class SessionStore {
             o.addProperty("expires", e.getValue().expires);
             list.add(o);
         }
+        AtomicFiles.write(file, Json.GSON.toJson(list).getBytes(StandardCharsets.UTF_8), true);
+        for (Session s : snapshot.values()) s.writtenSeen = s.lastSeen;
+    }
+
+    private void save() {
         try {
-            AtomicFiles.write(file, Json.GSON.toJson(list).getBytes(StandardCharsets.UTF_8), true);
-            for (Session s : sessions.values()) s.writtenSeen = s.lastSeen;
+            persist(sessions);
         } catch (IOException ex) {
             System.err.println("Could not save " + file.getFileName() + ": " + ex.getMessage());
         }

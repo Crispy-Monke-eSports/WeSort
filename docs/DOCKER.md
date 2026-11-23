@@ -2,9 +2,7 @@
 
 Produktion stöds på Linux amd64 med en Manager-container och en egen lokal
 Docker-volym. Webb och API kommer från samma Java-process/image. Minecraft,
-Discord och separat DB-tjänst behövs inte för att starta Manager. Funktioner
-som guildkvoter, hållbara jobbleases och fysisk leverans införs senare; hela
-volymen reserveras för även deras framtida data.
+en agent och separat DB-tjänst behövs inte för att starta Manager.
 
 ## Lokalt verifierad utvecklingsinstallation
 
@@ -92,15 +90,20 @@ men använder det enklare startvillkoret `eula=true`.
 
 Inga API-nycklar eller lösenord stöds som Docker build-args eller Compose-env.
 Ändra privata runtimeinställningar i den skyddade volymen om det behövs.
-Efter Owner-setup skapar värdens administratör en API-nyckel (nyckelplats utan
-bindningar) med `docker compose exec -T manager /opt/wesort/entrypoint agent-issue [etikett]`
-— eller i webbgränssnittet under Settings → API keys (ägare). Klistra in hela
-returvärdet i agentens `api-key` i spelet (adress, port, nyckel är det enda som
-konfigureras där; stash, server och spelare tilldelas av Managern).
-`agent-revoke <nyckel-id>` stänger av nyckeln
-omedelbart. `agent-require-scoped` stänger av delad autentisering när
-agenterna har fått sina individuella nycklar. Upp till fem nycklar kan vara aktiva
-samtidigt; varje nyckel hålls av högst en spelare i taget.
+Efter Owner-setup väljer du `6b6t.org` (med port om agenten rapporterar en)
+i **Settings → Server** och definierar stashes. Skapa en namngiven agentnyckel
+i **Settings → API keys** eller med lokal CLI:
+
+```sh
+docker compose exec -T manager /opt/wesort/entrypoint agent-issue wesort-agent
+docker compose exec -T manager /opt/wesort/entrypoint agent-require-scoped
+```
+
+Ange Manager-adress, port och hela nyckeln i WeSort Agent. Spara nyckeln i
+ett skyddat medium. Manager tillåter en aktiv namngiven nyckelplats.
+Vid byte, återkalla först den gamla med `agent-revoke <nyckel-id>`, utfärda
+den nya och låt klienten göra ny signerad hello. Den andra kommandoraden
+kräver namngivna nycklar i nuvarande version.
 
 ### Offline-mode, Velocity och Geyser/Floodgate
 
@@ -137,9 +140,6 @@ Geyser/Floodgate verifieras genom protokolltester för deras namn/UUID-format;
 ett fullständigt riktigt Bedrock→Geyser→Velocity→Java E2E-flöde ingår inte
 i nuvarande CI.
 
-Under migrering kan `agent-key` lämna ut den delade äldre nyckeln på värden.
-Owner kan starta dess rotation i Link-vyn. Äldre lageranrop har ett
-övergångsfönster på tio minuter när delad autentisering är aktiv.
 Montera inte
 Qwerte-data, hemkataloger eller Docker-socketen i Manager. Miljöinställningarna
 för deployment överstyr motsvarande icke-hemliga configvärden vid start.
@@ -168,14 +168,14 @@ credentials eller lagersiffror. Docker-proben kontrollerar privat runtime-state
 via Unix-socket och ett verkligt loopbackanrop till HTTP-readiness. Readiness
 ges efter data/auth, HTTP och lokal kontrollkanal startats. SIGTERM släcker
 readiness, stänger intag/kontrollkanal, avslutar trådar och släpper låset sist.
+Agentstatus och lagerfärskhet läses separat i Manager.
 De bevarade stores skriver atomiskt innan kvittens. En full transaktions-/
 fysisk journal införs enligt ADR-001/W-023/W-026, inte genom Docker-shutdown.
 
-Hela `/var/lib/wesort` är persistent: config/keys, users, sessions, owners,
-audit, indexes, orders, schema och framtida guild-/kit-/kvot-/journaldata.
+Hela `/var/lib/wesort` är persistent: config/keys, konton, sessioner, audit, index, order och SQLite.
 Ikoncache är separat under samma egna rot. NFS/SMB och flera aktiva repliker
-stöds inte. Backup/restore av en aktiv framtida DB kräver W-044; kopiera inte
-bara en DB-fil medan WAL är aktiv.
+stöds inte. Stoppa Manager före manuell volymkopiering och kopiera hela volymen
+inklusive SQLite:s tillhörande filer. Se [återstartsguiden](MC_26_3_BACKUP.md).
 
 ## Verifiering
 
@@ -188,14 +188,16 @@ För att även prova medlemsflödet i Chromium mot samma container:
 ```sh
 npm ci --prefix web-tests
 npm exec --prefix web-tests -- playwright install --with-deps chromium
-python3 scripts/docker-smoke.py --image wesort-manager:dev --browser --report /tmp/wesort-docker-browser.json
+python3 scripts/docker-smoke.py --compose-file compose.yaml --image wesort-manager:dev --browser --report /tmp/wesort-docker-browser.json
 ```
 
 Testet skapar egna unika Compose-projekt/volymer och städar endast dessa.
 Det bygger inte/pushar inte GHCR själv. Det verifierar non-root/read-only,
 mode 700/600, riktig health/webb/API, säker bootstrap över Docker bridge,
-CSRF/spoof/replay, extern signerad protokollagent, felaktig signatur/Bearer,
-processlås, SIGTERM/omstart, persistent keys/Owner/sessions/index/order/audit,
+CSRF, replay, signerad agentnärvaro, färsk stock, riktiga 26.3-ikoner och
+nekade dubbla agentsessioner, fel server och felaktiga credentials. Det
+verifierar processlås, SIGTERM, omstart och att den aktuella agentnyckeln,
+Owner, sessioner, index, order och audit finns kvar efter omstart,
 samt en riktig TLS-proxy med betrodd exakt IP, Secure-cookie och Host/Origin.
 TLS-testcontainern/certifikaten är testhjälpare och ingår inte i produktimagen.
 

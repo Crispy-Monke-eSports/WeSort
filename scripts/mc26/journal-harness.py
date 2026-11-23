@@ -23,6 +23,21 @@ class JournalHarness(repack.RepackHarness):
         self.phase = phase
         self.journal = self.game_dir / 'meteor-client/wesort/physical-journal/active.json'
 
+    def kill_manager(self):
+        manager = self.run(self.compose + ['ps', '-q', 'manager']).strip()
+        require(manager, 'No running test Manager to crash')
+        self.run(self.compose + ['kill', '-s', 'SIGKILL', 'manager'])
+        exit_code = self.run(['docker', 'inspect', '--format', '{{.State.ExitCode}}', manager]).strip()
+        require(exit_code == '137', 'The test Manager did not exit from SIGKILL: ' + exit_code)
+
+    def restart_manager(self):
+        self.run(self.compose + ['up', '-d', '--no-build', '--wait', '--wait-timeout', '120', 'manager'])
+        self.ok('Docker Manager survived SIGKILL and became ready on the same test volume')
+
+    def kill_client(self):
+        os.killpg(self.client.pid, signal.SIGKILL)
+        require(self.client.wait(timeout=10) == -signal.SIGKILL, 'The test client did not exit from SIGKILL')
+
     def record_fence_state(self, stage, state):
         # Common evidence for SELECT/PLACE/OPEN, TRANSFER/VERIFY/BREAK and
         # PICKUP/STORE: distinguish disabled sorting, missing Manager lease,
@@ -162,13 +177,13 @@ class JournalHarness(repack.RepackHarness):
                     raise RuntimeError('The armed durable phase was not reached '
                                        '(last durable markers: %s)' % [path.name for path in armed])
                 time.sleep(.025)
-            os.killpg(self.client.pid, signal.SIGKILL)
-            self.client.wait(timeout=10)
+            self.kill_client()
             crashed = json.loads(self.journal.read_text())
             require(crashed['phase'] == self.phase, 'Wrong durable phase at process kill')
             (self.evidence / 'physical-before-restart.json').write_text(json.dumps(crashed, indent=2) + '\n')
             (self.evidence / 'client.log').rename(self.evidence / 'client-before-restart.log')
-            self.run(self.compose + ['restart', 'manager'])
+            self.kill_manager()
+            self.restart_manager()
             self.start_client()
             initial = self.command('state')['state']
             initial_detail = self.record_fence_state('restart', initial)
@@ -281,6 +296,7 @@ class JournalHarness(repack.RepackHarness):
             self.ok(self.phase + ' recovered without duplicate mutation or loss of physical stock')
             (self.evidence / 'result.json').write_text(json.dumps({
                 'result': 'PASS', 'phase': self.phase, 'checks': self.checks,
+                'crash_order': ['client', 'manager'],
                 'source_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repack.world.ROOT, text=True).strip(),
                 'server_sha1': repack.world.SERVER_SHA1, 'manager_operation': row,
             }, indent=2) + '\n')
@@ -315,10 +331,13 @@ class DirectHarness(JournalHarness):
                 inv.wait_server(self, lambda: self.journal.exists() and
                     sum('[]' in value for value in inv.chest_halves(self)) == 1,
                     'The source was not debited on the real server before acknowledgment was lost')
+                # Reverse the other phases' crash order while the server's
+                # acknowledgment is still held and the client is connected.
+                self.kill_manager()
+                require(self.client.poll() is None, 'The client exited before the Manager was killed')
                 self.proxy.drop()
                 self.proxy.hold_down = False
-                os.killpg(self.client.pid, signal.SIGKILL)
-                self.client.wait(timeout=10)
+                self.kill_client()
                 try:
                     click.result(timeout=5)
                 except RuntimeError:
@@ -329,7 +348,7 @@ class DirectHarness(JournalHarness):
             require(crashed['state'] != 'COMPLETED', 'Move completed while server frames were held')
             (self.evidence / 'direct-before-restart.json').write_text(json.dumps(crashed, indent=2) + '\n')
             (self.evidence / 'client.log').rename(self.evidence / 'client-before-restart.log')
-            self.run(self.compose + ['restart', 'manager'])
+            self.restart_manager()
             self.start_client()
             self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key)
             row = self.wait_for_review(crashed['id'])
@@ -390,6 +409,7 @@ class DirectHarness(JournalHarness):
             self.ok('same HYBRID agent verified the accepted click and resumed without double pickup')
             (self.evidence / 'result.json').write_text(json.dumps({
                 'result': 'PASS', 'phase': 'DIRECT', 'checks': self.checks,
+                'crash_order': ['manager', 'client'],
                 'source_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repack.world.ROOT, text=True).strip(),
                 'server_sha1': repack.world.SERVER_SHA1, 'manager_operation': inspected,
             }, indent=2) + '\n')

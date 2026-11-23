@@ -6,6 +6,7 @@ import importlib.util
 import json
 from pathlib import Path
 import time
+from urllib.parse import urlencode
 
 spec = importlib.util.spec_from_file_location('world', Path(__file__).with_name('world-harness.py'))
 world = importlib.util.module_from_spec(spec); spec.loader.exec_module(world)
@@ -15,17 +16,28 @@ require = world.require
 
 class SortingHarness(world.Harness):
     locations = list(range(0, 33, 3))
+    ordinary_stock = [
+        ('wheat_seeds', 23, 7),
+        ('dirt', 16, 4),
+        ('ender_pearl', 11, 5),
+    ]
+
     def fixture(self):
         super().fixture()
         self.rcon.command('fill -1 64 -4 35 66 4 minecraft:air')
         self.rcon.command('kill @e[type=minecraft:item]')
         for x in self.locations:
             self.rcon.command(f'setblock {x} 64 3 minecraft:barrel')
-        self.setitem(0, 0, 'diamond', 32); self.setitem(0, 1, 'dirt', 16)
+        self.setitem(0, 0, 'diamond', 32)
         self.setitem(0, 2, 'diamond_sword[minecraft:custom_name={text:"Do not rename"},minecraft:damage=3,minecraft:enchantments={"minecraft:unbreaking":1}]', 1)
         self.setitem(0, 3, 'enchanted_golden_apple', 4)
         self.setitem(0, 4, 'potion[minecraft:potion_contents={potion:"minecraft:strength"}]', 1)
         self.setitem(0, 5, 'spyglass', 1)
+        for slot, (item, count, _) in enumerate(self.ordinary_stock):
+            self.setitem(0, 6 + slot, item, count)
+            # Reserve an exact named variant held only in the ordinary stock barrel.
+            self.setitem(6, slot, f'{item}[minecraft:custom_name={{text:"Order {item}"}}]', count)
+        self.setitem(0, 9, 'oak_sign', 3)
         for slot in range(27): self.setitem(3, slot, 'diamond', 60 if slot == 0 else 64)
         self.setitem(12, 0, 'diamond', 5); self.setitem(15, 0, 'diamond', 7); self.setitem(30, 0, 'diamond', 9)
         self.setitem(15, 1, 'shulker_box[minecraft:custom_name={text:"Reserved kit"},minecraft:container=[{slot:0,item:{id:"minecraft:diamond",count:8}}]]', 1)
@@ -57,7 +69,10 @@ class SortingHarness(world.Harness):
         for x in self.locations:
             self.teleport(x + 0.5, 2)
             item, count = ('diamond', 32) if x == 0 else ('diamond', 60) if x == 3 else ('diamond', 5) if x == 12 else ('diamond', 7) if x == 15 else ('diamond', 9) if x == 30 else ('air', 0)
-            if first is not None: item, count = first.get(x, ('air', 0))
+            if x == 6:
+                item, count, _ = self.ordinary_stock[0]
+            if first is not None:
+                item, count = first.get(x, ('air', 0))
             self.command('open', x=x, y=64, z=3, slots=27, item='minecraft:' + item, count=count)
             self.command('close')
         for x, mark in [(0, {'dropOff': True}), (12, {'excluded': True}), (15, {'protected': True}), (30, {'delivery': True})]:
@@ -73,6 +88,44 @@ class SortingHarness(world.Harness):
         return dict(sums)
     def stock(self):
         code, value = self.http('/api/v1/stock'); require(code==200,'Stock API failed'); return value
+    def verify_ordinary_stock_orders(self):
+        source = next(row for row in self.stock()['sources'] if [6, 64, 3] in row['parts'])
+        query = urlencode({'id': source['id']})
+        status, detail = self.http('/api/v1/stock/source?' + query)
+        require(status == 200 and detail['state'] == 'FRESH', 'Fixture stock was not freshly observed')
+        positions = {slot['path']: slot for slot in detail['snapshot']['positions']}
+        observed = {slot['path']: slot for slot in detail['slots']}
+        server_items = {stack['Slot']: stack for stack in snbt.items(self.nbt(6))}
+        before = self.nbt(6)
+        lines = []
+        expected = {}
+        for slot, (item, total, amount) in enumerate(self.ordinary_stock):
+            path = str(slot)
+            native_stack = server_items[slot]
+            require(native_stack['id'] == 'minecraft:' + item and native_stack['count'] == total,
+                    'Unexpected server fixture stack for ' + item)
+            require('Order ' + item in json.dumps(native_stack['components']['minecraft:custom_name']),
+                    'Named fixture lost its server-side component: ' + item)
+            require(observed[path]['count'] == total, 'Manager observed the wrong number of ' + item)
+            key = positions[path]['key']
+            require(key != 'minecraft:' + item, 'Manager did not distinguish the named variant: ' + item)
+            lines.append({'type': 'item', 'key': key, 'count': amount})
+            expected[path] = ('item:' + key, amount, observed[path]['fingerprint'])
+        status, response = self.http('/api/v1/orders', {'stash': 'e2e-fixture', 'lines': lines})
+        require(status == 200, 'Manager could not reserve seeds, dirt and pearls')
+        order = response['order']
+        allocations = order['allocations']
+        require(len(allocations) == len(expected)
+                and all(entry['source'] == source['id'] for entry in allocations)
+                and {entry['path']: (entry['ref'], entry['count'], entry['fingerprint'])
+                     for entry in allocations} == expected,
+                'Order allocations did not preserve exact slot paths, quantities and fingerprints: '
+                + json.dumps(allocations))
+        status, cancelled = self.http('/api/v1/orders/' + order['id'] + '/cancel', {})
+        require(status == 200 and cancelled['order']['status'] == 'cancelled' and self.nbt(6) == before,
+                'Reservation cancellation did not preserve the server inventory')
+        self.ok('fresh ordinary seeds, dirt and pearls reserve exact physical slots and fingerprints; cancellation preserves inventory')
+
     def order(self):
         return self.http('/api/v1/orders', {'server':self.server_name,'stash':'e2e-fixture',
             'lines':[{'type':'item','key':'minecraft:diamond','count':1}]})
@@ -126,6 +179,7 @@ class SortingHarness(world.Harness):
                 and any(row['id']=='minecraft:diamond' and row['available']>0 for row in stock['items'])
                 and self.command('state')['state']['containerId']==0,
                 'Fresh physical index did not reach Manager')
+            self.verify_ordinary_stock_orders()
             status, reservation = self.order(); require(status==200,'Could not create actual reservation')
             before_reserved = {x:self.nbt(x) for x in self.locations}
             before_clicks = self.command('state')['state']['attemptedClicks']
@@ -174,7 +228,9 @@ class SortingHarness(world.Harness):
                 'Sorter moved excluded or protected kit stock')
             require(self.authoritative_totals() == baseline_totals,
                 'Tier sorting changed authoritative recursive counts or item metadata')
-            self.ok('tier-only sorting empties deposit with exact server item conservation, preserving protected stock')
+            require(sum(self.count(x, 'oak_sign') for x in self.locations if x != 0) == 3,
+                'The tier sorter did not store all ordinary signs as inventory items')
+            self.ok('tier-only sorting empties deposit, preserves protected stock and stores signs as ordinary inventory')
             # The web Manager is still active and would immediately renew a new
             # autonomous sorting lease after the local sorter stops. Explicitly
             # disable only the isolated test's Manager physical sorting, leaving
@@ -247,7 +303,7 @@ class SortingHarness(world.Harness):
                     'Tier optimization changed authoritative recursive item counts or metadata')
             require(self.nbt(12)==excluded and self.nbt(15)==protected and self.nbt(30)==outbound, 'Tier sorting touched protected stock')
             self.ok('actual Tiers optimizer groups 26 full dirt stacks inside one physical shulker and separates eggs and swords with exact conservation')
-            # Every destination, including the unsigned overflow, is physically full.
+            # Every destination is physically full.
             for x in self.locations:
                 if x in [12,15,30]: continue
                 self.rcon.command(f'data merge block {x} 64 3 {{Items:[]}}')

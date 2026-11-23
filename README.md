@@ -1,4 +1,4 @@
-# WeSort – migrationsarbete
+# WeSort
 
 > **NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.**
 >
@@ -6,35 +6,16 @@
 
 **Manager kräver `eula=true` innan start.** Läs [Mojangs EULA](https://www.minecraft.net/en-us/eula) och aktivera sedan `WESORT_EULA=true` i Docker Compose-miljön eller `eula=true` i Managers `config.properties`. Manager laddar själv ned Minecraft 26.3-klienten från Mojang till sin privata cache och kontrollerar filens checksumma. Det finns inget stöd för att ange en lokal Minecraft-installation eller klient-JAR. Utan godkännande, eller om verifierad nedladdning misslyckas, startar inte servern.
 
-WeSort är en lagerfokuserad vidareutveckling av Qwerte för ett gemensamt
-guildlager. Minecraft-porten och testplattformen i steg 2 finns nu i koden;
-den färdiga guildplattformen i [roadmap #1](https://github.com/Crispy-Monke-eSports/WeSort/issues/1)
-är ännu inte implementerad. Verkliga 26.3-prov för inventory, avbrott,
-Baritone, Docker-index och ikoner redovisas i [steg 2](docs/STAGE_2.md).
+WeSort hanterar ett gemensamt guildlager med flera stashes på en konfigurerad
+Minecraft 26.3-server. Java Manager tillhandahåller webb, API, individuella
+medlemskonton och Owner-administration. En Fabric/Meteor/Baritone-agent skannar
+och sorterar lagret i tiers och packar order i namngivna shulkerboxar.
 
-[Steg 3](docs/STAGE_3.md) påbörjas med [fysiska observationer och färskhet](docs/MC_26_3_STOCK.md)
-(W-018). Övriga lager- och reservationssteg återstår.
-
-Återanvänd funktionalitet:
-
-- Stash Sorter: chest/barrel-index, signkategorier, tiers, drop-off,
-  stack consolidation, shulker-repack och bulkpackning.
-- Kits: 27-slotmallar, metadata, shulkernamn, crafting och anvil.
-- Stash Overlay och Stash Window: itempreview, lokal observation och lokala order.
-- Separat Java Manager: inbyggd webb/API för stash, order, botstatus, aktivitet,
-  individuell inloggning, rättigheter och skyddad audit.
-- Valfritt Baritone för lagerrelaterade resor och placering.
-
-Farming, ResetPearl, Build Planner/schematics, generell live world-viewer,
-proxyadministration och fjärrkonsol har avlägsnats. Alla Minecraft-items,
-inklusive dirt, seeds och pearls, är fortfarande vanliga lagervaror.
-
-## Stödd Minecraft-version
-
-**WeSort stöder endast Minecraft 26.3.** Klient-JAR, Fabric/Meteor/Baritone,
-Gradle-bygget, CI, E2E och Manager-index/ikoner är riktade till exakt 26.3.
-Minecraft 1.21.4 och 1.21.11 är historiska Qwerte-baslinjer, **inte**
-stödda installationer eller byggen. De äldre käll-/versionsmålen är borttagna.
+Medlemmar kan beställa lagervaror, hela boxar, kit från 27-slotmallar och
+craftbara föremål. Lagerobservationer, reservationer och orderstatus visas i
+webben tillsammans med dynamiskt renderade Minecraft 26.3-ikoner.
+Lagerstaging och verifierad mottagning är skilda steg. Se
+[arkitekturen](docs/ARCHITECTURE.md) för gränserna i dagens implementation.
 
 ## Meteor: WeSort Agent
 
@@ -149,20 +130,19 @@ formatkontroll, verifiering och E2E samtliga lyckas. Om en PR behöver
 rättas blir den första körningen röd; autofix.ci committar ändringen i
 PR-grenen och nästa körning går vidare först när all Java är formaterad.
 
-## Avgränsning och fortsatt arbete
+## Installation och verifiering
 
-Guildidentitet, SELF/GUILD-order, reservationer, kvoter (av som standard),
-1–5 koordinerade agenter och verifierad transport/mottagning
-införs i senare roadmapsteg. En HYBRID-agent ska till slut klara hela flödet.
-Manager körs i produktion endast med Linux Docker, med inbyggd webb/API,
-non-root, egen persistent volym och säker Owner-bootstrap via lokal CLI.
-Se [Docker-installation och verifiering](docs/DOCKER.md) och
-[GHCR-publicering och uppgradering](docs/GHCR.md). Java-only körning används
-endast för bygg/test.
+Kör Java 21 Manager i Linux Docker med en egen lokal volym. Initiera Owner
+med den lokala engångskoden, välj server och stashes i webben och provisionera
+en namngiven agentnyckel för Java 25-klienten. Se [Docker-guiden](docs/DOCKER.md)
+och [GHCR-publicering och uppgradering](docs/GHCR.md). Börja med en egen tom
+WeSort-volym enligt [datakatalogerna](docs/DATA_PATHS.md).
 
-WeSort ska alltid börja med egna tomma data. Ingen import, fallback, kopiering,
-läsning eller radering av tidigare Qwerte-data är tillåten. Egna namn, tomma datakataloger och schema-/symlinkspärrar finns nu enligt
-[DATA_PATHS.md](docs/DATA_PATHS.md).
+Den [privata 26.3-harnessen](docs/MC_26_3_E2E.md) verifierar lokala scenarier
+med riktig server och klient. För 6b6t gäller även den separata
+[lobby- och liveverifieringen](docs/MC_26_3_LOBBY_PORTAL.md). Följ
+[roadmapen](https://github.com/Crispy-Monke-eSports/WeSort/issues/1) för
+återstående fysisk leveransverifiering.
 
 ## Dokumentation och ursprung
 
@@ -174,7 +154,6 @@ läsning eller radering av tidigare Qwerte-data är tillåten. Egna namn, tomma 
 - [Datakataloger och installationsisolering](docs/DATA_PATHS.md)
 - [Docker-drift](docs/DOCKER.md)
 - [GHCR-release och installation](docs/GHCR.md)
-- [Steg 1 och kvarvarande avgränsningar](docs/STAGE_1.md)
 - [CI](docs/CI.md)
 - [Manager och aktuellt protokoll](stash-manager-server/README.md)
 

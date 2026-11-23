@@ -179,6 +179,8 @@ final class BotHub {
                 b.controlSession = controlSession;
                 b.controlEpoch = java.util.UUID.randomUUID().toString();
                 b.manifestScope = scope;
+                b.activity = null;
+                b.activityAt = 0;
             }
             if (player != null && !player.isEmpty()) b.player = player;
             b.plugin = plugin;
@@ -199,14 +201,19 @@ final class BotHub {
         return 200;
     }
 
+    boolean currentControlSession(Bot bot, String session, String epoch) {
+        synchronized (bot) {
+            return session != null
+                    && epoch != null
+                    && session.equals(bot.controlSession)
+                    && epoch.equals(bot.controlEpoch)
+                    && online(bot, now());
+        }
+    }
+
     ManifestScope manifestScope(Bot bot, String session, String epoch) {
         synchronized (bot) {
-            if (session == null
-                    || epoch == null
-                    || !session.equals(bot.controlSession)
-                    || !epoch.equals(bot.controlEpoch)
-                    || !online(bot, now())) return null;
-            return bot.manifestScope;
+            return currentControlSession(bot, session, epoch) ? bot.manifestScope : null;
         }
     }
 
@@ -506,8 +513,6 @@ final class BotHub {
             if (!was) b.notifyAll();
         }
     }
-
-    /** The viewer session the bot must use now, or null when nobody is watching. */
 
     /** bot/activity: stores the snapshot and adds its new events (de-duplicated by at, source and text). */
     void activity(Bot b, JsonObject snapshot, JsonArray events) {

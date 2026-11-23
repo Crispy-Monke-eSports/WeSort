@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
@@ -86,7 +87,31 @@ class AuthTest {
     }
 
     @Test
-    void logoutAndLogoutEverywhere(@TempDir Path dir) {
+    void failedSessionWritePreservesTheOldSessionAndItsElevation(@TempDir Path dir) throws Exception {
+        var clock = new AtomicLong(1);
+        var store = new SessionStore(dir, clock::get);
+        String oldest = store.create();
+        store.elevate(oldest);
+        for (int i = 1; i < SessionStore.MAX_PER_USER; i++) {
+            clock.incrementAndGet();
+            store.create();
+        }
+        Path sessionsFile = dir.resolve("sessions.json");
+        Path saved = Files.move(sessionsFile, dir.resolve("previous.json"));
+        Files.createDirectory(sessionsFile);
+        assertThrows(java.io.IOException.class, store::create);
+        assertEquals(SessionStore.MAX_PER_USER, store.size());
+        assertTrue(store.valid(oldest));
+        assertTrue(store.elevated(oldest));
+        Files.delete(sessionsFile);
+        Files.move(saved, sessionsFile);
+        var restarted = new SessionStore(dir, clock::get);
+        restarted.load();
+        assertTrue(restarted.valid(oldest));
+    }
+
+    @Test
+    void logoutAndLogoutEverywhere(@TempDir Path dir) throws Exception {
         SessionStore store = new SessionStore(dir, () -> 1);
         String a = store.create();
         String b = store.create();

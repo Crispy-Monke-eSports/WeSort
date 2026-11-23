@@ -471,7 +471,7 @@ final class BotRoutes {
                 return;
             }
             synchronized (b) {
-                if (hub.manifestScope(b, controlSession, epoch) == null) {
+                if (!hub.currentControlSession(b, controlSession, epoch)) {
                     Http.error(ex, 409, "Control session does not match");
                     return;
                 }

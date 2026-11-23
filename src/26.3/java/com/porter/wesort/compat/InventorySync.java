@@ -422,7 +422,8 @@ public final class InventorySync {
                         })
                 // WeSort no longer issues sign-write permissions. Fail closed on
                 // any sign text packet while the dedicated Manager agent is active.
-                || (event.packet instanceof ServerboundSignUpdatePacket && WorldInteractionGuard.dedicated())) {
+                || (event.packet.type() == GamePacketTypes.SERVERBOUND_SIGN_UPDATE
+                        && WorldInteractionGuard.dedicated())) {
             if (event.packet instanceof ServerboundUseItemOnPacket && expectSpot != null)
                 intentCounted("place-packet-guard-denied");
             event.cancel();

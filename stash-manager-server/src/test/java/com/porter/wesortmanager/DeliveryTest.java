@@ -18,7 +18,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.concurrent.Executors;
@@ -46,6 +48,7 @@ class DeliveryTest {
     HttpServer server;
     String base;
     byte[] k;
+    String sharedKey;
     final HttpClient http = HttpClient.newHttpClient();
 
     @BeforeAll
@@ -60,10 +63,13 @@ class DeliveryTest {
 
     @BeforeEach
     void start() throws Exception {
+        Config.load(data);
+        Files.writeString(data.resolve("config.properties"), "allowBearer=true\n", StandardOpenOption.APPEND);
         Config config = Config.load(data);
         config.setDashboardPassword(Auth.hash(OWNER_PW));
         config.setMinecraftServer("s");
-        k = Signer.deriveKey(config.apiKey());
+        sharedKey = config.apiKey();
+        k = Signer.deriveKey(sharedKey);
         IndexStore store = new IndexStore(data, CreativeTabs.NONE);
         store.load();
         OrderStore orders = new OrderStore(data, store);
@@ -119,6 +125,20 @@ class DeliveryTest {
                 .build();
         HttpResponse<String> r = http.send(req, HttpResponse.BodyHandlers.ofString());
         return new Res(r.statusCode(), r.body());
+    }
+
+    @Test
+    void bearerCannotBeEnabledByOldConfig() throws Exception {
+        String path = "/api/v1/index";
+        var bearer = HttpRequest.newBuilder(URI.create(base + path))
+                .header("Authorization", "Bearer " + sharedKey)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{}"));
+        assertEquals(
+                401,
+                http.send(bearer.build(), HttpResponse.BodyHandlers.discarding())
+                        .statusCode());
+        assertEquals(400, botPost(path, "{}").status());
     }
 
     Res get(String token, String path) throws Exception {

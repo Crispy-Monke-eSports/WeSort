@@ -30,7 +30,7 @@ stateDiagram-v2
   [*] --> REQUESTED
   REQUESTED --> PENDING_APPROVAL: policy kräver
   PENDING_APPROVAL --> REJECTED
-  PENDING_APPROVAL --> RESERVED: approval och atomisk stock/quota-hold
+  PENDING_APPROVAL --> RESERVED: approval och atomisk stockreservation
   REQUESTED --> RESERVED: direkt tillåten, atomisk hold
   RESERVED --> PACKING: fenced pack-jobb
   PACKING --> PICKUP_READY: verifierat och förseglat manifest
@@ -52,19 +52,19 @@ REJECTED/CANCELLED/DELIVERED är terminala. Teknisk FAILED före fysisk intent
 kan frigöra holds; FAILED efter intent är inte ett lagerutfall utan kräver
 reconciliation. `PICKUP_READY` betyder fortfarande warehouse-custody. Delorder
 har egna paket och receipts; ordern blir DELIVERED först när alla obligatoriska
-rader är kvitterade. Ett kvitto kan inte dubbeldebitera en quota-window.
+rader är kvitterade. Varje kvitto behandlas idempotent.
 
 ## Agentkontrakt och journal
 
 HelloAgent: agent-ID, Minecraftkonto-UUID, server/dimension, runtimeversion,
 förmågor `{scan,sort,pack,pickup,travel,deliver}`, lokal journalversion. Servern
 binder signingcredential till agentidentitet; ingen agent kan påstå en annan
-requestedBy. 1–5 är konfigurationsgräns; HYBRID är förmågor, inte specialbackend.
+requestedBy. En aktiv agent utför samtliga fysiska steg.
 
 ObserveSource: fysisk nyckel + tidigare sourceRevision + scanID + fingerprint/
 slotkvantiteter, observerad tid och bevis för fullständig/partiell scan.
 Manager utfärdar nästa revision; saknade slots i partiell scan får inte tolkas
-som tomma. Äldre revisioner och två agenter på samma slot får inte dubbelräknas.
+som tomma. Replay och äldre revisioner får inte dubbelräknas.
 
 ClaimJob: agentens förmågor + kapacitet, returnerar jobID, orderID, leaseID,
 fence, expiry, förväntade source/destination-revisioner, manifestHash och
@@ -79,23 +79,21 @@ Receipt innehåller paketID, manifestHash, source/destinationrevision, mottagare
 verifierad mängd och actor/agent-proveniens. Manager måste kunna avvisa en receipt
 utan att agenten slänger eller duplicerar inventory.
 
-## Solo, skalning och återtagning
+## En agent och säker återtagning
 
-I 1-agentläge måste HYBRID kunna sekvensera scan/sort/reserve/pack/pickup/travel/
-deliver med samma konto. Pickup-jobbet får återanvända pack-agentens konto men
-inte hoppa över custodykvittot. Navigation sker inom samma Minecraft-server,
-över dimensioner endast via verifierade portal-/ruttkontrakt.
+Samma agent och Minecraftkonto utför scan, sortering, packning, pickup,
+transport och leverans. Pickup behöver ett eget custodykvitto även när
+samma konto packade boxen. Navigation sker inom den konfigurerade
+Minecraft-servern och över dimensioner via verifierade portalövergångar.
 
-I 2–5-agentläge får scheduler tilldela skilda resurser parallellt. Flera agenter
-ska inte styra samma kontos inventory. Vid tappad agent återtas bara jobb utan
-okvitterad fysisk intent. Vid 5→1 kan en kvarvarande HYBRID hämta säkra jobb;
-spärrade paket väntar på observation/reconciliation. En omstart ger aldrig
-nollställd custody eller ett nytt oskyddat claim på gammal fysisk operation.
+När en lease eller kontrollsession tappas behåller Manager paketens
+senast verifierade custody. Osäkra intents kräver en ny fysisk
+observation och avstämning före återtagning.
 
 ## Definitioner av bevis
 
 DB-concurrencytest bevisar inte inventory clicks. API-test bevisar signing,
 identity, idempotens och kontraktsvalidering. Minecraft 26.3 E2E med ett konto
 ska bevisa verklig scan/pack/pickup/travel och både chest-/player-receipt.
-Failovertest ska visa 1→2→3→4→5→1 och osäkerhetsstopp. Dessa körs i senare
-roadmapissues; inga sådana körningar påstås genomförda i W-025.
+Testmatrisen omfattar även återanslutning, utgången lease och osäkerhetsstopp.
+Faktisk 6b6t-drift verifieras separat i #141.

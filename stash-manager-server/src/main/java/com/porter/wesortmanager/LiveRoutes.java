@@ -102,7 +102,7 @@ final class LiveRoutes {
             while (true) {
                 long now = System.currentTimeMillis();
                 if (now - start >= MAX_AGE_MS) break;
-                if (router == null || !router.stillAllowed(token, Router.Perm.VIEW, null)) break;
+                if (router == null || !router.stillAllowed(token, Router.Perm.VIEW)) break;
                 if (now - lastSweep >= PRESENCE_SWEEP_MS) {
                     lastSweep = now;
                     Set<String> current = fingerprint();

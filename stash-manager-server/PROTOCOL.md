@@ -1,17 +1,16 @@
-# Manager API efter steg 0
+# WeSort Manager API
 
 Alla aktiva routes registreras av WeSortManager.routes.
-Detta protokoll är den bevarade baslinjen, inte framtida guildordermotor.
+För hela order- och leveransflödet, se [domänkontrakten](../docs/MANAGER_CONTRACTS.md).
 
-## En server, inget ägarskap, inga lagrade kit
+## En server, en agent och kit på beställning
 
 - Managern betjänar alltid exakt EN Minecraft-server, satt av ägaren i webb-UI:t
   (`GET/POST /api/v1/server`). Bot-anrop från en annan server avvisas med 409.
   Webbläsar-anrop tar bara `stash` (aldrig `server`); behörighetsscopet
   `stashes` är en lista av `{stash}`.
-- Ingen bot äger en stash: ägarskap (`Owners`, `stashes/release`,
-  ägar-/konfliktfält, 409 "stash name in use") är borttaget. Alla bottar kan
-  använda alla stashes.
+- Owner definierar flera stashes som den aktiva agenten kan arbeta i.
+  Fysiska direktiv gäller en specifik stash och revision.
 - Kit är on demand: ett kit är exakt en shulkerbox, packad vid beställning med
   mallens exakta slotplacering. Ägaren hanterar mallar (`GET/POST /api/v1/kits`,
   revisionsskyddade som stash-defs); ordrar tar `{"type":"kit","key":namn,"count":n}`
@@ -50,7 +49,7 @@ Detta protokoll är den bevarade baslinjen, inte framtida guildordermotor.
 | Agent | POST index, heartbeat, orders/claim, orders/:id/status, delivery |
 | Lager/webb | GET stashes, index, orders, delivery, link, server, stash-defs, kits; POST server, stash-defs, kits, rescan, link/regenerate |
 | Order/webb | POST orders (lines: item, shulker eller kit), orders/clear, orders/:id/cancel, orders/:id/force-cancel, orders/:id/retry, orders/:id/approval, orders/:id/reconcile |
-| Drift/agent | POST bot/hello, bot/state, bot/results, bot/activity; GET bot/next |
+| Drift/agent | POST bot/hello, bot/state, bot/results, bot/activity, bot/next; GET bot/next |
 | Drift/webb | GET bots, bots/:id/settings, bots/:id/jobs, bots/:id/activity; POST bots/:id/settings |
 | Administration | GET/POST users; POST users/owner, users/:id, users/:id/actions enligt UserRoutes; GET audit |
 | Assets | GET /icon/:id och statiska resurser |
@@ -60,11 +59,24 @@ API-routes börjar med `/api/v1/`. Se exakta regex/actions i respektive
 avvisas. Jobbkön kan bara bära settingsändringar. Gamla planner-, console- och
 viewer-routes saknas och ger 404. Inga kommandon kan köas via gammalt API.
 
+En lyckad inloggning utfärdar cookien efter lyckad sessionspersistens. Om
+sessionsfilen inte kan skrivas svarar Manager med 503 och behåller tidigare
+giltiga sessioner. Om detta inträffar under Owner-bootstrap kan Owner logga
+in med det redan sparade lösenordet när skrivfelet har lösts.
+
 Browserläsning kräver session; writes kräver dessutom POST, JSON,
 `X-Stash-Manager: 1`, samma origin och tillämplig permission. CORS-preflight
 nekas. Owner-only administration använder lösenordsbekräftelse.
 Agentanrop signeras genom Signer; replay/skew/key-generation kontrolleras.
 SignerTest och HTTP-regressionerna är protokollets körbara exempel.
+
+En aktuell signerad kontrollsession kan rapportera en incidentkod i
+`POST bot/next` under `activity.incident`. Manager visar giltiga koder i
+`GET operations` för användare med aktivitetstillgång till agenten.
+Koderna har inga koordinater eller credentials. Navigation som pausats,
+väntan på 6b6t-portalen, fel server, overifierat inventarium och journal som
+kräver avstämning har egna koder. Agentfrånvaro visas utifrån Managers
+observerade närvaro.
 
 Aktiva permissions: view, order, ordersAll, activity, settings, rescan, link,
 guildOrders, positions samt stash-/bot-scope. Nycklar lämnas inte ut till sub-users.
@@ -231,8 +243,8 @@ Configured server, defined stashes, control sessions, signed physical
 work, journal and replay protection remain independently enforced.
 
 The host can issue, rotate and revoke key slots and make scoped
-credentials mandatory. In that mode the legacy identifier `-` and
-legacy Bearer credentials are denied. The credential registry,
+credentials mandatory. That mode also rejects the shared HMAC identifier
+`-`. All agent requests require HMAC signing. The credential registry,
 scoped-only mode and revocations persist in the Manager volume. Names
 are display-only and are not persisted as credential ownership.
 Provisioning returns each secret once through the local CLI.

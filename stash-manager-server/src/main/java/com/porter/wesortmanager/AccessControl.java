@@ -9,8 +9,6 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.UnknownHostException;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -30,11 +28,8 @@ public final class AccessControl {
     /** Only the names from allowedHosts= in config.properties (no localhost, machine names or IPs): the HTTPS proxy names. */
     private final Set<String> proxyNames = new HashSet<>();
 
-    private final Config config;
-
     public AccessControl(Config config) {
         this.allowRemote = config.allowRemote;
-        this.config = config;
         allowedHosts.add("localhost");
         allowedHosts.addAll(config.allowedHosts);
         for (String name : config.allowedHosts) {
@@ -104,20 +99,6 @@ public final class AccessControl {
         if (host.isEmpty()) return false;
         if (IPV4.matcher(host).matches()) return true;
         return allowedHosts.contains(host);
-    }
-
-    /**
-     * Constant-time check of "Authorization: Bearer <key>" against the current key.
-     * Returns the key's generation when it matches, otherwise -1.
-     */
-    public long keyGeneration(HttpExchange exchange) {
-        List<String> headers = exchange.getRequestHeaders().get("Authorization");
-        if (headers == null || headers.size() != 1) return -1;
-        String value = headers.get(0).trim();
-        if (value.length() < 7 || !value.regionMatches(true, 0, "Bearer ", 0, 7)) return -1;
-        byte[] given = value.substring(7).trim().getBytes(StandardCharsets.UTF_8);
-        Config.KeyState key = config.keyState();
-        return MessageDigest.isEqual(given, key.bytes()) ? key.generation() : -1;
     }
 
     /**

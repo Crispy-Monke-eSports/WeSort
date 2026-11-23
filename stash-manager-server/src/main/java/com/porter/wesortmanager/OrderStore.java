@@ -715,6 +715,14 @@ final class OrderStore {
                 && (OPEN.contains(order.status) || order.claimedAt > 0);
     }
 
+    /** UI-independent sweep; one indexed server is reconciled under its normal lock. */
+    void selfHealAll() throws IOException {
+        for (String server : books.keySet().stream()
+                .map(IndexStore.StashKey::server)
+                .distinct()
+                .toList()) releaseFromFreshObservation(server);
+    }
+
     void releaseFromFreshObservation(String server) throws IOException {
         synchronized (index) {
             PhysicalReservations observations = null;
@@ -748,16 +756,14 @@ final class OrderStore {
         }
     }
 
-    /** Orders a silent bot holds that nobody asked to cancel: cancel requests older than this
-     * are fulfilled automatically when the order holds nothing physical. */
+    /** Timeout for unconfirmed cancellations and legacy, unallocated orders. */
     static final long AUTO_CANCEL_AFTER_MS = 10 * 60 * 1000;
 
     /**
-     * Server-side self-healing on every fresh index, no clicks needed. Abandons nothing and
-     * guesses nothing: NEEDS_RECONCILIATION orders the fresh observation proves are returned to
-     * PICKUP_READY; open orders with an unsettled physical operation are surfaced as
-     * NEEDS_RECONCILIATION instead of hanging silently; cancel requests the bot never confirmed
-     * and that hold nothing physical are fulfilled once stale.
+     * Self-healing on fresh indexes and periodic sweeps, without operator actions. A
+     * matching original source slot is not proof that packing or staging succeeded.
+     * Uncertain orders terminate only after their physical journals settle and reserved
+     * sources are freshly observed; otherwise all holds remain protected.
      */
     private void autoHeal(String server) throws IOException {
         long now = System.currentTimeMillis();
@@ -782,20 +788,33 @@ final class OrderStore {
 
     /** One order's automatic step, or null when it stays as it is. Copy-on-write: the caller saves. */
     private Order healed(Book book, Order previous, long now) throws IOException, OrderException {
-        if (previous.stage() == OrderStage.NEEDS_RECONCILIATION
-                && previous.allocations != null
-                && !previous.allocations.isEmpty()
-                && previous.cancelRequestedAt == 0) {
-            PhysicalReservations observations = PhysicalReservations.read(index.stock(), book.server, null);
-            if (!observations.refreshedAfter(previous.allocations, previous.updatedAt)
-                    || !observations.matches(previous.allocations)
-                    || index.stock().unsettledPhysicalOrder(previous.id)) return null;
+        if (previous.stage() == OrderStage.NEEDS_RECONCILIATION) {
+            // Never turn a matching source fingerprint into a fictitious packed order.
+            // Every journal must be settled and every reserved source observed again
+            // after the fence, even when the observed slot contents have changed.
+            if (index.stock().unsettledPhysicalOrder(previous.id)) return null;
+            boolean held = previous.allocations != null && !previous.allocations.isEmpty();
+            if (held) {
+                PhysicalReservations observed = PhysicalReservations.read(index.stock(), book.server, null);
+                if (!observed.refreshedAfter(previous.allocations, previous.updatedAt)) return null;
+            } else if (now - previous.updatedAt < AUTO_CANCEL_AFTER_MS) {
+                // No slot-level proof exists for legacy orders. They retain no
+                // protected physical roots, but need a grace period after restart.
+                return null;
+            }
             Order o = Order.fromJson(previous.snapshot());
-            o.advance(OrderStage.PICKUP_READY);
-            o.status = "packed";
-            o.message = "reconciled from a fresh observation; ready for pickup";
+            boolean cancel = previous.cancelRequestedAt > 0;
+            o.advance(cancel ? OrderStage.CANCELLED : OrderStage.FAILED);
+            o.status = cancel ? "cancelled" : "failed";
+            o.cancelRequested = false;
+            o.message = cancel
+                    ? "Auto-cancelled after physical work settled and inventory was rescanned"
+                    : "Auto-failed after physical verification; packing was not proven";
             o.updatedAt = now;
-            o.record("order.auto-reconcile", Users.OWNER_ID, now);
+            // The qualifying fresh readback already proves the old virtual hold
+            // may be dropped. No physical inventory mutation is sent here.
+            if (held) o.releasedAt = now;
+            o.record("order.auto-reconcile-abandon", Users.OWNER_ID, now);
             return o;
         }
         if ((previous.status.equals("accepted")

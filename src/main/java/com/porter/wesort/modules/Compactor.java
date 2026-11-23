@@ -330,8 +330,8 @@ final class Compactor {
     }
 
     /**
-     * A container its stacks and shulkers may be taken from: not a drop-off, a kit chest, one marked compactSkip, or one
-     * whose sign is changing.
+     * A container its stacks and shulkers may be taken from: not a drop-off, protected storage,
+     * a Manager-assigned kit chest or one marked compactSkip.
      */
     private boolean source(Box b) {
         return b.sortable() && !b.stale && !b.dropOff && !b.noCompact && !owner.isKitBox(b) && !b.protectedStorage;
@@ -609,8 +609,8 @@ final class Compactor {
     }
 
     /**
-     * An unnamed empty shulker in the stash that may be taken: in a chest signed for shulkers first, then the nearest,
-     * never one in a kit chest or a container marked compactSkip.
+     * An unnamed empty shulker from the nearest safe unprotected inventory container,
+     * never from a kit chest or a container marked compactSkip.
      */
     private Found findEmptyShulker() {
         Found best = null;

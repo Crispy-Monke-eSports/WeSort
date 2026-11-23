@@ -2420,13 +2420,15 @@ final class OrderStore {
                 order.manifest =
                         index.stock().stagingManifest(order.server, order.stash, order.id, order.agent, packages);
             }
-            // Missing verification must never be presented as packed stock.
-            // Reserved roots remain held until journal settlement and rescan.
+            // A terminal report without a native staging receipt is *not*
+            // terminal: order the same agent to reclaim staged packages first.
+            // Returning FAILED here would let the agent delete its recovery
+            // checkpoint after a successful HTTP response.
             return order.manifest != null
                             && allLinesStaged(order.lines, result)
                             && !index.stock().unsettledPhysicalOrder(order.id)
                     ? OrderStage.PICKUP_READY
-                    : OrderStage.FAILED;
+                    : OrderStage.RECOVERING;
         }
         return status.equals("cancelled") ? OrderStage.CANCELLED : OrderStage.FAILED;
     }

@@ -218,6 +218,8 @@ public class Stash {
         public int craftIndex, craftMade;
 
         public boolean craftInFlight;
+        /** Interrupted orders resume rollback, never replay their packing plan. */
+        public boolean recoveryPending, recoveryCancelled;
         public final java.util.Map<String, Integer> craftUsed = new java.util.LinkedHashMap<>();
     }
 
@@ -724,6 +726,8 @@ public class Stash {
             if (activeOrder.craftIndex > 0) order.putInt("craftIndex", activeOrder.craftIndex);
             if (activeOrder.craftMade > 0) order.putInt("craftMade", activeOrder.craftMade);
             if (activeOrder.craftInFlight) order.putBoolean("craftInFlight", true);
+            if (activeOrder.recoveryPending) order.putBoolean("recoveryPending", true);
+            if (activeOrder.recoveryCancelled) order.putBoolean("recoveryCancelled", true);
             if (!activeOrder.craftUsed.isEmpty()) {
                 ListTag used = new ListTag();
                 for (var e : activeOrder.craftUsed.entrySet()) {
@@ -1006,6 +1010,8 @@ public class Stash {
                 active.craftIndex = number(order.get("craftIndex"), 0);
                 active.craftMade = number(order.get("craftMade"), 0);
                 active.craftInFlight = flag(order, "craftInFlight");
+                active.recoveryPending = flag(order, "recoveryPending");
+                active.recoveryCancelled = flag(order, "recoveryCancelled");
                 if (order.get("craftUsed") instanceof ListTag used)
                     for (Tag t : used)
                         if (t instanceof CompoundTag row)

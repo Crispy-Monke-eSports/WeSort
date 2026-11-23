@@ -320,7 +320,8 @@ final class Users {
             return;
         }
         try {
-            var root = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8)).getAsJsonObject();
+            var root = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8))
+                    .getAsJsonObject();
             if (longOf(root, "version") != 1) throw new IllegalArgumentException("Unsupported user schema");
             String nextOwner = requiredText(root, "ownerName");
             if (!NAME.matcher(nextOwner).matches()) throw new IllegalArgumentException("Invalid Owner name");
@@ -334,7 +335,9 @@ final class Users {
                 var o = e.getAsJsonObject();
                 String id = requiredText(o, "id");
                 String name = requiredText(o, "name");
-                if (!ID.matcher(id).matches() || loaded.containsKey(id) || !NAME.matcher(name).matches()
+                if (!ID.matcher(id).matches()
+                        || loaded.containsKey(id)
+                        || !NAME.matcher(name).matches()
                         || !names.add(name.toLowerCase(Locale.ROOT)))
                     throw new IllegalArgumentException("Invalid or duplicate account");
                 String hash = requiredText(o, "hash");
@@ -342,13 +345,30 @@ final class Users {
                 var persistedPerms = o.getAsJsonObject("perms");
                 // The current writer always includes these fields. Missing scope
                 // fields must never silently become unlimited privileges.
-                for (String key : List.of("view", "order", "ordersAll", "activity", "settings", "rescan",
-                        "link", "guildOrders", "positions")) requiredBoolean(persistedPerms, key);
+                for (String key : List.of(
+                        "view",
+                        "order",
+                        "ordersAll",
+                        "activity",
+                        "settings",
+                        "rescan",
+                        "link",
+                        "guildOrders",
+                        "positions")) requiredBoolean(persistedPerms, key);
                 if (!persistedPerms.has("stashes") || !persistedPerms.has("bots"))
                     throw new IllegalArgumentException("Missing permission scope");
-                loaded.put(id, new User(id, name, hash, Perms.parse(persistedPerms),
-                        requiredBoolean(o, "disabled"), requiredBoolean(o, "mustChange"),
-                        longOf(o, "createdAt"), longOf(o, "lastLoginAt"), longOf(o, "passwordChangedAt")));
+                loaded.put(
+                        id,
+                        new User(
+                                id,
+                                name,
+                                hash,
+                                Perms.parse(persistedPerms),
+                                requiredBoolean(o, "disabled"),
+                                requiredBoolean(o, "mustChange"),
+                                longOf(o, "createdAt"),
+                                longOf(o, "lastLoginAt"),
+                                longOf(o, "passwordChangedAt")));
             }
             if (root.has("minecraftAccounts")) {
                 var mappings = root.getAsJsonObject("minecraftAccounts");
@@ -375,22 +395,19 @@ final class Users {
 
     private static String requiredText(JsonObject o, String key) {
         var e = o.get(key);
-        if (!(e instanceof JsonPrimitive p) || !p.isString())
-            throw new IllegalArgumentException("Invalid user field");
+        if (!(e instanceof JsonPrimitive p) || !p.isString()) throw new IllegalArgumentException("Invalid user field");
         return p.getAsString();
     }
 
     private static boolean requiredBoolean(JsonObject o, String key) {
         var e = o.get(key);
-        if (!(e instanceof JsonPrimitive p) || !p.isBoolean())
-            throw new IllegalArgumentException("Invalid user flag");
+        if (!(e instanceof JsonPrimitive p) || !p.isBoolean()) throw new IllegalArgumentException("Invalid user flag");
         return p.getAsBoolean();
     }
 
     private static long longOf(JsonObject o, String key) {
         var e = o.get(key);
-        if (!(e instanceof JsonPrimitive p) || !p.isNumber())
-            throw new IllegalArgumentException("Invalid user number");
+        if (!(e instanceof JsonPrimitive p) || !p.isNumber()) throw new IllegalArgumentException("Invalid user number");
         long n = p.getAsBigDecimal().longValueExact();
         if (n < 0) throw new IllegalArgumentException("Negative user number");
         return n;

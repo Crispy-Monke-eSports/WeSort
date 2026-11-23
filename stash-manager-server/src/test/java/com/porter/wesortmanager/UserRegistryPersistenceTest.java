@@ -10,7 +10,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class UserRegistryPersistenceTest {
-    @TempDir Path data;
+    @TempDir
+    Path data;
 
     @Test
     void malformedRegistryCannotPublishPartialAccountsOrWidenScopes() throws Exception {

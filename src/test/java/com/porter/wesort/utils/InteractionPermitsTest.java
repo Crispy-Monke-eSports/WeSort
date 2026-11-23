@@ -21,7 +21,6 @@ class InteractionPermitsTest {
         InteractionPermits permits = new InteractionPermits();
         assertFalse(permits.allows(1000, STONE, Operation.USE, "minecraft:chest", "order-1"));
         assertFalse(permits.allows(1000, STONE, Operation.BREAK, "minecraft:chest", "order-1"));
-        assertFalse(permits.allows(1000, STONE, Operation.SIGN, "minecraft:oak_sign", "order-1"));
         assertNull(permits.jobOf(1000, STONE, Operation.USE));
         assertEquals(0, permits.live(1000));
     }

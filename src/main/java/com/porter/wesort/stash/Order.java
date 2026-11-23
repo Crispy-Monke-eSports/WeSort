@@ -249,29 +249,27 @@ public final class Order {
         return e != null && e.isJsonPrimitive() && e.getAsJsonPrimitive().isString();
     }
 
-    /** The order's names, or null when it has none or they can't be read (then nothing is named). */
+    /** A malformed frozen label is a protocol error, never permission to use a legacy name. */
     private static Names parseNames(JsonObject o) {
-        try {
-            // W-064 first: the server's frozen packageLabel + packageTotal generate the exact
-            // `WeSort (X/Y) - text` names. Legacy free names are only a fallback.
-            if (o.has("packageLabel")
-                    && o.get("packageLabel").isJsonObject()
-                    && o.has("packageTotal")
-                    && o.get("packageTotal").isJsonPrimitive()) {
-                int total = o.get("packageTotal").getAsInt();
-                if (total >= 1 && total <= MAX_NAMES) {
-                    try {
-                        var generated =
-                                com.porter.wesort.data.PackageLabel.generate(o.getAsJsonObject("packageLabel"), total);
-                        List<String> list = new ArrayList<>();
-                        for (JsonElement e : generated) list.add(e.getAsString());
-                        Names w = Names.of(Names.EACH, "", list);
-                        if (w != null) return w;
-                    } catch (RuntimeException ignored) {
-                        // Unreadable label: fall through to legacy names, then unnamed.
-                    }
-                }
+        var label = o.get("packageLabel");
+        if (label != null && !label.isJsonNull()) {
+            try {
+                var totalValue = o.get("packageTotal");
+                if (!label.isJsonObject() || totalValue == null || !totalValue.isJsonPrimitive()
+                        || !totalValue.getAsJsonPrimitive().isNumber())
+                    throw new IllegalArgumentException("Missing frozen package total or label");
+                int total = totalValue.getAsBigDecimal().intValueExact();
+                var generated = com.porter.wesort.data.PackageLabel.generate(label.getAsJsonObject(), total);
+                List<String> list = new ArrayList<>();
+                for (JsonElement e : generated) list.add(e.getAsString());
+                Names names = Names.of(Names.EACH, "", list);
+                if (names == null) throw new IllegalArgumentException("Empty frozen package labels");
+                return names;
+            } catch (RuntimeException invalid) {
+                throw new IllegalArgumentException("Invalid frozen package label; order must not execute", invalid);
             }
+        }
+        try {
             if (!o.has("names") || !o.get("names").isJsonObject()) return null;
             JsonObject n = o.getAsJsonObject("names");
             String mode = n.has("mode") && n.get("mode").isJsonPrimitive()

@@ -1511,9 +1511,7 @@ public class StashSorter extends Module {
             }
             if (control.type().equals("enum")) {
                 var choices = new JsonArray();
-                if (control.name().equals("mode")) {
-                    for (var option : Mode.values()) choices.add(option.name());
-                } else if (control.name().equals("log-level")) {
+                if (control.name().equals("log-level")) {
                     for (var option : LogLevel.values()) choices.add(option.name());
                 }
                 row.add("options", choices);
@@ -1556,7 +1554,6 @@ public class StashSorter extends Module {
                 case "enum" -> {
                     if (!value.isString()) yield false;
                     yield switch (name) {
-                        case "mode" -> ((Setting<Mode>) setting).set(Mode.valueOf(value.getAsString()));
                         case "log-level" -> ((Setting<LogLevel>) setting).set(LogLevel.valueOf(value.getAsString()));
                         default -> false;
                     };
@@ -1611,7 +1608,6 @@ public class StashSorter extends Module {
         setUp = true;
         // Legacy configs may still contain Signs. This Agent uses tier-based sorting
         // exclusively; never require or create chest labels to compact UUID boxes.
-        if (mode.get() != Mode.Tiers) mode.set(Mode.Tiers);
         boolean user = isActive();
         job = null;
         target = null;
@@ -1740,13 +1736,13 @@ public class StashSorter extends Module {
         else
             info(
                     "Stash \"%s\": %d containers, sorting by %s.",
-                    stash.name, stash.boxes.size(), mode.get() == Mode.Tiers ? "tier" : "sign");
+                    stash.name, stash.boxes.size(), "tier");
 
         // What is going to happen, and in what order
         List<String> plan = new ArrayList<>();
         if (stash.hasArea()) plan.add("explore the area");
         if (unknown > 0) plan.add("read " + unknown + " containers");
-        plan.add(!sorting() ? "watch for changes" : mode.get() == Mode.Tiers ? "sort by tier" : "sort by sign");
+        plan.add(!sorting() ? "watch for changes" : "sort by tier");
         StringBuilder next = new StringBuilder();
         for (int i = 0; i < plan.size(); i++)
             next.append(i == 0 ? "" : ", then ").append(plan.get(i));
@@ -10642,7 +10638,6 @@ public class StashSorter extends Module {
      */
     private void plan() {
         tierBoxes.clear();
-        if (mode.get() != Mode.Tiers) return;
 
         List<Box> ordered = stash.boxes.stream()
                 .filter(b -> b.sortable() && !b.dropOff)
@@ -10691,7 +10686,7 @@ public class StashSorter extends Module {
     public JsonObject explainSort(ItemStack stack) {
         JsonObject out = new JsonObject();
         out.addProperty("item", stack.isEmpty() ? "empty" : StashIndex.keyOf(stack));
-        out.addProperty("mode", mode.get().name());
+        out.addProperty("mode", "Tiers");
         out.addProperty("permitted", sortingPermitted());
         JsonArray candidates = new JsonArray();
         out.add("candidates", candidates);

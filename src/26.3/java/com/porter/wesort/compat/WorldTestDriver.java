@@ -10,7 +10,6 @@ import com.porter.wesort.stash.StashIndex;
 import java.nio.file.*;
 import java.util.*;
 import meteordevelopment.meteorclient.MeteorClient;
-import meteordevelopment.meteorclient.events.game.OpenScreenEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.Setting;
 import meteordevelopment.meteorclient.systems.modules.Modules;
@@ -33,9 +32,7 @@ public final class WorldTestDriver {
     private int stable;
     private Stash stash;
     private String interaction = "";
-    private long openEpoch, signEpoch;
-    private net.minecraft.world.level.block.entity.SignTextSlot signSlot;
-    private boolean signSent;
+    private long openEpoch;
     private String crashPhysicalPhase;
     private static WorldTestDriver instance;
     private final Map<BlockPos, Long> blockEntities = new HashMap<>();
@@ -269,23 +266,6 @@ public final class WorldTestDriver {
                     if (!InventorySync.requestReconciliation())
                         respond(false, "No recoverable inventory intent", state());
                 }
-                case "sign" -> {
-                    if (!InventorySync.ready()) {
-                        respond(false, InventorySync.reason(), state());
-                        return;
-                    }
-                    BlockPos pos = position(command);
-                    if (!mc.level.isLoaded(pos) || mc.player.distanceToSqr(Vec3.atCenterOf(pos)) > 25) {
-                        respond(false, "Sign not loaded/reachable", state());
-                        return;
-                    }
-                    signSlot = null;
-                    signSent = false;
-                    meteordevelopment.meteorclient.utils.world.BlockUtils.interact(
-                            new BlockHitResult(Vec3.atCenterOf(pos), Direction.UP, pos, false),
-                            InteractionHand.MAIN_HAND,
-                            true);
-                }
                 case "select" -> {
                     if (!InventorySync.ready()) {
                         respond(false, InventorySync.reason(), state());
@@ -416,9 +396,6 @@ public final class WorldTestDriver {
                     if (command.has("carrySlots"))
                         ((Setting<String>) sorter.settings.get("carry-slots"))
                                 .set(command.get("carrySlots").getAsString());
-                    ((Setting<StashSorter.Mode>) sorter.settings.get("mode"))
-                            .set(StashSorter.Mode.valueOf(
-                                    command.has("mode") ? command.get("mode").getAsString() : "Signs"));
                     ((Setting<Boolean>) sorter.settings.get("barrels")).set(true);
                     ((Setting<Boolean>) sorter.settings.get("walk"))
                             .set(!command.has("walk") || command.get("walk").getAsBoolean());
@@ -506,15 +483,6 @@ public final class WorldTestDriver {
                         if (slot.index >= mc.player.containerMenu.slots.size() - 36
                                 || slot.getItem().isEmpty()) continue;
                         var probe = sorter.explainSort(slot.getItem());
-                        if (command.has("labels")) {
-                            JsonObject scores = new JsonObject();
-                            for (var label : command.getAsJsonArray("labels"))
-                                scores.addProperty(
-                                        label.getAsString(),
-                                        com.porter.wesort.stash.Categories.signScore(
-                                                label.getAsString(), slot.getItem()));
-                            probe.add("scores", scores);
-                        }
                         probes.add(probe);
                     }
                     report.add("probes", probes);
@@ -614,28 +582,6 @@ public final class WorldTestDriver {
     private void finishPending() throws Exception {
         if (mc.level == null || mc.player == null) return;
         String action = pending.get("action").getAsString();
-        if (action.equals("sign")) {
-            BlockPos pos = position(pending);
-            if (signSlot == null) return;
-            List<String> lines = new ArrayList<>();
-            pending.getAsJsonArray("lines").forEach(line -> lines.add(line.getAsString()));
-            if (!signSent) {
-                WorldInteractionGuard.authorizeSign(pos);
-                signEpoch = blockEntities.getOrDefault(pos, 0L);
-                mc.player.connection.send(
-                        new net.minecraft.network.protocol.game.ServerboundSignUpdatePacket(pos, lines, signSlot));
-                signSent = true;
-                return;
-            }
-            if (blockEntities.getOrDefault(pos, 0L) <= signEpoch) return;
-            if (!(mc.level.getBlockEntity(pos) instanceof net.minecraft.world.level.block.entity.SignBlockEntity sign))
-                return;
-            List<String> actual = sign.getText(signSlot).getMessages(false).stream()
-                    .map(net.minecraft.network.chat.Component::getString)
-                    .toList();
-            if (actual.equals(lines)) respond(true, "authoritative sign block-entity update verified", state());
-            return;
-        }
         if (action.equals("reconcile")) {
             if (InventorySync.ready())
                 respond(true, "original pending postcondition verified; no click replayed", state());
@@ -730,8 +676,6 @@ public final class WorldTestDriver {
             for (int i = 0; i < slots; i++)
                 box.contents[i] = menu.getSlot(i).getItem().copy();
             box.lastRead = System.currentTimeMillis();
-            var labels = com.porter.wesort.stash.Containers.read(stash, box);
-            if (labels != null) box.labels.addAll(labels.labels());
             if (!ObservationRuntime.canRead(box)) return;
             ObservationRuntime.record(box);
             stash.boxes.removeIf(b -> b.pos.equals(pos));
@@ -894,16 +838,6 @@ public final class WorldTestDriver {
                 StandardCopyOption.ATOMIC_MOVE,
                 StandardCopyOption.REPLACE_EXISTING);
         pending = null;
-    }
-
-    @EventHandler
-    private void screen(OpenScreenEvent event) {
-        if (pending == null || !pending.get("action").getAsString().equals("sign")) return;
-        if (!(event.screen instanceof net.minecraft.client.gui.screens.inventory.AbstractSignEditScreen editor)) return;
-        var sign = SignEditors.signOf(editor);
-        if (!sign.getBlockPos().equals(position(pending))) return;
-        signSlot = sign.getSlotPlayerIsFacing(mc.player);
-        event.cancel(); // Same one-packet editor path as StashLabeller; no later vanilla empty update.
     }
 
     public static void blockEntityUpdated(BlockPos pos) {

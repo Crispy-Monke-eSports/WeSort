@@ -63,7 +63,8 @@ public final class InteractionPermits {
      * Issues a permit and returns a scope that revokes it on close. Permits also expire, so a leaked
      * scope can never authorize forever; a restart clears everything (in-memory only).
      */
-    public synchronized AutoCloseable permit(long pos, Operation op, String expectedBlock, String job, long ttlMs, long now) {
+    public synchronized AutoCloseable permit(
+            long pos, Operation op, String expectedBlock, String job, long ttlMs, long now) {
         String block = expectedBlock == null ? "" : expectedBlock;
         String owner = job == null || job.isEmpty() ? "unknown" : job;
         long expiresAt = now + Math.max(1, ttlMs);

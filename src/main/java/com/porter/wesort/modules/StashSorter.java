@@ -1620,7 +1620,6 @@ public class StashSorter extends Module {
         jobInterruptions = 0;
         returnTo = null;
         tierBoxes.clear();
-        tiesReported.clear();
         handle = null;
         packTried.clear();
         compactor.reset();

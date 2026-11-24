@@ -77,7 +77,11 @@ class ServerRoutesTest {
                                 + "\"items\":[{\"key\":\"minecraft:diamond\",\"id\":\"minecraft:diamond\",\"count\":1}]}")
                 .getAsJsonObject();
         var observation = StockFixtures.physical(index, ledger.epoch(), 0, 1, 0);
-        var id = observation.getAsJsonArray("physicalSources").get(0).getAsJsonObject().get("id");
+        var id = observation
+                .getAsJsonArray("physicalSources")
+                .get(0)
+                .getAsJsonObject()
+                .get("id");
         ledger.accept(observation, "6b6t.org");
         assertEquals("alt.6b6t.org:25565", observation.get("server").getAsString());
         assertEquals("6b6t.org", ledger.sources().getFirst().server());

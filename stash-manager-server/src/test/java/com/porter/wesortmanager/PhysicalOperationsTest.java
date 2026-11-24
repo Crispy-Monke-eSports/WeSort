@@ -98,7 +98,9 @@ class PhysicalOperationsTest {
                 var rows = statement.executeQuery("SELECT server,payload FROM physical_operations")) {
             assertTrue(rows.next());
             assertEquals("canonical", rows.getString(1));
-            assertEquals(checksum, JsonParser.parseString(rows.getString(2)).getAsJsonObject().get("checksum"));
+            assertEquals(
+                    checksum,
+                    JsonParser.parseString(rows.getString(2)).getAsJsonObject().get("checksum"));
         }
     }
 

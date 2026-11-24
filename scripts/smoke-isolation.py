@@ -93,6 +93,12 @@ with tempfile.TemporaryDirectory(prefix='wesort-isolation-') as directory:
         request('/api/v1/auth/login', {'password': password})
         assert request('/api/v1/stashes') == []
         assert any(c.name == 'wesort_session' for c in cookies)
+        server = request('/api/v1/server', {'server': fake.SERVER})
+        assert server.get('server') == fake.SERVER, server
+        stash = request('/api/v1/stash-defs', {'action': 'create', 'name': fake.STASH,
+            'dimension': 'minecraft:overworld',
+            'pos1': {'x': -32, 'y': 40, 'z': -32}, 'pos2': {'x': 63, 'y': 90, 'z': 32}})
+        assert stash.get('ok', True), stash
         key = re.search(r'^apiKey[=:](.+)$', (data / 'config.properties').read_text(), re.M).group(1).strip()
         assert key != 'LEGACY-SENTINEL'
         agent = fake.Client(base, key)

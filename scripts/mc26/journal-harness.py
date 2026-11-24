@@ -104,6 +104,8 @@ class JournalHarness(repack.RepackHarness):
                     comps = out.get('components')
                     if isinstance(comps, dict):
                         comps.pop('minecraft:damage', None)
+                    else:
+                        out['components'] = {}
                 return {key: out[key] for key in sorted(out)}
             if isinstance(node, list):
                 # Top-level inventories use 'Slot'; nested packed container/bundle
@@ -327,7 +329,24 @@ class DirectHarness(JournalHarness):
             self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key)
             self.proxy.hold_down = True
             with ThreadPoolExecutor(max_workers=1) as pool:
+                # The click references a menu snapshot that can go stale between
+                # open and submit (async server sync). A rejected click sends no
+                # packet and records no journal, so exactly one retry with a
+                # freshly read snapshot is safe. A sent click is never retried:
+                # its result decides the ack-loss path below.
+                from concurrent.futures import TimeoutError as FuturesTimeout
                 click = pool.submit(inv.click, self, state, 0)
+                try:
+                    first = click.result(timeout=10)
+                except (RuntimeError, FuturesTimeout):
+                    first = None
+                if first is not None and not first.get('success', False):
+                    require(
+                        'Stale' in first.get('message', ''),
+                        'Direct click refused before any packet: ' + str(first.get('message', '')),
+                    )
+                    state = self.command('state')['state']
+                    click = pool.submit(inv.click, self, state, 0)
                 inv.wait_server(self, lambda: self.journal.exists() and
                     sum('[]' in value for value in inv.chest_halves(self)) == 1,
                     'The source was not debited on the real server before acknowledgment was lost')

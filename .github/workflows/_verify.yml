@@ -145,6 +145,7 @@ jobs:
           done
       - name: Verify fresh installation, restart and data isolation (strict native access)
         run: |
+          set -o pipefail
           mkdir -p stash-manager-server/build/evidence
           python3 scripts/smoke-isolation.py | tee stash-manager-server/build/evidence/isolation.txt
       - name: Record tests and build identity

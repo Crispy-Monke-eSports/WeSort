@@ -114,6 +114,9 @@ class RepackHarness(world.Harness):
             (self.evidence/'latest-state.json').write_text(json.dumps(state,indent=2)+'\n')
             if predicate(state):return state
             if state['inventoryFailure'] and self.scenario not in ['abort','full-stash','full-inventory']:raise RuntimeError('Physical readback blocked: '+state['inventoryFailure'])
+            phase=(state.get('repackProgress') or {}).get('phase')
+            if phase=='NEEDS_RECONCILIATION' and self.scenario not in ['abort','full-stash','full-inventory']:
+                raise RuntimeError('Repack fenced before verified completion: '+str((state.get('repackProgress') or {}).get('reason','')))
             time.sleep(.25)
         raise RuntimeError(message)
     def execute(self):

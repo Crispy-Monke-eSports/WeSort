@@ -38,6 +38,10 @@ public final class NavigationRuntime {
     private static int dropRetries;
     private static long reassertGraceUntil;
     private static long lastDropMs;
+    // Position at register time: a goal the engine drops before the bot moved at all
+    // (sealed start, e.g. walled in) latches immediately instead of reasserting, so a
+    // retry can never mine through the very barrier that made the goal unreachable.
+    private static double dropAnchorX, dropAnchorY, dropAnchorZ;
     // Transient pauses re-evaluate themselves instead of latching forever.
     private static String pauseDetail = "";
     private static long lastPauseLogMs;
@@ -110,6 +114,11 @@ public final class NavigationRuntime {
         portalStartDimension = portal ? StashIndex.dimension() : "";
         dropRetries = 0;
         reassertGraceUntil = 0;
+        if (mc.player != null) {
+            dropAnchorX = mc.player.getX();
+            dropAnchorY = mc.player.getY();
+            dropAnchorZ = mc.player.getZ();
+        }
         status = "RUNNING";
     }
 
@@ -295,7 +304,12 @@ public final class NavigationRuntime {
                 finish("PAUSED_NAVIGATION_UNSAFE_BLOCK", true);
                 return;
             }
-            if (!paused) BaritoneHelper.reassertGoal(ours);
+            if (!paused) {
+                // Re-asserting must never widen permissions: confine first so a retry
+                // cannot mine through the barrier that made the goal unreachable.
+                BaritoneHelper.confine(true);
+                BaritoneHelper.reassertGoal(ours);
+            }
             return;
         }
         if (dedicated && !allowedRoute()) {
@@ -317,7 +331,12 @@ public final class NavigationRuntime {
                 long nowMs = System.currentTimeMillis();
                 if (nowMs - lastDropMs > 60_000) dropRetries = 0;
                 lastDropMs = nowMs;
-                if (++dropRetries <= 3) {
+                boolean progressed = mc.player != null
+                        && (mc.player.distanceToSqr(dropAnchorX, dropAnchorY, dropAnchorZ) > 0.25);
+                if (progressed && ++dropRetries <= 3) {
+                    // Re-asserting must never widen permissions: confine first so a retry
+                    // cannot mine through the barrier that made the goal unreachable.
+                    BaritoneHelper.confine(true);
                     BaritoneHelper.reassertGoal(ours);
                     reassertGraceUntil = System.nanoTime() + 10_000_000_000L;
                     MeteorClient.LOG.warn(

@@ -7777,6 +7777,9 @@ public class StashSorter extends Module {
      * One step of repacking a shulker beside us: place, open, move items, break, pick back up.
      */
     private void tickHandling() {
+        // Fail-closed for every handle: orphan recovery, resume and collect run outside the
+        // repacking gate below but must never act while the durable journal is fenced.
+        if (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror()) return;
         boolean repacking = repackWork != null && !repackWork.terminal() && (job == Job.Clean || job == Job.Fill);
         if (repacking) {
             var phase = switch (handle) {
@@ -8314,6 +8317,8 @@ public class StashSorter extends Module {
             }
         }
         // W-061: this job breaks the temporary shulker it placed, nothing else.
+        // Fail-closed even if a caller bypassed the tick fence: never break while fenced.
+        if (PhysicalJournalRuntime.blocked()) return;
         com.porter.wesort.compat.WorldInteractionGuard.authorizeBreak(placed);
         BlockUtils.breakBlock(placed, true);
     }
@@ -8787,16 +8792,16 @@ public class StashSorter extends Module {
                 repackInventory().stream().filter(this::repackMatches).count();
         if (carriedCopies > repackExistingCopies) {
             // More identical carried stock than when storage began (a re-pickup, a drop
-            // collected): recount the baseline with a debug line instead of silently
-            // re-arming the stored counts.
-            int before = repackExistingCopies;
-            repackExistingCopies = (int) carriedCopies;
+            // collected): re-arm the stored counts against the current world, but keep the
+            // original baseline — a transient pickup that is later put away normally must
+            // not trip the guard below. Just log it for diagnostics.
             debug(
                     "repack verify: carried identical copies grew from %d to %d, recounting the stored baseline.",
-                    before, carriedCopies);
+                    repackExistingCopies, carriedCopies);
             for (var box : stash.boxes)
                 if (box.known() && com.porter.wesort.compat.ObservationRuntime.current(box))
                     repackStoreBefore.put(box.parts.toString(), repackCount(box.contents));
+            return;
         }
         if (carriedCopies < repackExistingCopies) {
             blockRepack("Other identical carried stock changed during storage verification");
@@ -8811,7 +8816,7 @@ public class StashSorter extends Module {
                     && com.porter.wesort.compat.ObservationRuntime.current(box))) continue;
             verified++;
             repackVerifySeen.add(box.parts.toString());
-            if (repackCount(box.contents) > repackStoreBefore.getOrDefault(box.parts.toString(), 0)) {
+            if (repackCount(box.contents) > repackStoreBefore.getOrDefault(box.parts.toString(), Integer.MAX_VALUE)) {
                 repackVerifyReads = 0;
                 repackVerifySeen.clear();
                 storeWatchMs = 0;

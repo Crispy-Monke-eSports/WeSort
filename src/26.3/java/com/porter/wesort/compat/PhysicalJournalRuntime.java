@@ -63,7 +63,7 @@ public final class PhysicalJournalRuntime {
     }
 
     public static boolean blocked() {
-        return !failure.isEmpty() || recoveryFence || journal != null && journal.blocked();
+        return !failure.isEmpty() || recoveryFence || workspaceDebtActive() || journal != null && journal.blocked();
     }
 
     public static boolean awaitingMirror() {
@@ -113,7 +113,9 @@ public final class PhysicalJournalRuntime {
     public static String status() {
         if (!failure.isEmpty()) return failure;
         if (!escalation.isEmpty()) return escalation;
-        if (workspaceDebtActive()) return "AUTO_RECOVERING: next physical order gated: " + workspaceDebt;
+        // The gated reason stays available via workspaceDebt(), but the status token itself
+        // must stay exact: harnesses and dashboards match on it, and a suffixed string reads
+        // as a new state. blocked() above already fences everything while debt is active.
         return blocked() ? "AUTO_RECOVERING" : awaitingMirror() ? "WAITING_MANAGER_RECEIPT" : "READY";
     }
 

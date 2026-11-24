@@ -64,7 +64,10 @@ final class ServerRoutes {
      * Physical work must never run before first setup or against the wrong Minecraft server.
      */
     static int agentServerStatus(Config config, String server) {
-        String want = config == null ? null : config.minecraftServer();
+        return serverStatus(config == null ? null : config.minecraftServer(), server);
+    }
+
+    static int serverStatus(String want, String server) {
         if (want == null || want.isEmpty() || server == null || server.isEmpty()) return 400;
         if (sameServer(want, server)) return -1;
         System.err.println("WeSort Manager: refusing agent server '" + normalizeServer(server) + "' (serves '"
@@ -72,48 +75,42 @@ final class ServerRoutes {
         return 409;
     }
 
-    /**
-     * Canonical server identity: lowercase host without port, whitespace or trailing dot.
-     * The Minecraft client reports the resolved address (e.g. {@code alt.6b6t.org} from the
-     * {@code _minecraft._tcp.6b6t.org} SRV record) while the owner configures the base domain
-     * ({@code 6b6t.org}); both name the same physical server.
-     */
+    /** Normalize the host spelling, retaining an explicit port as part of the server identity. */
     static String normalizeServer(String server) {
         if (server == null) return "";
-        String host = server.trim().toLowerCase(java.util.Locale.ROOT);
-        if (host.isEmpty()) return "";
-        // [ipv6]:port or [ipv6]
-        if (host.startsWith("[")) {
-            int end = host.indexOf(']');
-            if (end < 0) return host;
-            return host.substring(0, end + 1);
-        }
-        // host:port (single colon only; leave raw IPv6 with several colons untouched)
-        int colon = host.indexOf(':');
-        if (colon >= 0 && host.indexOf(':', colon + 1) < 0)
-            host = host.substring(0, colon).trim();
+        String address = server.trim().toLowerCase(java.util.Locale.ROOT);
+        if (address.isEmpty()) return "";
+        int colon = portSeparator(address);
+        String host = colon < 0 ? address : address.substring(0, colon).trim();
+        String port = colon < 0 ? "" : address.substring(colon);
         while (host.endsWith(".") && host.length() > 1) host = host.substring(0, host.length() - 1);
-        return host;
+        return host.isEmpty() ? "" : host + port;
     }
 
-    /**
-     * True for the same host after normalization, or for the {@code alt.} SRV target of the
-     * configured base domain (and vice versa). Anything else stays a mismatch: fail closed.
-     */
+    /** A port separator is unambiguous only for a DNS/IPv4 host or bracketed IPv6. */
+    private static int portSeparator(String address) {
+        if (address.startsWith("[")) {
+            int end = address.indexOf(']');
+            return end >= 0 && end + 1 < address.length() && address.charAt(end + 1) == ':' ? end + 1 : -1;
+        }
+        int colon = address.indexOf(':');
+        return colon >= 0 && address.indexOf(':', colon + 1) < 0 ? colon : -1;
+    }
+
+    /** Compare aliases and the implicit default port, but never conflate distinct explicit ports. */
     static boolean sameServer(String want, String got) {
-        String a = canonicalServer(want);
-        String b = canonicalServer(got);
+        String a = comparisonServer(want);
+        String b = comparisonServer(got);
         return !a.isEmpty() && a.equals(b);
     }
 
-    /**
-     * Canonical server identity: lowercase host without port, whitespace or trailing dot.
-     * The Minecraft client reports the resolved address (e.g. {@code alt.6b6t.org} from the
-     * {@code _minecraft._tcp.6b6t.org} SRV record, or {@code 127.0.0.1:54321} with an ephemeral
-     * port) while the owner configures the base domain ({@code 6b6t.org}). All persistent
-     * keys (order books, stock, leases, journal, manifests) use this form so admission
-     * and storage can never disagree.
-     */
+    private static String comparisonServer(String server) {
+        String address = canonicalServer(server);
+        int colon = portSeparator(address);
+        return colon >= 0 && address.substring(colon).equals(":25565") ? address.substring(0, colon) : address;
+    }
+
+    /** Normalize the configured spelling and the alt. SRV alias without losing its explicit port. */
     static String canonicalServer(String server) {
         String host = normalizeServer(server);
         if (host.startsWith("alt.")) host = host.substring(4);

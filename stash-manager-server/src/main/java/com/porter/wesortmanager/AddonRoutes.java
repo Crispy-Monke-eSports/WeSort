@@ -91,7 +91,8 @@ final class AddonRoutes {
             return;
         }
         // A sorting lease is physical work: fail closed before setup and on the wrong server.
-        int serverGate = ServerRoutes.agentServerStatus(config, server);
+        String configured = config.minecraftServer();
+        int serverGate = ServerRoutes.serverStatus(configured, server);
         if (serverGate == 400) {
             Http.error(ex, 400, "set the Minecraft server in Settings first");
             return;
@@ -102,7 +103,7 @@ final class AddonRoutes {
         }
         // Canonicalize once: leases below are keyed by the same form as order
         // books and stock, so admission and storage can never disagree.
-        server = ServerRoutes.canonicalServer(server);
+        server = configured;
         synchronized (store) {
             var gate = store.automation();
             if (!action.equals("acquire")) {
@@ -162,7 +163,8 @@ final class AddonRoutes {
         String server = index.get("server").getAsString();
         String stash = index.get("stash").getAsString();
         // Fail closed: observations need a configured server, the right server and a defined stash.
-        int gate = ServerRoutes.agentServerStatus(config, server);
+        String configured = config.minecraftServer();
+        int gate = ServerRoutes.serverStatus(configured, server);
         if (gate == 400) {
             Http.error(ex, 400, "set the Minecraft server in Settings first");
             return;
@@ -175,14 +177,12 @@ final class AddonRoutes {
             Http.error(ex, 404, "unknown stash '" + stash + "': define it in Settings first");
             return;
         }
-        // Canonicalize the observation itself: IndexStore, order books, presence
-        // and icons all key by this form, so admission and storage agree.
-        server = ServerRoutes.canonicalServer(server);
-        index.addProperty("server", server);
+        // Use the configured storage key without changing the agent's physical proof.
+        server = configured;
         String player = string(index, "player");
         try {
             synchronized (store) {
-                store.putIndex(index);
+                store.putIndex(index, server);
                 orders.releaseFromFreshObservation(server);
             }
         } catch (StockLedger.Conflict e) {
@@ -224,7 +224,8 @@ final class AddonRoutes {
             return;
         }
         // Fail closed: heartbeats need a configured server, the right server and a defined stash.
-        int gate = ServerRoutes.agentServerStatus(config, server);
+        String configured = config.minecraftServer();
+        int gate = ServerRoutes.serverStatus(configured, server);
         if (gate == 400) {
             Http.error(ex, 400, "set the Minecraft server in Settings first");
             return;
@@ -239,7 +240,7 @@ final class AddonRoutes {
         }
         // Canonicalize once: heartbeats below are keyed by the same form as
         // order books and stock, so admission and storage can never disagree.
-        server = ServerRoutes.canonicalServer(server);
+        server = configured;
         if (badOptionalString(o, "player") || badOptionalString(o, "indexHash")) {
             Http.error(ex, 400, "player and indexHash must be strings");
             return;

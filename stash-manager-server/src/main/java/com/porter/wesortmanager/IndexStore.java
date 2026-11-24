@@ -665,17 +665,27 @@ public final class IndexStore {
      * turn a committed physical observation into a failed agent acknowledgement.
      */
     public synchronized void putIndex(JsonObject index) throws IOException, FullException {
+        putIndex(index, null);
+    }
+
+    synchronized void putIndex(JsonObject index, String server) throws IOException, FullException {
         String versionError = validate(index);
         if (versionError != null) throw new IllegalArgumentException(versionError);
+        if (server == null) server = index.get("server").getAsString();
         long now = System.currentTimeMillis();
         // Bound index count before committing the authoritative physical observation.
-        getOrCreate(index.get("server").getAsString(), index.get("stash").getAsString());
+        String stash = index.get("stash").getAsString();
+        getOrCreate(server, stash);
         index.addProperty("receivedAt", now);
         boolean physical = index.has("physicalSources");
         if (physical) {
-            stock().accept(index);
-            physicalIndexes.add(new StashKey(
-                    index.get("server").getAsString(), index.get("stash").getAsString()));
+            stock().accept(index, server);
+            physicalIndexes.add(new StashKey(server, stash));
+        }
+        // Physical IDs are bound to the wire server; only the Manager projection uses the storage key.
+        if (!server.equals(index.get("server").getAsString())) {
+            index = index.deepCopy();
+            index.addProperty("server", server);
         }
         Built b = prepare(index, now, tabs);
         Prepared p = b.p;

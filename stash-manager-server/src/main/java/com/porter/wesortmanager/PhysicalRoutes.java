@@ -52,9 +52,8 @@ final class PhysicalRoutes {
                 Http.error(ex, 409, "this Manager serves '" + want + "'");
                 return;
             }
-            // Canonicalize the stored record: journal and recovery keys below use
-            // the same form as order books and stock, so admission and storage agree.
-            if (at != null && !at.isEmpty()) context.addProperty("server", ServerRoutes.canonicalServer(at));
+            // The record checksum covers its context. Keep the agent's record intact and
+            // use the configured server only as the Manager's storage key.
             var store = operations();
             JsonObject receipt;
             JsonObject decision;
@@ -62,7 +61,7 @@ final class PhysicalRoutes {
             // Serialized with the index lock: order reconciliation checks unsettled operations
             // and commits under the same lock, so a journal write cannot land in between.
             synchronized (index) {
-                receipt = store.accept(agent, body.getAsJsonObject("record"));
+                receipt = store.accept(agent, body.getAsJsonObject("record"), want);
                 if (result != null) {
                     store.decisionResult(
                             agent,

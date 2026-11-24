@@ -145,7 +145,8 @@ final class BotRoutes {
             }
             // The binding names the Minecraft server and stash the bot works in: both are verified.
             // A bot from another server is refused; an undefined stash cannot take work.
-            int gate = ServerRoutes.agentServerStatus(config, manifestScope.server());
+            String configured = config.minecraftServer();
+            int gate = ServerRoutes.serverStatus(configured, manifestScope.server());
             if (gate == 400) {
                 Http.error(ex, 400, "set the Minecraft server in Settings first");
                 return;
@@ -158,6 +159,13 @@ final class BotRoutes {
                 Http.error(ex, 404, "unknown stash '" + manifestScope.stash() + "': define it in Settings first");
                 return;
             }
+            manifestScope = new BotHub.ManifestScope(
+                    manifestScope.botId(),
+                    configured,
+                    manifestScope.stash(),
+                    manifestScope.dimension(),
+                    manifestScope.agent(),
+                    manifestScope.player());
         }
         int status = hub.register(botId, player, plugin, runtime, caps, scopes, controlSession, manifestScope);
         if (status != 200) {
@@ -209,9 +217,7 @@ final class BotRoutes {
                 || !agent.matches("[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")) return null;
         // No Minecraft username/UUID equivalence requirement. The agent UUID above is
         // physical work context within this session, not the key's owner.
-        // Canonicalize: manifests are looked up in books keyed by the configured server.
-        return new BotHub.ManifestScope(
-                botId, ServerRoutes.canonicalServer(server), stash, dimension, agent, player == null ? "" : player);
+        return new BotHub.ManifestScope(botId, server, stash, dimension, agent, player == null ? "" : player);
     }
 
     private void manifest(HttpExchange ex) throws IOException {

@@ -399,9 +399,14 @@ final class StockLedger {
     /** One transaction assigns revisions, invalidates old topology, records provenance and persists the index. */
     synchronized void accept(JsonObject index) throws IOException {
         if (!index.has("physicalSources")) return;
+        accept(index, index.get("server").getAsString());
+    }
+
+    synchronized void accept(JsonObject index, String server) throws IOException {
+        if (!index.has("physicalSources")) return;
+        // Validate physical IDs against the original wire address, not the Manager's storage key.
         List<JsonObject> sources = validate(index);
-        String server = index.get("server").getAsString(),
-                stash = index.get("stash").getAsString();
+        String stash = index.get("stash").getAsString();
         try (var c = open();
                 var tx = new SqliteWriteTransaction(c)) {
             long before = revision(c), next = Math.addExact(before, 1);
@@ -607,7 +612,9 @@ final class StockLedger {
                     "INSERT INTO stock_indexes VALUES(?,?,?,?) ON CONFLICT(server,stash) DO UPDATE SET payload=excluded.payload,revision=excluded.revision")) {
                 p.setString(1, server);
                 p.setString(2, stash);
-                p.setString(3, index.toString());
+                var projection = index.deepCopy();
+                projection.addProperty("server", server);
+                p.setString(3, projection.toString());
                 p.setLong(4, next);
                 p.executeUpdate();
             }

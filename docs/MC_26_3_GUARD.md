@@ -31,13 +31,20 @@ väg förbi. Ett förbjudet paket avbryts **före** klientprediktion.
 ## NavigationGuard
 
 `NavigationGuard` kontrollerar laddade celler vid fötterna, huvudet och
-golvet längs rutten. Agenten får gå över tryckplattor, tripwire, detector
-rails och sculkblock som reagerar på att agenten passerar. Servern kan
-aktivera blocken och eventuell kopplad redstone under passagen. Spärren
-för aktiv användning och brytning gäller även dessa block.
+golvet längs rutten. Navigation har en separat, avsiktligt liten spärrlista: nether-/end-portaler,
+end gateways och moving pistons. Redstone, tryckplattor, dörrar, grindar,
+falluckor och andra interaktionskänsliga block blockerar inte en rutt
+enbart på grund av sitt block-id. Baritone ansvarar för kollisionsgeometri,
+stöd och faktiskt framkomliga blockstates. Servern kan aktivera redstone
+under passagen. Vätskor och oladdade celler nekas fortfarande.
 
-`NavigationRuntime` pausar med `PAUSED_NAVIGATION_UNSAFE_BLOCK` om rutten
-kräver passage genom en spärrad dörr, grind eller ett annat spärrat block.
+Spärren för aktiv användning, placering och brytning gäller oförändrat.
+En stängd dörr eller grind som kräver ett aktivt klick är därför inte
+automatiskt framkomlig; använd en öppen eller automatiskt öppnad passage.
+
+`NavigationRuntime` pausar med `PAUSED_NAVIGATION_UNSAFE_BLOCK` vid
+uttryckliga navigationsrisker, inte bara för att ett block är
+interaktionskänsligt.
 
 ## Dedikerad Baritone-profil
 
@@ -57,7 +64,7 @@ och pausar som `PAUSED_NAVIGATION_OTHER_PROCESS`, även mellan WeSort-jobb.
 | Prov                            | Kontroll                                                                                      |
 | ------------------------------- | --------------------------------------------------------------------------------------------- |
 | Staketgrind, trapdoor, spak     | Klienten vägrar use/break; serverns blockstates matchar referensen                            |
-| Tryckplatta i rutten            | Baritone når och passerar plattan. Servern bekräftar att plattan aktiveras och sedan släpper. |
+| Tryckplatta, redstone och dörr i rutten | Baritone går över redstone, når plattan, passerar den plattstyrda järndörren och en öppen grind. Servern bekräftar aktivering och återställning. |
 | Osäker Bot-profil + externt mål | `allowBreakAnyway` töms, externt mål avbryts, `PAUSED_NAVIGATION_OTHER_PROCESS`               |
 
 `mc26-navigation.yml` kör samma prov med Xvfb/Mesa i CI.

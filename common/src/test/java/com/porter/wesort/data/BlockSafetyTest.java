@@ -33,9 +33,8 @@ class BlockSafetyTest {
 
     @Test
     void doorsGatesAndButtonsAllowWalkingThroughButRemainSensitiveToActiveInteraction() {
-        // A stash route through the stash's own door (opened by Baritone, or by its
-        // own pressure plate underfoot) must not pause navigation. Breaking or
-        // operating them stays forbidden.
+        // A stash route through an open or pressure-plate-operated door must
+        // not pause navigation. Breaking or actively operating it stays forbidden.
         for (String id : new String[] {
             "minecraft:oak_door",
             "minecraft:iron_door",
@@ -49,11 +48,36 @@ class BlockSafetyTest {
     }
 
     @Test
-    void trapdoorsStillBlockNavigation() {
-        // An open trapdoor is a hole; the cell check cannot tell open from closed,
-        // so passage stays denied fail-closed.
-        assertTrue(BlockSafety.safetySensitive("minecraft:oak_trapdoor"));
-        assertTrue(BlockSafety.blocksNavigation("minecraft:oak_trapdoor"));
+    void sensitiveDevicesDoNotImplicitlyBanNavigation() {
+        // Geometry and support are Baritone's responsibility, not a registry-id
+        // denylist. The dedicated interaction guard still refuses these blocks.
+        for (String id : new String[] {
+            "oak_trapdoor", "iron_trapdoor", "lever", "tripwire_hook",
+            "redstone_wire", "redstone_torch", "redstone_wall_torch",
+            "redstone_block", "repeater", "comparator", "observer", "target",
+            "piston", "sticky_piston", "piston_head", "dispenser", "dropper",
+            "trapped_chest", "crafter", "bell", "lectern", "daylight_detector",
+            "lightning_rod", "powered_rail", "activator_rail",
+            "future_pressure_plate", "future_door", "future_trapdoor",
+            "future_fence_gate", "future_button", "future_sculk_sensor"
+        }) {
+            for (String namespace : new String[] {"minecraft:", "othermod:", ""}) {
+                assertTrue(BlockSafety.safetySensitive(namespace + id), id);
+                assertFalse(BlockSafety.blocksNavigation(namespace + id), id);
+            }
+        }
+    }
+
+    @Test
+    void onlyExplicitNavigationHazardsBlockPassage() {
+        for (String id : new String[] {
+            "nether_portal", "end_portal", "end_gateway", "moving_piston"
+        }) {
+            assertTrue(BlockSafety.blocksNavigation(id), id);
+            assertTrue(BlockSafety.blocksNavigation("minecraft:" + id), id);
+            assertTrue(BlockSafety.blocksNavigation("othermod:" + id), id);
+            assertTrue(BlockSafety.safetySensitive(id), id);
+        }
     }
 
     @Test
@@ -80,7 +104,7 @@ class BlockSafetyTest {
         assertTrue(BlockSafety.safetySensitive("minecraft:tripwire"));
         assertTrue(BlockSafety.safetySensitive("minecraft:redstone_wire"));
         assertTrue(BlockSafety.safetySensitive("minecraft:stone_button"));
-        assertTrue(BlockSafety.blocksNavigation("minecraft:redstone_wire"));
+        assertFalse(BlockSafety.blocksNavigation("minecraft:redstone_wire"));
         assertTrue(BlockSafety.blocksNavigation("minecraft:nether_portal"));
         assertFalse(BlockSafety.blocksNavigation("minecraft:oak_fence_gate"));
         assertFalse(BlockSafety.safetySensitive("minecraft:stone"));

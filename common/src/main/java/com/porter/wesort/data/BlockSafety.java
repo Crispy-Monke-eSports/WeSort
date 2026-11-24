@@ -72,21 +72,18 @@ public final class BlockSafety {
     }
 
     /**
-     * Passage the agent may walk through without operating anything: pressure
-     * plates and similar passive triggers, plus doors, fence gates and buttons.
-     * A door the route leads through is opened by Baritone itself (wooden) or by
-     * the stash's own pressure plate underfoot (already passable); stepping onto
-     * a button does nothing. Active use or breaking stays forbidden via
-     * {@link #safetySensitive(String)}. Trapdoors stay blocking: an open one is
-     * a hole, and the cell check cannot tell open from closed.
+     * Navigation is deliberately independent of the active-interaction denylist.
+     * Baritone checks collision, support, and traversability with the live block
+     * state; walking over redstone or through an open passage is not a USE or
+     * BREAK operation. Adding a sensitive device must not silently ban walking.
+     * Only dimension-changing blocks and a moving piston (unstable collision)
+     * require a hard stop here. Fluid and unloaded-world checks live in NavigationGuard.
+     * This does not authorize opening a closed door or any other interaction.
      */
-    private static boolean walkThrough(String id) {
-        String p = path(id);
-        return passiveTrigger(id) || p.endsWith("_door") || p.endsWith("_fence_gate") || p.endsWith("_button");
-    }
-
-    /** Walking past passive triggers is allowed, including when they activate redstone. */
     public static boolean blocksNavigation(String id) {
-        return safetySensitive(id) && !walkThrough(id);
+        return switch (path(id)) {
+            case "nether_portal", "end_portal", "end_gateway", "moving_piston" -> true;
+            default -> false;
+        };
     }
 }

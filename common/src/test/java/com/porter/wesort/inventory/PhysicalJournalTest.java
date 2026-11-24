@@ -190,6 +190,36 @@ class PhysicalJournalTest {
     }
 
     @Test
+    void rejectedReceiptNamesWhichCheckFailed() throws Exception {
+        var menuJournal = new PhysicalJournal(directory.resolve("menu"));
+        menuJournal.start(context());
+        menuJournal.intent(intent());
+        var menuFailure =
+                assertThrows(java.io.IOException.class, () -> menuJournal.verified(frame(9, "after"), false));
+        org.junit.jupiter.api.Assertions.assertTrue(
+                menuFailure.getMessage().contains("menu expected=5 actual=9"), menuFailure.getMessage());
+
+        var cursorJournal = new PhysicalJournal(directory.resolve("cursor"));
+        cursorJournal.start(context());
+        var cursorIntent = intent();
+        cursorIntent.getAsJsonObject("expected").addProperty("cursor", "held");
+        cursorIntent.getAsJsonObject("before").addProperty("cursor", "");
+        cursorJournal.intent(cursorIntent);
+        var cursorFailure =
+                assertThrows(java.io.IOException.class, () -> cursorJournal.verified(frame(5, "after"), false));
+        org.junit.jupiter.api.Assertions.assertTrue(
+                cursorFailure.getMessage().contains("cursor differs"), cursorFailure.getMessage());
+
+        var slotsJournal = new PhysicalJournal(directory.resolve("slots"));
+        slotsJournal.start(context());
+        slotsJournal.intent(intent());
+        var slotsFailure =
+                assertThrows(java.io.IOException.class, () -> slotsJournal.verified(frame(5, "wrong"), false));
+        org.junit.jupiter.api.Assertions.assertTrue(
+                slotsFailure.getMessage().contains("slots differ at [0]"), slotsFailure.getMessage());
+    }
+
+    @Test
     void preconditionFailureIsDistinctFromUnknownPhysicalOutcome() throws Exception {
         var journal = new PhysicalJournal(directory);
         journal.start(context());

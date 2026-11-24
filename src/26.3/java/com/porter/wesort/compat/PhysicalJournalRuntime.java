@@ -8,6 +8,7 @@ import com.porter.wesort.inventory.PhysicalJournal;
 import com.porter.wesort.modules.StashManager;
 import com.porter.wesort.stash.Stash;
 import com.porter.wesort.stash.StashIndex;
+import java.nio.file.Files;
 import java.util.*;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.systems.modules.Modules;
@@ -24,10 +25,24 @@ public final class PhysicalJournalRuntime {
     private static String managerScope = "";
     private static JsonObject inspection, inspectionResult, inspectedSource;
     private static boolean inspectInventoryPending;
+    private static boolean closeForeignScreenPending;
+    private static long closeForeignScreenDeadline, inspectDeadline;
+    private static String failureKey = "", failureCategory = "", escalation = "", escalationKey = "";
+    private static int failureCount;
+    private static final int ESCALATION_THRESHOLD = 3;
+    private static long mirrorWaitSince, lastMirrorWarning;
+    private static final long MIRROR_ESCALATION_MS = 5 * 60 * 1000;
+    private static final long MIRROR_WARNING_EVERY_MS = 60 * 1000;
+    private static String workspaceDebt;
+
+    /** Thrown when a new physical order is gated on a missing durable workspace checkpoint. */
+    private static final class WorkspaceDebt extends IllegalStateException {
+        WorkspaceDebt(String message) {
+            super(message);
+        }
+    }
 
     private PhysicalJournalRuntime() {}
-
-    private static boolean reconcileRequired;
 
     public static void initialize() {
         try {
@@ -35,8 +50,7 @@ public final class PhysicalJournalRuntime {
             recoveryFence = journal.blocked();
             // An uncertain operation stays fenced until an exact read-only inspection
             // proves it safe. No mutation is ever retransmitted during recovery.
-            var current = journal.current();
-            reconcileRequired = current != null && current.has("interruptedPhase");
+            workspaceDebt = readWorkspaceDebt();
         } catch (Exception invalid) {
             failure = "Cannot validate durable physical evidence; automatic input is disabled";
             MeteorClient.LOG.error(failure);
@@ -53,13 +67,39 @@ public final class PhysicalJournalRuntime {
     }
 
     public static boolean awaitingMirror() {
-        if (journal == null || !journal.terminal() || mc.player == null) return false;
+        if (journal == null || !journal.terminal() || mc.player == null) {
+            mirrorWaitSince = 0;
+            return false;
+        }
         String scope = managerScope();
-        if (scope.isEmpty()) return false;
+        if (scope.isEmpty()) {
+            mirrorWaitSince = 0;
+            return false;
+        }
         var context = journal.context();
-        return Stash.currentServer().equals(context.get("server").getAsString())
+        boolean waiting = Stash.currentServer().equals(context.get("server").getAsString())
                 && mc.player.getUUID().toString().equals(context.get("agent").getAsString())
                 && (!managerScope.equals(scope) || !mirroredCurrent());
+        if (waiting) {
+            if (mirrorWaitSince == 0) mirrorWaitSince = System.currentTimeMillis();
+        } else mirrorWaitSince = 0;
+        return waiting;
+    }
+
+    /** Distinct heartbeat once a terminal receipt has waited minutes for its manager mirror. */
+    public static String mirrorWaitWarning() {
+        if (mirrorWaitSince == 0 || !awaitingMirror()) return null;
+        long waiting = System.currentTimeMillis() - mirrorWaitSince;
+        if (waiting < MIRROR_ESCALATION_MS || journal == null) return null;
+        return "WAITING_MANAGER_RECEIPT since " + (waiting / 1000) + "s: journal " + journal.id() + " rev "
+                + journal.revision() + " is terminal but the manager receipt is missing; the fence is kept"
+                + " and the completed receipt keeps uploading. Operator: check the manager link/lease, or run"
+                + " a manual reconcile once the manager is reachable.";
+    }
+
+    /** Operator path while the fence is kept: only a genuinely failed readback can reopen recovery. */
+    public static boolean requestManualReconciliation() {
+        return InventorySync.requestReconciliation();
     }
 
     private static boolean mirroredCurrent() {
@@ -71,9 +111,10 @@ public final class PhysicalJournalRuntime {
     }
 
     public static String status() {
-        return !failure.isEmpty()
-                ? failure
-                : blocked() ? "AUTO_RECOVERING" : awaitingMirror() ? "WAITING_MANAGER_RECEIPT" : "READY";
+        if (!failure.isEmpty()) return failure;
+        if (!escalation.isEmpty()) return escalation;
+        if (workspaceDebtActive()) return "AUTO_RECOVERING: next physical order gated: " + workspaceDebt;
+        return blocked() ? "AUTO_RECOVERING" : awaitingMirror() ? "WAITING_MANAGER_RECEIPT" : "READY";
     }
 
     private static JsonObject context() {
@@ -89,6 +130,7 @@ public final class PhysicalJournalRuntime {
 
     private static void ensure() throws Exception {
         if (journal == null || blocked()) throw new IllegalStateException(status());
+        if (workspaceDebtActive()) throw new WorkspaceDebt("Next physical order gated: " + workspaceDebt);
         var context = context();
         var previous = journal.context();
         if (previous == null || journal.terminal()) {
@@ -138,12 +180,17 @@ public final class PhysicalJournalRuntime {
     }
 
     public static void phase(String phase, JsonObject evidence) {
-        if (mc.player == null || mc.level == null || blocked()) return;
+        if (mc.player == null || mc.level == null || blocked() || workspaceDebtActive()) return;
         long previousRevision = journal == null ? 0 : journal.revision();
         String previousId = journal == null ? "" : journal.id();
         try {
             ensure();
             journal.phase(phase, evidence);
+        } catch (WorkspaceDebt gated) {
+            // The next order is gated, not corrupt: stay quiet and let the
+            // intent path surface the actionable reason.
+            MeteorClient.LOG.warn("WeSort {}", gated.getMessage());
+            return;
         } catch (Exception failed) {
             failed("Cannot durably record physical phase");
             return;
@@ -160,11 +207,13 @@ public final class PhysicalJournalRuntime {
                     || !Stash.currentServer().equals(scope.get("server").getAsString())
                     || !StashIndex.dimension().equals(scope.get("dimension").getAsString())
                     || !mc.player.getUUID().toString().equals(scope.get("agent").getAsString()))
-                throw new IllegalStateException("Inspection scope changed");
+                throw new IllegalStateException(
+                        "INSPECT_SCOPE: server, dimension, or agent changed since the recorded operation");
             if (inspection != null && frame.get("menu").getAsInt() != 0) {
                 if (!mc.player.containerMenu.getCarried().isEmpty()) {
                     finishInspection(
-                            false, "Recorded source still has an occupied cursor; automatic verification will retry");
+                            false,
+                            "INSPECT_CURSOR: recorded source still has an occupied cursor; automatic verification will retry");
                     return;
                 }
                 inspectedSource = frame.deepCopy();
@@ -183,7 +232,6 @@ public final class PhysicalJournalRuntime {
                 // The inspection proves no mutation was sent, including after a
                 // restart. The Manager must still accept this revision before
                 // other physical work may acquire its lease.
-                reconcileRequired = false;
                 recoveryFence = false;
                 finishInspection(true, "No transmitted mutation; operation failed safely");
                 return;
@@ -195,24 +243,36 @@ public final class PhysicalJournalRuntime {
             String phase = value.get("phase").getAsString();
             if (kind.equals("DIRECT") || phase.equals("COMPLETED")) {
                 journal.complete();
-                reconcileRequired = false;
                 recoveryFence = false;
                 finishInspection(true, "Exact original source and postcondition verified; no mutation replayed");
             } else {
-                // The last native mutation was verified, but the higher-level
-                // repack may still have a world shulker to collect. Only release
-                // the journal when the sorter has durable recovery state and
-                // will finish that state before the next order.
+                // The last native mutation was verified, and only the
+                // higher-level repack may still have a world shulker to
+                // collect. The proven step is committed: re-fencing an exactly
+                // verified journal deadlocks recovery, since the missing
+                // workspace checkpoint can only be produced by future work.
                 var sorter = com.porter.wesort.WeSortAddon.sorter();
-                if (sorter != null && sorter.pendingPhysicalRecovery()) {
+                boolean checkpoint = sorter != null && sorter.pendingPhysicalRecovery();
+                try {
                     journal.complete();
-                    reconcileRequired = false;
-                    recoveryFence = false;
-                    finishInspection(true, "Exact physical step verified; sorter will resume its saved recovery");
-                } else {
+                } catch (Exception commit) {
                     journal.block("Automatic shulker recovery requires a durable workspace checkpoint");
                     recoveryFence = true;
-                    finishInspection(false, "Cannot safely recover without a saved physical workspace");
+                    finishInspection(
+                            false, "INSPECT_CHECKPOINT: exact step verified but completion could not commit");
+                    return;
+                }
+                recoveryFence = false;
+                if (checkpoint) {
+                    finishInspection(true, "Exact physical step verified; sorter will resume its saved recovery");
+                } else {
+                    noteWorkspaceDebt(
+                            "a REPACK step was exactly verified without a durable sorter checkpoint;"
+                                    + " the next physical order is gated until that checkpoint exists");
+                    finishInspection(
+                            true,
+                            "Exact physical step verified and committed; next physical order gated"
+                                    + " until a durable workspace checkpoint exists");
                 }
             }
             return;
@@ -225,8 +285,14 @@ public final class PhysicalJournalRuntime {
     public static void endUnstarted() {
         if (!unfinished()) return;
         try {
-            if (journal.lastIntentEvidence() == null) journal.failBeforeMutation("No physical mutation was sent");
-            else block("Shulker handling ended without verifying storage");
+            if (journal.lastIntentEvidence() == null) {
+                journal.failBeforeMutation("No physical mutation was sent");
+                // Proven: no packet left the client, so there is nothing to
+                // reconcile. A terminal journal never fences input on its own,
+                // so the redundant in-memory fence can go unless an inspection
+                // is mid-flight.
+                if (journal.terminal() && !journal.blocked() && inspection == null) recoveryFence = false;
+            } else block("Shulker handling ended without verifying storage");
         } catch (Exception invalid) {
             failed("Cannot persist the end of physical work");
         }
@@ -285,6 +351,15 @@ public final class PhysicalJournalRuntime {
         if (journal != null
                 && journal.id().equals(receipt.get("id").getAsString())
                 && receipt.get("state").getAsString().equals("NEEDS_RECONCILIATION")) {
+            if (journal.terminal()) {
+                // The step is already proven locally (COMPLETED/FAILED). A
+                // stale manager receipt must not re-fence a terminal journal;
+                // treat it as reconciled and wait for the manager to catch up.
+                MeteorClient.LOG.warn(
+                        "WeSort ignoring stale NEEDS_RECONCILIATION receipt for terminal journal {}",
+                        journal.id());
+                return;
+            }
             recoveryFence = true;
             if (!hasDecision && inspection == null) block("Manager requires a fresh physical inspection");
         }
@@ -300,26 +375,77 @@ public final class PhysicalJournalRuntime {
 
     public static void inspect(JsonObject decision) {
         if (inspection != null) return;
+        String key = decisionKey(decision);
+        if (!escalation.isEmpty() && escalationKey.equals(key)) {
+            // A permanently-unmeetable precondition already failed N times for
+            // this exact decision: do not reopen containers or move anything,
+            // just re-answer the cached human-readable alert.
+            inspection = decision;
+            finishInspection(false, escalation);
+            return;
+        }
+        if (!escalation.isEmpty()) clearEscalation();
         var value = journal == null ? null : journal.current();
         if (value == null
                 || !value.get("id").equals(decision.get("operation"))
                 || !value.get("revision").equals(decision.get("revision"))
                 || !value.get("checksum").equals(decision.get("checksum"))) {
             inspection = decision;
-            finishInspection(false, "Physical revision changed; reload before inspecting");
+            finishInspection(
+                    false,
+                    "INSPECT_STALE: decision targets op " + decision.get("operation") + " rev "
+                            + decision.get("revision") + " but the journal holds "
+                            + (value == null
+                                    ? "no operation"
+                                    : "op " + value.get("id") + " rev " + value.get("revision"))
+                            + "; reload before inspecting");
             return;
         }
         inspection = decision;
         recoveryFence = true;
+        inspectDeadline = System.currentTimeMillis() + 60_000;
+        closeForeignScreenPending = false;
+        try {
+            var evidence = journal.lastIntentEvidence();
+            boolean menuZero =
+                    evidence == null || evidence.getAsJsonObject("expected").get("menu").getAsInt() == 0;
+            if (menuZero && mc.player != null && mc.player.containerMenu != mc.player.inventoryMenu) {
+                // The fenced bot opened this screen itself and nothing else
+                // will close it. Closing a storage screen moves no items.
+                if (!mc.player.containerMenu.getCarried().isEmpty()) {
+                    finishInspection(
+                            false,
+                            "INSPECT_CURSOR: foreign " + InventorySync.screenName()
+                                    + " screen open with an occupied cursor; cannot auto-close");
+                    return;
+                }
+                mc.player.closeContainer();
+                closeForeignScreenPending = true;
+                closeForeignScreenDeadline = System.currentTimeMillis() + 15_000;
+                return;
+            }
+            startInspectionProbe();
+        } catch (Exception invalid) {
+            finishInspection(false, "INSPECT_EVIDENCE: recorded physical postcondition cannot be inspected safely");
+        }
+    }
+
+    private static void startInspectionProbe() {
         var evidence = journal.lastIntentEvidence();
         try {
             if (evidence == null) {
+                String refusal = InventorySync.currentInventoryRefusal();
+                if (refusal != null) {
+                    finishInspection(false, refusal);
+                    return;
+                }
                 if (!InventorySync.inspectCurrentInventory())
-                    finishInspection(false, "A fresh inventory-only inspection cannot start yet");
+                    finishInspection(false, "INSPECT_NOT_READY: a fresh inventory-only inspection cannot start yet");
                 return;
             }
             var copy = evidence.deepCopy();
             var latestBlocks = new LinkedHashMap<String, JsonObject>();
+            var value = journal.current();
             for (var entry : value.getAsJsonArray("events")) {
                 var event = entry.getAsJsonObject();
                 if (!event.get("type").getAsString().equals("INTENT")) continue;
@@ -333,17 +459,33 @@ public final class PhysicalJournalRuntime {
             var blocks = new JsonArray();
             latestBlocks.values().forEach(blocks::add);
             copy.add("blocks", blocks);
+            String refusal = InventorySync.recordedInspectionRefusal(copy);
+            if (refusal != null) {
+                finishInspection(false, refusal);
+                return;
+            }
             if (!InventorySync.inspectRecorded(copy))
-                finishInspection(
-                        false,
-                        "Load the original source/workspace and leave the agent's hands empty before inspecting");
+                finishInspection(false, "INSPECT_NOT_READY: recorded-source inspection cannot start yet");
         } catch (Exception invalid) {
-            finishInspection(false, "Recorded physical postcondition cannot be inspected safely");
+            finishInspection(false, "INSPECT_EVIDENCE: recorded physical postcondition cannot be inspected safely");
         }
     }
 
     private static void finishInspection(boolean success, String detail) {
         if (inspection == null) return;
+        if (success) {
+            clearEscalation();
+        } else if (!detail.equals(escalation)) {
+            String key = decisionKey(inspection);
+            String category = categoryOf(detail);
+            if (key.equals(failureKey) && category.equals(failureCategory)) failureCount++;
+            else {
+                failureKey = key;
+                failureCategory = category;
+                failureCount = 1;
+            }
+            if (failureCount >= ESCALATION_THRESHOLD) detail = escalate(category, key, detail);
+        }
         inspectionResult = new JsonObject();
         inspectionResult.add("id", inspection.get("id"));
         inspectionResult.addProperty("state", success ? "COMPLETED" : "FAILED");
@@ -351,13 +493,157 @@ public final class PhysicalJournalRuntime {
         inspection = null;
         inspectedSource = null;
         inspectInventoryPending = false;
+        closeForeignScreenPending = false;
+    }
+
+    private static String decisionKey(JsonObject decision) {
+        return keyPart(decision, "operation") + "|" + keyPart(decision, "revision") + "|"
+                + keyPart(decision, "checksum");
+    }
+
+    private static String keyPart(JsonObject decision, String field) {
+        var element = decision.get(field);
+        return element == null || element.isJsonNull() ? "?" : element.getAsString();
+    }
+
+    private static String categoryOf(String detail) {
+        int cut = detail.indexOf(':');
+        String head = cut < 0 ? detail : detail.substring(0, cut);
+        return head.isEmpty() ? "UNKNOWN" : head;
+    }
+
+    private static boolean permanentCategory(String category) {
+        return category.equals("SOURCE_GONE") || category.equals("TOO_FAR");
+    }
+
+    private static String escalate(String category, String key, String detail) {
+        escalationKey = key;
+        if (permanentCategory(category))
+            escalation = category + " x" + failureCount + " for op " + key
+                    + ": precondition cannot be met, human action required: " + detail;
+        else
+            escalation = category + " x" + failureCount + " for op " + key
+                    + ": repeated inspection failure, operator attention advised: " + detail;
+        return escalation;
+    }
+
+    /** Clears the human-readable escalation once the operator (or a fresh decision) resolves it. */
+    public static void clearEscalation() {
+        escalation = "";
+        escalationKey = "";
+        failureKey = "";
+        failureCategory = "";
+        failureCount = 0;
+    }
+
+    public static String escalation() {
+        return escalation.isEmpty() ? null : escalation;
+    }
+
+    private static java.nio.file.Path debtFile() {
+        return DataDirectory.clientFolder(MeteorClient.FOLDER.toPath(), "physical-journal")
+                .resolve("workspace-debt.json");
+    }
+
+    /** The next physical order is gated until a durable workspace checkpoint exists, or null. */
+    public static String workspaceDebt() {
+        return workspaceDebt;
+    }
+
+    public static boolean workspaceDebtActive() {
+        if (workspaceDebt == null) return false;
+        var sorter = com.porter.wesort.WeSortAddon.sorter();
+        if (sorter != null && sorter.pendingPhysicalRecovery()) {
+            // Durable recovery state is back: the gate lifts by itself.
+            clearWorkspaceDebt();
+            return false;
+        }
+        return true;
+    }
+
+    private static void noteWorkspaceDebt(String reason) {
+        workspaceDebt = reason;
+        try {
+            var value = new JsonObject();
+            value.addProperty("since", System.currentTimeMillis());
+            value.addProperty("reason", reason);
+            value.addProperty("operation", journal == null ? "" : journal.id());
+            Files.writeString(debtFile(), value.toString());
+        } catch (Exception ignored) {
+            // The in-memory gate still holds; the file is only restart survival.
+        }
+    }
+
+    /** Operator override once the world shulker has been collected by hand. */
+    public static void clearWorkspaceDebt() {
+        workspaceDebt = null;
+        try {
+            Files.deleteIfExists(debtFile());
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static String readWorkspaceDebt() {
+        try {
+            java.nio.file.Path file = debtFile();
+            if (!Files.exists(file)) return null;
+            var value = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
+            String reason = value.has("reason") ? value.get("reason").getAsString() : "";
+            return reason.isEmpty() ? null : reason;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static void tickMirrorWait() {
+        if (!awaitingMirror() || journal == null) return;
+        if (System.currentTimeMillis() - mirrorWaitSince < MIRROR_ESCALATION_MS) return;
+        if (System.currentTimeMillis() - lastMirrorWarning < MIRROR_WARNING_EVERY_MS) return;
+        lastMirrorWarning = System.currentTimeMillis();
+        String warning = mirrorWaitWarning();
+        if (warning != null) MeteorClient.LOG.warn("WeSort {}", warning);
     }
 
     public static void tickInspection() {
+        tickMirrorWait();
+        if (closeForeignScreenPending) {
+            if (inspection == null) {
+                closeForeignScreenPending = false;
+                return;
+            }
+            if (mc.player == null || mc.level == null) {
+                closeForeignScreenPending = false;
+                finishInspection(
+                        false, "INSPECT_NOT_READY: player or world vanished while waiting for the player inventory");
+                return;
+            }
+            if (mc.player.containerMenu != mc.player.inventoryMenu) {
+                if (System.currentTimeMillis() > closeForeignScreenDeadline) {
+                    closeForeignScreenPending = false;
+                    finishInspection(
+                            false,
+                            "INSPECT_MENU: foreign " + InventorySync.screenName()
+                                    + " screen would not close; menu-0 inspection needs the player inventory");
+                }
+                return;
+            }
+            closeForeignScreenPending = false;
+            try {
+                startInspectionProbe();
+            } catch (Exception invalid) {
+                finishInspection(
+                        false, "INSPECT_EVIDENCE: recorded physical postcondition cannot be inspected safely");
+            }
+            return;
+        }
+        if (inspection != null && System.currentTimeMillis() > inspectDeadline) {
+            finishInspection(false, "INSPECT_TIMEOUT: " + InventorySync.reconcileDetail());
+            return;
+        }
         if (inspection != null && inspectInventoryPending && InventorySync.ready()) {
             inspectInventoryPending = false;
             if (!InventorySync.inspectCurrentInventory())
-                finishInspection(false, "A final full inventory read could not start");
+                finishInspection(false, "INSPECT_NOT_READY: a final full inventory read could not start");
         }
     }
 

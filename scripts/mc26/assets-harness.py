@@ -101,13 +101,25 @@ class AssetsHarness(world.Harness):
             # This private, disposable Docker instance only; no Minecraft game assets enter the image.
             self.env['WESORT_EULA'] = 'true'
             self.start_server(); self.fixture(); before = self.physical_snapshot()
-            self.start_manager(); self.start_client(); self.command('component-identity'); self.ok('actual item CODEC distinguishes NBT byte/int custom data while canonicalizing compound order')
+            # Consolidate the standalone world probe into this stronger read-only
+            # fixture. Preserve its unique signed reconnect BEFORE stash assignment.
+            (self.evidence / 'server-before.json').write_text(json.dumps(before, indent=2) + '\n')
+            self.start_manager(define_fixture=False); self.start_client()
+            self.verify_unassigned_control()
+            self.command('manager-pause')
+            self.define_fixture()
+            self.command('component-identity'); self.ok('actual item CODEC distinguishes NBT byte/int custom data while canonicalizing compound order')
             source = self.observe(); self.verify_index(source)
+            self.command('screenshot')
+            world.shutil.copyfile(self.game_dir / 'screenshots/fixture.png', self.evidence / 'fixture.png')
             index = self.manager_index(source); self.icons(index); self.web()
             # Quiesce the real rescan before asserting that observations and web access leave stock untouched.
             self.command('manager-pause')
             self.command('sort-stop')
-            require(before == self.physical_snapshot(), 'Read-only resource/UI verification changed server inventory')
+            after = self.physical_snapshot()
+            require(before == after, 'Read-only resource/UI verification changed server inventory')
+            (self.evidence / 'server-after.json').write_text(json.dumps(after, indent=2) + '\n')
+            self.ok('authoritative server container SNBT unchanged after reconnect, observations and UI verification')
             log = (self.evidence / 'client.log').read_text()
             require(not re.search(r'\[(?:Render thread|main)/ERROR\].*(?:WeSortAddon|Mixin|wesort)', log), 'Real client logged an error')
             result = {'result': 'PASS', 'scope': 'W-017 fresh 26.3 scan, real Docker icons/web API and signed Manager web UI',

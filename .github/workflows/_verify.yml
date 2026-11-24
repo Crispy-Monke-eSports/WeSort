@@ -113,6 +113,13 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - name: Build React storefront into the Manager resources
         run: cd web && bun install --frozen-lockfile && bun run test && bun run build
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: web-tests/package-lock.json
+      - name: Static regression tests on the same built storefront
+        run: npm ci --prefix web-tests && npm test --prefix web-tests
       - name: Build and test Manager
         run: ./gradlew --no-daemon -p stash-manager-server build
       - name: Scan Manager JAR for internal and removal-marked JDK APIs
@@ -166,24 +173,3 @@ jobs:
             docs/UPSTREAM.md
           retention-days: 7
           if-no-files-found: ignore
-
-  web:
-    runs-on: ubuntu-26.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
-        with:
-          node-version: '26'
-          cache: npm
-          cache-dependency-path: web-tests/package-lock.json
-      - uses: oven-sh/setup-bun@v2
-      # The static regression tests the production bundle served from the
-      # Manager resources (assets/ is git-ignored build output, never checked
-      # in). Build it first so referenced hashed assets always exist.
-      - name: Build React storefront into the Manager resources
-        run: cd web && bun install --frozen-lockfile && bun run build
-      - run: npm ci --prefix web-tests
-      - run: npm test --prefix web-tests

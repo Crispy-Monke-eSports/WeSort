@@ -22,7 +22,12 @@ COPY stash-manager-server/src/ stash-manager-server/src/
 COPY --from=frontend /workspace/stash-manager-server/src/main/resources/web/index.html stash-manager-server/src/main/resources/web/index.html
 COPY --from=frontend /workspace/stash-manager-server/src/main/resources/web/assets/ stash-manager-server/src/main/resources/web/assets/
 COPY LICENSE ./
-RUN --mount=type=cache,target=/root/.gradle ./gradlew --no-daemon --init-script /workspace/gradle/ci-maven-central-mirror.init.gradle -p stash-manager-server clean build
+# Standalone Docker builds still test by default. CI already requires the
+# separate Manager unit job on the same revision before running any E2E.
+ARG MANAGER_UNIT_TESTS=true
+RUN --mount=type=cache,target=/root/.gradle set -eu; \
+    case "$MANAGER_UNIT_TESTS" in true) set -- ;; false) set -- -x test ;; *) exit 1 ;; esac; \
+    ./gradlew --no-daemon --init-script /workspace/gradle/ci-maven-central-mirror.init.gradle -p stash-manager-server clean build "$@"
 
 # Java 25.0.5+8 runtime, aligned with the pinned build JDK.
 FROM eclipse-temurin:25.0.5_8-jre-jammy@sha256:1af6bb7af021b453cd778de7a822a93da81551272626c184537c60e9f0c9deb4 AS runtime

@@ -5,7 +5,7 @@
 använder låst **Temurin 25.0.5+8**, Gradle och Fabric/Meteor/Baritone-versioner
 från projektets versionsfiler. Manager bygger separat med **Java 25.0.5+8**,
 React-storefronten byggs med **Bun 1** (`web/`: tsc, Vitest, Vite) före
-Manager-jar:en, och webbtester använder **Node.js 22**.
+Manager-jar:en, och webbtester använder **Node.js 26**.
 
 ## Workflow-arkitektur
 
@@ -19,7 +19,7 @@ CI är uppdelat i följande GitHub Actions-workflows:
   BuildKit/GHA-cache, parallellt med grundverifieringen.
 - Browser/TLS/Docker-smoke körs parallellt med Minecraft E2E på den exporterade
   imagen, så smoke-testet ligger inte längre på den seriella kritiska vägen.
-- `_mc26-e2e.yml`: **alla** verkliga 26.3-runtime- och E2E-harnessar, inklusive
+- `_mc26-e2e.yml`: verkliga 26.3-runtime- och E2E-harnessar, inklusive
   vanilla-server, Fabric-klient och Manager från samma aktuella revision.
 - `manager-image.yml`: separat tagg/manuell release. Kräver hela CI-sviten,
   verifierar exakt versionsmärkt candidate-image, producerar SBOM och behåller
@@ -42,9 +42,27 @@ Minecraft-värld, klient, Docker Compose-projekt och evidence-katalog. Enskilda
 scenarier har 25 minuters timeout; fel hindrar inte senare scenarier från att
 köras, och shard-jobbet misslyckas om något scenario misslyckas.
 
-Nio separata E2E-jobb för assets/UI, client runtime, hierarchy, inventory,
-navigation, sorting, physical stock, toolchain och world körs också **på varje PR**.
-Inga path-filter hoppar över tunga tester på PR.
+Sju E2E-jobb för assets/UI, client runtime, hierarchy, inventory, navigation,
+sorting och physical stock körs **på varje PR**, utöver alla 34 scenarier och
+Docker-smoke. World-harnessens unika återanslutningsprov före stash-tilldelning
+körs i assets/UI-jobbet; dess övriga läs-, signatur- och oförändrad-inventory-prov
+täcks där och i inventory/navigation. Standalone world-harness finns kvar
+för lokal felsökning.
+
+Toolchain, fryst Meteor utan dependency-cache och vanilla metadata körs på
+PR vid relevanta ändringar enligt `scripts/ci/probe-scope.py`, samt alltid på
+main, nightly, manuella körningar och release. Endast uttryckligen kända
+applikationsändringar får hoppa över dessa tre prov; okänd diff kör allt.
+Nightly och release upprepar varje journalfas två gånger på samma SHA.
+
+Manager-enhetstester körs i det obligatoriska Manager-jobbet, inte en andra
+gång i CI:s Docker-build. Standalone Docker-build och release-candidate
+behåller tester som standard. Web-unit och statiska regressioner delar
+samma byggda React-bundle i Manager-jobbet; Docker bygger fortfarande från
+källan för att verifiera dess fristående paketering. Gemensamma Java-prov
+behålls i klient- och Manager-bygget eftersom de har olika classpaths
+(Minecraft/Fabric respektive Gson/SQLite). Client runtime bygger och startar
+klienten men upprepar inte grundjobbets JUnit-svit.
 
 Manager-imagen exporteras som zstd-komprimerad 7-dagars artifact och laddas
 lokalt på runnern, där både image-ID och `org.opencontainers.image.revision`

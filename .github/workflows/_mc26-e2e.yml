@@ -5,6 +5,9 @@ on:
       journal_repeats:
         type: string
         default: '1'
+      extended:
+        type: boolean
+        default: true
 permissions:
   contents: read
 env:
@@ -72,8 +75,9 @@ jobs:
           cache-dependency-path: web-tests/package-lock.json
       - run: npm ci --prefix web-tests
       - name: Compare generated assets with actual vanilla Minecraft
+        if: inputs.extended
         run: xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/mc26/metadata-harness.py
-      - name: Real scan, Docker icon API, web DOM and in-game UI
+      - name: Real scan, unassigned Agent reconnect, Docker icons, web DOM and in-game UI
         run: xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/mc26/assets-harness.py --manager-image wesort-manager:ci
         env:
           NODE_PATH: '${{ github.workspace }}/web-tests/node_modules'
@@ -96,6 +100,7 @@ jobs:
       - uses: ./.github/actions/setup-mc26
 
       - name: Check frozen Meteor against empty dependency cache
+        if: inputs.extended
         run: python3 scripts/mc26/frozen-meteor-test.py
       - name: Start real Minecraft 26.3 client and verify Agent runtime
         run: xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/mc26/client-runtime.py
@@ -219,6 +224,7 @@ jobs:
           if-no-files-found: ignore
 
   toolchain:
+    if: inputs.extended
     runs-on: ubuntu-26.04
     timeout-minutes: 25
     steps:
@@ -239,27 +245,6 @@ jobs:
             tools/mc26-toolchain/build/evidence/
             tools/mc26-toolchain/build/probe-run/logs/
             tools/mc26-toolchain/build/probe-run/crash-reports/
-          retention-days: 7
-          if-no-files-found: ignore
-
-  world:
-    runs-on: ubuntu-26.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-mc26
-      - uses: ./.github/actions/load-manager-image
-
-      - name: Real private server, Fabric client and Docker Manager
-        run: xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/mc26/world-harness.py --manager-image wesort-manager:ci
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
-        if: always()
-        with:
-          name: mc26-world-${{ github.run_id }}
-          path: |
-            build/mc26-e2e-*/evidence/
           retention-days: 7
           if-no-files-found: ignore
 

@@ -20,7 +20,9 @@ jobs:
           load: true
           push: false
           tags: wesort-manager:ci
-          build-args: REVISION=${{ github.sha }}
+          build-args: |
+            REVISION=${{ github.sha }}
+            MANAGER_UNIT_TESTS=false
           cache-from: type=gha,scope=manager
           cache-to: type=gha,mode=max,scope=manager
       - name: Export the exact image built from this revision

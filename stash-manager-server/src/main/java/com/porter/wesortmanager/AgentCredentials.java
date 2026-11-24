@@ -26,6 +26,8 @@ final class AgentCredentials {
     private static final SecureRandom RANDOM = new SecureRandom();
     static final int MAX_ACTIVE_SLOTS = 1;
     private static final int MAX_ENTRIES = 64;
+    /** Revoked slots carry no secret; keep the registry small so rotation never fills it with tombstones. */
+    static final int MAX_REVOKED_SLOTS = 16;
     private final Path file;
     private final LongSupplier clock;
     private final Map<String, Slot> entries = new TreeMap<>();
@@ -191,6 +193,7 @@ final class AgentCredentials {
     }
 
     private void save(Map<String, Slot> updated, boolean required) throws IOException {
+        pruneRevoked(updated);
         var root = new JsonObject();
         root.addProperty("version", 3);
         root.addProperty("scopedOnly", required);
@@ -210,6 +213,18 @@ final class AgentCredentials {
     private static Slot readSlot(JsonObject row) {
         // Discard old persisted UUID/player claims; only live, signed requests set presence.
         return new Slot(field(row, "id"), field(row, "label"), null, null);
+    }
+
+    /** Drop revoked tombstones beyond the cap; active slots are never pruned. */
+    private static void pruneRevoked(Map<String, Slot> updated) {
+        long revoked = updated.values().stream().filter(slot -> !slot.active()).count();
+        var it = updated.entrySet().iterator();
+        while (revoked > MAX_REVOKED_SLOTS && it.hasNext()) {
+            if (!it.next().getValue().active()) {
+                it.remove();
+                revoked--;
+            }
+        }
     }
 
     static boolean validLabel(String label) {

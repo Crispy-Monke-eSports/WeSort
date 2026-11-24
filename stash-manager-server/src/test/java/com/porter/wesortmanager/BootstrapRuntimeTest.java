@@ -149,7 +149,9 @@ class BootstrapRuntimeTest {
                     HttpRequest.newBuilder(URI.create(base + "/health/ready")).build(),
                     HttpResponse.BodyHandlers.ofString());
             assertEquals(200, live.statusCode());
-            assertEquals("{\"status\":\"ready\"}", live.body());
+            var readyBody = com.google.gson.JsonParser.parseString(live.body()).getAsJsonObject();
+            assertEquals("ready", readyBody.get("status").getAsString());
+            assertTrue(readyBody.has("serverConfigured"));
             assertThrows(IOException.class, () -> LocalControl.request(data, "AGENT_KEY"));
             String token = LocalControl.request(data, "BOOTSTRAP");
             String json = "{\"code\":\"" + token + "\",\"password\":\"runtime-test-only-83927\"}";

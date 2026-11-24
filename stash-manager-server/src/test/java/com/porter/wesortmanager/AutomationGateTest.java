@@ -364,22 +364,15 @@ class AutomationGateTest {
         assertEquals(AutomationGate.REASON_NO_LEASE, gate.releaseDenyReason("s", "agent", "dead-token"));
         var lease = gate.acquire("s", "agent", null);
         assertNotNull(lease);
-        assertEquals(
-                AutomationGate.REASON_HELD_BY_OTHER, gate.denyReason("s", "other", lease.token()));
-        assertEquals(
-                AutomationGate.REASON_TOKEN_MISMATCH, gate.denyReason("s", "agent", "wrong-token"));
-        assertEquals(
-                AutomationGate.REASON_HELD_BY_OTHER,
-                gate.releaseDenyReason("s", "other", lease.token()));
+        assertEquals(AutomationGate.REASON_HELD_BY_OTHER, gate.denyReason("s", "other", lease.token()));
+        assertEquals(AutomationGate.REASON_TOKEN_MISMATCH, gate.denyReason("s", "agent", "wrong-token"));
+        assertEquals(AutomationGate.REASON_HELD_BY_OTHER, gate.releaseDenyReason("s", "other", lease.token()));
         // Expiry fences the lease: the holder is told to post its journal, not to retry.
         clock.set(lease.deadline());
         assertEquals("NEEDS_RECONCILIATION", gate.current("s").state());
+        assertEquals(AutomationGate.REASON_RECONCILIATION_REQUIRED, gate.denyReason("s", "agent", lease.token()));
         assertEquals(
-                AutomationGate.REASON_RECONCILIATION_REQUIRED,
-                gate.denyReason("s", "agent", lease.token()));
-        assertEquals(
-                AutomationGate.REASON_RECONCILIATION_REQUIRED,
-                gate.releaseDenyReason("s", "agent", lease.token()));
+                AutomationGate.REASON_RECONCILIATION_REQUIRED, gate.releaseDenyReason("s", "agent", lease.token()));
     }
 
     @Test
@@ -425,8 +418,7 @@ class AutomationGateTest {
         var orders = new OrderStore(data, store);
         orders.load();
         String agent = UUID.randomUUID().toString();
-        var placed = orders.place(
-                "s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 1)), null);
+        var placed = orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 1)), null);
         assertNotNull(orders.claimPayload("s", "a", agent));
         // A live accepted order owns the server: renewal is denied.
         assertNull(orders.acquireSorting("s", "agent", null));

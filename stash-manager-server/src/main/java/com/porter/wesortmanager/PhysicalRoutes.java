@@ -83,9 +83,14 @@ final class PhysicalRoutes {
             if (decision != null) response.add("decision", decision);
             Http.json(ex, 200, response);
         } catch (PhysicalOperations.Conflict conflict) {
-            Http.json(ex, 409, error(conflict.getMessage(), "lease held by other agent".equals(conflict.getMessage())
-                    ? AutomationGate.REASON_HELD_BY_OTHER
-                    : "conflict"));
+            Http.json(
+                    ex,
+                    409,
+                    error(
+                            conflict.getMessage(),
+                            "lease held by other agent".equals(conflict.getMessage())
+                                    ? AutomationGate.REASON_HELD_BY_OTHER
+                                    : "conflict"));
         } catch (RuntimeException invalid) {
             Http.error(ex, 400, "Invalid physical journal or receipt");
         }

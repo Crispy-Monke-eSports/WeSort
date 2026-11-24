@@ -100,10 +100,17 @@ class PhysicalOperationsTest {
         journal.block("Pending native receipt");
         store.accept(agent, journal.current());
         var decision = store.inspect(journal.id(), journal.revision(), journal.checksum(), "owner");
-        journal.verified(frame("after"), true, playerInventory(), java.util.UUID.randomUUID().toString());
+        journal.verified(
+                frame("after"),
+                true,
+                playerInventory(),
+                java.util.UUID.randomUUID().toString());
         journal.complete();
-        assertEquals("NEEDS_RECONCILIATION", store.accept(agent, journal.current()).get("state").getAsString());
-        journal.verified(frame("after"), true, playerInventory(), decision.get("id").getAsString());
+        assertEquals(
+                "NEEDS_RECONCILIATION",
+                store.accept(agent, journal.current()).get("state").getAsString());
+        journal.verified(
+                frame("after"), true, playerInventory(), decision.get("id").getAsString());
         journal.complete();
         var first = store.accept(agent, journal.current());
         assertEquals("COMPLETED", first.get("state").getAsString());
@@ -132,10 +139,15 @@ class PhysicalOperationsTest {
         journal.block("Pending native receipt");
         store.accept(agent, journal.current());
         var decision = store.inspect(journal.id(), journal.revision(), journal.checksum(), "owner");
-        journal.verified(frame("after"), true, playerInventory(), java.util.UUID.randomUUID().toString());
+        journal.verified(
+                frame("after"),
+                true,
+                playerInventory(),
+                java.util.UUID.randomUUID().toString());
         journal.complete();
         store.accept(agent, journal.current());
-        journal.verified(frame("after"), true, playerInventory(), decision.get("id").getAsString());
+        journal.verified(
+                frame("after"), true, playerInventory(), decision.get("id").getAsString());
         journal.complete();
         assertNotNull(store.accept(agent, journal.current()).get("releasedLease"));
         // A new, unrelated lease is now active: replaying the old journal must not touch it.
@@ -370,8 +382,8 @@ class PhysicalOperationsTest {
                                 + "\",\"kind\":\"DIRECT\",\"orderId\":\"o-test\"}")
                 .getAsJsonObject());
         var operations = new PhysicalOperations(ledger);
-        var failure = assertThrows(
-                PhysicalOperations.Conflict.class, () -> operations.accept(other, foreign.current()));
+        var failure =
+                assertThrows(PhysicalOperations.Conflict.class, () -> operations.accept(other, foreign.current()));
         assertEquals("lease held by other agent", failure.getMessage());
         // The rejected evidence was never stored, so the holder keeps its active lease.
         assertEquals("ACTIVE", gate.current("s").state());
@@ -405,7 +417,10 @@ class PhysicalOperationsTest {
         assertTrue(listed.get("inspectionAttempts").getAsInt() >= PhysicalOperations.MAX_AUTO_INSPECT_PER_REVISION);
         // A manual inspection is still available after the automatic loop gives up.
         var manual = operations.inspect(
-                local.id(), receipt.get("revision").getAsLong(), receipt.get("checksum").getAsString(), "owner");
+                local.id(),
+                receipt.get("revision").getAsLong(),
+                receipt.get("checksum").getAsString(),
+                "owner");
         assertNotNull(manual);
     }
 

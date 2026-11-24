@@ -215,8 +215,7 @@ public final class InventorySync {
         if (mc.player == null || mc.level == null)
             return "INSPECT_NOT_READY: player or world unavailable for an inventory-only inspection";
         if (mc.player.containerMenu != mc.player.inventoryMenu)
-            return "INSPECT_MENU: " + screenName()
-                    + " screen open; a menu-0 inspection needs the player inventory";
+            return "INSPECT_MENU: " + screenName() + " screen open; a menu-0 inspection needs the player inventory";
         if (!mc.player.containerMenu.getCarried().isEmpty())
             return "INSPECT_CURSOR: cursor occupied; empty the cursor before inspecting";
         return null;
@@ -242,7 +241,8 @@ public final class InventorySync {
             if (!mc.level.isLoaded(at)) return "INSPECT_NOT_READY: recorded source " + coords + " is not loaded";
             double blocks = Math.sqrt(mc.player.distanceToSqr(net.minecraft.world.phys.Vec3.atCenterOf(at)));
             if (blocks > 5)
-                return "TOO_FAR: recorded source " + coords + " is " + String.format(java.util.Locale.ROOT, "%.1f", blocks)
+                return "TOO_FAR: recorded source " + coords + " is "
+                        + String.format(java.util.Locale.ROOT, "%.1f", blocks)
                         + " blocks away (reach is 5) while navigation is "
                         + (NavigationRuntime.paused() ? "paused" : "running")
                         + "; move the agent within reach or intervene by hand";
@@ -258,8 +258,7 @@ public final class InventorySync {
             var at = new BlockPos(
                     b.get("x").getAsInt(), b.get("y").getAsInt(), b.get("z").getAsInt());
             String coords = at.toShortString();
-            if (!mc.level.isLoaded(at))
-                return "INSPECT_NOT_READY: recorded block " + coords + " is not loaded";
+            if (!mc.level.isLoaded(at)) return "INSPECT_NOT_READY: recorded block " + coords + " is not loaded";
             if (!blockId(at).equals(b.get("block").getAsString()))
                 return "SOURCE_GONE: recorded block " + coords + " is now " + blockId(at) + ", expected "
                         + b.get("block").getAsString() + "; human action required";
@@ -694,7 +693,10 @@ public final class InventorySync {
         String gated = PhysicalJournalRuntime.workspaceDebtActive() ? PhysicalJournalRuntime.workspaceDebt() : null;
         if (gated != null || PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror()) {
             event.cancel();
-            gate.fail(gated == null ? "Physical journal withheld an automated mutation" : "Next physical order gated: " + gated);
+            gate.fail(
+                    gated == null
+                            ? "Physical journal withheld an automated mutation"
+                            : "Next physical order gated: " + gated);
             reportFailure();
             return;
         }
@@ -725,7 +727,10 @@ public final class InventorySync {
         } catch (Exception e) {
             event.cancel();
             String debt = PhysicalJournalRuntime.workspaceDebtActive() ? PhysicalJournalRuntime.workspaceDebt() : null;
-            gate.fail(debt == null ? "Cannot durably record the inventory action before send" : "Next physical order gated: " + debt);
+            gate.fail(
+                    debt == null
+                            ? "Cannot durably record the inventory action before send"
+                            : "Next physical order gated: " + debt);
             reportFailure();
         }
     }
@@ -1029,9 +1034,8 @@ public final class InventorySync {
         if (mc.player.containerMenu == mc.player.inventoryMenu) return false;
         if (!mc.player.containerMenu.getCarried().isEmpty()) {
             reconciling = false;
-            PhysicalJournalRuntime.inspectionFailed(
-                    "INSPECT_CURSOR: foreign " + screenName()
-                            + " screen open with an occupied cursor; menu-0 reconcile needs the player inventory");
+            PhysicalJournalRuntime.inspectionFailed("INSPECT_CURSOR: foreign " + screenName()
+                    + " screen open with an occupied cursor; menu-0 reconcile needs the player inventory");
             reportFailure();
             return true;
         }
@@ -1054,14 +1058,16 @@ public final class InventorySync {
         if (origin == null) return "INSPECT_SCOPE: recovery origin was lost";
         if (!origin.get("server").getAsString().equals(Stash.currentServer())
                 || !origin.get("dimension").getAsString().equals(dimension())
-                || !origin.get("player").getAsString().equals(mc.player.getUUID().toString()))
+                || !origin.get("player")
+                        .getAsString()
+                        .equals(mc.player.getUUID().toString()))
             return "INSPECT_SCOPE: recorded server, dimension, or agent differs from the live session";
         String world = worldMismatch();
         if (world != null) return world;
         if (origin.has("source")) {
             JsonArray p = origin.getAsJsonArray("source");
-            var source =
-                    new BlockPos(p.get(0).getAsInt(), p.get(1).getAsInt(), p.get(2).getAsInt());
+            var source = new BlockPos(
+                    p.get(0).getAsInt(), p.get(1).getAsInt(), p.get(2).getAsInt());
             String coords = source.toShortString();
             if (!mc.level.isLoaded(source)) return "INSPECT_NOT_READY: recorded source " + coords + " is not loaded";
             double blocks = Math.sqrt(mc.player.distanceToSqr(net.minecraft.world.phys.Vec3.atCenterOf(source)));
@@ -1079,8 +1085,8 @@ public final class InventorySync {
                     || readLevel != mc.level
                     || mc.player.containerMenu.containerId != readMenu
                     || !mc.level.getBlockState(source).equals(readBlock))
-                return "INSPECT_MENU: open " + screenName()
-                        + " screen is not the recorded source " + coords + "; close it and reopen the source";
+                return "INSPECT_MENU: open " + screenName() + " screen is not the recorded source " + coords
+                        + "; close it and reopen the source";
         } else if (mc.player.containerMenu == mc.player.inventoryMenu) {
             return "INSPECT_MENU: recorded menu " + want.menu() + " is not open";
         }

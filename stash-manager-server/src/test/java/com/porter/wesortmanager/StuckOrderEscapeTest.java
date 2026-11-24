@@ -131,7 +131,8 @@ class StuckOrderEscapeTest {
         observe("a", 10);
         var order = orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 2)), null);
         orders.cancel(order.id);
-        var done = assertThrows(OrderStore.OrderException.class, () -> orders.ownerForceCancel(order.id, Users.OWNER_ID));
+        var done =
+                assertThrows(OrderStore.OrderException.class, () -> orders.ownerForceCancel(order.id, Users.OWNER_ID));
         assertEquals(409, done.status);
         assertThrows(OrderStore.OrderException.class, () -> orders.ownerForceCancel("o-000000000000", Users.OWNER_ID));
     }

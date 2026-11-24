@@ -2088,9 +2088,7 @@ public class StashSorter extends Module {
                 && repackWork.phase() == com.porter.wesort.inventory.PhysicalWork.Phase.NEEDS_RECONCILIATION) {
             ledgeGuard(false);
             gateLogThrottled("waiting for automatic recovery: "
-                    + (repackWork.reason().isEmpty()
-                            ? "physical work needs reconciliation"
-                            : repackWork.reason()));
+                    + (repackWork.reason().isEmpty() ? "physical work needs reconciliation" : repackWork.reason()));
             return;
         }
         if (PhysicalJournalRuntime.blocked()
@@ -2706,8 +2704,7 @@ public class StashSorter extends Module {
             StashYield.Reason reason = foreign != null ? foreign : yielder.lastReason();
             alert(
                     "Waiting %d minutes for %s, backing off; the job is parked until they are quiet.",
-                    waited / 20 / 60,
-                    reason == null ? "a stack on the cursor" : reason.label);
+                    waited / 20 / 60, reason == null ? "a stack on the cursor" : reason.label);
         }
         if (clock - lastWaitEscalation >= 1200) {
             lastWaitEscalation = clock;
@@ -8589,9 +8586,7 @@ public class StashSorter extends Module {
         if (PhysicalJournalRuntime.awaitingMirror())
             return "waiting for the Manager receipt: " + PhysicalJournalRuntime.status();
         if (!InventorySync.ready())
-            return InventorySync.failed()
-                    ? "awaiting automatic inventory recovery"
-                    : "awaiting server inventory";
+            return InventorySync.failed() ? "awaiting automatic inventory recovery" : "awaiting server inventory";
         if (com.porter.wesort.compat.NavigationRuntime.paused())
             return "navigation paused: " + com.porter.wesort.compat.NavigationRuntime.status();
         return "waiting";
@@ -8686,7 +8681,8 @@ public class StashSorter extends Module {
             return "the shulker at " + r.placed.toShortString() + " is in another dimension";
         if (handle != null && placed != null) return handle.name() + " at " + placed.toShortString();
         if (handle != null) return handle.name();
-        if (repackWork != null) return "STORE verification (" + repackWork.phase().name() + ")";
+        if (repackWork != null)
+            return "STORE verification (" + repackWork.phase().name() + ")";
         return "the saved shulker step";
     }
 
@@ -8720,8 +8716,7 @@ public class StashSorter extends Module {
                 if (BARITONE) BaritoneHelper.unconfine();
                 surveyFailed(
                         stuck,
-                        "reading it took " + jobTicks / 20 + "s behind the recovery wait (stuck in step " + step
-                                + ")");
+                        "reading it took " + jobTicks / 20 + "s behind the recovery wait (stuck in step " + step + ")");
                 finishJob();
                 return true;
             }
@@ -8732,9 +8727,8 @@ public class StashSorter extends Module {
             }
             return true;
         }
-        Box unread = nearest(stash.boxes.stream()
-                .filter(b -> !b.known() && readableBox(b))
-                .toList());
+        Box unread = nearest(
+                stash.boxes.stream().filter(b -> !b.known() && readableBox(b)).toList());
         if (unread == null) unread = nearest(staleBoxes());
         if (unread == null) return false;
         return start(Job.Survey, unread);
@@ -8829,30 +8823,26 @@ public class StashSorter extends Module {
         }
         final int verifiedBoxes = verified;
         final int readableBoxes = readable;
-        stepProgress(
-                "repack-verify",
-                verifiedBoxes,
-                Math.max(1, readableBoxes),
-                () -> {
-                    StringBuilder pending = new StringBuilder();
-                    if (readableBoxes - verifiedBoxes <= 5 && readableBoxes - verifiedBoxes > 0) {
-                        for (var box : stash.boxes) {
-                            if (!readableBox(box)
-                                    || (box.known()
-                                            && box.lastRead >= repackStoreAt
-                                            && com.porter.wesort.compat.ObservationRuntime.current(box))) continue;
-                            if (pending.length() > 0) pending.append(", ");
-                            pending.append(xyz(box.pos));
-                        }
-                    }
-                    return String.format(
-                            "verifying storage: re-read %d of %d containers%s, carrying %d of %d expected stacks; next: finish the pass.",
-                            verifiedBoxes,
-                            readableBoxes,
-                            pending.length() == 0 ? "" : " (still waiting on " + pending + ")",
-                            carriedCopies,
-                            repackExistingCopies);
-                });
+        stepProgress("repack-verify", verifiedBoxes, Math.max(1, readableBoxes), () -> {
+            StringBuilder pending = new StringBuilder();
+            if (readableBoxes - verifiedBoxes <= 5 && readableBoxes - verifiedBoxes > 0) {
+                for (var box : stash.boxes) {
+                    if (!readableBox(box)
+                            || (box.known()
+                                    && box.lastRead >= repackStoreAt
+                                    && com.porter.wesort.compat.ObservationRuntime.current(box))) continue;
+                    if (pending.length() > 0) pending.append(", ");
+                    pending.append(xyz(box.pos));
+                }
+            }
+            return String.format(
+                    "verifying storage: re-read %d of %d containers%s, carrying %d of %d expected stacks; next: finish the pass.",
+                    verifiedBoxes,
+                    readableBoxes,
+                    pending.length() == 0 ? "" : " (still waiting on " + pending + ")",
+                    carriedCopies,
+                    repackExistingCopies);
+        });
         // Every readable box re-read since storage began without a match is one full pass.
         // After a few the stored shulker is declared missing, fail closed with the cause.
         if (readable > 0 && repackVerifySeen.size() >= readable) {

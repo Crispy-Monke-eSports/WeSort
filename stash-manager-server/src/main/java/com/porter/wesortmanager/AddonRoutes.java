@@ -143,9 +143,11 @@ final class AddonRoutes {
      */
     private static JsonObject automationError(String reason, AutomationGate.Lease lease, String agent, String token) {
         String message = switch (reason) {
-            case AutomationGate.REASON_UNKNOWN_TOKEN, AutomationGate.REASON_TOKEN_MISMATCH -> "Unknown sorting token — drop it and acquire again";
+            case AutomationGate.REASON_UNKNOWN_TOKEN, AutomationGate.REASON_TOKEN_MISMATCH ->
+                "Unknown sorting token — drop it and acquire again";
             case AutomationGate.REASON_HELD_BY_OTHER -> "Sorting lease is held by another agent";
-            case AutomationGate.REASON_RECONCILIATION_REQUIRED -> "Automation requires reconciliation — post the journal";
+            case AutomationGate.REASON_RECONCILIATION_REQUIRED ->
+                "Automation requires reconciliation — post the journal";
             case AutomationGate.REASON_NO_LEASE -> "No sorting lease — acquire again";
             case "reservations_held" -> "Physical reservations are held";
             case "open_orders" -> "Open orders own this server right now";

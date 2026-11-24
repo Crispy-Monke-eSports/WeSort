@@ -31,7 +31,11 @@ class PhysicalOperationsSweepTest {
                         "{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"items\":[{\"key\":\"minecraft:diamond\",\"id\":\"minecraft:diamond\",\"count\":64,\"maxStack\":64}]}")
                 .getAsJsonObject();
         var physical = StockFixtures.physical(
-                indexJson, index.stock().epoch(), index.stock().revision(), index.stock().revision() + 1, 0);
+                indexJson,
+                index.stock().epoch(),
+                index.stock().revision(),
+                index.stock().revision() + 1,
+                0);
         var diamond = new PhysicalSlots.Item(
                 "minecraft:diamond", "minecraft:diamond", 64, "{}", PhysicalSlots.Kind.ITEM, 0, List.of(), "");
         var slot = new PhysicalSlots.Slot(0, 64, diamond);
@@ -56,13 +60,11 @@ class PhysicalOperationsSweepTest {
     }
 
     private void plantOperation(String orderId, long lastSeen) throws Exception {
-        var payload = JsonParser.parseString(
-                        "{\"id\":\"" + UUID.randomUUID() + "\",\"revision\":1,\"checksum\":\"c\","
-                                + "\"state\":\"IN_PROGRESS\",\"context\":{\"orderId\":\"" + orderId + "\"}}")
+        var payload = JsonParser.parseString("{\"id\":\"" + UUID.randomUUID() + "\",\"revision\":1,\"checksum\":\"c\","
+                        + "\"state\":\"IN_PROGRESS\",\"context\":{\"orderId\":\"" + orderId + "\"}}")
                 .getAsJsonObject();
         try (var c = DriverManager.getConnection("jdbc:sqlite:" + data.resolve("guild.sqlite"));
-                var p = c.prepareStatement(
-                        "INSERT INTO physical_operations VALUES(?,?,?,?,?,?,?,?,?,?)")) {
+                var p = c.prepareStatement("INSERT INTO physical_operations VALUES(?,?,?,?,?,?,?,?,?,?)")) {
             p.setString(1, UUID.randomUUID().toString());
             p.setString(2, "s");
             p.setString(3, "agent");

@@ -88,8 +88,8 @@ final class AutomationGate {
                 // it can never be inspected or renewed: hand a fresh lease to the waiting agent
                 // instead of denying every future acquisition forever. A live journal still
                 // blocks the handover, so a reconnecting agent keeps its inspection path.
-                System.err.println("Automation lease on '" + server + "' taken over after "
-                        + TAKEOVER_SILENCE_MS + "ms of holder silence");
+                System.err.println("Automation lease on '" + server + "' taken over after " + TAKEOVER_SILENCE_MS
+                        + "ms of holder silence");
                 delete(c, server);
                 before = null;
             }

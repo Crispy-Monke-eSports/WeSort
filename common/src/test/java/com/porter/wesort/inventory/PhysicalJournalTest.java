@@ -194,8 +194,7 @@ class PhysicalJournalTest {
         var menuJournal = new PhysicalJournal(directory.resolve("menu"));
         menuJournal.start(context());
         menuJournal.intent(intent());
-        var menuFailure =
-                assertThrows(java.io.IOException.class, () -> menuJournal.verified(frame(9, "after"), false));
+        var menuFailure = assertThrows(java.io.IOException.class, () -> menuJournal.verified(frame(9, "after"), false));
         org.junit.jupiter.api.Assertions.assertTrue(
                 menuFailure.getMessage().contains("menu expected=5 actual=9"), menuFailure.getMessage());
 

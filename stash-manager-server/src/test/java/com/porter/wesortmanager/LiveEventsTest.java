@@ -139,7 +139,9 @@ class LiveEventsTest {
 
             // Revoking an agent key retires its session at once: presence goes out with it.
             LiveEvents.routeChanged("/api/v1/agents/abc/revoke", "POST");
-            assertEquals(Set.of("settings", "operations", "bots", "presence"), take(queue).channels());
+            assertEquals(
+                    Set.of("settings", "operations", "bots", "presence"),
+                    take(queue).channels());
 
             LiveEvents.routeChanged("/api/v1/stock/loss", "POST");
             assertEquals(Set.of("stock", "operations"), take(queue).channels());

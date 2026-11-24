@@ -418,8 +418,7 @@ public class StashManager extends Module {
         }
         if (controlFails % 4 == 0) {
             WeSortAddon.LOG.info(
-                    "wesort-manager-control: still {} ({}; attempt {})",
-                    reason, verifiedAgo(), controlFails);
+                    "wesort-manager-control: still {} ({}; attempt {})", reason, verifiedAgo(), controlFails);
         }
         controlStatus = reason;
     }
@@ -452,8 +451,7 @@ public class StashManager extends Module {
         }
         if (heartbeatFails % 4 == 0) {
             WeSortAddon.LOG.info(
-                    "wesort-manager-heartbeat: still {} ({}; attempt {})",
-                    reason, verifiedAgo(), heartbeatFails);
+                    "wesort-manager-heartbeat: still {} ({}; attempt {})", reason, verifiedAgo(), heartbeatFails);
         }
         heartbeatStatus = reason;
         // An in-flight control reply from before the failed heartbeat must not

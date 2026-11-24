@@ -35,8 +35,7 @@ final class DashboardRoutes {
         this(hub, store, sessions, audit, null);
     }
 
-    DashboardRoutes(
-            BotHub hub, IndexStore store, SessionStore sessions, AuditLog audit, AgentCredentials credentials) {
+    DashboardRoutes(BotHub hub, IndexStore store, SessionStore sessions, AuditLog audit, AgentCredentials credentials) {
         this.sessions = sessions;
         this.audit = audit;
         this.credentials = credentials;

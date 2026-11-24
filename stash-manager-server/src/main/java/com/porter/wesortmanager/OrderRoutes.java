@@ -417,7 +417,8 @@ final class OrderRoutes {
             return;
         }
         try {
-            OrderStore.Order order = orders.ownerForceCancel(m.group(1), Router.user(ex).id());
+            OrderStore.Order order =
+                    orders.ownerForceCancel(m.group(1), Router.user(ex).id());
             audit.add(Router.user(ex), "order.owner-force", order.id, AuthRoutes.address(ex));
             JsonObject out = Http.ok();
             out.add("order", shown(ex, order.toJson()));

@@ -297,8 +297,7 @@ final class BotHub {
     }
 
     private static boolean sessionAlive(Bot b, long now) {
-        return now - b.lastPoll < ONLINE_MS
-                || b.lastHeartbeat != null && now - b.lastHeartbeat < ONLINE_MS;
+        return now - b.lastPoll < ONLINE_MS || b.lastHeartbeat != null && now - b.lastHeartbeat < ONLINE_MS;
     }
 
     /**

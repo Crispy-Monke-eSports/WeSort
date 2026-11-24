@@ -53,14 +53,7 @@ class JointHealthTest {
         assertEquals("poll", BotHub.presenceCause(legacy, time.get()));
         assertTrue(BotHub.online(legacy, time.get()));
 
-        hub.register(
-                "modern",
-                "M",
-                new JsonObject(),
-                new JsonObject(),
-                List.of("heartbeat"),
-                List.of(),
-                "session-1");
+        hub.register("modern", "M", new JsonObject(), new JsonObject(), List.of("heartbeat"), List.of(), "session-1");
         var modern = hub.bot("modern");
         assertEquals("poll", BotHub.presenceCause(modern, time.get()));
         assertTrue(hub.heartbeat("modern", "session-1", modern.controlEpoch));
@@ -74,28 +67,22 @@ class JointHealthTest {
     void authenticatedHelloPreemptsAStaleControlSession() {
         var hub = new BotHub(time::get);
         assertEquals(
-                200,
-                hub.register("b", "B", new JsonObject(), new JsonObject(), List.of(), List.of(), "old-session"));
+                200, hub.register("b", "B", new JsonObject(), new JsonObject(), List.of(), List.of(), "old-session"));
         // A fresh session answers 409: something is still alive on the old one.
         assertEquals(
-                409,
-                hub.register("b", "B", new JsonObject(), new JsonObject(), List.of(), List.of(), "new-session"));
+                409, hub.register("b", "B", new JsonObject(), new JsonObject(), List.of(), List.of(), "new-session"));
         time.addAndGet(BotHub.TAKEOVER_GRACE_MS + 1);
         String epoch = hub.bot("b").controlEpoch;
         assertEquals(
-                200,
-                hub.register("b", "B", new JsonObject(), new JsonObject(), List.of(), List.of(), "new-session"));
+                200, hub.register("b", "B", new JsonObject(), new JsonObject(), List.of(), List.of(), "new-session"));
         assertNotEquals(epoch, hub.bot("b").controlEpoch);
     }
 
     @Test
     void sessionlessHelloNeverTakesOverALiveControlSession() {
         var hub = new BotHub(time::get);
-        assertEquals(
-                200,
-                hub.register("b", "B", new JsonObject(), new JsonObject(), List.of(), List.of(), "session"));
-        assertEquals(
-                409, hub.register("b", "B", new JsonObject(), new JsonObject(), List.of(), List.of(), null));
+        assertEquals(200, hub.register("b", "B", new JsonObject(), new JsonObject(), List.of(), List.of(), "session"));
+        assertEquals(409, hub.register("b", "B", new JsonObject(), new JsonObject(), List.of(), List.of(), null));
     }
 
     // ---------- AgentCredentials ----------
@@ -174,10 +161,7 @@ class JointHealthTest {
                         .orElseThrow()
                         .status());
         store.heartbeat("s", "a", null, null, IndexStore.BotStatus.NONE);
-        assertEquals(
-                first,
-                store.rescanPending("s", "a").longValue(),
-                "a live bot keeps its outstanding rescan id");
+        assertEquals(first, store.rescanPending("s", "a").longValue(), "a live bot keeps its outstanding rescan id");
     }
 
     // ---------- StockLedger loss, escalation and freeze ----------
@@ -189,8 +173,7 @@ class JointHealthTest {
         source(missing).addProperty("state", "MISSING");
         l.accept(missing);
         assertEquals("MISSING", l.sources().getFirst().status());
-        assertTrue(l.acceptLoss(
-                l.sources().getFirst().value().get("id").getAsString(), "owner"));
+        assertTrue(l.acceptLoss(l.sources().getFirst().value().get("id").getAsString(), "owner"));
         var tombstone = l.sources().getFirst();
         assertEquals("WITHDRAWN", tombstone.status());
         assertTrue(tombstone.value().getAsJsonArray("items").isEmpty());
@@ -207,8 +190,7 @@ class JointHealthTest {
     void acceptLossRefusesHealthySources() throws Exception {
         var l = ledger(100);
         l.accept(observation(l, "a", 64, 0, 1, 0));
-        assertFalse(l.acceptLoss(
-                l.sources().getFirst().value().get("id").getAsString(), "owner"));
+        assertFalse(l.acceptLoss(l.sources().getFirst().value().get("id").getAsString(), "owner"));
         assertEquals("FRESH", l.sources().getFirst().status());
     }
 

@@ -258,17 +258,15 @@ public final class PhysicalJournalRuntime {
                 } catch (Exception commit) {
                     journal.block("Automatic shulker recovery requires a durable workspace checkpoint");
                     recoveryFence = true;
-                    finishInspection(
-                            false, "INSPECT_CHECKPOINT: exact step verified but completion could not commit");
+                    finishInspection(false, "INSPECT_CHECKPOINT: exact step verified but completion could not commit");
                     return;
                 }
                 recoveryFence = false;
                 if (checkpoint) {
                     finishInspection(true, "Exact physical step verified; sorter will resume its saved recovery");
                 } else {
-                    noteWorkspaceDebt(
-                            "a REPACK step was exactly verified without a durable sorter checkpoint;"
-                                    + " the next physical order is gated until that checkpoint exists");
+                    noteWorkspaceDebt("a REPACK step was exactly verified without a durable sorter checkpoint;"
+                            + " the next physical order is gated until that checkpoint exists");
                     finishInspection(
                             true,
                             "Exact physical step verified and committed; next physical order gated"
@@ -356,8 +354,7 @@ public final class PhysicalJournalRuntime {
                 // stale manager receipt must not re-fence a terminal journal;
                 // treat it as reconciled and wait for the manager to catch up.
                 MeteorClient.LOG.warn(
-                        "WeSort ignoring stale NEEDS_RECONCILIATION receipt for terminal journal {}",
-                        journal.id());
+                        "WeSort ignoring stale NEEDS_RECONCILIATION receipt for terminal journal {}", journal.id());
                 return;
             }
             recoveryFence = true;
@@ -423,8 +420,8 @@ public final class PhysicalJournalRuntime {
         closeForeignScreenPending = false;
         try {
             var evidence = journal.lastIntentEvidence();
-            boolean menuZero =
-                    evidence == null || evidence.getAsJsonObject("expected").get("menu").getAsInt() == 0;
+            boolean menuZero = evidence == null
+                    || evidence.getAsJsonObject("expected").get("menu").getAsInt() == 0;
             if (menuZero && mc.player != null && mc.player.containerMenu != mc.player.inventoryMenu) {
                 // The fenced bot opened this screen itself and nothing else
                 // will close it. Closing a storage screen moves no items.
@@ -647,8 +644,7 @@ public final class PhysicalJournalRuntime {
             try {
                 startInspectionProbe();
             } catch (Exception invalid) {
-                finishInspection(
-                        false, "INSPECT_EVIDENCE: recorded physical postcondition cannot be inspected safely");
+                finishInspection(false, "INSPECT_EVIDENCE: recorded physical postcondition cannot be inspected safely");
             }
             return;
         }

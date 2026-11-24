@@ -130,7 +130,8 @@ final class OperationsRoutes {
         int stalled = 0;
         for (var element : new PhysicalOperations(index.stock()).list()) {
             var op = element.getAsJsonObject();
-            if (!op.has("managerState") || !"RECOVERING".equals(op.get("managerState").getAsString())) continue;
+            if (!op.has("managerState")
+                    || !"RECOVERING".equals(op.get("managerState").getAsString())) continue;
             if (op.has("inspectionAttempts")
                     && op.get("inspectionAttempts").getAsInt() >= PhysicalOperations.MAX_AUTO_INSPECT_PER_REVISION)
                 stalled++;

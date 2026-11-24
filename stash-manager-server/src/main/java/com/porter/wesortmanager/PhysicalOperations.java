@@ -153,8 +153,8 @@ final class PhysicalOperations {
             p.setString(1, server);
             try (var rows = p.executeQuery()) {
                 if (rows.next() && !agent.equals(rows.getString(1))) {
-                    System.err.println("Physical journal from '" + agent + "' rejected: sorting lease on '"
-                            + server + "' is held by another agent");
+                    System.err.println("Physical journal from '" + agent + "' rejected: sorting lease on '" + server
+                            + "' is held by another agent");
                     throw new Conflict("lease held by other agent");
                 }
             }

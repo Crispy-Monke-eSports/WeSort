@@ -434,16 +434,17 @@ public final class PhysicalJournal {
 
     /** Names which part of the postcondition a frame violates: menu, cursor, or slot fingerprints. */
     static String mismatch(InventoryReadback.Expected wanted, InventoryReadback.Expected actual) {
-        if (wanted.menu() != actual.menu())
-            return "menu expected=" + wanted.menu() + " actual=" + actual.menu();
+        if (wanted.menu() != actual.menu()) return "menu expected=" + wanted.menu() + " actual=" + actual.menu();
         if (!wanted.cursor().equals(actual.cursor())) return "cursor differs";
         if (wanted.slots().size() != actual.slots().size())
-            return "slot count expected=" + wanted.slots().size() + " actual=" + actual.slots().size();
+            return "slot count expected=" + wanted.slots().size() + " actual="
+                    + actual.slots().size();
         List<Integer> different = new ArrayList<>();
         for (int i = 0; i < wanted.slots().size() && different.size() < 8; i++)
             if (!wanted.slots().get(i).equals(actual.slots().get(i))
-                    && !wanted.alternatives().getOrDefault(i, Set.of()).contains(actual.slots().get(i)))
-                different.add(i);
+                    && !wanted.alternatives()
+                            .getOrDefault(i, Set.of())
+                            .contains(actual.slots().get(i))) different.add(i);
         return different.isEmpty() ? "unknown deviation" : "slots differ at " + different;
     }
 

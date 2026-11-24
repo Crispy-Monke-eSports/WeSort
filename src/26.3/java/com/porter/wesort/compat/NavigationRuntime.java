@@ -103,9 +103,7 @@ public final class NavigationRuntime {
                     mc.player.getZ(),
                     System.nanoTime(),
                     60_000_000_000L,
-                    portal
-                            ? 20_000_000_000L
-                            : BaritoneHelper.isReachGoal(goal) ? 30_000_000_000L : 8_000_000_000L);
+                    portal ? 20_000_000_000L : BaritoneHelper.isReachGoal(goal) ? 30_000_000_000L : 8_000_000_000L);
         ours = (Goal) goal;
         portalApproachGoal = portal;
         portalStartLevel = portal ? mc.level : null;
@@ -177,8 +175,8 @@ public final class NavigationRuntime {
     /** Baritone liveness at pause time, for timeout diagnostics. Never throws. */
     private static String baritoneState() {
         try {
-            return " Baritone active=" + BaritoneHelper.isActive()
-                    + " calculating=" + BaritoneHelper.isCalculating() + ".";
+            return " Baritone active=" + BaritoneHelper.isActive() + " calculating=" + BaritoneHelper.isCalculating()
+                    + ".";
         } catch (RuntimeException unavailable) {
             return " Baritone unavailable.";
         }
@@ -277,8 +275,8 @@ public final class NavigationRuntime {
             if (failure.equals("PAUSED_NAVIGATION_STUCK") && BaritoneHelper.isCalculating()) return;
             // A just-reasserted engine-dropped goal gets a grace period before the deadline bites.
             if (System.nanoTime() < reassertGraceUntil
-                    && (failure.equals("PAUSED_NAVIGATION_STUCK")
-                            || failure.equals("PAUSED_NAVIGATION_TIMEOUT"))) return;
+                    && (failure.equals("PAUSED_NAVIGATION_STUCK") || failure.equals("PAUSED_NAVIGATION_TIMEOUT")))
+                return;
             finish(failure, true);
             return;
         }

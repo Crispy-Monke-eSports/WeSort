@@ -1068,8 +1068,9 @@ final class OrderStore {
         for (var entry : books.entrySet()) {
             if (!entry.getKey().server().equals(server)) continue;
             synchronized (entry.getValue()) {
-                if (entry.getValue().orders.stream().anyMatch(order ->
-                        OPEN.contains(order.status) && order.stage() != OrderStage.RECOVERING)) return true;
+                if (entry.getValue().orders.stream()
+                        .anyMatch(order -> OPEN.contains(order.status) && order.stage() != OrderStage.RECOVERING))
+                    return true;
             }
         }
         return false;

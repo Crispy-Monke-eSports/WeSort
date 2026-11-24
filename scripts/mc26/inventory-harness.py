@@ -353,6 +353,7 @@ class InventoryHarness(world.Harness):
         query = world.urllib.parse.urlencode({'server': baseline_index['server'], 'stash': 'e2e-fixture'})
         status, stored = self.http('/api/v1/index?' + query)
         require(status == 200, 'Published index disappeared after the interrupted action')
+        (self.evidence / 'manager-index-after-restart.json').write_text(json.dumps(stored, indent=2) + '\n')
         # W-018 hashes observation session/revision/freshness too. A valid new read or stale
         # transition may change that hash without changing inventory. Compare the physical
         # postconditions instead: variants, group quantities and full per-container contents.
@@ -378,7 +379,9 @@ class InventoryHarness(world.Harness):
             index = self.observe()
             self.command('screenshot')
             world.shutil.copyfile(self.game_dir / 'screenshots/fixture.png', self.evidence / 'fixture.png')
-            self.verify_manager_index(index)
+            # Keep the signed publisher live, but do not allow autonomous discovery or
+            # orphan recovery to change the fixture during the crash experiment.
+            baseline = self.verify_manager_index(index, inspection_hold=True)
             # The signed index is verified; now isolate the exact crash-before-
             # transmission experiment from the Manager's background container
             # rescan. Otherwise the Manager may close this test's chest menu
@@ -388,7 +391,7 @@ class InventoryHarness(world.Harness):
             paused = self.command('state')['state']
             require(not paused['sorterActive'] and paused['inventoryReady'],
                 'Inventory fault injection did not begin with a quiescent client')
-            self.disconnect_and_restart(index)
+            self.disconnect_and_restart(baseline)
             after = self.physical_snapshot()
             require(after == before, 'Server container data changed after inventory/fault scenarios')
             (self.evidence / 'server-after.json').write_text(json.dumps(after, indent=2) + '\n')

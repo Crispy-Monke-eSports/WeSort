@@ -48,10 +48,13 @@ final class PhysicalRoutes {
             var record = body.getAsJsonObject("record");
             var context = record == null ? null : record.getAsJsonObject("context");
             String at = context == null ? null : AddonRoutes.string(context, "server");
-            if (at != null && !at.isEmpty() && !want.equals(at)) {
+            if (at != null && !at.isEmpty() && !ServerRoutes.sameServer(want, at)) {
                 Http.error(ex, 409, "this Manager serves '" + want + "'");
                 return;
             }
+            // Canonicalize the stored record: journal and recovery keys below use
+            // the same form as order books and stock, so admission and storage agree.
+            if (at != null && !at.isEmpty()) context.addProperty("server", ServerRoutes.canonicalServer(at));
             var store = operations();
             JsonObject receipt;
             JsonObject decision;

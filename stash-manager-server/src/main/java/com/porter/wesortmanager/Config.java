@@ -107,7 +107,7 @@ public final class Config {
 
     /** Saves the single Minecraft server address (owner-only, from the web UI). Empty clears it. */
     public synchronized void setMinecraftServer(String server) throws IOException {
-        String v = ServerRoutes.normalizeServer(server == null ? "" : server);
+        String v = ServerRoutes.canonicalServer(server == null ? "" : server);
         if (v.length() > 256) throw new IllegalArgumentException("server address too long");
         writeLine(file, Pattern.compile("^\\s*minecraftServer\\s*[=:].*$"), "minecraftServer", v);
         minecraftServer = v.isEmpty() ? null : v;

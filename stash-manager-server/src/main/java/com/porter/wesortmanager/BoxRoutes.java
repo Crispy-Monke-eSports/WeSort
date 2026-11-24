@@ -89,6 +89,9 @@ final class BoxRoutes {
                     Http.error(ex, 404, "unknown stash '" + stash + "': define it in Settings first");
                     return;
                 }
+                // Canonicalize once: box jobs below are keyed by the same form as
+                // order books and stock, so admission and storage can never disagree.
+                server = ServerRoutes.canonicalServer(server);
                 synchronized (index) {
                     job = jobs().claim(server, stash, agentId);
                 }

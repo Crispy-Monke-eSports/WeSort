@@ -101,15 +101,23 @@ final class ServerRoutes {
      * configured base domain (and vice versa). Anything else stays a mismatch: fail closed.
      */
     static boolean sameServer(String want, String got) {
-        String a = normalizeServer(want);
-        String b = normalizeServer(got);
-        if (a.isEmpty() || b.isEmpty()) return false;
-        if (a.equals(b)) return true;
-        return stripAltPrefix(a).equals(stripAltPrefix(b)) && !stripAltPrefix(a).isEmpty();
+        String a = canonicalServer(want);
+        String b = canonicalServer(got);
+        return !a.isEmpty() && a.equals(b);
     }
 
-    private static String stripAltPrefix(String host) {
-        return host.startsWith("alt.") ? host.substring(4) : host;
+    /**
+     * Canonical server identity: lowercase host without port, whitespace or trailing dot.
+     * The Minecraft client reports the resolved address (e.g. {@code alt.6b6t.org} from the
+     * {@code _minecraft._tcp.6b6t.org} SRV record, or {@code 127.0.0.1:54321} with an ephemeral
+     * port) while the owner configures the base domain ({@code 6b6t.org}). All persistent
+     * keys (order books, stock, leases, journal, manifests) use this form so admission
+     * and storage can never disagree.
+     */
+    static String canonicalServer(String server) {
+        String host = normalizeServer(server);
+        if (host.startsWith("alt.")) host = host.substring(4);
+        return host;
     }
 
     /** True when stash definitions exist and none of them has this name. */

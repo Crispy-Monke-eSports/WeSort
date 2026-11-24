@@ -100,6 +100,9 @@ final class AddonRoutes {
             Http.error(ex, 409, "this Manager serves '" + config.minecraftServer() + "'");
             return;
         }
+        // Canonicalize once: leases below are keyed by the same form as order
+        // books and stock, so admission and storage can never disagree.
+        server = ServerRoutes.canonicalServer(server);
         synchronized (store) {
             var gate = store.automation();
             if (!action.equals("acquire")) {
@@ -172,6 +175,10 @@ final class AddonRoutes {
             Http.error(ex, 404, "unknown stash '" + stash + "': define it in Settings first");
             return;
         }
+        // Canonicalize the observation itself: IndexStore, order books, presence
+        // and icons all key by this form, so admission and storage agree.
+        server = ServerRoutes.canonicalServer(server);
+        index.addProperty("server", server);
         String player = string(index, "player");
         try {
             synchronized (store) {
@@ -230,6 +237,9 @@ final class AddonRoutes {
             Http.error(ex, 404, "unknown stash '" + stash + "': define it in Settings first");
             return;
         }
+        // Canonicalize once: heartbeats below are keyed by the same form as
+        // order books and stock, so admission and storage can never disagree.
+        server = ServerRoutes.canonicalServer(server);
         if (badOptionalString(o, "player") || badOptionalString(o, "indexHash")) {
             Http.error(ex, 400, "player and indexHash must be strings");
             return;

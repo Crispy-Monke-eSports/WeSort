@@ -20,7 +20,16 @@ class ServerRoutesTest {
     }
 
     @Test
-    void sameServerAcceptsSrvTargetAlias() {
+    void canonicalStripsAltAliasAndPort() {
+        assertEquals("6b6t.org", ServerRoutes.canonicalServer("6b6t.org"));
+        assertEquals("6b6t.org", ServerRoutes.canonicalServer("  ALT.6B6T.ORG:25565  "));
+        assertEquals("127.0.0.1", ServerRoutes.canonicalServer("127.0.0.1:54321"));
+        assertEquals("", ServerRoutes.canonicalServer(null));
+        assertEquals("", ServerRoutes.canonicalServer("   "));
+    }
+
+    @Test
+    void sameServerUsesCanonicalForm() {
         assertTrue(ServerRoutes.sameServer("6b6t.org", "alt.6b6t.org"));
         assertTrue(ServerRoutes.sameServer("alt.6b6t.org", "6b6t.org"));
         assertTrue(ServerRoutes.sameServer("6B6T.ORG:25565", "alt.6b6t.org."));
@@ -32,7 +41,7 @@ class ServerRoutesTest {
     }
 
     @Test
-    void agentServerStatusUsesNormalizedIdentity(@TempDir Path data) throws Exception {
+    void configuredBaseDomainMatchesResolvedAgentAddress(@TempDir Path data) throws Exception {
         Config.load(data);
         Files.writeString(data.resolve("config.properties"), "port=8765\neula=true\nminecraftServer=6b6t.org\n");
         Config config = Config.load(data);
@@ -48,7 +57,7 @@ class ServerRoutesTest {
         Files.writeString(data.resolve("config.properties"), "port=8765\neula=true\n");
         Config config = Config.load(data);
         config.setMinecraftServer("  ALT.6b6t.org:25565  ");
-        assertEquals("alt.6b6t.org", config.minecraftServer());
+        assertEquals("6b6t.org", config.minecraftServer());
         assertTrue(ServerRoutes.sameServer("6b6t.org", config.minecraftServer()));
     }
 }

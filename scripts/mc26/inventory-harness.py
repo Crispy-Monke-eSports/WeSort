@@ -273,8 +273,15 @@ class InventoryHarness(world.Harness):
         # The private server supplies the same native OPEN state as a player
         # opening and closing a nearby barrel. Keep it empty and isolated.
         position = {'x': 18, 'y': 64, 'z': -3}
-        self.rcon.command('setblock 18 64 -3 minecraft:barrel[facing=up,open=false]')
+        reply = self.rcon.command('setblock 18 64 -3 minecraft:barrel[facing=up,open=false]')
+        require('changed' in reply.lower(), 'Server failed to place lid fixture: ' + reply)
         self.teleport(18.5, -1.5)
+        # Teleport acknowledgement does not imply chunk/block-entity delivery.
+        # In a cold client the first open can otherwise be sent against AIR.
+        # Poll only the read-only client witness; never retry a physical open.
+        self.wait_server(
+            lambda: self.command('barrel-ready', **position, allow_failure=True)['success'],
+            'Client did not observe the closed barrel and its block entity', timeout=30)
         self.command('open', **position, slots=27, item='minecraft:air', count=0)
         self.command('close')
         for opened in (True, False):

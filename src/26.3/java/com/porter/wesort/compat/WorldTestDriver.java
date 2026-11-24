@@ -121,6 +121,18 @@ public final class WorldTestDriver {
             if (mc.level == null || mc.player == null) return;
             switch (command.get("action").getAsString()) {
                 case "state" -> respond(true, "connected", state());
+                case "barrel-ready" -> {
+                    BlockPos pos = position(command);
+                    var block = mc.level.getBlockState(pos);
+                    var open = net.minecraft.world.level.block.BarrelBlock.OPEN;
+                    boolean ready = mc.level.isLoaded(pos)
+                            && block.hasProperty(open)
+                            && block.getBlock() instanceof net.minecraft.world.level.block.BarrelBlock
+                            && !block.getValue(open)
+                            && mc.level.getBlockEntity(pos)
+                                    instanceof net.minecraft.world.level.block.entity.BarrelBlockEntity;
+                    respond(ready, ready ? "Closed barrel observed" : "Waiting for closed barrel: " + block, null);
+                }
                 case "watch-lid" -> {
                     BlockPos pos = position(command);
                     Stash.Box watched = stash == null ? null : stash.boxAt(pos);

@@ -1815,7 +1815,7 @@ public class StashSorter extends Module {
         // what is known stays in use until each one is
         // (not the ones read within the fresh-minutes window: those are only read again if something marks them stale)
         for (Box box : stash.boxes) {
-            box.stale = !box.excluded && (box.stale || forcedSurvey.contains(box) || !fresh(box));
+            box.stale = !box.excluded && (box.stale || !fresh(box));
             if (box.stale && readableBox(box)) forcedSurvey.add(box);
         }
 
@@ -2894,7 +2894,7 @@ public class StashSorter extends Module {
 
     private boolean surveyCandidate(Box box, long now, boolean periodic) {
         if (!surveyDue(box, now)) return false;
-        if (!box.known() || box.stale) return true;
+        if (forcedSurvey.contains(box) || !box.known() || box.stale) return true;
         return periodic
                 && keepOn()
                 && now >= nextBackgroundBatchAt
@@ -2903,7 +2903,7 @@ public class StashSorter extends Module {
 
     private boolean queueSurveyBatch(boolean periodic, boolean nearbyOnly) {
         long now = System.currentTimeMillis();
-        surveyBatch.removeIf(box -> !stash.boxes.contains(box) || !surveyDue(box, now) || box.known() && !box.stale);
+        surveyBatch.removeIf(box -> !stash.boxes.contains(box) || !surveyDue(box, now));
         if (!surveyBatch.isEmpty()) return true;
         surveyAttemptAt.keySet().retainAll(stash.boxes);
         forcedSurvey.retainAll(stash.boxes);
@@ -2916,10 +2916,7 @@ public class StashSorter extends Module {
         if (selected.isEmpty()) return false;
         // The selected batch stays stable until every member is attempted or
         // has been refreshed by another verified job in the meantime.
-        for (Box box : selected) {
-            box.stale = true;
-            surveyBatch.add(box);
-        }
+        surveyBatch.addAll(selected);
         info("Checking %d containers, oldest observations first.", selected.size());
         return true;
     }
@@ -2939,7 +2936,7 @@ public class StashSorter extends Module {
         // A cancelled walk can be replanned. Consume an explicit request on read or failure.
         // A continuously busy stash still gets background batches, but the
         // next periodic batch leaves a window for ordinary work.
-        if (surveyBatch.isEmpty()) nextBackgroundBatchAt = now + 30_000L;
+        if (surveyBatch.isEmpty()) nextBackgroundBatchAt = now + 5_000L;
         surveyAttemptAt.put(selected, now);
         return start(Job.Survey, selected);
     }
@@ -2961,6 +2958,7 @@ public class StashSorter extends Module {
         box.observationUnreachable = true;
         failedSurvey.add(box);
         // One failure per job: the skip paths and finishJob can both get here for the same read
+        forcedSurvey.remove(box);
         int delay = surveyRetry.failOnce(box, ticks, 20 * 300);
         if (delay < 0) return;
         step(String.format(
@@ -3866,7 +3864,7 @@ public class StashSorter extends Module {
     /** Containers waiting to be read: not read yet, or stale. */
     boolean needsReading() {
         if (stash == null) return false;
-        if (areaDirty) return true;
+        if (areaDirty || !forcedSurvey.isEmpty()) return true;
         if (explorePending && stash.hasArea() && BARITONE) return true;
         return stash.boxes.stream()
                 .anyMatch(b -> !b.excluded
@@ -7556,7 +7554,6 @@ public class StashSorter extends Module {
         surveyBatch.clear();
         for (Box box : stash.boxes) {
             if (box.excluded || box.foreign) continue;
-            box.stale = true;
             forcedSurvey.add(box);
             // Only readable containers are counted: unreachable and failed-survey ones
             // would inflate the "re-reading N" count without any subsequent reads.

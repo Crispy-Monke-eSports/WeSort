@@ -1211,13 +1211,22 @@ final class StockLedger {
         return PackageManifest.staged(order, proofs, packages);
     }
 
+    /**
+     * Abandoned journal evidence cannot fence an order forever: an operation unseen for a full
+     * day counts as settled for release purposes (its NEEDS_RECONCILIATION fence, if any, still
+     * drives order recovery through {@link #reconciliationRequiredPhysicalOrder}).
+     */
+    static final long OPERATION_FENCE_MS = 24 * 60 * 60 * 1000;
+
     boolean unsettledPhysicalOrder(String order) throws IOException {
         try (var c = open();
                 var p = c.prepareStatement("""
                 SELECT 1 FROM physical_operations
-                WHERE state NOT IN ('COMPLETED','FAILED') AND json_extract(payload,'$.context.orderId')=? LIMIT 1
+                WHERE state NOT IN ('COMPLETED','FAILED') AND json_extract(payload,'$.context.orderId')=?
+                  AND last_seen > ? LIMIT 1
                 """)) {
             p.setString(1, order);
+            p.setLong(2, clock.getAsLong() - OPERATION_FENCE_MS);
             try (var rows = p.executeQuery()) {
                 return rows.next();
             }

@@ -8,6 +8,11 @@
  *   a human operator. RECOVERING is an active, autonomous rollback stage.
  * - OrderStage adds PACKING, RECOVERING, PICKUP_READY, PICKED_UP,
  *   IN_TRANSIT, AWAITING_CUSTOMER, DELIVERED, FAILED, CANCELLED.
+ *   PICKED_UP/IN_TRANSIT/AWAITING_CUSTOMER/DELIVERED are reserved for a
+ *   future custody flow: the current bot API never emits them (a bot
+ *   `delivered` report means warehouse staging and lands on PICKUP_READY),
+ *   so the implemented terminal set is PICKUP_READY plus the verified
+ *   sweep release. The entries below stay so older payloads never hide.
  *
  * Unknown strings stay visible (never hidden) with a neutral chip.
  */

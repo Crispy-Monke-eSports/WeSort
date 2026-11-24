@@ -185,6 +185,26 @@ final class PhysicalOperations {
         }
     }
 
+    /**
+     * Expiry without a read: lets the order sweep fence silent operations even when nobody
+     * opens the operations view (whose list() is the only other expire trigger).
+     */
+    synchronized void sweepStale() throws IOException {
+        try (var c = ledger.open();
+                var tx = c.createStatement()) {
+            tx.execute("BEGIN IMMEDIATE");
+            try {
+                expire(c);
+                tx.execute("COMMIT");
+            } catch (Exception failure) {
+                tx.execute("ROLLBACK");
+                throw failure;
+            }
+        } catch (SQLException failure) {
+            throw new IOException("Cannot expire silent physical operations", failure);
+        }
+    }
+
     synchronized JsonArray list() throws IOException {
         var out = new JsonArray();
         try (var c = ledger.open()) {

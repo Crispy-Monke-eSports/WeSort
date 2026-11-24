@@ -688,6 +688,13 @@ final class OrderStore {
                             || (!stage.archiveable()
                                     && stage != OrderStage.CREATED
                                     && stage != OrderStage.RESERVED
+                                    && now - order.updatedAt >= AUTO_CANCEL_AFTER_MS)
+                            // A reservation that was never claimed: either its source changed
+                            // under it (fingerprint mismatch on every claim skips silently without
+                            // touching updatedAt) or the bot has been down for a long time.
+                            // Both deserve the alert; fresh reservations never trip it.
+                            || (stage == OrderStage.RESERVED
+                                    && order.allocations != null
                                     && now - order.updatedAt >= AUTO_CANCEL_AFTER_MS)) stuck++;
                 }
             }
@@ -766,6 +773,10 @@ final class OrderStore {
 
     void releaseFromFreshObservation(String server) throws IOException {
         synchronized (index) {
+            // Expire silent operations first: without this, only opening the operations view
+            // (or an agent heartbeat) ever flips them to NEEDS_RECONCILIATION, and the 15-second
+            // scheduler below would keep seeing a healthy IN_PROGRESS forever.
+            new PhysicalOperations(index.stock()).sweepStale();
             PhysicalReservations observations = null;
             for (var entry : books.entrySet()) {
                 if (!entry.getKey().server().equals(server)) continue;
@@ -799,6 +810,22 @@ final class OrderStore {
 
     /** Timeout for unconfirmed cancellations and legacy, unallocated orders. */
     static final long AUTO_CANCEL_AFTER_MS = 10 * 60 * 1000;
+
+    /**
+     * A rollback the bot never finishes must not hold stock forever. The bot-driven fast path
+     * (a cancelled/failed report) is untouched; only a rollback silent for this long fails
+     * automatically and releases its holds through the normal sweep.
+     */
+    static final long RECOVERING_AFTER_MS = 30 * 60 * 1000;
+
+    /**
+     * Packed orders release their holds this long after the last bot report when the bot stays
+     * silent. Overridable with -Dwesort.pickupReadyReleaseMs=&lt;ms&gt; (tests use old timestamps
+     * against the default instead).
+     */
+    static long pickupReadyReleaseAfterMs() {
+        return Long.getLong("wesort.pickupReadyReleaseMs", 30 * 60 * 1000);
+    }
 
     static final long DEFERRED_RETRY_AFTER_MS = 5 * 60 * 1000;
 
@@ -864,8 +891,9 @@ final class OrderStore {
                 && isExecuting(previous)
                 && previous.stage() != OrderStage.RECOVERING
                 && previous.cancelRequestedAt > 0
-                && now - previous.cancelRequestedAt > AUTO_CANCEL_AFTER_MS
-                && now - previous.updatedAt > AUTO_CANCEL_AFTER_MS) {
+                && now - previous.cancelRequestedAt > AUTO_CANCEL_AFTER_MS) {
+            // The deadline runs on the cancel request alone: repeated bot progress reports
+            // (which touch updatedAt) must not defer the rollback forever.
             // Keep the allocation and original agent, rather than treating a
             // missing bot acknowledgement as permission to abandon items.
             Order o = Order.fromJson(previous.snapshot());
@@ -889,6 +917,48 @@ final class OrderStore {
             o.message = "cancelled automatically: requested, bot silent, nothing held";
             o.updatedAt = now;
             o.record("order.auto-force-cancel", Users.OWNER_ID, now);
+            return o;
+        }
+        if (previous.stage() == OrderStage.RECOVERING && now - previous.updatedAt > RECOVERING_AFTER_MS) {
+            // The exit a silent bot never takes: fail the rollback so its holds release
+            // through the normal sweep. A reporting bot still finishes first via the
+            // cancelled/failed fast path, which this never pre-empts.
+            Order o = Order.fromJson(previous.snapshot());
+            o.advance(OrderStage.FAILED);
+            o.status = "failed";
+            o.phase = "automatic rollback timed out";
+            o.message = "Automatic rollback timed out waiting for the agent;"
+                    + " holds release on the next verified observation";
+            o.updatedAt = now;
+            o.record("order.auto-recovery.timeout", Users.OWNER_ID, now);
+            return o;
+        }
+        if (previous.stage() == OrderStage.PICKUP_READY
+                && previous.releasedAt == 0
+                && now - previous.updatedAt > pickupReadyReleaseAfterMs()) {
+            // A packed order whose bot went silent: the goods are staged and waiting,
+            // so the hold may lapse while the order itself stays collectible.
+            Order o = Order.fromJson(previous.snapshot());
+            o.releasedAt = now;
+            o.message = "Released automatically: packed, bot silent, goods await pickup";
+            o.updatedAt = now;
+            o.record("order.pickup-release", Users.OWNER_ID, now);
+            return o;
+        }
+        if (previous.status.equals("pending")
+                && previous.approval != Approval.PENDING
+                && previous.allocations != null
+                && previous.claimedAt == 0
+                && previous.stage().allows(OrderStage.CANCELLED)
+                && now - previous.updatedAt > AUTO_CANCEL_AFTER_MS) {
+            // A reservation the bot never picked up must not gate the sorting lease
+            // forever. Nothing was ever touched, so cancelling releases cleanly.
+            Order o = Order.fromJson(previous.snapshot());
+            o.advance(OrderStage.CANCELLED);
+            o.status = "cancelled";
+            o.message = "cancelled automatically: reserved but never claimed by a bot";
+            o.updatedAt = now;
+            o.record("order.auto-cancel-unclaimed", Users.OWNER_ID, now);
             return o;
         }
         return null;
@@ -1549,7 +1619,18 @@ final class OrderStore {
                     throw new OrderException(409, "This order was already placed again as " + old.retriedAs, -1);
                 }
                 if (holdsPhysical(old)) {
-                    throw new OrderException(409, "Wait for verified release of the previous reservation", -1);
+                    var holders = ordersOnServer(book.server).stream()
+                            .filter(OrderStore::holdsPhysical)
+                            .map(order -> order.id)
+                            .sorted()
+                            .limit(6)
+                            .toList();
+                    throw new OrderException(
+                            409,
+                            "Wait for verified release of the previous reservation (still held by: "
+                                    + String.join(", ", holders)
+                                    + ")",
+                            -1);
                 }
                 return placeWithObservationLock(
                         book.server,
@@ -1925,6 +2006,9 @@ final class OrderStore {
     private Order cancelWithObservationLock(String id, String actor) throws OrderException, IOException {
         Book b = byOrderId.get(id);
         if (b == null) throw new OrderException(404, "no such order", -1);
+        // Every touch heals: a legacy needs_reconciliation order migrates to the
+        // automatic rollback protocol here, not only on dashboard polls.
+        autoHeal(b.server);
         synchronized (b) {
             Order previous = find(b, id);
             if (previous == null) throw new OrderException(404, "no such order", -1);
@@ -1963,13 +2047,20 @@ final class OrderStore {
     private Order forceCancelWithObservationLock(String id, String actor) throws OrderException, IOException {
         Book b = byOrderId.get(id);
         if (b == null) throw new OrderException(404, "no such order", -1);
+        // Every touch heals, so a legacy needs_reconciliation order is already
+        // migrating to RECOVERING by the time the checks below run.
+        autoHeal(b.server);
         synchronized (b) {
             Order previous = find(b, id);
             if (previous == null) throw new OrderException(404, "no such order", -1);
             Order o = Order.fromJson(previous.snapshot());
             if (FINISHED.contains(o.status)) throw new OrderException(409, "order is already " + o.status, -1);
             if (o.allocations != null) {
-                throw new OrderException(409, "The agent must finish automatic physical rollback first", -1);
+                throw new OrderException(
+                        409,
+                        "The agent must finish automatic physical rollback first;"
+                                + " the owner can release it unconditionally via owner-force",
+                        -1);
             }
             if (!o.cancelRequested || o.status.equals("pending")) {
                 throw new OrderException(
@@ -1982,6 +2073,35 @@ final class OrderStore {
             o.record("order.force-cancel", actor, o.updatedAt);
             update(b, previous, o);
             return o;
+        }
+    }
+
+    /**
+     * The escape hatch for every stuck shape: the owner releases an order unconditionally,
+     * setting a terminal state and the release timestamp despite remaining allocations.
+     * The full trail (including the abandoned allocation roots) stays in the audit history.
+     * Only exposed through the owner-only route; nothing else in the codebase calls this.
+     */
+    Order ownerForceCancel(String id, String actor) throws OrderException, IOException {
+        synchronized (index) {
+            Book b = byOrderId.get(id);
+            if (b == null) throw new OrderException(404, "no such order", -1);
+            synchronized (b) {
+                Order previous = find(b, id);
+                if (previous == null) throw new OrderException(404, "no such order", -1);
+                if (previous.stage().archiveable())
+                    throw new OrderException(409, "order is already " + previous.status, -1);
+                Order o = Order.fromJson(previous.snapshot());
+                // Deliberately bypasses advance(): PICKUP_READY has no FAILED edge, and this
+                // path must terminate every non-terminal stage, allocations or not.
+                o.stage = OrderStage.FAILED;
+                o.status = "failed";
+                o.releasedAt = o.updatedAt = System.currentTimeMillis();
+                o.message = "Released by the owner without bot confirmation; verify the stash by hand.";
+                o.record("order.owner-force", actor, o.updatedAt);
+                update(b, previous, o);
+                return o;
+            }
         }
     }
 
@@ -2292,6 +2412,9 @@ final class OrderStore {
     }
 
     private Order claimWithObservationLock(String server, String stash, String agent) throws IOException {
+        // Every touch heals: timed-out rollbacks, silent packed orders and never-claimed
+        // reservations resolve here too, not only on dashboard polls.
+        autoHeal(server);
         var counts = index.orderCounts(server, stash);
         if (counts == null || index.automation().current(server) != null) return null;
         for (var running : ordersOnServer(server)) {

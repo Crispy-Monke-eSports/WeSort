@@ -773,6 +773,10 @@ final class OrderStore {
 
     void releaseFromFreshObservation(String server) throws IOException {
         synchronized (index) {
+            // Expire silent operations first: without this, only opening the operations view
+            // (or an agent heartbeat) ever flips them to NEEDS_RECONCILIATION, and the 15-second
+            // scheduler below would keep seeing a healthy IN_PROGRESS forever.
+            new PhysicalOperations(index.stock()).sweepStale();
             PhysicalReservations observations = null;
             for (var entry : books.entrySet()) {
                 if (!entry.getKey().server().equals(server)) continue;

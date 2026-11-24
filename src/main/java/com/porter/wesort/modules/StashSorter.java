@@ -1816,8 +1816,7 @@ public class StashSorter extends Module {
         // (not the ones read within the fresh-minutes window: those are only read again if something marks them stale)
         for (Box box : stash.boxes) {
             box.stale = !box.excluded && (box.stale || forcedSurvey.contains(box) || !fresh(box));
-            if (box.stale && !box.excluded && !box.foreign && !com.porter.wesort.compat.ObservationRuntime.current(box))
-                forcedSurvey.add(box);
+            if (box.stale && readableBox(box)) forcedSurvey.add(box);
         }
 
         // With a perimeter the containers come from exploring it, and the checks wait until that is done
@@ -2937,7 +2936,7 @@ public class StashSorter extends Module {
         }
         if (selected == null) return false;
         surveyBatch.remove(selected);
-        forcedSurvey.remove(selected); // consume once, even if the read fails
+        // A cancelled walk can be replanned. Consume an explicit request on read or failure.
         // A continuously busy stash still gets background batches, but the
         // next periodic batch leaves a window for ordinary work.
         if (surveyBatch.isEmpty()) nextBackgroundBatchAt = now + 30_000L;
@@ -2957,6 +2956,7 @@ public class StashSorter extends Module {
      * carries on with the others.
      */
     private void surveyFailed(Box box, String why) {
+        forcedSurvey.remove(box);
         box.stale = true;
         box.observationUnreachable = true;
         failedSurvey.add(box);

@@ -180,7 +180,8 @@ try:
         ]
     ).stdout.split() == ["700", "600"]
     assert http("/health/live")[1] == {"status": "live"}
-    assert http("/health/ready")[1] == {"status": "ready"}
+    ready = http("/health/ready")[1]
+    assert ready["status"] == "ready" and ready["serverConfigured"] is False
     assert http("/")[0] == 200
     assert http("/health/ready", host="evil.invalid")[0] == 403
     ok(
@@ -264,7 +265,9 @@ try:
     assert agent(network, key, hello_path, current_hello)["status"] == 200
     log_result = run(["docker", "logs", container])
     logs = log_result.stdout + log_result.stderr
-    assert not any(secret in logs for secret in (token, key, old_key, shared_key, password))
+    assert not any(
+        secret in logs for secret in (token, key, old_key, shared_key, password)
+    )
     ok(
         "Docker bridge Owner bootstrap: local CLI capability, origin checks, replay denied, no secrets in logs"
     )
@@ -293,7 +296,9 @@ try:
     assert agent(network, key, "/api/v1/index", wrong_server)["status"] == 409
     assert agent(network, key, "/api/v1/index", index)["status"] == 200
     assert http("/api/v1/operations", opener=browser)[1]["stock"].get("FRESH", 0) > 0
-    icon_status, _, icon_headers, icon = http("/icon/minecraft/diamond.png", opener=browser)
+    icon_status, _, icon_headers, icon = http(
+        "/icon/minecraft/diamond.png", opener=browser
+    )
     assert icon_status == 200 and icon_headers.get_content_type() == "image/png"
     assert icon.startswith(b"\x89PNG\r\n\x1a\n")
     assert (

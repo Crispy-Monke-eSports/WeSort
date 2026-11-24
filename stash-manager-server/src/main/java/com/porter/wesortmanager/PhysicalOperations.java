@@ -236,10 +236,11 @@ final class PhysicalOperations {
     synchronized void sweepStale() throws IOException {
         try (var c = ledger.open();
                 var q = c.prepareStatement("SELECT 1 FROM physical_operations WHERE state IN "
-                        + "('PLANNED','IN_PROGRESS','VERIFYING') AND (last_seen<=? OR last_seen>?) LIMIT 1")) {
+                        + "('PLANNED','IN_PROGRESS','VERIFYING') AND (last_seen<=? OR last_seen>? OR EXISTS (SELECT 1 FROM automation_leases l WHERE l.server=physical_operations.server AND l.agent=physical_operations.agent AND (l.state='NEEDS_RECONCILIATION' OR l.deadline<=?))) LIMIT 1")) {
             long now = clock.getAsLong();
             q.setLong(1, now - 15_000);
             q.setLong(2, now + FUTURE_SKEW_MS);
+            q.setLong(3, now);
             try (var rows = q.executeQuery()) {
                 if (!rows.next()) return;
             }
@@ -261,11 +262,12 @@ final class PhysicalOperations {
     private void expire(Connection c) throws SQLException {
         try (var p = c.prepareStatement(
                 "UPDATE physical_operations SET state='NEEDS_RECONCILIATION',fence_revision=revision WHERE state IN "
-                        + "('PLANNED','IN_PROGRESS','VERIFYING') AND (last_seen<=? OR last_seen>?)")) {
+                        + "('PLANNED','IN_PROGRESS','VERIFYING') AND (last_seen<=? OR last_seen>? OR EXISTS (SELECT 1 FROM automation_leases l WHERE l.server=physical_operations.server AND l.agent=physical_operations.agent AND (l.state='NEEDS_RECONCILIATION' OR l.deadline<=?)))")) {
             p.setLong(1, clock.getAsLong() - 15_000);
             // A journal slightly in the future is clock skew, not evidence of life: only a
             // timestamp beyond the skew budget fences the operation.
             p.setLong(2, clock.getAsLong() + FUTURE_SKEW_MS);
+            p.setLong(3, clock.getAsLong());
             p.executeUpdate();
         }
     }

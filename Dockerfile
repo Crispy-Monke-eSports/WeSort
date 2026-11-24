@@ -10,7 +10,7 @@ COPY web/e2e/ web/e2e/
 COPY stash-manager-server/src/main/resources/web/ stash-manager-server/src/main/resources/web/
 RUN cd web && bun install --frozen-lockfile && bun run clean && bun run build
 
-FROM eclipse-temurin:25.0.4.1_1-jdk-jammy@sha256:917e4ad2363fb761904f2e515237171bb6867521f03b1ab2cbf466c8ebd92399 AS build
+FROM eclipse-temurin:25.0.5_8-jdk-jammy@sha256:6ba98595487daeb441a7e93b78eac279d1d8677f541335d4ff92dd73bbd723e7 AS build
 WORKDIR /workspace
 COPY gradlew ./
 COPY gradle/wrapper/ gradle/wrapper/
@@ -24,8 +24,8 @@ COPY --from=frontend /workspace/stash-manager-server/src/main/resources/web/asse
 COPY LICENSE ./
 RUN --mount=type=cache,target=/root/.gradle ./gradlew --no-daemon --init-script /workspace/gradle/ci-maven-central-mirror.init.gradle -p stash-manager-server clean build
 
-# Java 21.0.13+9 runtime; tested independently from the frozen build JDK.
-FROM eclipse-temurin:21-jre-jammy@sha256:dff6eb46527bd293a3c06bbbe9e64e8c9f91f01905b5abbdad31761c03059d2c AS runtime
+# Java 25.0.5+8 runtime, aligned with the pinned build JDK.
+FROM eclipse-temurin:25.0.5_8-jre-jammy@sha256:1af6bb7af021b453cd778de7a822a93da81551272626c184537c60e9f0c9deb4 AS runtime
 ARG VERSION=0.1.0-dev.10
 ARG REVISION=unknown
 LABEL org.opencontainers.image.title="WeSort Manager" \

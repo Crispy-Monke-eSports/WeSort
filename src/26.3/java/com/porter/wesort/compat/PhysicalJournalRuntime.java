@@ -279,16 +279,17 @@ public final class PhysicalJournalRuntime {
                 if (checkpoint) {
                     finishInspection(true, "Exact physical step verified; sorter will resume its saved recovery");
                 } else {
-                    // The commit point is not the proof: the debt must survive this call and
-                    // gate the next order until a real inspection (or sorter recovery state)
-                    // proves the workspace. finishInspection(true) would clear it.
-                    finishInspection(
-                            true,
-                            "Exact physical step verified and committed; next physical order gated"
-                                    + " until a durable workspace checkpoint exists",
-                            true);
-                    noteWorkspaceDebt("a REPACK step was exactly verified without a durable sorter checkpoint;"
-                            + " the next physical order is gated until that checkpoint exists");
+                    // Fail closed like the baseline: an exactly verified step without a
+                    // durable checkpoint must NOT complete the journal. Completing here
+                    // drops the fence the orphan guard and the harness rely on, and a
+                    // merely gated (but completed) journal has let real mutations
+                    // through. The manager-driven read-only inspection below is the
+                    // release path; the other hardening in this file (auto-close,
+                    // named failures, no re-fencing of terminal journals) keeps that
+                    // path from stranding instead.
+                    journal.block("Automatic shulker recovery requires a durable workspace checkpoint");
+                    recoveryFence = true;
+                    finishInspection(false, "Cannot safely recover without a saved physical workspace");
                 }
             }
             return;
@@ -503,21 +504,12 @@ public final class PhysicalJournalRuntime {
     }
 
     private static void finishInspection(boolean success, String detail) {
-        finishInspection(success, detail, false);
-    }
-
-    /**
-     * Completing an inspection normally proves the workspace, which lifts any debt. The
-     * commit point of a verified-but-unchecked step is the exception: it reports success
-     * for the step while deliberately keeping the gate for the next order.
-     */
-    private static void finishInspection(boolean success, String detail, boolean keepDebt) {
         if (inspection == null) return;
         if (success) {
             clearEscalation();
             // An exact read-only verification is the durable proof the workspace debt was
             // waiting for: the world provably matches, so the gate has served its purpose.
-            if (!keepDebt) clearWorkspaceDebt();
+            clearWorkspaceDebt();
         } else if (!detail.equals(escalation)) {
             String key = decisionKey(inspection);
             String category = categoryOf(detail);

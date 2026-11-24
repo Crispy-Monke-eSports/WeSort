@@ -114,6 +114,9 @@ class RepackHarness(world.Harness):
             (self.evidence/'latest-state.json').write_text(json.dumps(state,indent=2)+'\n')
             if predicate(state):return state
             if state['inventoryFailure'] and self.scenario not in ['abort','full-stash','full-inventory']:raise RuntimeError('Physical readback blocked: '+state['inventoryFailure'])
+            phase=(state.get('repackProgress') or {}).get('phase')
+            if phase=='NEEDS_RECONCILIATION' and self.scenario not in ['abort','full-stash','full-inventory']:
+                raise RuntimeError('Repack fenced before verified completion: '+str((state.get('repackProgress') or {}).get('reason','')))
             time.sleep(.25)
         raise RuntimeError(message)
     def execute(self):
@@ -147,7 +150,7 @@ class RepackHarness(world.Harness):
                 self.command('sort-stop');after=self.snapshots();require(before==after,'Reservation fence allowed a physical repack mutation')
                 (self.evidence/'server-after.json').write_text(json.dumps(after,indent=2)+'\n')
                 self.ok('signed Docker Manager reservation blocks real repack before placement or item prediction; authoritative snapshots unchanged')
-                result={'result':'PASS','scenario':self.scenario,'server_sha1':world.SERVER_SHA1,'source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=world.ROOT,text=True).strip(),'dirty_worktree':True,'manager_image':self.env['WESORT_IMAGE'],'checks':self.checks,'operation':{'phase':'RESERVATION_BLOCKED'}}
+                result={'result':'PASS','scenario':self.scenario,'server_sha1':world.SERVER_SHA1,'source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=world.ROOT,text=True).strip(),'dirty_worktree':bool(subprocess.check_output(['git','status','--porcelain'],cwd=world.ROOT,text=True).strip()),'manager_image':self.env['WESORT_IMAGE'],'checks':self.checks,'operation':{'phase':'RESERVATION_BLOCKED'}}
                 (self.evidence/'result.json').write_text(json.dumps(result,indent=2)+'\n');print('Evidence: '+str(self.evidence),flush=True);return
             if self.scenario=='full-stash':
                 self.wait(lambda s:s.get('repackProgress',{}).get('phase') in ['OPEN','TRANSFER','VERIFY','BREAK'],'No verified physical step for full-storage fault injection')
@@ -220,7 +223,7 @@ class RepackHarness(world.Harness):
                 require(any(s.get('components',{})==original['components'] for text in after.values() for s in snbt.items(text)),'Unprotected named shulker was repacked or changed')
                 self.command('screenshot');shutil.copyfile(self.game_dir/'screenshots/fixture.png',self.evidence/'fixture.png')
             self.ok(self.scenario+': actual server snapshots conserve full recursive metadata/counts; protected kit unchanged; '+state['repackProgress']['phase'])
-            result={'result':'PASS','scenario':self.scenario,'server_sha1':world.SERVER_SHA1,'source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=world.ROOT,text=True).strip(),'dirty_worktree':True,'checks':self.checks,'operation':state['repackProgress'],'fault_injected':incoming_counts,'manual_test_recovery':self.scenario in ['full-stash','abort','full-inventory']}
+            result={'result':'PASS','scenario':self.scenario,'server_sha1':world.SERVER_SHA1,'source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=world.ROOT,text=True).strip(),'dirty_worktree':bool(subprocess.check_output(['git','status','--porcelain'],cwd=world.ROOT,text=True).strip()),'checks':self.checks,'operation':state['repackProgress'],'fault_injected':incoming_counts,'manual_test_recovery':self.scenario in ['full-stash','abort','full-inventory']}
             (self.evidence/'result.json').write_text(json.dumps(result,indent=2)+'\n');print('Evidence: '+str(self.evidence),flush=True)
         finally:self.close()
 

@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -34,6 +35,8 @@ final class AgentCredentials {
     private final Map<String, Slot> entries = new TreeMap<>();
     private boolean scopedOnly;
     private java.util.function.Consumer<String> revocationListener = id -> {};
+    /** Last rejected signed request per key id (best-effort presence: auth-failure vs silence). */
+    private final Map<String, Long> authFailures = new HashMap<>();
 
     /** Retire the single active session after its credential is durably revoked. */
     synchronized void onRevocation(java.util.function.Consumer<String> listener) {
@@ -171,6 +174,31 @@ final class AgentCredentials {
         var slot = entries.get(id);
         if (slot == null || !slot.active()) return;
         entries.put(id, slot.withBinding(new Binding(name, clock.getAsLong())));
+    }
+
+    /**
+     * Remember a rejected signed request for one key id (unknown, revoked or bad
+     * signature): the dashboard tells "auth-failure" apart from "silent". Never
+     * persisted; bounded so junk floods cannot grow it.
+     */
+    synchronized void noteAuthFailure(String id) {
+        if (id == null) return;
+        if (authFailures.size() >= 128) authFailures.clear();
+        authFailures.put(id, clock.getAsLong());
+    }
+
+    /** The last rejected signed-request time for one key id, or -1. */
+    synchronized long lastAuthFailure(String id) {
+        return authFailures.getOrDefault(id, -1L);
+    }
+
+    /** How long a rejected key still reads as "auth-failure" instead of "silent". */
+    static final long AUTH_FAILURE_WINDOW_MS = 5 * 60 * 1000;
+
+    /** Whether the key saw a rejected signed request recently (vs a bot that just went quiet). */
+    synchronized boolean recentAuthFailure(String id, long now) {
+        long at = authFailures.getOrDefault(id, -1L);
+        return at > 0 && now - at < AUTH_FAILURE_WINDOW_MS;
     }
 
     synchronized boolean revoke(String id) throws IOException {

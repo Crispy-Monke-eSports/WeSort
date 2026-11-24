@@ -108,14 +108,24 @@ final class AddonRoutes {
             var gate = store.automation();
             if (!action.equals("acquire")) {
                 boolean released = gate.finish(server, agent, token, action.equals("release"));
-                Http.json(ex, released ? 200 : 409, released ? Http.ok() : error("Automation requires reconciliation"));
+                if (released) {
+                    Http.json(ex, 200, Http.ok());
+                    return;
+                }
+                String reason = gate.releaseDenyReason(server, agent, token);
+                var lease = gate.current(server);
+                Http.json(ex, 409, automationError(reason, lease, agent, token));
                 return;
             }
             // OrderStore distinguishes a new lease from renewal of the
             // current holder while newly queued orders are still deferred.
             var lease = orders.acquireSorting(server, agent, token);
             if (lease == null) {
-                Http.json(ex, 409, error("Another physical operation is active or uncertain"));
+                String reason;
+                if (!orders.heldRoots(server).isEmpty()) reason = "reservations_held";
+                else if (orders.hasOpenOnServer(server)) reason = "open_orders";
+                else reason = gate.denyReason(server, agent, token);
+                Http.json(ex, 409, automationError(reason, gate.current(server), agent, token));
                 return;
             }
             var out = Http.ok();
@@ -123,6 +133,33 @@ final class AddonRoutes {
             out.addProperty("ttlMillis", AutomationGate.TTL);
             Http.json(ex, 200, out);
         }
+    }
+
+    /**
+     * Automation 409 bodies carry a machine-readable reason so the agent can act on them:
+     * "unknown_token"/"token_mismatch" (drop the token and acquire again), "held_by_other_agent"
+     * or "reservations_held"/"open_orders" (wait and retry), "reconciliation_required" (post the
+     * journal for inspection), "no_lease" (acquire again).
+     */
+    private static JsonObject automationError(String reason, AutomationGate.Lease lease, String agent, String token) {
+        String message = switch (reason) {
+            case AutomationGate.REASON_UNKNOWN_TOKEN, AutomationGate.REASON_TOKEN_MISMATCH ->
+                "Unknown sorting token — drop it and acquire again";
+            case AutomationGate.REASON_HELD_BY_OTHER -> "Sorting lease is held by another agent";
+            case AutomationGate.REASON_RECONCILIATION_REQUIRED ->
+                "Automation requires reconciliation — post the journal";
+            case AutomationGate.REASON_NO_LEASE -> "No sorting lease — acquire again";
+            case "reservations_held" -> "Physical reservations are held";
+            case "open_orders" -> "Open orders own this server right now";
+            default -> "Another physical operation is active or uncertain";
+        };
+        var out = error(message);
+        out.addProperty("reason", reason);
+        if (lease != null) {
+            out.addProperty("leaseState", lease.state());
+            out.addProperty("mine", lease.agent().equals(agent) && lease.token().equals(token));
+        }
+        return out;
     }
 
     private static JsonObject error(String message) {

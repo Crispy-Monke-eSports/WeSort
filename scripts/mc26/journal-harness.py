@@ -67,6 +67,7 @@ class JournalHarness(repack.RepackHarness):
             # before the owner-facing list was polled. All these states
             # belong to the unattended recovery protocol.
             if row and row['managerState'] in ('RECOVERING', 'COMPLETED', 'FAILED'):
+                (self.evidence / 'manager-row-on-review.json').write_text(json.dumps(row, indent=2, default=str)[:4000] + '\n', encoding='utf-8')
                 return row
             time.sleep(.25)
         # Name the miss: dump every Manager row (id/revision/state) so a wrong-id upload,
@@ -104,6 +105,8 @@ class JournalHarness(repack.RepackHarness):
                     comps = out.get('components')
                     if isinstance(comps, dict):
                         comps.pop('minecraft:damage', None)
+                    else:
+                        out['components'] = {}
                 return {key: out[key] for key in sorted(out)}
             if isinstance(node, list):
                 # Top-level inventories use 'Slot'; nested packed container/bundle
@@ -323,14 +326,67 @@ class DirectHarness(JournalHarness):
             self.start_manager()
             self.start_client()
             inv = repack.network.InventoryHarness
+            # publish requires a real captured container to select and persist
+            # e2e-fixture. Seed it before enabling the signed Manager, then
+            # reopen the chest with autonomous scanning held in the same tick
+            # as Manager activation. Recovery and journal mirroring stay live.
+            inv.open_chest(self)
+            self.command('close')
+            self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key,
+                         inspectionHold=True)
             state = inv.open_chest(self)
-            self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key)
-            self.proxy.hold_down = True
+
+            def require_source(snapshot, fingerprint=None):
+                require(snapshot['containerId'] != 0 and len(snapshot['slots']) == 90,
+                        'Direct test did not open the intended 54-slot double chest')
+                source = snapshot['slots'][0]
+                require(source['item'] == 'minecraft:diamond' and source['count'] == 64
+                        and (fingerprint is None or source['fingerprint'] == fingerprint),
+                        'Direct test source slot is not the intended diamond stack')
+                require(snapshot['inventoryReady'], 'Direct test inventory is not ready')
+                return source['fingerprint']
+
+            expected_fingerprint = require_source(state)
             with ThreadPoolExecutor(max_workers=1) as pool:
-                click = pool.submit(inv.click, self, state, 0)
-                inv.wait_server(self, lambda: self.journal.exists() and
-                    sum('[]' in value for value in inv.chest_halves(self)) == 1,
-                    'The source was not debited on the real server before acknowledgment was lost')
+                # Poll authoritative stock while the click is outstanding:
+                # do not wait for the deliberately withheld acknowledgement.
+                # Retry only an explicit stale rejection before packet send.
+                for attempt in range(2):
+                    self.proxy.held_down.clear()
+                    self.proxy.hold_down = True
+                    click = pool.submit(inv.click, self, state, 0, 'QUICK_MOVE', True)
+                    deadline = time.monotonic() + 15
+                    stale = False
+                    while time.monotonic() < deadline:
+                        if self.journal.exists() and sum(
+                                '[]' in value for value in inv.chest_halves(self)) == 1:
+                            break
+                        if click.done():
+                            result = click.result()
+                            require(not result['success'],
+                                    'The unacknowledged move was reported complete')
+                            require(result['message'] == 'Stale menu/state id',
+                                    'Direct click failed before server debit: ' + result['message'])
+                            require(result['state']['attemptedClicks'] == state['attemptedClicks'],
+                                    'Stale rejection was not proven to precede the mutation')
+                            stale = True
+                            break
+                        time.sleep(.05)
+                    else:
+                        raise RuntimeError(
+                            'The source was not debited on the real server before acknowledgment was lost')
+                    if not stale:
+                        break
+                    require(attempt == 0, 'Direct click was stale even after reopening the source')
+                    # Opening requires real server responses. Restore delivery
+                    # only after proving no click was sent, then re-observe the
+                    # exact source before arming the fault again.
+                    self.proxy.hold_down = False
+                    self.command('close')
+                    state = inv.open_chest(self)
+                    require_source(state, expected_fingerprint)
+                require(self.proxy.held_down.wait(timeout=3),
+                        'Proxy did not withhold any server frames after the physical debit')
                 # Reverse the other phases' crash order while the server's
                 # acknowledgment is still held and the client is connected.
                 self.kill_manager()
@@ -339,11 +395,11 @@ class DirectHarness(JournalHarness):
                 self.proxy.hold_down = False
                 self.kill_client()
                 try:
-                    click.result(timeout=5)
+                    result = click.result(timeout=5)
                 except RuntimeError:
-                    pass
+                    pass  # The client was killed while the command was outstanding.
                 else:
-                    raise RuntimeError('The unacknowledged move was reported complete')
+                    require(not result['success'], 'The unacknowledged move was reported complete')
             crashed = json.loads(self.journal.read_text())
             require(crashed['state'] != 'COMPLETED', 'Move completed while server frames were held')
             (self.evidence / 'direct-before-restart.json').write_text(json.dumps(crashed, indent=2) + '\n')

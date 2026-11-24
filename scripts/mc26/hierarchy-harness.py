@@ -534,7 +534,7 @@ class HierarchyHarness(stock.StockHarness):
             self.command('screenshot'); shutil.copyfile(self.game_dir/'screenshots/fixture.png',self.evidence/'fixture.png')
             (self.evidence/'changed-detail.json').write_text(json.dumps(detail,indent=2)+'\n')
             result = {'result':'PASS','source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=world.ROOT,text=True).strip(),
-                'dirty_worktree':True,'server_sha1':world.SERVER_SHA1,'manager_image':self.env['WESORT_IMAGE'],'checks':self.checks,
+                'dirty_worktree':bool(subprocess.check_output(['git','status','--porcelain'],cwd=world.ROOT,text=True).strip()),'server_sha1':world.SERVER_SHA1,'manager_image':self.env['WESORT_IMAGE'],'checks':self.checks,
                 'limits':'One native Minecraft agent with single-key and session fencing checks. Package custody is verified through warehouse staging.'}
             (self.evidence/'result.json').write_text(json.dumps(result,indent=2)+'\n')
             print('Evidence: '+str(self.evidence),flush=True)

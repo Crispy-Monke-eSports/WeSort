@@ -28,11 +28,22 @@ import { useConfirm } from "../components/dialogs";
 import { api } from "../api/client";
 import {
   useAuth,
+  useAllOrders,
   useBotActivity,
   useBotSettings,
   useBots,
+  useOperations,
   usePermissions,
+  usePhysicalOps,
+  useStashes,
 } from "../api/queries";
+import { orderUiState } from "../lib/orderStatus";
+import {
+  agentServerMismatch,
+  journalDisplayState,
+  orderHeldBy,
+  silentBots,
+} from "../lib/attention";
 import { PresenceChip, timeAgo } from "../components/status";
 
 /**
@@ -50,6 +61,25 @@ export function BotsPage() {
 
   const list = (bots.data ?? []).filter((b) => perms.seesBot(b.botId));
   const sel = list.find((b) => b.botId === selected) ?? list[0] ?? null;
+
+  // Server-side silence watchdog (same rule as Overview): online transport but
+  // no progress on open work, judged by the server clock and the order table.
+  const canView = perms.can("view");
+  const stashes = useStashes(loggedIn && canView);
+  const stashRefs = (stashes.data ?? []).filter((s) =>
+    perms.seesStash(s.stash),
+  );
+  const { orders } = useAllOrders(stashRefs, loggedIn && canView);
+  const ops = useOperations(loggedIn);
+  const serverNow =
+    typeof (ops.data as any)?.at === "number"
+      ? (ops.data as any).at
+      : Date.now();
+  const openOrders = orders.filter(
+    (o) => orderUiState(String(o.status ?? "unknown")).open,
+  );
+  const silent = silentBots(list, openOrders, serverNow);
+  const silentByBot = new Map(silent.map((s) => [s.bot.botId, s]));
 
   useEffect(() => {
     if (!selected && list.length) setSelected(list[0].botId);
@@ -79,9 +109,13 @@ export function BotsPage() {
                     >
                       <ListItemText
                         primary={b.player ?? b.botId}
-                        secondary={`${b.online ? "online" : "offline"} · seen ${timeAgo(b.lastSeen ?? b.activityAt)}${b.summary ? ` · ${b.summary}` : ""}`}
+                        secondary={`${b.online ? "online" : "offline"} · seen ${timeAgo(b.lastSeen ?? b.activityAt)}${b.summary ? ` · ${b.summary}` : ""}${botServerTag(b) ? ` · ${botServerTag(b)}` : ""}`}
                       />
-                      <PresenceChip online={b.online} />
+                      {silentByBot.has(b.botId) ? (
+                        <Chip size="small" color="error" label="silent" />
+                      ) : (
+                        <PresenceChip online={b.online} />
+                      )}
                     </ListItemButton>
                   </ListItem>
                 ))}
@@ -96,7 +130,17 @@ export function BotsPage() {
         </Grid>
         <Grid size={{ xs: 12, md: 8, lg: 9 }}>
           {sel ? (
-            <BotDetails botId={sel.botId} canPosition={canPosition} />
+            <BotDetails
+              botId={sel.botId}
+              canPosition={canPosition}
+              serverNow={serverNow}
+              heldOrders={openOrders.filter((o) => orderHeldBy(o, sel))}
+              silentMs={silentByBot.get(sel.botId)?.silentMs ?? null}
+              mismatch={
+                !silentByBot.has(sel.botId) &&
+                agentServerMismatch(sel, openOrders)
+              }
+            />
           ) : (
             <Card>
               <CardContent>
@@ -112,19 +156,67 @@ export function BotsPage() {
   );
 }
 
+/**
+ * Manager-side state shown next to the agent-reported summary. The
+ * joint-health branch sends per-bot managerState/inspectionState/cause;
+ * older servers omit them and the tag stays empty (fallback: journal table).
+ */
+function botServerTag(b: {
+  managerState?: string | null;
+  inspectionState?: string | null;
+  cause?: string | null;
+}): string | null {
+  const parts: string[] = [];
+  if (b.managerState)
+    parts.push(
+      journalDisplayState({
+        managerState: b.managerState,
+        inspectionState: b.inspectionState,
+      }),
+    );
+  else if (b.inspectionState) parts.push(`inspection:${b.inspectionState}`);
+  if (b.cause) parts.push(b.cause);
+  return parts.length ? parts.join(" · ") : null;
+}
+
+/** Short age ("3m") for a millisecond duration; "—" when unknown. */
+export function ageText(ms: number | null | undefined): string {
+  if (ms == null || !Number.isFinite(ms) || ms < 0) return "—";
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  return `${Math.floor(s / 86400)}d`;
+}
+
 function BotDetails({
   botId,
   canPosition,
+  serverNow,
+  heldOrders,
+  silentMs,
+  mismatch,
 }: {
   botId: string;
   canPosition: boolean;
+  serverNow: number;
+  heldOrders: {
+    id: string;
+    stash: string;
+    status: string;
+    updatedAt?: number;
+  }[];
+  silentMs: number | null;
+  mismatch: boolean;
 }) {
   const auth = useAuth();
   const perms = usePermissions(auth.data);
   const loggedIn = !!auth.data?.loggedIn && perms.can("activity");
+  const owner = !!auth.data?.loggedIn && perms.owner;
   const bots = useBots(loggedIn);
   const bot = bots.data?.find((b) => b.botId === botId);
   const activity = useBotActivity(botId, loggedIn);
+  const physical = usePhysicalOps(owner);
   const events: any[] = Array.isArray(activity.data?.events)
     ? activity.data.events
     : [];
@@ -133,9 +225,36 @@ function BotDetails({
   )
     ? (activity.data?.activity as any).current
     : [];
+  // Manager-side journal/lease rows for this bot (owner-only endpoint).
+  const journal: any[] = Array.isArray((physical.data as any)?.operations)
+    ? (physical.data as any).operations.filter((op: any) => op?.agent === botId)
+    : [];
+  const botLeaseAgeMs =
+    typeof bot?.leaseAgeMs === "number" && bot.leaseAgeMs >= 0
+      ? bot.leaseAgeMs
+      : typeof bot?.leaseSince === "number" && bot.leaseSince > 0
+        ? Math.max(0, serverNow - bot.leaseSince)
+        : null;
+  const fingerprint =
+    bot?.currentLeaseFingerprint ?? bot?.leaseFingerprint ?? null;
 
   return (
     <Stack spacing={2}>
+      {silentMs != null && (
+        <Alert severity="error">
+          Silent with open work: no progress on {heldOrders.length} order
+          {heldOrders.length === 1 ? "" : "s"} for {ageText(silentMs)} by the
+          server clock. Transport is online — the bot looks frozen.
+        </Alert>
+      )}
+      {silentMs == null && mismatch && (
+        <Alert severity="warning">
+          The agent reports “{bot?.summary}” but the server still holds{" "}
+          {heldOrders.length} open order
+          {heldOrders.length === 1 ? "" : "s"} against it — the summary cannot
+          be trusted.
+        </Alert>
+      )}
       <Card>
         <CardHeader
           title={bot?.player ?? botId}
@@ -164,6 +283,20 @@ function BotDetails({
               : canPosition
                 ? ""
                 : " · positions hidden (no positions permission)"}
+          </Typography>
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ width: "100%" }}
+          >
+            Server view:{" "}
+            {botServerTag(bot ?? {}) ?? "no Manager state reported"}
+            {botLeaseAgeMs != null && ` · lease age ${ageText(botLeaseAgeMs)}`}
+            {typeof fingerprint === "string" && fingerprint
+              ? ` · lease ${fingerprint.slice(0, 8)}…`
+              : ""}
+            {heldOrders.length > 0 &&
+              ` · ${heldOrders.length} open order${heldOrders.length === 1 ? "" : "s"} held`}
           </Typography>
         </CardContent>
       </Card>
@@ -227,6 +360,85 @@ function BotDetails({
               </TableBody>
             </Table>
           </TableContainer>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="Server view — journal & leases"
+          subheader="Manager state, not agent claims"
+        />
+        <CardContent sx={{ pt: 0 }}>
+          {!owner && (
+            <Typography color="text.secondary" sx={{ mb: 1 }}>
+              Journal and lease detail needs the owner permission; the line
+              under the bot name shows what the bot itself reports.
+            </Typography>
+          )}
+          {owner && physical.isLoading && <LinearProgress />}
+          {owner && physical.isError && (
+            <Alert severity="error">Journal unavailable.</Alert>
+          )}
+          {owner && !physical.isLoading && !physical.isError && (
+            <TableContainer>
+              <Table size="small" aria-label="Server journal and leases">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Journal</TableCell>
+                    <TableCell>State</TableCell>
+                    <TableCell>Manager</TableCell>
+                    <TableCell>Inspection</TableCell>
+                    <TableCell>Lease age</TableCell>
+                    <TableCell>Order</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {journal.map((op: any, i: number) => (
+                    <TableRow key={String(op?.id ?? i)}>
+                      <TableCell>{String(op?.id ?? "—").slice(0, 8)}</TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          color={
+                            journalDisplayState(op) === "READY"
+                              ? "success"
+                              : journalDisplayState(op) === "AUTO_RECOVERING"
+                                ? "warning"
+                                : "default"
+                          }
+                          label={journalDisplayState(op)}
+                        />
+                      </TableCell>
+                      <TableCell>{String(op?.managerState ?? "—")}</TableCell>
+                      <TableCell>
+                        {String(
+                          op?.inspectionState ?? op?.inspectionDetail ?? "—",
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {typeof op?.lastSeen === "number" && op.lastSeen > 0
+                          ? ageText(Math.max(0, serverNow - op.lastSeen))
+                          : "—"}
+                      </TableCell>
+                      <TableCell>
+                        {String(op?.orderId ?? op?.jobId ?? "—")}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {journal.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6}>
+                        <Typography color="text.secondary">
+                          No journal entries for this bot — nothing held
+                          server-side.
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
         </CardContent>
       </Card>
 

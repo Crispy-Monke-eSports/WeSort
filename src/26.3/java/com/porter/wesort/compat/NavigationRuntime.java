@@ -33,6 +33,20 @@ public final class NavigationRuntime {
     private static Object portalStartLevel;
     private static String portalStartDimension = "";
     private static String status = "IDLE";
+    // Engine-dropped goals are reasserted a few times before latching; only an
+    // operator-replaced goal latches at once. Counts and grace reset on every register.
+    private static int dropRetries;
+    private static long reassertGraceUntil;
+    private static long lastDropMs;
+    // Position at register time: a goal the engine drops before the bot moved at all
+    // (sealed start, e.g. walled in) latches immediately instead of reasserting, so a
+    // retry can never mine through the very barrier that made the goal unreachable.
+    private static double dropAnchorX, dropAnchorY, dropAnchorZ;
+    // Transient pauses re-evaluate themselves instead of latching forever.
+    private static String pauseDetail = "";
+    private static long lastPauseLogMs;
+    private static long lastTransientCheckMs;
+    private static final java.util.Map<String, Integer> denialCounts = new java.util.LinkedHashMap<>();
 
     private NavigationRuntime() {}
 
@@ -93,11 +107,18 @@ public final class NavigationRuntime {
                     mc.player.getZ(),
                     System.nanoTime(),
                     60_000_000_000L,
-                    portal ? 20_000_000_000L : 8_000_000_000L);
+                    portal ? 20_000_000_000L : BaritoneHelper.isReachGoal(goal) ? 30_000_000_000L : 8_000_000_000L);
         ours = (Goal) goal;
         portalApproachGoal = portal;
         portalStartLevel = portal ? mc.level : null;
         portalStartDimension = portal ? StashIndex.dimension() : "";
+        dropRetries = 0;
+        reassertGraceUntil = 0;
+        if (mc.player != null) {
+            dropAnchorX = mc.player.getX();
+            dropAnchorY = mc.player.getY();
+            dropAnchorZ = mc.player.getZ();
+        }
         status = "RUNNING";
     }
 
@@ -108,6 +129,8 @@ public final class NavigationRuntime {
             portalApproachGoal = false;
             portalStartLevel = null;
             portalStartDimension = "";
+            dropRetries = 0;
+            reassertGraceUntil = 0;
             status = "IDLE";
         }
     }
@@ -139,15 +162,84 @@ public final class NavigationRuntime {
         portalApproachGoal = false;
         portalStartLevel = null;
         portalStartDimension = "";
+        dropRetries = 0;
+        reassertGraceUntil = 0;
         BaritoneHelper.releaseOurs(released);
         BaritoneHelper.unconfine();
         BaritoneHelper.unprotect();
         paused = pause;
         pausedPortalRoute = pause && wasPortal;
+        if (pause && outcome.equals("PAUSED_NAVIGATION_UNSAFE_BLOCK") && mc.player != null && mc.level != null)
+            pauseDetail = NavigationGuard.denial(mc.player.blockPosition());
+        else if (!pause) pauseDetail = "";
+        denialCounts.merge(outcome, 1, Integer::sum);
         status = outcome;
         if (pause)
             MeteorClient.LOG.warn(
-                    "WeSort navigation stopped: {}. Inspect the route, then use .wesort-navigation resume", outcome);
+                    "WeSort navigation stopped: {}.{} Inspect the route, then use .wesort-navigation resume",
+                    outcome,
+                    baritoneState());
+    }
+
+    /** Baritone liveness at pause time, for timeout diagnostics. Never throws. */
+    private static String baritoneState() {
+        try {
+            return " Baritone active=" + BaritoneHelper.isActive() + " calculating=" + BaritoneHelper.isCalculating()
+                    + ".";
+        } catch (RuntimeException unavailable) {
+            return " Baritone unavailable.";
+        }
+    }
+
+    /**
+     * A warehouse route pause is dropped when the client is back in the 6b6t lobby: the
+     * latched warehouse route must not fence the lobby transit forever. Genuine portal-route
+     * pauses stay latched.
+     */
+    public static void clearWarehousePause() {
+        if (paused && !pausedPortalRoute) {
+            paused = false;
+            pauseDetail = "";
+            dropRetries = 0;
+            reassertGraceUntil = 0;
+            status = "IDLE";
+            MeteorClient.LOG.info("WeSort navigation: cleared a latched warehouse pause for lobby transit.");
+        }
+    }
+
+    /** How often each pause outcome has latched, for timeout diagnostics. */
+    public static String denialSummary() {
+        return denialCounts.isEmpty() ? "no pauses" : denialCounts.toString();
+    }
+
+    /**
+     * While latched with no goal: say so every minute (a silent pause looks exactly like a
+     * dead bot), and auto-clear obviously-transient causes — an unloaded chunk that loaded,
+     * or an inventory fence that healed — instead of waiting for a manual resume.
+     */
+    private static void pauseTick() {
+        long nowMs = System.currentTimeMillis();
+        if (nowMs - lastPauseLogMs >= 60_000) {
+            lastPauseLogMs = nowMs;
+            MeteorClient.LOG.info(
+                    "WeSort navigation paused ({}); pauses so far {}; use .wesort-navigation resume",
+                    status,
+                    denialSummary());
+        }
+        if (nowMs - lastTransientCheckMs < 5_000) return;
+        lastTransientCheckMs = nowMs;
+        boolean transientPause = status.equals("PAUSED_NAVIGATION_INVENTORY")
+                || (status.equals("PAUSED_NAVIGATION_UNSAFE_BLOCK")
+                        && pauseDetail != null
+                        && pauseDetail.contains("unloaded"));
+        if (!transientPause || mc.player == null || mc.level == null) return;
+        if (!InventorySync.ready()) return;
+        if (!NavigationGuard.permits(mc.player.blockPosition())) return;
+        paused = false;
+        pauseDetail = "";
+        dropRetries = 0;
+        status = "IDLE";
+        MeteorClient.LOG.info("WeSort navigation auto-resumed: the transient pause cause cleared.");
     }
 
     @EventHandler
@@ -164,7 +256,10 @@ public final class NavigationRuntime {
         } else {
             BaritoneHelper.restoreAgentProfile();
         }
-        if (ours == null) return;
+        if (ours == null) {
+            if (paused) pauseTick();
+            return;
+        }
         if (mc.player == null || mc.level == null) {
             finish("PAUSED_NAVIGATION_DISCONNECTED", true);
             return;
@@ -185,6 +280,12 @@ public final class NavigationRuntime {
         String failure = watchdog.check(
                 StashIndex.dimension(), mc.player.getX(), mc.player.getY(), mc.player.getZ(), System.nanoTime());
         if (!failure.isEmpty()) {
+            // Baritone still working out the path is thinking, not stuck.
+            if (failure.equals("PAUSED_NAVIGATION_STUCK") && BaritoneHelper.isCalculating()) return;
+            // A just-reasserted engine-dropped goal gets a grace period before the deadline bites.
+            if (System.nanoTime() < reassertGraceUntil
+                    && (failure.equals("PAUSED_NAVIGATION_STUCK") || failure.equals("PAUSED_NAVIGATION_TIMEOUT")))
+                return;
             finish(failure, true);
             return;
         }
@@ -203,7 +304,12 @@ public final class NavigationRuntime {
                 finish("PAUSED_NAVIGATION_UNSAFE_BLOCK", true);
                 return;
             }
-            if (!paused) BaritoneHelper.reassertGoal(ours);
+            if (!paused) {
+                // Re-asserting must never widen permissions: confine first so a retry
+                // cannot mine through the barrier that made the goal unreachable.
+                BaritoneHelper.confine(true);
+                BaritoneHelper.reassertGoal(ours);
+            }
             return;
         }
         if (dedicated && !allowedRoute()) {
@@ -215,7 +321,31 @@ public final class NavigationRuntime {
             return;
         }
         if (!BaritoneHelper.goalIs(ours)) {
-            finish("PAUSED_NAVIGATION_RELEASED", true);
+            // An operator-replaced goal latches at once (correct: never fight the player).
+            // An engine-dropped goal is reasserted a few times first; only a route the
+            // engine keeps dropping latches, like an unreachable one.
+            if (BaritoneHelper.controlledByOther(ours)) {
+                dropRetries = 0;
+                finish("PAUSED_NAVIGATION_OTHER_PROCESS", true);
+            } else {
+                long nowMs = System.currentTimeMillis();
+                if (nowMs - lastDropMs > 60_000) dropRetries = 0;
+                lastDropMs = nowMs;
+                boolean progressed =
+                        mc.player != null && (mc.player.distanceToSqr(dropAnchorX, dropAnchorY, dropAnchorZ) > 0.25);
+                if (progressed && ++dropRetries <= 3) {
+                    // Re-asserting must never widen permissions: confine first so a retry
+                    // cannot mine through the barrier that made the goal unreachable.
+                    BaritoneHelper.confine(true);
+                    BaritoneHelper.reassertGoal(ours);
+                    reassertGraceUntil = System.nanoTime() + 10_000_000_000L;
+                    MeteorClient.LOG.warn(
+                            "WeSort navigation goal dropped by the engine, reasserting ({}/3).", dropRetries);
+                } else {
+                    dropRetries = 0;
+                    finish("PAUSED_NAVIGATION_RELEASED", true);
+                }
+            }
             return;
         }
         if (!dedicated && BaritoneHelper.controlledByOther(ours)) finish("PAUSED_NAVIGATION_OTHER_PROCESS", true);

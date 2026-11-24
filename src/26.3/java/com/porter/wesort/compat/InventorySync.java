@@ -200,8 +200,70 @@ public final class InventorySync {
         return true;
     }
 
+    static String screenName() {
+        if (mc.player == null) return "unknown";
+        String name = mc.player.containerMenu.getClass().getSimpleName();
+        return name.isEmpty() ? "unknown" : name;
+    }
+
     static BlockPos inspectionSource() {
         return readSource;
+    }
+
+    /** Pure precondition check for a menu-0 inventory inspection: null when a probe may start. */
+    public static String currentInventoryRefusal() {
+        if (mc.player == null || mc.level == null)
+            return "INSPECT_NOT_READY: player or world unavailable for an inventory-only inspection";
+        if (mc.player.containerMenu != mc.player.inventoryMenu)
+            return "INSPECT_MENU: " + screenName() + " screen open; a menu-0 inspection needs the player inventory";
+        if (!mc.player.containerMenu.getCarried().isEmpty())
+            return "INSPECT_CURSOR: cursor occupied; empty the cursor before inspecting";
+        return null;
+    }
+
+    /**
+     * Pure precondition check for a recorded-source inspection: null when a probe may start.
+     * Names the exact failed check (scope, source distance, source block, recorded blocks).
+     */
+    public static String recordedInspectionRefusal(JsonObject evidence) {
+        if (mc.player == null || mc.level == null)
+            return "INSPECT_NOT_READY: player or world unavailable for a recorded-source inspection";
+        var scope = evidence.getAsJsonObject("origin");
+        if (!scope.get("server").getAsString().equals(Stash.currentServer())
+                || !scope.get("dimension").getAsString().equals(dimension())
+                || !scope.get("player").getAsString().equals(mc.player.getUUID().toString()))
+            return "INSPECT_SCOPE: recorded server, dimension, or agent differs from the live session";
+        if (scope.has("source")) {
+            var p = scope.getAsJsonArray("source");
+            var at = new BlockPos(
+                    p.get(0).getAsInt(), p.get(1).getAsInt(), p.get(2).getAsInt());
+            String coords = at.toShortString();
+            if (!mc.level.isLoaded(at)) return "INSPECT_NOT_READY: recorded source " + coords + " is not loaded";
+            double blocks = Math.sqrt(mc.player.distanceToSqr(net.minecraft.world.phys.Vec3.atCenterOf(at)));
+            if (blocks > 5)
+                return "TOO_FAR: recorded source " + coords + " is "
+                        + String.format(java.util.Locale.ROOT, "%.1f", blocks)
+                        + " blocks away (reach is 5) while navigation is "
+                        + (NavigationRuntime.paused() ? "paused" : "running")
+                        + "; move the agent within reach or intervene by hand";
+            var block = mc.level.getBlockState(at).getBlock();
+            if (!(block instanceof net.minecraft.world.level.block.ChestBlock
+                    || block instanceof net.minecraft.world.level.block.BarrelBlock
+                    || block instanceof net.minecraft.world.level.block.ShulkerBoxBlock))
+                return "SOURCE_GONE: recorded source " + coords + " is now " + blockId(at)
+                        + ", not a storage block; human action required";
+        }
+        for (var value : evidence.getAsJsonArray("blocks")) {
+            var b = value.getAsJsonObject();
+            var at = new BlockPos(
+                    b.get("x").getAsInt(), b.get("y").getAsInt(), b.get("z").getAsInt());
+            String coords = at.toShortString();
+            if (!mc.level.isLoaded(at)) return "INSPECT_NOT_READY: recorded block " + coords + " is not loaded";
+            if (!blockId(at).equals(b.get("block").getAsString()))
+                return "SOURCE_GONE: recorded block " + coords + " is now " + blockId(at) + ", expected "
+                        + b.get("block").getAsString() + "; human action required";
+        }
+        return null;
     }
 
     public static boolean failed() {
@@ -628,9 +690,13 @@ public final class InventorySync {
             return;
         }
         if (!mutation) return;
-        if (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror()) {
+        String gated = PhysicalJournalRuntime.workspaceDebtActive() ? PhysicalJournalRuntime.workspaceDebt() : null;
+        if (gated != null || PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror()) {
             event.cancel();
-            gate.fail("Physical journal withheld an automated mutation");
+            gate.fail(
+                    gated == null
+                            ? "Physical journal withheld an automated mutation"
+                            : "Next physical order gated: " + gated);
             reportFailure();
             return;
         }
@@ -660,7 +726,11 @@ public final class InventorySync {
             if (event.packet instanceof ServerboundContainerClickPacket) clicks++;
         } catch (Exception e) {
             event.cancel();
-            gate.fail("Cannot durably record the inventory action before send");
+            String debt = PhysicalJournalRuntime.workspaceDebtActive() ? PhysicalJournalRuntime.workspaceDebt() : null;
+            gate.fail(
+                    debt == null
+                            ? "Cannot durably record the inventory action before send"
+                            : "Next physical order gated: " + debt);
             reportFailure();
         }
     }
@@ -669,9 +739,11 @@ public final class InventorySync {
     private void tick(TickEvent.Post event) {
         PhysicalJournalRuntime.tickInspection();
         if (reconciling) {
-            if (System.nanoTime() > reconcileDeadline) {
+            if (autoCloseForeignScreen()) {
+                // Closed a stranded screen (or failed it by name); re-evaluate next tick.
+            } else if (System.nanoTime() > reconcileDeadline) {
                 reconciling = false;
-                PhysicalJournalRuntime.inspectionFailed("Inspection timed out; load the original source and workspace");
+                PhysicalJournalRuntime.inspectionFailed("INSPECT_TIMEOUT: " + reconcileDetail());
                 reportFailure();
             } else if (sourceMatches()) {
                 var expected = gate.reconcile(mc.player.containerMenu.containerId, System.nanoTime());
@@ -814,13 +886,14 @@ public final class InventorySync {
         if (gate.failed()) {
             if (recoveringWorld)
                 PhysicalJournalRuntime.inspectionFailed(
-                        "The fresh server frame does not match the recorded postcondition");
+                        "INSPECT_ITEMS: the fresh server frame does not match the recorded postcondition");
             reportFailure();
             return;
         }
         if (gate.ready() && recoveringWorld) {
-            if (!worldMatches()) {
-                gate.fail("World block does not match the pending physical action");
+            String mismatch = worldMismatch();
+            if (mismatch != null) {
+                gate.fail(mismatch);
                 reportFailure();
                 return;
             }
@@ -846,7 +919,8 @@ public final class InventorySync {
                 // cannot distinguish a mismatched receipt from an I/O failure.
                 MeteorClient.LOG.error("Cannot commit the verified inventory readback", e);
                 gate.fail("Cannot commit the verified inventory readback");
-                PhysicalJournalRuntime.inspectionFailed("The fresh readback could not be signed off");
+                PhysicalJournalRuntime.inspectionFailed("INSPECT_SIGNOFF: the fresh readback could not be signed off ("
+                        + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()) + ")");
                 reportFailure();
             }
         }
@@ -947,6 +1021,78 @@ public final class InventorySync {
         }
     }
 
+    /**
+     * The fenced bot may have opened a storage screen itself before the fence
+     * went up. A menu-0 reconcile needs the player inventory and nothing else
+     * closes the screen, so close it here: closing moves no items. Returns true
+     * when this tick was consumed by the close (or its named failure).
+     */
+    private static boolean autoCloseForeignScreen() {
+        if (mc.player == null) return false;
+        var want = gate.expected();
+        if (want == null || want.menu() != 0) return false;
+        if (mc.player.containerMenu == mc.player.inventoryMenu) return false;
+        if (!mc.player.containerMenu.getCarried().isEmpty()) {
+            reconciling = false;
+            PhysicalJournalRuntime.inspectionFailed("INSPECT_CURSOR: foreign " + screenName()
+                    + " screen open with an occupied cursor; menu-0 reconcile needs the player inventory");
+            reportFailure();
+            return true;
+        }
+        mc.player.closeContainer();
+        return true;
+    }
+
+    /** Names the exact unmet precondition for the current reconcile: menu, cursor, scope, source, or items. */
+    public static String reconcileDetail() {
+        if (mc.player == null || mc.level == null) return "INSPECT_NOT_READY: player or world unavailable";
+        var want = gate.expected();
+        if (want == null) return "INSPECT_NOT_READY: no expected postcondition is being reconciled";
+        if (want.menu() == 0) {
+            if (mc.player.containerMenu != mc.player.inventoryMenu)
+                return "INSPECT_MENU: " + screenName() + " screen still open for a menu-0 reconcile";
+            if (!mc.player.containerMenu.getCarried().isEmpty())
+                return "INSPECT_CURSOR: cursor occupied during a menu-0 reconcile";
+            return "INSPECT_ITEMS: waiting for the menu-0 server readback to match the recorded postcondition";
+        }
+        if (origin == null) return "INSPECT_SCOPE: recovery origin was lost";
+        if (!origin.get("server").getAsString().equals(Stash.currentServer())
+                || !origin.get("dimension").getAsString().equals(dimension())
+                || !origin.get("player")
+                        .getAsString()
+                        .equals(mc.player.getUUID().toString()))
+            return "INSPECT_SCOPE: recorded server, dimension, or agent differs from the live session";
+        String world = worldMismatch();
+        if (world != null) return world;
+        if (origin.has("source")) {
+            JsonArray p = origin.getAsJsonArray("source");
+            var source = new BlockPos(
+                    p.get(0).getAsInt(), p.get(1).getAsInt(), p.get(2).getAsInt());
+            String coords = source.toShortString();
+            if (!mc.level.isLoaded(source)) return "INSPECT_NOT_READY: recorded source " + coords + " is not loaded";
+            double blocks = Math.sqrt(mc.player.distanceToSqr(net.minecraft.world.phys.Vec3.atCenterOf(source)));
+            if (blocks > 5)
+                return "TOO_FAR: recorded source " + coords + " is "
+                        + String.format(java.util.Locale.ROOT, "%.1f", blocks)
+                        + " blocks away (reach is 5) while navigation is "
+                        + (NavigationRuntime.paused() ? "paused" : "running")
+                        + "; move the agent within reach or intervene by hand";
+            if (mc.player.containerMenu == mc.player.inventoryMenu)
+                return "TOO_FAR: recorded source " + coords
+                        + " is within reach but its screen has not reopened; retry the recovery reopen";
+            if (!source.equals(lastInteracted)
+                    || !source.equals(readSource)
+                    || readLevel != mc.level
+                    || mc.player.containerMenu.containerId != readMenu
+                    || !mc.level.getBlockState(source).equals(readBlock))
+                return "INSPECT_MENU: open " + screenName() + " screen is not the recorded source " + coords
+                        + "; close it and reopen the source";
+        } else if (mc.player.containerMenu == mc.player.inventoryMenu) {
+            return "INSPECT_MENU: recorded menu " + want.menu() + " is not open";
+        }
+        return "INSPECT_ITEMS: waiting for the recorded source readback to match the recorded postcondition";
+    }
+
     private static boolean sourceMatches() {
         if (mc.player == null || mc.level == null || origin == null) return false;
         if (!worldMatches()) return false;
@@ -979,6 +1125,20 @@ public final class InventorySync {
         return blocks.values().stream()
                 .allMatch(block ->
                         mc.level.isLoaded(block.pos) && blockId(block.pos).equals(block.block));
+    }
+
+    /** First recorded block that no longer holds its recorded state, or null when the world matches. */
+    private static String worldMismatch() {
+        if (mc.level == null) return "INSPECT_NOT_READY: no world is loaded";
+        for (var block : blocks.values()) {
+            String coords = block.pos.toShortString();
+            if (!mc.level.isLoaded(block.pos))
+                return "INSPECT_NOT_READY: recorded block " + coords + " (expected " + block.block + ") is not loaded";
+            if (!blockId(block.pos).equals(block.block))
+                return "SOURCE_GONE: recorded block " + coords + " is now " + blockId(block.pos) + ", expected "
+                        + block.block + "; human action required";
+        }
+        return null;
     }
 
     private static void persist() throws Exception {

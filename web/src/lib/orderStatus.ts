@@ -1,13 +1,22 @@
 /**
- * Backend order-status contract → UI (P2-17). The vocabulary comes from the
+ * Backend order-status contract → UI. The vocabulary comes from the
  * Java backend, not from hand-written frontend guesses:
  *
  * - OrderStore.OPEN = pending, accepted, in_progress (mutable; cancellable).
  * - OrderStore.FINISHED = delivered, packed, failed, cancelled.
- * - Failed or cancelled orders are historical outcomes, not work requiring
- *   a human operator. RECOVERING is an active, autonomous rollback stage.
+ * - Failed or needs_reconciliation orders are operator-visible problems:
+ *   they never resolve on their own and must surface in "Needs attention".
+ * - RECOVERING is an autonomous rollback stage: quiet while fresh, but a
+ *   rollback that never finishes is stuck automation, so needsAttentionNow()
+ *   flags it once it ages past RECOVERING_ATTENTION_MS (mirroring the
+ *   server's AUTO_CANCEL_AFTER_MS horizon).
  * - OrderStage adds PACKING, RECOVERING, PICKUP_READY, PICKED_UP,
  *   IN_TRANSIT, AWAITING_CUSTOMER, DELIVERED, FAILED, CANCELLED.
+ *   PICKED_UP/IN_TRANSIT/AWAITING_CUSTOMER/DELIVERED are reserved for a
+ *   future custody flow: the current bot API never emits them (a bot
+ *   `delivered` report means warehouse staging and lands on PICKUP_READY),
+ *   so the implemented terminal set is PICKUP_READY plus the verified
+ *   sweep release. The entries below stay so older payloads never hide.
  *
  * Unknown strings stay visible (never hidden) with a neutral chip.
  */
@@ -108,7 +117,7 @@ const STATES: Record<string, OrderUiState> = {
     open: false,
     cancellable: false,
     retryable: true,
-    needsAttention: false,
+    needsAttention: true,
   },
   cancelled: {
     severity: "default",
@@ -124,13 +133,14 @@ const STATES: Record<string, OrderUiState> = {
     retryable: false,
     needsAttention: false,
   },
-  // For old cached API responses, display the legacy state as an automated failure.
+  // A failed reconciliation gate never clears on its own: the operator must
+  // inspect the physical box before recovery. Always attention-worthy.
   needs_reconciliation: {
     severity: "error",
     open: false,
     cancellable: false,
     retryable: true,
-    needsAttention: false,
+    needsAttention: true,
   },
   recovering: {
     severity: "info",
@@ -190,21 +200,41 @@ export function orderUiState(status: string | null | undefined): OrderUiState {
  * shows if it needs attention.
  */
 type AttentionOrder =
-  { status?: unknown; retriedAs?: unknown } | null | undefined;
+  | { status?: unknown; retriedAs?: unknown; updatedAt?: unknown }
+  | null
+  | undefined;
 
 export function isSuperseded(order: AttentionOrder): boolean {
   return !!order?.retriedAs;
 }
 
 /**
+ * Autonomous rollback horizon: a RECOVERING order older than this is stuck
+ * automation, not healthy progress. Mirrors the server's AUTO_CANCEL_AFTER_MS
+ * (OrderStore, 10 minutes) so the dashboard and the Manager agree on "stuck".
+ */
+export const RECOVERING_ATTENTION_MS = 10 * 60 * 1000;
+
+/**
  * Attention-list membership: a mapped attention state (or the frontend
- * `uncertain` checkout state) that is not superseded by a retry.
+ * `uncertain` checkout state) that is not superseded by a retry — plus a
+ * time-based rule for `recovering`, whose static map stays quiet while the
+ * rollback is fresh. `now` defaults to the client clock; pass the server
+ * clock (e.g. operations `at`) when one is available.
  */
 export function needsAttentionNow(
   status: string | null | undefined,
   order?: AttentionOrder,
+  now?: number,
 ): boolean {
   const s = String(status ?? "unknown").toLowerCase();
+  if (isSuperseded(order)) return false;
+  if (s === "recovering") {
+    const updated =
+      typeof order?.updatedAt === "number" ? order.updatedAt : null;
+    if (updated == null || updated <= 0) return false;
+    return (now ?? Date.now()) - updated >= RECOVERING_ATTENTION_MS;
+  }
   if (!orderUiState(s).needsAttention && s !== "uncertain") return false;
-  return !isSuperseded(order);
+  return true;
 }

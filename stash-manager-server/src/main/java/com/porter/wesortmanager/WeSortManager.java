@@ -322,7 +322,7 @@ public final class WeSortManager {
         var guild = new GuildRoutes(config.dataDir(), audit);
         new OrderRoutes(orders, audit, guild, users, config, stashDefs).register(router);
         new OrderAuditRoutes(orders, store).register(router);
-        new OperationsRoutes(store, orders, hub).register(router);
+        new OperationsRoutes(store, orders, hub, credentials).register(router);
         new StockRoutes(store, orders).register(router, audit);
         new BoxRoutes(store, audit, orders, config, stashDefs).register(router);
         new CustodyRoutes(new PackageCustody(config.dataDir()), audit, config).register(router);
@@ -335,7 +335,7 @@ public final class WeSortManager {
         new HandoffRoutes(new Handoffs(config.dataDir()), audit, config).register(router);
         new PhysicalRoutes(store, audit, config).register(router);
         new BotRoutes(hub, audit, orders, config, stashDefs).register(router);
-        new DashboardRoutes(hub, store, sessions, audit).register(router);
+        new DashboardRoutes(hub, store, sessions, audit, credentials).register(router);
         new LiveRoutes(hub, store).register(router);
         new UserRoutes(users, sessions, audit).register(router);
         guild.register(router);

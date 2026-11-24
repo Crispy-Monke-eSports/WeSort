@@ -43,6 +43,11 @@ public final class PhysicalWork {
         return phase;
     }
 
+    /** Why the work is waiting for automatic recovery; empty unless latched in NEEDS_RECONCILIATION or FAILED. */
+    public String reason() {
+        return reason;
+    }
+
     public boolean terminal() {
         return phase == Phase.COMPLETED || phase == Phase.NEEDS_RECONCILIATION || phase == Phase.FAILED;
     }

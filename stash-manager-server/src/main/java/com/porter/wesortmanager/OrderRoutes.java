@@ -22,6 +22,7 @@ final class OrderRoutes {
     private static final Pattern STATUS = Pattern.compile("^/api/v1/orders/(o-[0-9a-f]{12})/status$");
     private static final Pattern RETRY = Pattern.compile("^/api/v1/orders/(o-[0-9a-f]{12})/retry$");
     private static final Pattern FORCE_CANCEL = Pattern.compile("^/api/v1/orders/(o-[0-9a-f]{12})/force-cancel$");
+    private static final Pattern OWNER_FORCE = Pattern.compile("^/api/v1/orders/(o-[0-9a-f]{12})/owner-force$");
     private static final int MAX_KEY = 256;
     private static final int MAX_RESULT_LINES = 400;
 
@@ -109,6 +110,9 @@ final class OrderRoutes {
                         Router.Perm.ORDER_OWN_OR_ALL,
                         this::forceCancel)
                 .pattern(Router.POST, RETRY, Router.Guard.BROWSER_WRITE, Router.Perm.ORDER_OWN_OR_ALL, this::retry)
+                // Owner-only escape hatch: terminates any stuck order despite remaining
+                // allocations. The guard permits only the owner; the handler 404s unknown ids.
+                .pattern(Router.POST, OWNER_FORCE, Router.Guard.BROWSER_WRITE, Router.Perm.OWNER, this::ownerForce)
                 .pattern(Router.POST, STATUS, Router.Guard.ADDON_KEY, this::status);
     }
 
@@ -388,6 +392,34 @@ final class OrderRoutes {
             OrderStore.Order order =
                     orders.forceCancel(m.group(1), Router.user(ex).id());
             audit.add(Router.user(ex), "order.force-cancel", order.id, AuthRoutes.address(ex));
+            JsonObject out = Http.ok();
+            out.add("order", shown(ex, order.toJson()));
+            Http.json(ex, 200, out);
+        } catch (OrderStore.OrderException e) {
+            Http.error(ex, e.status, e.getMessage());
+        }
+    }
+
+    /**
+     * Owner-only escape hatch for orders no automatic path can release (for example a
+     * NEEDS_RECONCILIATION order whose rollback never completes). Terminates the order as
+     * failed and releases its holds despite remaining allocations; the audit trail keeps the
+     * abandoned roots so the stash can be verified by hand afterwards.
+     */
+    private void ownerForce(HttpExchange ex) throws IOException {
+        Matcher m = OWNER_FORCE.matcher(ex.getRequestURI().getRawPath());
+        if (!m.matches()) {
+            Http.error(ex, 404, "not found");
+            return;
+        }
+        if (orders.stashOf(m.group(1)) == null) {
+            Http.error(ex, 404, "no such order");
+            return;
+        }
+        try {
+            OrderStore.Order order =
+                    orders.ownerForceCancel(m.group(1), Router.user(ex).id());
+            audit.add(Router.user(ex), "order.owner-force", order.id, AuthRoutes.address(ex));
             JsonObject out = Http.ok();
             out.add("order", shown(ex, order.toJson()));
             Http.json(ex, 200, out);

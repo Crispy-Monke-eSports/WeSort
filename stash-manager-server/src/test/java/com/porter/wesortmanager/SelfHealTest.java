@@ -92,16 +92,43 @@ class SelfHealTest {
         store.putIndex(frame);
         health.sample("s", store, orders, now, 300_000);
         assertEquals("ready", health.detail(now).get("status").getAsString());
+        assertTrue(health.detail(now).getAsJsonArray("warnings").isEmpty());
         health.sample("s", store, orders, now + 300_000, 300_000);
         assertTrue(health.detail(now + 300_000).get("staleIndex").getAsBoolean());
-        assertEquals("degraded", health.detail(now + 300_000).get("status").getAsString());
+        // Data freshness is a warning, not a readiness flip.
+        assertEquals("ready", health.detail(now + 300_000).get("status").getAsString());
+        assertTrue(health.detail(now + 300_000)
+                .getAsJsonArray("warnings")
+                .toString()
+                .contains("STALE_INDEX"));
+        assertEquals("unknown", health.detail(now + 60_000).get("status").getAsString());
+    }
+
+    @Test
+    void freshRecoveryWarnsInsteadOfPagingAndAgesIntoStuck() throws Exception {
+        var health = new RuntimeHealth(true);
+        long now = time.get();
+        var frame = index("private-stash", 10);
+        frame.addProperty("generatedAt", now);
+        store.putIndex(frame);
         stuckOrder("private-stash");
         health.sample("s", store, orders, now, 300_000);
         var detail = health.detail(now);
         assertFalse(detail.get("staleIndex").getAsBoolean());
-        assertEquals(1, detail.get("stuckOrders").getAsInt());
+        // A freshly fenced order reads as recovering, not stuck.
+        assertEquals(0, detail.get("stuckOrders").getAsInt());
+        assertEquals(1, detail.get("recovering").getAsInt());
+        assertTrue(detail.getAsJsonArray("warnings").toString().contains("RECOVERING_ORDERS"));
+        assertEquals("ready", detail.get("status").getAsString());
         assertFalse(detail.toString().contains("private-stash"));
-        assertEquals("unknown", health.detail(now + 60_000).get("status").getAsString());
+        // Without progress for the self-heal timeout it becomes stuck.
+        time.set(now + OrderStore.RECOVERING_STUCK_AFTER_MS + 1000);
+        health.sample("s", store, orders, time.get(), 300_000);
+        detail = health.detail(time.get());
+        assertEquals(1, detail.get("stuckOrders").getAsInt());
+        assertEquals(1, detail.get("recovering").getAsInt());
+        assertTrue(detail.getAsJsonArray("warnings").toString().contains("STUCK_ORDERS"));
+        assertEquals("ready", detail.get("status").getAsString());
     }
 
     @Test

@@ -21,6 +21,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -381,6 +382,20 @@ public class StashManager extends Module {
     private String verifiedManagerScope = "";
     private String controlStatus = "idle";
     private String lastControlFailure = "";
+    // Reconnect visibility: consecutive failures per lane, and when the last verified
+    // reply arrived, so retries log a summary instead of going quiet.
+    private int controlFails, heartbeatFails;
+    private long lastVerifiedReplyMs = -1;
+    // Consecutive key rejections across lanes: after a few the status names the revoked
+    // key and the work lane backs off harder.
+    private int consecutive401;
+    private long lastAuthFailureMs;
+    private static final String KEY_REVOKED = "key revoked — ask owner for a new link";
+    // Why the service loops stay silent, logged on change and at most every minute.
+    private String lastControlSilence = "", lastHeartbeatSilence = "";
+    private long lastControlSilenceMs, lastHeartbeatSilenceMs;
+    private long lastSorterWarnMs;
+    private long lastEngineOffWarnMs;
 
     private static long monotonicMs() {
         return TimeUnit.NANOSECONDS.toMillis(System.nanoTime());
@@ -395,17 +410,48 @@ public class StashManager extends Module {
         sentControlValues = null;
         verifiedManagerScope = "";
         controlSchedule.failed(monotonicMs());
+        controlFails++;
+        if (reason.equals("error 401")) reason = authFailureStatus();
         if (!detail.equals(lastControlFailure)) {
             WeSortAddon.LOG.warn("wesort-manager-control: {}; reconnecting every 15 seconds", detail);
             lastControlFailure = detail;
         }
+        if (controlFails % 4 == 0) {
+            WeSortAddon.LOG.info(
+                    "wesort-manager-control: still {} ({}; attempt {})", reason, verifiedAgo(), controlFails);
+        }
         controlStatus = reason;
+    }
+
+    /** Lanes and wall-clock since the last verified Manager reply, for retry summaries. */
+    private String verifiedAgo() {
+        return lastVerifiedReplyMs < 0
+                ? "never verified"
+                : ((System.currentTimeMillis() - lastVerifiedReplyMs) / 1000) + "s since last verified reply";
+    }
+
+    /**
+     * Maps a key rejection to the lane status: the first couple stay "error 401", then the
+     * status names the revoked key so the owner is asked for a new link.
+     */
+    private String authFailureStatus() {
+        long now = System.currentTimeMillis();
+        if (now - lastAuthFailureMs > 5 * 60 * 1000) consecutive401 = 0;
+        lastAuthFailureMs = now;
+        if (++consecutive401 >= 3) return KEY_REVOKED;
+        return "error 401";
     }
 
     private void heartbeatFailure(String reason) {
         heartbeatSchedule.failed(monotonicMs());
+        heartbeatFails++;
+        if (reason.equals("error 401")) reason = authFailureStatus();
         if (!reason.equals(heartbeatStatus)) {
             WeSortAddon.LOG.warn("wesort-manager-heartbeat: {}; retrying every 15 seconds", reason);
+        }
+        if (heartbeatFails % 4 == 0) {
+            WeSortAddon.LOG.info(
+                    "wesort-manager-heartbeat: still {} ({}; attempt {})", reason, verifiedAgo(), heartbeatFails);
         }
         heartbeatStatus = reason;
         // An in-flight control reply from before the failed heartbeat must not
@@ -501,6 +547,17 @@ public class StashManager extends Module {
         controlStatus = "idle";
         status = "idle";
         lastLogged = "";
+        controlFails = 0;
+        heartbeatFails = 0;
+        lastVerifiedReplyMs = -1;
+        consecutive401 = 0;
+        lastAuthFailureMs = 0;
+        lastControlSilence = "";
+        lastHeartbeatSilence = "";
+        lastControlSilenceMs = 0;
+        lastHeartbeatSilenceMs = 0;
+        lastSorterWarnMs = 0;
+        lastEngineOffWarnMs = 0;
         controlRegistered = false;
         sentControlValues = null;
         controlResults = null;
@@ -513,6 +570,8 @@ public class StashManager extends Module {
         sortingPoll = 0;
         pendingManifest = null;
         pendingOrders = 0;
+        sortingToken = null;
+        sortingUntil = 0;
         lastClaim = lastStatusAt = 0;
         lastStatusSig = "";
         rejectedId = rejectedWhy = null;
@@ -571,6 +630,14 @@ public class StashManager extends Module {
         return true;
     }
 
+    /**
+     * Whether a failed automation reply means the token is dead and must be dropped.
+     * Pure decision for unit tests: only an authoritative 409 drops it.
+     */
+    static boolean shouldDropSortingToken(int code) {
+        return code == 409;
+    }
+
     private String sortingToken, sortingScope = "";
     private long sortingUntil, sortingPoll;
 
@@ -605,6 +672,31 @@ public class StashManager extends Module {
         return linkScope() + "|" + (mc.player == null ? "" : mc.player.getUUID());
     }
 
+    /**
+     * Whether an automation refusal names a machine-readable dead token (unknown, expired,
+     * invalid, revoked, mismatched): only then is the token dropped. An unknown plain 409 is
+     * a transient conflict and keeps the token with backoff.
+     */
+    static boolean isDeadTokenReply(String body) {
+        if (body == null || body.isEmpty()) return false;
+        try {
+            JsonElement parsed = JsonParser.parseString(body);
+            if (!parsed.isJsonObject()) return false;
+            JsonObject reply = parsed.getAsJsonObject();
+            if (!reply.has("error") || !reply.get("error").isJsonPrimitive()) return false;
+            String error = reply.get("error").getAsString().toLowerCase(Locale.ROOT);
+            boolean token = error.contains("token") || error.contains("lease");
+            boolean dead = error.contains("unknown")
+                    || error.contains("expired")
+                    || error.contains("invalid")
+                    || error.contains("revoked")
+                    || error.contains("mismatch");
+            return token && dead;
+        } catch (RuntimeException unreadable) {
+            return false;
+        }
+    }
+
     private boolean serviceSorting() {
         if (mc.player == null
                 || mc.level == null
@@ -629,6 +721,11 @@ public class StashManager extends Module {
             sortingScope = scope;
             sortingPoll = 0;
             sortingRetry.reset();
+            // A new scope never inherits the old inspection state: clear it, upload the
+            // journal at once under the new scope, and report re-linking.
+            PhysicalJournalRuntime.dropInspection();
+            PhysicalJournalRuntime.requestUpload();
+            setStatus("re-linking");
         }
         if (now < sortingPoll) return false;
         JsonObject request = new JsonObject();
@@ -646,10 +743,26 @@ public class StashManager extends Module {
                 apiKey.get().trim(),
                 (code, body) -> {
                     if (code != 200) {
-                        sortingUntil = 0;
+                        if (code == 409 && !isDeadTokenReply(body)) {
+                            // A plain 409 names a transient conflict, not a dead token: the
+                            // token and the running lease are kept while the acquire is
+                            // retried with backoff.
+                            sortingPoll = System.nanoTime() + sortingRetry.failureDelayMs() * 1_000_000L;
+                            return false;
+                        }
                         // A denied lease is expected while an order owns physical reservations.
                         // It must never postpone the order heartbeat, rollback or control channel.
+                        if (code == 409) {
+                            // Machine-readable dead token: drop it and retry with backoff.
+                            sortingToken = null;
+                            sortingUntil = 0;
+                        } else sortingUntil = 0;
                         sortingPoll = System.nanoTime() + sortingRetry.failureDelayMs() * 1_000_000L;
+                        // 409 is authoritative: someone else holds the lease, or the lease the
+                        // token names is gone (released, expired, revoked). Keeping the token
+                        // would retry a dead lease forever, so drop it and acquire fresh next
+                        // poll. Transient failures (500, timeouts) keep the token for a retry.
+                        if (shouldDropSortingToken(code)) sortingToken = null;
                         return false;
                     }
                     sortingRetry.reset();
@@ -701,6 +814,20 @@ public class StashManager extends Module {
 
         driveSorter();
         updateOrdersNote();
+
+        // The Agent toggle owns the client but the sorter is neither on nor driven: the
+        // unexpected combo is said loudly instead of idling silently.
+        if (dedicatedProfile() && managerConfigured() && !e2eInspectionHold) {
+            StashSorter engine = WeSortAddon.sorter();
+            if (engine != null && !engine.isActive() && !engine.driving()) {
+                long nowMs = System.currentTimeMillis();
+                if (nowMs - lastEngineOffWarnMs >= 60_000) {
+                    lastEngineOffWarnMs = nowMs;
+                    warning(
+                            "WeSort-Agent is on but the sorter is off and not driven: enable sort-items or accept orders, or switch the Agent off.");
+                }
+            } else lastEngineOffWarnMs = 0;
+        }
 
         // No server set (the default since 0.4.0-dev.8): the addon works without one, so this is a status, not a
         // warning
@@ -809,11 +936,22 @@ public class StashManager extends Module {
 
     private void serviceControlWhenDue() {
         // No work-lane inFlight/backoff, inventory readiness, navigation or quiet-mode gate.
-        if (controlInFlight || mc.player == null || mc.level == null || !dedicatedProfile() || !managerConfigured())
+        if (controlInFlight || mc.player == null || mc.level == null || !dedicatedProfile() || !managerConfigured()) {
+            noteSilence(
+                    true,
+                    controlInFlight
+                            ? "a control request is in flight"
+                            : mc.player == null || mc.level == null
+                                    ? "no player/level"
+                                    : !dedicatedProfile() ? "agent off" : "manager not configured");
             return;
+        }
         String key = apiKey.get().trim();
         URI base = parse(serverUrl.get());
-        if (base == null || key.isEmpty()) return;
+        if (base == null || key.isEmpty()) {
+            noteSilence(true, "bad url");
+            return;
+        }
         try {
             serviceControl(base, key, monotonicMs());
         } catch (RuntimeException failure) {
@@ -830,10 +968,30 @@ public class StashManager extends Module {
                 || mc.player == null
                 || mc.level == null
                 || !dedicatedProfile()
-                || !managerConfigured()) return;
+                || !managerConfigured()) {
+            noteSilence(
+                    false,
+                    !heartbeatSupported
+                            ? "server has no heartbeat"
+                            : heartbeatInFlight
+                                    ? "a heartbeat is in flight"
+                                    : controlScope == null
+                                            ? "waiting for control scope"
+                                            : mc.player == null || mc.level == null
+                                                    ? "no player/level"
+                                                    : !dedicatedProfile() ? "agent off" : "manager not configured");
+            return;
+        }
         String key = apiKey.get().trim();
         URI base = parse(serverUrl.get());
-        if (base == null || !controlScope.equals(observeControlScope(base, key))) return;
+        if (base == null) {
+            noteSilence(false, "bad url");
+            return;
+        }
+        if (!controlScope.equals(observeControlScope(base, key))) {
+            noteSilence(false, "control scope changed, re-linking");
+            return;
+        }
         long now = monotonicMs();
         if (!heartbeatSchedule.due(now)) return;
         heartbeatSchedule.started(now);
@@ -854,6 +1012,24 @@ public class StashManager extends Module {
                     return challenge.equals(text(pong, "pong"));
                 },
                 true);
+    }
+
+    /**
+     * Says why a service loop stays silent, on change and at most every minute: a quiet
+     * control or heartbeat lane looks exactly like a dead one.
+     */
+    private void noteSilence(boolean control, String why) {
+        long now = System.currentTimeMillis();
+        if (control) {
+            if (why.equals(lastControlSilence) && now - lastControlSilenceMs < 60_000) return;
+            lastControlSilence = why;
+            lastControlSilenceMs = now;
+        } else {
+            if (why.equals(lastHeartbeatSilence) && now - lastHeartbeatSilenceMs < 60_000) return;
+            lastHeartbeatSilence = why;
+            lastHeartbeatSilenceMs = now;
+        }
+        WeSortAddon.LOG.info("wesort-manager-{}: idle ({}).", control ? "control" : "heartbeat", why);
     }
 
     private record ControlScope(
@@ -1198,7 +1374,9 @@ public class StashManager extends Module {
         else if (recoveringInventory) incident = AgentIncident.INVENTORY_UNVERIFIED;
         else if (controlStatus.equals("wrong server") || status.equals("wrong server"))
             incident = AgentIncident.WRONG_SERVER;
-        else if (controlStatus.equals("error 401") || controlStatus.equals("server signature invalid")) {
+        else if (controlStatus.equals("error 401")
+                || controlStatus.equals(KEY_REVOKED)
+                || controlStatus.equals("server signature invalid")) {
             incident = AgentIncident.AUTH_FAILED;
         } else if (com.porter.wesort.compat.NavigationRuntime.paused()) {
             incident = AgentIncident.NAVIGATION_PAUSED;
@@ -1217,6 +1395,7 @@ public class StashManager extends Module {
             task = "Automatically recovering physical inventory";
         else if (incident != null) task = incident.title();
         else if (runner != null && runner.running()) task = "Packing " + runner.info();
+        else if (sorter != null && sorter.gateStatus() != null) task = sorter.gateStatus();
         else if (orderIntakePaused.get()) task = "New orders paused";
         var work = new JsonObject();
         work.addProperty("title", task);
@@ -1638,10 +1817,14 @@ public class StashManager extends Module {
         return new int[] {enableCrafting.get() ? 1 : 0, sorter != null && sorter.craftingTableReady() ? 1 : 0};
     }
 
-    /** Why a rescan can't start yet, or null. */
+    /** Why a rescan can't start yet, or null. Names the real reason, including retry waits. */
     private String rescanBlocked() {
         StashSorter sorter = WeSortAddon.sorter();
-        return sorter == null || sorter.currentStash() == null ? "no stash" : null;
+        if (sorter == null || sorter.currentStash() == null) return "no stash";
+        if (sorter.currentStash().boxes.isEmpty()) return "no containers";
+        if (sorter.readableCount() > 0) return null;
+        int failed = sorter.failedSurveyCount();
+        return failed > 0 ? failed + " unreadable, retrying" : "no readable containers";
     }
 
     /** The website asked for a rescan: every container is marked to be read again, and the server is told at once. */
@@ -1656,7 +1839,10 @@ public class StashManager extends Module {
             if (id == rescanDone) return;
             boolean duplicate = id == lastRescanId && System.currentTimeMillis() - lastRescanAt < 120_000;
             rescanDone = id;
-            if (duplicate) return;
+            if (duplicate) {
+                info("Rescan request %d already handled, ignoring duplicate.", id);
+                return;
+            }
             lastRescanId = id;
             lastRescanAt = System.currentTimeMillis();
 
@@ -1826,6 +2012,16 @@ public class StashManager extends Module {
                         || sorter.currentStash().hasArea()
                         || sorter.portalAwaiting());
         sorter.drive(want);
+        // Away from the stash world (or the lobby): say so every minute instead of silently
+        // parking, so a stranded bot is visible without watching the log scroll.
+        if (!e2eInspectionHold) {
+            String away = sorter.awayReason();
+            long nowMs = System.currentTimeMillis();
+            if (away != null && nowMs - lastSorterWarnMs >= 60_000) {
+                lastSorterWarnMs = nowMs;
+                warning("Still %s; the bot waits instead of working.", away);
+            } else if (away == null) lastSorterWarnMs = 0;
+        }
     }
 
     /** The order progress, or why no order is taken, for the info string. Every tick. */
@@ -1849,6 +2045,11 @@ public class StashManager extends Module {
         int stale = sorter.staleCount();
         if (stale > 0 && (sorter.driving() || sorter.isActive())) {
             ordersNote = "(re-reading " + stale + ")";
+            return;
+        }
+        int failed = sorter.failedSurveyCount();
+        if (failed > 0 && (sorter.driving() || sorter.isActive())) {
+            ordersNote = "(" + failed + " failed, retrying)";
             return;
         }
         String blocker = acceptOrders.get() ? sorter.orderBlocker() : null;
@@ -2223,6 +2424,9 @@ public class StashManager extends Module {
                         if (!heartbeatStatus.equals("online")) WeSortAddon.LOG.info("wesort-manager-heartbeat: online");
                         heartbeatStatus = "online";
                         heartbeatSchedule.succeeded(monotonicMs());
+                        heartbeatFails = 0;
+                        consecutive401 = 0;
+                        lastVerifiedReplyMs = System.currentTimeMillis();
                     } else {
                         heartbeatFailure(
                                 finalBad
@@ -2285,6 +2489,9 @@ public class StashManager extends Module {
                         if (!controlStatus.equals("online")) WeSortAddon.LOG.info("wesort-manager-control: online");
                         controlStatus = "online";
                         lastControlFailure = "";
+                        controlFails = 0;
+                        consecutive401 = 0;
+                        lastVerifiedReplyMs = System.currentTimeMillis();
                         verifiedManagerScope = linkScope();
                         controlSchedule.succeeded(monotonicMs());
                     } else {
@@ -2338,6 +2545,8 @@ public class StashManager extends Module {
                 if (ok) {
                     backoff = 0;
                     nextAttemptAt = 0;
+                    consecutive401 = 0;
+                    lastVerifiedReplyMs = System.currentTimeMillis();
                 } else {
                     backoff = backoff == 0 ? BACKOFF_MIN_MS : Math.min(BACKOFF_MAX_MS, backoff * 2);
                     nextAttemptAt = System.currentTimeMillis() + backoff;
@@ -2456,15 +2665,24 @@ public class StashManager extends Module {
 
     /** Sets the status and, only when it changes, logs it and tells the user about a rejected key. */
     private void setStatus(String next) {
-        status = next;
-        if (next.equals(lastLogged)) return;
-        lastLogged = next;
+        String effective = next.equals("error 401") ? authFailureStatus() : next;
+        if (!effective.equals("error 401") && !effective.equals(KEY_REVOKED)) consecutive401 = 0;
+        status = effective;
+        if (effective.equals(lastLogged)) return;
+        lastLogged = effective;
 
-        if (next.equals("error 401")) warning("API key rejected by the server. Check the api-key setting.");
-        if (next.equals("server signature invalid"))
+        if (effective.equals("error 401")) warning("API key rejected by the server. Check the api-key setting.");
+        if (effective.equals(KEY_REVOKED)) {
+            // A revoked key backs off hard instead of hot-looping rejections.
+            backoff = BACKOFF_MAX_MS;
+            nextAttemptAt = System.currentTimeMillis() + backoff;
+            warning("API key revoked by the server (rejected repeatedly). Ask the Manager owner for a new link.");
+        }
+        if (effective.equals("server signature invalid"))
             error(
                     "The server's reply was not signed with your API key, so it was ignored. Check the api-key and server-url settings.");
-        if (next.equals("online") || next.equals("idle")) WeSortAddon.LOG.info("wesort-stash-manager: {}", next);
-        else WeSortAddon.LOG.warn("wesort-stash-manager: {}", next);
+        if (effective.equals("online") || effective.equals("idle"))
+            WeSortAddon.LOG.info("wesort-stash-manager: {}", effective);
+        else WeSortAddon.LOG.warn("wesort-stash-manager: {}", effective);
     }
 }

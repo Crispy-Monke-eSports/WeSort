@@ -40,8 +40,9 @@ För hela order- och leveransflödet, se [domänkontrakten](../docs/MANAGER_CONT
   öppna ordrar med oavslutade fysiska operationer flaggas automatiskt, och
   bekräftade cancels som inget håller verkställs efter 10 min tystnad.
   Operations-larmen omfattar även `ORDER_BLOCKED`, `DELIVERY_FULL`,
-  `RESCAN_BLOCKED`, `UNKNOWN`, `MISSING`, `APPROVAL_PENDING` och
-  `CANCEL_REQUESTED`.
+  `RESCAN_BLOCKED`, `UNKNOWN`, `MISSING`, `WITHDRAWN`, `APPROVAL_PENDING`,
+  `CANCEL_REQUESTED`, `DISCONNECTED`/`AUTH_FAILURE` samt `STALE_RESCAN`
+  (väntad, omläsning pågår) mot `STALE_AGE` (oväntad).
 
 | Område         | Aktiva routes                                                                                                                                                       |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -134,7 +135,14 @@ A replay returns its committed response without advancing the order again.
 `state` is the physical progress of a complete order. The legacy agent
 report `delivered` describes warehouse staging. Manager requires exact
 native staging receipts before exposing `PICKUP_READY`. An uncertain
-report leaves the order in `NEEDS_RECONCILIATION`.
+report moves the order to `RECOVERING` (automatic rollback); a silent
+rollback fails it after 30 minutes so its holds release on the next
+verified observation. A packed order whose bot goes silent releases its
+holds after 30 minutes while staying collectible.
+The implemented terminal set is `PICKUP_READY` plus the verified sweep
+release; `PICKED_UP`/`IN_TRANSIT`/`AWAITING_CUSTOMER`/`DELIVERED` exist
+only as reserved stages for a future custody flow and are never emitted
+by the current bot API.
 
 ## W-058 guild order review and destination
 
@@ -301,6 +309,33 @@ stale selection receives 409. With `markUuid=false` the receipt is
 `VERIFIED_KEEP_NAME`. With `markUuid=true` it is `UUID_REQUESTED`.
 This records the choice. Anvil execution and registration require a
 separate verified physical operation.
+
+Owner `POST /api/v1/stock/loss` accepts the loss of a `MISSING` or
+`UNREACHABLE` source (`{source}`). The source becomes a zeroed `WITHDRAWN`
+tombstone with a `lossAccepted: {by, at}` marker instead of poisoning its
+row forever; the choice is idempotent and audit-logged as
+`stock.loss.accepted`. A `MISSING` source nobody reaches for seven days
+escalates to `WITHDRAWN` on its own. While a rescan is outstanding for a
+stash, that server's stock stops aging at the freeze, so a slow full-stash
+re-read is not punished as `STALE_AGE`; the freeze expires on its own when
+the bot goes quiet.
+
+`GET /api/v1/operations` distinguishes expected from unexpected staleness:
+a `STALE_*` source with a rescan outstanding reports `STALE_RESCAN`, a new
+failure `STALE_AGE`; alert counts are capped. Each visible bot also reports
+`presence: [{botId, online, lastSeen, cause}]` where `cause` is `heartbeat`,
+`poll`, `auth-failure` (rejected key retries) or `silent`. `GET /api/v1/bots`
+carries the same `presenceCause` per bot. Owner `GET /api/v1/agents` keeps
+revoked slots as tombstones `{id, label, active:false}` without secrets, so
+the UI tells revoked apart from nonexistent. Revoking a key bumps the
+`bots`/`presence` live channels at once.
+
+`GET /health` splits liveness from data freshness: HTTP 503 only for real
+blockers (still starting, sampler older than a minute, user registry
+unavailable). Stale indexes/stock and stuck/recovering orders are 200 with
+`warnings` (`STALE_INDEX`, `STALE_STOCK`, `STUCK_ORDERS`,
+`RECOVERING_ORDERS`); `recovering` counts all orders in recovery while
+`stuckOrders` only counts recovery without progress for ten minutes.
 
 ## W-063 physical box UUID identity
 

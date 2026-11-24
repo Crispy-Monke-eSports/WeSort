@@ -136,6 +136,34 @@ export const ServerStateSchema = z.object({
 });
 export type ServerState = z.infer<typeof ServerStateSchema>;
 
+/**
+ * Defensively parsed Manager `/health` (RuntimeHealth.detail). Every field is
+ * optional with a safe default: the joint-health branch adds `recovering`,
+ * aged `stuckOrderIds` entries and stale-code detail, but older servers only
+ * send the base counters — both must parse.
+ */
+export const HealthSchema = z.object({
+  status: z.string().nullable().optional(),
+  staleIndex: z
+    .boolean()
+    .nullish()
+    .transform((v) => v ?? false),
+  stuckOrders: z
+    .number()
+    .nullish()
+    .transform((v) => v ?? 0),
+  stuckOrderIds: z.unknown().nullable().optional(),
+  recovering: z.number().nullable().optional(),
+  reservationHoldingOrders: z
+    .number()
+    .nullish()
+    .transform((v) => v ?? 0),
+  oldestIndexAgeMs: z.number().nullable().optional(),
+  checkedAt: z.number().nullable().optional(),
+  userRegistryUnavailable: z.boolean().nullable().optional(),
+});
+export type HealthState = z.infer<typeof HealthSchema>;
+
 const BoxContentSchema = z.object({
   slot: z.number(),
   key: z.string(),
@@ -266,6 +294,7 @@ export const BotInfoSchema = z.object({
   player: z.string().nullable().optional(),
   online: z.boolean().default(false),
   lastSeen: z.number().nullable().optional(),
+  lastHeartbeat: z.number().nullable().optional(),
   plugin: z.unknown().nullable().optional(),
   runtime: z.unknown().nullable().optional(),
   caps: z.array(z.string()).default([]),
@@ -274,6 +303,16 @@ export const BotInfoSchema = z.object({
   scopes: z.array(z.string()).default([]),
   stashes: z.array(z.object({ stash: z.string() })).default([]),
   lastLocation: z.unknown().nullable().optional(),
+  // Joint-health additions: per-bot stall cause and lease identity. Optional
+  // so older servers that do not send them still parse; the UI falls back to
+  // the order/journal tables when they are absent.
+  cause: z.string().nullable().optional(),
+  currentLeaseFingerprint: z.string().nullable().optional(),
+  leaseFingerprint: z.string().nullable().optional(),
+  leaseAgeMs: z.number().nullable().optional(),
+  leaseSince: z.number().nullable().optional(),
+  managerState: z.string().nullable().optional(),
+  inspectionState: z.string().nullable().optional(),
 });
 export type BotInfo = z.infer<typeof BotInfoSchema>;
 

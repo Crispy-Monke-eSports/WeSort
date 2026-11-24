@@ -880,6 +880,7 @@ public class StashSorter extends Module {
     private final Set<Box> staleBoxes = new LinkedHashSet<>();
     private final Map<Box, Long> surveyAttemptAt = new HashMap<>();
     private final Queue<Box> surveyBatch = new ArrayDeque<>();
+    private long nextIdleSurveyAt;
     // Jobs that opened a container and clicked nothing, with what the carry slots and the container held then: not
     // repeated until one of them changes, however often stalled is cleared meanwhile
     private final Map<String, Long> futile = new HashMap<>();
@@ -2946,9 +2947,8 @@ public class StashSorter extends Module {
         box.observationUnreachable = true;
         failedSurvey.add(box);
         // One failure per job: the skip paths and finishJob can both get here for the same read
-        int delay = surveyRetry.failOnce(box, ticks);
+        int delay = surveyRetry.failOnce(box, ticks, 20 * 300);
         if (delay < 0) return;
-        delay = Math.max(delay, 20 * 300);
         step(String.format(
                 "skipped %s at %s: %s; will retry in %s.",
                 blockName(box), xyz(box.pos), why, com.porter.wesort.utils.SurveyRetry.describe(delay)));
@@ -2979,7 +2979,13 @@ public class StashSorter extends Module {
 
         // Dirty and periodic reads share one oldest-first scheduler. A recent
         // dirty box does not keep waking the idle loop throughout its cooldown.
-        if (areaDirty || queueSurveyBatch(true, false)) {
+        long now = System.currentTimeMillis();
+        boolean surveyReady = !surveyBatch.isEmpty();
+        if (!surveyReady && now >= nextIdleSurveyAt) {
+            nextIdleSurveyAt = now + 1000;
+            surveyReady = queueSurveyBatch(true, false);
+        }
+        if (areaDirty || surveyReady) {
             idle = false;
             return true;
         }
@@ -10899,6 +10905,7 @@ public class StashSorter extends Module {
         deliveryWatch.clear();
         staleBoxes.clear();
         surveyBatch.clear();
+        nextIdleSurveyAt = 0;
         futile.clear();
         noOpReported.clear();
         failedSurvey.clear();
@@ -12934,6 +12941,7 @@ public class StashSorter extends Module {
             ownTouch.clear();
             surveyAttemptAt.clear();
             surveyBatch.clear();
+            nextIdleSurveyAt = 0;
             dropBackoffUntil.clear();
             staleBoxes.clear();
             lastPlayer = null;

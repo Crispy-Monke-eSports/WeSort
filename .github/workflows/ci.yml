@@ -38,10 +38,6 @@ jobs:
       - uses: ./.github/actions/configure-gradle-mirror
       - name: Require formatted Minecraft, shared and toolchain Java
         run: ./gradlew --no-daemon spotlessCheck
-      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6
-        with:
-          distribution: temurin
-          java-version: '21'
       - name: Require formatted Manager Java
         run: ./gradlew --no-daemon -p stash-manager-server spotlessCheck
       - uses: oven-sh/setup-bun@v2

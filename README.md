@@ -47,10 +47,10 @@ python3 scripts/mc26/client-runtime.py
 ```
 
 `-Pmc=26.3` accepteras för äldre automatiseringsscript, men ett annat
-`-Pmc`-värde ger byggfel. `.java-version` avser nu klientens Java 25.
+`-Pmc`-värde ger byggfel. Både klientens och Managers `.java-version` anger Temurin Java 25.0.5+8.
 
-Manager är ett **separat Java 21-projekt** och körs i produktion bara i
-Linux Docker. För utvecklings- och enhetstester, byt JAVA_HOME till JDK 21:
+Manager är ett **separat Java 25-projekt** och körs i produktion bara i
+Linux Docker. För utvecklings- och enhetstester, behåll JAVA_HOME på JDK 25:
 
 ```sh
 ./gradlew --no-daemon -p stash-manager-server clean build
@@ -84,7 +84,7 @@ För manuell formatering eller kontroll (med klientens JDK 25):
 ./gradlew spotlessCheck
 ```
 
-Manager är ett separat Gradle-bygge. Det använder JDK 21:
+Manager är ett separat Gradle-bygge. Det använder samma JDK 25:
 
 ```sh
 ./gradlew -p stash-manager-server spotlessApply
@@ -121,7 +121,7 @@ PR-grenen och nästa körning går vidare först när formateringen är godkänd
 
 ## Installation och verifiering
 
-Kör Java 21 Manager i Linux Docker med en egen lokal volym. Initiera Owner
+Kör Java 25 Manager i Linux Docker med en egen lokal volym. Initiera Owner
 med den lokala engångskoden, välj server och stashes i webben och provisionera
 en namngiven agentnyckel för Java 25-klienten. Se [Docker-guiden](docs/DOCKER.md)
 och [GHCR-publicering och uppgradering](docs/GHCR.md). Börja med en egen tom

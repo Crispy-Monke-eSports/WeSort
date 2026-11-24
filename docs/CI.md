@@ -3,7 +3,7 @@
 **Supportpolicy:** Endast Minecraft **26.3** stöds och testas som klienttarget.
 1.21.4/1.21.11 är historiska upstream-baslinjer, inte CI-mål. Minecraft-klienten
 använder låst **Temurin 25.0.5+8**, Gradle och Fabric/Meteor/Baritone-versioner
-från projektets versionsfiler. Manager bygger separat med **Java 21**,
+från projektets versionsfiler. Manager bygger separat med **Java 25.0.5+8**,
 React-storefronten byggs med **Bun 1** (`web/`: tsc, Vitest, Vite) före
 Manager-jar:en, och webbtester använder **Node.js 22**.
 
@@ -71,12 +71,12 @@ verifieras. CI publicerar **inte** testimagen till GHCR.
 python3 scripts/test-summary.py build
 python3 scripts/mc26/client-runtime.py
 
-# JAVA_HOME: Temurin 21 för separat Manager
+# Samma JAVA_HOME: Temurin 25.0.5+8 för separat Manager
 ./gradlew --no-daemon -p stash-manager-server clean build
 python3 scripts/test-summary.py stash-manager-server/build
 npm ci --prefix web-tests && npm test --prefix web-tests
 ```
 
-Root-`.java-version` motsvarar Minecraft-klientens Java 25; Manager-workflowet
-väljer Java 21. Lokal verifiering ersätter inte GitHub Actions E2E-körningar.
+Root-`.java-version` och `stash-manager-server/.java-version` anger samma
+Temurin 25.0.5+8; båda byggena och CI använder Java 25. Lokal verifiering ersätter inte GitHub Actions E2E-körningar.
 De tidigare 1.21.x-resultaten finns i [historisk baslinje](BASELINE.md).

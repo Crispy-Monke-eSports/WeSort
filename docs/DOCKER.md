@@ -201,8 +201,9 @@ Owner, sessioner, index, order och audit finns kvar efter omstart,
 samt en riktig TLS-proxy med betrodd exakt IP, Secure-cookie och Host/Origin.
 TLS-testcontainern/certifikaten är testhjälpare och ingår inte i produktimagen.
 
-Manager-build JDK: Temurin 21.0.9+10 och wrapper 9.6.0, med pinndigest. Runtime:
-Temurin 21.0.13+9, pinndigest och lokalt verifierad. Rapport:
+Aktuell Manager-build och runtime använder Temurin 25.0.5+8 med låsta
+Docker-digests. Startkommandot tillåter JNI för SQLite JDBC i den omodulära
+fat JAR:en. Historisk W-055-verifiering kördes med Java 21. Rapport:
 [W-055 Docker smoke](verification/W-055-docker-smoke.json). Samma tester körs
 i CI utan package-push. Chromiumprovet använder samma Manager och en
 signerad lagerfixtur. Fabric-sessioner och fysisk Minecraft-leverans

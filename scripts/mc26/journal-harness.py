@@ -335,7 +335,10 @@ class DirectHarness(JournalHarness):
                 # freshly read snapshot is safe. A sent click is never retried:
                 # its result decides the ack-loss path below.
                 from concurrent.futures import TimeoutError as FuturesTimeout
-                click = pool.submit(inv.click, self, state, 0)
+                # allow_failure=True: a refused click must come back as a dict
+                # for the Stale check below, not as a raised RuntimeError that
+                # would bypass both the retry and the fail-fast require.
+                click = pool.submit(inv.click, self, state, 0, 'QUICK_MOVE', True)
                 try:
                     first = click.result(timeout=10)
                 except (RuntimeError, FuturesTimeout):
@@ -346,7 +349,7 @@ class DirectHarness(JournalHarness):
                         'Direct click refused before any packet: ' + str(first.get('message', '')),
                     )
                     state = self.command('state')['state']
-                    click = pool.submit(inv.click, self, state, 0)
+                    click = pool.submit(inv.click, self, state, 0, 'QUICK_MOVE', True)
                 inv.wait_server(self, lambda: self.journal.exists() and
                     sum('[]' in value for value in inv.chest_halves(self)) == 1,
                     'The source was not debited on the real server before acknowledgment was lost')

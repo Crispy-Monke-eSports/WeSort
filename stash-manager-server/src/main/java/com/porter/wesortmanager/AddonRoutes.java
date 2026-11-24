@@ -245,15 +245,12 @@ final class AddonRoutes {
             Http.error(ex, 400, "player and indexHash must be strings");
             return;
         }
-        // Optional agent identity (Minecraft agent UUID, same form as orders/claim requires).
-        // Lets the heartbeat answer with this agent's own unfinished assignments ("mine"),
-        // so a bot that lost its order id across a restart can resume exactly its own order.
-        // Absent or invalid input keeps the legacy coarser view; invalid input is refused.
+        // Optional agent identity (Minecraft UUID, player name or Floodgate id — heartbeat
+        // accepts whatever display identity the bot reports, since proxy names are never
+        // authentication. Lets the heartbeat answer with that agent's own unfinished assignments
+        // ("mine"), so a bot that lost its order id across a restart can resume exactly its own
+        // order. Absent or unmatched identities keep the legacy coarser view.
         String agent = AddonRoutes.string(o, "agent");
-        if (agent != null && !agent.matches("[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")) {
-            Http.error(ex, 400, "Invalid agent ID");
-            return;
-        }
         // PROTOCOL.md, "Additions: delivery storage contents": absent = an older bot, null = no delivery container.
         boolean hasDeliveryHash = o.has("deliveryHash");
         String deliveryHash = string(o, "deliveryHash");

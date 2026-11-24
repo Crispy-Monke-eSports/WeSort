@@ -14,8 +14,11 @@ class StockHierarchyTest {
     Path data;
 
     private PhysicalSlots.Snapshot frame(int count) {
-        var diamond = new PhysicalSlots.Item(
-                "minecraft:diamond", "minecraft:diamond", 64, "{}", PhysicalSlots.Kind.ITEM, 0, List.of(), "");
+        return frame("minecraft:diamond", "minecraft:diamond", count);
+    }
+
+    private PhysicalSlots.Snapshot frame(String id, String key, int count) {
+        var content = new PhysicalSlots.Item(id, key, 64, "{}", PhysicalSlots.Kind.ITEM, 0, List.of(), "");
         var box = new PhysicalSlots.Item(
                 "minecraft:shulker_box",
                 "minecraft:shulker_box",
@@ -23,7 +26,7 @@ class StockHierarchyTest {
                 "{}",
                 PhysicalSlots.Kind.SHULKER,
                 27,
-                List.of(new PhysicalSlots.Slot(26, count, diamond)),
+                List.of(new PhysicalSlots.Slot(26, count, content)),
                 "kit");
         return new PhysicalSlots.Snapshot(
                 27, List.of(new PhysicalSlots.Slot(0, 1, box), new PhysicalSlots.Slot(2, 1, box)));
@@ -42,7 +45,11 @@ class StockHierarchyTest {
     }
 
     private JsonObject index(StockLedger ledger, int count) throws Exception {
-        var frame = frame(count);
+        return index(ledger, frame(count));
+    }
+
+    private JsonObject index(StockLedger ledger, PhysicalSlots.Snapshot snapshot) throws Exception {
+        var frame = snapshot;
         var root = new JsonObject();
         root.addProperty("version", 1);
         root.addProperty("receivedAt", System.currentTimeMillis());
@@ -190,7 +197,7 @@ class StockHierarchyTest {
     }
 
     @Test
-    void changedContentsBlockExistingOrderEvenWhenEnoughAggregateStockRemains() throws Exception {
+    void changedCountsKeepTheirReservation() throws Exception {
         var ledger = new StockLedger(data);
         var store = new IndexStore(data, CreativeTabs.NONE, ledger);
         store.load();
@@ -200,12 +207,32 @@ class StockHierarchyTest {
         var order = orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 1)), null);
         assertNotNull(order.sourceGuards);
         assertNotNull(orders.claim("s", "a"));
+        // Same item, fewer units: the fingerprint changed but the reservation still verifies.
         store.putIndex(index(ledger, 31));
+        assertNotNull(orders.claim("s", "a"));
+        var restarted = new OrderStore(data, store);
+        restarted.load();
+        assertNotNull(restarted.claim("s", "a"));
+        assertEquals(order.sourceGuards, OrderStore.Order.fromJson(order.toJson()).sourceGuards);
+    }
+
+    @Test
+    void swappedContentsBlockTheOrder() throws Exception {
+        var ledger = new StockLedger(data);
+        var store = new IndexStore(data, CreativeTabs.NONE, ledger);
+        store.load();
+        store.putIndex(index(ledger, 32));
+        var orders = new OrderStore(data, store);
+        orders.load();
+        var order = orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 1)), null);
+        assertNotNull(order.sourceGuards);
+        assertNotNull(orders.claim("s", "a"));
+        // Same slots, different item: nothing of what was reserved is verifiable anymore.
+        store.putIndex(index(ledger, frame("minecraft:emerald", "minecraft:emerald", 32)));
         assertNull(orders.claim("s", "a"));
         var restarted = new OrderStore(data, store);
         restarted.load();
         assertNull(restarted.claim("s", "a"));
-        assertEquals(order.sourceGuards, OrderStore.Order.fromJson(order.toJson()).sourceGuards);
     }
 
     @Test

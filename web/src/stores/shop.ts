@@ -144,7 +144,11 @@ export interface CheckoutGroup {
 }
 
 const OrderBodyLineSchema = z.object({
-  type: z.enum(["item", "shulker", "kit"]),
+  // Must stay in sync with CartLineSchema above and the server's accepted line
+  // types: a type missing here silently discards every saved checkout group on
+  // reload (and the next place() then mints fresh idempotency keys, risking
+  // duplicate orders for an already-committed intent).
+  type: z.enum(["item", "shulker", "kit", "craft"]),
   key: z.string(),
   count: z.number(),
 });
@@ -184,10 +188,6 @@ const CheckoutGroupSchema = z.object({
   error: z.string().optional(),
   updatedAt: z.number(),
 });
-const CheckoutPersistedSchema = z.object({
-  pending: z.record(z.string(), z.array(CheckoutGroupSchema)),
-});
-
 interface CheckoutState {
   /** Per-user pending groups; survives reload so uncertain checkouts can be retried exactly. */
   pending: Record<string, CheckoutGroup[]>;
@@ -223,17 +223,69 @@ export const useCheckout = create<CheckoutState>()(
     {
       name: "wesort.checkout.v1",
       partialize: (s) => ({ pending: s.pending }) as CheckoutState,
-      merge: (persisted, current) => {
-        const parsed = CheckoutPersistedSchema.safeParse(persisted);
-        if (!parsed.success) return { ...current, pending: {} };
-        const pending: Record<string, CheckoutGroup[]> = {};
-        for (const [user, groups] of Object.entries(parsed.data.pending))
-          pending[user] = recoverCheckoutGroups(groups);
-        return { ...current, pending };
-      },
+      merge: (persisted, current) => mergeCheckoutPersisted(persisted, current),
     },
   ),
 );
+
+/** Rehydration for persisted checkout groups. Exported for tests. */
+export function mergeCheckoutPersisted(
+  persisted: unknown,
+  current: CheckoutState,
+): CheckoutState {
+  // Per-group tolerant rehydration: one unrecognized group must never
+  // discard every saved group (and with them the idempotency keys that
+  // protect already-committed orders from being duplicated on retry).
+  const pending: Record<string, CheckoutGroup[]> = {};
+  const root =
+    persisted != null && typeof persisted === "object" && !Array.isArray(persisted)
+      ? (persisted as { pending?: unknown }).pending
+      : undefined;
+  if (root != null && typeof root === "object" && !Array.isArray(root)) {
+    for (const [user, groups] of Object.entries(root as Record<string, unknown>)) {
+      if (!Array.isArray(groups)) continue;
+      const kept: CheckoutGroup[] = [];
+      for (const g of groups) {
+        const parsed = CheckoutGroupSchema.safeParse(g);
+        if (parsed.success) {
+          kept.push(...recoverCheckoutGroups([parsed.data]));
+          continue;
+        }
+        // Unknown future shape: quarantine instead of dropping. A group
+        // that may already have committed keeps its key, so retry resends
+        // the frozen body+key (the server validates it) instead of the
+        // cart minting a fresh key that would duplicate the order.
+        if (
+          g != null &&
+          typeof g === "object" &&
+          typeof (g as { key?: unknown }).key === "string" &&
+          (g as { body?: unknown }).body != null &&
+          typeof (g as { body?: unknown }).body === "object"
+        ) {
+          const raw = g as {
+            key: string;
+            hash?: unknown;
+            body: unknown;
+            updatedAt?: unknown;
+          };
+          kept.push({
+            body: raw.body as CheckoutGroup["body"],
+            hash: typeof raw.hash === "string" ? raw.hash : "unknown",
+            key: raw.key,
+            status: "uncertain",
+            error:
+              "Saved group has an unrecognized shape; kept for manual review instead of being discarded.",
+            updatedAt:
+              typeof raw.updatedAt === "number" ? raw.updatedAt : Date.now(),
+          });
+        }
+        // Without a key there is nothing exact to retry with; drop it.
+      }
+      pending[user] = kept;
+    }
+  }
+  return { ...current, pending };
+}
 
 interface PrefsState {
   theme: "modern" | "classic";

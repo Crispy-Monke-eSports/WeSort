@@ -200,6 +200,46 @@ class DashboardTest {
     }
 
     @Test
+    void idlePollIsSuccessfulAndKeepsSessionAliveAcrossManyPolls() throws Exception {
+        AtomicLong now = new AtomicLong(1_000_000);
+        BotHub hub = new BotHub(now::get);
+        String session = "agent-session";
+        assertEquals(200, hub.register("b", "Builder", new JsonObject(), new JsonObject(),
+                List.of("settings"), List.of("plugin"), session));
+        var bot = hub.bot("b");
+        String epoch = bot.controlEpoch;
+        assertEquals(200, hub.next(bot, 0, session).status()); // initial watch state
+        for (int i = 0; i < 30; i++) {
+            now.addAndGet(2_000);
+            assertTrue(hub.currentControlSession(bot, session, epoch));
+            assertEquals(204, hub.next(bot, 0, session).status());
+        }
+        // A Manager restart drops the registry, but hello with the same session
+        // immediately registers again and issues a new epoch.
+        var restarted = new BotHub(now::get);
+        assertNull(restarted.bot("b"));
+        assertEquals(200, restarted.register("b", "Builder", new JsonObject(), new JsonObject(),
+                List.of("settings"), List.of("plugin"), session));
+        var replacement = restarted.bot("b");
+        assertFalse(restarted.currentControlSession(replacement, session, epoch));
+        assertTrue(restarted.currentControlSession(replacement, session, replacement.controlEpoch));
+    }
+
+    @Test
+    void acceptedStateRefreshesControlPresenceEvenWithoutPolls() {
+        AtomicLong now = new AtomicLong(1_000_000);
+        var hub = new BotHub(now::get);
+        String session = "agent-session";
+        assertEquals(200, hub.register("b", "Builder", new JsonObject(), new JsonObject(),
+                List.of("settings"), List.of("plugin"), session));
+        var bot = hub.bot("b");
+        now.addAndGet(30_000);
+        hub.state(bot, "plugin", "schema", "values", new JsonArray(), new HashMap<>(), new JsonObject());
+        now.addAndGet(30_000);
+        assertTrue(hub.currentControlSession(bot, session, bot.controlEpoch));
+    }
+
+    @Test
     void secretsAreDroppedAndMarked() {
         Map<String, JsonObject> nodes = new HashMap<>();
         JsonArray schema = JsonParser.parseString(

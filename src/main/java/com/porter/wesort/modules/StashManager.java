@@ -347,18 +347,24 @@ public class StashManager extends Module {
 
     private String verifiedManagerScope = "";
     private String controlStatus = "idle";
+    private String lastControlFailure = "";
 
     private static long monotonicMs() {
         return TimeUnit.NANOSECONDS.toMillis(System.nanoTime());
     }
 
     private void controlFailure(String reason) {
+        controlFailure(reason, reason);
+    }
+
+    private void controlFailure(String reason, String detail) {
         controlRegistered = false;
         sentControlValues = null;
         verifiedManagerScope = "";
         controlSchedule.failed(monotonicMs());
-        if (!reason.equals(controlStatus)) {
-            WeSortAddon.LOG.warn("wesort-manager-control: {}; reconnecting every 15 seconds", reason);
+        if (!detail.equals(lastControlFailure)) {
+            WeSortAddon.LOG.warn("wesort-manager-control: {}; reconnecting every 15 seconds", detail);
+            lastControlFailure = detail;
         }
         controlStatus = reason;
     }
@@ -816,7 +822,7 @@ public class StashManager extends Module {
         request.addProperty("controlSession", controlSession);
         request.addProperty("agent", observed.player().toString());
         if (!controlRegistered) {
-            request.addProperty("player", current == null ? mc.player.getName().getString() : current.player());
+            request.addProperty("player", mc.player.getName().getString());
             if (observed.stash() != null) {
                 var binding = new JsonObject();
                 binding.addProperty("server", observed.server());
@@ -1036,7 +1042,7 @@ public class StashManager extends Module {
                         controlRegistered = false;
                         sentControlValues = null;
                     }
-                    if (code != 200
+                    if ((code != 200 && code != 204)
                             || mc.level == null
                             || mc.player == null
                             || !base.equals(parse(serverUrl.get()))
@@ -1045,6 +1051,8 @@ public class StashManager extends Module {
                             || !observed.server().equals(Stash.currentServer())
                             || !java.util.Objects.equals(observed.stash(), current == null ? null : current.stash())
                             || !observed.dimension().equals(StashIndex.dimension())) return false;
+                    // A signed 204 is the normal idle-poll response, not a lost session.
+                    if (code == 204) return true;
                     var poll = JsonParser.parseString(body).getAsJsonObject();
                     // Settings are safe before a warehouse is assigned. A manifest
                     // requires the exact physical scope registered in hello.
@@ -2015,6 +2023,7 @@ public class StashManager extends Module {
             int code;
             String text = "";
             boolean badSignature = false;
+            String failureType = "";
             try {
                 HttpResponse<byte[]> response;
                 if (control) {
@@ -2060,10 +2069,15 @@ public class StashManager extends Module {
                 Thread.currentThread().interrupt();
                 // Still dispatch completion; otherwise inFlight remains true forever.
                 code = -1;
+                failureType = "InterruptedException";
             } catch (Exception e) {
                 code = -1;
+                Throwable cause = e instanceof java.util.concurrent.ExecutionException && e.getCause() != null
+                        ? e.getCause() : e;
+                failureType = cause.getClass().getSimpleName();
             }
 
+            String finalFailureType = failureType;
             int finalCode = code;
             String finalText = text;
             boolean finalBad = badSignature;
@@ -2097,8 +2111,10 @@ public class StashManager extends Module {
                         return;
                     }
                     if (finalBad || finalCode < 0 || finalCode == 401 || finalCode == 403 || finalCode >= 500) {
-                        controlFailure(finalBad ? "server signature invalid"
-                                : finalCode == 401 || finalCode == 403 ? "error 401" : "offline");
+                        String reason = finalBad ? "server signature invalid"
+                                : finalCode == 401 || finalCode == 403 ? "error 401" : "offline";
+                        controlFailure(reason, path + ": " + (finalBad ? "invalid signature"
+                                : finalCode < 0 ? finalFailureType : "HTTP " + finalCode));
                         return;
                     }
                     if (finalCode == 409 && isWrongServer(finalText)) {
@@ -2114,10 +2130,11 @@ public class StashManager extends Module {
                     if (ok && controlRegistered && (finalCode == 200 || finalCode == 204)) {
                         if (!controlStatus.equals("online")) WeSortAddon.LOG.info("wesort-manager-control: online");
                         controlStatus = "online";
+                        lastControlFailure = "";
                         verifiedManagerScope = linkScope();
                         controlSchedule.succeeded(monotonicMs());
                     } else {
-                        controlFailure("offline");
+                        controlFailure("reconnecting", path + ": HTTP " + finalCode + " (control reply refused)");
                     }
                     return;
                 }

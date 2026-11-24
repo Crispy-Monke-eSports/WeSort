@@ -318,6 +318,52 @@ class InventoryHarness(world.Harness):
         # Re-read the physical sources after all mutations; never publish pre-move snapshots as current stock.
         return super().observe()
 
+    @staticmethod
+    def quantities(index, field):
+        return {entry['key']: entry['count'] for entry in index.get(field, [])}
+
+    @classmethod
+    def sources(cls, index):
+        return {source['id']: (source['fingerprint'], source['dimension'], source['parts'],
+            cls.quantities(source, 'items'), cls.quantities(source, 'shulkers'))
+            for source in index.get('physicalSources', [])}
+
+    def settled_warehouse_index(self, initial):
+        # The initial signed test index also includes the standing shulker used
+        # to prove native 27-slot menus. The Manager's first area directive
+        # removes that non-warehouse source and discovers the staging chest.
+        # Neither change is a physical withdrawal. Require precisely that
+        # membership transition, not an arbitrary later index.
+        initial_sources = initial['physicalSources']
+        placed = [s for s in initial_sources if [3, 64, -3] in s['parts']]
+        require(len(placed) == 1 and self.quantities(placed[0], 'items') == {'minecraft:dirt': 16},
+                'Unexpected standalone shulker fixture observation')
+        expected_sources = self.sources(initial)
+        del expected_sources[placed[0]['id']]
+        expected_items = self.quantities(initial, 'items').copy()
+        expected_items['minecraft:dirt'] -= 16
+        query = world.urllib.parse.urlencode({'server': initial['server'], 'stash': 'e2e-fixture'})
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            status, current = self.http('/api/v1/index?' + query)
+            if status == 200:
+                staging = [s for s in current['physicalSources'] if [6, 64, -3] in s['parts']]
+                observed = self.sources(current)
+                if len(staging) == 1 and staging[0]['state'] == 'UNKNOWN':
+                    del observed[staging[0]['id']]
+                    if (observed == expected_sources
+                            and self.quantities(current, 'items') == expected_items
+                            and self.quantities(current, 'shulkers') == self.quantities(initial, 'shulkers')
+                            and not staging[0].get('fingerprint')
+                            and not staging[0].get('items') and not staging[0].get('shulkers')
+                            and current['stockRevision'] > initial['stockRevision']):
+                        (self.evidence / 'manager-index-before-fault.json').write_text(
+                            json.dumps(current, indent=2) + '\\n')
+                        self.ok('Manager area directive settled: standalone menu fixture excluded, staging chest unknown, every warehouse fingerprint unchanged')
+                        return current
+            time.sleep(0.2)
+        raise RuntimeError('Manager warehouse membership did not settle to the expected physical sources')
+
     def disconnect_and_restart(self, baseline_index):
         state = self.open_chest()
         marker = self.game_dir / 'meteor-client/wesort/inventory-sync/pending.json'
@@ -357,15 +403,10 @@ class InventoryHarness(world.Harness):
         # W-018 hashes observation session/revision/freshness too. A valid new read or stale
         # transition may change that hash without changing inventory. Compare the physical
         # postconditions instead: variants, group quantities and full per-container contents.
-        def quantities(index, field):
-            return {entry['key']: entry['count'] for entry in index.get(field, [])}
         for field in ['items', 'shulkers']:
-            require(quantities(stored, field) == quantities(baseline_index, field),
+            require(self.quantities(stored, field) == self.quantities(baseline_index, field),
                 'An unverified action changed published ' + field + ' quantities/fingerprints')
-        def sources(index):
-            return {source['id']: (source['fingerprint'], source['dimension'], source['parts'],
-                quantities(source, 'items'), quantities(source, 'shulkers')) for source in index.get('physicalSources', [])}
-        require(sources(stored) == sources(baseline_index),
+        require(self.sources(stored) == self.sources(baseline_index),
             'An unverified action changed a published full physical snapshot')
         self.ok('disconnect before delivery and real client restart keep pending intent, reject unsafe replay and refuse a false reconciliation')
 
@@ -381,7 +422,10 @@ class InventoryHarness(world.Harness):
             world.shutil.copyfile(self.game_dir / 'screenshots/fixture.png', self.evidence / 'fixture.png')
             # Keep the signed publisher live, but do not allow autonomous discovery or
             # orphan recovery to change the fixture during the crash experiment.
-            baseline = self.verify_manager_index(index, inspection_hold=True)
+            initial = self.verify_manager_index(index, inspection_hold=True)
+            baseline = self.settled_warehouse_index(initial)
+            require(self.physical_snapshot() == before,
+                'Manager membership transition changed actual server inventory')
             # The signed index is verified; now isolate the exact crash-before-
             # transmission experiment from the Manager's background container
             # rescan. Otherwise the Manager may close this test's chest menu

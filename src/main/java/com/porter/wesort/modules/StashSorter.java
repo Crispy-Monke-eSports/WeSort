@@ -29,15 +29,18 @@ import com.porter.wesort.utils.PortalWorldSession;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
@@ -7809,7 +7812,6 @@ public class StashSorter extends Module {
         breakRetries = 0;
         brokenSince = -1;
         placedWrong = false;
-        wrongShulkerTries = 0;
         placed = null;
         placedConfirmed = false;
         shulkersAtBreak = -1;
@@ -8470,6 +8472,10 @@ public class StashSorter extends Module {
             handleTicks = 0;
             return;
         }
+        if (returningChangedShulker && !blockId(mc.level, placed).equals(placedItemId)) {
+            blockRepackConflict("Changed shulker was replaced before break at " + placed.toShortString());
+            return;
+        }
         brokenSince = -1;
         // It can't be picked up while it stands: what is held now is what picking it up adds to
         shulkersAtBreak = countShulkers();
@@ -8510,12 +8516,10 @@ public class StashSorter extends Module {
 
     private static final int BREAK_SETTLE_TICKS = 10;
     private static final int MAX_BREAK_RETRIES = 5;
-    private static final int MAX_WRONG_SHULKER_TRIES = 3;
     private int breakRetries;
     private int brokenSince = -1;
     // The placed shulker turned out to be the wrong one: break it back down, put it back, try again
     private boolean placedWrong;
-    private int wrongShulkerTries;
 
     private static String fmtPos(BlockPos pos) {
         return "[" + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + "]";
@@ -8594,8 +8598,8 @@ public class StashSorter extends Module {
                         orderHeld.put(found, got.copy());
                         if (source != null) heldFrom.put(found, source);
                     }
-                    if (job == Job.Clean || job == Job.Fill)
-                        repackPausedUntil = ticks + 20 * 30;
+                    // STORE verification keeps ordinary repack work from starting
+                    // until the updated box has been deposited.
                 } else if (job == Job.Recover && found < 36) {
                     // A collected world drop-off belongs to the warehouse, never to the player's
                     // pre-existing inventory. In scan-only mode the return path uses orderHeld.
@@ -9094,29 +9098,6 @@ public class StashSorter extends Module {
         }
     }
 
-    /**
-     * The placed kit shulker turned out to be the wrong one (or was never confirmed), before anything
-     * was moved in or out of it. Break it back down, pick it up and put it back, then try again with
-     * another one instead of aborting. Gives up fail-closed after a few tries, like everything else.
-     */
-    private void recoverWrongShulker(String why) {
-        if (++wrongShulkerTries > MAX_WRONG_SHULKER_TRIES) {
-            placedWrong = false;
-            blockRepack("Placed the wrong shulker " + MAX_WRONG_SHULKER_TRIES + " times in a row (" + why + ")");
-            return;
-        }
-        warning(
-                "Placed the wrong shulker at %s (%s), taking it back down and trying again (%d/%d).",
-                placed.toShortString(), why, wrongShulkerTries, MAX_WRONG_SHULKER_TRIES);
-        // Accept whatever standing shulker we pick back up; it is returned, not worked with
-        repackExpected = "";
-        placedWrong = true;
-        handle = Handle.Break;
-        handleTicks = 0;
-        breakTicks = 0;
-        brokenSince = -1;
-    }
-
     private void endHandling() {
         if (repackWork != null && !repackWork.terminal() && (job == Job.Clean || job == Job.Fill)) {
             if (handle == Handle.Leave)
@@ -9497,7 +9478,12 @@ public class StashSorter extends Module {
 
         if (!shulkerAt(placed)) {
             if (returningChangedShulker) {
-                // Never fall back to the generic "any shulker" pickup heuristic.
+                // Without the standing source, identical pre-existing copies cannot
+                // be attributed to this pickup after a restart.
+                if (repackExistingCopies > 0) {
+                    blockRepackConflict("Cannot identify the changed shulker among pre-existing identical copies after restart");
+                    return;
+                }
                 shulkerSlotsBefore.clear();
                 handle = Handle.Collect;
                 handleTicks = 0;
@@ -9535,6 +9521,10 @@ public class StashSorter extends Module {
         // Never break a shulker that is not the one we put down
         String id = blockId(mc.level, placed);
         if (!r.placedItemId.isEmpty() && !id.equals(r.placedItemId)) {
+            if (returningChangedShulker) {
+                blockRepackConflict("Changed shulker was replaced before verified return at " + placed.toShortString());
+                return;
+            }
             alert(
                     "The shulker box at %s is a %s, not the %s I put down, leaving it alone.",
                     placed.toShortString(), id, r.placedItemId);

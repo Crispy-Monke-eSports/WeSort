@@ -35,7 +35,9 @@ final class BoxRoutes {
 
     private void jobList(HttpExchange ex) throws IOException {
         var out = new JsonObject();
-        out.add("jobs", jobs().list(Http.query(ex).getOrDefault("server", "")));
+        String server = Http.query(ex).get("server");
+        if (server == null || server.isBlank()) server = config.minecraftServer();
+        out.add("jobs", jobs().list(server == null ? "" : server));
         Http.json(ex, 200, out);
     }
 

@@ -201,6 +201,22 @@ class UsersTest {
         return r.obj().getAsJsonObject("user").get("id").getAsString();
     }
 
+    /** Stock alone no longer admits orders: the owner must define both warehouses. */
+    private void defineOrderStashes(String owner) throws Exception {
+        for (String stash : List.of("a", "b")) {
+            int x = stash.hashCode();
+            var definition = json("""
+                {"action":"create","dimension":"minecraft:overworld",
+                 "pos1":{"x":0,"y":64,"z":0},"pos2":{"x":0,"y":64,"z":0}}
+                """);
+            definition.addProperty("name", stash);
+            definition.getAsJsonObject("pos1").addProperty("x", x);
+            definition.getAsJsonObject("pos2").addProperty("x", x);
+            Res created = post(owner, "/api/v1/stash-defs", definition.toString());
+            assertEquals(200, created.status, created.raw.body());
+        }
+    }
+
     String placeOrder(String token, String stash, String key, int n) throws Exception {
         Res r = post(
                 token,
@@ -255,6 +271,7 @@ class UsersTest {
     @Test
     void membersUseOneGuildStockAndOfficersRetainOrdersAfterMemberRevocation() throws Exception {
         String owner = owner();
+        defineOrderStashes(owner);
         String memberId = create(owner, "Maker", "member", false);
         String officerId = create(owner, "Officer", "officer", false);
         create(owner, "Reader", "viewer", false);
@@ -337,6 +354,7 @@ class UsersTest {
     @Test
     void concurrentOrderReplayPersistsAcrossRestartAndArchive() throws Exception {
         String owner = owner();
+        defineOrderStashes(owner);
         String body = """
             {"stash":"a","lines":[{"type":"item","key":"minecraft:diamond","count":2}]}
             """;
@@ -401,6 +419,7 @@ class UsersTest {
     @Test
     void guildApprovalIsOptionalScopedAndKeepsStockReservedBeforeClaim() throws Exception {
         String owner = owner();
+        defineOrderStashes(owner);
         create(owner, "Officer", "officer", false);
         create(owner, "Builder", "member", false);
         String member = login("Builder", TEMP_PW);
@@ -541,6 +560,7 @@ class UsersTest {
     @Test
     void aViewerCanOnlyLook() throws Exception {
         String owner = owner();
+        defineOrderStashes(owner);
         String ownerOrder = placeOrder(owner, "a", "minecraft:diamond", 10);
         create(owner, "viewer1", "viewer", false);
         String v = login("viewer1", TEMP_PW);
@@ -577,6 +597,7 @@ class UsersTest {
     @Test
     void anOrdererChangesOnlyTheirOwnOrders() throws Exception {
         String owner = owner();
+        defineOrderStashes(owner);
         String ownerOrder = placeOrder(owner, "a", "minecraft:diamond", 10);
         create(owner, "carol", "orderer", false);
         String c = login("carol", TEMP_PW);
@@ -627,6 +648,7 @@ class UsersTest {
     @Test
     void anOperatorWithAllOrdersCanChangeOthersButNotManageUsers() throws Exception {
         String owner = owner();
+        defineOrderStashes(owner);
         String ownerOrder = placeOrder(owner, "a", "minecraft:diamond", 10);
         create(owner, "dave", "operator", false);
         String d = login("dave", TEMP_PW);
@@ -644,6 +666,7 @@ class UsersTest {
     @Test
     void aScopedUserSeesOnlyTheirStash() throws Exception {
         String owner = owner();
+        defineOrderStashes(owner);
         String otherOrder = placeOrder(owner, "b", "minecraft:dirt", 10);
         create(
                 owner,
@@ -682,6 +705,7 @@ class UsersTest {
         // the user to all stashes/bots. Two stashes (a/b) and two bots exist;
         // erin may use only the first of each.
         String owner = owner();
+        defineOrderStashes(owner);
         String otherOrder = placeOrder(owner, "b", "minecraft:dirt", 10);
         hub.hello("bot-a", "BotA", new JsonObject(), new JsonObject(), List.of(), List.of());
         hub.hello("bot-b", "BotB", new JsonObject(), new JsonObject(), List.of(), List.of());

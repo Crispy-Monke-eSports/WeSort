@@ -73,6 +73,13 @@ final class StockLedger {
         for (String suffix : List.of("", "-wal", "-shm"))
             if (Files.isSymbolicLink(Path.of(file + suffix))) throw new IOException("Symlink guild database");
         boolean existed = Files.exists(file);
+        Path initialized = data.resolve("guild.sqlite.initialized");
+        if (Files.isSymbolicLink(initialized)) throw new IOException("Invalid guild database initialization marker");
+        if (!existed
+                && (Files.exists(initialized)
+                        || Files.exists(Path.of(file + "-wal"))
+                        || Files.exists(Path.of(file + "-shm"))))
+            throw new IOException("Guild database is missing; restore a consistent backup before starting Manager");
         try {
             Class.forName("org.sqlite.JDBC");
             try (var c = open();
@@ -86,7 +93,7 @@ final class StockLedger {
                 try (var r = s.executeQuery("PRAGMA user_version")) {
                     if (!r.next()) throw new IOException("Missing guild database schema");
                     schema = r.getInt(1);
-                    if (schema < 0 || schema > 8) throw new IOException("Unsupported guild database schema");
+                    if (schema < 0 || schema > 9) throw new IOException("Unsupported guild database schema");
                 }
                 s.execute("BEGIN IMMEDIATE");
                 try {
@@ -145,7 +152,9 @@ final class StockLedger {
                     s.execute("CREATE TABLE IF NOT EXISTS order_storage_meta(id INTEGER PRIMARY KEY CHECK(id=1))");
                     s.execute(
                             "CREATE TABLE IF NOT EXISTS order_event_log(order_id TEXT NOT NULL,seq INTEGER NOT NULL CHECK(seq>0),server TEXT NOT NULL,stash TEXT NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(order_id,seq))");
-                    s.execute("PRAGMA user_version=8");
+                    s.execute(
+                            "CREATE TABLE IF NOT EXISTS order_resume_receipts(order_id TEXT PRIMARY KEY,server TEXT NOT NULL,stash TEXT NOT NULL,agent TEXT NOT NULL,payload TEXT NOT NULL)");
+                    s.execute("PRAGMA user_version=9");
                     var interruptedServers = new ArrayList<String>();
                     try (var leases = s.executeQuery("SELECT server FROM automation_leases WHERE state='ACTIVE'")) {
                         while (leases.next()) interruptedServers.add(leases.getString(1));
@@ -166,6 +175,14 @@ final class StockLedger {
                     epoch = r.getString(1);
                 }
             }
+            // Outside SQLite: losing the database must not also erase proof that
+            // its contents were authoritative. Write before any caller can import
+            // legacy orders or accept new physical work.
+            if (!Files.exists(initialized))
+                AtomicFiles.write(
+                        initialized,
+                        "WeSort guild database initialized\n".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                        true);
         } catch (SQLException | ClassNotFoundException e) {
             throw new IOException("Cannot initialize guild observation database", e);
         }
@@ -183,6 +200,7 @@ final class StockLedger {
         var missing = new TreeSet<>(REQUIRED_V7_TABLES);
         if (schema >= 8)
             missing.addAll(Set.of("order_books", "order_storage_meta", "order_event_log", "signed_request_nonces"));
+        if (schema >= 9) missing.add("order_resume_receipts");
         try (var s = c.createStatement();
                 var rows = s.executeQuery("SELECT name FROM sqlite_schema WHERE type='table'")) {
             while (rows.next()) missing.remove(rows.getString(1));

@@ -59,6 +59,7 @@ final class Handoffs {
 
     synchronized Handoff schedule(String orderId, String recipient, String meetingPoint, String agent)
             throws IOException {
+        if (agent == null || agent.isBlank()) throw new IllegalArgumentException("A handoff needs an assigned agent");
         var handoff = Handoff.schedule(orderId, recipient, meetingPoint, agent);
         var events = new JsonArray();
         events.add(event("SCHEDULED", agent));
@@ -102,7 +103,12 @@ final class Handoffs {
     /** Resolves an uncertain handoff: DELIVERED (with a receipt) or RETURNED. */
     synchronized Handoff resolve(String id, Handoff.State outcome, String actor) throws IOException {
         var entry = require(id);
-        if (entry.handoff().state() != Handoff.State.NEEDS_RECONCILIATION)
+        // A legacy unassigned booking cannot be advanced by any agent. The owner
+        // may explicitly confirm its return, but never mark it delivered here.
+        boolean unassignedReturn = entry.handoff().state() == Handoff.State.SCHEDULED
+                && (entry.handoff().agent() == null || entry.handoff().agent().isBlank())
+                && outcome == Handoff.State.RETURNED;
+        if (entry.handoff().state() != Handoff.State.NEEDS_RECONCILIATION && !unassignedReturn)
             throw new Conflict("Only an uncertain handoff may be resolved");
         if (outcome != Handoff.State.DELIVERED && outcome != Handoff.State.RETURNED)
             throw new Conflict("Resolution must be delivered or returned");
@@ -150,7 +156,8 @@ final class Handoffs {
         var entry = require(id);
         var handoff = entry.handoff();
         if (handoff.terminal()) throw new Conflict("A terminal handoff cannot change");
-        if (!handoff.agent().equals(agent)) throw new Conflict("Another agent holds this handoff");
+        if (agent == null || agent.isBlank() || !agent.equals(handoff.agent()))
+            throw new Conflict("Another agent holds this handoff");
         return entry;
     }
 

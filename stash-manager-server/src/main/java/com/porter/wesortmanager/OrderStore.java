@@ -2132,6 +2132,10 @@ final class OrderStore {
                             .filter(row -> id.equals(row.id))
                             .findFirst()
                             .orElse(null);
+                if (order == null) {
+                    var receipt = repository.resumeReceipt(server, stash, agent, id);
+                    if (receipt != null) order = Order.fromJson(receipt);
+                }
                 if (order == null || !agent.equals(order.agent)) return null;
                 if (FINISHED.contains(order.status)) {
                     if (index.stock().unsettledPhysicalOrder(id)) return null;

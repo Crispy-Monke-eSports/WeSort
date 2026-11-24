@@ -383,4 +383,85 @@ class SelfHealTest {
         orders.releaseFromFreshObservation("s");
         assertEquals("cancelled", orders.statusOf(order.id));
     }
+
+    @Test
+    void mergedChestReleasesReturnedOrderOnlyAfterFreshReplacementObservation() throws Exception {
+        observe("a", 10);
+        observe("b", 10);
+        var old = stuckOrder("a");
+        orders.selfHealAll();
+        var finished = orders.status(old.id, "cancelled", null, null, "Returned", null, old.agent, "returned");
+        assertFalse(orders.heldRoots("s").isEmpty());
+
+        var joined = index("a", 10);
+        var source = joined.getAsJsonArray("physicalSources").get(0).getAsJsonObject();
+        int x = "a".hashCode();
+        var second = new JsonArray();
+        // Use an independent position, not the other stash's synthetic coordinate.
+        second.add(x - 1);
+        second.add(64);
+        second.add(0);
+        var parts = new JsonArray();
+        parts.add(second);
+        parts.add(source.getAsJsonArray("parts").get(0));
+        source.add("parts", parts);
+        source.addProperty("kind", "minecraft:chest");
+        source.addProperty("size", 54);
+        source.addProperty(
+                "id",
+                new com.porter.wesort.data.ContainerIdentity(
+                                "s",
+                                "minecraft:overworld",
+                                List.of(
+                                        new com.porter.wesort.data.ContainerIdentity.Position(x - 1, 64, 0),
+                                        new com.porter.wesort.data.ContainerIdentity.Position(x, 64, 0)))
+                        .id());
+        var doubleFrame =
+                new com.porter.wesort.data.PhysicalSlots.Snapshot(54, frame(10).slots());
+        source.addProperty("fingerprint", doubleFrame.fingerprint());
+        source.addProperty("observedAt", time.get());
+        store.putIndex(joined);
+        orders.selfHealAll();
+        assertFalse(orders.heldRoots("s").isEmpty(), "A replacement observed before the return is not proof");
+        time.set(finished.updatedAt + 1000);
+        source.addProperty("baseRevision", ledger.revision());
+        source.addProperty("sequence", ledger.revision() + 1);
+        source.addProperty("observedAt", time.get());
+        store.putIndex(joined);
+        orders.selfHealAll();
+        assertTrue(orders.heldRoots("s").isEmpty());
+        assertEquals(
+                "pending",
+                orders.place("s", "b", List.of(new OrderStore.Line("item", "minecraft:diamond", 1)), null).status);
+    }
+
+    @Test
+    void terminalCheckpointSurvivesArchiveEvictionAndManagerRestart() throws Exception {
+        observe("a", 10);
+        var first = orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 1)), null);
+        String agent = UUID.randomUUID().toString();
+        assertNotNull(orders.claimPayload("s", "a", agent));
+        assertNotNull(orders.resumeClaim("s", "a", agent, first.id));
+        var finished = orders.status(first.id, "cancelled", null, null, "Returned", null, agent, "returned");
+        time.set(finished.updatedAt + 1000);
+        observe("a", 10);
+        orders.selfHealAll();
+        assertEquals(1, orders.clearFinished("s", "a"));
+        for (int i = 0; i <= OrderStore.KEEP; i++) {
+            var newer = orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 1)), null);
+            orders.cancel(newer.id);
+            assertEquals(1, orders.clearFinished("s", "a"));
+        }
+        var restarted = new OrderStore(data, store);
+        restarted.load();
+        assertNull(restarted.statusOf(first.id));
+        var terminal = restarted.resumeClaim("s", "a", agent, first.id);
+        assertNotNull(terminal);
+        assertTrue(terminal.get("resumeComplete").getAsBoolean());
+        assertEquals("CANCELLED", terminal.get("state").getAsString());
+        assertNull(restarted.resumeClaim("s", "a", UUID.randomUUID().toString(), first.id));
+        assertNull(restarted.resumeClaim("s", "b", agent, first.id));
+        var next = restarted.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 1)), null);
+        assertEquals(next.id, restarted.claimPayload("s", "a", agent).get("id").getAsString());
+    }
 }

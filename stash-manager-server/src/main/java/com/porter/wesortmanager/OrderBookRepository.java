@@ -68,7 +68,10 @@ final class OrderBookRepository {
                     }
                 }
             }
-            for (var snapshot : snapshots) validate.accept(snapshot);
+            for (var snapshot : snapshots) {
+                validate.accept(snapshot);
+                saveResumeReceipts(c, snapshot);
+            }
             if (!initialized) {
                 for (var snapshot : snapshots) {
                     insert(c, snapshot);
@@ -105,10 +108,57 @@ final class OrderBookRepository {
             }
             if (release != null) ledger.releaseOrderBoxes(c, server, release);
             appendEvents(c, next);
+            saveResumeReceipts(c, next);
             tx.commit();
             return next.revision();
         } catch (SQLException | RuntimeException failure) {
             throw new IOException("Cannot commit order book and audit history", failure);
+        }
+    }
+
+    /** Terminal checkpoint dispositions have a different lifetime from the bounded UI archive. */
+    private static void saveResumeReceipts(Connection c, Snapshot snapshot) throws SQLException {
+        try (var save = c.prepareStatement(
+                        "INSERT INTO order_resume_receipts(order_id,server,stash,agent,payload) VALUES(?,?,?,?,?) "
+                                + "ON CONFLICT(order_id) DO UPDATE SET payload=excluded.payload "
+                                + "WHERE server=excluded.server AND stash=excluded.stash AND agent=excluded.agent");
+                var remove = c.prepareStatement("DELETE FROM order_resume_receipts WHERE order_id=?")) {
+            for (String key : List.of("orders", "archived")) {
+                if (!snapshot.payload().has(key)) continue;
+                for (var element : snapshot.payload().getAsJsonArray(key)) {
+                    var order = element.getAsJsonObject();
+                    String id = order.get("id").getAsString();
+                    if (!order.has("agent")
+                            || order.get("agent").isJsonNull()
+                            || !OrderStore.FINISHED.contains(order.get("status").getAsString())) {
+                        remove.setString(1, id);
+                        remove.executeUpdate();
+                        continue;
+                    }
+                    save.setString(1, id);
+                    save.setString(2, snapshot.server());
+                    save.setString(3, snapshot.stash());
+                    save.setString(4, order.get("agent").getAsString());
+                    save.setString(5, order.toString());
+                    if (save.executeUpdate() != 1) throw new SQLException("Order resume receipt scope changed");
+                }
+            }
+        }
+    }
+
+    JsonObject resumeReceipt(String server, String stash, String agent, String id) throws IOException {
+        try (var c = ledger.open();
+                var p = c.prepareStatement(
+                        "SELECT payload FROM order_resume_receipts WHERE order_id=? AND server=? AND stash=? AND agent=?")) {
+            p.setString(1, id);
+            p.setString(2, server);
+            p.setString(3, stash);
+            p.setString(4, agent);
+            try (var rows = p.executeQuery()) {
+                return rows.next() ? JsonParser.parseString(rows.getString(1)).getAsJsonObject() : null;
+            }
+        } catch (SQLException | RuntimeException failure) {
+            throw new IOException("Cannot restore order resume receipt", failure);
         }
     }
 

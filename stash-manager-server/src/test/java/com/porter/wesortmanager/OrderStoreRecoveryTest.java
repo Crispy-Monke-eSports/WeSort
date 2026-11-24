@@ -110,6 +110,15 @@ class OrderStoreRecoveryTest {
         restarted.load();
         assertEquals("cancelled", restarted.statusOf(order.id));
         assertEquals("{corrupt", Files.readString(legacy));
+
+        // A partial restore must never import the original pending order again.
+        Files.writeString(legacy, old.toString());
+        Files.deleteIfExists(dir.resolve("guild.sqlite-wal"));
+        Files.deleteIfExists(dir.resolve("guild.sqlite-shm"));
+        Files.delete(dir.resolve("guild.sqlite"));
+        assertThrows(IOException.class, () -> new StockLedger(dir));
+        assertFalse(Files.exists(dir.resolve("guild.sqlite")));
+        assertEquals(old.toString(), Files.readString(legacy));
     }
 
     @Test

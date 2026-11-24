@@ -225,6 +225,8 @@ public class StashManager extends Module {
     private JsonArray controlResults;
     private JsonObject lastControlResult;
     private long nextControlAt;
+    private final RequestRetry controlRetry = new RequestRetry();
+    private final RequestRetry sortingRetry = new RequestRetry();
     private PendingManifest pendingManifest;
 
     // Orders
@@ -411,6 +413,9 @@ public class StashManager extends Module {
         sentControlValues = null;
         controlResults = null;
         nextControlAt = 0;
+        controlRetry.reset();
+        sortingRetry.reset();
+        sortingPoll = 0;
         pendingManifest = null;
         pendingOrders = 0;
         lastClaim = lastStatusAt = 0;
@@ -512,7 +517,6 @@ public class StashManager extends Module {
                 || apiKey.get().isBlank()
                 || inFlight) return false;
         long now = System.nanoTime();
-        if (now < sortingPoll) return false;
         var sorter = WeSortAddon.sorter();
         boolean wants = isActive() && sorter != null && sorter.requiresSortingPermit();
         if (!wants && sortingToken == null) return false;
@@ -528,7 +532,10 @@ public class StashManager extends Module {
             sortingToken = null;
             sortingUntil = 0;
             sortingScope = scope;
+            sortingPoll = 0;
+            sortingRetry.reset();
         }
+        if (now < sortingPoll) return false;
         JsonObject request = new JsonObject();
         request.addProperty("server", Stash.currentServer());
         request.addProperty("agent", mc.player.getUUID().toString());
@@ -540,8 +547,12 @@ public class StashManager extends Module {
         send(base, "/api/v1/automation", bytes(request), apiKey.get().trim(), (code, body) -> {
             if (code != 200) {
                 sortingUntil = 0;
+                // A denied lease is expected while an order owns physical reservations.
+                // It must never postpone the order heartbeat, rollback or control channel.
+                sortingPoll = System.nanoTime() + sortingRetry.failureDelayMs() * 1_000_000L;
                 return false;
             }
+            sortingRetry.reset();
             if (uncertain) {
                 sortingUntil = 0;
                 return true;
@@ -551,12 +562,13 @@ public class StashManager extends Module {
                 sortingUntil = 0;
                 return true;
             }
+            sortingUntil = 0;
             var reply = JsonParser.parseString(body).getAsJsonObject();
             sortingToken = reply.get("token").getAsString();
             // Measured from request start, not reply receipt. A delayed reply cannot extend a permit.
             sortingUntil = now + 5_000_000_000L;
             return true;
-        });
+        }, true);
         return true;
     }
 
@@ -567,20 +579,19 @@ public class StashManager extends Module {
 
     @EventHandler
     private void onTick(TickEvent.Post event) {
-        if (servicePhysicalJournal() || serviceSorting()) return;
+        // Service the signed control channel even if physical calls are failing or the inventory is blocked.
+        // Its completion-based retry interval leaves the other traffic a chance to make progress.
+        if (serviceControlWhenDue() || servicePhysicalJournal() || serviceSorting()) return;
         if (com.porter.wesort.compat.NavigationRuntime.paused()) {
             setStatus(com.porter.wesort.compat.NavigationRuntime.status());
-            serviceBlockedControl();
             return;
         }
         if (PhysicalJournalRuntime.blocked()) {
             setStatus("automatically recovering physical operation");
-            serviceBlockedControl();
             return;
         }
         if (!InventorySync.ready()) {
             setStatus(InventorySync.failed() ? "awaiting automatic inventory recovery" : "awaiting server inventory");
-            serviceBlockedControl();
             return;
         }
         if (mc.level == null || mc.player == null) return;
@@ -634,9 +645,6 @@ public class StashManager extends Module {
         // Orders come first: the server should hear how the bot is doing, and a claim is cheap
         if (orderStep(base, key, now)) return;
 
-        // Control (hello/state/next) runs without a local stash too: a clean client adopts the
-        // Manager-assigned stash over this link instead of configuring one.
-        if (serviceControl(base, key, now)) return;
         if (current == null) return;
         StashIndex.Built built = current;
         String id = built.server() + "|" + built.stash() + "|" + built.hash();
@@ -696,14 +704,12 @@ public class StashManager extends Module {
         }
     }
 
-    private void serviceBlockedControl() {
-        // The signed control channel must bootstrap even in a lobby with no inventory
-        // readback or assigned stash. Physical actions remain fenced by the caller.
-        if (inFlight || mc.player == null || mc.level == null || !dedicatedProfile()) return;
+    private boolean serviceControlWhenDue() {
+        // The control channel has its own retry state, independent of all physical operations.
+        if (inFlight || mc.player == null || mc.level == null || !dedicatedProfile()) return false;
         String key = apiKey.get().trim();
         URI base = parse(serverUrl.get());
-        long now = System.currentTimeMillis();
-        if (base != null && !key.isEmpty() && now >= nextAttemptAt) serviceControl(base, key, now);
+        return base != null && !key.isEmpty() && serviceControl(base, key, System.currentTimeMillis());
     }
 
     private record ControlScope(
@@ -753,6 +759,7 @@ public class StashManager extends Module {
             controlResults = null;
             lastControlResult = null;
             nextControlAt = 0;
+            controlRetry.reset();
         }
         if (now < nextControlAt) return false;
         nextControlAt = now + 2_000;
@@ -823,7 +830,6 @@ public class StashManager extends Module {
                                 }
                             }
                         }
-                        if (!controlRegistered) nextControlAt = now + 15_000;
                         return controlRegistered;
                     },
                     true);
@@ -1983,7 +1989,8 @@ public class StashManager extends Module {
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                return;
+                // Still dispatch completion; otherwise inFlight remains true forever.
+                code = -1;
             } catch (Exception e) {
                 code = -1;
             }
@@ -2009,16 +2016,20 @@ public class StashManager extends Module {
                     // client has a stash/inventory. Other isolated physical calls must never
                     // manufacture a connection state.
                     if (path.startsWith("/api/v1/bot/")) {
-                        if (finalBad) {
-                            setStatus("server signature invalid");
-                        } else if (finalCode == 401) {
-                            setStatus("error 401");
+                        if (finalBad || finalCode == 401 || finalCode == 403 || finalCode < 0 || finalCode >= 500) {
+                            verifiedManagerAt = 0;
+                            controlRegistered = false;
+                            sentControlValues = null;
+                            if (finalBad) setStatus("server signature invalid");
+                            else if (finalCode == 401 || finalCode == 403) setStatus("error 401");
+                            else setStatus("offline");
                         } else if (finalCode == 200 || finalCode == 204) {
                             verifiedManagerAt = System.currentTimeMillis();
                             verifiedManagerScope = linkScope();
                             // Recover from a previous invalid control signature/key once
                             // the Manager actually authenticates this same connection.
-                            if (status.equals("server signature invalid") || status.equals("error 401"))
+                            if (status.equals("server signature invalid")
+                                    || status.equals("error 401") || status.equals("offline"))
                                 setStatus("idle");
                         }
                     }
@@ -2030,19 +2041,34 @@ public class StashManager extends Module {
                                 "This Manager serves another Minecraft server: %s. Set server-url to the right Manager.",
                                 finalText);
                         setStatus("wrong server");
+                        if (path.startsWith("/api/v1/bot/")) {
+                            controlRegistered = false;
+                            nextControlAt = System.currentTimeMillis() + controlRetry.failureDelayMs();
+                        } else {
+                            reply.done(finalCode, finalText);
+                        }
                         return;
                     }
                     // The signed 409 for a lost control epoch must reach the
                     // callback, which discards the old epoch and sends a new hello.
-                    if (finalBad) {
-                        reply.done(-2, "");
-                        return;
-                    }
+                    boolean ok = false;
                     try {
-                        reply.done(finalCode, finalText);
+                        ok = reply.done(finalBad ? -2 : finalCode, finalBad ? "" : finalText);
                     } catch (RuntimeException e) {
                         WeSortAddon.LOG.warn("wesort-stash-manager: couldn't handle the reply", e);
                         deliverySync.retryLater(System.currentTimeMillis());
+                    } finally {
+                        if (path.startsWith("/api/v1/bot/")) {
+                            long completed = System.currentTimeMillis();
+                            if (ok && !finalBad && (finalCode == 200 || finalCode == 204)) {
+                                controlRetry.reset();
+                                nextControlAt = completed + 2_000;
+                            } else {
+                                controlRegistered = false;
+                                sentControlValues = null;
+                                nextControlAt = completed + controlRetry.failureDelayMs();
+                            }
+                        }
                     }
                     return;
                 }

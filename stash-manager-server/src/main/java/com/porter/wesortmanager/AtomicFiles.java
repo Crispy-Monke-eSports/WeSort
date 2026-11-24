@@ -24,6 +24,10 @@ final class AtomicFiles {
         try {
             if (ownerOnly) ownerOnly(tmp);
             Files.write(tmp, data);
+            // A successful write must not merely mean the bytes are in the OS page cache.
+            try (var channel = java.nio.channels.FileChannel.open(tmp, java.nio.file.StandardOpenOption.WRITE)) {
+                channel.force(true);
+            }
             move(tmp, target);
         } finally {
             Files.deleteIfExists(tmp);

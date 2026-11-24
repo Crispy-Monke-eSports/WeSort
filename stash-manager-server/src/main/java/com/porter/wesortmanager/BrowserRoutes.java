@@ -68,6 +68,7 @@ final class BrowserRoutes {
     private void listAgents(HttpExchange ex) throws IOException {
         JsonArray slots = new JsonArray();
         for (AgentCredentials.Slot slot : credentials.all()) {
+            if (!slot.active()) continue;
             JsonObject row = new JsonObject();
             row.addProperty("id", slot.id());
             row.addProperty("label", slot.label());

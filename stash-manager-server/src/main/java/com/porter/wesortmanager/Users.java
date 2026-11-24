@@ -299,6 +299,7 @@ final class Users {
     private final LongSupplier clock;
     private final Map<String, User> users = new LinkedHashMap<>(); // id -> user, in creation order
     private String ownerName = DEFAULT_OWNER_NAME;
+    private boolean registryUnavailable;
     private final Map<String, String> minecraftAccounts = new LinkedHashMap<>();
 
     Users(Path dataDir) {
@@ -308,6 +309,28 @@ final class Users {
     Users(Path dataDir, LongSupplier clock) {
         this.file = dataDir == null ? null : dataDir.resolve("users.json");
         this.clock = clock;
+    }
+
+    /**
+     * Keep the Manager and the independently authenticated owner available if the account registry
+     * cannot be validated. Never restore older permissions or replace the damaged file with defaults.
+     * A restart after an offline, verified restore is required to leave this mode.
+     */
+    synchronized void loadForService() {
+        try {
+            load();
+            registryUnavailable = false;
+        } catch (IOException failure) {
+            users.clear();
+            minecraftAccounts.clear();
+            ownerName = DEFAULT_OWNER_NAME;
+            registryUnavailable = true;
+            System.err.println("Website user registry unavailable: sub-user access and registry writes disabled");
+        }
+    }
+
+    synchronized boolean registryUnavailable() {
+        return registryUnavailable;
     }
 
     /** Validate the complete persisted registry before publishing any account or permission. */
@@ -414,6 +437,7 @@ final class Users {
     }
 
     private void save() throws IOException {
+        if (registryUnavailable) throw new IOException("User registry requires verified offline recovery");
         if (file == null) return;
         JsonObject root = new JsonObject();
         root.addProperty("version", 1);

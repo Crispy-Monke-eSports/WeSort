@@ -118,6 +118,13 @@ public final class PhysicalJournalRuntime {
         return mirroredId.equals(journal.id()) && mirroredRevision >= journal.revision();
     }
 
+    private static long recoveryProof;
+
+    /** Advances only after a new exact reconciliation reaches a durable terminal state. */
+    public static long recoveryProof() {
+        return recoveryProof;
+    }
+
     public static boolean unfinished() {
         return journal != null && journal.revision() != 0 && !journal.terminal();
     }
@@ -247,6 +254,7 @@ public final class PhysicalJournalRuntime {
                 // restart. The Manager must still accept this revision before
                 // other physical work may acquire its lease.
                 recoveryFence = false;
+                recoveryProof++;
                 finishInspection(true, "No transmitted mutation; operation failed safely");
                 return;
             }
@@ -258,6 +266,7 @@ public final class PhysicalJournalRuntime {
             if (kind.equals("DIRECT") || phase.equals("COMPLETED")) {
                 journal.complete();
                 recoveryFence = false;
+                recoveryProof++;
                 finishInspection(true, "Exact original source and postcondition verified; no mutation replayed");
             } else {
                 // The last native mutation was verified, but the higher-level
@@ -272,6 +281,7 @@ public final class PhysicalJournalRuntime {
                 if (checkpoint) {
                     journal.complete();
                     recoveryFence = false;
+                    recoveryProof++;
                     finishInspection(true, "Exact physical step verified; sorter will resume its saved recovery");
                 } else {
                     journal.block("Automatic shulker recovery requires a durable workspace checkpoint");

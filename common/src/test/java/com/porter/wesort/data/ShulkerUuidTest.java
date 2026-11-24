@@ -26,6 +26,16 @@ class ShulkerUuidTest {
     }
 
     @Test
+    void automaticNamingPreservesHumanLabelsAndUniqueUuid() {
+        var duplicates = java.util.Set.of(V4);
+        assertTrue(ShulkerUuid.needsAutomaticName(null, duplicates));
+        assertTrue(ShulkerUuid.needsAutomaticName("WeSort-" + V4, duplicates));
+        assertFalse(ShulkerUuid.needsAutomaticName("WeSort-" + V4, java.util.Set.of()));
+        assertFalse(ShulkerUuid.needsAutomaticName("WeSort-not-a-uuid", duplicates));
+        assertFalse(ShulkerUuid.needsAutomaticName("My supplies", duplicates));
+    }
+
+    @Test
     void rejectsWrongLengthPrefixAndCase() {
         assertNull(ShulkerUuid.parse(null));
         assertNull(ShulkerUuid.parse(""));

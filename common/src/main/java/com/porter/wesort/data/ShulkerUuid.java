@@ -44,6 +44,13 @@ public final class ShulkerUuid {
         return parse(name) != null;
     }
 
+    /** Only unnamed boxes or duplicate canonical UUIDs may be automatically named. */
+    public static boolean needsAutomaticName(String name, java.util.Set<String> duplicates) {
+        if (name == null) return true;
+        UUID uuid = parse(name);
+        return uuid != null && duplicates != null && duplicates.contains(uuid.toString());
+    }
+
     /**
      * Only unnamed boxes or boxes named by the WeSort UUID system are eligible
      * for automatic repacking. A human label (including a malformed WeSort name)

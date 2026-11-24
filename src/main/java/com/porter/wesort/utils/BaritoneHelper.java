@@ -282,8 +282,9 @@ public final class BaritoneHelper {
 
     /** Feet positions whose eyes are within reach of a block's centre; see {@link #moveInReach}. */
     private record GoalReach(List<BlockPos> parts, double reach) implements Goal {
-        // Standing eye height, and a little less reach than the setting so the arrival check never misses by a hair
-        private static final double EYES = 1.62, MARGIN = 0.25;
+        // Baritone can report arrival at the edge of the goal cell. Allow for the
+        // horizontal distance from its centre to a corner when planning the walk.
+        private static final double EYES = 1.62, MARGIN = Math.sqrt(0.5);
 
         @Override
         public boolean isInGoal(int x, int y, int z) {

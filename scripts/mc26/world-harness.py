@@ -421,8 +421,9 @@ class Harness:
             time.sleep(0.5)
         raise RuntimeError('Signed settings were not acknowledged without a stash')
 
-    def verify_manager_index(self, client_index):
-        self.command('publish', url='http://127.0.0.1:' + str(self.manager_port), key=self.key)
+    def verify_manager_index(self, client_index, inspection_hold=False):
+        self.command('publish', url='http://127.0.0.1:' + str(self.manager_port), key=self.key,
+                     inspectionHold=inspection_hold)
         query = urllib.parse.urlencode({'server': client_index['server'], 'stash': 'e2e-fixture'})
         end = time.monotonic() + 60
         stored = None
@@ -443,6 +444,7 @@ class Harness:
         require(identity(stored) == identity(client_index), 'Client and Manager fingerprints/totals differ')
         (self.evidence / 'manager-index.json').write_text(json.dumps(stored, indent=2) + '\n')
         self.ok('production signed Fabric agent index reaches Docker Manager with matching fresh 26.3 totals and fingerprints')
+        return stored
 
     def close(self):
         if self.client is not None and self.client.poll() is None:

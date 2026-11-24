@@ -28,4 +28,12 @@ class StashManagerResumeTest {
         assertFalse(StashManager.shouldResumeStranded(null, "o-1234567890ab", 10_000, 9_000));
         assertTrue(StashManager.shouldResumeStranded(null, "o-1234567890ab", 10_000, 5_000));
     }
+
+    @Test
+    void deadTokenIsDroppedOnlyOnAuthoritativeConflict() {
+        assertTrue(StashManager.shouldDropSortingToken(409));
+        assertFalse(StashManager.shouldDropSortingToken(500));
+        assertFalse(StashManager.shouldDropSortingToken(-1));
+        assertFalse(StashManager.shouldDropSortingToken(200));
+    }
 }

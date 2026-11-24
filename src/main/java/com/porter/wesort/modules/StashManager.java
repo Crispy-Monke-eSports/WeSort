@@ -520,6 +520,8 @@ public class StashManager extends Module {
         pendingManifest = null;
         pendingOrders = 0;
         strandedResumeId = null;
+        sortingToken = null;
+        sortingUntil = 0;
         lastClaim = lastStatusAt = 0;
         lastStatusSig = "";
         rejectedId = rejectedWhy = null;
@@ -576,6 +578,14 @@ public class StashManager extends Module {
                 },
                 true);
         return true;
+    }
+
+    /**
+     * Whether a failed automation reply means the token is dead and must be dropped.
+     * Pure decision for unit tests: only an authoritative 409 drops it.
+     */
+    static boolean shouldDropSortingToken(int code) {
+        return code == 409;
     }
 
     private String sortingToken, sortingScope = "";
@@ -657,6 +667,11 @@ public class StashManager extends Module {
                         // A denied lease is expected while an order owns physical reservations.
                         // It must never postpone the order heartbeat, rollback or control channel.
                         sortingPoll = System.nanoTime() + sortingRetry.failureDelayMs() * 1_000_000L;
+                        // 409 is authoritative: someone else holds the lease, or the lease the
+                        // token names is gone (released, expired, revoked). Keeping the token
+                        // would retry a dead lease forever, so drop it and acquire fresh next
+                        // poll. Transient failures (500, timeouts) keep the token for a retry.
+                        if (shouldDropSortingToken(code)) sortingToken = null;
                         return false;
                     }
                     sortingRetry.reset();

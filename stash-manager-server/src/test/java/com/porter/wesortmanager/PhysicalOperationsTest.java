@@ -84,6 +84,70 @@ class PhysicalOperationsTest {
     }
 
     @Test
+    void replayOfATerminalJournalRepeatsTheLeaseRelease() throws Exception {
+        var ledger = new StockLedger(data);
+        var gate = new AutomationGate(ledger);
+        var lease = gate.acquire("s", agent, null);
+        var journal = new PhysicalJournal(data.resolve("fenced-client"));
+        var context = journal().context();
+        var fingerprint = com.porter.wesort.data.ContainerIdentity.hash(lease.token());
+        context.addProperty("leaseFingerprint", fingerprint);
+        journal.start(context);
+        intent(journal);
+        var store = new PhysicalOperations(ledger);
+        store.accept(agent, journal.current());
+        gate.finish("s", agent, lease.token(), false);
+        journal.block("Pending native receipt");
+        store.accept(agent, journal.current());
+        var decision = store.inspect(journal.id(), journal.revision(), journal.checksum(), "owner");
+        journal.verified(frame("after"), true, playerInventory(), java.util.UUID.randomUUID().toString());
+        journal.complete();
+        assertEquals("NEEDS_RECONCILIATION", store.accept(agent, journal.current()).get("state").getAsString());
+        journal.verified(frame("after"), true, playerInventory(), decision.get("id").getAsString());
+        journal.complete();
+        var first = store.accept(agent, journal.current());
+        assertEquals("COMPLETED", first.get("state").getAsString());
+        assertEquals(fingerprint, first.get("releasedLease").getAsString());
+        // The answer got lost on the way back: resending the identical journal must repeat
+        // the release instead of stranding the agent on a token whose lease is already gone.
+        var replay = store.accept(agent, journal.current());
+        assertEquals("COMPLETED", replay.get("state").getAsString());
+        assertEquals(fingerprint, replay.get("releasedLease").getAsString());
+    }
+
+    @Test
+    void replayNeverReleasesAnUnrelatedActiveLease() throws Exception {
+        var ledger = new StockLedger(data);
+        var gate = new AutomationGate(ledger);
+        var lease = gate.acquire("s", agent, null);
+        var journal = new PhysicalJournal(data.resolve("fenced-client"));
+        var context = journal().context();
+        var fingerprint = com.porter.wesort.data.ContainerIdentity.hash(lease.token());
+        context.addProperty("leaseFingerprint", fingerprint);
+        journal.start(context);
+        intent(journal);
+        var store = new PhysicalOperations(ledger);
+        store.accept(agent, journal.current());
+        gate.finish("s", agent, lease.token(), false);
+        journal.block("Pending native receipt");
+        store.accept(agent, journal.current());
+        var decision = store.inspect(journal.id(), journal.revision(), journal.checksum(), "owner");
+        journal.verified(frame("after"), true, playerInventory(), java.util.UUID.randomUUID().toString());
+        journal.complete();
+        store.accept(agent, journal.current());
+        journal.verified(frame("after"), true, playerInventory(), decision.get("id").getAsString());
+        journal.complete();
+        assertNotNull(store.accept(agent, journal.current()).get("releasedLease"));
+        // A new, unrelated lease is now active: replaying the old journal must not touch it.
+        var other = gate.acquire("s", "other-agent", null);
+        assertNotNull(other);
+        var replay = store.accept(agent, journal.current());
+        assertEquals("COMPLETED", replay.get("state").getAsString());
+        assertFalse(replay.has("releasedLease"));
+        assertEquals(other.token(), gate.current("s").token());
+    }
+
+    @Test
     void aliasedServerStorageKeyDoesNotRewriteJournalChecksum() throws Exception {
         var ledger = new StockLedger(data);
         var store = new PhysicalOperations(ledger);

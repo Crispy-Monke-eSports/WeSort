@@ -326,65 +326,67 @@ class DirectHarness(JournalHarness):
             self.start_manager()
             self.start_client()
             inv = repack.network.InventoryHarness
-            # Isolate the direct move from the Manager background rescan without
-            # disabling recovery/journal: same inspection hold the crash phases
-            # use. Otherwise the scanner can own another screen between open and
-            # click, the click is refused as Stale, and a blind retry runs on the
-            # wrong container (containerId 0) and times out as NEEDS_RECONCILIATION.
+            # publish requires a real captured container to select and persist
+            # e2e-fixture. Seed it before enabling the signed Manager, then
+            # reopen the chest with autonomous scanning held in the same tick
+            # as Manager activation. Recovery and journal mirroring stay live.
+            inv.open_chest(self)
+            self.command('close')
             self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key,
                          inspectionHold=True)
             state = inv.open_chest(self)
-            require(state.get('containerId', 0) != 0,
-                    'Direct test did not open the double chest before holding acks: %s' % state.get('containerId'))
-            require(len(state.get('slots', [])) >= 54,
-                    'Direct test opened a non-chest screen before holding acks')
-            require(state['slots'][0]['item'] == 'minecraft:diamond' and state['slots'][0]['count'] == 64,
-                    'Direct test source slot is not the intended diamond stack')
-            expected_fingerprint = state['slots'][0]['fingerprint']
-            self.proxy.hold_down = True
+
+            def require_source(snapshot, fingerprint=None):
+                require(snapshot['containerId'] != 0 and len(snapshot['slots']) == 90,
+                        'Direct test did not open the intended 54-slot double chest')
+                source = snapshot['slots'][0]
+                require(source['item'] == 'minecraft:diamond' and source['count'] == 64
+                        and (fingerprint is None or source['fingerprint'] == fingerprint),
+                        'Direct test source slot is not the intended diamond stack')
+                require(snapshot['inventoryReady'], 'Direct test inventory is not ready')
+                return source['fingerprint']
+
+            expected_fingerprint = require_source(state)
             with ThreadPoolExecutor(max_workers=1) as pool:
-                # The click references a menu snapshot that can go stale between
-                # open and submit (async server sync). A rejected click sends no
-                # packet and records no journal, so exactly one retry with a
-                # freshly read snapshot is safe. A sent click is never retried:
-                # its result decides the ack-loss path below.
-                from concurrent.futures import TimeoutError as FuturesTimeout
-                # allow_failure=True: a refused click must come back as a dict
-                # for the Stale check below, not as a raised RuntimeError that
-                # would bypass both the retry and the fail-fast require.
-                click = pool.submit(inv.click, self, state, 0, 'QUICK_MOVE', True)
-                try:
-                    first = click.result(timeout=10)
-                except (RuntimeError, FuturesTimeout):
-                    first = None
-                if first is not None and not first.get('success', False):
-                    require(
-                        'Stale' in first.get('message', ''),
-                        'Direct click refused before any packet: ' + str(first.get('message', '')),
-                    )
-                    # A stale state id proves the click never left the client, so one
-                    # retry is safe - but only on the same physical container. Re-read
-                    # and reopen the intended chest if the menu closed or changed.
-                    # Never retry an uncertain mutation.
-                    state = self.command('state')['state']
-                    if (state.get('containerId', 0) == 0
-                            or len(state.get('slots', [])) < 54
-                            or state['slots'][0]['item'] != 'minecraft:diamond'
-                            or state['slots'][0]['count'] != 64
-                            or state['slots'][0]['fingerprint'] != expected_fingerprint):
-                        state = inv.open_chest(self)
-                    require(state.get('containerId', 0) != 0,
-                            'Direct retry has no chest menu open after reopen')
-                    require(len(state.get('slots', [])) >= 54,
-                            'Direct retry is not against the double chest')
-                    require(state['slots'][0]['item'] == 'minecraft:diamond'
-                            and state['slots'][0]['count'] == 64
-                            and state['slots'][0]['fingerprint'] == expected_fingerprint,
-                            'Direct retry source moved before the mutation was sent')
+                # Poll authoritative stock while the click is outstanding:
+                # do not wait for the deliberately withheld acknowledgement.
+                # Retry only an explicit stale rejection before packet send.
+                for attempt in range(2):
+                    self.proxy.held_down.clear()
+                    self.proxy.hold_down = True
                     click = pool.submit(inv.click, self, state, 0, 'QUICK_MOVE', True)
-                inv.wait_server(self, lambda: self.journal.exists() and
-                    sum('[]' in value for value in inv.chest_halves(self)) == 1,
-                    'The source was not debited on the real server before acknowledgment was lost')
+                    deadline = time.monotonic() + 15
+                    stale = False
+                    while time.monotonic() < deadline:
+                        if self.journal.exists() and sum(
+                                '[]' in value for value in inv.chest_halves(self)) == 1:
+                            break
+                        if click.done():
+                            result = click.result()
+                            require(not result['success'],
+                                    'The unacknowledged move was reported complete')
+                            require(result['message'] == 'Stale menu/state id',
+                                    'Direct click failed before server debit: ' + result['message'])
+                            require(result['state']['attemptedClicks'] == state['attemptedClicks'],
+                                    'Stale rejection was not proven to precede the mutation')
+                            stale = True
+                            break
+                        time.sleep(.05)
+                    else:
+                        raise RuntimeError(
+                            'The source was not debited on the real server before acknowledgment was lost')
+                    if not stale:
+                        break
+                    require(attempt == 0, 'Direct click was stale even after reopening the source')
+                    # Opening requires real server responses. Restore delivery
+                    # only after proving no click was sent, then re-observe the
+                    # exact source before arming the fault again.
+                    self.proxy.hold_down = False
+                    self.command('close')
+                    state = inv.open_chest(self)
+                    require_source(state, expected_fingerprint)
+                require(self.proxy.held_down.wait(timeout=3),
+                        'Proxy did not withhold any server frames after the physical debit')
                 # Reverse the other phases' crash order while the server's
                 # acknowledgment is still held and the client is connected.
                 self.kill_manager()
@@ -393,11 +395,11 @@ class DirectHarness(JournalHarness):
                 self.proxy.hold_down = False
                 self.kill_client()
                 try:
-                    click.result(timeout=5)
+                    result = click.result(timeout=5)
                 except RuntimeError:
-                    pass
+                    pass  # The client was killed while the command was outstanding.
                 else:
-                    raise RuntimeError('The unacknowledged move was reported complete')
+                    require(not result['success'], 'The unacknowledged move was reported complete')
             crashed = json.loads(self.journal.read_text())
             require(crashed['state'] != 'COMPLETED', 'Move completed while server frames were held')
             (self.evidence / 'direct-before-restart.json').write_text(json.dumps(crashed, indent=2) + '\n')

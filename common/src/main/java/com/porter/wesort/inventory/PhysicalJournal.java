@@ -304,17 +304,69 @@ public final class PhysicalJournal {
             throw new IllegalArgumentException("Invalid physical event count");
         long sequence = 0, verified = 0, pending = 0;
         JsonObject intent = null;
-        String previous = "";
+        String previous = "", state = null, phase = null, interruptedPhase = null;
         for (var entry : events) {
             var row = entry.getAsJsonObject().deepCopy();
             String hash = row.remove("hash").getAsString();
-            if (row.get("seq").getAsLong() != ++sequence
+            if (exactLong(row, "seq") != ++sequence
                     || !previous.equals(row.get("previous").getAsString())
                     || !hash.equals(ContainerIdentity.hash(CanonicalJson.stringify(row))))
                 throw new IllegalArgumentException("Broken physical evidence chain");
             previous = hash;
             String type = row.get("type").getAsString();
             var evidence = row.getAsJsonObject("evidence");
+            if (evidence == null) throw new IllegalArgumentException("Missing physical evidence");
+            String nextPhase = row.get("phase").getAsString();
+            PhysicalWork.Phase.valueOf(nextPhase);
+            boolean fenced =
+                    List.of("NEEDS_RECONCILIATION", "COMPLETED", "FAILED").contains(state == null ? "" : state);
+            if (sequence == 1 && !type.equals("PLANNED"))
+                throw new IllegalArgumentException("Physical journal must begin with a plan");
+            if (sequence > 1 && !type.equals("PHASE") && !type.equals("COMPLETED") && !nextPhase.equals(phase))
+                throw new IllegalArgumentException("Unexpected physical phase change");
+            switch (type) {
+                case "PLANNED" -> {
+                    if (sequence != 1 || !nextPhase.equals("SELECT"))
+                        throw new IllegalArgumentException("Unexpected physical plan");
+                    state = "PLANNED";
+                }
+                case "PHASE" -> {
+                    if (fenced || nextPhase.equals(phase))
+                        throw new IllegalArgumentException("Unexpected physical phase event");
+                    state = List.of("VERIFY", "STORE").contains(nextPhase) ? "VERIFYING" : "IN_PROGRESS";
+                }
+                case "INTENT" -> {
+                    if (fenced || !evidence.has("origin"))
+                        throw new IllegalArgumentException("Unexpected physical intent");
+                    state = "IN_PROGRESS";
+                }
+                case "VERIFIED" -> {
+                    if (fenced) throw new IllegalArgumentException("Fenced physical receipt");
+                    state = "VERIFYING";
+                }
+                case "RECONCILED" -> state = "VERIFYING";
+                case "INSPECTED_NO_MUTATION" -> {
+                    if (pending != 0) throw new IllegalArgumentException("Physical intent requires reconciliation");
+                    expected(evidence.getAsJsonObject("frame"));
+                }
+                case "RESTART", "BLOCKED" -> {
+                    if (fenced) throw new IllegalArgumentException("Unexpected physical fence");
+                    if (type.equals("RESTART")) interruptedPhase = phase;
+                    state = "NEEDS_RECONCILIATION";
+                }
+                case "COMPLETED" -> {
+                    if (fenced || pending > verified || !nextPhase.equals("COMPLETED"))
+                        throw new IllegalArgumentException("Unverified completed journal");
+                    state = "COMPLETED";
+                }
+                case "FAILED" -> {
+                    if (pending != 0)
+                        throw new IllegalArgumentException("Physical intent cannot fail without reconciliation");
+                    state = "FAILED";
+                }
+                default -> throw new IllegalArgumentException("Unknown physical event");
+            }
+            phase = nextPhase;
             if (type.equals("RECONCILED") || type.equals("INSPECTED_NO_MUTATION")) validateInspectionEvidence(evidence);
             if (type.equals("INTENT")) {
                 pending = sequence;
@@ -326,7 +378,7 @@ public final class PhysicalJournal {
                 if (intent == null
                         || pending < verified
                         || type.equals("VERIFIED") && pending == verified
-                        || evidence.get("verifiedThrough").getAsLong() != pending)
+                        || exactLong(evidence, "verifiedThrough") != pending)
                     throw new IllegalArgumentException("Unbound physical receipt");
                 var wanted = expected(intent.getAsJsonObject("expected"));
                 var actual = expected(evidence.getAsJsonObject("frame"));
@@ -337,14 +389,30 @@ public final class PhysicalJournal {
                 verified = pending;
             }
         }
-        if (value.get("revision").getAsLong() != sequence
-                || value.get("verifiedThrough").getAsLong() != verified)
+        if (exactLong(value, "revision") != sequence || exactLong(value, "verifiedThrough") != verified)
             throw new IllegalArgumentException("Invalid journal revision");
-        if (value.get("state").getAsString().equals("FAILED") && pending > 0)
-            throw new IllegalArgumentException("Transmitted physical work cannot fail without reconciliation");
-        if (value.get("state").getAsString().equals("COMPLETED") && pending > verified)
-            throw new IllegalArgumentException("Unverified completed journal");
+        if (!state.equals(value.get("state").getAsString())
+                || !phase.equals(value.get("phase").getAsString())
+                || !Objects.equals(
+                        interruptedPhase,
+                        value.has("interruptedPhase")
+                                ? value.get("interruptedPhase").getAsString()
+                                : null))
+            throw new IllegalArgumentException("Physical journal header disagrees with evidence");
         return value;
+    }
+
+    private static long exactLong(JsonObject object, String field) {
+        try {
+            var element = object.get(field);
+            if (element == null
+                    || !element.isJsonPrimitive()
+                    || !element.getAsJsonPrimitive().isNumber())
+                throw new IllegalArgumentException("Invalid journal number");
+            return element.getAsBigDecimal().longValueExact();
+        } catch (ArithmeticException invalid) {
+            throw new IllegalArgumentException("Invalid journal number", invalid);
+        }
     }
 
     private static void validateInspectionEvidence(JsonObject evidence) {

@@ -353,18 +353,14 @@ class SelfHealTest {
         assertTrue(orders.heldRoots("s").isEmpty());
 
         // Simulate the retry deadline across a Manager restart without sleeping.
-        Path file;
-        try (var files = Files.list(data.resolve("orders"))) {
-            file = files.filter(p -> p.toString().endsWith(".json")).findFirst().orElseThrow();
-        }
-        JsonObject book = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
+        JsonObject book = OrderBookFixtures.read(store, "s", "a");
         for (var entry : book.getAsJsonArray("orders")) {
             var row = entry.getAsJsonObject();
             if (shortage.id.equals(row.get("id").getAsString()))
                 row.addProperty(
                         "deferredBlockedAt", System.currentTimeMillis() - OrderStore.DEFERRED_RETRY_AFTER_MS - 1000);
         }
-        Files.writeString(file, book.toString());
+        OrderBookFixtures.replace(store, book);
         var restarted = new OrderStore(data, store);
         restarted.load();
         assertNull(restarted.claim("s", "a"));

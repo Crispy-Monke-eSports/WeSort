@@ -1,5 +1,6 @@
 package com.porter.wesortmanager;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -38,6 +39,79 @@ class OrderStoreRecoveryTest {
         assertThrows(IOException.class, store::load);
     }
 
+    private IndexStore stockedIndex() throws Exception {
+        var index = new IndexStore(dir, CreativeTabs.NONE);
+        index.load();
+        StockFixtures.put(index, JsonParser.parseString("""
+                    {"version":1,"server":"s","stash":"a","items":[
+                      {"key":"minecraft:diamond","id":"minecraft:diamond","count":64,"maxStack":64}]}
+                    """).getAsJsonObject());
+        return index;
+    }
+
+    @Test
+    void orderAndAuditCommitTogetherAndFailedAuditLeavesNoReservation() throws Exception {
+        var index = stockedIndex();
+        var orders = new OrderStore(dir, index);
+        orders.load();
+        try (var c = index.stock().open();
+                var sql = c.createStatement()) {
+            sql.execute("""
+                CREATE TRIGGER reject_order_audit BEFORE INSERT ON order_event_log
+                BEGIN SELECT RAISE(ABORT,'injected audit failure'); END
+                """);
+        }
+        var lines = List.of(new OrderStore.Line("item", "minecraft:diamond", 1));
+        assertThrows(IOException.class, () -> orders.place("s", "a", lines, null));
+        assertTrue(orders.listJson("s", "a").getAsJsonArray("orders").isEmpty());
+        assertTrue(orders.heldRoots("s").isEmpty());
+        try (var c = index.stock().open();
+                var sql = c.createStatement()) {
+            try (var rows = sql.executeQuery("SELECT count(*) FROM order_books")) {
+                assertTrue(rows.next());
+                assertEquals(0, rows.getInt(1));
+            }
+            sql.execute("DROP TRIGGER reject_order_audit");
+        }
+        var created = orders.place("s", "a", lines, null);
+        var reloaded = new OrderStore(dir, index);
+        reloaded.load();
+        assertEquals("pending", reloaded.statusOf(created.id));
+        try (var c = index.stock().open();
+                var sql = c.createStatement();
+                var rows = sql.executeQuery("SELECT count(*) FROM order_event_log")) {
+            assertTrue(rows.next());
+            assertEquals(1, rows.getInt(1));
+        }
+    }
+
+    @Test
+    void legacyBooksAreImportedOnceAndCannotOverwriteNewerSQLiteState() throws Exception {
+        var index = stockedIndex();
+        var orders = new OrderStore(dir, index);
+        orders.load();
+        var order = orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 1)), null);
+        var old = OrderBookFixtures.read(index, "s", "a");
+        Path legacy = Files.createDirectories(dir.resolve("orders")).resolve(IndexStore.fileName("s", "a"));
+        Files.writeString(legacy, old.toString());
+        // Recreate the pre-migration state, keeping the same physical observation.
+        try (var c = index.stock().open();
+                var sql = c.createStatement()) {
+            sql.executeUpdate("DELETE FROM order_books");
+            sql.executeUpdate("DELETE FROM order_storage_meta");
+            sql.executeUpdate("DELETE FROM order_event_log");
+        }
+        var imported = new OrderStore(dir, index);
+        imported.load();
+        assertEquals("pending", imported.statusOf(order.id));
+        imported.cancel(order.id);
+        Files.writeString(legacy, "{corrupt");
+        var restarted = new OrderStore(dir, index);
+        restarted.load();
+        assertEquals("cancelled", restarted.statusOf(order.id));
+        assertEquals("{corrupt", Files.readString(legacy));
+    }
+
     @Test
     void onlyWholeBoxAllocationsAuthorizeRegisteredBoxRelease() {
         var order = new OrderStore.Order();
@@ -68,20 +142,14 @@ class OrderStoreRecoveryTest {
         var first = new OrderStore(dir, index);
         first.load();
         first.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 1)), null);
-        Path saved;
-        try (var files = Files.list(dir.resolve("orders"))) {
-            saved = files.filter(p -> p.toString().endsWith(".json"))
-                    .findFirst()
-                    .orElseThrow();
-        }
-        var book = JsonParser.parseString(Files.readString(saved)).getAsJsonObject();
+        var book = OrderBookFixtures.read(index, "s", "a");
         var pending = new JsonArray();
         pending.add(UUID.randomUUID().toString()); // A valid, already-absent UUID: registry replay is idempotent.
         book.getAsJsonArray("orders").get(0).getAsJsonObject().add("pendingUuidDeregistrations", pending);
-        Files.writeString(saved, book.toString());
+        OrderBookFixtures.replace(index, book);
         var restarted = new OrderStore(dir, index);
         restarted.load();
-        var recovered = JsonParser.parseString(Files.readString(saved)).getAsJsonObject();
+        var recovered = OrderBookFixtures.read(index, "s", "a");
         assertFalse(recovered.getAsJsonArray("orders").get(0).getAsJsonObject().has("pendingUuidDeregistrations"));
     }
 }

@@ -49,13 +49,13 @@ class AutomationGateTest {
                 var sql = c.createStatement()) {
             try (var rows = sql.executeQuery("PRAGMA user_version")) {
                 assertTrue(rows.next());
-                assertEquals(7, rows.getInt(1));
+                assertEquals(8, rows.getInt(1));
             }
             try (var rows = sql.executeQuery("SELECT count(*) FROM automation_leases")) {
                 assertTrue(rows.next());
                 assertEquals(0, rows.getInt(1));
             }
-            sql.execute("PRAGMA user_version=8");
+            sql.execute("PRAGMA user_version=9");
         }
         assertThrows(java.io.IOException.class, () -> new StockLedger(data));
     }

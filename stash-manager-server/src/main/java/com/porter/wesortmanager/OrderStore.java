@@ -4,12 +4,8 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.porter.wesort.data.PackageLabel;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.DirectoryStream;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.ArrayList;
@@ -23,8 +19,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Orders per (server, stash), persisted to data/orders/<same name as the index file>.json.
- * Each stash's orders are guarded by their own lock; every change is written to disk before the call returns.
+ * Orders per (server, stash), persisted in the shared guild SQLite database.
+ * Each stash's orders are guarded by their own lock; snapshots and append-only transition history commit together.
  * The status rules are the ones in PROTOCOL.md ("Orders").
  */
 final class OrderStore {
@@ -454,6 +450,7 @@ final class OrderStore {
         final List<Order> orders = new ArrayList<>();
         final List<Order> archived = new ArrayList<>();
         final Map<String, Receipt> receipts = new LinkedHashMap<>();
+        long persistenceRevision;
 
         Book(String server, String stash) {
             this.server = server;
@@ -507,6 +504,7 @@ final class OrderStore {
 
     private final Path dir;
     private final IndexStore index;
+    private OrderBookRepository repository;
     private final Map<IndexStore.StashKey, Book> books = new ConcurrentHashMap<>();
     private final Map<String, Book> byOrderId = new ConcurrentHashMap<>();
 
@@ -524,38 +522,41 @@ final class OrderStore {
     }
 
     void load() throws IOException {
-        Files.createDirectories(dir);
-        try (DirectoryStream<Path> files = Files.newDirectoryStream(dir, "*.json")) {
-            for (Path file : files) {
-                try {
-                    JsonObject root = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8))
-                            .getAsJsonObject();
-                    Book b = book(
-                            root.get("server").getAsString(), root.get("stash").getAsString());
-                    synchronized (b) {
-                        if (root.has("receipts")) {
-                            for (var entry : root.getAsJsonObject("receipts").entrySet()) {
-                                b.receipts.put(
-                                        entry.getKey(),
-                                        Receipt.read(entry.getValue().getAsJsonObject()));
-                            }
-                        }
-                        for (JsonElement e : root.getAsJsonArray("orders")) {
-                            Order o = Order.fromJson(e.getAsJsonObject());
-                            b.orders.add(o);
-                            byOrderId.put(o.id, b);
-                        }
-                        if (root.has("archived"))
-                            for (var entry : root.getAsJsonArray("archived")) {
-                                b.archived.add(Order.fromJson(entry.getAsJsonObject()));
-                            }
-                        trimArchive(b);
-                        b.orders.sort((x, y) -> Long.compare(x.createdAt, y.createdAt));
-                    }
-                } catch (RuntimeException e) {
-                    // An incomplete order book could silently release live reservations. Refuse readiness.
-                    throw new IOException("Cannot restore orders file " + file.getFileName(), e);
+        var storage = new OrderBookRepository(index.stock());
+        var restored = new LinkedHashMap<IndexStore.StashKey, Book>();
+        var orderIds = new HashSet<String>();
+        var receiptKeys = new HashSet<String>();
+        storage.load(dir, snapshot -> {
+            var root = snapshot.payload();
+            var b = new Book(snapshot.server(), snapshot.stash());
+            b.persistenceRevision = snapshot.revision();
+            if (root.has("receipts")) {
+                for (var entry : root.getAsJsonObject("receipts").entrySet()) {
+                    if (!receiptKeys.add(entry.getKey())) throw new IllegalArgumentException("Duplicate order receipt");
+                    b.receipts.put(entry.getKey(), Receipt.read(entry.getValue().getAsJsonObject()));
                 }
+            }
+            for (String key : List.of("orders", "archived")) {
+                if ("archived".equals(key) && !root.has(key)) continue;
+                for (var entry : root.getAsJsonArray(key)) {
+                    var order = Order.fromJson(entry.getAsJsonObject());
+                    if (!b.server.equals(order.server) || !b.stash.equals(order.stash) || !orderIds.add(order.id))
+                        throw new IllegalArgumentException("Invalid or duplicate persisted order scope");
+                    ("orders".equals(key) ? b.orders : b.archived).add(order);
+                }
+            }
+            trimArchive(b);
+            b.orders.sort((x, y) -> Long.compare(x.createdAt, y.createdAt));
+            if (restored.putIfAbsent(new IndexStore.StashKey(b.server, b.stash), b) != null)
+                throw new IllegalArgumentException("Duplicate persisted order book");
+        });
+        synchronized (index) {
+            repository = storage;
+            books.clear();
+            byOrderId.clear();
+            books.putAll(restored);
+            for (Book b : restored.values()) {
+                for (Order order : b.orders) byOrderId.put(order.id, b);
             }
         }
         // Complete previously committed registry side effects before serving any new requests.
@@ -595,9 +596,8 @@ final class OrderStore {
             b.receipts.forEach((key, receipt) -> receipts.add(key, receipt.json()));
             root.add("receipts", receipts);
         }
-        AtomicFiles.write(
-                dir.resolve(IndexStore.fileName(b.server, b.stash)),
-                Json.GSON.toJson(root).getBytes(StandardCharsets.UTF_8));
+        if (repository == null) throw new IOException("Order storage has not been loaded");
+        b.persistenceRevision = repository.commit(b.server, b.stash, b.persistenceRevision, root);
     }
 
     private void update(Book book, Order previous, Order next) throws IOException {

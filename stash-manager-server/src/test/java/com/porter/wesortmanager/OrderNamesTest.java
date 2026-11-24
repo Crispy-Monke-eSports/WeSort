@@ -9,8 +9,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -138,12 +136,9 @@ class OrderNamesTest {
         assertFalse(o.toJson().has("note"));
 
         // An order saved by an older server, with a note.
-        Path dir = data.resolve("orders");
-        Path file = dir.resolve(IndexStore.fileName("s", "a"));
-        String text = Files.readString(file, StandardCharsets.UTF_8);
-        JsonObject root = json(text);
+        JsonObject root = OrderBookFixtures.read(index, "s", "a");
         root.getAsJsonArray("orders").get(0).getAsJsonObject().addProperty("note", "leave at the door");
-        Files.writeString(file, root.toString(), StandardCharsets.UTF_8);
+        OrderBookFixtures.replace(index, root);
 
         OrderStore reloaded = new OrderStore(data, index);
         reloaded.load();
@@ -153,7 +148,7 @@ class OrderNamesTest {
         assertTrue(listed.get("names").isJsonNull());
         assertFalse(reloaded.claim("s", "a").toJson().has("note"));
         // The next save drops it from disk too.
-        assertFalse(Files.readString(file, StandardCharsets.UTF_8).contains("leave at the door"));
+        assertFalse(OrderBookFixtures.read(index, "s", "a").toString().contains("leave at the door"));
     }
 
     private OrderStore.Order fail(OrderStore.Order o) throws Exception {

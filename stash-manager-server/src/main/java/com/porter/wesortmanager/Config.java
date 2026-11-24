@@ -107,7 +107,7 @@ public final class Config {
 
     /** Saves the single Minecraft server address (owner-only, from the web UI). Empty clears it. */
     public synchronized void setMinecraftServer(String server) throws IOException {
-        String v = server == null ? "" : server.trim();
+        String v = ServerRoutes.canonicalServer(server == null ? "" : server);
         if (v.length() > 256) throw new IllegalArgumentException("server address too long");
         writeLine(file, Pattern.compile("^\\s*minecraftServer\\s*[=:].*$"), "minecraftServer", v);
         minecraftServer = v.isEmpty() ? null : v;
@@ -153,9 +153,16 @@ public final class Config {
         }
 
         // Fail closed: no other consent key or local-client override can authorize startup.
-        String eulaValue = System.getenv("WESORT_EULA");
-        if (eulaValue == null || eulaValue.isBlank()) eulaValue = props.getProperty("eula", "false");
+        String envEula = System.getenv("WESORT_EULA");
+        String eulaValue = (envEula == null || envEula.isBlank()) ? props.getProperty("eula", "false") : envEula;
         boolean eulaAccepted = "true".equalsIgnoreCase(eulaValue.trim());
+        if (envEula != null
+                && !envEula.isBlank()
+                && "true".equalsIgnoreCase(envEula.trim())
+                && !"true".equalsIgnoreCase(props.getProperty("eula", "false").trim())) {
+            System.out.println(
+                    "WeSort Manager: WESORT_EULA=true overrides config eula=false; update config.properties eula=true so a restart without the env var still starts.");
+        }
 
         boolean generated = false;
         if (apiKey.isEmpty()) {

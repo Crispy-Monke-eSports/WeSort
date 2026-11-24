@@ -84,6 +84,27 @@ class PhysicalOperationsTest {
     }
 
     @Test
+    void aliasedServerStorageKeyDoesNotRewriteJournalChecksum() throws Exception {
+        var ledger = new StockLedger(data);
+        var store = new PhysicalOperations(ledger);
+        var journal = journal();
+        var record = journal.current();
+        var checksum = record.get("checksum");
+        assertEquals(checksum, store.accept(agent, record, "canonical").get("checksum"));
+        assertEquals(checksum, store.accept(agent, record, "canonical").get("checksum"));
+        assertEquals("s", record.getAsJsonObject("context").get("server").getAsString());
+        try (var connection = ledger.open();
+                var statement = connection.createStatement();
+                var rows = statement.executeQuery("SELECT server,payload FROM physical_operations")) {
+            assertTrue(rows.next());
+            assertEquals("canonical", rows.getString(1));
+            assertEquals(
+                    checksum,
+                    JsonParser.parseString(rows.getString(2)).getAsJsonObject().get("checksum"));
+        }
+    }
+
+    @Test
     void durableMirroringIsIdempotentAppendOnlyAndCannotInventStock() throws Exception {
         var ledger = new StockLedger(data);
         var store = new PhysicalOperations(ledger);

@@ -48,10 +48,12 @@ final class PhysicalRoutes {
             var record = body.getAsJsonObject("record");
             var context = record == null ? null : record.getAsJsonObject("context");
             String at = context == null ? null : AddonRoutes.string(context, "server");
-            if (at != null && !at.isEmpty() && !want.equals(at)) {
+            if (at != null && !at.isEmpty() && !ServerRoutes.sameServer(want, at)) {
                 Http.error(ex, 409, "this Manager serves '" + want + "'");
                 return;
             }
+            // The record checksum covers its context. Keep the agent's record intact and
+            // use the configured server only as the Manager's storage key.
             var store = operations();
             JsonObject receipt;
             JsonObject decision;
@@ -59,7 +61,7 @@ final class PhysicalRoutes {
             // Serialized with the index lock: order reconciliation checks unsettled operations
             // and commits under the same lock, so a journal write cannot land in between.
             synchronized (index) {
-                receipt = store.accept(agent, body.getAsJsonObject("record"));
+                receipt = store.accept(agent, body.getAsJsonObject("record"), want);
                 if (result != null) {
                     store.decisionResult(
                             agent,

@@ -145,7 +145,8 @@ final class BotRoutes {
             }
             // The binding names the Minecraft server and stash the bot works in: both are verified.
             // A bot from another server is refused; an undefined stash cannot take work.
-            int gate = ServerRoutes.agentServerStatus(config, manifestScope.server());
+            String configured = config.minecraftServer();
+            int gate = ServerRoutes.serverStatus(configured, manifestScope.server());
             if (gate == 400) {
                 Http.error(ex, 400, "set the Minecraft server in Settings first");
                 return;
@@ -158,6 +159,13 @@ final class BotRoutes {
                 Http.error(ex, 404, "unknown stash '" + manifestScope.stash() + "': define it in Settings first");
                 return;
             }
+            manifestScope = new BotHub.ManifestScope(
+                    manifestScope.botId(),
+                    configured,
+                    manifestScope.stash(),
+                    manifestScope.dimension(),
+                    manifestScope.agent(),
+                    manifestScope.player());
         }
         int status = hub.register(botId, player, plugin, runtime, caps, scopes, controlSession, manifestScope);
         if (status != 200) {
@@ -169,6 +177,8 @@ final class BotRoutes {
                             : "Too many bots (limit " + BotHub.MAX_BOTS + ")");
             return;
         }
+        System.out.println("WeSort Manager: agent hello id=" + botId + " plugin=" + safeVersion(plugin) + " mc="
+                + safeVersion(runtime));
         JsonObject out = Http.ok();
         out.addProperty("protocol", controlSession == null ? 1 : 2);
         if (controlSession != null) {
@@ -267,6 +277,20 @@ final class BotRoutes {
         } catch (OrderStore.OrderException denied) {
             Http.error(ex, denied.status, denied.getMessage());
         }
+    }
+
+    /** Null-safe plugin/runtime version for the hello log; never throws on malformed input. */
+    private static String safeVersion(JsonObject o) {
+        if (o == null) return "?";
+        String id = o.has("id") && o.get("id").isJsonPrimitive() ? o.get("id").getAsString() : null;
+        String version = o.has("version") && o.get("version").isJsonPrimitive()
+                ? o.get("version").getAsString()
+                : null;
+        String mc = o.has("mc") && o.get("mc").isJsonPrimitive() ? o.get("mc").getAsString() : null;
+        if (id != null && version != null) return id + "@" + version;
+        if (version != null) return version;
+        if (mc != null) return mc;
+        return "?";
     }
 
     /** {a, b} with optional short string fields only; missing object = empty. Null when malformed. */

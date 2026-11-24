@@ -76,7 +76,8 @@ final class BoxRoutes {
                 String stash = AddonRoutes.string(body, "stash");
                 // A box job is physical work: fail closed before setup, on the wrong server,
                 // and for stashes the Manager never defined.
-                int gate = ServerRoutes.agentServerStatus(config, server);
+                String configured = config.minecraftServer();
+                int gate = ServerRoutes.serverStatus(configured, server);
                 if (gate == 400) {
                     Http.error(ex, 400, "set the Minecraft server in Settings first");
                     return;
@@ -89,6 +90,9 @@ final class BoxRoutes {
                     Http.error(ex, 404, "unknown stash '" + stash + "': define it in Settings first");
                     return;
                 }
+                // Canonicalize once: box jobs below are keyed by the same form as
+                // order books and stock, so admission and storage can never disagree.
+                server = configured;
                 synchronized (index) {
                     job = jobs().claim(server, stash, agentId);
                 }

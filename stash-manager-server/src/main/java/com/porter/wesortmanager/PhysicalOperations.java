@@ -235,8 +235,9 @@ final class PhysicalOperations {
      */
     synchronized void sweepStale() throws IOException {
         try (var c = ledger.open();
-                var q = c.prepareStatement("SELECT 1 FROM physical_operations WHERE state IN "
-                        + "('PLANNED','IN_PROGRESS','VERIFYING') AND (last_seen<=? OR last_seen>? OR EXISTS (SELECT 1 FROM automation_leases l WHERE l.server=physical_operations.server AND l.agent=physical_operations.agent AND (l.state='NEEDS_RECONCILIATION' OR l.deadline<=?))) LIMIT 1")) {
+                var q = c.prepareStatement(
+                        "SELECT 1 FROM physical_operations WHERE state IN "
+                                + "('PLANNED','IN_PROGRESS','VERIFYING') AND (last_seen<=? OR last_seen>? OR EXISTS (SELECT 1 FROM automation_leases l WHERE l.server=physical_operations.server AND l.agent=physical_operations.agent AND (l.state='NEEDS_RECONCILIATION' OR l.deadline<=?))) LIMIT 1")) {
             long now = clock.getAsLong();
             q.setLong(1, now - 15_000);
             q.setLong(2, now + FUTURE_SKEW_MS);

@@ -4,8 +4,8 @@ import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 import baritone.api.pathing.goals.Goal;
 import com.porter.wesort.WeSortAddon;
-import com.porter.wesort.inventory.NavigationWatchdog;
 import com.porter.wesort.inventory.NavigationRecovery;
+import com.porter.wesort.inventory.NavigationWatchdog;
 import com.porter.wesort.inventory.PortalNavigationPolicy;
 import com.porter.wesort.modules.StashManager;
 import com.porter.wesort.modules.StashSorter;

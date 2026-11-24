@@ -6,8 +6,11 @@ public final class NavigationRecovery {
 
     public static boolean retryable(String state, String detail) {
         return switch (state) {
-            case "PAUSED_NAVIGATION_RELEASED", "PAUSED_NAVIGATION_STUCK", "PAUSED_NAVIGATION_TIMEOUT",
-                    "PAUSED_NAVIGATION_INVENTORY", "PAUSED_NAVIGATION_PHYSICAL_UNCERTAINTY" -> true;
+            case "PAUSED_NAVIGATION_RELEASED",
+                    "PAUSED_NAVIGATION_STUCK",
+                    "PAUSED_NAVIGATION_TIMEOUT",
+                    "PAUSED_NAVIGATION_INVENTORY",
+                    "PAUSED_NAVIGATION_PHYSICAL_UNCERTAINTY" -> true;
             case "PAUSED_NAVIGATION_UNSAFE_BLOCK" -> detail != null && detail.startsWith("unloaded ");
             default -> false;
         };

@@ -336,7 +336,8 @@ class NavigationHarness(world.Harness):
         time.sleep(0.5)
         outcome = self.state()
         require(
-            outcome["navigation"] == "PAUSED_NAVIGATION_OTHER_PROCESS"
+            outcome["navigation"] == "FOREIGN_PROCESS_CANCELLED"
+            and not outcome["navigationPaused"]
             and not outcome["pathing"],
             "Dedicated agent let a foreign Baritone goal keep control",
         )
@@ -346,9 +347,13 @@ class NavigationHarness(world.Harness):
             and outcome["allowBreakAnyway"] == 0,
             "Dedicated agent kept unsafe Baritone settings or a breaking exception",
         )
-        self.command("nav-resume")
+        self.start_walk(4, 64, 0)
+        require(
+            self.wait_walk(20)["navigation"] == "ARRIVED",
+            "Foreign goal left the agent unable to start its next route without resume",
+        )
         self.ok(
-            "dedicated Baritone clears allowBreakAnyway and cancels external goals even between WeSort jobs"
+            "dedicated Baritone clears allowBreakAnyway and cancels external goals without latching a navigation pause"
         )
 
     def wait_for_pressure_plate(self, *, powered):
@@ -388,6 +393,8 @@ class NavigationHarness(world.Harness):
             self.fault_cases()
             self.verify_manager_index(index)
             self.command("manager-pause")
+            require(not self.state()["agentOwnsClient"], "Disabled Agent still owns the client")
+            self.command("agent-ownership-probe")
             # Keep the independently cloned reference identical: the temporary
             # route fixture is gone before autonomous Manager recovery is enabled.
             for x in (3, 1011):
@@ -398,6 +405,8 @@ class NavigationHarness(world.Harness):
             # so teleport(2.5, 7.5) can never observe the commanded position.
             # The E2E-only hold is activated in the same client tick as resume.
             self.command("manager-resume", inspectionHold=True)
+            require(self.state()["agentOwnsClient"], "Enabled Agent does not own the client")
+            self.command("agent-ownership-probe")
             self.dedicated_guard_cases()
             reply = self.rcon.command(
                 "execute if blocks -8 63 -8 40 70 12 1000 63 -8 all run time query gametime"

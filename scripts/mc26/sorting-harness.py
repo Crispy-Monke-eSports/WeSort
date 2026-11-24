@@ -183,6 +183,11 @@ class SortingHarness(world.Harness):
             status, reservation = self.order(); require(status==200,'Could not create actual reservation')
             before_reserved = {x:self.nbt(x) for x in self.locations}
             before_clicks = self.command('state')['state']['attemptedClicks']
+            # The dedicated agent now reclaims foreign menus even in scan-only
+            # mode. Suspend its autonomous loop only for this read-only fixture
+            # inspection, without disabling the signed Manager or reservation.
+            self.command('manager-inspection-hold', hold=True)
+            self.settle_test_menus()
             self.teleport(0.5, 2); self.command('sort-config')
             self.command('open', x=0, y=64, z=3, slots=27, item='minecraft:diamond', count=32)
             diagnostic = self.command('sort-explain')['state']
@@ -190,6 +195,8 @@ class SortingHarness(world.Harness):
             probes = diagnostic['probes']
             require(any(c['reason'] == 'PROTECTED' for c in probes[0]['candidates']) and any(c['reason'] == 'EXCLUDED' for c in probes[0]['candidates']), 'Protection diagnostics missing')
             self.command('close')
+            self.settle_test_menus()
+            self.command('manager-inspection-hold', hold=False)
             activated = self.command('sort-start')['state']['sorterStorage']
             require(next(b for b in activated if b['x']==12)['excluded'] and next(b for b in activated if b['x']==15)['protected'],
                 'Selecting the same stash name again lost its protection marks')

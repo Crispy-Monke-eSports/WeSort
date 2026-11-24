@@ -30,6 +30,7 @@ public final class BaritoneHelper {
     private static Boolean waterBucketFall;
     // Break, place and the safe walk settings while a walk is confined: the setting, what it was, what we set it to
     private static final List<Object[]> confined = new ArrayList<>();
+    private static final List<Object[]> agentProfile = new ArrayList<>();
 
     private BaritoneHelper() {}
 
@@ -136,21 +137,48 @@ public final class BaritoneHelper {
         baritone().getPathingBehavior().cancelEverything();
     }
 
+    /** Reclaim a watched goal without re-registering it or resetting its deadline. */
+    public static void reassertGoal(Goal goal) {
+        baritone().getCustomGoalProcess().setGoalAndPath(goal);
+    }
+
     public static void enforceAgentProfile() {
         Settings settings = BaritoneAPI.getSettings();
-        settings.allowBreak.value = false;
-        if (!settings.allowBreakAnyway.value.isEmpty()) settings.allowBreakAnyway.value = List.of();
-        settings.allowPlace.value = false;
-        settings.allowPlaceInFluidsSource.value = false;
-        settings.allowPlaceInFluidsFlow.value = false;
-        settings.allowWaterBucketFall.value = false;
-        settings.allowParkour.value = false;
-        settings.allowParkourPlace.value = false;
-        settings.allowParkourAscend.value = false;
-        settings.allowDiagonalDescend.value = false;
-        settings.allowJumpAt256.value = false;
-        settings.allowSprint.value = false;
-        settings.maxFallHeightNoWater.value = 1;
+        profileOne(settings.allowBreak, false);
+        profileOne(settings.allowBreakAnyway, List.of());
+        profileOne(settings.allowPlace, false);
+        profileOne(settings.allowPlaceInFluidsSource, false);
+        profileOne(settings.allowPlaceInFluidsFlow, false);
+        profileOne(settings.allowWaterBucketFall, false);
+        profileOne(settings.allowParkour, false);
+        profileOne(settings.allowParkourPlace, false);
+        profileOne(settings.allowParkourAscend, false);
+        profileOne(settings.allowDiagonalDescend, false);
+        profileOne(settings.allowJumpAt256, false);
+        profileOne(settings.allowSprint, false);
+        profileOne(settings.maxFallHeightNoWater, 1);
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static void profileOne(Settings.Setting setting, Object value) {
+        if (agentProfile.stream().noneMatch(saved -> saved[0] == setting))
+            agentProfile.add(new Object[] {setting, setting.value, value});
+        setting.value = value;
+    }
+
+    /** Give the player's settings back when the Agent toggle is off. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public static void restoreAgentProfile() {
+        for (Object[] saved : agentProfile) {
+            Settings.Setting setting = (Settings.Setting) saved[0];
+            if (Objects.equals(setting.value, saved[2])) setting.value = saved[1];
+        }
+        agentProfile.clear();
+    }
+
+    private static void syncAgentProfile() {
+        if (WorldInteractionGuard.dedicated()) enforceAgentProfile();
+        else restoreAgentProfile();
     }
 
     /**
@@ -158,6 +186,7 @@ public final class BaritoneHelper {
      * water buckets to break falls. Applied on top of whatever the user already has set.
      */
     public static void protect(Collection<Block> blocks) {
+        syncAgentProfile();
         Settings settings = BaritoneAPI.getSettings();
 
         // Copy rather than mutate, the list Baritone holds may be immutable
@@ -180,6 +209,7 @@ public final class BaritoneHelper {
      * Keeps Baritone from breaking and placing blocks at all, remembering the user's own settings for {@link #unconfine()}.
      */
     public static void confine(boolean safe) {
+        syncAgentProfile();
         Settings settings = BaritoneAPI.getSettings();
         confineOne(settings.allowBreak, false);
         confineOne(settings.allowPlace, false);

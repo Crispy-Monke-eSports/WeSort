@@ -165,6 +165,8 @@ class HierarchyHarness(stock.StockHarness):
         self.rcon.command('setblock 8 64 -3 minecraft:chest')
         self.read(8, 'minecraft:air', 0)
         self.command('order-staging-settings', x=8, y=64, z=-3)
+        self.settle_test_menus()
+        self.command('manager-inspection-hold', hold=False)
         # Delivery locations are Manager-owned. The isolated driver has its own
         # Stash object; writing the position there does not configure the running
         # sorter's Stash after the signed-key bootstrap/assignment. Issue the
@@ -520,7 +522,12 @@ class HierarchyHarness(stock.StockHarness):
                 # The physical mutation check stopped the agent. Restart it with the
                 # currently issued key (the shared key is invalid in scoped-only mode)
                 # before asserting that a Manager pause reaches its live heartbeat.
-                self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key)
+                # Keep autonomous work suspended during the driver's initial
+                # staging-chest observation: the active dedicated agent would
+                # otherwise reclaim that foreign menu before it is verified.
+                self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key,
+                             inspectionHold=True)
+                self.settle_test_menus()
                 self.verify_order_lifecycle(detail)
                 if self.scoped_agent:
                     self.verify_fleet_sessions()

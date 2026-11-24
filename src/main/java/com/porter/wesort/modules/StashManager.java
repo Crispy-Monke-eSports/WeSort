@@ -32,6 +32,7 @@ import meteordevelopment.meteorclient.events.game.GameLeftEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
+import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.Item;
@@ -318,8 +319,19 @@ public class StashManager extends Module {
         }
     }
 
+    /** Client ownership is granted only by the local Meteor WeSort-Agent toggle. */
     public boolean dedicatedProfile() {
-        return isActive() && !serverUrl.get().isBlank() && !apiKey.get().isBlank();
+        return isActive();
+    }
+
+    public static boolean ownsClient() {
+        StashManager agent = Modules.get().get(StashManager.class);
+        return agent != null && agent.dedicatedProfile();
+    }
+
+    /** Transport configuration is not permission to take control of the client. */
+    private boolean managerConfigured() {
+        return !serverUrl.get().isBlank() && !apiKey.get().isBlank();
     }
 
     /**
@@ -563,7 +575,7 @@ public class StashManager extends Module {
     private long sortingUntil, sortingPoll;
 
     public boolean sortingEnabled() {
-        return isActive() && dedicatedProfile() && sortEnabled.get() && !e2ePhysicalSortingHold;
+        return dedicatedProfile() && managerConfigured() && sortEnabled.get() && !e2ePhysicalSortingHold;
     }
 
     /** Orders waiting to be claimed: the sorter names no UUIDs while any wait, so packed orders keep matching. */
@@ -797,7 +809,8 @@ public class StashManager extends Module {
 
     private void serviceControlWhenDue() {
         // No work-lane inFlight/backoff, inventory readiness, navigation or quiet-mode gate.
-        if (controlInFlight || mc.player == null || mc.level == null || !dedicatedProfile()) return;
+        if (controlInFlight || mc.player == null || mc.level == null || !dedicatedProfile() || !managerConfigured())
+            return;
         String key = apiKey.get().trim();
         URI base = parse(serverUrl.get());
         if (base == null || key.isEmpty()) return;
@@ -816,7 +829,8 @@ public class StashManager extends Module {
                 || controlScope == null
                 || mc.player == null
                 || mc.level == null
-                || !dedicatedProfile()) return;
+                || !dedicatedProfile()
+                || !managerConfigured()) return;
         String key = apiKey.get().trim();
         URI base = parse(serverUrl.get());
         if (base == null || !controlScope.equals(observeControlScope(base, key))) return;
@@ -1803,8 +1817,8 @@ public class StashManager extends Module {
         // physical recovery is safely deposited.
         if (rescanning && !sorter.needsReading()) rescanning = false;
         // The 6b6t lobby transit drives too: walking through the portal comes before everything.
-        boolean want = isActive()
-                && dedicatedProfile()
+        boolean want = dedicatedProfile()
+                && managerConfigured()
                 && sorter.currentStash() != null
                 && (acceptOrders.get()
                         || rescanning

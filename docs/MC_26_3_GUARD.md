@@ -7,10 +7,12 @@ handling som inte uttryckligen hör till ett godkänt lagerjobb.
 
 ## När skyddet är aktivt
 
-`StashManager.dedicatedProfile()` är `true` när både `server-url` och
-`api-key` är ifyllda, det vill säga när Fabric-agenten är kopplad till en
-WeSort Manager. I den profilen gäller skyddet **alltid**, även utanför
-WeSort-ägda promenader och mål.
+`StashManager.dedicatedProfile()` är `true` exakt när Meteor-modulen WeSort-Agent är aktiv.
+Manager-adress, API-nyckel, anslutning och fjärrinställningar påverkar inte
+ägarskapet. I den profilen gäller skyddet **alltid**, även utanför
+WeSort-ägda promenader och mål. Agenten väntar inte på artighetsgrinden
+(StashYield) eller dess backoff; faktiska inventory-, journal- och
+jobbsäkerhetskrav gäller fortsatt. Stäng av modulen för att återta klienten.
 
 ## WorldInteractionGuard
 
@@ -52,9 +54,11 @@ interaktionskänsligt.
 icke-destruktiv i dedikerad profil: `allowBreak=false`, `allowPlace=false`,
 `allowBreakAnyway` tömd, inga vätskebucket-/parkour-/sprint-/fallundantag.
 Profilen återställs även efter `unconfine()`/`unprotect()`, så osäkra
-sparade inställningar återställs inte efter ett jobb. En främmande
+sparade inställningar återställs inte efter ett jobb. När Agent-modulen
+stängs av återställs de tidigare Baritone-inställningarna. En främmande
 Baritone-process (`#goto`, `#mine`, `#build` eller ett externt mål) stoppas
-och pausar som `PAUSED_NAVIGATION_OTHER_PROCESS`, även mellan WeSort-jobb.
+utan att låsa agenten i en manuell paus, även mellan WeSort-jobb. Ett
+pågående WeSort-mål återtas med oförändrad watchdog-deadline.
 
 ## Testbevis
 
@@ -65,7 +69,7 @@ och pausar som `PAUSED_NAVIGATION_OTHER_PROCESS`, även mellan WeSort-jobb.
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Staketgrind, trapdoor, spak             | Klienten vägrar use/break; serverns blockstates matchar referensen                                                                               |
 | Tryckplatta, redstone och dörr i rutten | Baritone går över redstone, når plattan, passerar den plattstyrda järndörren och en öppen grind. Servern bekräftar aktivering och återställning. |
-| Osäker Bot-profil + externt mål         | `allowBreakAnyway` töms, externt mål avbryts, `PAUSED_NAVIGATION_OTHER_PROCESS`                                                                  |
+| Osäker Bot-profil + externt mål         | `allowBreakAnyway` töms, externt mål avbryts, ingen manuell paus; nästa rutt fungerar                                                            |
 
 `mc26-navigation.yml` kör samma prov med Xvfb/Mesa i CI.
 

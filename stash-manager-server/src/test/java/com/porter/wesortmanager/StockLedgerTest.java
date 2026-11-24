@@ -465,7 +465,8 @@ class StockLedgerTest {
     @Test
     void missingResumeReceiptTableInV9FailsClosed() throws Exception {
         var l = ledger();
-        try (var c = l.open(); var sql = c.createStatement()) {
+        try (var c = l.open();
+                var sql = c.createStatement()) {
             sql.execute("DROP TABLE order_resume_receipts");
         }
         assertThrows(java.io.IOException.class, this::ledger);

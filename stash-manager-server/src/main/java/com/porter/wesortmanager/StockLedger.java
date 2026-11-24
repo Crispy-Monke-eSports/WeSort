@@ -75,9 +75,10 @@ final class StockLedger {
         boolean existed = Files.exists(file);
         Path initialized = data.resolve("guild.sqlite.initialized");
         if (Files.isSymbolicLink(initialized)) throw new IOException("Invalid guild database initialization marker");
-        if (!existed && (Files.exists(initialized)
-                || Files.exists(Path.of(file + "-wal"))
-                || Files.exists(Path.of(file + "-shm"))))
+        if (!existed
+                && (Files.exists(initialized)
+                        || Files.exists(Path.of(file + "-wal"))
+                        || Files.exists(Path.of(file + "-shm"))))
             throw new IOException("Guild database is missing; restore a consistent backup before starting Manager");
         try {
             Class.forName("org.sqlite.JDBC");
@@ -178,7 +179,10 @@ final class StockLedger {
             // its contents were authoritative. Write before any caller can import
             // legacy orders or accept new physical work.
             if (!Files.exists(initialized))
-                AtomicFiles.write(initialized, "WeSort guild database initialized\n".getBytes(java.nio.charset.StandardCharsets.UTF_8), true);
+                AtomicFiles.write(
+                        initialized,
+                        "WeSort guild database initialized\n".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                        true);
         } catch (SQLException | ClassNotFoundException e) {
             throw new IOException("Cannot initialize guild observation database", e);
         }

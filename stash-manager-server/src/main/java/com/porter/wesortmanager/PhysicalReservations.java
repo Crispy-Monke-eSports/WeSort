@@ -207,7 +207,10 @@ final class PhysicalReservations {
             for (var part : source.value().getAsJsonArray("parts")) {
                 boolean covered = sources.values().stream()
                         .anyMatch(replacement -> replacement.server().equals(source.server())
-                                && replacement.value().get("dimension").equals(source.value().get("dimension"))
+                                && replacement
+                                        .value()
+                                        .get("dimension")
+                                        .equals(source.value().get("dimension"))
                                 && freshAfter(replacement, cutoff)
                                 && replacement.value().getAsJsonArray("parts").contains(part));
                 if (!covered) return false;

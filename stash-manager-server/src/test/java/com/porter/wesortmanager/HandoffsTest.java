@@ -81,9 +81,9 @@ class HandoffsTest {
         java.nio.file.Files.writeString(data.resolve("handoffs.json"), root.toString());
         var restarted = new Handoffs(data);
         assertThrows(Handoffs.Conflict.class, () -> restarted.arrive(legacy.id(), A1));
-        assertThrows(Handoffs.Conflict.class,
-                () -> restarted.resolve(legacy.id(), Handoff.State.DELIVERED, "owner"));
-        assertEquals(Handoff.State.RETURNED,
+        assertThrows(Handoffs.Conflict.class, () -> restarted.resolve(legacy.id(), Handoff.State.DELIVERED, "owner"));
+        assertEquals(
+                Handoff.State.RETURNED,
                 restarted.resolve(legacy.id(), Handoff.State.RETURNED, "owner").state());
         assertEquals(Handoff.State.RETURNED, new Handoffs(data).get(legacy.id()).state());
     }

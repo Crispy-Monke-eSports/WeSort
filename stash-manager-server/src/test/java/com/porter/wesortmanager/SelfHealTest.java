@@ -407,11 +407,17 @@ class SelfHealTest {
         source.add("parts", parts);
         source.addProperty("kind", "minecraft:chest");
         source.addProperty("size", 54);
-        source.addProperty("id", new com.porter.wesort.data.ContainerIdentity(
-                "s", "minecraft:overworld", List.of(
-                        new com.porter.wesort.data.ContainerIdentity.Position(x - 1, 64, 0),
-                        new com.porter.wesort.data.ContainerIdentity.Position(x, 64, 0))).id());
-        var doubleFrame = new com.porter.wesort.data.PhysicalSlots.Snapshot(54, frame(10).slots());
+        source.addProperty(
+                "id",
+                new com.porter.wesort.data.ContainerIdentity(
+                                "s",
+                                "minecraft:overworld",
+                                List.of(
+                                        new com.porter.wesort.data.ContainerIdentity.Position(x - 1, 64, 0),
+                                        new com.porter.wesort.data.ContainerIdentity.Position(x, 64, 0)))
+                        .id());
+        var doubleFrame =
+                new com.porter.wesort.data.PhysicalSlots.Snapshot(54, frame(10).slots());
         source.addProperty("fingerprint", doubleFrame.fingerprint());
         source.addProperty("observedAt", time.get());
         store.putIndex(joined);
@@ -424,8 +430,9 @@ class SelfHealTest {
         store.putIndex(joined);
         orders.selfHealAll();
         assertTrue(orders.heldRoots("s").isEmpty());
-        assertEquals("pending", orders.place("s", "b",
-                List.of(new OrderStore.Line("item", "minecraft:diamond", 1)), null).status);
+        assertEquals(
+                "pending",
+                orders.place("s", "b", List.of(new OrderStore.Line("item", "minecraft:diamond", 1)), null).status);
     }
 
     @Test

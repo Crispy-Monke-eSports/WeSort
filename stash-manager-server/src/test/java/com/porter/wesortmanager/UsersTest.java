@@ -969,10 +969,12 @@ class UsersTest {
             l.addressFailure("10.0.0.9", false);
             l.success("10.0.0.9|u-000000000001"); // a good login with another account in between
         }
-        assertEquals(0, l.tryAcquire("10.0.0.9", false));
+        assertEquals(0, l.begin("10.0.0.9|u-000000000001", "10.0.0.9", false));
         l.addressFailure("10.0.0.9", false);
-        assertEquals(LoginLimiter.FIRST_LOCK_MS, l.tryAcquire("10.0.0.9", false));
-        assertEquals(0, l.tryAcquire("10.0.0.10", false));
+        l.end("10.0.0.9", false);
+        assertEquals(LoginLimiter.FIRST_LOCK_MS, l.begin("10.0.0.9|u-000000000002", "10.0.0.9", false));
+        assertEquals(0, l.begin("10.0.0.10|u-000000000001", "10.0.0.10", false));
+        l.end("10.0.0.10", false);
     }
 
     @Test

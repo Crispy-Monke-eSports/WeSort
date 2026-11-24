@@ -249,7 +249,7 @@ final class StockLedger {
     }
 
     private static long policy() {
-        String value = System.getenv().getOrDefault("WESORT_STOCK_MAX_AGE_SECONDS", "300");
+        String value = System.getenv().getOrDefault("WESORT_STOCK_MAX_AGE_SECONDS", "1800");
         long seconds = Long.parseLong(value);
         if (seconds < 1 || seconds > 86400)
             throw new IllegalArgumentException("WESORT_STOCK_MAX_AGE_SECONDS must be 1..86400");

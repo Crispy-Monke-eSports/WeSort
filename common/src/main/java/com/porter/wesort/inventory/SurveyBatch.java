@@ -12,6 +12,12 @@ public final class SurveyBatch {
     private SurveyBatch() {}
 
     public static boolean due(long now, long lastRead, long lastAttempt, long intervalMs) {
+        return due(now, lastRead, lastAttempt, intervalMs, false);
+    }
+
+    /** A one-shot explicit rescan or a required physical receipt is not background polling. */
+    public static boolean due(long now, long lastRead, long lastAttempt, long intervalMs, boolean requiredReceipt) {
+        if (requiredReceipt) return true;
         long last = Math.max(lastRead, lastAttempt);
         return last <= 0 || now >= last && now - last >= Math.max(MIN_INTERVAL_MS, intervalMs);
     }

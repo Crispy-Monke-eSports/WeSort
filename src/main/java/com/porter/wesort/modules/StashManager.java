@@ -1834,6 +1834,7 @@ public class StashManager extends Module {
         try {
             JsonObject in = JsonParser.parseString(body).getAsJsonObject();
             readDirective(in);
+            readRecheck(body);
             if (!in.has("rescan") || in.get("rescan").isJsonNull()) return;
             long id = in.get("rescan").getAsLong();
             if (id == activeRescanId || id == rescanDone) return;
@@ -1853,7 +1854,6 @@ public class StashManager extends Module {
         } catch (RuntimeException ex) {
             WeSortAddon.LOG.warn("wesort-stash-manager: couldn't read the rescan request", ex);
         }
-        readRecheck(body);
     }
 
     /**

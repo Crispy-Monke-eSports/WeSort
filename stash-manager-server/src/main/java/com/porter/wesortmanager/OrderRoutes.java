@@ -416,7 +416,14 @@ final class OrderRoutes {
             Http.error(ex, 400, "Invalid agent ID");
             return;
         }
-        JsonObject order = orders.claimPayload(server, stash, agent);
+        String resume = AddonRoutes.string(o, "resumeId");
+        if (o.has("resumeId") && (resume == null || !resume.matches("o-[0-9a-f]{12}"))) {
+            Http.error(ex, 400, "Invalid resume order ID");
+            return;
+        }
+        JsonObject order = resume == null
+                ? orders.claimPayload(server, stash, agent)
+                : orders.resumeClaim(server, stash, agent, resume);
         if (order == null) {
             Http.send(ex, 204, null, null, "no-store");
             return;

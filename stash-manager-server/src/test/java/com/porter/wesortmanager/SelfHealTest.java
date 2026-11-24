@@ -173,6 +173,34 @@ class SelfHealTest {
     }
 
     @Test
+    void exactRestartResumeNeverClaimsAnotherOrderAndReturnsTerminalDisposition() throws Exception {
+        observe("a", 10);
+        var first = orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 2)), null);
+        String agent = UUID.randomUUID().toString();
+        assertNotNull(orders.claimPayload("s", "a", agent));
+        var next = orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 2)), null);
+        assertNull(orders.resumeClaim("s", "a", UUID.randomUUID().toString(), first.id));
+        assertNull(orders.resumeClaim("s", "a", agent, "o-000000000000"));
+        assertNull(orders.resumeClaim("s", "a", agent, next.id));
+        var recovering = orders.resumeClaim("s", "a", agent, first.id);
+        assertEquals(first.id, recovering.get("id").getAsString());
+        assertEquals("RECOVERING", recovering.get("state").getAsString());
+        assertTrue(recovering.get("cancelRequested").getAsBoolean());
+        assertEquals("pending", orders.statusOf(next.id));
+
+        var restarted = new OrderStore(data, store);
+        restarted.load();
+        assertEquals(
+                "RECOVERING",
+                restarted.resumeClaim("s", "a", agent, first.id).get("state").getAsString());
+        restarted.status(first.id, "cancelled", null, null, "Returned", null, agent, "rollback-receipt");
+        var terminal = restarted.resumeClaim("s", "a", agent, first.id);
+        assertTrue(terminal.get("resumeComplete").getAsBoolean());
+        assertEquals("CANCELLED", terminal.get("state").getAsString());
+        assertEquals("pending", restarted.statusOf(next.id));
+    }
+
+    @Test
     void stashBlockersAreListedPerStash() throws Exception {
         observe("a", 10);
         var status = AddonRoutes.botStatus(JsonParser.parseString(

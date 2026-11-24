@@ -2072,23 +2072,73 @@ final class OrderStore {
         }
     }
 
+    /**
+     * Resume only this agent's exact durable checkpoint. A restart interrupts
+     * packing: never replay the original allocation against changed stock.
+     * This path cannot claim an unrelated queued order.
+     */
+    JsonObject resumeClaim(String server, String stash, String agent, String id) throws IOException {
+        if (agent == null) return null;
+        synchronized (index) {
+            Book book = books.get(new IndexStore.StashKey(server, stash));
+            if (book == null) return null;
+            synchronized (book) {
+                Order order = find(book, id);
+                if (order == null)
+                    order = book.archived.stream()
+                            .filter(row -> id.equals(row.id))
+                            .findFirst()
+                            .orElse(null);
+                if (order == null || !agent.equals(order.agent)) return null;
+                if (FINISHED.contains(order.status)) {
+                    if (index.stock().unsettledPhysicalOrder(id)) return null;
+                    if (order.stage() == OrderStage.PICKUP_READY && order.manifest == null) return null;
+                    var result = order.toJson();
+                    result.addProperty("resumeComplete", true);
+                    return result;
+                }
+                if (!isExecuting(order)) return null;
+                if (order.stage() != OrderStage.RECOVERING) {
+                    var updated = Order.fromJson(order.snapshot());
+                    try {
+                        updated.advance(OrderStage.RECOVERING);
+                    } catch (OrderException invalid) {
+                        return null;
+                    }
+                    updated.status = "in_progress";
+                    updated.cancelRequested = true;
+                    updated.cancelRequestedAt = updated.updatedAt = System.currentTimeMillis();
+                    updated.phase = "returning items to stash";
+                    updated.message = "Agent restarted; automatically returning interrupted order";
+                    updated.record("order.resume.rollback", agent, updated.updatedAt);
+                    update(book, order, updated);
+                    order = updated;
+                }
+                return claimView(server, order);
+            }
+        }
+    }
+
     JsonObject claimPayload(String server, String stash, String agent) throws IOException {
         synchronized (index) {
             Order order = claimWithObservationLock(server, stash, agent);
-            if (order == null) return null;
-            var payload = order.toJson();
-            if (order.allocations != null) {
-                var guards = new JsonObject();
-                for (var hold : physicalHolds(server)) {
-                    if (order.id.equals(hold.order())) continue;
-                    var root = hold.allocation().root();
-                    if (!guards.has(root.source())) guards.add(root.source(), new JsonArray());
-                    guards.getAsJsonArray(root.source()).add(Integer.parseInt(root.path()));
-                }
-                payload.add("protectedRoots", guards);
-            }
-            return payload;
+            return order == null ? null : claimView(server, order);
         }
+    }
+
+    private JsonObject claimView(String server, Order order) {
+        var payload = order.toJson();
+        if (order.allocations != null) {
+            var guards = new JsonObject();
+            for (var hold : physicalHolds(server)) {
+                if (order.id.equals(hold.order())) continue;
+                var root = hold.allocation().root();
+                if (!guards.has(root.source())) guards.add(root.source(), new JsonArray());
+                guards.getAsJsonArray(root.source()).add(Integer.parseInt(root.path()));
+            }
+            payload.add("protectedRoots", guards);
+        }
+        return payload;
     }
 
     /**

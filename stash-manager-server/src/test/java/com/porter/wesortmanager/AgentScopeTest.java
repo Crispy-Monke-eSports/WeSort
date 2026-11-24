@@ -671,4 +671,52 @@ class AgentScopeTest {
         HttpResponse<String> unbound = http.send(req, HttpResponse.BodyHandlers.ofString());
         assertEquals(409, unbound.statusCode());
     }
+
+    @Test
+    void deletedStashCannotAcceptAnOrderFromItsOldIndex() throws Exception {
+        String owner = login(null, OWNER_PW);
+        setServer(owner, "s");
+        defineStash(owner, "a");
+        StockFixtures.put(store, JsonParser.parseString("""
+                    {"version":1,"server":"s","stash":"a","items":[
+                      {"key":"minecraft:diamond","id":"minecraft:diamond","count":64,"maxStack":64}]}
+                    """).getAsJsonObject());
+        var deleted = post(owner, "/api/v1/stash-defs",
+                "{\"action\":\"delete\",\"name\":\"a\",\"expectedRevision\":1}");
+        assertEquals(200, deleted.status, deleted.body);
+        var response = post(owner, "/api/v1/orders",
+                "{\"stash\":\"a\",\"lines\":[{\"type\":\"item\",\"key\":\"minecraft:diamond\",\"count\":1}]}");
+        assertEquals(404, response.status, response.body);
+        assertTrue(orders.listJson("s", "a").getAsJsonArray("orders").isEmpty());
+    }
+
+    @Test
+    void boxJobsWithoutServerUseConfiguredServer() throws Exception {
+        String owner = login(null, OWNER_PW);
+        setServer(owner, "s");
+        try (var c = store.stock().open(); var sql = c.createStatement()) {
+            sql.executeUpdate("""
+                INSERT INTO box_jobs(id,server,stash,state,agent,token,deadline,payload)
+                VALUES('job','s','a','PLANNED','',NULL,0,'{"id":"job"}')
+                """);
+        }
+        for (String suffix : List.of("", "?server=s")) {
+            var request = HttpRequest.newBuilder(URI.create(base + "/api/v1/boxes/jobs" + suffix))
+                    .header("Cookie", SessionStore.COOKIE + "=" + owner)
+                    .GET().build();
+            var response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, response.statusCode(), response.body());
+            var jobs = JsonParser.parseString(response.body()).getAsJsonObject().getAsJsonArray("jobs");
+            assertEquals(1, jobs.size());
+            assertEquals("PLANNED", jobs.get(0).getAsJsonObject().get("state").getAsString());
+        }
+    }
+
+    @Test
+    void handoffScheduleWithoutAgentReturnsBadRequest() throws Exception {
+        String owner = login(null, OWNER_PW);
+        var response = post(owner, "/api/v1/handoffs",
+                "{\"action\":\"schedule\",\"orderId\":\"o-1\",\"recipient\":\"alice\",\"meetingPoint\":\"meet-1\"}");
+        assertEquals(400, response.status, response.body);
+    }
 }

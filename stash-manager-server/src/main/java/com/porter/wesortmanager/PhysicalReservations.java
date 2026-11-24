@@ -191,12 +191,28 @@ final class PhysicalReservations {
         return totals;
     }
 
+    private static boolean freshAfter(StockLedger.Source source, long cutoff) {
+        return source.status().equals("FRESH") && source.verifiedAt() > cutoff;
+    }
+
     boolean refreshedAfter(List<Allocation> allocations, long cutoff) {
         return allocations.stream().map(Allocation::source).distinct().allMatch(id -> {
             var source = sources.get(id);
-            return source != null
-                    && source.verifiedAt() > cutoff
-                    && source.status().equals("FRESH");
+            if (source == null) return false;
+            if (freshAfter(source, cutoff)) return true;
+            if (!source.status().equals("SUPERSEDED")) return false;
+            // A merge or split changes the canonical source ID. Every old physical
+            // position must now belong to a fresh, verified replacement inventory.
+            // Never infer a return from an absent, stale or only partly covered source.
+            for (var part : source.value().getAsJsonArray("parts")) {
+                boolean covered = sources.values().stream()
+                        .anyMatch(replacement -> replacement.server().equals(source.server())
+                                && replacement.value().get("dimension").equals(source.value().get("dimension"))
+                                && freshAfter(replacement, cutoff)
+                                && replacement.value().getAsJsonArray("parts").contains(part));
+                if (!covered) return false;
+            }
+            return true;
         });
     }
 }

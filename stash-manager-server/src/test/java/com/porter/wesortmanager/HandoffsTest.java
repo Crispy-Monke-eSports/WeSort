@@ -62,4 +62,29 @@ class HandoffsTest {
         assertEquals(Handoff.State.DELIVERED, reloaded.get(h.id()).state());
         assertEquals("owner", reloaded.get(h.id()).confirmedBy());
     }
+
+    @Test
+    void rejectsUnassignedBookingsAndAllowsExplicitReturnOfLegacyBooking() throws Exception {
+        var handoffs = new Handoffs(data);
+        assertThrows(IllegalArgumentException.class, () -> handoffs.schedule("o-1", "alice", "meet-1", null));
+        assertThrows(IllegalArgumentException.class, () -> handoffs.schedule("o-1", "alice", "meet-1", " "));
+        assertTrue(handoffs.list(null).isEmpty());
+        // Simulate a booking persisted by a previous Manager that allowed null agents.
+        var legacy = Handoff.schedule("o-1", "alice", "meet-1", null);
+        var root = new com.google.gson.JsonObject();
+        root.addProperty("schema", 1);
+        var entries = new com.google.gson.JsonArray();
+        var entry = legacy.json();
+        entry.add("events", new com.google.gson.JsonArray());
+        entries.add(entry);
+        root.add("handoffs", entries);
+        java.nio.file.Files.writeString(data.resolve("handoffs.json"), root.toString());
+        var restarted = new Handoffs(data);
+        assertThrows(Handoffs.Conflict.class, () -> restarted.arrive(legacy.id(), A1));
+        assertThrows(Handoffs.Conflict.class,
+                () -> restarted.resolve(legacy.id(), Handoff.State.DELIVERED, "owner"));
+        assertEquals(Handoff.State.RETURNED,
+                restarted.resolve(legacy.id(), Handoff.State.RETURNED, "owner").state());
+        assertEquals(Handoff.State.RETURNED, new Handoffs(data).get(legacy.id()).state());
+    }
 }

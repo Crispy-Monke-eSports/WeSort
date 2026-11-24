@@ -124,6 +124,10 @@ final class OrderRoutes {
         String stash = AddonRoutes.string(o, "stash");
         String server = scoped(config, ex, stash);
         if (server == null) return;
+        if (ServerRoutes.unknownStash(defs, stash)) {
+            Http.error(ex, 404, "unknown stash '" + stash + "': define it in Settings first");
+            return;
+        }
         Users.Principal who = Router.user(ex);
         OrderIntent intent;
         try {
@@ -342,6 +346,11 @@ final class OrderRoutes {
             return;
         }
         if (!mayChange(ex, m.group(1))) return;
+        var scope = orders.stashOf(m.group(1));
+        if (scope == null || ServerRoutes.unknownStash(defs, scope.stash())) {
+            Http.error(ex, 404, "no such stash");
+            return;
+        }
         try {
             Users.Principal who = Router.user(ex);
             if (!who.perms().order()) {

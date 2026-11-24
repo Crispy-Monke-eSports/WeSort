@@ -970,35 +970,37 @@ final class StockLedger {
         return "UNREGISTERED";
     }
 
-    /** Appends the active box UUID to history and removes it from the registry. Idempotent. */
-    synchronized void deregisterBoxUuid(String server, String uuid, String reason) throws IOException {
-        UUID.fromString(uuid);
-        try (var c = open();
-                var tx = new SqliteWriteTransaction(c)) {
-            try (var read = c.prepareStatement("SELECT source,path,status FROM box_uuids WHERE uuid=? AND server=?")) {
+    static final class BoxReleaseConflict extends IOException {
+        BoxReleaseConflict() {
+            super("Delivered box UUID is not reserved for this order");
+        }
+    }
+
+    record BoxRelease(Set<PhysicalReservations.Root> reserved, Set<String> reported) {}
+
+    /** Check the current location and move the UUID to history inside the order receipt's write transaction. */
+    void releaseOrderBoxes(Connection c, String server, BoxRelease release) throws SQLException, IOException {
+        try (var read = c.prepareStatement("SELECT server,source,path,status FROM box_uuids WHERE uuid=?")) {
+            for (String uuid : release.reported()) {
                 read.setString(1, uuid);
-                read.setString(2, server);
                 try (var rows = read.executeQuery()) {
-                    if (!rows.next()) {
-                        tx.commit();
-                        return;
-                    }
-                    long revision = revision(c);
+                    if (!rows.next()) continue; // Newly assembled box or already removed by an older Manager.
+                    String source = rows.getString(2), path = rows.getString(3);
+                    if (!server.equals(rows.getString(1))
+                            || !release.reserved().contains(new PhysicalReservations.Root(source, path)))
+                        throw new BoxReleaseConflict();
                     deregisterInTx(
                             c,
                             server,
                             uuid,
-                            rows.getString(3),
-                            rows.getString(1),
-                            rows.getString(2),
-                            reason == null ? "DEREGISTERED" : reason,
-                            revision,
+                            rows.getString(4),
+                            source,
+                            path,
+                            "DEREGISTERED_FOR_ORDER",
+                            revision(c),
                             clock.getAsLong());
                 }
             }
-            tx.commit();
-        } catch (SQLException failure) {
-            throw new IOException("Cannot deregister box UUID", failure);
         }
     }
 

@@ -84,7 +84,8 @@ final class OrderBookRepository {
         }
     }
 
-    long commit(String server, String stash, long expected, JsonObject root) throws IOException {
+    long commit(String server, String stash, long expected, JsonObject root, StockLedger.BoxRelease release)
+            throws IOException {
         var next = new Snapshot(server, stash, Math.addExact(expected, 1), root);
         try (var c = ledger.open();
                 var tx = new SqliteWriteTransaction(c)) {
@@ -102,6 +103,7 @@ final class OrderBookRepository {
                     if (p.executeUpdate() != 1) throw new IOException("Order book revision changed");
                 }
             }
+            if (release != null) ledger.releaseOrderBoxes(c, server, release);
             appendEvents(c, next);
             tx.commit();
             return next.revision();

@@ -169,6 +169,12 @@ public final class WeSortManager {
                 System.exit(1);
                 return;
             }
+            // Only once the port is ours: clean up the old icon cache, then enforce its size budget.
+            int migrated = icons.migrateCache();
+            if (migrated > 0)
+                System.out.println("Icon cache: removed " + migrated + " stale file(s); they will be fetched again.");
+            game.cache.initialize();
+
             // Bot long-polls are bounded independently of short browser requests.
             ExecutorService pool = Executors.newFixedThreadPool(32, daemonThreads());
             server.setExecutor(pool);
@@ -204,10 +210,6 @@ public final class WeSortManager {
                     15,
                     TimeUnit.SECONDS);
 
-            // Only once the port is ours: clean up the old icon cache, then queue every missing icon.
-            int migrated = icons.migrateCache();
-            if (migrated > 0)
-                System.out.println("Icon cache: removed " + migrated + " stale file(s); they will be fetched again.");
             icons.prefetch(store.allIconIds());
 
             Runtime.getRuntime()

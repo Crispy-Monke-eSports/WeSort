@@ -421,7 +421,8 @@ public final class IconService implements AutoCloseable {
     private Icon readCache(Path nsDir, String path) {
         try {
             Path file = nsDir.resolve(path + ".png");
-            if (Files.isRegularFile(file)) return new Icon(200, Files.readAllBytes(file), "image/png", CACHE_ICON);
+            byte[] png = game.cache.read(file);
+            if (png != null) return new Icon(200, png, "image/png", CACHE_ICON);
             if (freshMarker(nsDir.resolve(path + ".miss"), MISS_TTL_MS)) return placeholderMiss;
             if (freshMarker(nsDir.resolve(path + ".retry"), RETRY_TTL_MS)) return placeholderPending;
         } catch (IOException ignored) {
@@ -660,17 +661,17 @@ public final class IconService implements AutoCloseable {
         try {
             switch (kind) {
                 case OK -> {
-                    AtomicFiles.write(j.nsDir.resolve(j.path + ".png"), png);
+                    game.cache.write(j.nsDir.resolve(j.path + ".png"), png);
                     Files.deleteIfExists(j.nsDir.resolve(j.path + ".retry"));
                     Files.deleteIfExists(j.nsDir.resolve(j.path + ".miss"));
                 }
                 case DEFINITE_MISS -> {
                     statMiss.incrementAndGet();
-                    AtomicFiles.write(j.nsDir.resolve(j.path + ".miss"), new byte[0]);
+                    game.cache.write(j.nsDir.resolve(j.path + ".miss"), new byte[0]);
                 }
                 case TRANSIENT -> {
                     statRetry.incrementAndGet();
-                    AtomicFiles.write(j.nsDir.resolve(j.path + ".retry"), new byte[0]);
+                    game.cache.write(j.nsDir.resolve(j.path + ".retry"), new byte[0]);
                 }
             }
         } catch (IOException e) {

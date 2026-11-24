@@ -8,6 +8,13 @@ import java.util.function.LongSupplier;
 /** Conservative server-wide exclusion until W-024 can allocate individual physical resources. */
 final class AutomationGate {
     static final long TTL = 15_000;
+    /**
+     * A lease left NEEDS_RECONCILIATION by a restart is only ever inspected via a posted journal
+     * (PhysicalOperations.releaseInspectedLease). When no journal exists at all, nothing can ever
+     * inspect it, so the lease is dropped once it is this far past its deadline instead of denying
+     * every future acquisition forever. Leases with a live journal are never touched here.
+     */
+    static final long ORPHAN_GRACE_MS = 60_000;
 
     record Lease(String agent, String token, long deadline, String state) {}
 
@@ -39,6 +46,20 @@ final class AutomationGate {
         if (lease != null && lease.state.equals("ACTIVE") && now >= lease.deadline) {
             markUncertain(c, server);
             return read(c, server);
+        }
+        if (lease != null
+                && lease.state.equals("NEEDS_RECONCILIATION")
+                && now - lease.deadline >= ORPHAN_GRACE_MS
+                && !unsettled(c, server)) {
+            // Orphaned by a restart before any journal was posted: releaseInspectedLease can never
+            // run for it, so drop it rather than denying every future acquisition forever.
+            // A lease with a live journal row is left alone for inspection.
+            try (var p = c.prepareStatement("DELETE FROM automation_leases WHERE server=?")) {
+                p.setString(1, server);
+                p.executeUpdate();
+            }
+            stock.invalidateServer(c, server);
+            return null;
         }
         return lease;
     }

@@ -101,6 +101,16 @@ final class PhysicalOperations {
                         inspectionVerified && List.of("COMPLETED", "FAILED").contains(state)
                                 ? releaseInspectedLease(c, server, agent, context)
                                 : null;
+                if (released == null
+                        && List.of("COMPLETED", "FAILED").contains(state)
+                        && context.has("leaseFingerprint")
+                        && !hasLease(c, server)) {
+                    // Replay of a terminal journal after the lease is already gone: the first
+                    // response carried the release, this one must repeat it. With no lease row
+                    // left for the server, any token the agent still holds is stale by definition,
+                    // so echoing its own fingerprint back cannot free anything that is still held.
+                    released = context.get("leaseFingerprint").getAsString();
+                }
                 tx.execute("COMMIT");
                 var out = new JsonObject();
                 out.addProperty("id", id);
@@ -147,6 +157,15 @@ final class PhysicalOperations {
         }
         ledger.invalidateServer(c, server);
         return fingerprint;
+    }
+
+    private static boolean hasLease(Connection c, String server) throws SQLException {
+        try (var p = c.prepareStatement("SELECT 1 FROM automation_leases WHERE server=? LIMIT 1")) {
+            p.setString(1, server);
+            try (var rows = p.executeQuery()) {
+                return rows.next();
+            }
+        }
     }
 
     private boolean inspected(Connection c, String id, JsonObject record, long fence) throws SQLException {

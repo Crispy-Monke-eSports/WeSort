@@ -688,6 +688,13 @@ final class OrderStore {
                             || (!stage.archiveable()
                                     && stage != OrderStage.CREATED
                                     && stage != OrderStage.RESERVED
+                                    && now - order.updatedAt >= AUTO_CANCEL_AFTER_MS)
+                            // A reservation that was never claimed: either its source changed
+                            // under it (fingerprint mismatch on every claim skips silently without
+                            // touching updatedAt) or the bot has been down for a long time.
+                            // Both deserve the alert; fresh reservations never trip it.
+                            || (stage == OrderStage.RESERVED
+                                    && order.allocations != null
                                     && now - order.updatedAt >= AUTO_CANCEL_AFTER_MS)) stuck++;
                 }
             }
@@ -2103,8 +2110,15 @@ final class OrderStore {
 
     private boolean matchesSources(Order order) throws IOException {
         if (order.allocations != null) {
+            // Sibling holds on the same slots are excluded first, so two orders
+            // cannot both spend the same grown units (see PhysicalReservations.matches).
+            var siblings = new ArrayList<PhysicalReservations.Allocation>();
+            for (var other : ordersOnServer(order.server)) {
+                if (other == order || order.id.equals(other.id) || !holdsPhysical(other)) continue;
+                siblings.addAll(other.allocations);
+            }
             return PhysicalReservations.read(index.stock(), order.server, order.stash)
-                    .matches(order.allocations);
+                    .matches(order.allocations, siblings);
         }
         if (order.sourceGuards == null) return true; // Earlier protocol orders retain their existing aggregate checks.
         var now = sourceGuards(order.server, order.stash);

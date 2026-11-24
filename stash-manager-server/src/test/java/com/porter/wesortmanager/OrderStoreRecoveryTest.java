@@ -129,13 +129,13 @@ class OrderStoreRecoveryTest {
         var reported = new JsonArray();
         reported.add(UUID.randomUUID().toString());
         order.allocations = List.of(
-                new PhysicalReservations.Allocation("source-A", "8/2", "item:minecraft:diamond", 5, "fingerprint", 1));
+                new PhysicalReservations.Allocation("source-A", "8/2", "item:minecraft:diamond", 5, "fingerprint", 1, ""));
         assertFalse(OrderStore.boxRelease(order, reported)
                 .reserved()
                 .contains(new PhysicalReservations.Root("source-A", "8")));
 
         order.allocations =
-                List.of(new PhysicalReservations.Allocation("source-A", "8", "shulker:kit", 1, "fingerprint", 1));
+                List.of(new PhysicalReservations.Allocation("source-A", "8", "shulker:kit", 1, "fingerprint", 1, ""));
         assertTrue(OrderStore.boxRelease(order, reported)
                 .reserved()
                 .contains(new PhysicalReservations.Root("source-A", "8")));

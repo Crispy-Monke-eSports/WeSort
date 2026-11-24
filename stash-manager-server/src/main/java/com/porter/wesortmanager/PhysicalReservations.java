@@ -12,7 +12,9 @@ import java.util.Set;
 final class PhysicalReservations {
     record Root(String source, String path) {}
 
-    record Allocation(String source, String path, String ref, long count, String fingerprint, long revision) {
+    record Allocation(
+            String source, String path, String ref, long count, String fingerprint, long revision,
+            String itemFingerprint) {
         Root root() {
             int nested = path.indexOf('/');
             return new Root(source, nested < 0 ? path : path.substring(0, nested));
@@ -32,13 +34,14 @@ final class PhysicalReservations {
             String fingerprint,
             long revision,
             boolean fresh,
-            boolean queueable) {
+            boolean queueable,
+            String itemFingerprint) {
         String reference() {
             return item.isEmpty() ? "shulker:" + shulker : "item:" + item;
         }
 
         Allocation allocate(String ref, long amount) {
-            return new Allocation(source, path, ref, amount, fingerprint, revision);
+            return new Allocation(source, path, ref, amount, fingerprint, revision, itemFingerprint);
         }
     }
 
@@ -94,7 +97,8 @@ final class PhysicalReservations {
                         slot.get("fingerprint").getAsString(),
                         slot.get("revision").getAsLong(),
                         safe && fresh,
-                        safe && queueable));
+                        safe && queueable,
+                        slot.has("itemFingerprint") ? slot.get("itemFingerprint").getAsString() : ""));
             }
         }
         return new PhysicalReservations(List.copyOf(candidates), Map.copyOf(sources));
@@ -153,14 +157,46 @@ final class PhysicalReservations {
         return List.copyOf(selected);
     }
 
+    /**
+     * Re-verifies allocations against fresh observations. An exact fingerprint match is the fast
+     * path; otherwise a newer observation of the same item on the same slot still counts, provided
+     * it holds at least the reserved count minus what sibling holds on that slot already cover.
+     * That lets a stack grow (10 -&gt; 11) without orphaning its reservation, while a shrink, an
+     * item swap, or a double-spend of the grown delta still fails closed.
+     *
+     * @param siblingHolds other open holds on the same server; their counts are excluded before
+     *     comparing, so two orders cannot both spend the same grown units.
+     */
     boolean matches(List<Allocation> allocations) {
-        return allocations.stream()
-                .allMatch(allocation -> candidates.stream()
-                        .anyMatch(candidate -> candidate.fresh()
-                                && candidate.source().equals(allocation.source())
-                                && candidate.path().equals(allocation.path())
-                                && candidate.fingerprint().equals(allocation.fingerprint())
-                                && candidate.count() >= allocation.count()));
+        return matches(allocations, List.of());
+    }
+
+    boolean matches(List<Allocation> allocations, List<Allocation> siblingHolds) {
+        var heldElsewhere = new HashMap<Root, Long>();
+        for (var hold : siblingHolds) {
+            if (hold.count() > 0) heldElsewhere.merge(new Root(hold.source(), hold.path()), hold.count(), Long::sum);
+        }
+        return allocations.stream().allMatch(allocation -> matchesOne(
+                allocation, heldElsewhere.getOrDefault(new Root(allocation.source(), allocation.path()), 0L)));
+    }
+
+    private boolean matchesOne(Allocation allocation, long heldElsewhere) {
+        return candidates.stream()
+                .anyMatch(candidate -> candidate.fresh()
+                        && candidate.source().equals(allocation.source())
+                        && candidate.path().equals(allocation.path())
+                        && (candidate.fingerprint().equals(allocation.fingerprint()) || sameItemNewer(candidate, allocation))
+                        && candidate.count() - heldElsewhere >= allocation.count());
+    }
+
+    private static boolean sameItemNewer(Candidate candidate, Allocation allocation) {
+        String have = candidate.itemFingerprint();
+        String want = allocation.itemFingerprint();
+        return have != null
+                && !have.isEmpty()
+                && have.equals(want)
+                && candidate.reference().equals(allocation.ref())
+                && candidate.revision() > allocation.revision();
     }
 
     Map<String, Long> available(Set<Root> held) {

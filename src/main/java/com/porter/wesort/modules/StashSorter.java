@@ -1816,8 +1816,8 @@ public class StashSorter extends Module {
         // (not the ones read within the fresh-minutes window: those are only read again if something marks them stale)
         for (Box box : stash.boxes) {
             box.stale = !box.excluded && (box.stale || forcedSurvey.contains(box) || !fresh(box));
-            if (box.stale && !box.excluded && !box.foreign
-                    && !com.porter.wesort.compat.ObservationRuntime.current(box)) forcedSurvey.add(box);
+            if (box.stale && !box.excluded && !box.foreign && !com.porter.wesort.compat.ObservationRuntime.current(box))
+                forcedSurvey.add(box);
         }
 
         // With a perimeter the containers come from exploring it, and the checks wait until that is done
@@ -2887,8 +2887,8 @@ public class StashSorter extends Module {
         if (!readableBox(box)) return false;
         // A fresh receipt for an already-started physical operation is not
         // routine polling. Waiting five minutes here could expire the journal.
-        boolean requiredReceipt = forcedSurvey.contains(box)
-                || (awaitingRepackStorage() && box.stale && box.lastRead < repackStoreAt);
+        boolean requiredReceipt =
+                forcedSurvey.contains(box) || (awaitingRepackStorage() && box.stale && box.lastRead < repackStoreAt);
         return com.porter.wesort.inventory.SurveyBatch.due(
                 now, box.lastRead, surveyAttemptAt.getOrDefault(box, 0L), surveyIntervalMs(), requiredReceipt);
     }

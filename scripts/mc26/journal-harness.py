@@ -326,8 +326,21 @@ class DirectHarness(JournalHarness):
             self.start_manager()
             self.start_client()
             inv = repack.network.InventoryHarness
+            # Isolate the direct move from the Manager background rescan without
+            # disabling recovery/journal: same inspection hold the crash phases
+            # use. Otherwise the scanner can own another screen between open and
+            # click, the click is refused as Stale, and a blind retry runs on the
+            # wrong container (containerId 0) and times out as NEEDS_RECONCILIATION.
+            self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key,
+                         inspectionHold=True)
             state = inv.open_chest(self)
-            self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key)
+            require(state.get('containerId', 0) != 0,
+                    'Direct test did not open the double chest before holding acks: %s' % state.get('containerId'))
+            require(len(state.get('slots', [])) >= 54,
+                    'Direct test opened a non-chest screen before holding acks')
+            require(state['slots'][0]['item'] == 'minecraft:diamond' and state['slots'][0]['count'] == 64,
+                    'Direct test source slot is not the intended diamond stack')
+            expected_fingerprint = state['slots'][0]['fingerprint']
             self.proxy.hold_down = True
             with ThreadPoolExecutor(max_workers=1) as pool:
                 # The click references a menu snapshot that can go stale between
@@ -349,7 +362,25 @@ class DirectHarness(JournalHarness):
                         'Stale' in first.get('message', ''),
                         'Direct click refused before any packet: ' + str(first.get('message', '')),
                     )
+                    # A stale state id proves the click never left the client, so one
+                    # retry is safe - but only on the same physical container. Re-read
+                    # and reopen the intended chest if the menu closed or changed.
+                    # Never retry an uncertain mutation.
                     state = self.command('state')['state']
+                    if (state.get('containerId', 0) == 0
+                            or len(state.get('slots', [])) < 54
+                            or state['slots'][0]['item'] != 'minecraft:diamond'
+                            or state['slots'][0]['count'] != 64
+                            or state['slots'][0]['fingerprint'] != expected_fingerprint):
+                        state = inv.open_chest(self)
+                    require(state.get('containerId', 0) != 0,
+                            'Direct retry has no chest menu open after reopen')
+                    require(len(state.get('slots', [])) >= 54,
+                            'Direct retry is not against the double chest')
+                    require(state['slots'][0]['item'] == 'minecraft:diamond'
+                            and state['slots'][0]['count'] == 64
+                            and state['slots'][0]['fingerprint'] == expected_fingerprint,
+                            'Direct retry source moved before the mutation was sent')
                     click = pool.submit(inv.click, self, state, 0, 'QUICK_MOVE', True)
                 inv.wait_server(self, lambda: self.journal.exists() and
                     sum('[]' in value for value in inv.chest_halves(self)) == 1,

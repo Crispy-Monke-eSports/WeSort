@@ -260,33 +260,20 @@ public final class PhysicalJournalRuntime {
                 recoveryFence = false;
                 finishInspection(true, "Exact original source and postcondition verified; no mutation replayed");
             } else {
-                // The last native mutation was verified, and only the
-                // higher-level repack may still have a world shulker to
-                // collect. The proven step is committed: re-fencing an exactly
-                // verified journal deadlocks recovery, since the missing
-                // workspace checkpoint can only be produced by future work.
+                // The last native mutation was verified, but the higher-level
+                // repack may still have a world shulker to collect. Only release
+                // the journal when the sorter has durable recovery state and
+                // will finish that state before the next order. Completing first
+                // and re-fencing afterwards cannot work: block() ignores terminal
+                // journals, so the operation would be reported COMPLETED with no
+                // orphan list while recovery actually failed.
                 var sorter = com.porter.wesort.WeSortAddon.sorter();
                 boolean checkpoint = sorter != null && sorter.pendingPhysicalRecovery();
-                try {
-                    journal.complete();
-                } catch (Exception commit) {
-                    journal.block("Automatic shulker recovery requires a durable workspace checkpoint");
-                    recoveryFence = true;
-                    finishInspection(false, "INSPECT_CHECKPOINT: exact step verified but completion could not commit");
-                    return;
-                }
-                recoveryFence = false;
                 if (checkpoint) {
+                    journal.complete();
+                    recoveryFence = false;
                     finishInspection(true, "Exact physical step verified; sorter will resume its saved recovery");
                 } else {
-                    // Fail closed like the baseline: an exactly verified step without a
-                    // durable checkpoint must NOT complete the journal. Completing here
-                    // drops the fence the orphan guard and the harness rely on, and a
-                    // merely gated (but completed) journal has let real mutations
-                    // through. The manager-driven read-only inspection below is the
-                    // release path; the other hardening in this file (auto-close,
-                    // named failures, no re-fencing of terminal journals) keeps that
-                    // path from stranding instead.
                     journal.block("Automatic shulker recovery requires a durable workspace checkpoint");
                     recoveryFence = true;
                     finishInspection(false, "Cannot safely recover without a saved physical workspace");

@@ -681,6 +681,8 @@ final class OrderStore {
             synchronized (book) {
                 for (Order order : book.orders) {
                     OrderStage stage = order.stage();
+                    // A packed order waiting for its recipient is normal, not a stuck operation.
+                    if (stage == OrderStage.PICKUP_READY && !holdsPhysical(order)) continue;
                     if (stage == OrderStage.RECOVERING
                             || stage == OrderStage.NEEDS_RECONCILIATION
                             || (!stage.archiveable()
@@ -691,6 +693,13 @@ final class OrderStore {
             }
         }
         return stuck;
+    }
+
+    /** Count actual order reservations separately from lifecycle/recovery health. */
+    int reservationHoldingOrders(String server) {
+        return (int) ordersOnServer(server).stream()
+                .filter(OrderStore::holdsPhysical)
+                .count();
     }
 
     Map<String, Integer> activeStates(Users.Principal who) {

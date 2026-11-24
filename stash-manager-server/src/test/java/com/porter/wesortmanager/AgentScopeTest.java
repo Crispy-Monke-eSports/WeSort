@@ -236,6 +236,36 @@ class AgentScopeTest {
     }
 
     @Test
+    void dedicatedHeartbeatRequiresTheSignedCredentialAndCurrentEpoch() throws Exception {
+        var request = JsonParser.parseString(helloBootstrap(agentA)).getAsJsonObject();
+        var caps = new JsonArray();
+        caps.add("heartbeat");
+        request.add("caps", caps);
+        var hello = agentPost(agentA, agentKeyA, "/api/v1/bot/hello", request.toString());
+        assertEquals(200, hello.status, hello.body);
+        assertTrue(hello.obj().get("heartbeat").getAsBoolean());
+        var ping = new JsonObject();
+        ping.addProperty("botId", agentA);
+        ping.addProperty("controlSession", request.get("controlSession").getAsString());
+        ping.addProperty("controlEpoch", hello.obj().get("controlEpoch").getAsString());
+        ping.addProperty("ping", "a".repeat(32));
+        String path = "/api/v1/bot/heartbeat";
+        var pong = agentPost(agentA, agentKeyA, path, ping.toString());
+        assertEquals(200, pong.status, pong.body);
+        assertEquals("a".repeat(32), pong.obj().get("pong").getAsString());
+        assertTrue(hub.online(hub.bot(agentA)));
+
+        var stale = ping.deepCopy();
+        stale.addProperty("controlEpoch", "old");
+        assertEquals(409, agentPost(agentA, agentKeyA, path, stale.toString()).status);
+        var other = ping.deepCopy();
+        other.addProperty("botId", "other");
+        assertEquals(403, agentPost(agentA, agentKeyA, path, other.toString()).status);
+        assertTrue(credentials.revoke(agentA));
+        assertEquals(401, agentPost(agentA, agentKeyA, path, ping.toString()).status);
+    }
+
+    @Test
     void operationsReportsOnlyRecognizedIncidentsFromTheCurrentSignedControlSession() throws Exception {
         String owner = login(null, OWNER_PW);
         var hello = agentPost(agentA, agentKeyA, "/api/v1/bot/hello", helloBootstrap(agentA));

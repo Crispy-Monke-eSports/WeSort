@@ -28,7 +28,7 @@ final class BotHub {
     static final int EVENTS_KEEP = 500;
     static final int JOBS_KEEP = 500;
     private static final Set<String> CAPABILITIES =
-            Set.of("settings", "activity", "warehouse-scan", "warehouse-sort", "pack", "stage");
+            Set.of("settings", "activity", "warehouse-scan", "warehouse-sort", "pack", "stage", "heartbeat");
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final Set<String> RECEIPT_FIELDS = Set.of("id", "lease", "sequence", "ok", "value", "error");
 
@@ -82,6 +82,7 @@ final class BotHub {
         long jobSequence;
         long lastPoll;
         long lastSeen;
+        Long lastHeartbeat;
         int waiting;
         long watchUntil;
         Boolean watchingSent;
@@ -169,7 +170,8 @@ final class BotHub {
         }
         synchronized (b) {
             boolean sessionChanged = !java.util.Objects.equals(b.controlSession, controlSession);
-            if (sessionChanged && b.controlSession != null && (controlSession == null || online(b, now))) return 409;
+            if (sessionChanged && b.controlSession != null && (controlSession == null || sessionAlive(b, now)))
+                return 409;
             if (sessionChanged || !java.util.Objects.equals(b.manifestScope, scope)) {
                 for (Job job : b.jobs.values()) {
                     if (job.status.equals("queued") || job.status.equals("sent")) job.status = "unknown";
@@ -178,6 +180,7 @@ final class BotHub {
                 b.scopes.clear();
                 b.controlSession = controlSession;
                 b.controlEpoch = java.util.UUID.randomUUID().toString();
+                b.lastHeartbeat = null;
                 b.manifestScope = scope;
                 b.activity = null;
                 b.activityAt = 0;
@@ -185,8 +188,10 @@ final class BotHub {
             if (player != null && !player.isEmpty()) b.player = player;
             b.plugin = plugin;
             b.runtime = runtime;
+            boolean heartbeatWasSupported = b.caps.contains("heartbeat");
             b.caps = new LinkedHashSet<>(
                     caps.stream().filter(CAPABILITIES::contains).toList());
+            if (!heartbeatWasSupported || !b.caps.contains("heartbeat")) b.lastHeartbeat = null;
             b.declaredScopes =
                     new LinkedHashSet<>(scopes.stream().filter("plugin"::equals).toList());
             b.helloAt = now;
@@ -207,7 +212,7 @@ final class BotHub {
                     && epoch != null
                     && session.equals(bot.controlSession)
                     && epoch.equals(bot.controlEpoch)
-                    && online(bot, now());
+                    && sessionAlive(bot, now());
         }
     }
 
@@ -221,7 +226,7 @@ final class BotHub {
         Bot oldest = null;
         for (Bot b : bots.values()) {
             synchronized (b) {
-                if (online(b, now)) continue;
+                if (sessionAlive(b, now)) continue;
                 if (oldest == null || b.lastSeen < oldest.lastSeen) oldest = b;
             }
         }
@@ -259,8 +264,29 @@ final class BotHub {
         return new ArrayList<>(bots.values());
     }
 
+    /** Modern agents prove presence through ping/pong; legacy agents retain poll-based presence. */
     static boolean online(Bot b, long now) {
-        return b.waiting > 0 || now - b.lastPoll < ONLINE_MS;
+        if (b.controlSession != null && b.caps.contains("heartbeat"))
+            return b.lastHeartbeat != null && now - b.lastHeartbeat < ONLINE_MS;
+        return sessionAlive(b, now);
+    }
+
+    private static boolean sessionAlive(Bot b, long now) {
+        return b.waiting > 0
+                || now - b.lastPoll < ONLINE_MS
+                || b.lastHeartbeat != null && now - b.lastHeartbeat < ONLINE_MS;
+    }
+
+    /** Only the currently registered epoch can refresh presence. No order or stock access. */
+    synchronized boolean heartbeat(String botId, String session, String epoch) {
+        Bot bot = bots.get(botId);
+        if (bot == null) return false;
+        synchronized (bot) {
+            if (!bot.caps.contains("heartbeat") || !currentControlSession(bot, session, epoch)) return false;
+            bot.lastSeen = now();
+            bot.lastHeartbeat = bot.lastSeen;
+            return true;
+        }
     }
 
     /**
@@ -278,6 +304,7 @@ final class BotHub {
         long now = now();
         synchronized (b) {
             b.lastSeen = now;
+            if (b.controlSession != null) b.lastPoll = now;
             Scope s = b.scopes.computeIfAbsent(scope, k -> new Scope());
             if (schema != null) {
                 s.schema = schema;
@@ -463,15 +490,18 @@ final class BotHub {
             if (receipt.has("error") && (error == null || error.length() > 1000 || outcome.getAsBoolean())) {
                 return Acknowledgement.REFUSED;
             }
-            if (job.receipt != null)
-                return job.receipt.equals(receipt) ? Acknowledgement.REPLAY : Acknowledgement.REFUSED;
+            if (job.receipt != null) {
+                if (!job.receipt.equals(receipt)) return Acknowledgement.REFUSED;
+                b.lastSeen = b.lastPoll = now();
+                return Acknowledgement.REPLAY;
+            }
             expire(b, now());
             if (!job.status.equals("sent")) return Acknowledgement.REFUSED;
             job.receipt = receipt.deepCopy();
             job.status = outcome.getAsBoolean() ? "done" : "error";
             job.value = receipt.get("value");
             job.error = error;
-            b.lastSeen = now();
+            b.lastSeen = b.lastPoll = now();
             b.notifyAll();
             return Acknowledgement.APPLIED;
         }

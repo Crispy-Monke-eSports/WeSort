@@ -456,7 +456,8 @@ final class Router implements HttpHandler {
                 agentCredentials.notePlayer(slot.id(), AddonRoutes.string(body, "player"));
                 yield 200;
             }
-            case "/api/v1/bot/state",
+            case "/api/v1/bot/heartbeat",
+                    "/api/v1/bot/state",
                     "/api/v1/bot/next",
                     "/api/v1/bot/results",
                     "/api/v1/bot/activity",

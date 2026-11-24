@@ -135,13 +135,7 @@ public final class WeSortManager {
                 sessions.removeAllExcept(null);
             }
             Users users = new Users(dataDir);
-            try {
-                users.load();
-            } catch (IOException e) {
-                System.err.println("Can't read the website users: " + e.getMessage());
-                System.exit(1);
-                return;
-            }
+            users.loadForService();
             AuditLog audit = new AuditLog(dataDir);
             audit.load();
             AuthRoutes.trustProxies(config.trustedProxies);
@@ -314,6 +308,7 @@ public final class WeSortManager {
         credentials.onRevocation(hub::retire);
         Router router = new Router(
                 new AccessControl(config), sessions, config, users, credentials, orders, new Signer(store.stock()));
+        health.userRegistryUnavailable(users.registryUnavailable());
         health.register(router);
         AuthRoutes authRoutes = new AuthRoutes(config, sessions, limiter, users, audit);
         authRoutes.register(router);

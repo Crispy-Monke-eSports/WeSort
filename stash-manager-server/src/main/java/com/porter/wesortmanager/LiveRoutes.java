@@ -70,6 +70,9 @@ final class LiveRoutes {
             return;
         }
         boolean handedOff = false;
+        // Register before sending HTTP headers: the browser may refetch as soon
+        // as the connection opens, and a concurrent update must not be lost.
+        BlockingQueue<LiveEvents.Event> queue = LiveEvents.subscribe();
         try {
             String token = (String) Http.attr(ex, Router.SESSION_TOKEN);
             var headers = ex.getResponseHeaders();
@@ -80,18 +83,18 @@ final class LiveRoutes {
             ex.sendResponseHeaders(200, 0);
             // Another thread owns the exchange from here; the Router must not close it.
             Http.attr(ex, Http.DETACHED, Boolean.TRUE);
-            pool.execute(() -> run(ex, token));
+            pool.execute(() -> run(ex, token, queue));
             handedOff = true;
         } finally {
             if (!handedOff) {
+                LiveEvents.unsubscribe(queue);
                 streamPermits.release();
                 ex.close();
             }
         }
     }
 
-    private void run(HttpExchange ex, String token) {
-        BlockingQueue<LiveEvents.Event> queue = LiveEvents.subscribe();
+    private void run(HttpExchange ex, String token, BlockingQueue<LiveEvents.Event> queue) {
         try {
             OutputStream out = ex.getResponseBody();
             long start = System.currentTimeMillis();

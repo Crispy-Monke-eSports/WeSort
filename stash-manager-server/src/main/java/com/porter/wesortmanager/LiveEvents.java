@@ -33,13 +33,13 @@ final class LiveEvents {
         return REV.get();
     }
 
-    static BlockingQueue<Event> subscribe() {
+    static synchronized BlockingQueue<Event> subscribe() {
         BlockingQueue<Event> queue = new LinkedBlockingQueue<>(MAX_PENDING_EVENTS);
         SUBSCRIBERS.add(queue);
         return queue;
     }
 
-    static void unsubscribe(BlockingQueue<Event> queue) {
+    static synchronized void unsubscribe(BlockingQueue<Event> queue) {
         SUBSCRIBERS.remove(queue);
     }
 
@@ -48,7 +48,7 @@ final class LiveEvents {
         return publish(Set.of(channels));
     }
 
-    static long publish(Set<String> channels) {
+    static synchronized long publish(Set<String> channels) {
         long rev = REV.incrementAndGet();
         Event event = new Event(rev, Set.copyOf(channels));
         for (BlockingQueue<Event> queue : SUBSCRIBERS) {
@@ -65,16 +65,17 @@ final class LiveEvents {
      * Broadcasts at most once per {@code minIntervalMillis} per key (heartbeats). Returns the new
      * revision, or -1 when suppressed.
      */
-    static long bumpThrottled(String key, long minIntervalMillis, String... channels) {
-        long now = System.currentTimeMillis();
+    static synchronized long bumpThrottled(String key, long minIntervalMillis, String... channels) {
+        long now = System.nanoTime();
         Long last = THROTTLED.get(key);
-        if (last != null && now - last < minIntervalMillis) return -1;
+        if (last != null && now - last < java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(minIntervalMillis))
+            return -1;
         THROTTLED.put(key, now);
         return publish(Set.of(channels));
     }
 
     /** Clears throttle markers (tests only). */
-    static void resetThrottlesForTests() {
+    static synchronized void resetThrottlesForTests() {
         THROTTLED.clear();
     }
 

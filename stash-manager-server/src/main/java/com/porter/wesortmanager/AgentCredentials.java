@@ -8,7 +8,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.Base64;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -94,12 +93,11 @@ final class AgentCredentials {
         if (!Files.exists(file)) return;
         try {
             var root = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
-            int version = root.get("version").getAsInt();
-            if (version != 1 && version != 2 && version != 3) throw new IllegalArgumentException();
+            if (root.get("version").getAsBigDecimal().intValueExact() != 3) throw new IllegalArgumentException();
             var loaded = new TreeMap<String, Slot>();
-            for (var item : root.getAsJsonArray(version == 3 ? "slots" : "agents")) {
+            for (var item : root.getAsJsonArray("slots")) {
                 var row = item.getAsJsonObject();
-                var slot = version == 3 ? readSlot(row) : migrate(row, version == 1);
+                var slot = readSlot(row);
                 String key = field(row, "key");
                 if (key != null && Base64.getDecoder().decode(key).length != 32
                         || loaded.putIfAbsent(slot.id(), slot.withKey(key)) != null
@@ -125,7 +123,7 @@ final class AgentCredentials {
         return saved == null || !saved.active() ? null : saved;
     }
 
-    /** All slots, active and revoked, oldest first. */
+    /** Retained slots, active and revoked, sorted by id. */
     synchronized List<Slot> all() {
         return List.copyOf(entries.values());
     }
@@ -135,7 +133,6 @@ final class AgentCredentials {
      * secret is shown once.
      */
     synchronized String issue(String label) throws IOException {
-        if (entries.size() >= MAX_ENTRIES) throw new IllegalArgumentException("Agent credential registry is full");
         long active = entries.values().stream().filter(Slot::active).count();
         if (active >= MAX_ACTIVE_SLOTS) throw new IllegalArgumentException("Only one agent credential may be active");
         String id = UUID.randomUUID().toString();
@@ -144,6 +141,16 @@ final class AgentCredentials {
         String secret = Base64.getUrlEncoder().withoutPadding().encodeToString(random);
         var signingKey = Base64.getEncoder().encodeToString(Signer.deriveKey(secret));
         var updated = new TreeMap<>(entries);
+        // Revoked slots no longer authenticate. Keep a bounded registry without
+        // making the installation permanently unable to rotate its only agent key.
+        if (updated.size() >= MAX_ENTRIES) {
+            String retired = updated.values().stream()
+                    .filter(slot -> !slot.active())
+                    .findFirst()
+                    .orElseThrow()
+                    .id();
+            updated.remove(retired);
+        }
         updated.put(id, new Slot(id, label, signingKey, null));
         save(updated, scopedOnly);
         entries.clear();
@@ -200,38 +207,6 @@ final class AgentCredentials {
         scopedOnly = required;
     }
 
-    /** Pre-slot file formats (1: single stash, 2: stash list): bindings are dropped, slots stay. */
-    private static Slot migrate(JsonObject row, boolean singleStash) {
-        String agent = field(row, "agent");
-        if (agent == null || !agent.equals(UUID.fromString(agent).toString())) {
-            throw new IllegalArgumentException("Invalid agent id");
-        }
-        // Old records might contain Floodgate prefixes or names from offline-mode
-        // servers. The legacy player is only a suggested label, never a key binding.
-        String player = displayName(field(row, "player"));
-        String server = field(row, "server");
-        if (!validServer(server)) throw new IllegalArgumentException("Invalid server");
-        if (singleStash) {
-            if (!validServer(field(row, "stash"))) throw new IllegalArgumentException("Invalid stash");
-        } else {
-            var stashes = new HashSet<String>();
-            for (var stash : row.getAsJsonArray("stashes")) {
-                if (!stash.isJsonPrimitive()
-                        || !stash.getAsJsonPrimitive().isString()
-                        || !validServer(stash.getAsString())
-                        || !stashes.add(stash.getAsString())) {
-                    throw new IllegalArgumentException("Invalid stash list");
-                }
-            }
-            if (stashes.isEmpty() || stashes.size() > IndexStore.MAX_STASHES) {
-                throw new IllegalArgumentException("Invalid stash list");
-            }
-        }
-        // The legacy row validated: the slot keeps only its id and a human label.
-        String label = player == null ? "agent-" + agent.substring(0, 8) : player;
-        return new Slot(agent, label, null, null);
-    }
-
     private static Slot readSlot(JsonObject row) {
         // Discard old persisted UUID/player claims; only live, signed requests set presence.
         return new Slot(field(row, "id"), field(row, "label"), null, null);
@@ -242,13 +217,6 @@ final class AgentCredentials {
                 && !label.isBlank()
                 && label.length() <= 64
                 && label.chars().noneMatch(Character::isISOControl);
-    }
-
-    private static boolean validServer(String value) {
-        return value != null
-                && !value.isBlank()
-                && value.length() <= 256
-                && value.chars().noneMatch(Character::isISOControl);
     }
 
     private static String field(JsonObject object, String field) {

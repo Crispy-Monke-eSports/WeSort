@@ -56,16 +56,13 @@ class BootstrapRuntimeTest {
     }
 
     @Test
-    void keySlotsMigrateReportPresenceAndRotateIndependently() throws Exception {
-        var id = java.util.UUID.randomUUID().toString();
-        var file = data.resolve("agent-credentials.json");
-        var key = java.util.Base64.getEncoder().encodeToString(new byte[32]);
-        Files.writeString(file, """
-            {"version":1,"scopedOnly":true,"agents":[{"agent":"%s","player":".Bedrock Gamer","server":"srv","stash":"old","key":"%s"}]}
-            """.formatted(id, key));
+    void currentKeySlotsReportPresenceAndRotateIndependently() throws Exception {
         var clock = new AtomicLong(1_000_000);
+        var issued = new AgentCredentials(data, clock::get);
+        String token = issued.issue(".Bedrock Gamer");
+        String id = token.substring(0, token.indexOf('.'));
+        issued.requireScoped();
         var credentials = new AgentCredentials(data, clock::get);
-        // Legacy v1 rows retain their key slot, not a Minecraft player binding.
         assertEquals(id, credentials.find(id).id());
         assertEquals(".Bedrock Gamer", credentials.find(id).label());
         assertNull(credentials.find(id).binding());

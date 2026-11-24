@@ -26,7 +26,7 @@ public final class PackageLabel {
     /** The full anvil name for box X of a frozen total Y, e.g. {@code "WeSort (3/4) - Byggmaterial"}. */
     public static String name(int x, int y, String text) {
         if (x < 1 || y < 1 || x > y || y > MAX_BOXES) throw new IllegalArgumentException("Box number out of range");
-        return PREFIX + x + "/" + y + SEPARATOR + text;
+        return PREFIX + x + "/" + y + SEPARATOR + text(text, "packageLabel.text");
     }
 
     /**
@@ -65,7 +65,16 @@ public final class PackageLabel {
      */
     public static JsonObject normalize(JsonObject label) {
         if (label == null) return null;
-        if (label.has("text")) {
+        boolean all = label.has("text"), each = label.has("texts");
+        if (all == each) throw new IllegalArgumentException("packageLabel must have exactly one of text or texts");
+        if (label.has("mode")) {
+            var mode = label.get("mode");
+            if (!mode.isJsonPrimitive()
+                    || !mode.getAsJsonPrimitive().isString()
+                    || !(all ? "all" : "each").equals(mode.getAsString()))
+                throw new IllegalArgumentException("packageLabel mode differs from its text fields");
+        }
+        if (all) {
             if (!label.get("text").isJsonPrimitive()
                     || !label.get("text").getAsJsonPrimitive().isString())
                 throw new IllegalArgumentException("packageLabel.text must be a string");
@@ -111,6 +120,9 @@ public final class PackageLabel {
     public static JsonArray generate(JsonObject label, int packageTotal) {
         if (packageTotal < 1 || packageTotal > MAX_BOXES)
             throw new IllegalArgumentException("packageTotal out of range");
+        if (label != null && !label.has("mode"))
+            throw new IllegalArgumentException("Frozen packageLabel must include its mode");
+        label = normalize(label);
         var names = new JsonArray();
         if (label == null || "all".equals(label.get("mode").getAsString())) {
             String text = label == null ? DEFAULT_TEXT : label.get("text").getAsString();

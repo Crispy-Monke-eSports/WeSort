@@ -2,8 +2,8 @@ package com.porter.wesort.stash;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.junit.jupiter.api.Test;
 
@@ -49,15 +49,22 @@ class OrderPackageLabelTest {
     }
 
     @Test
-    void invalidTotalFallsBackToLegacy() {
-        Order o = order(base("\"packageLabel\":{\"mode\":\"all\",\"text\":\"W\"},\"packageTotal\":99"));
-        assertNull(o.names);
-        JsonObject legacy = new JsonObject();
-        legacy.addProperty("mode", "all");
-        legacy.addProperty("name", "Free");
-        Order o2 = order(base("\"names\":{\"mode\":\"all\",\"name\":\"Free\"},"
-                + "\"packageLabel\":{\"mode\":\"all\",\"text\":\"W\"},\"packageTotal\":99"));
-        assertEquals("Free", o2.names.nameFor(0));
+    void invalidFrozenLabelNeverFallsBackToLegacyNames() {
+        for (String total : new String[] {"99", "0", "1.5", "\"1\""}) {
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> order(base("\"names\":{\"mode\":\"all\",\"name\":\"Free\"},"
+                            + "\"packageLabel\":{\"mode\":\"all\",\"text\":\"W\"},\"packageTotal\":" + total)));
+        }
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> order(base("\"packageLabel\":{\"mode\":\"all\",\"text\":\"W\"}")));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> order(base("\"packageLabel\":{\"mode\":\"all\",\"text\":\"bad§text\"},\"packageTotal\":1")));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> order(base("\"packageLabel\":{\"mode\":\"other\",\"text\":\"W\"},\"packageTotal\":1")));
     }
 
     @Test

@@ -306,6 +306,48 @@ class SelfHealTest {
     }
 
     @Test
+    void unavailableDeferredOrderDoesNotBlockLaterFulfillableOrder() throws Exception {
+        observe("a", 10);
+        var first = orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 2)), null);
+        orders.claim("s", "a");
+        var shortage = orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 9)), null);
+        var next = orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 2)), null);
+        assertTrue(shortage.reservationDeferred);
+        assertTrue(next.reservationDeferred);
+
+        var cancelled = orders.status(first.id, "cancelled", null, null, "Returned", null);
+        time.set(cancelled.updatedAt + 1000);
+        observe("a", 5);
+        orders.selfHealAll();
+
+        assertEquals(next.id, orders.claim("s", "a").id);
+        assertEquals("pending", orders.statusOf(shortage.id));
+        assertEquals(
+                2L, orders.reservedFor("s", "a").get("item:minecraft:diamond").longValue());
+        var finished = orders.status(next.id, "cancelled", null, null, "Returned", null);
+        time.set(finished.updatedAt + 1000);
+        observe("a", 5);
+        orders.selfHealAll();
+        assertNull(orders.claim("s", "a"));
+        assertTrue(orders.heldRoots("s").isEmpty());
+
+        // Simulate the retry deadline across a Manager restart without sleeping.
+        JsonObject book = OrderBookFixtures.read(store, "s", "a");
+        for (var entry : book.getAsJsonArray("orders")) {
+            var row = entry.getAsJsonObject();
+            if (shortage.id.equals(row.get("id").getAsString()))
+                row.addProperty(
+                        "deferredBlockedAt", System.currentTimeMillis() - OrderStore.DEFERRED_RETRY_AFTER_MS - 1000);
+        }
+        OrderBookFixtures.replace(store, book);
+        var restarted = new OrderStore(data, store);
+        restarted.load();
+        assertNull(restarted.claim("s", "a"));
+        assertEquals("failed", restarted.statusOf(shortage.id));
+        assertTrue(restarted.heldRoots("s").isEmpty());
+    }
+
+    @Test
     void staleSilentCancelIsFulfilledAutomatically() throws Exception {
         observe("a", 10);
         var order = orders.place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 2)), null);

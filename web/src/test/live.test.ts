@@ -70,7 +70,6 @@ describe("live channel mapping (SSE update → TanStack Query keys)", () => {
       ["kits"],
       ["stash-defs"],
       ["users"],
-      ["quotas"],
       ["server"],
       ["stashes"],
       ["auth"],
@@ -82,6 +81,17 @@ describe("live channel mapping (SSE update → TanStack Query keys)", () => {
 
   it("user changes revalidate auth state", () => {
     expect(prefixesForChannels(["auth"])).toContainEqual(["auth"]);
+  });
+
+  it("overflow resync wins over known channels in a debounced batch", () => {
+    const full = prefixesForChannels(["__unknown__"]);
+    expect(prefixesForChannels(["__unknown__", "presence", "orders"])).toEqual(
+      full,
+    );
+    expect(prefixesForChannels(["bots", "future-channel"])).toEqual(full);
+    expect(full).toContainEqual(["custody"]);
+    expect(full).toContainEqual(["auth"]);
+    expect(full).not.toContainEqual(["quotas"]);
   });
 
   it("unknown channels fall back to the full live set", () => {

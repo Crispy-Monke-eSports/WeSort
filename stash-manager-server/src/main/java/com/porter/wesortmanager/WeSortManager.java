@@ -110,7 +110,17 @@ public final class WeSortManager {
                 throw new IOException("Official Minecraft 26.3 client download interrupted", e);
             }
 
-            IndexStore store = new IndexStore(dataDir);
+        // Storage keys are canonical server identities; merge any leftover spelling
+        // partitions (e.g. after changing "s" to "s:25565") before anything reads them.
+        // A failed merge never blocks startup: the worst case is the old split-brain view.
+        try {
+            String merged = ServerKeyMigration.reconcile(new StockLedger(dataDir), config.minecraftServer());
+            if (!merged.isEmpty()) System.out.println("  WeSort Manager: " + merged);
+        } catch (Exception e) {
+            System.err.println("WeSort Manager: server key migration skipped (" + e.getMessage() + ")");
+        }
+
+        IndexStore store = new IndexStore(dataDir);
             store.load();
             OrderStore orders = new OrderStore(dataDir, store);
             orders.load();

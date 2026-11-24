@@ -107,7 +107,9 @@ public final class Config {
 
     /** Saves the single Minecraft server address (owner-only, from the web UI). Empty clears it. */
     public synchronized void setMinecraftServer(String server) throws IOException {
-        String v = ServerRoutes.canonicalServer(server == null ? "" : server);
+        // Stored in storage form so admission and every database key agree no matter how the
+        // owner spelled the address (case, trailing dot, alt. alias, default :25565 port).
+        String v = ServerRoutes.storageKey(server == null ? "" : server);
         if (v.length() > 256) throw new IllegalArgumentException("server address too long");
         writeLine(file, Pattern.compile("^\\s*minecraftServer\\s*[=:].*$"), "minecraftServer", v);
         minecraftServer = v.isEmpty() ? null : v;
@@ -208,7 +210,9 @@ public final class Config {
             config.dashboardPassword = password;
         }
         String single = props.getProperty("minecraftServer", "").trim();
-        if (!single.isEmpty()) config.minecraftServer = single;
+        // Older installs may have any spelling here; normalize in memory so admission and
+        // every database key agree from the first request (persisted in storage form on next save).
+        if (!single.isEmpty()) config.minecraftServer = ServerRoutes.storageKey(single);
         return config;
     }
 

@@ -61,12 +61,24 @@ class ServerRoutesTest {
         Files.writeString(data.resolve("config.properties"), "port=8765\neula=true\n");
         Config config = Config.load(data);
         config.setMinecraftServer("  ALT.6b6t.org:25565  ");
-        assertEquals("6b6t.org:25565", config.minecraftServer());
+        // Storage form: canonical host without the default port, so every database key
+        // matches no matter how the address was spelled when it was configured.
+        assertEquals("6b6t.org", config.minecraftServer());
         assertTrue(ServerRoutes.sameServer("6b6t.org", config.minecraftServer()));
+        assertTrue(ServerRoutes.sameServer("alt.6b6t.org:25565", config.minecraftServer()));
         config.setMinecraftServer("127.0.0.1:54321");
         assertEquals("127.0.0.1:54321", Config.load(data).minecraftServer());
         assertEquals(-1, ServerRoutes.agentServerStatus(config, "127.0.0.1:54321"));
         assertEquals(409, ServerRoutes.agentServerStatus(config, "127.0.0.1:54322"));
+    }
+
+    @Test
+    void storageKeyStripsOnlyTheDefaultPort() {
+        assertEquals("6b6t.org", ServerRoutes.storageKey("6b6t.org:25565"));
+        assertEquals("6b6t.org", ServerRoutes.storageKey("ALT.6B6T.ORG"));
+        assertEquals("127.0.0.1:54321", ServerRoutes.storageKey("127.0.0.1:54321"));
+        assertEquals("", ServerRoutes.storageKey(""));
+        assertEquals("", ServerRoutes.storageKey(null));
     }
 
     @Test

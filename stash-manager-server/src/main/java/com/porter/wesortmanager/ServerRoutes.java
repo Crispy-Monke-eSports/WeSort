@@ -99,12 +99,19 @@ final class ServerRoutes {
 
     /** Compare aliases and the implicit default port, but never conflate distinct explicit ports. */
     static boolean sameServer(String want, String got) {
-        String a = comparisonServer(want);
-        String b = comparisonServer(got);
+        String a = storageKey(want);
+        String b = storageKey(got);
         return !a.isEmpty() && a.equals(b);
     }
 
-    private static String comparisonServer(String server) {
+    /**
+     * The single storage identity for a server spelling: canonical host (lowercase, no trailing
+     * dot, no alt. alias) with the default Minecraft port stripped. Admission ({@link #sameServer})
+     * and every database key must use this form, so changing the configured spelling from
+     * {@code s} to {@code s:25565} (or via an alt./case variant) never forks the order books,
+     * stock, leases, jobs or delivery snapshots into a second, invisible partition.
+     */
+    static String storageKey(String server) {
         String address = canonicalServer(server);
         int colon = portSeparator(address);
         return colon >= 0 && address.substring(colon).equals(":25565") ? address.substring(0, colon) : address;

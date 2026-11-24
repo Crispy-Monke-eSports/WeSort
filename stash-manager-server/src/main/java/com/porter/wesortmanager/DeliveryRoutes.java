@@ -60,6 +60,9 @@ final class DeliveryRoutes {
             Http.error(ex, 404, "unknown stash '" + stash + "': define it in Settings first");
             return;
         }
+        // Storage key, not the agent's spelling: the report must land in the same partition the
+        // dashboard reads, regardless of port/alias variants the bot was configured with.
+        server = config.minecraftServer();
         contents.put(server, stash, s);
         Http.json(ex, 200, Http.ok());
     }

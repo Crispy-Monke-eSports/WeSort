@@ -961,11 +961,18 @@ final class OrderStore {
         }
     }
 
+    /**
+     * Whether any order still owns work on this server. A RECOVERING order is a fenced,
+     * interrupted claim whose agent may be dead: it must not block lease renewal for everyone.
+     * Such an order is only resumable by its own agent through {@link #resumeClaim}, whose
+     * agent check and rollback keep the recovery fail-closed while the sorting slot stays open.
+     */
     boolean hasOpenOnServer(String server) {
         for (var entry : books.entrySet()) {
             if (!entry.getKey().server().equals(server)) continue;
             synchronized (entry.getValue()) {
-                if (entry.getValue().orders.stream().anyMatch(order -> OPEN.contains(order.status))) return true;
+                if (entry.getValue().orders.stream().anyMatch(order ->
+                        OPEN.contains(order.status) && order.stage() != OrderStage.RECOVERING)) return true;
             }
         }
         return false;

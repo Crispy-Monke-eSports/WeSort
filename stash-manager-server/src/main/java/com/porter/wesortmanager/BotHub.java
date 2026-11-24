@@ -278,6 +278,7 @@ final class BotHub {
         long now = now();
         synchronized (b) {
             b.lastSeen = now;
+            if (b.controlSession != null) b.lastPoll = now;
             Scope s = b.scopes.computeIfAbsent(scope, k -> new Scope());
             if (schema != null) {
                 s.schema = schema;
@@ -463,15 +464,18 @@ final class BotHub {
             if (receipt.has("error") && (error == null || error.length() > 1000 || outcome.getAsBoolean())) {
                 return Acknowledgement.REFUSED;
             }
-            if (job.receipt != null)
-                return job.receipt.equals(receipt) ? Acknowledgement.REPLAY : Acknowledgement.REFUSED;
+            if (job.receipt != null) {
+                if (!job.receipt.equals(receipt)) return Acknowledgement.REFUSED;
+                b.lastSeen = b.lastPoll = now();
+                return Acknowledgement.REPLAY;
+            }
             expire(b, now());
             if (!job.status.equals("sent")) return Acknowledgement.REFUSED;
             job.receipt = receipt.deepCopy();
             job.status = outcome.getAsBoolean() ? "done" : "error";
             job.value = receipt.get("value");
             job.error = error;
-            b.lastSeen = now();
+            b.lastSeen = b.lastPoll = now();
             b.notifyAll();
             return Acknowledgement.APPLIED;
         }

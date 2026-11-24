@@ -24,6 +24,10 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import meteordevelopment.meteorclient.events.game.GameLeftEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.*;
@@ -203,6 +207,16 @@ public class StashManager extends Module {
     private final HttpClient http =
             HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 
+    // A slow physical request must never monopolize the control connection.
+    private final ExecutorService controlExecutor = new ThreadPoolExecutor(
+            1, 1, 0, TimeUnit.MILLISECONDS, new SynchronousQueue<>(), r -> {
+                Thread t = new Thread(r, "wesort-manager-control");
+                t.setDaemon(true);
+                return t;
+            });
+    private final HttpClient controlHttp =
+            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+
     // Everything below is client thread only
     private StashIndex.Built current;
     private long fingerprint, lastBuild;
@@ -224,8 +238,8 @@ public class StashManager extends Module {
     private String sentControlValues;
     private JsonArray controlResults;
     private JsonObject lastControlResult;
-    private long nextControlAt;
-    private final RequestRetry controlRetry = new RequestRetry();
+    private boolean controlInFlight;
+    private final ControlRetrySchedule controlSchedule = new ControlRetrySchedule();
     private final RequestRetry sortingRetry = new RequestRetry();
     private PendingManifest pendingManifest;
 
@@ -320,16 +334,34 @@ public class StashManager extends Module {
         // Operational blockers (inventory, navigation or no stash) are not link failures.
         // Only a verified, recent Manager reply for the CURRENT address, key and MC server
         // can assert ONLINE. Explicit auth/transport errors still win immediately.
-        boolean authenticated = verifiedManagerAt > 0
-                && verifiedManagerScope.equals(linkScope())
-                && System.currentTimeMillis() - verifiedManagerAt < 90_000;
+        boolean authenticated = controlRegistered && verifiedManagerScope.equals(linkScope())
+                && controlSchedule.recentlyVerified(monotonicMs());
+        String linkStatus = parse(serverUrl.get()) == null ? "bad url" : controlStatus;
+        if (controlScope == null || !controlScope.link().equals(linkScope())) {
+            if (!linkStatus.equals("bad url")) linkStatus = "idle";
+        }
         return com.porter.wesort.commands.ConnectionState.ofVerified(
-                        isActive(), serverUrl.get(), apiKey.get(), status, authenticated)
+                        isActive(), serverUrl.get(), apiKey.get(), linkStatus, authenticated)
                 .name();
     }
 
-    private long verifiedManagerAt;
     private String verifiedManagerScope = "";
+    private String controlStatus = "idle";
+
+    private static long monotonicMs() {
+        return TimeUnit.NANOSECONDS.toMillis(System.nanoTime());
+    }
+
+    private void controlFailure(String reason) {
+        controlRegistered = false;
+        sentControlValues = null;
+        verifiedManagerScope = "";
+        controlSchedule.failed(monotonicMs());
+        if (!reason.equals(controlStatus)) {
+            WeSortAddon.LOG.warn("wesort-manager-control: {}; reconnecting every 15 seconds", reason);
+        }
+        controlStatus = reason;
+    }
 
     // Only the isolated real-Minecraft E2E fixture can request this. Keep the
     // signed Manager connection and dedicated world-interaction policy active
@@ -405,15 +437,15 @@ public class StashManager extends Module {
         lastPushed = null;
         needIndex = false;
         inFlight = false;
-        verifiedManagerAt = 0;
         verifiedManagerScope = "";
+        controlStatus = "idle";
         status = "idle";
         lastLogged = "";
         controlRegistered = false;
         sentControlValues = null;
         controlResults = null;
-        nextControlAt = 0;
-        controlRetry.reset();
+        controlInFlight = false;
+        controlSchedule.reset();
         sortingRetry.reset();
         sortingPoll = 0;
         pendingManifest = null;
@@ -587,7 +619,8 @@ public class StashManager extends Module {
     private void onTick(TickEvent.Post event) {
         // Service the signed control channel even if physical calls are failing or the inventory is blocked.
         // Its completion-based retry interval leaves the other traffic a chance to make progress.
-        if (serviceControlWhenDue() || servicePhysicalJournal() || serviceSorting()) return;
+        serviceControlWhenDue();
+        if (servicePhysicalJournal() || serviceSorting()) return;
         if (com.porter.wesort.compat.NavigationRuntime.paused()) {
             setStatus(com.porter.wesort.compat.NavigationRuntime.status());
             return;
@@ -710,16 +743,23 @@ public class StashManager extends Module {
         }
     }
 
-    private boolean serviceControlWhenDue() {
-        // The control channel has its own retry state, independent of all physical operations.
-        if (inFlight || mc.player == null || mc.level == null || !dedicatedProfile()) return false;
+    private void serviceControlWhenDue() {
+        // No work-lane inFlight/backoff, inventory readiness, navigation or quiet-mode gate.
+        if (controlInFlight || mc.player == null || mc.level == null || !dedicatedProfile()) return;
         String key = apiKey.get().trim();
         URI base = parse(serverUrl.get());
-        return base != null && !key.isEmpty() && serviceControl(base, key, System.currentTimeMillis());
+        if (base == null || key.isEmpty()) return;
+        try {
+            serviceControl(base, key, monotonicMs());
+        } catch (RuntimeException failure) {
+            // A malformed local snapshot must not escape the tick handler.
+            controlFailure("offline");
+        }
     }
 
     private record ControlScope(
-            URI manager, String server, String stash, String dimension, java.util.UUID player, String keyId) {
+            URI manager, String server, String stash, String dimension, java.util.UUID player, String keyId,
+            String link) {
         /** The bot id is the API key id: the Manager binds the player, never the other way around. */
         String botId() {
             return keyId;
@@ -745,14 +785,14 @@ public class StashManager extends Module {
         }
     }
 
+    private ControlScope observeControlScope(URI base, String key) {
+        String server = Stash.currentServer();
+        String stash = current != null && server.equals(current.server()) ? current.stash() : null;
+        return new ControlScope(base, server, stash, StashIndex.dimension(), mc.player.getUUID(), keyId(key), linkScope());
+    }
+
     private boolean serviceControl(URI base, String key, long now) {
-        var observed = new ControlScope(
-                base,
-                current == null ? Stash.currentServer() : current.server(),
-                current == null ? null : current.stash(),
-                StashIndex.dimension(),
-                mc.player.getUUID(),
-                keyId(key));
+        var observed = observeControlScope(base, key);
         if (!observed.equals(controlScope)) {
             if (controlScope == null
                     || !observed.manager().equals(controlScope.manager())
@@ -764,11 +804,13 @@ public class StashManager extends Module {
             sentControlValues = null;
             controlResults = null;
             lastControlResult = null;
-            nextControlAt = 0;
-            controlRetry.reset();
+            pendingManifest = null;
+            verifiedManagerScope = "";
+            controlStatus = "idle";
+            controlSchedule.reset();
         }
-        if (now < nextControlAt) return false;
-        nextControlAt = now + 2_000;
+        if (!controlSchedule.due(now)) return false;
+        controlSchedule.started(now);
         var request = new JsonObject();
         request.addProperty("botId", observed.botId());
         request.addProperty("controlSession", controlSession);
@@ -815,7 +857,11 @@ public class StashManager extends Module {
                             var hello = JsonParser.parseString(body).getAsJsonObject();
                             String epoch = text(hello, "controlEpoch");
                             if (hello.get("protocol").getAsInt() == 2 && epoch != null) {
-                                if (!epoch.equals(controlEpoch)) lastControlResult = null;
+                                if (!epoch.equals(controlEpoch)) {
+                                    lastControlResult = null;
+                                    controlResults = null;
+                                    pendingManifest = null;
+                                }
                                 controlEpoch = epoch;
                                 controlRegistered = true;
                                 sentControlValues = null;
@@ -1034,8 +1080,8 @@ public class StashManager extends Module {
         AgentIncident incident = null;
         if (mc.player.getHealth() <= 0) incident = AgentIncident.DEATH;
         else if (recoveringInventory) incident = AgentIncident.INVENTORY_UNVERIFIED;
-        else if (status.equals("wrong server")) incident = AgentIncident.WRONG_SERVER;
-        else if (status.equals("error 401") || status.equals("server signature invalid")) {
+        else if (controlStatus.equals("wrong server") || status.equals("wrong server")) incident = AgentIncident.WRONG_SERVER;
+        else if (controlStatus.equals("error 401") || controlStatus.equals("server signature invalid")) {
             incident = AgentIncident.AUTH_FAILED;
         } else if (com.porter.wesort.compat.NavigationRuntime.paused()) {
             incident = AgentIncident.NAVIGATION_PAUSED;
@@ -1919,11 +1965,14 @@ public class StashManager extends Module {
 
     /** @param isolated the request is not part of the module's link to the server: its failures never set the shared backoff or the status */
     private void send(URI base, String path, byte[] body, String key, Reply reply, boolean isolated) {
+        boolean control = path.startsWith("/api/v1/bot/");
+        ControlScope requestedControlScope = control ? controlScope : null;
         URI uri;
         try {
             uri = URI.create(base + path);
         } catch (IllegalArgumentException e) {
-            if (!isolated) setStatus("bad url");
+            if (control) controlFailure("bad url");
+            else if (!isolated) setStatus("bad url");
             return;
         }
 
@@ -1949,23 +1998,37 @@ public class StashManager extends Module {
                     .POST(HttpRequest.BodyPublishers.ofByteArray(body))
                     .build();
         } catch (IllegalArgumentException e) {
-            if (!isolated) setStatus("bad url");
+            if (control) controlFailure("bad url");
+            else if (!isolated) setStatus("bad url");
             return;
         }
 
-        inFlight = true;
+        if (control) controlInFlight = true;
+        else inFlight = true;
         int gen = generation;
         // Capture the *request's* endpoint and signing credential, not whichever
         // settings happen to be configured by the time its reply arrives.
         String requestScope =
                 com.porter.wesort.commands.ManagerLinkScope.of(base.toString(), Stash.currentServer(), key);
 
-        executor.execute(() -> {
+        Runnable exchange = () -> {
             int code;
             String text = "";
             boolean badSignature = false;
             try {
-                HttpResponse<byte[]> response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
+                HttpResponse<byte[]> response;
+                if (control) {
+                    // The future completes only after the body is received. A header-only
+                    // response or slow body must not indefinitely keep the control lane busy.
+                    var future = controlHttp.sendAsync(request, HttpResponse.BodyHandlers.ofByteArray());
+                    try {
+                        response = future.get(ControlRetrySchedule.REQUEST_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+                    } finally {
+                        if (!future.isDone()) future.cancel(true);
+                    }
+                } else {
+                    response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
+                }
                 code = response.statusCode();
                 byte[] bytes = response.body() == null ? new byte[0] : response.body();
                 // The signature covers the body as it is without compression
@@ -2006,75 +2069,65 @@ public class StashManager extends Module {
             boolean finalBad = badSignature;
             mc.execute(() -> {
                 if (gen != generation) return;
-                inFlight = false;
+                if (control) controlInFlight = false;
+                else inFlight = false;
                 if (!com.porter.wesort.commands.ManagerLinkScope.matches(requestScope, linkScope())) {
                     // Even an authentic reply signed with the *old* key must not
                     // verify a new connection, apply old control jobs or continue
                     // physical work after a rekey, retarget or server switch.
-                    backoff = 0;
-                    nextAttemptAt = 0;
-                    controlRegistered = false;
+                    if (control) {
+                        controlRegistered = false;
+                        verifiedManagerScope = "";
+                        controlSchedule.reset();
+                    } else {
+                        backoff = 0;
+                        nextAttemptAt = 0;
+                    }
+                    return;
+                }
+
+                if (control) {
+                    // Also fence the dimension, stash and player; a reply sent before
+                    // a world transition must not apply settings or acknowledge a manifest.
+                    if (mc.level == null || mc.player == null
+                            || !requestedControlScope.equals(observeControlScope(base, key))) {
+                        controlRegistered = false;
+                        verifiedManagerScope = "";
+                        controlSchedule.reset();
+                        return;
+                    }
+                    if (finalBad || finalCode < 0 || finalCode == 401 || finalCode == 403 || finalCode >= 500) {
+                        controlFailure(finalBad ? "server signature invalid"
+                                : finalCode == 401 || finalCode == 403 ? "error 401" : "offline");
+                        return;
+                    }
+                    if (finalCode == 409 && isWrongServer(finalText)) {
+                        controlFailure("wrong server");
+                        return;
+                    }
+                    boolean ok = false;
+                    try {
+                        ok = reply.done(finalCode, finalText);
+                    } catch (RuntimeException failure) {
+                        WeSortAddon.LOG.warn("wesort-manager-control: invalid reply", failure);
+                    }
+                    if (ok && controlRegistered && (finalCode == 200 || finalCode == 204)) {
+                        if (!controlStatus.equals("online")) WeSortAddon.LOG.info("wesort-manager-control: online");
+                        controlStatus = "online";
+                        verifiedManagerScope = linkScope();
+                        controlSchedule.succeeded(monotonicMs());
+                    } else {
+                        controlFailure("offline");
+                    }
                     return;
                 }
 
                 if (isolated) {
-                    // A signed control reply confirms Manager presence, even before the
-                    // client has a stash/inventory. Other isolated physical calls must never
-                    // manufacture a connection state.
-                    if (path.startsWith("/api/v1/bot/")) {
-                        if (finalBad || finalCode == 401 || finalCode == 403 || finalCode < 0 || finalCode >= 500) {
-                            verifiedManagerAt = 0;
-                            controlRegistered = false;
-                            sentControlValues = null;
-                            if (finalBad) setStatus("server signature invalid");
-                            else if (finalCode == 401 || finalCode == 403) setStatus("error 401");
-                            else setStatus("offline");
-                        } else if (finalCode == 200 || finalCode == 204) {
-                            verifiedManagerAt = System.currentTimeMillis();
-                            verifiedManagerScope = linkScope();
-                            // Recover from a previous invalid control signature/key once
-                            // the Manager actually authenticates this same connection.
-                            if (status.equals("server signature invalid")
-                                    || status.equals("error 401")
-                                    || status.equals("offline")) setStatus("idle");
-                        }
-                    }
-                    // Isolated replies do not change physical backoff or operational status.
-                    if (finalCode == 409 && isWrongServer(finalText)) {
-                        deliverySync.forget();
-                        deliverySync.retryLater(System.currentTimeMillis());
-                        warning(
-                                "This Manager serves another Minecraft server: %s. Set server-url to the right Manager.",
-                                finalText);
-                        setStatus("wrong server");
-                        if (path.startsWith("/api/v1/bot/")) {
-                            controlRegistered = false;
-                            nextControlAt = System.currentTimeMillis() + controlRetry.failureDelayMs();
-                        } else {
-                            reply.done(finalCode, finalText);
-                        }
-                        return;
-                    }
-                    // The signed 409 for a lost control epoch must reach the
-                    // callback, which discards the old epoch and sends a new hello.
-                    boolean ok = false;
                     try {
-                        ok = reply.done(finalBad ? -2 : finalCode, finalBad ? "" : finalText);
+                        reply.done(finalBad ? -2 : finalCode, finalBad ? "" : finalText);
                     } catch (RuntimeException e) {
                         WeSortAddon.LOG.warn("wesort-stash-manager: couldn't handle the reply", e);
                         deliverySync.retryLater(System.currentTimeMillis());
-                    } finally {
-                        if (path.startsWith("/api/v1/bot/")) {
-                            long completed = System.currentTimeMillis();
-                            if (ok && !finalBad && (finalCode == 200 || finalCode == 204)) {
-                                controlRetry.reset();
-                                nextControlAt = completed + 2_000;
-                            } else {
-                                controlRegistered = false;
-                                sentControlValues = null;
-                                nextControlAt = completed + controlRetry.failureDelayMs();
-                            }
-                        }
                     }
                     return;
                 }
@@ -2114,10 +2167,6 @@ public class StashManager extends Module {
                 if (ok) {
                     backoff = 0;
                     nextAttemptAt = 0;
-                    if (finalCode == 200 || finalCode == 204) {
-                        verifiedManagerAt = System.currentTimeMillis();
-                        verifiedManagerScope = linkScope();
-                    }
                 } else {
                     backoff = backoff == 0 ? BACKOFF_MIN_MS : Math.min(BACKOFF_MAX_MS, backoff * 2);
                     nextAttemptAt = System.currentTimeMillis() + backoff;
@@ -2128,7 +2177,18 @@ public class StashManager extends Module {
                 else next = "error " + finalCode;
                 setStatus(next);
             });
-        });
+        };
+        try {
+            (control ? controlExecutor : executor).execute(exchange);
+        } catch (RejectedExecutionException rejected) {
+            if (control) {
+                controlInFlight = false;
+                controlFailure("offline");
+            } else {
+                inFlight = false;
+                setStatus("offline");
+            }
+        }
     }
 
     // Signed requests

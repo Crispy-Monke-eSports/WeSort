@@ -883,6 +883,7 @@ public class StashSorter extends Module {
     // Explicit rescans (including Manager revision conflicts) need new receipts,
     // not a five-minute wait on observations from an obsolete index.
     private final Set<Box> forcedSurvey = new HashSet<>();
+    private final Set<Box> requestedSurvey = new HashSet<>();
     private long nextIdleSurveyAt, nextBackgroundBatchAt;
     // Jobs that opened a container and clicked nothing, with what the carry slots and the container held then: not
     // repeated until one of them changes, however often stalled is cleared meanwhile
@@ -2897,7 +2898,7 @@ public class StashSorter extends Module {
 
     private boolean surveyCandidate(Box box, long now, boolean periodic) {
         if (!surveyDue(box, now)) return false;
-        if (forcedSurvey.contains(box) || !box.known() || box.stale) return true;
+        if (forcedSurvey.contains(box) || requestedSurvey.contains(box) || !box.known() || box.stale) return true;
         return periodic
                 && keepOn()
                 && now >= nextBackgroundBatchAt
@@ -2910,6 +2911,7 @@ public class StashSorter extends Module {
         if (!surveyBatch.isEmpty()) return true;
         surveyAttemptAt.keySet().retainAll(stash.boxes);
         forcedSurvey.retainAll(stash.boxes);
+        requestedSurvey.retainAll(stash.boxes);
         dropBackoffUntil.keySet().retainAll(stash.boxes);
         var candidates = stash.boxes.stream()
                 .filter(box -> surveyCandidate(box, now, periodic) && (!nearbyOnly || inReach(box)))
@@ -2943,6 +2945,7 @@ public class StashSorter extends Module {
         surveyAttemptAt.put(selected, now);
         if (start(Job.Survey, selected)) return true;
         forcedSurvey.remove(selected);
+        requestedSurvey.remove(selected);
         return false;
     }
 
@@ -2959,6 +2962,7 @@ public class StashSorter extends Module {
      */
     private void surveyFailed(Box box, String why) {
         forcedSurvey.remove(box);
+        requestedSurvey.remove(box);
         box.stale = true;
         box.observationUnreachable = true;
         failedSurvey.add(box);
@@ -7589,14 +7593,9 @@ public class StashSorter extends Module {
             if (pos == null) continue;
             Box box = stash.boxAt(pos);
             if (box == null || box.excluded || box.foreign || box.unreachable || failedSurvey.contains(box)) continue;
-            if (!box.stale) {
-                box.stale = true;
-                marked++;
-            }
+            if (requestedSurvey.add(box)) marked++;
         }
         if (marked > 0) {
-            stash.markDirty();
-            stash.save();
             version++;
             idle = false;
         }
@@ -9049,6 +9048,7 @@ public class StashSorter extends Module {
         if (PhysicalJournalRuntime.inspecting() || portalAwaiting()) return false;
         if (!InventorySync.ready() || com.porter.wesort.compat.NavigationRuntime.paused()) return false;
         if (stash == null || handle != null) return false;
+        ticks++;
         if (wait > 0) {
             wait--;
             return false;
@@ -12975,6 +12975,7 @@ public class StashSorter extends Module {
             surveyAttemptAt.clear();
             surveyBatch.clear();
             forcedSurvey.clear();
+            requestedSurvey.clear();
             nextIdleSurveyAt = nextBackgroundBatchAt = 0;
             dropBackoffUntil.clear();
             staleBoxes.clear();
@@ -13194,6 +13195,7 @@ public class StashSorter extends Module {
         com.porter.wesort.compat.ObservationRuntime.record(box);
         if (!box.stale) {
             forcedSurvey.remove(box);
+            requestedSurvey.remove(box);
             dropChecked(box, differs);
         }
         stash.markDirty();

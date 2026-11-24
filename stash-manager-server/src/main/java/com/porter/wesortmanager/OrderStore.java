@@ -697,7 +697,9 @@ final class OrderStore {
 
     /** Count actual order reservations separately from lifecycle/recovery health. */
     int reservationHoldingOrders(String server) {
-        return (int) ordersOnServer(server).stream().filter(OrderStore::holdsPhysical).count();
+        return (int) ordersOnServer(server).stream()
+                .filter(OrderStore::holdsPhysical)
+                .count();
     }
 
     Map<String, Integer> activeStates(Users.Principal who) {

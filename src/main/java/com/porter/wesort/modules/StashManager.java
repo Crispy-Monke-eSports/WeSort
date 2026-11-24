@@ -544,31 +544,37 @@ public class StashManager extends Module {
         if (uncertain && sortingToken == null) return false;
         request.addProperty("action", uncertain ? "uncertain" : wants ? "acquire" : "release");
         sortingPoll = now + 2_000_000_000L;
-        send(base, "/api/v1/automation", bytes(request), apiKey.get().trim(), (code, body) -> {
-            if (code != 200) {
-                sortingUntil = 0;
-                // A denied lease is expected while an order owns physical reservations.
-                // It must never postpone the order heartbeat, rollback or control channel.
-                sortingPoll = System.nanoTime() + sortingRetry.failureDelayMs() * 1_000_000L;
-                return false;
-            }
-            sortingRetry.reset();
-            if (uncertain) {
-                sortingUntil = 0;
-                return true;
-            }
-            if (!wants) {
-                sortingToken = null;
-                sortingUntil = 0;
-                return true;
-            }
-            sortingUntil = 0;
-            var reply = JsonParser.parseString(body).getAsJsonObject();
-            sortingToken = reply.get("token").getAsString();
-            // Measured from request start, not reply receipt. A delayed reply cannot extend a permit.
-            sortingUntil = now + 5_000_000_000L;
-            return true;
-        }, true);
+        send(
+                base,
+                "/api/v1/automation",
+                bytes(request),
+                apiKey.get().trim(),
+                (code, body) -> {
+                    if (code != 200) {
+                        sortingUntil = 0;
+                        // A denied lease is expected while an order owns physical reservations.
+                        // It must never postpone the order heartbeat, rollback or control channel.
+                        sortingPoll = System.nanoTime() + sortingRetry.failureDelayMs() * 1_000_000L;
+                        return false;
+                    }
+                    sortingRetry.reset();
+                    if (uncertain) {
+                        sortingUntil = 0;
+                        return true;
+                    }
+                    if (!wants) {
+                        sortingToken = null;
+                        sortingUntil = 0;
+                        return true;
+                    }
+                    sortingUntil = 0;
+                    var reply = JsonParser.parseString(body).getAsJsonObject();
+                    sortingToken = reply.get("token").getAsString();
+                    // Measured from request start, not reply receipt. A delayed reply cannot extend a permit.
+                    sortingUntil = now + 5_000_000_000L;
+                    return true;
+                },
+                true);
         return true;
     }
 
@@ -2029,8 +2035,8 @@ public class StashManager extends Module {
                             // Recover from a previous invalid control signature/key once
                             // the Manager actually authenticates this same connection.
                             if (status.equals("server signature invalid")
-                                    || status.equals("error 401") || status.equals("offline"))
-                                setStatus("idle");
+                                    || status.equals("error 401")
+                                    || status.equals("offline")) setStatus("idle");
                         }
                     }
                     // Isolated replies do not change physical backoff or operational status.

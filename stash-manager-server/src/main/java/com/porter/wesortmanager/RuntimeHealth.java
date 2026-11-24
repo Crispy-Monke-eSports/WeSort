@@ -33,7 +33,10 @@ final class RuntimeHealth {
         long oldest = index.oldestIndexTime(server, now);
         long age = oldest == 0 ? -1 : now - oldest;
         Sample next = new Sample(
-                now, age, age < 0 || age >= maxAge, orders.stuckOrders(server, now),
+                now,
+                age,
+                age < 0 || age >= maxAge,
+                orders.stuckOrders(server, now),
                 orders.reservationHoldingOrders(server));
         Sample previous = latest;
         latest = next;

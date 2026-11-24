@@ -19,6 +19,12 @@ class SurveyBatchTest {
     }
 
     @Test
+    void explicitRescanAndRequiredReceiptsAreNotRoutinePolling() {
+        assertTrue(SurveyBatch.due(2000, 1000, 1000, 300_000, true));
+        assertFalse(SurveyBatch.due(2000, 1000, 1000, 300_000, false));
+    }
+
+    @Test
     void oldestTenAreSelectedAndSmallerBatchesAreAllowed() {
         List<Integer> candidates =
                 IntStream.rangeClosed(1, 13).map(i -> 14 - i).boxed().toList();

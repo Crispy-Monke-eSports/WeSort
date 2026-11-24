@@ -2885,12 +2885,12 @@ public class StashSorter extends Module {
 
     private boolean surveyDue(Box box, long now) {
         if (!readableBox(box)) return false;
-        if (forcedSurvey.contains(box)) return true;
         // A fresh receipt for an already-started physical operation is not
         // routine polling. Waiting five minutes here could expire the journal.
-        if (awaitingRepackStorage() && box.stale && box.lastRead < repackStoreAt) return true;
+        boolean requiredReceipt = forcedSurvey.contains(box)
+                || (awaitingRepackStorage() && box.stale && box.lastRead < repackStoreAt);
         return com.porter.wesort.inventory.SurveyBatch.due(
-                now, box.lastRead, surveyAttemptAt.getOrDefault(box, 0L), surveyIntervalMs());
+                now, box.lastRead, surveyAttemptAt.getOrDefault(box, 0L), surveyIntervalMs(), requiredReceipt);
     }
 
     private boolean surveyCandidate(Box box, long now, boolean periodic) {

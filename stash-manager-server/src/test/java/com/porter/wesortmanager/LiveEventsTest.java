@@ -54,6 +54,58 @@ class LiveEventsTest {
     }
 
     @Test
+    void concurrentPublishersDeliverStrictlyIncreasingRevisions() throws Exception {
+        BlockingQueue<LiveEvents.Event> queue = LiveEvents.subscribe();
+        try (var pool = Executors.newFixedThreadPool(4)) {
+            var ready = new java.util.concurrent.CountDownLatch(1);
+            var tasks = new java.util.ArrayList<java.util.concurrent.Future<?>>();
+            for (int i = 0; i < 4; i++) {
+                tasks.add(pool.submit(() -> {
+                    ready.await();
+                    for (int j = 0; j < 16; j++) LiveEvents.bump("orders");
+                    return null;
+                }));
+            }
+            ready.countDown();
+            for (var task : tasks) task.get(5, TimeUnit.SECONDS);
+            long last = -1;
+            for (int i = 0; i < 64; i++) {
+                long next = take(queue).rev();
+                assertTrue(next > last, "revision order must match delivery order");
+                last = next;
+            }
+        } finally {
+            LiveEvents.unsubscribe(queue);
+        }
+    }
+
+    @Test
+    void concurrentHeartbeatsPublishOnlyOncePerThrottleWindow() throws Exception {
+        BlockingQueue<LiveEvents.Event> queue = LiveEvents.subscribe();
+        try (var pool = Executors.newFixedThreadPool(8)) {
+            String key = java.util.UUID.randomUUID().toString();
+            var ready = new java.util.concurrent.CountDownLatch(1);
+            var tasks = new java.util.ArrayList<java.util.concurrent.Future<Long>>();
+            for (int i = 0; i < 8; i++) {
+                tasks.add(pool.submit(() -> {
+                    ready.await();
+                    return LiveEvents.bumpThrottled(key, 60_000, "presence");
+                }));
+            }
+            ready.countDown();
+            int published = 0;
+            for (var task : tasks) {
+                if (task.get(5, TimeUnit.SECONDS) >= 0) published++;
+            }
+            assertEquals(1, published);
+            assertEquals(Set.of("presence"), take(queue).channels());
+            assertTrue(queue.isEmpty());
+        } finally {
+            LiveEvents.unsubscribe(queue);
+        }
+    }
+
+    @Test
     void unsubscribeStopsDelivery() throws InterruptedException {
         BlockingQueue<LiveEvents.Event> queue = LiveEvents.subscribe();
         LiveEvents.unsubscribe(queue);

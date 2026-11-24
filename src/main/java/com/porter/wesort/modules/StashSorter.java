@@ -40,7 +40,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
@@ -8171,6 +8170,10 @@ public class StashSorter extends Module {
                 if (problem != null) {
                     if (!returningChangedShulker && !repackOuter.isEmpty()
                             && returnObservedShulker(repackMenuContents(mc.player.containerMenu), problem)) return;
+                    if (handlingProof || returningChangedShulker) {
+                        blockRepackConflict("Cannot verify changed shulker for intact return: " + problem);
+                        return;
+                    }
                     int actual = 0;
                     for (int i = 0; i < 27; i++)
                         if (!mc.player.containerMenu.getSlot(i).getItem().isEmpty()) actual++;
@@ -8289,19 +8292,11 @@ public class StashSorter extends Module {
             // Other player inventory must still match: only the source's observed
             // contents may differ, not the result of an uncertain transfer.
             if (repackConservation != null) {
-                var expected = new TreeMap<>(repackConservation);
                 var previousContents = com.porter.wesort.compat.RepackRuntime.conservation(
                         Arrays.asList(Kits.inside(repackOuter)));
-                for (var entry : previousContents.entrySet()) {
-                    Long total = expected.get(entry.getKey());
-                    if (total == null || total < entry.getValue()) return false;
-                    long rest = total - entry.getValue();
-                    if (rest == 0) expected.remove(entry.getKey());
-                    else expected.put(entry.getKey(), rest);
-                }
-                for (var entry : com.porter.wesort.compat.RepackRuntime.conservation(Arrays.asList(contents))
-                        .entrySet()) expected.merge(entry.getKey(), entry.getValue(), Math::addExact);
-                if (!expected.equals(repackCombined(contents))) return false;
+                var observedContents = com.porter.wesort.compat.RepackRuntime.conservation(Arrays.asList(contents));
+                if (!com.porter.wesort.inventory.StockDeviation.matchesWithObservedSource(
+                        repackConservation, previousContents, observedContents, repackCombined(contents))) return false;
             }
             ItemStack observed = repackOuter.copy();
             observed.set(DataComponents.CONTAINER,
@@ -8329,6 +8324,10 @@ public class StashSorter extends Module {
             brokenSince = -1;
             recordOrphan(placed, "changed shulker", placedStacks);
             syncInFlight();
+            if (stash.isDirty()) {
+                blockRepackConflict("Could not persist changed shulker before returning it");
+                return true;
+            }
             warning("%s; recorded the new contents, returning the shulker intact and replanning.", why);
             closeOurWindow(mc.player.containerMenu);
             wait = delay.get();
@@ -13056,6 +13055,7 @@ public class StashSorter extends Module {
         if (differs && !box.stale && actions == 0) {
             version++;
             stash.save();
+            if (stash.isDirty()) box.stale = true;
         }
         return !box.stale;
     }

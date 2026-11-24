@@ -9,13 +9,16 @@ Manager-jar:en, och webbtester använder **Node.js 22**.
 
 ## Workflow-arkitektur
 
-Fyra GitHub Actions-workflows ersätter de tidigare 14:
+CI är uppdelat i följande GitHub Actions-workflows:
 
 - `.github/workflows/ci.yml`: en gemensam ingång för **varje PR**, push till
   `main`, nightly och manuell full verifiering. Kallas även av releaseflödet.
 - `_verify.yml`: klient-, Manager- och webbtester, färsk installation och
-  dataisolering, samt browser/TLS/Docker-smoke. Bygger en Manager-image en gång
-  per körning, med BuildKit/GHA-cache.
+  dataisolering.
+- `_manager-ci-image.yml`: bygger en Manager-image en gång per körning med
+  BuildKit/GHA-cache, parallellt med grundverifieringen.
+- Browser/TLS/Docker-smoke körs parallellt med Minecraft E2E på den exporterade
+  imagen, så smoke-testet ligger inte längre på den seriella kritiska vägen.
 - `_mc26-e2e.yml`: **alla** verkliga 26.3-runtime- och E2E-harnessar, inklusive
   vanilla-server, Fabric-klient och Manager från samma aktuella revision.
 - `manager-image.yml`: separat tagg/manuell release. Kräver hela CI-sviten,
@@ -46,6 +49,11 @@ Inga path-filter hoppar över tunga tester på PR.
 Manager-imagen exporteras som zstd-komprimerad 7-dagars artifact och laddas
 lokalt på runnern, där både image-ID och `org.opencontainers.image.revision`
 verifieras. CI publicerar **inte** testimagen till GHCR.
+
+E2E-runnern installerar bara saknade display-/ljudpaket. Ubuntu-arkivet används
+först, med runnerns ordinarie spegel som fallback. Paketens release,
+signaturkontroll och obligatoriska bibliotek ändras inte. Onödiga
+översättningsindex och rekommenderade paket hämtas inte.
 
 ## Säkerhet och obligatoriska kontroller
 

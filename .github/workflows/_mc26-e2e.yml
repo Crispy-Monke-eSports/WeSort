@@ -14,6 +14,47 @@ env:
   ALSOFT_DRIVERS: 'null'
 jobs:
 
+  docker-smoke:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/load-manager-image
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: web-tests/package-lock.json
+      - run: npm ci --prefix web-tests
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('web-tests/package-lock.json') }}
+      - name: Install Playwright chromium (browsers cached, system deps only if missing)
+        shell: bash
+        run: |
+          # Browser binaries persist via the cache above; system libraries live
+          # in the rootfs and cannot be cached, but the ubuntu image usually
+          # ships them. Only pay for `apt-get` when a known chromium dep is absent.
+          if ! dpkg -s libnss3 >/dev/null 2>&1; then
+            npm exec --prefix web-tests -- playwright install --with-deps chromium
+          else
+            npm exec --prefix web-tests -- playwright install chromium
+          fi
+      - name: Docker bridge, browser portal, bootstrap, persistence and TLS smoke
+        run: python3 scripts/docker-smoke.py --image wesort-manager:ci --browser --report build/evidence/docker-smoke.json
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: docker-smoke-${{ github.run_id }}
+          path: |
+            build/evidence/docker-smoke.json
+          retention-days: 7
+          if-no-files-found: ignore
+
+
   assets:
     runs-on: ubuntu-26.04
     timeout-minutes: 35

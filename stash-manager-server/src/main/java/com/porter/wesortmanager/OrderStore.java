@@ -666,6 +666,25 @@ final class OrderStore {
         }
     }
 
+    int stuckOrders(String server, long now) {
+        int stuck = 0;
+        for (Book book : books.values()) {
+            if (!book.server.equals(server)) continue;
+            synchronized (book) {
+                for (Order order : book.orders) {
+                    OrderStage stage = order.stage();
+                    if (stage == OrderStage.RECOVERING
+                            || stage == OrderStage.NEEDS_RECONCILIATION
+                            || (!stage.archiveable()
+                                    && stage != OrderStage.CREATED
+                                    && stage != OrderStage.RESERVED
+                                    && now - order.updatedAt >= AUTO_CANCEL_AFTER_MS)) stuck++;
+                }
+            }
+        }
+        return stuck;
+    }
+
     Map<String, Integer> activeStates(Users.Principal who) {
         var totals = new java.util.TreeMap<String, Integer>();
         for (Book book : books.values()) {

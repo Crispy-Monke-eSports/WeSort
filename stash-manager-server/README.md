@@ -31,3 +31,7 @@ orderstatus ska inte beskrivas som verifierad slutleverans eller reservation.
 
 API-nycklar, sessions, lösenordshashar och produktionsdata får aldrig ingå i
 byggevidence eller distribution. Se [upstream/licenser](../docs/UPSTREAM.md).
+
+## Driftlarm
+
+Övervaka `GET /health` och larma på HTTP 503. Manager kontrollerar den konfigurerade servern var 15:e sekund. `oldestIndexAgeMs` är åldern vid mättillfället för den äldsta kända stashens genererade index. Saknat index, okänd eller framtida genereringstid och ålder från `WESORT_STOCK_MAX_AGE_SECONDS` (standard 300 s) ger larm. `stuckOrders` räknar order i recovery direkt och övriga påbörjade order efter tio minuter utan uppdatering. Ändringar i larmvärdena skrivs till Manager-loggen. Ett mätvärde äldre än en minut ger också HTTP 503. Docker använder fortsatt `/health/ready` för att kontrollera att Manager kan ta emot trafik.

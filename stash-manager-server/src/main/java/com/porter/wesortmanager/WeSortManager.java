@@ -189,6 +189,12 @@ public final class WeSortManager {
             recovery.scheduleWithFixedDelay(
                     () -> {
                         try {
+                            health.sample(
+                                    config.minecraftServer(),
+                                    store,
+                                    orders,
+                                    System.currentTimeMillis(),
+                                    store.stock().maxAge());
                             orders.selfHealAll();
                         } catch (IOException | RuntimeException failure) {
                             System.err.println("Automatic order recovery failed: " + failure.getMessage());

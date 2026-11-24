@@ -71,8 +71,22 @@ public final class BlockSafety {
                 || DEVICES.contains(p);
     }
 
+    /**
+     * Passage the agent may walk through without operating anything: pressure
+     * plates and similar passive triggers, plus doors, fence gates and buttons.
+     * A door the route leads through is opened by Baritone itself (wooden) or by
+     * the stash's own pressure plate underfoot (already passable); stepping onto
+     * a button does nothing. Active use or breaking stays forbidden via
+     * {@link #safetySensitive(String)}. Trapdoors stay blocking: an open one is
+     * a hole, and the cell check cannot tell open from closed.
+     */
+    private static boolean walkThrough(String id) {
+        String p = path(id);
+        return passiveTrigger(id) || p.endsWith("_door") || p.endsWith("_fence_gate") || p.endsWith("_button");
+    }
+
     /** Walking past passive triggers is allowed, including when they activate redstone. */
     public static boolean blocksNavigation(String id) {
-        return safetySensitive(id) && !passiveTrigger(id);
+        return safetySensitive(id) && !walkThrough(id);
     }
 }

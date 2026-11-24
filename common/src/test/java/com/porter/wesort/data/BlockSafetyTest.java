@@ -32,6 +32,31 @@ class BlockSafetyTest {
     }
 
     @Test
+    void doorsGatesAndButtonsAllowWalkingThroughButRemainSensitiveToActiveInteraction() {
+        // A stash route through the stash's own door (opened by Baritone, or by its
+        // own pressure plate underfoot) must not pause navigation. Breaking or
+        // operating them stays forbidden.
+        for (String id : new String[] {
+            "minecraft:oak_door",
+            "minecraft:iron_door",
+            "minecraft:oak_fence_gate",
+            "minecraft:stone_button",
+            "minecraft:oak_button"
+        }) {
+            assertTrue(BlockSafety.safetySensitive(id), id);
+            assertFalse(BlockSafety.blocksNavigation(id), id);
+        }
+    }
+
+    @Test
+    void trapdoorsStillBlockNavigation() {
+        // An open trapdoor is a hole; the cell check cannot tell open from closed,
+        // so passage stays denied fail-closed.
+        assertTrue(BlockSafety.safetySensitive("minecraft:oak_trapdoor"));
+        assertTrue(BlockSafety.blocksNavigation("minecraft:oak_trapdoor"));
+    }
+
+    @Test
     void redstoneAndPortalDevicesAreSensitive() {
         assertTrue(BlockSafety.safetySensitive("lever"));
         assertTrue(BlockSafety.safetySensitive("redstone_wire"));
@@ -55,9 +80,9 @@ class BlockSafetyTest {
         assertTrue(BlockSafety.safetySensitive("minecraft:tripwire"));
         assertTrue(BlockSafety.safetySensitive("minecraft:redstone_wire"));
         assertTrue(BlockSafety.safetySensitive("minecraft:stone_button"));
-        assertTrue(BlockSafety.blocksNavigation("minecraft:oak_fence_gate"));
         assertTrue(BlockSafety.blocksNavigation("minecraft:redstone_wire"));
         assertTrue(BlockSafety.blocksNavigation("minecraft:nether_portal"));
+        assertFalse(BlockSafety.blocksNavigation("minecraft:oak_fence_gate"));
         assertFalse(BlockSafety.safetySensitive("minecraft:stone"));
         assertFalse(BlockSafety.safetySensitive("minecraft:chest"));
         assertFalse(BlockSafety.blocksNavigation("minecraft:stone"));

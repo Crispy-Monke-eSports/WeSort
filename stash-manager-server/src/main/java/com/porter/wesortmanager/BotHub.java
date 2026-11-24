@@ -170,7 +170,8 @@ final class BotHub {
         }
         synchronized (b) {
             boolean sessionChanged = !java.util.Objects.equals(b.controlSession, controlSession);
-            if (sessionChanged && b.controlSession != null && (controlSession == null || sessionAlive(b, now))) return 409;
+            if (sessionChanged && b.controlSession != null && (controlSession == null || sessionAlive(b, now)))
+                return 409;
             if (sessionChanged || !java.util.Objects.equals(b.manifestScope, scope)) {
                 for (Job job : b.jobs.values()) {
                     if (job.status.equals("queued") || job.status.equals("sent")) job.status = "unknown";
@@ -271,7 +272,8 @@ final class BotHub {
     }
 
     private static boolean sessionAlive(Bot b, long now) {
-        return b.waiting > 0 || now - b.lastPoll < ONLINE_MS
+        return b.waiting > 0
+                || now - b.lastPoll < ONLINE_MS
                 || b.lastHeartbeat != null && now - b.lastHeartbeat < ONLINE_MS;
     }
 

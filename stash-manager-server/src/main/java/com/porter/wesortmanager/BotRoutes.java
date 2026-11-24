@@ -209,8 +209,8 @@ final class BotRoutes {
             Http.error(ex, 400, "Invalid heartbeat");
             return;
         }
-        if (!hub.heartbeat(botId, AddonRoutes.string(request, "controlSession"),
-                AddonRoutes.string(request, "controlEpoch"))) {
+        if (!hub.heartbeat(
+                botId, AddonRoutes.string(request, "controlSession"), AddonRoutes.string(request, "controlEpoch"))) {
             Http.error(ex, 409, "Control session does not match; say hello first");
             return;
         }

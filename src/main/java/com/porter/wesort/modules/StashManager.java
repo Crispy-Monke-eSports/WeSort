@@ -352,10 +352,11 @@ public class StashManager extends Module {
         // can assert ONLINE. Explicit auth/transport errors still win immediately.
         boolean authenticated = heartbeatSupported
                 ? heartbeatSchedule.recentlyVerified(monotonicMs())
-                : controlRegistered && verifiedManagerScope.equals(linkScope())
+                : controlRegistered
+                        && verifiedManagerScope.equals(linkScope())
                         && controlSchedule.recentlyVerified(monotonicMs());
-        String linkStatus = parse(serverUrl.get()) == null ? "bad url"
-                : heartbeatSupported ? heartbeatStatus : controlStatus;
+        String linkStatus =
+                parse(serverUrl.get()) == null ? "bad url" : heartbeatSupported ? heartbeatStatus : controlStatus;
         if (controlScope == null || !controlScope.link().equals(linkScope())) {
             authenticated = false;
             if (!linkStatus.equals("bad url")) linkStatus = "idle";
@@ -810,8 +811,12 @@ public class StashManager extends Module {
 
     /** Dedicated ping/pong: never waits for a work request, settings push or job poll. */
     private void serviceHeartbeatWhenDue() {
-        if (!heartbeatSupported || heartbeatInFlight || controlScope == null
-                || mc.player == null || mc.level == null || !dedicatedProfile()) return;
+        if (!heartbeatSupported
+                || heartbeatInFlight
+                || controlScope == null
+                || mc.player == null
+                || mc.level == null
+                || !dedicatedProfile()) return;
         String key = apiKey.get().trim();
         URI base = parse(serverUrl.get());
         if (base == null || !controlScope.equals(observeControlScope(base, key))) return;
@@ -824,11 +829,17 @@ public class StashManager extends Module {
         ping.addProperty("controlEpoch", controlEpoch);
         String challenge = randomHex(16);
         ping.addProperty("ping", challenge);
-        send(base, HEARTBEAT_PATH, bytes(ping), key, (code, body) -> {
-            if (code != 200) return false;
-            var pong = JsonParser.parseString(body).getAsJsonObject();
-            return challenge.equals(text(pong, "pong"));
-        }, true);
+        send(
+                base,
+                HEARTBEAT_PATH,
+                bytes(ping),
+                key,
+                (code, body) -> {
+                    if (code != 200) return false;
+                    var pong = JsonParser.parseString(body).getAsJsonObject();
+                    return challenge.equals(text(pong, "pong"));
+                },
+                true);
     }
 
     private record ControlScope(
@@ -945,7 +956,8 @@ public class StashManager extends Module {
                                     pendingManifest = null;
                                     resetHeartbeat();
                                 }
-                                boolean supported = hello.has("heartbeat") && hello.get("heartbeat").isJsonPrimitive()
+                                boolean supported = hello.has("heartbeat")
+                                        && hello.get("heartbeat").isJsonPrimitive()
                                         && hello.getAsJsonPrimitive("heartbeat").isBoolean()
                                         && hello.get("heartbeat").getAsBoolean();
                                 if (supported != heartbeatSupported) resetHeartbeat();
@@ -2120,7 +2132,8 @@ public class StashManager extends Module {
                     var client = heartbeat ? heartbeatHttp : controlHttp;
                     var future = client.sendAsync(request, HttpResponse.BodyHandlers.ofByteArray());
                     try {
-                        response = future.get(heartbeat ? PING_TIMEOUT_MS : ControlRetrySchedule.REQUEST_TIMEOUT_MS,
+                        response = future.get(
+                                heartbeat ? PING_TIMEOUT_MS : ControlRetrySchedule.REQUEST_TIMEOUT_MS,
                                 TimeUnit.MILLISECONDS);
                     } finally {
                         if (!future.isDone()) future.cancel(true);
@@ -2178,7 +2191,9 @@ public class StashManager extends Module {
                 else inFlight = false;
                 if (control && requestedControlFence != controlFence) return;
                 if (heartbeat) {
-                    if (!heartbeatSupported || mc.level == null || mc.player == null
+                    if (!heartbeatSupported
+                            || mc.level == null
+                            || mc.player == null
                             || !java.util.Objects.equals(requestedEpoch, controlEpoch)
                             || !com.porter.wesort.commands.ManagerLinkScope.matches(requestScope, linkScope())
                             || !requestedControlScope.equals(observeControlScope(base, key))) return;
@@ -2195,9 +2210,12 @@ public class StashManager extends Module {
                         heartbeatStatus = "online";
                         heartbeatSchedule.succeeded(monotonicMs());
                     } else {
-                        heartbeatFailure(finalBad ? "server signature invalid"
-                                : finalCode == 401 || finalCode == 403 ? "error 401"
-                                : finalCode == 409 ? "reconnecting" : "offline");
+                        heartbeatFailure(
+                                finalBad
+                                        ? "server signature invalid"
+                                        : finalCode == 401 || finalCode == 403
+                                                ? "error 401"
+                                                : finalCode == 409 ? "reconnecting" : "offline");
                     }
                     return;
                 }
@@ -2228,10 +2246,15 @@ public class StashManager extends Module {
                         return;
                     }
                     if (finalBad || finalCode < 0 || finalCode == 401 || finalCode == 403 || finalCode >= 500) {
-                        String reason = finalBad ? "server signature invalid"
+                        String reason = finalBad
+                                ? "server signature invalid"
                                 : finalCode == 401 || finalCode == 403 ? "error 401" : "offline";
-                        controlFailure(reason, path + ": " + (finalBad ? "invalid signature"
-                                : finalCode < 0 ? finalFailureType : "HTTP " + finalCode));
+                        controlFailure(
+                                reason,
+                                path + ": "
+                                        + (finalBad
+                                                ? "invalid signature"
+                                                : finalCode < 0 ? finalFailureType : "HTTP " + finalCode));
                         return;
                     }
                     if (finalCode == 409 && isWrongServer(finalText)) {

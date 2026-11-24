@@ -19,7 +19,8 @@ final class NavigationGuard {
         for (BlockPos cell : new BlockPos[] {feet, feet.above(), feet.below()}) {
             if (!mc.level.isLoaded(cell)) return "unloaded cell at " + cell.toShortString();
             String block = WorldInteractionGuard.blockId(cell);
-            if (BlockSafety.blocksNavigation(block)) return "safety-sensitive " + block + " at " + cell.toShortString();
+            if (BlockSafety.blocksNavigation(block))
+                return "navigation hazard " + block + " at " + cell.toShortString();
         }
         if (!mc.level.getFluidState(feet).isEmpty()
                 || !mc.level.getFluidState(feet.above()).isEmpty()) return "fluid at " + feet.toShortString();

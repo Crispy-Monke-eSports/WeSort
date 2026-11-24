@@ -39,7 +39,11 @@ class NavigationHarness(world.Harness):
             "fill 35 64 -6 37 66 -4 minecraft:air",
             "fill 5 64 9 13 66 9 minecraft:smooth_stone",
             "fill 5 64 11 13 66 11 minecraft:smooth_stone",
+            "setblock 7 64 10 minecraft:redstone_wire",
             "setblock 9 64 10 minecraft:dark_oak_pressure_plate[powered=false]",
+            "setblock 10 64 10 minecraft:iron_door[facing=east,half=lower,open=false,powered=false]",
+            "setblock 10 65 10 minecraft:iron_door[facing=east,half=upper,open=false,powered=false]",
+            "setblock 11 64 10 minecraft:oak_fence_gate[facing=east,open=true]",
             "setblock 1 64 10 minecraft:oak_fence_gate[open=false]",
             "setblock 2 64 10 minecraft:oak_trapdoor[open=false]",
             "setblock 3 64 10 minecraft:lever[face=floor,powered=false]",
@@ -316,14 +320,16 @@ class NavigationHarness(world.Harness):
         outcome = self.wait_walk(20)
         require(outcome["navigation"] == "ARRIVED", "Baritone could not reach the pressure plate")
         self.wait_for_pressure_plate(powered=True)
+        self.wait_for_iron_door(opened=True)
         self.start_walk(12, 64, 10)
         outcome = self.wait_walk(20)
         require(
             outcome["navigation"] == "ARRIVED" and outcome["x"] >= 12.0,
-            "Baritone did not continue past the pressure plate: " + outcome["navigation"],
+            "Baritone did not cross the plate-operated iron door and open gate: " + outcome["navigation"],
         )
         self.wait_for_pressure_plate(powered=False)
-        self.ok("real Baritone crosses a dark oak pressure plate and the server observes redstone activation")
+        self.wait_for_iron_door(opened=False)
+        self.ok("real Baritone crosses redstone wire, a pressure plate, its iron door and an open gate; server observes activation and reset")
 
         self.teleport(0.5, 0.5)
         self.command("unsafe-bot-profile", x=10, y=64, z=0)
@@ -355,6 +361,17 @@ class NavigationHarness(world.Harness):
                 return
             time.sleep(0.1)
         raise RuntimeError(f"The server did not report pressure plate powered={expected}")
+
+    def wait_for_iron_door(self, *, opened):
+        expected = str(opened).lower()
+        for _ in range(40):
+            check = self.rcon.command(
+                f"execute if block 10 64 10 minecraft:iron_door[open={expected}] run time query gametime"
+            )
+            if "time is " in check:
+                return
+            time.sleep(0.1)
+        raise RuntimeError(f"The server did not report iron door open={expected}")
 
     def execute(self):
         try:

@@ -71,8 +71,19 @@ public final class BlockSafety {
                 || DEVICES.contains(p);
     }
 
-    /** Walking past passive triggers is allowed, including when they activate redstone. */
+    /**
+     * Navigation is deliberately independent of the active-interaction denylist.
+     * Baritone checks collision, support, and traversability with the live block
+     * state; walking over redstone or through an open passage is not a USE or
+     * BREAK operation. Adding a sensitive device must not silently ban walking.
+     * Only dimension-changing blocks and a moving piston (unstable collision)
+     * require a hard stop here. Fluid and unloaded-world checks live in NavigationGuard.
+     * This does not authorize opening a closed door or any other interaction.
+     */
     public static boolean blocksNavigation(String id) {
-        return safetySensitive(id) && !passiveTrigger(id);
+        return switch (path(id)) {
+            case "nether_portal", "end_portal", "end_gateway", "moving_piston" -> true;
+            default -> false;
+        };
     }
 }

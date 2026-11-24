@@ -33,7 +33,7 @@ public final class WorldInteractionGuard {
     // STOP can finish that precise break, never authorize a new target or job.
     private record AuthorizedBreak(long pos, String block, String job, long at) {}
 
-    private static AuthorizedBreak authorizedBreak;
+    private static volatile AuthorizedBreak authorizedBreak;
 
     private WorldInteractionGuard() {}
 
@@ -53,12 +53,28 @@ public final class WorldInteractionGuard {
         // identity when sorting is paused. An exact USE permit is issued only
         // for the original recorded source by InventorySync. This does not
         // authorize PLACE, BREAK, or an inventory mutation.
-        if (InventorySync.recoveryPending()) return "inventory-readback";
-        var manager = Modules.get().get(StashManager.class);
-        if (manager == null) return "unknown";
-        var sorter = com.porter.wesort.WeSortAddon.sorter();
-        return jobTag(
-                manager.activeOrderId(), sorter == null ? null : sorter.activeRepackJobId(), manager.activeTask());
+        String job = "unknown";
+        if (mc.level != null && mc.player != null && mc.getConnection() != null) {
+            if (InventorySync.recoveryPending()) {
+                job = "inventory-readback";
+            } else {
+                var manager = Modules.get().get(StashManager.class);
+                var sorter = com.porter.wesort.WeSortAddon.sorter();
+                if (manager != null)
+                    job = jobTag(
+                            manager.activeOrderId(),
+                            sorter == null ? null : sorter.activeRepackJobId(),
+                            manager.activeTask());
+            }
+        }
+        if (PERMITS.scope(mc.level, mc.player, mc.getConnection(), job)) authorizedBreak = null;
+        return job;
+    }
+
+    /** A disconnected client cannot carry a deferred authorization into its next session. */
+    public static void clear() {
+        PERMITS.clear();
+        authorizedBreak = null;
     }
 
     static String jobTag(String order, String repackId, String fallback) {
@@ -359,6 +375,6 @@ public final class WorldInteractionGuard {
     }
 
     private static long now() {
-        return System.currentTimeMillis();
+        return System.nanoTime() / 1_000_000L;
     }
 }

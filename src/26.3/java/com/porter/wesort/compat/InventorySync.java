@@ -728,6 +728,7 @@ public final class InventorySync {
 
     @EventHandler
     private void left(GameLeftEvent event) {
+        WorldInteractionGuard.clear();
         lastBlockAck = lastBlockSequence = -1;
         serverContents = null;
         readOpen = null;

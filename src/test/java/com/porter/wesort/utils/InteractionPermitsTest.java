@@ -64,6 +64,59 @@ class InteractionPermitsTest {
     }
 
     @Test
+    void closingOlderScopeCannotRevokeReplacement() throws Exception {
+        var permits = new InteractionPermits();
+        var first = permits.permit(STONE, Operation.USE, "minecraft:chest", "job", 5000, 1000);
+        try (var replacement = permits.permit(STONE, Operation.USE, "minecraft:chest", "job", 5000, 1000)) {
+            first.close();
+            assertTrue(permits.allows(1001, STONE, Operation.USE, "minecraft:chest", "job"));
+        }
+        assertFalse(permits.allows(1001, STONE, Operation.USE, "minecraft:chest", "job"));
+    }
+
+    @Test
+    void identicalPositionAndJobCannotReusePermitAcrossWorldRespawnOrConnection() throws Exception {
+        var permits = new InteractionPermits();
+        Object world = new Object(), player = new Object(), connection = new Object();
+        permits.scope(world, player, connection, "job");
+        try (var scope = permits.permit(STONE, Operation.BREAK, "minecraft:shulker_box", "job", 5000, 1000)) {
+            assertFalse(permits.scope(world, player, connection, "job"));
+            assertTrue(permits.allows(1000, STONE, Operation.BREAK, "minecraft:shulker_box", "job"));
+            assertTrue(permits.scope(new Object(), player, connection, "job"));
+            assertFalse(permits.allows(1001, STONE, Operation.BREAK, "minecraft:shulker_box", "job"));
+            permits.scope(world, player, connection, "job");
+            assertFalse(permits.allows(1001, STONE, Operation.BREAK, "minecraft:shulker_box", "job"));
+        }
+        try (var scope = permits.permit(STONE, Operation.USE, "minecraft:chest", "job", 5000, 1000)) {
+            assertTrue(permits.scope(world, new Object(), connection, "job"));
+            assertFalse(permits.allows(1001, STONE, Operation.USE, "minecraft:chest", "job"));
+        }
+        permits.scope(world, player, connection, "job");
+        try (var scope = permits.permit(STONE, Operation.PLACE, "minecraft:air", "job", 5000, 1000)) {
+            assertTrue(permits.scope(world, player, new Object(), "job"));
+            assertFalse(permits.allows(1001, STONE, Operation.PLACE, "minecraft:air", "job"));
+        }
+    }
+
+    @Test
+    void returningToOldJobOrDisconnectCannotRestoreOldPermit() throws Exception {
+        var permits = new InteractionPermits();
+        Object world = new Object(), player = new Object(), connection = new Object();
+        permits.scope(world, player, connection, "a");
+        try (var first = permits.permit(STONE, Operation.USE, "minecraft:chest", "a", 5000, 1000)) {
+            permits.scope(world, player, connection, "b");
+            permits.scope(world, player, connection, "a");
+            assertFalse(permits.allows(1001, STONE, Operation.USE, "minecraft:chest", "a"));
+            try (var second = permits.permit(STONE, Operation.USE, "minecraft:chest", "a", 5000, 1000)) {
+                first.close();
+                assertTrue(permits.allows(1001, STONE, Operation.USE, "minecraft:chest", "a"));
+                permits.clear();
+                assertFalse(permits.allows(1001, STONE, Operation.USE, "minecraft:chest", "a"));
+            }
+        }
+    }
+
+    @Test
     void blankJobIsRecordedAsUnknownAndNeverAuthorizes() throws Exception {
         InteractionPermits permits = new InteractionPermits();
         try (var scope = permits.permit(STONE, Operation.USE, "minecraft:chest", "", 5000, 1000)) {

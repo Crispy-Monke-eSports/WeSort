@@ -3338,7 +3338,7 @@ public class StashSorter extends Module {
         if (startGround()) return true;
 
         // Everything is where it belongs: a full shulker's worth of anything is packed, which frees chest slots
-        if (!kitBuilder.active() && compactor.start() && compactor.next()) return true;
+        if (!awaitingRepackStorage() && !kitBuilder.active() && compactor.start() && compactor.next()) return true;
         if (crafter.active() && (!craftForOrder || !orderRunner.running()) && runCraft(crafter.next())) return true;
 
         finishSorting();
@@ -6195,7 +6195,13 @@ public class StashSorter extends Module {
     }
 
     /** Whether idle UUID work may run now: no order in the way, nothing else going on, none waiting to be claimed. */
+    private boolean awaitingRepackStorage() {
+        return repackWork != null
+                && repackWork.phase() == com.porter.wesort.inventory.PhysicalWork.Phase.STORE;
+    }
+
     private boolean uuidIdleAllowed(boolean rereading) {
+        if (awaitingRepackStorage()) return false;
         if (orderRunner.running() || orderKit() || kitBuilder.active() || crafter.active() || compactor.active())
             return false;
         if (rereading) return false;

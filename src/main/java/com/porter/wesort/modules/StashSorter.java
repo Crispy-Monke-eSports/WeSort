@@ -1668,6 +1668,8 @@ public class StashSorter extends Module {
      */
     private void setup() {
         setUp = true;
+        clearUuidBatch();
+        uuidBatchYield = false;
         // This Agent uses tier-based sorting
         // exclusively; never require or create chest labels to compact UUID boxes.
         boolean user = isActive();
@@ -1929,7 +1931,7 @@ public class StashSorter extends Module {
         xpAttempt++;
         xpMoveTo = -1;
         uuidNaming = false;
-        uuidTarget = null;
+        clearUuidBatch();
         reportPlacedShulker();
         restoreHotbar();
         handle = null;
@@ -3207,6 +3209,8 @@ public class StashSorter extends Module {
 
         // Inventory destinations are computed from tier order and available capacity.
 
+        if (uuidIdleAllowed(rereading) && uuidRenameCarried()) return true;
+
         if (!rereading && repackOn() && nextRepackJob()) return true;
 
         // Stacks given up on are tried again every pass: a container read or emptied since can give them a
@@ -3224,9 +3228,6 @@ public class StashSorter extends Module {
                     .removeIf(held -> canPlace(mc.player.getInventory().getItem(held.getKey())));
         }
         if (stuckCarried.isEmpty()) stuckWarned = false;
-
-        // Idle work: a carried shulker without a WeSort UUID is named before anything files it away
-        if (uuidIdleAllowed(rereading) && uuidRenameCarried()) return true;
 
         List<Integer> carried = activeCarried();
         if (!carried.isEmpty()) {
@@ -5327,7 +5328,7 @@ public class StashSorter extends Module {
     private boolean needsXpTopUp() {
         return mc.player != null
                 && !mc.player.hasInfiniteMaterials()
-                && mc.player.experienceLevel < OrderRunner.XP_TARGET_LEVELS
+                && mc.player.experienceLevel < xpTargetLevels
                 && xpBottleSlot() >= 0;
     }
     // The carry slot the shulker came from: it is put back there, and found again if it landed elsewhere
@@ -6147,10 +6148,9 @@ public class StashSorter extends Module {
     // Empty shulkers stay unnamed on purpose: kit bases and the empty pool require no custom name.
     // A UUID shared by two boxes is renamed on one of them.
     private boolean uuidNaming;
-    /** The UUID being renamed right now (set when fetched): the carried copy is renamed even mid-scan. */
-    private String uuidTarget;
-
-    private long uuidTargetAt;
+    private final Map<Integer, ItemStack> uuidBatch = new LinkedHashMap<>();
+    private boolean uuidBatchSealed, uuidBatchFunded, uuidBatchYield;
+    private int xpTargetLevels = OrderRunner.XP_TARGET_LEVELS;
     /** UUIDs seen on more than one box: one copy keeps it, the rest are renamed. Recomputed on every stash scan. */
     private Set<String> uuidDupes = new HashSet<>();
 
@@ -6162,7 +6162,6 @@ public class StashSorter extends Module {
     private static final long UUID_SCAN_EVERY = 20 * 10L;
     private static final long UUID_ANVIL_RETRY = 20 * 60 * 5L;
     private static final long UUID_RETRY_COOLDOWN = 20 * 60 * 10L;
-    private static final long UUID_TARGET_TIMEOUT = 20 * 60 * 10L;
 
     private static boolean isEmptyShulker(ItemStack stack) {
         if (stack.isEmpty() || !Utils.isShulker(stack.getItem())) return false;
@@ -6208,135 +6207,189 @@ public class StashSorter extends Module {
         return manager == null || manager.pendingOrders() == 0;
     }
 
-    /** A carried shulker due a WeSort UUID name, or -1. Only stash stock the bot is holding. */
-    private int uuidRenameSlot() {
-        if (mc.player == null || mc.level == null) return -1;
-        var inv = mc.player.getInventory();
-        for (int slot : carriedSlots()) {
-            ItemStack stack = inv.getItem(slot);
-            ItemStack tracked = stashHeld.get(slot);
-            if (tracked == null || !ItemStack.isSameItemSameComponents(tracked, stack)) continue;
-            if (kitBuilder.holds(slot)
-                    || crafter.holds(slot)
-                    || crafter.reserved(slot)
-                    || slot == anvilSlot
-                    || stuckCarried.containsKey(slot)) continue;
-            String uuid = uuidOf(stack);
-            // The box fetched for renaming, even mid-scan: it still needs its new name
-            if (uuidTarget != null && uuidTarget.equals(uuid) && needsUuidName(stack, uuidDupes)) return slot;
-            if (!needsUuidName(stack, uuidDupes)) continue;
-            String key = StashIndex.groupKey(stack);
-            Long cool = key == null ? null : uuidCooldown.get(key);
-            if (cool != null && cool > ticks) continue;
-            return slot;
-        }
-        return -1;
+    private boolean uuidEligibleSlot(int slot) {
+        ItemStack stack = mc.player.getInventory().getItem(slot);
+        ItemStack tracked = stashHeld.get(slot);
+        if (tracked == null || !ItemStack.matches(tracked, stack)
+                || parseSlots(keepSlots.get()).contains(slot)
+                || kitBuilder.holds(slot)
+                || crafter.holds(slot)
+                || crafter.reserved(slot)
+                || slot == anvilSlot
+                || stuckCarried.containsKey(slot)
+                || !needsUuidName(stack, uuidDupes)) return false;
+        String key = StashIndex.groupKey(stack);
+        return key != null && uuidCooldown.getOrDefault(key, 0L) <= ticks;
     }
 
     private void uuidCooldownSlot(int slot) {
         if (mc.player == null || mc.level == null || slot < 0) return;
-        ItemStack s = mc.player.getInventory().getItem(slot);
-        if (s.isEmpty()) return;
-        String key = StashIndex.groupKey(s);
+        ItemStack stack = mc.player.getInventory().getItem(slot);
+        if (stack.isEmpty()) return;
+        String key = StashIndex.groupKey(stack);
         if (key != null) uuidCooldown.put(key, ticks + UUID_RETRY_COOLDOWN);
     }
 
-    /** A carried shulker gets its UUID name before anything files it away. */
-    private boolean uuidRenameCarried() {
-        // A rename target with nothing carried for it any more is forgotten
-        if (uuidTarget != null) {
-            boolean held = false;
-            for (int s : carriedSlots()) {
-                if (uuidTarget.equals(uuidOf(mc.player.getInventory().getItem(s)))) {
-                    held = true;
-                    break;
-                }
-            }
-            if (!held || ticks - uuidTargetAt > UUID_TARGET_TIMEOUT) uuidTarget = null;
-        }
-        int slot = uuidRenameSlot();
-        if (slot < 0) return false;
-        if (anvilMissing()) {
-            // Finding one is expensive (area scan): at most every few minutes while none is known
-            if (ticks - uuidAnvilAt < UUID_ANVIL_RETRY) return false;
-            uuidAnvilAt = ticks;
-            return startFindAnvil();
-        }
-        if (anvilProblem() != null) return false;
-        // Short on XP: throw carried bottles first, else fetch some
-        if (!mc.player.hasInfiniteMaterials()
-                && mc.player.experienceLevel < OrderRunner.XP_MIN_LEVELS
-                && xpBottlesCarried() <= 0) {
-            OrderRunner.XpBottles xp = xpBottleSource();
-            if (xp == null) {
-                uuidCooldownSlot(slot);
-                return false;
-            }
-            return fetchXp(xp.box(), xp.slot());
-        }
-        uuidCooldownSlot(slot);
-        return startUuidName(slot);
+    private void clearUuidBatch() {
+        uuidBatch.clear();
+        uuidBatchSealed = false;
+        uuidBatchFunded = false;
     }
 
-    /** One stash box holding a shulker due a WeSort UUID name, fetched when there is time over. */
-    private record UuidBox(Box box, int slot, String uuid) {}
+    private void finishUuidBatch() {
+        clearUuidBatch();
+        // Give normal deposit work a chance before collecting another batch.
+        uuidBatchYield = true;
+    }
 
-    private boolean uuidFetchStep() {
-        if (freeCarrySlot() == -1) return false;
-        if (ticks - uuidScanAt < UUID_SCAN_EVERY) return false;
-        uuidScanAt = ticks;
-        pruneUuidCooldown();
-        if (stash == null || mc.player == null || mc.level == null) return false;
-        // Count UUIDs across known readable boxes: shared ones are renamed down to a single keeper
+    private void refreshUuidDuplicates() {
         Map<String, Integer> counts = new HashMap<>();
         for (Box box : stash.boxes) {
             if (!boxKnownReadable(box)) continue;
-            for (ItemStack s : box.contents) {
-                if (s.isEmpty() || !Utils.isShulker(s.getItem()) || isEmptyShulker(s)) continue;
-                String uuid = uuidOf(s);
+            for (ItemStack stack : box.contents) {
+                if (stack.isEmpty() || !Utils.isShulker(stack.getItem()) || isEmptyShulker(stack)) continue;
+                String uuid = uuidOf(stack);
                 if (uuid != null) counts.merge(uuid, 1, Integer::sum);
             }
         }
+        for (int slot : carriedSlots()) {
+            ItemStack stack = mc.player.getInventory().getItem(slot);
+            if (!Utils.isShulker(stack.getItem())) continue;
+            String uuid = uuidOf(stack);
+            if (uuid != null) counts.merge(uuid, 1, Integer::sum);
+        }
         uuidDupes = new HashSet<>();
-        for (var e : counts.entrySet()) if (e.getValue() > 1) uuidDupes.add(e.getKey());
-        // The nearest box with a shulker that needs a name: unnamed, invalid, or one copy too many
+        for (var entry : counts.entrySet()) if (entry.getValue() > 1) uuidDupes.add(entry.getKey());
+    }
+
+    private int uuidRenameCost(ItemStack stack) {
+        return com.porter.wesort.inventory.RenameBatchBudget.renameOnlyCost(
+                stack.getOrDefault(DataComponents.REPAIR_COST, 0));
+    }
+
+    private List<Integer> uuidBatchCosts() {
+        return uuidBatch.values().stream().map(this::uuidRenameCost).toList();
+    }
+
+    private int uuidBatchLevels() {
+        return com.porter.wesort.inventory.RenameBatchBudget.totalLevels(uuidBatchCosts());
+    }
+
+    private boolean trimUuidBatchToXp() {
+        int affordable = com.porter.wesort.inventory.RenameBatchBudget.affordablePrefix(
+                uuidBatchCosts(), mc.player.experienceLevel);
+        if (affordable == 0) return false;
+        if (affordable < uuidBatch.size()) {
+            List<Integer> slots = new ArrayList<>(uuidBatch.keySet());
+            for (int i = affordable; i < slots.size(); i++) uuidBatch.remove(slots.get(i));
+            info("XP budget covers %d shulkers; postponing the remaining boxes.", affordable);
+        }
+        uuidBatchFunded = true;
+        return true;
+    }
+
+    private boolean uuidRenameCarried() {
+        if (uuidBatchYield) {
+            uuidBatchYield = false;
+            return false;
+        }
+        if (mc.player == null || stash == null) return false;
+        if (uuidBatch.isEmpty() && carriedSlots().stream().noneMatch(slot ->
+                Utils.isShulker(mc.player.getInventory().getItem(slot).getItem()))) return false;
+        pruneUuidCooldown();
+        refreshUuidDuplicates();
+        uuidBatch.entrySet().removeIf(entry -> !ItemStack.matches(
+                entry.getValue(), mc.player.getInventory().getItem(entry.getKey())) || !uuidEligibleSlot(entry.getKey()));
+        if (uuidBatch.isEmpty() && uuidBatchSealed) {
+            finishUuidBatch();
+            return false;
+        }
+        if (!uuidBatchSealed) {
+            for (int slot : carriedSlots()) {
+                if (uuidBatch.size() >= com.porter.wesort.inventory.RenameBatchBudget.MAX_BOXES) break;
+                if (uuidEligibleSlot(slot))
+                    uuidBatch.putIfAbsent(slot, mc.player.getInventory().getItem(slot).copy());
+            }
+        }
+        if (uuidBatch.isEmpty()) return false;
+        int slot = uuidBatch.keySet().iterator().next();
+        if (anvilMissing()) {
+            if (ticks - uuidAnvilAt < UUID_ANVIL_RETRY) {
+                finishUuidBatch();
+                return false;
+            }
+            uuidAnvilAt = ticks;
+            if (startFindAnvil()) return true;
+            finishUuidBatch();
+            return false;
+        }
+        if (anvilProblem() != null) {
+            finishUuidBatch();
+            return false;
+        }
+        if (!uuidBatchSealed) {
+            // Reserve one carry slot for XP bottles when they may be needed.
+            boolean needBottleSlot = !mc.player.hasInfiniteMaterials()
+                    && mc.player.experienceLevel < uuidBatchLevels() + 39
+                    && xpBottlesCarried() == 0;
+            int reserve = needBottleSlot ? 1 : 0;
+            if (uuidBatch.size() < com.porter.wesort.inventory.RenameBatchBudget.MAX_BOXES
+                    && freeCarryCount() > reserve
+                    && fetchUuidCandidate()) return true;
+            uuidBatchSealed = true;
+            info("Planned UUID batch: %d shulkers, %d XP levels.", uuidBatch.size(), uuidBatchLevels());
+        }
+        if (mc.player.hasInfiniteMaterials() || mc.player.experienceLevel >= uuidBatchLevels()) {
+            uuidBatchFunded = true;
+        } else if (!uuidBatchFunded && xpBottlesCarried() == 0) {
+            OrderRunner.XpBottles xp = xpBottleSource();
+            if (xp != null && freeCarryCount() > 0 && fetchXp(xp.box(), xp.slot())) return true;
+            if (!trimUuidBatchToXp()) {
+                uuidCooldownSlot(slot);
+                finishUuidBatch();
+                return false;
+            }
+        } else if (uuidBatchFunded && !trimUuidBatchToXp()) {
+            // XP was spent elsewhere: do not silently refill in the middle of a batch.
+            finishUuidBatch();
+            return false;
+        }
+        if (startUuidName(slot)) return true;
+        finishUuidBatch();
+        return false;
+    }
+
+    private boolean uuidFetchStep() {
+        if (freeCarrySlot() < 0 || ticks - uuidScanAt < UUID_SCAN_EVERY) return false;
+        uuidScanAt = ticks;
+        if (stash == null || mc.player == null || mc.level == null) return false;
+        if (!mc.player.hasInfiniteMaterials() && mc.player.experienceLevel == 0 && !xpTopUpAvailable()) return false;
+        pruneUuidCooldown();
+        refreshUuidDuplicates();
+        return fetchUuidCandidate();
+    }
+
+    /** Select another eligible, unreserved shulker from fresh stock. */
+    private boolean fetchUuidCandidate() {
         Box bestBox = null;
         int bestSlot = -1;
-        String bestUuid = null;
         double bestDistance = Double.MAX_VALUE;
         for (Box box : stash.boxes) {
-            if (!boxKnownReadable(box)) continue;
+            if (!boxKnownReadable(box) || blocked(box, Job.Fetch)) continue;
             for (int i = 0; i < box.contents.length; i++) {
-                ItemStack s = box.contents[i];
-                if (s.isEmpty() || !Utils.isShulker(s.getItem()) || isEmptyShulker(s)) continue;
-                if (!orderRunner.mayTakeFrom(box, i)) continue;
-                String uuid = uuidOf(s);
-                if (!needsUuidName(s, uuidDupes)) continue;
-                String key = StashIndex.groupKey(s);
-                if (key == null) continue;
-                Long cool = uuidCooldown.get(key);
-                if (cool != null && cool > ticks) continue;
+                ItemStack stack = box.contents[i];
+                if (!orderRunner.mayTakeFrom(box, i) || !needsUuidName(stack, uuidDupes)) continue;
+                String key = StashIndex.groupKey(stack);
+                if (key == null || uuidCooldown.getOrDefault(key, 0L) > ticks) continue;
                 double d = mc.player.getEyePosition().distanceToSqr(Vec3.atCenterOf(nearestPart(box)));
                 if (d < bestDistance) {
                     bestDistance = d;
                     bestBox = box;
                     bestSlot = i;
-                    bestUuid = uuid;
                 }
             }
         }
-        if (bestBox == null) return false;
-        // Short on XP with none carried: bottles first, the shulker waits for the next pass
-        if (!mc.player.hasInfiniteMaterials()
-                && mc.player.experienceLevel < OrderRunner.XP_MIN_LEVELS
-                && xpBottlesCarried() <= 0) {
-            OrderRunner.XpBottles xp = xpBottleSource();
-            if (xp == null) return false;
-            return fetchXp(xp.box(), xp.slot());
-        }
-        uuidTarget = bestUuid;
-        uuidTargetAt = ticks;
-        return fetch(bestBox, bestSlot);
+        return bestBox != null && fetch(bestBox, bestSlot);
     }
 
     private boolean boxKnownReadable(Box box) {
@@ -6789,6 +6842,7 @@ public class StashSorter extends Module {
 
     private boolean startName(OrderRunner.Rename rename, boolean idleUuid) {
         uuidNaming = idleUuid;
+        xpTargetLevels = idleUuid ? uuidBatchLevels() : OrderRunner.XP_TARGET_LEVELS;
         String bad = anvilProblem();
         if (bad == null && !walkOn() && !inReachOf(rename.anvil())) bad = NOT_REACHED;
         if (bad != null) {
@@ -6846,7 +6900,9 @@ public class StashSorter extends Module {
             xpAttempt++;
             stepTicks = 0;
             step = Step.Walking;
-            step("order: topping up XP with bottles of enchanting; next: name it.");
+            step(idleUuid
+                    ? "UUID batch: topping up to " + xpTargetLevels + " XP levels before naming."
+                    : "order: topping up XP with bottles of enchanting; next: name it.");
             return true;
         }
 
@@ -6868,9 +6924,7 @@ public class StashSorter extends Module {
     private boolean startUuidName(int slot) {
         if (stash == null || stash.anvilPos == null) return false;
         if (!startName(new OrderRunner.Rename(stash.anvilPos, newUuidName(), slot), true)) return false;
-        uuidTarget = uuidOf(mc.player.getInventory().getItem(slot));
-        uuidTargetAt = ticks;
-        step("naming a shulker its WeSort UUID; next: carry on.");
+        step("naming a shulker its WeSort UUID; " + uuidBatch.size() + " remaining in this batch.");
         return true;
     }
 
@@ -6910,7 +6964,8 @@ public class StashSorter extends Module {
             nameEnd();
             return;
         }
-        if (mc.player.experienceLevel >= OrderRunner.XP_TARGET_LEVELS) {
+        if (mc.player.experienceLevel >= xpTargetLevels) {
+            if (uuidNaming) uuidBatchFunded = true;
             beginNameWalk();
             return;
         }
@@ -6937,6 +6992,14 @@ public class StashSorter extends Module {
     }
 
     private void finishXpBudget() {
+        if (uuidNaming) {
+            if (trimUuidBatchToXp()) beginNameWalk();
+            else {
+                nameFailure = TOO_FEW_LEVELS;
+                nameEnd();
+            }
+            return;
+        }
         // Three levels are a buffer; the anvil's actual cost is checked before taking the result.
         if (mc.player.experienceLevel >= OrderRunner.XP_MIN_LEVELS) beginNameWalk();
         else {
@@ -7247,7 +7310,6 @@ public class StashSorter extends Module {
 
     /** An idle UUID naming failed: cool the box down instead of retrying it at once. */
     private void uuidRenameFailed() {
-        uuidTarget = null;
         if (mc.player != null && mc.level != null && nameSlot >= 0) {
             ItemStack s = mc.player.getInventory().getItem(nameSlot);
             String key = s.isEmpty() ? null : StashIndex.groupKey(s);
@@ -7328,11 +7390,16 @@ public class StashSorter extends Module {
             info("Named a shulker its WeSort UUID (%s).", nameText);
         }
         // Closes that nobody asked for, twice in a row, count as a bad anvil too
+        if (uuidNaming) {
+            if (nameSucceeded) {
+                uuidBatch.remove(nameSlot);
+                if (uuidBatch.isEmpty()) finishUuidBatch();
+            } else finishUuidBatch();
+        }
         if (nameSucceeded) nameClosedStreak = 0;
         else if (nameFailure == null && ++nameClosedStreak >= 2) rememberAnvil(CLOSED);
         nameSucceeded = false;
         uuidNaming = false;
-        uuidTarget = null;
         nameFailure = null;
         job = null;
         target = null;

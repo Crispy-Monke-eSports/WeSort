@@ -1814,7 +1814,11 @@ public class StashSorter extends Module {
         // Players may have changed things while it was off or the connection was down: every container is read again,
         // what is known stays in use until each one is
         // (not the ones read within the fresh-minutes window: those are only read again if something marks them stale)
-        for (Box box : stash.boxes) box.stale = !box.excluded && !fresh(box);
+        for (Box box : stash.boxes) {
+            box.stale = !box.excluded && (box.stale || forcedSurvey.contains(box) || !fresh(box));
+            if (box.stale && !box.excluded && !box.foreign
+                    && !com.porter.wesort.compat.ObservationRuntime.current(box)) forcedSurvey.add(box);
+        }
 
         // With a perimeter the containers come from exploring it, and the checks wait until that is done
         if (!stash.hasArea() && !checkStash()) return;
@@ -10919,7 +10923,8 @@ public class StashSorter extends Module {
         deliveryWatch.clear();
         staleBoxes.clear();
         surveyBatch.clear();
-        forcedSurvey.clear();
+        // A Manager rescan may arrive before drive(true) sets up the loop.
+        // Preserve its pending one-shot requests across that setup.
         nextIdleSurveyAt = nextBackgroundBatchAt = 0;
         futile.clear();
         noOpReported.clear();

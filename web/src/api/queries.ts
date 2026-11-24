@@ -10,6 +10,7 @@ import {
   BotActivitySchema,
   BotInfoSchema,
   GuildSchema,
+  HealthSchema,
   IndexResponseSchema,
   KitTemplateSchema,
   OrdersResponseSchema,
@@ -20,6 +21,7 @@ import {
   type BotActivity,
   type BotInfo,
   type Guild,
+  type HealthState,
   type IndexResponse,
   type KitTemplate,
   type OrdersResponse,
@@ -222,6 +224,37 @@ export function useServer(enabled: boolean) {
       ) as ServerState,
     enabled,
     staleTime: 15_000,
+    retry: 1,
+  });
+}
+
+/**
+ * Manager liveness + stuck-work signal (`/health`, open endpoint). The server
+ * answers 503 while degraded — that body still carries the counters, so it is
+ * parsed from the error payload instead of treated as "no data". A missing or
+ * older-than-60s sample is `null` (unknown), never "ready".
+ */
+export function useHealth(enabled: boolean) {
+  return useQuery({
+    queryKey: ["health"] as const,
+    queryFn: async (): Promise<HealthState | null> => {
+      try {
+        return HealthSchema.parse(await api<unknown>("/health"));
+      } catch (e) {
+        const body = (e as { body?: unknown })?.body;
+        if (body != null) {
+          try {
+            return HealthSchema.parse(body);
+          } catch {
+            return null;
+          }
+        }
+        return null;
+      }
+    },
+    enabled,
+    staleTime: 10_000,
+    refetchInterval: 30_000,
     retry: 1,
   });
 }

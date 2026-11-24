@@ -54,10 +54,11 @@ describe("order status contract (P2-17)", () => {
     }
   });
 
-  it("recovering and terminal failures require no operator action", () => {
-    expect(orderUiState("failed").needsAttention).toBe(false);
-    expect(orderUiState("needs_reconciliation").needsAttention).toBe(false);
+  it("failed and needs_reconciliation need operator action; recovering is quiet while fresh", () => {
+    expect(orderUiState("failed").needsAttention).toBe(true);
+    expect(orderUiState("needs_reconciliation").needsAttention).toBe(true);
     expect(orderUiState("recovering").open).toBe(true);
+    expect(orderUiState("recovering").needsAttention).toBe(false);
     expect(orderUiState("packed").needsAttention).toBe(false);
     expect(orderUiState("delivered").needsAttention).toBe(false);
     expect(orderUiState("pending").needsAttention).toBe(false);
@@ -80,10 +81,36 @@ describe("attention lists (superseded retries)", () => {
   it("superseded failures are hidden from the attention list by default", () => {
     expect(needsAttentionNow("failed", { retriedAs: "o-new" })).toBe(false);
     expect(needsAttentionNow("cancelled", { retriedAs: "o-new" })).toBe(false);
-    expect(needsAttentionNow("failed", { retriedAs: null })).toBe(false);
-    expect(needsAttentionNow("failed", null)).toBe(false);
-    expect(needsAttentionNow("needs_reconciliation", null)).toBe(false);
+    expect(needsAttentionNow("failed", { retriedAs: null })).toBe(true);
+    expect(needsAttentionNow("failed", null)).toBe(true);
+    expect(needsAttentionNow("needs_reconciliation", null)).toBe(true);
+    expect(
+      needsAttentionNow("needs_reconciliation", { retriedAs: "o-new" }),
+    ).toBe(false);
     expect(needsAttentionNow("packed", { retriedAs: "o-new" })).toBe(false);
     expect(needsAttentionNow("uncertain", null)).toBe(true);
+  });
+
+  it("recovering flags only once the rollback itself looks stuck", () => {
+    const now = 1_000_000_000;
+    // Fresh rollback: autonomous work, quiet.
+    expect(
+      needsAttentionNow("recovering", { updatedAt: now - 60_000 }, now),
+    ).toBe(false);
+    // Aged past the server's AUTO_CANCEL horizon: stuck automation.
+    expect(
+      needsAttentionNow("recovering", { updatedAt: now - 11 * 60_000 }, now),
+    ).toBe(true);
+    // Unknown age proves nothing: do not flag.
+    expect(needsAttentionNow("recovering", {}, now)).toBe(false);
+    expect(needsAttentionNow("recovering", null, now)).toBe(false);
+    // A retried-away recovering order stands for its successor.
+    expect(
+      needsAttentionNow(
+        "recovering",
+        { updatedAt: now - 3600_000, retriedAs: "o-new" },
+        now,
+      ),
+    ).toBe(false);
   });
 });

@@ -34,6 +34,7 @@ import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
+import { getRouteApi } from "@tanstack/react-router";
 import { api } from "../api/client";
 import {
   keys,
@@ -59,6 +60,9 @@ function progressText(o: any): string {
   return "";
 }
 
+/** Route search (`?q=`) deep-links into the text filter (attention rows). */
+const ordersRoute = getRouteApi("/orders");
+
 /**
  * Orders: the guild's order dashboard. Real backend states, per-stash errors surfaced
  * (never a silent empty list), pagination, and working retry/cancel/force-cancel/clear.
@@ -78,7 +82,12 @@ export function OrdersPage() {
 
   const [statusFilter, setStatusFilter] = useState("all");
   const [hideSuperseded, setHideSuperseded] = useState(true);
-  const [query, setQuery] = useState("");
+  const routeSearch = ordersRoute.useSearch();
+  const [query, setQuery] = useState(routeSearch.q ?? "");
+  // A deep link (?q=stash-or-id) replaces the filter; typing afterwards is local.
+  useEffect(() => {
+    if (routeSearch.q != null) setQuery(routeSearch.q);
+  }, [routeSearch.q]);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [detail, setDetail] = useState<any | null>(null);

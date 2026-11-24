@@ -219,15 +219,20 @@ final class Auth {
     }
 
     /**
-     * A hash of a random password, to verify against when a login names an unknown user, so it takes as long as a
-     * real check and the answer time doesn't tell which names exist.
+     * A synthetic hash with the same verification cost as a real credential.
+     * Generate random salt and digest directly, without running a KDF before
+     * the login rate limiter has admitted the request.
      */
     static String dummyHash() {
         String d = dummy;
-        if (d == null || !d.contains("$" + iterations + "$")) {
-            byte[] b = new byte[18];
-            RANDOM.nextBytes(b);
-            dummy = d = hash(Base64.getEncoder().encodeToString(b), iterations);
+        int rounds = iterations;
+        if (d == null || !d.contains("$" + rounds + "$")) {
+            byte[] salt = new byte[SALT_BYTES];
+            byte[] digest = new byte[HASH_BITS / 8];
+            RANDOM.nextBytes(salt);
+            RANDOM.nextBytes(digest);
+            Base64.Encoder b64 = Base64.getEncoder().withoutPadding();
+            dummy = d = PREFIX + "$" + rounds + "$" + b64.encodeToString(salt) + "$" + b64.encodeToString(digest);
         }
         return d;
     }
@@ -241,30 +246,37 @@ final class Auth {
         return PREFIX + "$" + iterations + "$" + b64.encodeToString(salt) + "$" + b64.encodeToString(hash);
     }
 
-    /** True when password matches the stored string. A malformed stored string never matches. */
-    static boolean verify(String password, String stored) {
-        if (password == null || stored == null) return false;
-        String[] parts = stored.trim().split("\\$");
-        if (parts.length != 4 || !parts[0].equals(PREFIX)) return false;
+    private record PasswordHash(int rounds, byte[] salt, byte[] digest) {}
+
+    /** Parse once with exact bounds; invalid persisted credentials never reach PBKDF2. */
+    private static PasswordHash parse(String stored) {
+        if (stored == null || stored.length() > 160) return null;
+        String[] parts = stored.split("\\$", -1);
+        if (parts.length != 4 || !parts[0].equals(PREFIX) || !parts[1].matches("[0-9]{1,8}")) return null;
         try {
-            int iterations = Integer.parseInt(parts[1]);
-            if (iterations < 1 || iterations > MAX_ITERATIONS) return false;
+            int rounds = Integer.parseInt(parts[1]);
+            if (rounds < 1 || rounds > MAX_ITERATIONS) return null;
             Base64.Decoder b64 = Base64.getDecoder();
             byte[] salt = b64.decode(parts[2]);
-            byte[] expected = b64.decode(parts[3]);
-            if (salt.length == 0 || expected.length == 0) return false;
-            byte[] actual = pbkdf2(password, salt, iterations);
-            return MessageDigest.isEqual(actual, expected); // constant time
-        } catch (IllegalArgumentException e) {
-            return false;
+            byte[] digest = b64.decode(parts[3]);
+            if (salt.length != SALT_BYTES || digest.length != HASH_BITS / 8) return null;
+            return new PasswordHash(rounds, salt, digest);
+        } catch (IllegalArgumentException invalid) {
+            return null;
         }
     }
 
-    /** Whether the stored string has our format (used to warn about a broken config line). */
+    /** True when password matches the stored string. A malformed stored string never matches. */
+    static boolean verify(String password, String stored) {
+        if (password == null || password.length() > MAX_LENGTH) return false;
+        PasswordHash hash = parse(stored);
+        if (hash == null) return false;
+        return MessageDigest.isEqual(pbkdf2(password, hash.salt(), hash.rounds()), hash.digest());
+    }
+
+    /** Whether a stored credential can actually be verified. */
     static boolean wellFormed(String stored) {
-        if (stored == null) return false;
-        String[] parts = stored.trim().split("\\$");
-        return parts.length == 4 && parts[0].equals(PREFIX) && parts[1].matches("\\d{1,8}");
+        return parse(stored) != null;
     }
 
     private static byte[] pbkdf2(String password, byte[] salt, int iterations) {

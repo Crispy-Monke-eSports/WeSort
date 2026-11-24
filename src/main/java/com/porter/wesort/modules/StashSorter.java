@@ -880,7 +880,7 @@ public class StashSorter extends Module {
     private final Set<Box> staleBoxes = new LinkedHashSet<>();
     private final Map<Box, Long> surveyAttemptAt = new HashMap<>();
     private final Queue<Box> surveyBatch = new ArrayDeque<>();
-    private long nextIdleSurveyAt;
+    private long nextIdleSurveyAt, nextBackgroundBatchAt;
     // Jobs that opened a container and clicked nothing, with what the carry slots and the container held then: not
     // repeated until one of them changes, however often stalled is cleared meanwhile
     private final Map<String, Long> futile = new HashMap<>();
@@ -2888,7 +2888,7 @@ public class StashSorter extends Module {
     private boolean surveyCandidate(Box box, long now, boolean periodic) {
         if (!surveyDue(box, now)) return false;
         if (!box.known() || box.stale) return true;
-        return periodic && keepOn()
+        return periodic && keepOn() && now >= nextBackgroundBatchAt
                 && (!smartRecheck.get() || now >= dropBackoffUntil.getOrDefault(box, 0L));
     }
 
@@ -2927,6 +2927,9 @@ public class StashSorter extends Module {
         }
         if (selected == null) return false;
         surveyBatch.remove(selected);
+        // A continuously busy stash still gets background batches, but the
+        // next periodic batch leaves a window for ordinary work.
+        if (surveyBatch.isEmpty()) nextBackgroundBatchAt = now + 30_000L;
         surveyAttemptAt.put(selected, now);
         return start(Job.Survey, selected);
     }
@@ -3085,6 +3088,9 @@ public class StashSorter extends Module {
         if ((sorting() || explorePending) && startExplore()) return true;
         if (!running()) return false;
 
+        // Refresh overdue stock even if sorting never reaches idle, without
+        // interrupting a funded naming batch or outstanding physical recovery.
+        if (uuidBatch.isEmpty() && !pendingPhysicalRecovery()) queueSurveyBatch(true, false);
         if (startSurveyBatch(false)) return true;
 
         // Initial inventory belongs to the dedicated bot only. Finish all saved work and
@@ -10905,7 +10911,7 @@ public class StashSorter extends Module {
         deliveryWatch.clear();
         staleBoxes.clear();
         surveyBatch.clear();
-        nextIdleSurveyAt = 0;
+        nextIdleSurveyAt = nextBackgroundBatchAt = 0;
         futile.clear();
         noOpReported.clear();
         failedSurvey.clear();
@@ -12941,7 +12947,7 @@ public class StashSorter extends Module {
             ownTouch.clear();
             surveyAttemptAt.clear();
             surveyBatch.clear();
-            nextIdleSurveyAt = 0;
+            nextIdleSurveyAt = nextBackgroundBatchAt = 0;
             dropBackoffUntil.clear();
             staleBoxes.clear();
             lastPlayer = null;

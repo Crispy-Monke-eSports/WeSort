@@ -331,8 +331,8 @@ public final class NavigationRuntime {
                 long nowMs = System.currentTimeMillis();
                 if (nowMs - lastDropMs > 60_000) dropRetries = 0;
                 lastDropMs = nowMs;
-                boolean progressed = mc.player != null
-                        && (mc.player.distanceToSqr(dropAnchorX, dropAnchorY, dropAnchorZ) > 0.25);
+                boolean progressed =
+                        mc.player != null && (mc.player.distanceToSqr(dropAnchorX, dropAnchorY, dropAnchorZ) > 0.25);
                 if (progressed && ++dropRetries <= 3) {
                     // Re-asserting must never widen permissions: confine first so a retry
                     // cannot mine through the barrier that made the goal unreachable.

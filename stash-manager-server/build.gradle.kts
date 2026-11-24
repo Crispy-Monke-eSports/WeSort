@@ -21,21 +21,24 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+    // SQLite JDBC loads a native library from the unnamed module.
+    jvmArgs("--enable-native-access=ALL-UNNAMED", "--illegal-native-access=deny")
 }
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
+        languageVersion = JavaLanguageVersion.of(25)
     }
 }
 
 application {
     mainClass = "com.porter.wesortmanager.WeSortManager"
+    applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
 }
 
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
-    options.release = 21
+    options.release = 25
 }
 
 // Runnable fat jar: build/libs/wesort-manager.jar, start it with `java -jar`.
@@ -45,7 +48,10 @@ tasks.jar {
     isReproducibleFileOrder = true
     from("../LICENSE")
     manifest {
-        attributes("Main-Class" to application.mainClass.get())
+        attributes(
+            "Main-Class" to application.mainClass.get(),
+            "Enable-Native-Access" to "ALL-UNNAMED"
+        )
     }
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     from(configurations.runtimeClasspath.map { cp -> cp.map { if (it.isDirectory) it else zipTree(it) } }) {

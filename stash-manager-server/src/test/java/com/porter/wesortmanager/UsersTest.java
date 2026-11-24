@@ -438,8 +438,8 @@ class UsersTest {
         assertEquals(id, orders.claim("s", "a").id);
         var trail = "/api/v1/audit/orders?order=" + id + "&person=Builder";
         assertEquals(403, get(member, trail).status);
-        var auditOrder =
-                get(officer, trail).obj().getAsJsonArray("orders").get(0).getAsJsonObject();
+        assertEquals(403, get(officer, trail).status);
+        var auditOrder = get(owner, trail).obj().getAsJsonArray("orders").get(0).getAsJsonObject();
         assertEquals(3, auditOrder.getAsJsonArray("events").size());
         assertEquals(
                 "order.approve",
@@ -450,12 +450,9 @@ class UsersTest {
                         .get("action")
                         .getAsString());
         create(owner, "OtherVaultAuditor", "{\"view\":true,\"ordersAll\":true,\"stashes\":[{\"stash\":\"b\"}]}", false);
-        assertEquals(
-                0,
-                get(login("OtherVaultAuditor", TEMP_PW), trail)
-                        .obj()
-                        .getAsJsonArray("orders")
-                        .size());
+        assertEquals(403, get(login("OtherVaultAuditor", TEMP_PW), trail).status);
+        create(owner, "LegacyFullAccess", "{\"view\":true,\"ordersAll\":true,\"positions\":true}", false);
+        assertEquals(403, get(login("LegacyFullAccess", TEMP_PW), trail).status);
         var second = post(member, "/api/v1/orders", draft).obj().getAsJsonObject("order");
         String rejected = second.get("id").getAsString();
         assertEquals(
@@ -970,10 +967,12 @@ class UsersTest {
             l.addressFailure("10.0.0.9", false);
             l.success("10.0.0.9|u-000000000001"); // a good login with another account in between
         }
-        assertEquals(0, l.tryAcquire("10.0.0.9", false));
+        assertEquals(0, l.begin("10.0.0.9|u-000000000001", "10.0.0.9", false));
         l.addressFailure("10.0.0.9", false);
-        assertEquals(LoginLimiter.FIRST_LOCK_MS, l.tryAcquire("10.0.0.9", false));
-        assertEquals(0, l.tryAcquire("10.0.0.10", false));
+        l.end("10.0.0.9", false);
+        assertEquals(LoginLimiter.FIRST_LOCK_MS, l.begin("10.0.0.9|u-000000000002", "10.0.0.9", false));
+        assertEquals(0, l.begin("10.0.0.10|u-000000000001", "10.0.0.10", false));
+        l.end("10.0.0.10", false);
     }
 
     @Test

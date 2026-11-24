@@ -51,9 +51,8 @@ export function OperationsPage() {
   const loggedIn = !!auth.data?.loggedIn;
   const canActivity = loggedIn && (perms.can("activity") || perms.owner);
   const owner = !!auth.data?.loggedIn && perms.owner;
-  // Order audit is a backend ORDERS_ALL capability (officers included), not owner-only.
-  const canAudit =
-    !!auth.data?.loggedIn && (perms.can("ordersAll") || perms.owner);
+  // The full guild audit exposes other members' identities; only Owner may read it.
+  const canAudit = owner;
   const [tab, setTab] = useState(0);
 
   const ops = useOperations(canActivity);
@@ -136,15 +135,11 @@ export function OperationsPage() {
         </Grid>
       </Grid>
 
-      {(owner || canAudit) && (
+      {owner && (
         <Card>
           <CardHeader
             title="Automation queues"
-            subheader={
-              owner
-                ? "Autonomous physical recovery and fulfillment work"
-                : "Order audit for your role"
-            }
+            subheader="Autonomous physical recovery and fulfillment work"
           />
           <Tabs
             value={tab}
@@ -282,7 +277,7 @@ export function OperationsPage() {
                 ])}
               />
             )}
-            {((owner && tab === 6) || (!owner && tab === 0)) && (
+            {tab === 6 && (
               <Stack spacing={1.5} id="order-audit">
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
                   <TextField

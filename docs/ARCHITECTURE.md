@@ -1,6 +1,6 @@
 # WeSorts arkitektur
 
-En installation består av en Java 21 Manager och en guild med ett gemensamt
+En installation består av en Java 25 Manager och en guild med ett gemensamt
 lager på en Minecraft 26.3-server. Owner väljer server och lagerområden.
 En aktiv Fabric/Meteor/Baritone-agent med Java 25 utför lagerarbetet i de
 konfigurerade stasharna. 6b6t är målmiljön.

@@ -5,7 +5,7 @@ import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.util.Locale;
 
-/** Durable order history for order officers within their normal stash scope. */
+/** Durable guild order history for the installation Owner. */
 final class OrderAuditRoutes {
     private final OrderStore orders;
     private final IndexStore stock;
@@ -16,7 +16,7 @@ final class OrderAuditRoutes {
     }
 
     void register(Router router) {
-        router.exact(Router.GET, "/api/v1/audit/orders", Router.Guard.SESSION, Router.Perm.ORDERS_ALL, this::search);
+        router.exact(Router.GET, "/api/v1/audit/orders", Router.Guard.SESSION, Router.Perm.OWNER, this::search);
     }
 
     private void search(HttpExchange ex) throws IOException {

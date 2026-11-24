@@ -30,7 +30,7 @@ export const AuthUserSchema = z.object({
   name: z.string(),
   owner: z.boolean().default(false),
   mustChange: z.boolean().default(false),
-  perms: PermsSchema.default({}),
+  perms: PermsSchema.prefault({}),
 });
 export type AuthUser = z.infer<typeof AuthUserSchema>;
 
@@ -301,7 +301,7 @@ export const ManagedUserSchema = z.object({
   minecraftAccount: z.string().nullable().optional(),
   disabled: z.boolean().default(false),
   mustChange: z.boolean().default(false),
-  perms: PermsSchema.default({}),
+  perms: PermsSchema.prefault({}),
   createdAt: z.number().optional(),
   lastLoginAt: z.number().nullable().optional(),
   sessions: z.number().optional(),

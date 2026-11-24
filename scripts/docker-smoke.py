@@ -210,7 +210,11 @@ try:
     wait_ready(container)
     startup_ms = round((time.monotonic() - startup_started) * 1000, 3)
     java_version = java_runtime_version(container)
-    assert java_version == expected_java, f"Expected Java {expected_java}, got {java_version}"
+    # Temurin appends optional build metadata (e.g. -LTS) to java.runtime.version.
+    # Keep the raw value in evidence but compare the exact feature/patch/build pin.
+    assert java_version.removesuffix("-LTS") == expected_java, (
+        f"Expected Java {expected_java}, got {java_version}"
+    )
     ok("Manager pinned Java runtime")
     info = json.loads(run(["docker", "inspect", container]).stdout)[0]
     network = next(iter(info["NetworkSettings"]["Networks"]))

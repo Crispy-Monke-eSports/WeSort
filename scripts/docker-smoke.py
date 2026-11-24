@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import socket
 import ssl
+import statistics
 import subprocess
 import tempfile
 import time
@@ -47,6 +48,7 @@ with socket.socket() as s:
 base = "http://127.0.0.1:" + env["WESORT_PORT"]
 compose = ["docker", "compose", "-p", project, "-f", str(repo / args.compose_file)]
 checks = []
+expected_java = (repo / ".java-version").read_text().strip()
 
 
 def run(command, *, input=None, check=True, timeout=180):
@@ -82,6 +84,61 @@ def wait_ready(container):
             return
         time.sleep(0.5)
     raise AssertionError("Manager healthcheck did not become healthy")
+
+
+def java_runtime_version(container):
+    result = run(["docker", "exec", container, "java", "-XshowSettings:properties", "-version"])
+    for line in result.stderr.splitlines():
+        if line.strip().startswith("java.runtime.version ="):
+            return line.split("=", 1)[1].strip()
+    raise AssertionError("Cannot determine Manager runtime version")
+
+
+def performance_snapshot(container, opener, startup_ms):
+    # Read-only, bounded observations on the fresh synthetic smoke installation.
+    # The separate settings probe reports the configured maximum heap, not live heap use.
+    samples = []
+    for _ in range(20):
+        started = time.monotonic()
+        assert http("/api/v1/stashes", opener=opener)[0] == 200
+        samples.append(round((time.monotonic() - started) * 1000, 3))
+    ordered = sorted(samples)
+    stats = json.loads(
+        run(["docker", "stats", "--no-stream", "--format", "{{json .}}", container]).stdout
+    )
+    rss_command = (
+        'for p in /proc/[0-9]*/comm; do '
+        '[ "$(cat "$p" 2>/dev/null)" = java ] || continue; '
+        'case "$(tr "\\000" " " < "${p%/comm}/cmdline" 2>/dev/null)" in '
+        '*" -jar /opt/wesort/wesort-manager.jar serve "*) '
+        'awk \'/^VmRSS:/ {print $2}\' "${p%/comm}/status"; break;; '
+        'esac; done'
+    )
+    rss = run(["docker", "exec", container, "sh", "-c", rss_command]).stdout.strip()
+    assert rss.isdigit(), "Cannot determine Manager process RSS"
+    heap = run(
+        ["docker", "exec", container, "java", "-XX:MaxRAMPercentage=70", "-XshowSettings:vm", "-version"]
+    ).stderr
+    heap_max = next(
+        (line.strip().split(":", 1)[1].strip() for line in heap.splitlines() if "Max. Heap Size" in line),
+        None,
+    )
+    assert heap_max, "Cannot determine configured maximum heap"
+    return {
+        "fresh_start_to_docker_healthy_ms": startup_ms,
+        "api": {
+            "path": "/api/v1/stashes",
+            "samples": len(samples),
+            "median_ms": round(statistics.median(samples), 3),
+            "p95_ms": ordered[18],
+            "max_ms": max(samples),
+        },
+        "manager_process_rss_kib": int(rss),
+        "container_cpu_percent": stats["CPUPerc"],
+        "container_memory_usage_and_limit": stats["MemUsage"],
+        "configured_max_heap_estimate": heap_max,
+        "limits": "Single fresh synthetic run, includes initial asset fetch and healthcheck polling. CPU and RSS are point samples. Max heap is estimated by a separate JVM with the same container limit and MaxRAMPercentage, not measured live heap. No timing thresholds.",
+    }
 
 
 def http(path, body=None, *, opener=None, origin=None, host=None, extra=None):
@@ -147,12 +204,14 @@ source_commit = run(["git", "rev-parse", "HEAD"]).stdout.strip()
 dirty_worktree = bool(run(["git", "status", "--porcelain"]).stdout.strip())
 container = None
 try:
+    startup_started = time.monotonic()
     run(compose + ["up", "-d", "--no-build"])
     container = run(compose + ["ps", "-q", "manager"]).stdout.strip()
     wait_ready(container)
-    java_version = run(["docker", "exec", container, "java", "--version"]).stdout
-    assert java_version.splitlines()[0].startswith("openjdk 25."), "Manager must run on Java 25"
-    ok("Manager Java 25 runtime")
+    startup_ms = round((time.monotonic() - startup_started) * 1000, 3)
+    java_version = java_runtime_version(container)
+    assert java_version == expected_java, f"Expected Java {expected_java}, got {java_version}"
+    ok("Manager pinned Java runtime")
     info = json.loads(run(["docker", "inspect", container]).stdout)[0]
     network = next(iter(info["NetworkSettings"]["Networks"]))
     agent_url = (
@@ -232,6 +291,8 @@ try:
         != 0
     )
     assert http("/api/v1/stashes", opener=browser)[1] == []
+    performance = performance_snapshot(container, browser, startup_ms)
+    ok("Manager resource and API latency baseline")
     assert "apiKey" not in http("/api/v1/link", opener=browser)[1]
     cli = ["docker", "exec", container, "/opt/wesort/entrypoint"]
     shared_key = run(cli + ["agent-key"]).stdout.strip()
@@ -625,6 +686,8 @@ try:
         "source_commit": source_commit,
         "dirty_worktree": dirty_worktree,
         "platform": "linux/amd64",
+        "java_runtime_version": java_version,
+        "performance_baseline": performance,
         "checks": checks,
         "result": "PASS",
         "limits": "Manager uses a signed synthetic stock fixture. Physical Minecraft operations are verified separately.",

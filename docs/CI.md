@@ -63,6 +63,29 @@ verifieras. CI publicerar **inte** testimagen till GHCR.
 - Jämför faktisk kötid, runner-minuter, cacheträffar och artifact-överföring
   med tidigare körningar innan någon prestandavinst påstås vara uppmätt.
 
+## Java 25-migrationskontroller
+
+Formatjobbet kör `python3 scripts/check-java-versions.py` för att kontrollera
+att klientens och Managers versionsfiler, Gradle-targets, CI:s JDK-versioner
+och Docker-taggar med låsta digests är synkroniserade. Vid en avsiktlig
+Java-patchuppdatering ändras pinnarna tillsammans.
+
+Manager-testprocesserna kör med `--illegal-native-access=deny` och explicit
+JNI-behörighet. Det direkta JAR-isoleringsprovet använder också strikt
+native access, men utan en separat tillåtelseflagga: manifestet i den
+körbara JAR:en måste räcka för SQLite JDBC.
+
+Manager-jobbet sparar `jdeps.txt` och `jdeprscan.txt` i
+`stash-manager-server/build/evidence/`, inklusive verktygens exitstatus.
+Granska träffar på interna API:er och borttagningsmarkerade API:er, även
+i de inpackade biblioteken. Skanningarna är rapporterande eftersom fat
+JAR:en även innehåller tredjepartsbibliotek med valfria beroenden.
+
+Docker-smoke-rapporten innehåller en Java 25-baslinje för färsk uppstart,
+API-latens, RSS, CPU, containerminne och uppskattad maximal heap.
+Måtten är diagnostiska, inte pass/fail-gränser; jämför likvärdiga
+körningar med samma workload och resursgräns innan prestandapåståenden.
+
 ## Lokal verifiering
 
 ```sh

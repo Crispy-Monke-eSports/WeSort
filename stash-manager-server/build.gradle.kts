@@ -22,7 +22,7 @@ dependencies {
 tasks.test {
     useJUnitPlatform()
     // SQLite JDBC loads a native library from the unnamed module.
-    jvmArgs("--enable-native-access=ALL-UNNAMED")
+    jvmArgs("--enable-native-access=ALL-UNNAMED", "--illegal-native-access=deny")
 }
 
 java {
@@ -48,7 +48,10 @@ tasks.jar {
     isReproducibleFileOrder = true
     from("../LICENSE")
     manifest {
-        attributes("Main-Class" to application.mainClass.get())
+        attributes(
+            "Main-Class" to application.mainClass.get(),
+            "Enable-Native-Access" to "ALL-UNNAMED"
+        )
     }
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     from(configurations.runtimeClasspath.map { cp -> cp.map { if (it.isDirectory) it else zipTree(it) } }) {

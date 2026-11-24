@@ -115,7 +115,28 @@ jobs:
         run: cd web && bun install --frozen-lockfile && bun run test && bun run build
       - name: Build and test Manager
         run: ./gradlew --no-daemon -p stash-manager-server build
-      - name: Verify fresh installation, restart and data isolation
+      - name: Scan Manager JAR for internal and removal-marked JDK APIs
+        shell: bash
+        run: |
+          mkdir -p stash-manager-server/build/evidence
+          jar=stash-manager-server/build/libs/wesort-manager.jar
+          evidence=stash-manager-server/build/evidence
+          # The fat JAR includes third-party code and optional dependency paths.
+          # Keep findings and exit codes visible without treating every warning as a migration failure.
+          for tool in jdeps jdeprscan; do
+            if [[ "$tool" == jdeps ]]; then
+              args=(--multi-release 25 --jdk-internals "$jar")
+            else
+              args=(--release 25 --for-removal --class-path "$jar" "$jar")
+            fi
+            status=0
+            "$JAVA_HOME/bin/$tool" "${args[@]}" > "$evidence/$tool.txt" 2>&1 || status=$?
+            printf '\nExit status: %s\n' "$status" >> "$evidence/$tool.txt"
+            if (( status != 0 )); then
+              echo "::warning::$tool exited with status $status; review the Manager evidence artifact"
+            fi
+          done
+      - name: Verify fresh installation, restart and data isolation (strict native access)
         run: |
           mkdir -p stash-manager-server/build/evidence
           python3 scripts/smoke-isolation.py | tee stash-manager-server/build/evidence/isolation.txt

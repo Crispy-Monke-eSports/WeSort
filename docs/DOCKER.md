@@ -201,6 +201,13 @@ Owner, sessioner, index, order och audit finns kvar efter omstart,
 samt en riktig TLS-proxy med betrodd exakt IP, Secure-cookie och Host/Origin.
 TLS-testcontainern/certifikaten är testhjälpare och ingår inte i produktimagen.
 
+Rapportens `performance_baseline` registrerar uppstart till Docker-healthy,
+20 läsningar av stash-API:t (median, p95, max), Managers RSS, containerns
+CPU och minne samt maximal heap uppskattad från en separat JVM med samma
+minnesgräns och MaxRAMPercentage. Det är inte en mätning av live-heap.
+Mätningen görs endast mot testets färska syntetiska installation, med
+oförändrad containerhärdning; inga prestandatrösklar eller äldre images.
+
 Aktuell Manager-build och runtime använder Temurin 25.0.5+8 med låsta
 Docker-digests. Startkommandot tillåter JNI för SQLite JDBC i den omodulära
 fat JAR:en. Historisk W-055-verifiering kördes med Java 21. Rapport:

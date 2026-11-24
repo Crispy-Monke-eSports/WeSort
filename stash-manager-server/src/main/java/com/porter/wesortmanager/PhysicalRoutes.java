@@ -8,17 +8,28 @@ final class PhysicalRoutes {
     private final IndexStore index;
     private final AuditLog audit;
     private final Config config;
-    private PhysicalOperations operations;
-
     PhysicalRoutes(IndexStore index, AuditLog audit, Config config) {
         this.index = index;
         this.audit = audit;
         this.config = config;
     }
 
-    private synchronized PhysicalOperations operations() throws IOException {
-        if (operations == null) operations = new PhysicalOperations(index.stock());
-        return operations;
+    private final Object operationsLock = new Object();
+    private volatile PhysicalOperations operations;
+
+    private PhysicalOperations operations() throws IOException {
+        PhysicalOperations o = operations;
+        if (o == null) {
+            // Same lock ordering as BoxRoutes.jobs: IndexStore first, the private lock second.
+            // The agent path below intentionally keeps holding IndexStore across accept(),
+            // so order reconciliation still commits atomically against journal writes.
+            var ledger = index.stock();
+            synchronized (operationsLock) {
+                o = operations;
+                if (o == null) operations = o = new PhysicalOperations(ledger);
+            }
+        }
+        return o;
     }
 
     void register(Router router) {

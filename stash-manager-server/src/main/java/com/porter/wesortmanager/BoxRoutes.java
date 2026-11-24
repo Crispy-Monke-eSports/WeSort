@@ -12,7 +12,8 @@ final class BoxRoutes {
     private final OrderStore orders;
     private final Config config;
     private final StashDefs defs;
-    private BoxJobs jobs;
+    private final Object jobsLock = new Object();
+    private volatile BoxJobs jobs;
 
     BoxRoutes(IndexStore index, AuditLog audit, OrderStore orders, Config config, StashDefs defs) {
         this.index = index;
@@ -22,9 +23,19 @@ final class BoxRoutes {
         this.defs = defs;
     }
 
-    private synchronized BoxJobs jobs() throws IOException {
-        if (jobs == null) jobs = new BoxJobs(index.stock());
-        return jobs;
+    private BoxJobs jobs() throws IOException {
+        BoxJobs j = jobs;
+        if (j == null) {
+            // Read the ledger outside jobsLock: index.stock() takes IndexStore's monitor, which the
+            // agent claim path below can already hold. Every path now takes IndexStore before jobsLock,
+            // so the two orders can never wait on each other.
+            var ledger = index.stock();
+            synchronized (jobsLock) {
+                j = jobs;
+                if (j == null) jobs = j = new BoxJobs(ledger);
+            }
+        }
+        return j;
     }
 
     void register(Router router) {
@@ -95,6 +106,7 @@ final class BoxRoutes {
                 // Canonicalize once: box jobs below are keyed by the same form as
                 // order books and stock, so admission and storage can never disagree.
                 server = configured;
+                // Lock order matches jobs(): IndexStore first, the private jobs lock second.
                 synchronized (index) {
                     job = jobs().claim(server, stash, agentId);
                 }

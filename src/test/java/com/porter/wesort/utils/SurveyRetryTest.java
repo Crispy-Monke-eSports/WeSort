@@ -71,6 +71,14 @@ class SurveyRetryTest {
     }
 
     @Test
+    void callerCanEnforceFiveMinuteMinimum() {
+        SurveyRetry<String> retry = new SurveyRetry<>();
+        assertEquals(6000, retry.failOnce("a", 100, 6000));
+        assertEquals(List.of(), retry.due(6099));
+        assertEquals(List.of("a"), retry.due(6100));
+    }
+
+    @Test
     void describesDelays() {
         assertEquals("30 s", SurveyRetry.describe(600));
         assertEquals("1 min", SurveyRetry.describe(1200));

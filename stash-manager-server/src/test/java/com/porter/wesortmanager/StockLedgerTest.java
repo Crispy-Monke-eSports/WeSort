@@ -303,6 +303,35 @@ class StockLedgerTest {
         }
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(
+            strings = {"order_books", "order_storage_meta", "order_event_log", "signed_request_nonces"})
+    void missingTableFromCompletedV8MigrationStopsRecovery(String table) throws Exception {
+        var first = ledger();
+        try (var c = first.open();
+                var sql = c.createStatement()) {
+            sql.execute("DROP TABLE " + table);
+        }
+        assertThrows(java.io.IOException.class, this::ledger);
+        try (var c = first.open();
+                var q = c.prepareStatement("SELECT 1 FROM sqlite_schema WHERE name=?")) {
+            q.setString(1, table);
+            try (var rows = q.executeQuery()) {
+                assertFalse(rows.next());
+            }
+        }
+    }
+
+    @Test
+    void lostOrderBookWithSurvivingAuditCannotStartAsEmptyWarehouse() throws Exception {
+        var first = ledger();
+        try (var c = first.open();
+                var sql = c.createStatement()) {
+            sql.execute("INSERT INTO order_event_log VALUES('o-1',1,'s','stash','{}')");
+        }
+        assertThrows(java.io.IOException.class, this::ledger);
+    }
+
     @Test
     void missingStockMetadataCannotSilentlyResetTheEpochAndRevision() throws Exception {
         var first = ledger();

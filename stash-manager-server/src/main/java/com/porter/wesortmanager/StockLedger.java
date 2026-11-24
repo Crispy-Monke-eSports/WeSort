@@ -86,7 +86,7 @@ final class StockLedger {
                 try (var r = s.executeQuery("PRAGMA user_version")) {
                     if (!r.next()) throw new IOException("Missing guild database schema");
                     schema = r.getInt(1);
-                    if (schema > 8) throw new IOException("Unsupported guild database schema");
+                    if (schema < 0 || schema > 8) throw new IOException("Unsupported guild database schema");
                 }
                 s.execute("BEGIN IMMEDIATE");
                 try {
@@ -181,11 +181,22 @@ final class StockLedger {
         // Once v7 is committed, missing tables/metadata indicate data loss.
         if (schema < 7) return;
         var missing = new TreeSet<>(REQUIRED_V7_TABLES);
+        if (schema >= 8)
+            missing.addAll(Set.of("order_books", "order_storage_meta", "order_event_log", "signed_request_nonces"));
         try (var s = c.createStatement();
                 var rows = s.executeQuery("SELECT name FROM sqlite_schema WHERE type='table'")) {
             while (rows.next()) missing.remove(rows.getString(1));
         }
         if (!missing.isEmpty()) throw new IOException("Guild database is missing authoritative tables: " + missing);
+        if (schema >= 8) {
+            try (var s = c.createStatement();
+                    var rows = s.executeQuery("""
+                        SELECT 1 FROM order_event_log e WHERE NOT EXISTS
+                        (SELECT 1 FROM order_books b WHERE b.server=e.server AND b.stash=e.stash) LIMIT 1
+                        """)) {
+                if (rows.next()) throw new IOException("Order history exists without its durable order book");
+            }
+        }
         try (var s = c.createStatement();
                 var rows = s.executeQuery("SELECT id,epoch,revision FROM stock_meta")) {
             if (!rows.next() || rows.getInt(1) != 1 || rows.getLong(3) < 0)

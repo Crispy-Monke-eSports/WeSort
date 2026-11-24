@@ -154,7 +154,13 @@ final class StashDefs {
         var d = parse(req, 0);
         if (defs.containsKey(d.name())) throw new IllegalArgumentException("stash '" + d.name() + "' exists");
         defs.put(d.name(), d);
-        save();
+        try {
+            save();
+        } catch (IOException | RuntimeException failed) {
+            // The bot is driven from this map: never let it see coordinates that did not reach disk.
+            defs.remove(d.name());
+            throw failed;
+        }
         return d;
     }
 
@@ -164,7 +170,12 @@ final class StashDefs {
         if (before == null) throw new IllegalArgumentException("no such stash '" + d.name() + "'");
         if (before.revision() != expectedRevision) throw new Conflict();
         defs.put(d.name(), d);
-        save();
+        try {
+            save();
+        } catch (IOException | RuntimeException failed) {
+            defs.put(d.name(), before);
+            throw failed;
+        }
         return d;
     }
 
@@ -173,7 +184,12 @@ final class StashDefs {
         if (before == null) throw new IllegalArgumentException("no such stash '" + name + "'");
         if (before.revision() != expectedRevision) throw new Conflict();
         defs.remove(name);
-        save();
+        try {
+            save();
+        } catch (IOException | RuntimeException failed) {
+            defs.put(name, before);
+            throw failed;
+        }
     }
 
     private Def parse(JsonObject req, long revision) {

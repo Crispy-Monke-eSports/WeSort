@@ -329,7 +329,7 @@ class InventoryHarness(world.Harness):
             for source in index.get('physicalSources', [])}
 
     def settled_warehouse_index(self, initial):
-        # The initial signed test index also includes the standing shulker used
+        # The initial native client index also includes the standing shulker used
         # to prove native 27-slot menus. The Manager's first area directive
         # removes that non-warehouse source and discovers the staging chest.
         # Neither change is a physical withdrawal. Require precisely that
@@ -356,7 +356,8 @@ class InventoryHarness(world.Harness):
                             and self.quantities(current, 'shulkers') == self.quantities(initial, 'shulkers')
                             and not staging[0].get('fingerprint')
                             and not staging[0].get('items') and not staging[0].get('shulkers')
-                            and current['stockRevision'] > initial['stockRevision']):
+                            and current['mcVersion'] == '26.3'
+                            and current['stockRevision'] > 0):
                         (self.evidence / 'manager-index-before-fault.json').write_text(
                             json.dumps(current, indent=2) + '\\n')
                         self.ok('Manager area directive settled: standalone menu fixture excluded, staging chest unknown, every warehouse fingerprint unchanged')
@@ -422,8 +423,17 @@ class InventoryHarness(world.Harness):
             world.shutil.copyfile(self.game_dir / 'screenshots/fixture.png', self.evidence / 'fixture.png')
             # Keep the signed publisher live, but do not allow autonomous discovery or
             # orphan recovery to change the fixture during the crash experiment.
-            initial = self.verify_manager_index(index, inspection_hold=True)
-            baseline = self.settled_warehouse_index(initial)
+            counts = world.Counter()
+            for item in index['items']:
+                counts[item['id']] += item['count']
+            require(dict(counts) == {'minecraft:diamond': 1312, 'minecraft:dirt': 80,
+                'minecraft:iron_ingot': 8, 'minecraft:diamond_sword': 1,
+                'minecraft:shulker_box': 1, 'minecraft:bundle': 1},
+                'Unexpected native fixture totals: ' + str(dict(counts)))
+            (self.evidence / 'manager-index-input.json').write_text(json.dumps(index, indent=2) + '\n')
+            self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key,
+                         inspectionHold=True)
+            baseline = self.settled_warehouse_index(index)
             require(self.physical_snapshot() == before,
                 'Manager membership transition changed actual server inventory')
             # The signed index is verified; now isolate the exact crash-before-

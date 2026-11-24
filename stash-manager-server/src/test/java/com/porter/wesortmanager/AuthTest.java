@@ -54,17 +54,60 @@ class AuthTest {
     // ---------- sessions ----------
 
     @Test
-    void sessionsExpireAfter30Days(@TempDir Path dir) throws Exception {
+    void activeSessionsExpireAtTheAbsoluteDeadline(@TempDir Path dir) throws Exception {
         AtomicLong now = new AtomicLong(1_000_000);
         SessionStore store = new SessionStore(dir, now::get);
         String token = store.create();
         assertTrue(store.valid(token));
         assertFalse(store.valid(token + "x"));
-        now.addAndGet(SessionStore.LIFETIME_MS - 1);
+        long end = now.get() + SessionStore.LIFETIME_MS;
+        while (now.get() + 1_800_000 < end) {
+            now.addAndGet(1_800_000);
+            assertTrue(store.valid(token));
+        }
+        now.set(end - 1);
         assertTrue(store.valid(token));
         now.addAndGet(1);
         assertFalse(store.valid(token));
         assertEquals(0, store.size());
+    }
+
+    @Test
+    void idleExpirySurvivesRestartAndActivityRefreshesOnlyItsOwnSession(@TempDir Path dir) throws Exception {
+        AtomicLong now = new AtomicLong(1_000_000);
+        long hour = SessionStore.idlePolicy("1");
+        SessionStore store = new SessionStore(dir, now::get, hour);
+        String idle = store.create();
+        String active = store.create();
+        now.addAndGet(hour - 1);
+        assertTrue(store.valid(active));
+        now.incrementAndGet();
+        var restarted = new SessionStore(dir, now::get, hour);
+        restarted.load();
+        assertFalse(restarted.valid(idle));
+        assertTrue(restarted.valid(active));
+        now.addAndGet(hour);
+        assertFalse(restarted.valid(active));
+        assertThrows(IllegalArgumentException.class, () -> SessionStore.idlePolicy("0"));
+        assertThrows(IllegalArgumentException.class, () -> SessionStore.idlePolicy("169"));
+        assertThrows(IllegalArgumentException.class, () -> SessionStore.idlePolicy("unlimited"));
+    }
+
+    @Test
+    void previouslyIssuedLongSessionCannotOutliveNewPolicy(@TempDir Path dir) throws Exception {
+        AtomicLong now = new AtomicLong(1_000_000);
+        SessionStore store = new SessionStore(dir, now::get);
+        String token = store.create();
+        var path = dir.resolve("sessions.json");
+        var rows =
+                com.google.gson.JsonParser.parseString(Files.readString(path)).getAsJsonArray();
+        var row = rows.get(0).getAsJsonObject();
+        now.addAndGet(SessionStore.LIFETIME_MS);
+        row.addProperty("expires", now.get() + SessionStore.LIFETIME_MS);
+        row.addProperty("lastSeen", now.get() - 1);
+        Files.writeString(path, rows.toString());
+        store.load();
+        assertFalse(store.valid(token));
     }
 
     @Test
@@ -178,8 +221,7 @@ class AuthTest {
         assertNull(SessionStore.tokenFrom(List.of("other=1")));
         assertNull(SessionStore.tokenFrom(null));
         String cookie = SessionStore.cookie(token);
-        assertTrue(cookie.contains("HttpOnly")
-                && cookie.contains("SameSite=Strict")
-                && cookie.contains("Max-Age=2592000"));
+        assertTrue(
+                cookie.contains("HttpOnly") && cookie.contains("SameSite=Strict") && cookie.contains("Max-Age=604800"));
     }
 }

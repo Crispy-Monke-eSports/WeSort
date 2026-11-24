@@ -62,7 +62,7 @@ final class StockLedger {
                 }
                 s.execute("PRAGMA journal_mode=WAL");
                 try (var r = s.executeQuery("PRAGMA user_version")) {
-                    if (r.next() && r.getInt(1) > 7) throw new IOException("Unsupported guild database schema");
+                    if (r.next() && r.getInt(1) > 8) throw new IOException("Unsupported guild database schema");
                 }
                 s.execute("BEGIN IMMEDIATE");
                 try {
@@ -109,7 +109,13 @@ final class StockLedger {
                         p.executeUpdate();
                     }
                     s.execute("PRAGMA application_id=" + APPLICATION_ID);
-                    s.execute("PRAGMA user_version=7");
+                    s.execute(
+                            "CREATE TABLE IF NOT EXISTS order_books(server TEXT NOT NULL,stash TEXT NOT NULL,revision INTEGER NOT NULL CHECK(revision>0),payload TEXT NOT NULL,PRIMARY KEY(server,stash))");
+                    s.execute(
+                            "CREATE TABLE IF NOT EXISTS order_storage_meta(id INTEGER PRIMARY KEY CHECK(id=1))");
+                    s.execute(
+                            "CREATE TABLE IF NOT EXISTS order_event_log(order_id TEXT NOT NULL,seq INTEGER NOT NULL CHECK(seq>0),server TEXT NOT NULL,stash TEXT NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(order_id,seq))");
+                    s.execute("PRAGMA user_version=8");
                     var interruptedServers = new ArrayList<String>();
                     try (var leases = s.executeQuery("SELECT server FROM automation_leases WHERE state='ACTIVE'")) {
                         while (leases.next()) interruptedServers.add(leases.getString(1));

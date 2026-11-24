@@ -6,7 +6,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.porter.wesort.data.PhysicalSlots;
 import com.porter.wesort.inventory.PhysicalJournal;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -145,18 +144,12 @@ class DeferredPhysicalOrderTest {
         var cancellation = orders.cancel(first.id);
         assertTrue(cancellation.cancelRequested);
 
-        Path saved;
-        try (var files = Files.list(data.resolve("orders"))) {
-            saved = files.filter(p -> p.toString().endsWith(".json"))
-                    .findFirst()
-                    .orElseThrow();
-        }
-        JsonObject book = JsonParser.parseString(Files.readString(saved)).getAsJsonObject();
+        JsonObject book = OrderBookFixtures.read(index, "s", "a");
         JsonObject order = book.getAsJsonArray("orders").get(0).getAsJsonObject();
         long stale = System.currentTimeMillis() - OrderStore.AUTO_CANCEL_AFTER_MS - 60_000;
         order.addProperty("cancelRequestedAt", stale);
         order.addProperty("updatedAt", stale);
-        Files.writeString(saved, book.toString());
+        OrderBookFixtures.replace(index, book);
 
         var restarted = new OrderStore(data, index);
         restarted.load();

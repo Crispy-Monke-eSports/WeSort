@@ -306,7 +306,7 @@ public final class WeSortManager {
         credentials.onRevocation(hub::retire);
         Router router = new Router(
                 new AccessControl(config), sessions, config, users, credentials, orders, new Signer(store.stock()));
-        health.register(router, config::minecraftServer);
+        health.register(router);
         AuthRoutes authRoutes = new AuthRoutes(config, sessions, limiter, users, audit);
         authRoutes.register(router);
         DeliveryContents delivery = new DeliveryContents(); // in memory only

@@ -67,6 +67,7 @@ class JournalHarness(repack.RepackHarness):
             # before the owner-facing list was polled. All these states
             # belong to the unattended recovery protocol.
             if row and row['managerState'] in ('RECOVERING', 'COMPLETED', 'FAILED'):
+                (self.evidence / 'manager-row-on-review.json').write_text(json.dumps(row, indent=2, default=str)[:4000] + '\n', encoding='utf-8')
                 return row
             time.sleep(.25)
         # Name the miss: dump every Manager row (id/revision/state) so a wrong-id upload,

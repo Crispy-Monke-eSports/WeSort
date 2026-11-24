@@ -1763,11 +1763,16 @@ public class StashManager extends Module {
             long rev = d.has("revision") && d.get("revision").isJsonPrimitive()
                     ? d.get("revision").getAsLong()
                     : -1;
-            // Never move the physical workspace or delivery position mid-uncertainty: pause
-            // and require reconciliation first. The directive is revision-pinned, so the next
-            // heartbeat after recovery applies exactly what was skipped.
-            if (com.porter.wesort.compat.PhysicalJournalRuntime.blocked() || !InventorySync.ready()) {
-                info("Manager directive (revision %d) deferred until automatic physical recovery completes.", rev);
+            // Never move the physical workspace or delivery position mid-uncertainty or mid-order:
+            // pause and require reconciliation (or order completion) first. The directive is
+            // revision-pinned, so the next heartbeat after recovery applies exactly what was skipped.
+            // Region moves never depend on a single heartbeat: skipping one cannot lose them.
+            if (com.porter.wesort.compat.PhysicalJournalRuntime.blocked()
+                    || !InventorySync.ready()
+                    || sorter.orders().holdsOrder()) {
+                info(
+                        "Manager directive (revision %d) deferred while an order is held or physical recovery is pending.",
+                        rev);
                 return;
             }
             sorter.applyDirective(d, rev);

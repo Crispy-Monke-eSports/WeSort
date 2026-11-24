@@ -29,10 +29,17 @@ final class DashboardRoutes {
     private final IndexStore store;
     private final SessionStore sessions;
     private final AuditLog audit;
+    private final AgentCredentials credentials;
 
     DashboardRoutes(BotHub hub, IndexStore store, SessionStore sessions, AuditLog audit) {
+        this(hub, store, sessions, audit, null);
+    }
+
+    DashboardRoutes(
+            BotHub hub, IndexStore store, SessionStore sessions, AuditLog audit, AgentCredentials credentials) {
         this.sessions = sessions;
         this.audit = audit;
+        this.credentials = credentials;
         this.hub = hub;
         this.store = store;
     }
@@ -58,9 +65,18 @@ final class DashboardRoutes {
                 if (!perms.seesBot(b.botId)) continue;
                 o.addProperty("botId", b.botId);
                 o.addProperty("player", b.player);
-                o.addProperty("online", BotHub.online(b, now));
+                boolean online = BotHub.online(b, now);
+                o.addProperty("online", online);
                 o.addProperty("lastSeen", b.lastSeen);
                 o.addProperty("lastHeartbeat", b.lastHeartbeat);
+                // "heartbeat" | "poll" when alive; "auth-failure" (bad key
+                // retries) vs "silent" (just gone) when not.
+                String cause = online
+                        ? BotHub.presenceCause(b, now)
+                        : credentials != null && credentials.recentAuthFailure(b.botId, now)
+                                ? "auth-failure"
+                                : "silent";
+                o.addProperty("presenceCause", cause);
                 o.add("plugin", b.plugin.deepCopy());
                 o.add("runtime", b.runtime.deepCopy());
                 JsonArray caps = new JsonArray();

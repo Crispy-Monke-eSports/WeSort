@@ -21,6 +21,12 @@ final class StockRoutes {
         router.exact(Router.GET, "/api/v1/stock/boxes", Router.Guard.SESSION, Router.Perm.OWNER, this::boxes);
         router.exact(
                 Router.POST,
+                "/api/v1/stock/loss",
+                Router.Guard.BROWSER_WRITE,
+                Router.Perm.OWNER,
+                ex -> acceptLoss(ex, audit));
+        router.exact(
+                Router.POST,
                 "/api/v1/stock/return-intake",
                 Router.Guard.BROWSER_WRITE,
                 Router.Perm.OWNER,
@@ -101,6 +107,46 @@ final class StockRoutes {
             }
             return out;
         }
+    }
+
+    /**
+     * POST /api/v1/stock/loss {source}: owner-approved "accept loss". A MISSING or
+     * UNREACHABLE source becomes a zeroed WITHDRAWN tombstone (with a lossAccepted
+     * audit marker) instead of poisoning the row forever.
+     */
+    private void acceptLoss(HttpExchange ex, AuditLog audit) throws IOException {
+        var raw = AddonRoutes.readJson(ex);
+        if (raw == null || !raw.isJsonObject()) {
+            Http.error(ex, 400, "Expected a source to accept the loss of");
+            return;
+        }
+        String id = AddonRoutes.string(raw.getAsJsonObject(), "source");
+        if (id == null || !id.matches("c:[a-f0-9]{64}")) {
+            Http.error(ex, 400, "Expected a physical source id");
+            return;
+        }
+        var who = Router.user(ex);
+        boolean accepted;
+        synchronized (index) {
+            var ledger = index.stock();
+            var source = ledger.sources().stream()
+                    .filter(s -> id.equals(s.value().get("id").getAsString())
+                            && who.perms().seesStash(s.stash())
+                            && !s.status().equals("SUPERSEDED"))
+                    .findFirst()
+                    .orElse(null);
+            if (source == null) {
+                Http.error(ex, 404, "No such source in this scope");
+                return;
+            }
+            accepted = ledger.acceptLoss(id, who.id());
+        }
+        if (!accepted) {
+            Http.error(ex, 409, "Only a lost (MISSING/UNREACHABLE) source can be accepted as lost");
+            return;
+        }
+        audit.add(who, "stock.loss.accepted", id, AuthRoutes.address(ex));
+        Http.json(ex, 200, Http.ok());
     }
 
     private static boolean returnContainer(StockLedger.Source source) {

@@ -137,6 +137,13 @@ class LiveEventsTest {
             LiveEvents.routeChanged("/api/v1/kits", "POST");
             assertEquals(Set.of("settings", "operations"), take(queue).channels());
 
+            // Revoking an agent key retires its session at once: presence goes out with it.
+            LiveEvents.routeChanged("/api/v1/agents/abc/revoke", "POST");
+            assertEquals(Set.of("settings", "operations", "bots", "presence"), take(queue).channels());
+
+            LiveEvents.routeChanged("/api/v1/stock/loss", "POST");
+            assertEquals(Set.of("stock", "operations"), take(queue).channels());
+
             // Reads never push: the page already holds the data it asked for.
             LiveEvents.routeChanged("/api/v1/orders", "GET");
             LiveEvents.routeChanged("/api/v1/events", "GET");

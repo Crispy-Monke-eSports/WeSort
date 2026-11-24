@@ -683,6 +683,10 @@ final class OrderStore {
                     OrderStage stage = order.stage();
                     // A packed order waiting for its recipient is normal, not a stuck operation.
                     if (stage == OrderStage.PICKUP_READY && !holdsPhysical(order)) continue;
+                    // Recovery is expected right after a restart or fence: it only
+                    // counts as stuck when nothing has moved it for a while.
+                    if ((stage == OrderStage.RECOVERING || stage == OrderStage.NEEDS_RECONCILIATION)
+                            && now - order.updatedAt < RECOVERING_STUCK_AFTER_MS) continue;
                     if (stage == OrderStage.RECOVERING
                             || stage == OrderStage.NEEDS_RECONCILIATION
                             || (!stage.archiveable()
@@ -693,6 +697,24 @@ final class OrderStore {
             }
         }
         return stuck;
+    }
+
+    /**
+     * Orders in recovery right now, however fresh: the health view tells "recovering"
+     * (expected, transient) apart from "stuck" (no progress for {@link #RECOVERING_STUCK_AFTER_MS}).
+     */
+    int recoveringOrders(String server) {
+        int recovering = 0;
+        for (Book book : books.values()) {
+            if (!book.server.equals(server)) continue;
+            synchronized (book) {
+                for (Order order : book.orders) {
+                    OrderStage stage = order.stage();
+                    if (stage == OrderStage.RECOVERING || stage == OrderStage.NEEDS_RECONCILIATION) recovering++;
+                }
+            }
+        }
+        return recovering;
     }
 
     /** Count actual order reservations separately from lifecycle/recovery health. */
@@ -799,6 +821,11 @@ final class OrderStore {
 
     /** Timeout for unconfirmed cancellations and legacy, unallocated orders. */
     static final long AUTO_CANCEL_AFTER_MS = 10 * 60 * 1000;
+    /**
+     * Recovery without any progress for this long counts as stuck. Matches the
+     * self-heal timeout so a freshly fenced order never pages the dashboard.
+     */
+    static final long RECOVERING_STUCK_AFTER_MS = AUTO_CANCEL_AFTER_MS;
 
     static final long DEFERRED_RETRY_AFTER_MS = 5 * 60 * 1000;
 

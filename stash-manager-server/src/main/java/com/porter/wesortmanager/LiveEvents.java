@@ -117,11 +117,20 @@ final class LiveEvents {
             bump("auth");
             return;
         }
+        if (path.startsWith("/api/v1/stock/")) {
+            bump("stock", "operations");
+            return;
+        }
+        if (path.startsWith("/api/v1/agents")) {
+            // A revocation retires the bot session at once: the dashboard must
+            // stop showing it online without waiting for the presence sweep.
+            bump("settings", "operations", "bots", "presence");
+            return;
+        }
         if (path.startsWith("/api/v1/kits")
                 || path.startsWith("/api/v1/guild")
                 || path.startsWith("/api/v1/stash-defs")
                 || path.startsWith("/api/v1/server")
-                || path.startsWith("/api/v1/agents")
                 || path.startsWith("/api/v1/link")) {
             bump("settings", "operations");
             return;

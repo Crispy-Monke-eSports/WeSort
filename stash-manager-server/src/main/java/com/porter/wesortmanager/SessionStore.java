@@ -20,13 +20,13 @@ import java.util.function.LongSupplier;
 /**
  * Website login sessions. The browser holds a random 32-byte token in the wesort_session cookie; sessions.json stores
  * only SHA-256(token) with the created, last-seen and expiry times, so a stolen data folder doesn't hold usable
- * tokens and logins survive a restart. A session lasts 30 days from login.
+ * tokens and logins survive a restart. Activity never extends the absolute deadline.
  */
 final class SessionStore {
-    static final long LIFETIME_MS = 30L * 24 * 60 * 60 * 1000;
+    static final long LIFETIME_MS = 7L * 24 * 60 * 60 * 1000;
     static final String COOKIE = "wesort_session";
     static final long ELEVATED_MS = 15L * 60 * 1000;
-    /** lastSeen is written to disk at most this often per session (it only matters for display and pruning). */
+    /** A restart may conservatively shorten the idle window by this much. */
     private static final long SEEN_WRITE_MS = 10L * 60 * 1000;
 
     private static final int MAX_SESSIONS = 200;
@@ -52,6 +52,7 @@ final class SessionStore {
         }
     }
 
+    private final long idleMs;
     private final Path file;
     private final LongSupplier clock;
     private final Map<String, Session> sessions = new HashMap<>(); // hex SHA-256(token) -> session
@@ -62,6 +63,17 @@ final class SessionStore {
     }
 
     SessionStore(Path dataDir, LongSupplier clock) {
+        this(dataDir, clock, idlePolicy(System.getenv().getOrDefault("WESORT_SESSION_IDLE_HOURS", "12")));
+    }
+
+    static long idlePolicy(String hours) {
+        int value = Integer.parseInt(hours);
+        if (value < 1 || value > 168) throw new IllegalArgumentException("WESORT_SESSION_IDLE_HOURS must be 1..168");
+        return value * 3_600_000L;
+    }
+
+    SessionStore(Path dataDir, LongSupplier clock, long idleMs) {
+        this.idleMs = idleMs;
         this.file = dataDir == null ? null : dataDir.resolve("sessions.json");
         this.clock = clock;
     }
@@ -116,7 +128,7 @@ final class SessionStore {
     synchronized String create(String user, String cred) throws IOException {
         long now = clock.getAsLong();
         var next = new HashMap<>(sessions);
-        next.values().removeIf(session -> now >= session.expires);
+        next.values().removeIf(session -> expired(session, now));
         // This user's own least recently used session goes first.
         int own = 0;
         String ownOldest = null;
@@ -161,8 +173,9 @@ final class SessionStore {
         Session s = sessions.get(h);
         if (s == null) return false;
         long now = clock.getAsLong();
-        if (now >= s.expires) {
+        if (expired(s, now)) {
             sessions.remove(h);
+            elevatedUntil.remove(h);
             save();
             return false;
         }
@@ -241,7 +254,9 @@ final class SessionStore {
     synchronized boolean elevated(String token) {
         if (token == null) return false;
         Long until = elevatedUntil.get(hash(token));
-        return until != null && until > clock.getAsLong() && sessions.containsKey(hash(token));
+        Session session = sessions.get(hash(token));
+        long now = clock.getAsLong();
+        return until != null && until > now && session != null && !expired(session, now);
     }
 
     /** Ends every session except keepToken's (null ends them all). Returns how many ended. */
@@ -286,7 +301,16 @@ final class SessionStore {
 
     private boolean prune() {
         long now = clock.getAsLong();
-        return sessions.values().removeIf(s -> now >= s.expires);
+        return sessions.values().removeIf(s -> expired(s, now));
+    }
+
+    private boolean expired(Session s, long now) {
+        return s.created < 0
+                || s.lastSeen < s.created
+                || now < s.lastSeen
+                || now >= s.expires
+                || now - s.created >= LIFETIME_MS
+                || now - s.lastSeen >= idleMs;
     }
 
     private void commit(Map<String, Session> snapshot) throws IOException {

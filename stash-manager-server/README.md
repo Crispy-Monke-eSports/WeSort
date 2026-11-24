@@ -31,3 +31,15 @@ orderstatus ska inte beskrivas som verifierad slutleverans eller reservation.
 
 API-nycklar, sessions, lösenordshashar och produktionsdata får aldrig ingå i
 byggevidence eller distribution. Se [upstream/licenser](../docs/UPSTREAM.md).
+
+## Driftlarm
+
+Övervaka `GET /health` och larma på HTTP 503. Manager kontrollerar den konfigurerade servern var 15:e sekund. `oldestIndexAgeMs` är åldern vid mättillfället för den äldsta kända stashens genererade index. Saknat index, okänd eller framtida genereringstid och ålder från `WESORT_STOCK_MAX_AGE_SECONDS` (standard 300 s) ger larm. `stuckOrders` räknar order i recovery direkt och övriga påbörjade order efter tio minuter utan uppdatering. Ändringar i larmvärdena skrivs till Manager-loggen. Ett mätvärde äldre än en minut ger också HTTP 503. Docker använder fortsatt `/health/ready` för att kontrollera att Manager kan ta emot trafik.
+
+## Webbsessioner
+
+Sessioner löper ut efter sju dygn från inloggning eller efter tolv timmar utan autentiserad trafik. Även en öppen dashboards bakgrundsanrop räknas som aktivitet. Sätt `WESORT_SESSION_IDLE_HOURS` till ett heltal mellan 1 och 168 för att ändra inaktivitetsgränsen. Ogiltiga värden stoppar uppstarten. Vid uppgradering gäller den tidigaste av befintlig sluttid och de nya gränserna. Efter omstart kan inaktivitetsgränsen infalla upp till tio minuter tidigare eftersom senaste aktivitet sparas periodiskt.
+
+## Ikoncache
+
+Manager begränsar renderade ikoner och cachemarkörer till 16 MiB totalt, med minst 4 KiB räknat per fil. Vid uppstart och före nya skrivningar rensas de minst nyligen använda filerna tills cachebudgeten räcker. Antalet rensade filer loggas. Den separata, verifierade 26.3-klienten i `icons/sources` har en fast storlek på 41 483 720 byte.

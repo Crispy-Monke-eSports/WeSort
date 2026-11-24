@@ -22,6 +22,32 @@ class IconCacheVersionTest {
     }
 
     @Test
+    void sharedBudgetPrunesExistingFilesAndEvictsLeastRecentlyUsed(@TempDir Path data) throws IOException {
+        var jar = write(data.resolve("sources/26.3/client.jar"));
+        Path wiki = write(data.resolve("minecraft/stone.png"));
+        Path render = write(data.resolve("game-26.3-v2/minecraft/diamond.png"));
+        IconDiskCache cache = new IconDiskCache(data, 8192);
+        cache.initialize();
+        cache.read(wiki);
+        for (int i = 0; i < 32; i++) {
+            cache.write(data.resolve("mod/item" + i + ".png"), new byte[1024]);
+            assertTrue(cache.read(wiki) != null);
+        }
+        assertFalse(Files.exists(render));
+        assertTrue(Files.exists(jar));
+        try (var files = Files.walk(data)) {
+            assertEquals(2, files.filter(p -> p.toString().endsWith(".png")).count());
+        }
+        var restarted = new IconDiskCache(data, 4096);
+        restarted.initialize();
+        org.junit.jupiter.api.Assertions.assertThrows(
+                IOException.class, () -> restarted.write(data.resolve("large.png"), new byte[8192]));
+        try (var files = Files.walk(data)) {
+            assertEquals(1, files.filter(p -> p.toString().endsWith(".png")).count());
+        }
+    }
+
+    @Test
     void oldCacheLosesItsWikiIconsOnce(@TempDir Path data) throws IOException {
         Path icons = data.resolve("icons");
         Path wikiShulker = write(icons.resolve("minecraft/black_shulker_box.png"));

@@ -96,6 +96,7 @@ public final class IndexStore {
             String player,
             String indexHash,
             long receivedAt,
+            long generatedAt,
             int itemTypes,
             long itemTotal,
             byte[] bytes,
@@ -633,6 +634,9 @@ public final class IndexStore {
                         stringOrNull(index, "player"),
                         stringOrNull(index, "indexHash"),
                         receivedAt,
+                        isNumber(index, "generatedAt")
+                                ? index.get("generatedAt").getAsLong()
+                                : 0,
                         byKey.size(),
                         total,
                         bytes,
@@ -767,6 +771,19 @@ public final class IndexStore {
     }
 
     // ---------- reads ----------
+
+    /** Oldest generated index on the configured server, including known stashes awaiting a first index. */
+    long oldestIndexTime(String server, long now) {
+        long oldest = Long.MAX_VALUE;
+        for (Stash stash : stashes.values()) {
+            if (!stash.server.equals(server)) continue;
+            synchronized (stash) {
+                if (stash.index == null || stash.index.generatedAt <= 0 || stash.index.generatedAt > now) return 0;
+                oldest = Math.min(oldest, stash.index.generatedAt);
+            }
+        }
+        return oldest == Long.MAX_VALUE ? 0 : oldest;
+    }
 
     public JsonArray listJson() {
         long now = System.currentTimeMillis();

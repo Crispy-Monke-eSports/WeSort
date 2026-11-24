@@ -122,7 +122,9 @@ class JobSchedulerTest {
         assertEquals(Job.State.PAUSED, s.pause(job.id(), A1).state());
         assertThrows(JobScheduler.Conflict.class, () -> s.claim(A1), "a paused job still occupies the agent");
         assertEquals(Job.State.CLAIMED, s.resume(job.id(), A1, token(claimed)).state());
-        assertEquals(Job.State.REVOKED, s.revoke(job.id(), "owner").state());
+        assertEquals(Job.State.NEEDS_RECONCILIATION, s.revoke(job.id(), "owner").state());
+        assertThrows(JobScheduler.Conflict.class, () -> s.complete(job.id(), A1, token(claimed)));
+        assertThrows(JobScheduler.Conflict.class, () -> s.claim(A2));
     }
 
     @Test
@@ -141,6 +143,18 @@ class JobSchedulerTest {
             s.complete(job.id(), A1, token(claimed));
         }
         assertTrue(s.claim(A1).get("job").isJsonNull(), "everything is done");
+    }
+
+    @Test
+    void movingWallClockBackCannotExtendAPhysicalLease() throws Exception {
+        var elapsed = new java.util.concurrent.atomic.AtomicLong(1000);
+        var s = new JobScheduler(data, clock::get, elapsed::get);
+        var job = s.submit(Job.Category.SCAN, "o-1", "", 0, "owner");
+        var claimed = s.claim(A1);
+        clock.set(-100_000);
+        elapsed.addAndGet(JobScheduler.TTL);
+        assertThrows(JobScheduler.Conflict.class, () -> s.renew(job.id(), A1, token(claimed)));
+        assertEquals(Job.State.NEEDS_RECONCILIATION, s.get(job.id()).state());
     }
 
     @Test
@@ -192,14 +206,17 @@ class JobSchedulerTest {
     }
 
     @Test
-    void theQueuePersistsAcrossRestart() throws Exception {
+    void restartFencesEvenAnUnexpiredPausedLease() throws Exception {
         var s = scheduler();
         var job = s.submit(Job.Category.SCAN, "o-1", "", 3, "owner");
         var claimed = s.claim(A1);
         s.pause(job.id(), A1);
 
         var reloaded = new JobScheduler(data, clock::get);
-        assertEquals(Job.State.PAUSED, reloaded.get(job.id()).state());
+        assertEquals(Job.State.NEEDS_RECONCILIATION, reloaded.get(job.id()).state());
+        assertThrows(JobScheduler.Conflict.class, () -> reloaded.resume(job.id(), A1, token(claimed)));
+        assertThrows(JobScheduler.Conflict.class, () -> reloaded.claim(A2));
+        assertEquals(reloaded.queue(), scheduler().queue(), "repeated startup must not append another fence");
         assertEquals(A1, reloaded.get(job.id()).agent());
     }
 }

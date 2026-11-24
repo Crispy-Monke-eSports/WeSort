@@ -86,7 +86,7 @@ final class StockLedger {
                 try (var r = s.executeQuery("PRAGMA user_version")) {
                     if (!r.next()) throw new IOException("Missing guild database schema");
                     schema = r.getInt(1);
-                    if (schema > 8) throw new IOException("Unsupported guild database schema");
+                    if (schema < 0 || schema > 8) throw new IOException("Unsupported guild database schema");
                 }
                 s.execute("BEGIN IMMEDIATE");
                 try {
@@ -181,11 +181,22 @@ final class StockLedger {
         // Once v7 is committed, missing tables/metadata indicate data loss.
         if (schema < 7) return;
         var missing = new TreeSet<>(REQUIRED_V7_TABLES);
+        if (schema >= 8)
+            missing.addAll(Set.of("order_books", "order_storage_meta", "order_event_log", "signed_request_nonces"));
         try (var s = c.createStatement();
                 var rows = s.executeQuery("SELECT name FROM sqlite_schema WHERE type='table'")) {
             while (rows.next()) missing.remove(rows.getString(1));
         }
         if (!missing.isEmpty()) throw new IOException("Guild database is missing authoritative tables: " + missing);
+        if (schema >= 8) {
+            try (var s = c.createStatement();
+                    var rows = s.executeQuery("""
+                        SELECT 1 FROM order_event_log e WHERE NOT EXISTS
+                        (SELECT 1 FROM order_books b WHERE b.server=e.server AND b.stash=e.stash) LIMIT 1
+                        """)) {
+                if (rows.next()) throw new IOException("Order history exists without its durable order book");
+            }
+        }
         try (var s = c.createStatement();
                 var rows = s.executeQuery("SELECT id,epoch,revision FROM stock_meta")) {
             if (!rows.next() || rows.getInt(1) != 1 || rows.getLong(3) < 0)
@@ -923,6 +934,54 @@ final class StockLedger {
         }
     }
 
+    /** UUIDs are installation-wide; evidence in another stash can invalidate both apparent copies. */
+    synchronized Set<PhysicalReservations.Root> quarantinedBoxes(String server) throws IOException {
+        var unsafe = new HashSet<PhysicalReservations.Root>();
+        var registered = new HashMap<String, PhysicalReservations.Root>();
+        var seen = new HashMap<String, PhysicalReservations.Root>();
+        try (var c = open();
+                var registry = c.prepareStatement("SELECT uuid,source,path FROM box_uuids WHERE server=?");
+                var slots = c.prepareStatement("""
+                    SELECT p.source,p.path,json_extract(p.payload,'$.components'),p.count
+                    FROM physical_slots p JOIN stock_sources s ON s.id=p.source
+                    WHERE s.server=? AND p.present=1 AND instr(p.path,'/')=0
+                    AND json_extract(p.payload,'$.kind')='SHULKER'
+                    AND EXISTS (SELECT 1 FROM stock_members m WHERE m.source=p.source AND m.present=1)
+                    """)) {
+            registry.setString(1, server);
+            try (var rows = registry.executeQuery()) {
+                while (rows.next())
+                    registered.put(
+                            rows.getString(1), new PhysicalReservations.Root(rows.getString(2), rows.getString(3)));
+            }
+            slots.setString(1, server);
+            try (var rows = slots.executeQuery()) {
+                while (rows.next()) {
+                    String name = ShulkerUuid.customName(rows.getString(3));
+                    if (name == null
+                            || !name.strip().regionMatches(true, 0, ShulkerUuid.PREFIX, 0, ShulkerUuid.PREFIX.length()))
+                        continue;
+                    var root = new PhysicalReservations.Root(rows.getString(1), rows.getString(2));
+                    UUID uuid = ShulkerUuid.parse(name);
+                    if (uuid == null) {
+                        unsafe.add(root);
+                        continue;
+                    }
+                    String key = uuid.toString();
+                    var other = seen.putIfAbsent(key, root);
+                    if (other != null) {
+                        unsafe.add(other);
+                        unsafe.add(root);
+                    }
+                    if (rows.getLong(4) != 1 || !root.equals(registered.get(key))) unsafe.add(root);
+                }
+            }
+        } catch (SQLException failure) {
+            throw new IOException("Cannot check physical box identities", failure);
+        }
+        return unsafe;
+    }
+
     /** The identity of each root-level shulker box in a source, derived from its server-observed name and the registry. */
     synchronized JsonArray boxIdentities(String source) throws IOException {
         var out = new JsonArray();
@@ -970,35 +1029,37 @@ final class StockLedger {
         return "UNREGISTERED";
     }
 
-    /** Appends the active box UUID to history and removes it from the registry. Idempotent. */
-    synchronized void deregisterBoxUuid(String server, String uuid, String reason) throws IOException {
-        UUID.fromString(uuid);
-        try (var c = open();
-                var tx = new SqliteWriteTransaction(c)) {
-            try (var read = c.prepareStatement("SELECT source,path,status FROM box_uuids WHERE uuid=? AND server=?")) {
+    static final class BoxReleaseConflict extends IOException {
+        BoxReleaseConflict() {
+            super("Delivered box UUID is not reserved for this order");
+        }
+    }
+
+    record BoxRelease(Set<PhysicalReservations.Root> reserved, Set<String> reported) {}
+
+    /** Check the current location and move the UUID to history inside the order receipt's write transaction. */
+    void releaseOrderBoxes(Connection c, String server, BoxRelease release) throws SQLException, IOException {
+        try (var read = c.prepareStatement("SELECT server,source,path,status FROM box_uuids WHERE uuid=?")) {
+            for (String uuid : release.reported()) {
                 read.setString(1, uuid);
-                read.setString(2, server);
                 try (var rows = read.executeQuery()) {
-                    if (!rows.next()) {
-                        tx.commit();
-                        return;
-                    }
-                    long revision = revision(c);
+                    if (!rows.next()) continue; // Newly assembled box or already removed by an older Manager.
+                    String source = rows.getString(2), path = rows.getString(3);
+                    if (!server.equals(rows.getString(1))
+                            || !release.reserved().contains(new PhysicalReservations.Root(source, path)))
+                        throw new BoxReleaseConflict();
                     deregisterInTx(
                             c,
                             server,
                             uuid,
-                            rows.getString(3),
-                            rows.getString(1),
-                            rows.getString(2),
-                            reason == null ? "DEREGISTERED" : reason,
-                            revision,
+                            rows.getString(4),
+                            source,
+                            path,
+                            "DEREGISTERED_FOR_ORDER",
+                            revision(c),
                             clock.getAsLong());
                 }
             }
-            tx.commit();
-        } catch (SQLException failure) {
-            throw new IOException("Cannot deregister box UUID", failure);
         }
     }
 

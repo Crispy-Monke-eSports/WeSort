@@ -84,6 +84,27 @@ class SelfHealTest {
     }
 
     @Test
+    void healthTracksGeneratedTimeAndStuckOrdersWithoutExposingIdentities() throws Exception {
+        var health = new RuntimeHealth(true);
+        long now = time.get();
+        var frame = index("private-stash", 10);
+        frame.addProperty("generatedAt", now);
+        store.putIndex(frame);
+        health.sample("s", store, orders, now, 300_000);
+        assertEquals("ready", health.detail(now).get("status").getAsString());
+        health.sample("s", store, orders, now + 300_000, 300_000);
+        assertTrue(health.detail(now + 300_000).get("staleIndex").getAsBoolean());
+        assertEquals("degraded", health.detail(now + 300_000).get("status").getAsString());
+        stuckOrder("private-stash");
+        health.sample("s", store, orders, now, 300_000);
+        var detail = health.detail(now);
+        assertFalse(detail.get("staleIndex").getAsBoolean());
+        assertEquals(1, detail.get("stuckOrders").getAsInt());
+        assertFalse(detail.toString().contains("private-stash"));
+        assertEquals("unknown", health.detail(now + 60_000).get("status").getAsString());
+    }
+
+    @Test
     void legacyRecoveryMigratesWithoutOwner() throws Exception {
         observe("a", 10);
         var old = stuckOrder("a");

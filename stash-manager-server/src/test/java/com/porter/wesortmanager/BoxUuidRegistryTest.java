@@ -140,12 +140,46 @@ class BoxUuidRegistryTest {
     }
 
     @Test
+    void ambiguousAndMalformedBoxLabelsFenceWholeBoxesAndTheirContents() throws Exception {
+        var ledger = new StockLedger(data);
+        ledger.accept(indexes(ledger, new String[] {"WeSort-" + V4}, new int[] {0}));
+        var first = PhysicalReservations.read(ledger, "s", "a");
+        var allocation = first.allocate(List.of(new OrderStore.Line("shulker", "kit", 1)), Set.of(), Map.of());
+        assertTrue(first.matches(allocation));
+        ledger.accept(
+                indexes(ledger, new String[] {"WeSort-" + V4, "WeSort-" + V4, "WeSort-invalid"}, new int[] {0, 1, 2}));
+        var blocked = PhysicalReservations.read(ledger, "s", "a");
+        assertFalse(blocked.matches(allocation));
+        assertTrue(blocked.available(Set.of()).isEmpty());
+        assertTrue(blocked.available(Set.of(), null, true).isEmpty());
+        ledger.accept(indexes(ledger, new String[] {"WeSort-" + V4, null, "Personal box"}, new int[] {0, 1, 2}));
+        var resolved = PhysicalReservations.read(ledger, "s", "a");
+        assertEquals(64L, resolved.available(Set.of()).get("item:minecraft:diamond"));
+    }
+
+    @Test
     void deregisteredUuidMovesToHistoryAndIsRegisteredAgainWhenSeen() throws Exception {
         var ledger = new StockLedger(data);
         var index = indexes(ledger, new String[] {"WeSort-" + V4}, new int[] {0});
         ledger.accept(index);
         String id = sourceId(index);
-        ledger.deregisterBoxUuid("s", V4, "DEREGISTERED_FOR_ORDER");
+        var repo = new OrderBookRepository(ledger);
+        var book = JsonParser.parseString(
+                        "{\"server\":\"s\",\"stash\":\"a\",\"orders\":[{\"id\":\"o-1\",\"history\":[{\"action\":\"staged\"}]}]}")
+                .getAsJsonObject();
+        var release = new StockLedger.BoxRelease(Set.of(new PhysicalReservations.Root(id, "0")), Set.of(V4));
+        try (var c = ledger.open();
+                var sql = c.createStatement()) {
+            sql.execute(
+                    "CREATE TRIGGER reject_stage BEFORE INSERT ON order_event_log BEGIN SELECT RAISE(ABORT,'injected'); END");
+            assertThrows(java.io.IOException.class, () -> repo.commit("s", "a", 0, book, release));
+            assertEquals(1, ledger.boxUuids().size());
+            assertTrue(ledger.boxUuidHistory().isEmpty());
+            sql.execute("DROP TRIGGER reject_stage");
+        }
+        var wrongSlot = new StockLedger.BoxRelease(Set.of(new PhysicalReservations.Root(id, "1")), Set.of(V4));
+        assertThrows(StockLedger.BoxReleaseConflict.class, () -> repo.commit("s", "a", 0, book, wrongSlot));
+        assertEquals(1, repo.commit("s", "a", 0, book, release));
         assertTrue(ledger.boxUuids().isEmpty());
         assertEquals(1, ledger.boxUuidHistory().size());
         assertEquals(

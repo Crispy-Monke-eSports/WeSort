@@ -322,6 +322,12 @@ and history. Registration is idempotent and atomic inside the physical
 observation transaction; two identical nameless boxes stay position- and
 fingerprint-identified and are never assigned the same UUID.
 
+An invalid `WeSort-` label, a UUID outside its registered slot, or the same UUID
+observed at multiple active locations quarantines the affected boxes and their
+contents. They remain visible as observed stock. New reservations, offline
+allocations and previously issued allocations checked at claim all use this
+rule. Plain personal labels and unnamed boxes retain slot-based allocation.
+
 Owner `POST /api/v1/boxes/jobs` starts a `REGISTER_BOX` or `RETURN_INTAKE`
 job for a verified, unprotected, still-unreserved root shulker slot
 (`server`, `stash`, `source`, `path`, `kind`). The Manager mints a fresh
@@ -431,6 +437,11 @@ reconciles it back to `QUEUED` (`POST /api/v1/jobs`, `reconcile`), so a
 blind restart of an uncertain physical step is impossible. `pause`,
 `resume` and `revoke` round out the controls. Owner `GET /api/v1/jobs`
 shows the queue ordered by state, priority and age.
+
+Lease expiry uses elapsed monotonic time. Restarting Manager or revoking a held
+job fences both claimed and paused work in `NEEDS_RECONCILIATION`. The old
+token cannot renew, resume or complete it. The incident and its cause persist
+across subsequent restarts; the single work slot stays occupied until reconciliation.
 
 ## W-039 player handoff
 

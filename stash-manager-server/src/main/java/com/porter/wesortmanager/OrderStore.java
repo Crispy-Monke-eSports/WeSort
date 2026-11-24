@@ -580,6 +580,10 @@ final class OrderStore {
     }
 
     private void save(Book b) throws IOException {
+        save(b, null);
+    }
+
+    private void save(Book b, StockLedger.BoxRelease release) throws IOException {
         JsonObject root = new JsonObject();
         root.addProperty("server", b.server);
         root.addProperty("stash", b.stash);
@@ -597,17 +601,21 @@ final class OrderStore {
             root.add("receipts", receipts);
         }
         if (repository == null) throw new IOException("Order storage has not been loaded");
-        b.persistenceRevision = repository.commit(b.server, b.stash, b.persistenceRevision, root);
+        b.persistenceRevision = repository.commit(b.server, b.stash, b.persistenceRevision, root, release);
     }
 
     private void update(Book book, Order previous, Order next) throws IOException {
+        update(book, previous, next, null);
+    }
+
+    private void update(Book book, Order previous, Order next, StockLedger.BoxRelease release) throws IOException {
         int position = book.orders.indexOf(previous);
         var before = book.orders.size() > KEEP ? List.copyOf(book.orders) : null;
         var archiveBefore = before == null ? null : List.copyOf(book.archived);
         book.orders.set(position, next);
         var pruned = prune(book);
         try {
-            save(book);
+            save(book, release);
         } catch (IOException failure) {
             if (before != null && !pruned.isEmpty()) {
                 book.orders.clear();
@@ -664,6 +672,25 @@ final class OrderStore {
             rows.stream().limit(limit).map(Order::auditJson).forEach(out::add);
             return out;
         }
+    }
+
+    int stuckOrders(String server, long now) {
+        int stuck = 0;
+        for (Book book : books.values()) {
+            if (!book.server.equals(server)) continue;
+            synchronized (book) {
+                for (Order order : book.orders) {
+                    OrderStage stage = order.stage();
+                    if (stage == OrderStage.RECOVERING
+                            || stage == OrderStage.NEEDS_RECONCILIATION
+                            || (!stage.archiveable()
+                                    && stage != OrderStage.CREATED
+                                    && stage != OrderStage.RESERVED
+                                    && now - order.updatedAt >= AUTO_CANCEL_AFTER_MS)) stuck++;
+                }
+            }
+        }
+        return stuck;
     }
 
     Map<String, Integer> activeStates(Users.Principal who) {
@@ -2370,17 +2397,7 @@ final class OrderStore {
             String key =
                     receiptKey("report:" + id, agent, reportId == null ? "content:" + fingerprint : "id:" + reportId);
             var saved = previouslyReceived(key);
-            if (saved != null) {
-                Order replayed = replay(saved, fingerprint);
-                Book book = byOrderId.get(id);
-                if (book != null) {
-                    synchronized (book) {
-                        Order current = find(book, id);
-                        if (current != null) finishPendingUuidDeregistrations(book, current);
-                    }
-                }
-                return replayed;
-            }
+            if (saved != null) return replay(saved, fingerprint);
             return statusWithObservationLock(
                     id, status, phase, progress, message, deliveredUuids, result, agent, key, fingerprint);
         }
@@ -2429,18 +2446,16 @@ final class OrderStore {
             } else if (result != null) o.result = result;
             o.updatedAt = System.currentTimeMillis();
             if (next != previous.stage()) o.record("order.transition", agent, o.updatedAt);
-            // Only a verified staging manifest authorizes UUID removal. Persist the intent
-            // with the order BEFORE updating SQLite, so retries/restarts can finish it.
-            if ("delivered".equals(status) && next == OrderStage.PICKUP_READY)
-                o.pendingUuidDeregistrations = authorizedDeregistrations(o, deliveredUuids);
+            StockLedger.BoxRelease release = next == OrderStage.PICKUP_READY ? boxRelease(o, deliveredUuids) : null;
             b.receipts.put(key, new Receipt(fingerprint, o.toJson()));
             try {
-                update(b, previous, o);
+                update(b, previous, o, release);
             } catch (IOException failure) {
                 b.receipts.remove(key);
+                if (failure instanceof StockLedger.BoxReleaseConflict)
+                    throw new OrderException(409, failure.getMessage(), -1);
                 throw failure;
             }
-            finishPendingUuidDeregistrations(b, o);
             return find(b, id);
         }
     }
@@ -2450,54 +2465,24 @@ final class OrderStore {
      * registry only when its exact physical root was reserved for this order. Unregistered
      * (newly assembled) boxes need no registry mutation.
      */
-    private JsonArray authorizedDeregistrations(Order order, JsonArray reported) throws IOException, OrderException {
-        if (reported == null || reported.isEmpty() || order.manifest == null) return null;
-        var registered = new HashMap<String, JsonObject>();
-        for (var element : index.stock().boxUuids()) {
-            var box = element.getAsJsonObject();
-            registered.put(box.get("uuid").getAsString(), box);
-        }
-        var result = new JsonArray();
-        var seen = new HashSet<String>();
-        for (var element : reported) {
-            if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) continue;
-            String uuid = element.getAsString();
-            if (!seen.add(uuid)) continue;
-            JsonObject box = registered.get(uuid);
-            if (box == null) continue;
-            if (!order.server.equals(box.get("server").getAsString())
-                    || !ownsReservedRoot(
-                            order,
-                            box.get("source").getAsString(),
-                            box.get("path").getAsString())) {
-                throw new OrderException(409, "Delivered box UUID is not reserved for this order", -1);
-            }
-            result.add(uuid);
-        }
-        return result.isEmpty() ? null : result;
-    }
-
-    /** An exact reserved source/root pair, not just an item key, authorizes registry changes. */
-    static boolean ownsReservedRoot(Order order, String source, String path) {
-        if (order.allocations == null) return false;
-        var root = new PhysicalReservations.Root(source, path);
-        // Reserving the contents of a shulker does NOT authorize removing its
-        // outer box from the UUID registry. Only whole-box allocations may do that.
-        return order.allocations.stream()
-                .anyMatch(allocation -> allocation.outer()
-                        && allocation.ref().startsWith("shulker:")
-                        && root.equals(allocation.root()));
+    static StockLedger.BoxRelease boxRelease(Order order, JsonArray reported) {
+        if (reported == null || reported.isEmpty()) return null;
+        var uuids = new java.util.LinkedHashSet<String>();
+        for (var element : reported)
+            if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()) uuids.add(element.getAsString());
+        var roots = new HashSet<PhysicalReservations.Root>();
+        if (order.allocations != null)
+            for (var allocation : order.allocations)
+                if (allocation.outer() && allocation.ref().startsWith("shulker:")) roots.add(allocation.root());
+        return new StockLedger.BoxRelease(roots, uuids);
     }
 
     /** Crash-safe replay of registry removals committed to a saved order snapshot. */
     private void finishPendingUuidDeregistrations(Book book, Order order) throws IOException {
         if (order.pendingUuidDeregistrations == null || order.pendingUuidDeregistrations.isEmpty()) return;
-        for (var uuid : order.pendingUuidDeregistrations) {
-            index.stock().deregisterBoxUuid(order.server, uuid.getAsString(), "DEREGISTERED_FOR_ORDER");
-        }
         Order cleared = Order.fromJson(order.snapshot());
         cleared.pendingUuidDeregistrations = null;
-        update(book, order, cleared);
+        update(book, order, cleared, boxRelease(order, order.pendingUuidDeregistrations));
     }
 
     private OrderStage reportedStage(Order order, String status, JsonObject result) throws IOException {

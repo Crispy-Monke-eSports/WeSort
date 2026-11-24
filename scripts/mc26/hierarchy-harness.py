@@ -40,6 +40,14 @@ class HierarchyHarness(stock.StockHarness):
         ]:
             reply = self.rcon.command(command)
             require('replaced' in reply.lower(), 'Native hierarchy fixture rejected: ' + reply)
+        if self.reservations:
+            for x, label in [(0, 'WeSort-550e8400-e29b-41d4-a716-446655440000'),
+                             (6, 'WeSort-550e8400-e29b-41d4-a716-446655440000'),
+                             (6, 'WeSort-broken')]:
+                slot = 18 if label.endswith('broken') else 19
+                item = f'minecraft:shulker_box[minecraft:custom_name="{label}",minecraft:container=[{{slot:0,item:{{id:"minecraft:emerald",count:1}}}}]]'
+                reply = self.rcon.command(f'item replace block {x} 64 -3 container.{slot} with {item} 1')
+                require('replaced' in reply.lower(), 'UUID quarantine fixture rejected: ' + reply)
         # Keep this hierarchy scenario bounded; the general world/scanning suite owns the ten-chest matrix.
         self.rcon.command('fill 0 64 3 29 64 3 minecraft:air')
         self.ok('three identical named shulkers in distinct slots/containers with nested bundle and exact named enchanted damaged sword')
@@ -64,6 +72,9 @@ class HierarchyHarness(stock.StockHarness):
         def place(line):
             return self.http('/api/v1/orders', {'server': self.server_name, 'stash': 'e2e-fixture', 'lines': [line]})
 
+        for line in [{'type': 'shulker', 'key': positions['19']['group'], 'count': 1},
+                     {'type': 'item', 'key': positions['19/0']['key'], 'count': 1}]:
+            require(place(line)[0] == 409, 'Manager reserved a quarantined UUID box or its contents')
         with ThreadPoolExecutor(max_workers=2) as pool:
             results = list(pool.map(place, orders))
         require(sorted(status for status, _ in results) == [200, 409], 'Physical order race did not exclude the conflicting allocation')

@@ -190,6 +190,8 @@ final class OrderStore {
         boolean queuedOffline; // true when reserved against last-verified (stale) counts via the explicit offline queue
         /** Pending request accepted while another physical order runs; no stock is reserved yet. */
         boolean reservationDeferred;
+        /** First unsuccessful attempt to reserve this never-dispatched order. */
+        long deferredBlockedAt;
 
         private JsonArray history = new JsonArray();
 
@@ -306,6 +308,7 @@ final class OrderStore {
             o.addProperty("state", stage().name());
             o.addProperty("queuedOffline", queuedOffline);
             o.addProperty("reservationDeferred", reservationDeferred);
+            if (deferredBlockedAt > 0) o.addProperty("deferredBlockedAt", deferredBlockedAt);
             o.addProperty("phase", phase);
             o.add("progress", progress == null ? null : progress.deepCopy());
             o.addProperty("message", message);
@@ -394,6 +397,8 @@ final class OrderStore {
             r.queuedOffline = o.has("queuedOffline") && o.get("queuedOffline").getAsBoolean();
             r.reservationDeferred =
                     o.has("reservationDeferred") && o.get("reservationDeferred").getAsBoolean();
+            r.deferredBlockedAt =
+                    o.has("deferredBlockedAt") ? o.get("deferredBlockedAt").getAsLong() : 0;
             r.createdAt = o.get("createdAt").getAsLong();
             r.updatedAt = o.get("updatedAt").getAsLong();
             r.status = o.get("status").getAsString();
@@ -758,6 +763,8 @@ final class OrderStore {
 
     /** Timeout for unconfirmed cancellations and legacy, unallocated orders. */
     static final long AUTO_CANCEL_AFTER_MS = 10 * 60 * 1000;
+
+    static final long DEFERRED_RETRY_AFTER_MS = 5 * 60 * 1000;
 
     /**
      * Self-healing on fresh indexes and periodic sweeps, without operator actions. A
@@ -2198,6 +2205,7 @@ final class OrderStore {
             ready.craftMaterials = crafting.materials.isEmpty() ? null : Map.copyOf(crafting.materials);
             ready.sourceGuards = sourceGuards(book.server, book.stash);
             ready.reservationDeferred = false;
+            ready.deferredBlockedAt = 0;
             ready.advance(OrderStage.RESERVED);
             ready.message = null;
             ready.updatedAt = System.currentTimeMillis();
@@ -2208,6 +2216,39 @@ final class OrderStore {
             // Never convert an unverified queue entry into a physical claim.
             return null;
         }
+    }
+
+    /**
+     * Only unallocated, never-claimed work may be failed without an agent receipt.
+     * An explicitly queued offline order retains its original wait semantics.
+     * Retry before applying the deadline so replenished stock can still fulfill it.
+     */
+    private void deferUnavailable(Book book, Order queued) throws IOException {
+        if (!queued.reservationDeferred
+                || queued.allocations != null
+                || queued.claimedAt != 0
+                || queued.agent != null
+                || queued.stage() != OrderStage.CREATED
+                || index.stock().unsettledPhysicalOrder(queued.id)) return;
+        long now = System.currentTimeMillis();
+        if (queued.deferredBlockedAt > 0
+                && (queued.queuedOffline || now - queued.deferredBlockedAt < DEFERRED_RETRY_AFTER_MS)) return;
+        Order next = Order.fromJson(queued.snapshot());
+        next.updatedAt = now;
+        if (next.deferredBlockedAt == 0) {
+            next.deferredBlockedAt = now;
+            next.message = "Stock unavailable for this order; trying other queued orders.";
+            next.record("order.queue.defer", Users.OWNER_ID, now);
+        } else {
+            // CREATED -> FAILED is legal and no physical transaction has started.
+            next.stage = OrderStage.FAILED;
+            next.status = "failed";
+            next.phase = "stock unavailable";
+            next.message =
+                    "Automatically failed: stock could not be reserved after repeated attempts. No items were taken.";
+            next.record("order.queue.auto-fail", Users.OWNER_ID, now);
+        }
+        update(book, queued, next);
     }
 
     private Order claimWithObservationLock(String server, String stash, String agent) throws IOException {
@@ -2229,9 +2270,12 @@ final class OrderStore {
                 Order order = original;
                 if (order.reservationDeferred) {
                     order = reserveDeferredAtClaim(b, order, counts);
-                    // FIFO: an older waiting order must not be overtaken while
-                    // its stock is still unavailable. No physical work starts.
-                    if (order == null) return null;
+                    // Preserve FIFO among claimable orders, not among requests
+                    // that cannot reserve any stock. No physical work started.
+                    if (order == null) {
+                        deferUnavailable(b, original);
+                        continue;
+                    }
                 }
                 if (!orderSourcesReady(order, counts, agent)) continue;
                 long before = order.updatedAt;

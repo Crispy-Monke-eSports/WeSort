@@ -66,6 +66,18 @@ public final class PhysicalJournalRuntime {
         return !failure.isEmpty() || recoveryFence || workspaceDebtActive() || journal != null && journal.blocked();
     }
 
+    /**
+     * True when the only fence is workspace debt on an otherwise healed journal: no failure,
+     * no recovery fence, journal not blocked. Recovery-rebuilding paths (healRepackState,
+     * setup) may run under exactly this fence, since rebuilding is what lifts it — anything
+     * else must still respect blocked().
+     */
+    public static boolean debtGated() {
+        if (!workspaceDebtActive()) return false;
+        if (!failure.isEmpty() || recoveryFence) return false;
+        return journal == null || !journal.blocked();
+    }
+
     public static boolean awaitingMirror() {
         if (journal == null || !journal.terminal() || mc.player == null) {
             mirrorWaitSince = 0;
@@ -267,12 +279,16 @@ public final class PhysicalJournalRuntime {
                 if (checkpoint) {
                     finishInspection(true, "Exact physical step verified; sorter will resume its saved recovery");
                 } else {
-                    noteWorkspaceDebt("a REPACK step was exactly verified without a durable sorter checkpoint;"
-                            + " the next physical order is gated until that checkpoint exists");
+                    // The commit point is not the proof: the debt must survive this call and
+                    // gate the next order until a real inspection (or sorter recovery state)
+                    // proves the workspace. finishInspection(true) would clear it.
                     finishInspection(
                             true,
                             "Exact physical step verified and committed; next physical order gated"
-                                    + " until a durable workspace checkpoint exists");
+                                    + " until a durable workspace checkpoint exists",
+                            true);
+                    noteWorkspaceDebt("a REPACK step was exactly verified without a durable sorter checkpoint;"
+                            + " the next physical order is gated until that checkpoint exists");
                 }
             }
             return;
@@ -487,9 +503,21 @@ public final class PhysicalJournalRuntime {
     }
 
     private static void finishInspection(boolean success, String detail) {
+        finishInspection(success, detail, false);
+    }
+
+    /**
+     * Completing an inspection normally proves the workspace, which lifts any debt. The
+     * commit point of a verified-but-unchecked step is the exception: it reports success
+     * for the step while deliberately keeping the gate for the next order.
+     */
+    private static void finishInspection(boolean success, String detail, boolean keepDebt) {
         if (inspection == null) return;
         if (success) {
             clearEscalation();
+            // An exact read-only verification is the durable proof the workspace debt was
+            // waiting for: the world provably matches, so the gate has served its purpose.
+            if (!keepDebt) clearWorkspaceDebt();
         } else if (!detail.equals(escalation)) {
             String key = decisionKey(inspection);
             String category = categoryOf(detail);
@@ -596,6 +624,25 @@ public final class PhysicalJournalRuntime {
             Files.deleteIfExists(debtFile());
         } catch (Exception ignored) {
         }
+    }
+
+    /**
+     * Restart escape for orphaned debt: the gate persisted to disk, but nothing restorable
+     * exists anymore — no saved step, no in-memory work, no inspection in flight, and the
+     * journal is terminally complete. Gating forever helps nothing: the verified step is
+     * durable, the leftovers (if any) are found by orphan recovery, and every new order
+     * re-verifies from scratch. Lifts loudly exactly once instead of wedging the bot.
+     */
+    public static boolean clearOrphanedDebt() {
+        if (!workspaceDebtActive() || inspection != null) return false;
+        if (journal != null && !journal.terminal()) return false;
+        var sorter = com.porter.wesort.WeSortAddon.sorter();
+        if (sorter != null && sorter.pendingPhysicalRecovery()) return false;
+        MeteorClient.LOG.warn(
+                "WeSort workspace debt has nothing left to recover (journal terminal, no saved step); lifting the gate, next work re-verifies: {}",
+                workspaceDebt);
+        clearWorkspaceDebt();
+        return true;
     }
 
     private static String readWorkspaceDebt() {

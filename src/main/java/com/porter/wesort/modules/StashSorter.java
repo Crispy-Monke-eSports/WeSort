@@ -1760,16 +1760,24 @@ public class StashSorter extends Module {
                     pendingResume.placed.toShortString());
         } else pendingResume = null;
         if (pendingResume != null
-                && !com.porter.wesort.compat.PhysicalJournalRuntime.blocked()
+                && (!com.porter.wesort.compat.PhysicalJournalRuntime.blocked()
+                        || com.porter.wesort.compat.PhysicalJournalRuntime.debtGated())
                 && !com.porter.wesort.compat.PhysicalJournalRuntime.awaitingMirror()
                 && (repackWork == null
                         || repackWork.phase() == com.porter.wesort.inventory.PhysicalWork.Phase.COMPLETED
                         || repackWork.phase() == com.porter.wesort.inventory.PhysicalWork.Phase.FAILED)) {
             // The journal is not fenced but a restart stranded the in-memory tracking: track
             // the resumed step again instead of leaving the next STORE without verification.
+            // A debt-only fence is equivalent here: the journal is healed, and rebuilding
+            // the tracking is what lifts the debt.
             repackWork = new com.porter.wesort.inventory.PhysicalWork("Shulker", System.nanoTime());
-            debug("Rebuilt shulker tracking for the saved step; the journal is not blocked.");
+            debug("Rebuilt shulker tracking for the saved step; the journal is healed.");
         }
+        // A debt file with nothing restorable behind it (no saved step, no memory work,
+        // terminal journal, no inspection running) would fence forever: lift it loudly.
+        // The verified step stays durable in the journal, leftovers are found by orphan
+        // recovery, and every new order re-verifies from scratch.
+        com.porter.wesort.compat.PhysicalJournalRuntime.clearOrphanedDebt();
 
         // Driven: reads, orders and leftovers only. New containers, marking everything stale, the checks and the
         // talk
@@ -8621,8 +8629,11 @@ public class StashSorter extends Module {
                 || repackWork.phase() != com.porter.wesort.inventory.PhysicalWork.Phase.NEEDS_RECONCILIATION
                 || mc.player == null
                 || mc.level == null) return;
-        if (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror() || !InventorySync.ready())
-            return;
+        // A debt-only fence must not block the heal that lifts it: rebuilding the sorter
+        // tracking is exactly what makes pendingPhysicalRecovery true again.
+        if ((PhysicalJournalRuntime.blocked() && !PhysicalJournalRuntime.debtGated())
+                || PhysicalJournalRuntime.awaitingMirror()
+                || !InventorySync.ready()) return;
         repackVerifyReads = 0;
         repackVerifySeen.clear();
         storeWatchMs = 0;

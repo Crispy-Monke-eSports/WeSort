@@ -386,6 +386,7 @@ final class Router implements HttpHandler {
             boolean named = !pre.botId().equals("-");
             var credential = named ? agentCredentials.find(pre.botId()) : null;
             if ((named && credential == null) || (!named && agentCredentials.scopedOnly())) {
+                if (named) agentCredentials.noteAuthFailure(pre.botId());
                 Http.error(ex, 401, "bad signature");
                 return false;
             }
@@ -402,6 +403,7 @@ final class Router implements HttpHandler {
             Signer.Auth a = Signer.Auth.parse(header);
             int which = signer.verify(a, ex.getRequestMethod(), raw, body, kCurrent, kPrevious);
             if (which < 0) {
+                if (named) agentCredentials.noteAuthFailure(pre.botId());
                 Http.error(ex, 401, "bad signature");
                 return false;
             }

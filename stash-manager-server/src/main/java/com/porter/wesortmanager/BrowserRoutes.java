@@ -66,13 +66,27 @@ final class BrowserRoutes {
 
     /** GET /api/v1/agents (owner): key slots with recent display-only player activity. */
     private void listAgents(HttpExchange ex) throws IOException {
+        JsonObject out = Http.ok();
+        out.add("slots", slotsJson(credentials));
+        Http.json(ex, 200, out);
+    }
+
+    /**
+     * One row per retained slot, active or revoked. Revoked slots stay visible
+     * as tombstones ({id, label, active:false}, no secrets, no presence) so
+     * the UI tells "revoked" apart from "never existed".
+     */
+    static JsonArray slotsJson(AgentCredentials credentials) {
         JsonArray slots = new JsonArray();
         for (AgentCredentials.Slot slot : credentials.all()) {
-            if (!slot.active()) continue;
             JsonObject row = new JsonObject();
             row.addProperty("id", slot.id());
             row.addProperty("label", slot.label());
             row.addProperty("active", slot.active());
+            if (!slot.active()) {
+                slots.add(row);
+                continue;
+            }
             if (slot.binding() != null
                     && System.currentTimeMillis() - slot.binding().lastSeen() <= BotHub.ONLINE_MS) {
                 JsonObject binding = new JsonObject();
@@ -80,11 +94,11 @@ final class BrowserRoutes {
                 binding.addProperty("seen", slot.binding().lastSeen());
                 row.add("bound", binding);
             }
+            long authFailure = credentials.lastAuthFailure(slot.id());
+            if (authFailure > 0) row.addProperty("lastAuthFailure", authFailure);
             slots.add(row);
         }
-        JsonObject out = Http.ok();
-        out.add("slots", slots);
-        Http.json(ex, 200, out);
+        return slots;
     }
 
     /** POST /api/v1/agents {label?} (owner, elevated): issues an unbound key slot, secret shown once. */

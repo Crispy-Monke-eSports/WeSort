@@ -170,8 +170,17 @@ final class BotHub {
         }
         synchronized (b) {
             boolean sessionChanged = !java.util.Objects.equals(b.controlSession, controlSession);
-            if (sessionChanged && b.controlSession != null && (controlSession == null || sessionAlive(b, now)))
-                return 409;
+            if (sessionChanged && b.controlSession != null) {
+                if (controlSession == null) {
+                    // A session-less hello never takes over a live control session.
+                    if (sessionAlive(b, now)) return 409;
+                } else if (sessionFresh(b, now)) {
+                    // An authenticated hello only preempts a stale control
+                    // session: its long-poll is dead and its last heartbeat
+                    // is older than the takeover grace period.
+                    return 409;
+                }
+            }
             if (sessionChanged || !java.util.Objects.equals(b.manifestScope, scope)) {
                 for (Job job : b.jobs.values()) {
                     if (job.status.equals("queued") || job.status.equals("sent")) job.status = "unknown";
@@ -271,10 +280,38 @@ final class BotHub {
         return sessionAlive(b, now);
     }
 
+    /**
+     * Why a bot reads as it does: "heartbeat" (modern ping/pong), "poll"
+     * (legacy long-poll), or "silent" (nothing recent; an in-flight long-poll
+     * alone never counts as alive). The dashboard needs the cause to tell a
+     * frozen bot from a merely quiet one.
+     */
+    static String presenceCause(Bot b, long now) {
+        if (b.controlSession != null
+                && b.caps.contains("heartbeat")
+                && b.lastHeartbeat != null
+                && now - b.lastHeartbeat < ONLINE_MS) return "heartbeat";
+        if (now - b.lastPoll < ONLINE_MS) return "poll";
+        if (b.lastHeartbeat != null && now - b.lastHeartbeat < ONLINE_MS) return "heartbeat";
+        return "silent";
+    }
+
     private static boolean sessionAlive(Bot b, long now) {
-        return b.waiting > 0
-                || now - b.lastPoll < ONLINE_MS
+        return now - b.lastPoll < ONLINE_MS
                 || b.lastHeartbeat != null && now - b.lastHeartbeat < ONLINE_MS;
+    }
+
+    /**
+     * Whether the current control session still holds the bot: a heartbeat or
+     * any poll within the takeover grace period. Past it, an authenticated
+     * hello takes over instead of answering 409 for up to a minute. A
+     * waiting (in-flight) long-poll alone never keeps a session fresh.
+     */
+    static final long TAKEOVER_GRACE_MS = 60_000;
+
+    private static boolean sessionFresh(Bot b, long now) {
+        return now - b.lastPoll < TAKEOVER_GRACE_MS
+                || b.lastHeartbeat != null && now - b.lastHeartbeat < TAKEOVER_GRACE_MS;
     }
 
     /** Only the currently registered epoch can refresh presence. No order or stock access. */

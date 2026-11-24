@@ -271,6 +271,17 @@ public final class IndexStore {
     /** What a heartbeat reply needs: whether to push the index, and the unacknowledged rescan id (or null). */
     public record HeartbeatResult(boolean needIndex, Long rescan) {}
 
+    /** A rescan is worth one grace period before the next MISSING/UNREACHABLE burst may ask for another. */
+    static final long RESCAN_DEBOUNCE_MS = 5 * 60 * 1000;
+
+    /**
+     * Whether a pending rescan suppresses a fresh request: the bot is visibly
+     * alive on it, or the request itself is still new.
+     */
+    static boolean rescanDebounced(boolean botAlive, boolean freshRequest) {
+        return botAlive || freshRequest;
+    }
+
     /** One (server, stash). The monitor guards the state fields; writeLock orders disk writes. */
     private static final class Stash {
         final String server;
@@ -723,8 +734,11 @@ public final class IndexStore {
     public HeartbeatResult heartbeat(String server, String stash, String player, String indexHash, BotStatus status)
             throws FullException {
         Stash s = getOrCreate(server, stash);
+        long now = System.currentTimeMillis();
+        long previousSeen;
         synchronized (s) {
-            s.lastSeen = System.currentTimeMillis();
+            previousSeen = s.lastSeen;
+            s.lastSeen = now;
             if (player != null) s.player = player;
             if (status.hasDelivery()) s.delivery = status.delivery();
             if (status.hasBlocker()) s.orderBlocker = status.orderBlocker();
@@ -748,7 +762,20 @@ public final class IndexStore {
                             .max()
                             .orElse(0);
                     var key = new StashKey(server, stash);
-                    if (physicalIndexes.contains(key) && !freshnessRequests.containsKey(key)
+                    Long pending = rescanPending(s);
+                    if (pending != null) {
+                        // The bot is visibly working through the outstanding
+                        // rescan (it just heartbeated): a new MISSING burst on
+                        // a griefed server must not restart the pass again.
+                        boolean botAlive = previousSeen > 0 && now - previousSeen < ONLINE_WINDOW_MS;
+                        boolean freshRequest = now - pending * 1000 < RESCAN_DEBOUNCE_MS;
+                        if (!rescanDebounced(botAlive, freshRequest)
+                                && !stale.isEmpty()
+                                && staleRevision > freshnessRequests.getOrDefault(key, -1L)) {
+                            freshnessRequests.put(key, staleRevision);
+                            requestRescan(server, stash);
+                        }
+                    } else if (physicalIndexes.contains(key) && !freshnessRequests.containsKey(key)
                             || !stale.isEmpty() && staleRevision > freshnessRequests.getOrDefault(key, -1L)) {
                         freshnessRequests.put(key, staleRevision);
                         requestRescan(server, stash);
@@ -757,7 +784,21 @@ public final class IndexStore {
                     /* Availability queries fail closed if SQLite is unavailable. */
                 }
             boolean needIndex = s.index == null || indexHash == null || !indexHash.equals(s.index.indexHash);
-            return new HeartbeatResult(needIndex, rescanPending(s));
+            Long outstanding = rescanPending(s);
+            if (stock != null) {
+                if (outstanding != null) stock.freezeAging(server, now);
+                else stock.unfreezeAging(server);
+            }
+            return new HeartbeatResult(needIndex, outstanding);
+        }
+    }
+
+    /** The outstanding rescan id for one stash, or null. The web UI needs it to tell expected STALE apart. */
+    public Long rescanPending(String server, String stash) {
+        Stash s = stashes.get(new StashKey(server, stash));
+        if (s == null) return null;
+        synchronized (s) {
+            return rescanPending(s);
         }
     }
 
@@ -776,6 +817,7 @@ public final class IndexStore {
         synchronized (s) {
             long id = Math.max(Math.max(s.rescanRequested, s.rescanDone) + 1, System.currentTimeMillis() / 1000);
             s.rescanRequested = id;
+            if (stock != null) stock.freezeAging(server, System.currentTimeMillis());
             return id;
         }
     }

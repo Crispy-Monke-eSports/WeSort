@@ -59,6 +59,19 @@ final class StockLedger {
     private final long maxAge;
     private final String run = UUID.randomUUID().toString();
     private String epoch;
+    /**
+     * Servers with a rescan outstanding: stock stops aging at the freeze plus one
+     * grace period, so a slow full-stash re-read is not punished as STALE_AGE
+     * while the bot is visibly working through it. Expires on its own when the
+     * bot goes quiet (see {@link #effectiveNow}).
+     */
+    private final Map<String, Long> agingFreeze = new HashMap<>();
+    /**
+     * A source nobody can reach for this long stops reading as MISSING and
+     * escalates to WITHDRAWN: the owner has had a week to accept the loss or
+     * fix the container, and the dashboard stops paging forever.
+     */
+    static final long MISSING_WITHDRAWN_AFTER_MS = 7L * 24 * 3600_000;
 
     StockLedger(Path data) throws IOException {
         this(data, System::currentTimeMillis, policy());
@@ -312,6 +325,34 @@ final class StockLedger {
         } catch (SQLException e) {
             throw new IOException("Cannot read observation revision", e);
         }
+    }
+
+    /**
+     * Pause stock aging for one server while its rescan is outstanding (see
+     * {@link #effectiveNow}). Re-freezing extends the pause; it always expires
+     * one grace period after the last freeze, so a dead bot cannot pin stock
+     * fresh forever.
+     */
+    synchronized void freezeAging(String server, long at) {
+        agingFreeze.put(server, at);
+    }
+
+    /** Resume normal aging for one server: its rescan landed or was dropped. */
+    synchronized void unfreezeAging(String server) {
+        agingFreeze.remove(server);
+    }
+
+    private synchronized long effectiveNow(String server, long now) {
+        Long frozen = agingFreeze.get(server);
+        if (frozen == null) return now;
+        if (now - frozen >= 2 * maxAge) {
+            // The bot went quiet mid-rescan: stop pretending the freeze is fresh.
+            agingFreeze.remove(server);
+            return now;
+        }
+        // While the rescan is outstanding, stock stops aging at the freeze:
+        // a slow full-stash re-read is not punished as STALE_AGE.
+        return Math.min(now, frozen);
     }
 
     private long revision(Connection c) throws SQLException {
@@ -1159,6 +1200,7 @@ final class StockLedger {
             while (r.next()) {
                 var value = JsonParser.parseString(r.getString(3)).getAsJsonObject();
                 String state = value.get("state").getAsString();
+                long at = effectiveNow(r.getString(1), now);
                 int activeParts = 0;
                 try (var p = c.prepareStatement("SELECT count(*) FROM stock_parts WHERE source=?")) {
                     p.setString(1, r.getString(8));
@@ -1170,8 +1212,10 @@ final class StockLedger {
                 else if (value.has("protected") && value.get("protected").getAsBoolean()) state = "PROTECTED";
                 else if (r.getInt(9) == 0) state = "WITHDRAWN";
                 else if (state.equals("FRESH") && !run.equals(r.getString(6))) state = "STALE_STARTUP";
-                else if (state.equals("FRESH") && (now < r.getLong(5) || now - r.getLong(5) >= maxAge))
+                else if (state.equals("FRESH") && (at < r.getLong(5) || at - r.getLong(5) >= maxAge))
                     state = "STALE_AGE";
+                else if (state.equals("MISSING") && at - r.getLong(5) >= MISSING_WITHDRAWN_AFTER_MS)
+                    state = "WITHDRAWN";
                 out.add(new Source(
                         r.getString(1), r.getString(2), value, r.getLong(4), r.getLong(5), state, r.getInt(7) > 1));
             }
@@ -1179,6 +1223,53 @@ final class StockLedger {
             throw new IOException("Cannot read physical sources", e);
         }
         return out;
+    }
+
+    /**
+     * Owner-approved "accept loss": a MISSING, UNREACHABLE or already WITHDRAWN
+     * source becomes a WITHDRAWN tombstone with zero quantities and an audit
+     * marker ({@code lossAccepted: {by, at}}), so one griefed container stops
+     * poisoning the row forever. Idempotent: accepting twice still succeeds.
+     * Returns false when the source is not lost.
+     */
+    synchronized boolean acceptLoss(String id, String by) throws IOException {
+        long now = clock.getAsLong();
+        try (var c = open();
+                var tx = new SqliteWriteTransaction(c)) {
+            JsonObject value;
+            long next;
+            try (var p = c.prepareStatement("SELECT payload FROM stock_sources WHERE id=?")) {
+                p.setString(1, id);
+                try (var rows = p.executeQuery()) {
+                    if (!rows.next()) return false;
+                    value = JsonParser.parseString(rows.getString(1)).getAsJsonObject();
+                }
+            }
+            String state = value.has("state") ? value.get("state").getAsString() : "";
+            if (!state.equals("MISSING") && !state.equals("UNREACHABLE") && !state.equals("WITHDRAWN")) return false;
+            value.addProperty("state", "WITHDRAWN");
+            value.add("items", new JsonArray());
+            value.add("shulkers", new JsonArray());
+            var accepted = new JsonObject();
+            accepted.addProperty("by", by);
+            accepted.addProperty("at", now);
+            value.add("lossAccepted", accepted);
+            next = Math.addExact(revision(c), 1);
+            try (var p = c.prepareStatement("UPDATE stock_sources SET payload=?,revision=? WHERE id=?")) {
+                p.setString(1, value.toString());
+                p.setLong(2, next);
+                p.setString(3, id);
+                p.executeUpdate();
+            }
+            try (var p = c.prepareStatement("UPDATE stock_meta SET revision=? WHERE id=1")) {
+                p.setLong(1, next);
+                p.executeUpdate();
+            }
+            tx.commit();
+            return true;
+        } catch (SQLException e) {
+            throw new IOException("Cannot record accepted loss", e);
+        }
     }
 
     JsonObject stagingManifest(String server, String stash, String order, String agent, int packages)

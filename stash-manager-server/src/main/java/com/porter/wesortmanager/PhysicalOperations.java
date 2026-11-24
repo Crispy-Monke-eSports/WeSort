@@ -175,6 +175,37 @@ final class PhysicalOperations {
         return false;
     }
 
+    /**
+     * Background expiry for silent agents: mark operations whose last heartbeat is past the
+     * silence threshold as needing reconciliation. Cheap early-exit when nothing is stale, so
+     * the periodic self-heal sweep can call it unconditionally instead of only when someone
+     * opens the operations view.
+     */
+    void sweepStale() throws IOException {
+        try (var c = ledger.open();
+                var q = c.prepareStatement("SELECT 1 FROM physical_operations WHERE state IN "
+                        + "('PLANNED','IN_PROGRESS','VERIFYING') AND (last_seen<=? OR last_seen>?) LIMIT 1")) {
+            long now = clock.getAsLong();
+            q.setLong(1, now - 15_000);
+            q.setLong(2, now);
+            try (var rows = q.executeQuery()) {
+                if (!rows.next()) return;
+            }
+            try (var tx = c.createStatement()) {
+                tx.execute("BEGIN IMMEDIATE");
+                try {
+                    expire(c);
+                    tx.execute("COMMIT");
+                } catch (SQLException failure) {
+                    tx.execute("ROLLBACK");
+                    throw failure;
+                }
+            }
+        } catch (SQLException failure) {
+            throw new IOException("Cannot expire silent physical operations", failure);
+        }
+    }
+
     private void expire(Connection c) throws SQLException {
         try (var p = c.prepareStatement(
                 "UPDATE physical_operations SET state='NEEDS_RECONCILIATION',fence_revision=revision WHERE state IN "

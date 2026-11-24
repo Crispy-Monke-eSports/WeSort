@@ -2,7 +2,7 @@
 
 W-018 (#19), W-019 (#20), W-020 (#21) och W-021 (#22) är implementerade.
 W-022–W-024 återstår.
-Aktuell klientpolicy är endast Minecraft 26.3 med Java 25; Manager kör Java 21.
+Aktuell klientpolicy är endast Minecraft 26.3 med Java 25; Manager kör också Java 25.
 Äldre klienttargets som nämns i tidigare verifieringar är historik från före versionsavvecklingen. Arbetet
 ligger direkt på main och varje issue får en egen commit som pushas innan
 nästa påbörjas. GitHubs checklistor och issuestatusar ändras inte.

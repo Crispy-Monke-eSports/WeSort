@@ -54,7 +54,7 @@ fortsatt en säker 16px-platshållare i stället för felaktiga texturer;
 riktiga spelrenderade ikoner har storleken 64px.
 
 Recept och Creative Tabs kan inte genereras av enbart arkivläsning
-i Manager (Java 21): det befintliga 26.3-exportflödet använder
+i Manager (Java 25): det befintliga 26.3-exportflödet använder
 en aktiv Minecraft-klient på Java 25, bundna registries och receptcodec.
 Genererade 26.3-JSON förblir därför separata resurser tills ett
 verifierat klient-till-Manager-metadataflöde utvecklats.
@@ -94,7 +94,7 @@ Lokalt underlag: [resurser](verification/W-017-metadata.json),
 [scan/ikoner/fönster](verification/W-017-assets.json),
 [webb-DOM](verification/W-017-web.json) och
 [inventory/omstartsregression efter typbevarande kodning](verification/W-017-inventory-regression.json). Lokala rapporter föregår issue-
-committen; source_commit/dirty_worktree beskriver det. Den fristående Java-21-Managern kan inte återskapa den kreativa katalogen eller
+committen; source_commit/dirty_worktree beskriver det. Den fristående Managern kan inte återskapa den kreativa katalogen eller
 recepttabellen enbart från klient-JAR-arkivet. De genereras med en verklig
 Minecraft 26.3-klient (Java 25), inlästa registries och receptcodec i
 `src/26.3/java/com/porter/wesort/compat/MetadataExport.java` och

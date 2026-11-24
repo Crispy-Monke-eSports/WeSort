@@ -3,7 +3,7 @@
 **Supportpolicy:** Endast Minecraft **26.3** stöds och testas som klienttarget.
 1.21.4/1.21.11 är historiska upstream-baslinjer, inte CI-mål. Minecraft-klienten
 använder låst **Temurin 25.0.5+8**, Gradle och Fabric/Meteor/Baritone-versioner
-från projektets versionsfiler. Manager bygger separat med **Java 21**,
+från projektets versionsfiler. Manager bygger separat med **Java 25.0.5+8**,
 React-storefronten byggs med **Bun 1** (`web/`: tsc, Vitest, Vite) före
 Manager-jar:en, och webbtester använder **Node.js 22**.
 
@@ -63,6 +63,29 @@ verifieras. CI publicerar **inte** testimagen till GHCR.
 - Jämför faktisk kötid, runner-minuter, cacheträffar och artifact-överföring
   med tidigare körningar innan någon prestandavinst påstås vara uppmätt.
 
+## Java 25-migrationskontroller
+
+Formatjobbet kör `python3 scripts/check-java-versions.py` för att kontrollera
+att klientens och Managers versionsfiler, Gradle-targets, CI:s JDK-versioner
+och Docker-taggar med låsta digests är synkroniserade. Vid en avsiktlig
+Java-patchuppdatering ändras pinnarna tillsammans.
+
+Manager-testprocesserna kör med `--illegal-native-access=deny` och explicit
+JNI-behörighet. Det direkta JAR-isoleringsprovet använder också strikt
+native access, men utan en separat tillåtelseflagga: manifestet i den
+körbara JAR:en måste räcka för SQLite JDBC.
+
+Manager-jobbet sparar `jdeps.txt` och `jdeprscan.txt` i
+`stash-manager-server/build/evidence/`, inklusive verktygens exitstatus.
+Granska träffar på interna API:er och borttagningsmarkerade API:er, även
+i de inpackade biblioteken. Skanningarna är rapporterande eftersom fat
+JAR:en även innehåller tredjepartsbibliotek med valfria beroenden.
+
+Docker-smoke-rapporten innehåller en Java 25-baslinje för färsk uppstart,
+API-latens, RSS, CPU, containerminne och uppskattad maximal heap.
+Måtten är diagnostiska, inte pass/fail-gränser; jämför likvärdiga
+körningar med samma workload och resursgräns innan prestandapåståenden.
+
 ## Lokal verifiering
 
 ```sh
@@ -71,12 +94,12 @@ verifieras. CI publicerar **inte** testimagen till GHCR.
 python3 scripts/test-summary.py build
 python3 scripts/mc26/client-runtime.py
 
-# JAVA_HOME: Temurin 21 för separat Manager
+# Samma JAVA_HOME: Temurin 25.0.5+8 för separat Manager
 ./gradlew --no-daemon -p stash-manager-server clean build
 python3 scripts/test-summary.py stash-manager-server/build
 npm ci --prefix web-tests && npm test --prefix web-tests
 ```
 
-Root-`.java-version` motsvarar Minecraft-klientens Java 25; Manager-workflowet
-väljer Java 21. Lokal verifiering ersätter inte GitHub Actions E2E-körningar.
+Root-`.java-version` och `stash-manager-server/.java-version` anger samma
+Temurin 25.0.5+8; båda byggena och CI använder Java 25. Lokal verifiering ersätter inte GitHub Actions E2E-körningar.
 De tidigare 1.21.x-resultaten finns i [historisk baslinje](BASELINE.md).

@@ -1,12 +1,12 @@
 # Web architecture: Java backend + React + MUI operations dashboard
 
-Single-container deployment. One Java 21 runtime process (`wesort-manager.jar`)
+Single-container deployment. One Java 25 runtime process (`wesort-manager.jar`)
 serves the API and the compiled React single-page app from its `/web` classpath
 folder. No Node.js or Bun process is required at runtime.
 
 ## Backend (authoritative)
 
-`stash-manager-server/` (Java 21, Gradle, SQLite) keeps the Manager HTTP server,
+`stash-manager-server/` (Java 25, Gradle, SQLite) keeps the Manager HTTP server,
 authentication/sessions, permissions, Minecraft bot integrations, inventory
 indexing, orders and reservations. Business rules — order validation,
 availability, reservations, delivery stages — stay in Java; the frontend only
@@ -87,7 +87,7 @@ bundle has no inline code).
 
 ## Local development
 
-Prerequisites: Java 21, Bun 1+, Node 22 (Playwright).
+Prerequisites: Java 25, Bun 1+, Node 22 (Playwright).
 
 ```bash
 ./gradlew --no-daemon -p stash-manager-server build   # backend + tests

@@ -233,13 +233,13 @@ final class PhysicalOperations {
      * the periodic self-heal sweep can call it unconditionally instead of only when someone
      * opens the operations view.
      */
-    void sweepStale() throws IOException {
+    synchronized void sweepStale() throws IOException {
         try (var c = ledger.open();
                 var q = c.prepareStatement("SELECT 1 FROM physical_operations WHERE state IN "
                         + "('PLANNED','IN_PROGRESS','VERIFYING') AND (last_seen<=? OR last_seen>?) LIMIT 1")) {
             long now = clock.getAsLong();
             q.setLong(1, now - 15_000);
-            q.setLong(2, now);
+            q.setLong(2, now + FUTURE_SKEW_MS);
             try (var rows = q.executeQuery()) {
                 if (!rows.next()) return;
             }
@@ -267,26 +267,6 @@ final class PhysicalOperations {
             // timestamp beyond the skew budget fences the operation.
             p.setLong(2, clock.getAsLong() + FUTURE_SKEW_MS);
             p.executeUpdate();
-        }
-    }
-
-    /**
-     * Expiry without a read: lets the order sweep fence silent operations even when nobody
-     * opens the operations view (whose list() is the only other expire trigger).
-     */
-    synchronized void sweepStale() throws IOException {
-        try (var c = ledger.open();
-                var tx = c.createStatement()) {
-            tx.execute("BEGIN IMMEDIATE");
-            try {
-                expire(c);
-                tx.execute("COMMIT");
-            } catch (Exception failure) {
-                tx.execute("ROLLBACK");
-                throw failure;
-            }
-        } catch (SQLException failure) {
-            throw new IOException("Cannot expire silent physical operations", failure);
         }
     }
 

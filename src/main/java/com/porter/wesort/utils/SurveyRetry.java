@@ -31,9 +31,13 @@ public final class SurveyRetry<K> {
      * @return the ticks until it is tried again
      */
     public int fail(K key, int now) {
+        return fail(key, now, 0);
+    }
+
+    private int fail(K key, int now, int minimumDelay) {
         Entry entry = entries.computeIfAbsent(key, k -> new Entry());
         entry.fails++;
-        int delay = delayFor(entry.fails);
+        int delay = Math.max(minimumDelay, delayFor(entry.fails));
         entry.due = now + delay;
         entry.waiting = true;
         return delay;
@@ -45,8 +49,13 @@ public final class SurveyRetry<K> {
      * @return the ticks until it is tried again, or -1 when it was already waiting
      */
     public int failOnce(K key, int now) {
+        return failOnce(key, now, 0);
+    }
+
+    /** A caller may impose a longer minimum without changing the retry backoff contract. */
+    public int failOnce(K key, int now, int minimumDelay) {
         if (waiting(key, now)) return -1;
-        return fail(key, now);
+        return fail(key, now, minimumDelay);
     }
 
     /** Whether the key failed and its time has not come. */

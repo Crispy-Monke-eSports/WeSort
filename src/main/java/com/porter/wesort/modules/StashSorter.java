@@ -880,6 +880,9 @@ public class StashSorter extends Module {
     private final Set<Box> staleBoxes = new LinkedHashSet<>();
     private final Map<Box, Long> surveyAttemptAt = new HashMap<>();
     private final Queue<Box> surveyBatch = new ArrayDeque<>();
+    // Explicit rescans (including Manager revision conflicts) need new receipts,
+    // not a five-minute wait on observations from an obsolete index.
+    private final Set<Box> forcedSurvey = new HashSet<>();
     private long nextIdleSurveyAt, nextBackgroundBatchAt;
     // Jobs that opened a container and clicked nothing, with what the carry slots and the container held then: not
     // repeated until one of them changes, however often stalled is cleared meanwhile
@@ -2878,6 +2881,7 @@ public class StashSorter extends Module {
 
     private boolean surveyDue(Box box, long now) {
         if (!readableBox(box)) return false;
+        if (forcedSurvey.contains(box)) return true;
         // A fresh receipt for an already-started physical operation is not
         // routine polling. Waiting five minutes here could expire the journal.
         if (awaitingRepackStorage() && box.stale && box.lastRead < repackStoreAt) return true;
@@ -2899,6 +2903,7 @@ public class StashSorter extends Module {
         surveyBatch.removeIf(box -> !stash.boxes.contains(box) || !surveyDue(box, now) || box.known() && !box.stale);
         if (!surveyBatch.isEmpty()) return true;
         surveyAttemptAt.keySet().retainAll(stash.boxes);
+        forcedSurvey.retainAll(stash.boxes);
         dropBackoffUntil.keySet().retainAll(stash.boxes);
         var candidates = stash.boxes.stream()
                 .filter(box -> surveyCandidate(box, now, periodic) && (!nearbyOnly || inReach(box)))
@@ -2928,6 +2933,7 @@ public class StashSorter extends Module {
         }
         if (selected == null) return false;
         surveyBatch.remove(selected);
+        forcedSurvey.remove(selected); // consume once, even if the read fails
         // A continuously busy stash still gets background batches, but the
         // next periodic batch leaves a window for ordinary work.
         if (surveyBatch.isEmpty()) nextBackgroundBatchAt = now + 30_000L;
@@ -7543,9 +7549,11 @@ public class StashSorter extends Module {
     int rescan() {
         if (ensureStash() == null) return -1;
         int count = 0;
+        surveyBatch.clear();
         for (Box box : stash.boxes) {
-            if (box.excluded) continue;
+            if (box.excluded || box.foreign) continue;
             box.stale = true;
+            forcedSurvey.add(box);
             // Only readable containers are counted: unreachable and failed-survey ones
             // would inflate the "re-reading N" count without any subsequent reads.
             if (readableBox(box)) count++;
@@ -10911,6 +10919,7 @@ public class StashSorter extends Module {
         deliveryWatch.clear();
         staleBoxes.clear();
         surveyBatch.clear();
+        forcedSurvey.clear();
         nextIdleSurveyAt = nextBackgroundBatchAt = 0;
         futile.clear();
         noOpReported.clear();
@@ -12947,6 +12956,7 @@ public class StashSorter extends Module {
             ownTouch.clear();
             surveyAttemptAt.clear();
             surveyBatch.clear();
+            forcedSurvey.clear();
             nextIdleSurveyAt = nextBackgroundBatchAt = 0;
             dropBackoffUntil.clear();
             staleBoxes.clear();
@@ -13164,7 +13174,10 @@ public class StashSorter extends Module {
         box.stale = false;
         box.unreachable = false;
         com.porter.wesort.compat.ObservationRuntime.record(box);
-        if (!box.stale) dropChecked(box, differs);
+        if (!box.stale) {
+            forcedSurvey.remove(box);
+            dropChecked(box, differs);
+        }
         stash.markDirty();
         if (differs && !box.stale && actions == 0) {
             version++;

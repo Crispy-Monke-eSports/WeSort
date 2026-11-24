@@ -324,22 +324,14 @@ class StockHierarchyTest {
         assertTrue(OrderStage.AWAITING_CUSTOMER.allows(OrderStage.DELIVERED));
     }
 
-    @Test
-    void verifiedWarehouseHandoffStopsAtPickupReady() throws Exception {
-        var ledger = new StockLedger(data);
-        var store = new IndexStore(data, CreativeTabs.NONE, ledger);
-        store.load();
-        store.putIndex(index(ledger, 32));
-        var orders = new OrderStore(data, store);
-        var order = orders.place("s", "a", List.of(new OrderStore.Line("shulker", "kit", 1)), null);
-        String agent = UUID.randomUUID().toString();
-        assertNotNull(orders.claimPayload("s", "a", agent));
+    private com.porter.wesort.inventory.PhysicalJournal stagedReceipt(StockLedger ledger, String orderId, String agent)
+            throws Exception {
         var journal = new com.porter.wesort.inventory.PhysicalJournal(data.resolve("fixture-agent"));
         var context = JsonParser.parseString("""
             {"server":"s","dimension":"minecraft:overworld","kind":"DIRECT","execution":"STAGE_PACKAGE"}
             """).getAsJsonObject();
         context.addProperty("agent", agent);
-        context.addProperty("orderId", order.id);
+        context.addProperty("orderId", orderId);
         context.addProperty("stash", "a");
         journal.start(context);
         var evidence = JsonParser.parseString("""
@@ -360,6 +352,20 @@ class StockHierarchyTest {
         journal.verified(evidence.getAsJsonObject("expected"), false);
         journal.complete();
         new PhysicalOperations(ledger).accept(agent, journal.current());
+        return journal;
+    }
+
+    @Test
+    void verifiedWarehouseHandoffStopsAtPickupReady() throws Exception {
+        var ledger = new StockLedger(data);
+        var store = new IndexStore(data, CreativeTabs.NONE, ledger);
+        store.load();
+        store.putIndex(index(ledger, 32));
+        var orders = new OrderStore(data, store);
+        var order = orders.place("s", "a", List.of(new OrderStore.Line("shulker", "kit", 1)), null);
+        String agent = UUID.randomUUID().toString();
+        assertNotNull(orders.claimPayload("s", "a", agent));
+        var journal = stagedReceipt(ledger, order.id, agent);
         var result = new JsonObject();
         result.addProperty("shulkers", 1);
         result.add("lines", JsonParser.parseString("[{\"key\":\"kit\",\"delivered\":1}]"));
@@ -417,6 +423,68 @@ class StockHierarchyTest {
                 reloaded.acknowledgeManifest(order.id, scope, hash));
         assertEquals(0, orders.clearFinished("s", "a"));
         assertThrows(OrderStore.OrderException.class, () -> orders.cancel(order.id));
+    }
+
+    @Test
+    void malformedCompletionEntersRecoveryAndCannotBeReopenedByLateProof() throws Exception {
+        var ledger = new StockLedger(data);
+        var store = new IndexStore(data, CreativeTabs.NONE, ledger);
+        store.load();
+        store.putIndex(index(ledger, 32));
+        var orders = new OrderStore(data, store);
+        var order = orders.place("s", "a", List.of(new OrderStore.Line("shulker", "kit", 1)), null);
+        String agent = UUID.randomUUID().toString();
+        assertNotNull(orders.claimPayload("s", "a", agent));
+        stagedReceipt(ledger, order.id, agent);
+        var result = JsonParser.parseString("""
+            {"shulkers":1.5,"lines":[{"key":"kit","delivered":1}]}
+            """).getAsJsonObject();
+        var recovery = orders.status(order.id, "delivered", null, null, null, result, agent, "bad-count");
+        assertEquals(OrderStage.RECOVERING, recovery.stage());
+        assertNull(recovery.manifest);
+        result.addProperty("shulkers", 1);
+        var late = orders.status(order.id, "delivered", null, null, null, result, agent, "late-completion");
+        assertEquals(OrderStage.RECOVERING, late.stage());
+        assertNull(late.manifest);
+        assertFalse(orders.heldRoots("s").isEmpty());
+    }
+
+    @Test
+    void cancelledPackingCannotBeMarkedPackedByLateCompletion() throws Exception {
+        var ledger = new StockLedger(data);
+        var store = new IndexStore(data, CreativeTabs.NONE, ledger);
+        store.load();
+        store.putIndex(index(ledger, 32));
+        var orders = new OrderStore(data, store);
+        var order = orders.place("s", "a", List.of(new OrderStore.Line("shulker", "kit", 1)), null);
+        String agent = UUID.randomUUID().toString();
+        assertNotNull(orders.claimPayload("s", "a", agent));
+        stagedReceipt(ledger, order.id, agent);
+        orders.cancel(order.id);
+        var result = JsonParser.parseString("""
+            {"shulkers":1,"lines":[{"key":"kit","delivered":1}]}
+            """).getAsJsonObject();
+        var recovery = orders.status(order.id, "delivered", null, null, null, result, agent, "late-completion");
+        assertEquals(OrderStage.RECOVERING, recovery.stage());
+        assertNull(recovery.manifest);
+        assertFalse(orders.heldRoots("s").isEmpty());
+    }
+
+    @Test
+    void malformedLineCountsNeverBecomeSuccessfulPackingReceipts() {
+        var lines = List.of(new OrderStore.Line("shulker", "kit", 2));
+        for (String invalid : List.of("2.5", "18446744073709551618", "\"2\"", "null", "true", "{}", "[]")) {
+            var result = JsonParser.parseString("{\"lines\":[{\"key\":\"kit\",\"delivered\":" + invalid + "}]}")
+                    .getAsJsonObject();
+            assertFalse(OrderStore.allLinesStaged(lines, result), invalid);
+        }
+        for (String invalid : List.of("null", "2", "{}", "{\"key\":\"kit\"}")) {
+            var result = JsonParser.parseString("{\"lines\":[" + invalid + "]}").getAsJsonObject();
+            assertFalse(OrderStore.allLinesStaged(lines, result), invalid);
+        }
+        var valid = JsonParser.parseString("{\"lines\":[{\"key\":\"kit\",\"delivered\":2}]}")
+                .getAsJsonObject();
+        assertTrue(OrderStore.allLinesStaged(lines, valid));
     }
 
     @Test

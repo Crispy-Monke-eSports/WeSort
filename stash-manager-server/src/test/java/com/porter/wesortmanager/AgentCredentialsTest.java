@@ -49,6 +49,34 @@ class AgentCredentialsTest {
     }
 
     @Test
+    void rotationDoesNotExhaustTheCredentialRegistry() throws Exception {
+        AgentCredentials credentials = new AgentCredentials(data);
+        var revokedIds = new java.util.ArrayList<String>();
+        for (int i = 0; i < 70; i++) {
+            String token = credentials.issue("agent");
+            String id = token.substring(0, token.indexOf('.'));
+            assertTrue(credentials.revoke(id));
+            revokedIds.add(id);
+        }
+        String token = credentials.issue("replacement");
+        String activeId = token.substring(0, token.indexOf('.'));
+        AgentCredentials restarted = new AgentCredentials(data);
+        assertNotNull(restarted.find(activeId));
+        assertTrue(restarted.all().size() <= 64);
+        for (String revokedId : revokedIds) assertEquals(null, restarted.find(revokedId));
+    }
+
+    @Test
+    void legacyCredentialFormatsFailClosed() throws Exception {
+        for (int version : new int[] {1, 2}) {
+            Files.writeString(
+                    data.resolve("agent-credentials.json"),
+                    "{\"version\":" + version + ",\"scopedOnly\":false,\"agents\":[]}");
+            assertThrows(IOException.class, () -> new AgentCredentials(data));
+        }
+    }
+
+    @Test
     void failedIssueCannotCreateAnInMemoryOnlyAgent() throws Exception {
         AgentCredentials credentials = new AgentCredentials(data);
         Path file = data.resolve("agent-credentials.json");

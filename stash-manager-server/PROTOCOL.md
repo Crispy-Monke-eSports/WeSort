@@ -438,6 +438,11 @@ blind restart of an uncertain physical step is impossible. `pause`,
 `resume` and `revoke` round out the controls. Owner `GET /api/v1/jobs`
 shows the queue ordered by state, priority and age.
 
+Lease expiry uses elapsed monotonic time. Restarting Manager or revoking a held
+job fences both claimed and paused work in `NEEDS_RECONCILIATION`. The old
+token cannot renew, resume or complete it. The incident and its cause persist
+across subsequent restarts; the single work slot stays occupied until reconciliation.
+
 ## W-039 player handoff
 
 A package handed to a player at a registered meeting place is tracked

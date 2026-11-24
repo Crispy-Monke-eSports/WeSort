@@ -34,16 +34,29 @@ final class JobScheduler {
     private static final int SCHEMA = 1;
     private final Path file;
     private final LongSupplier clock;
+    private final LongSupplier leaseClock;
     private final Map<String, Entry> jobs = new LinkedHashMap<>();
 
     private record Entry(Job job, long deadline, String token, JsonArray events) {}
 
     JobScheduler(Path data) throws IOException {
-        this(data, System::currentTimeMillis);
+        this(data, System::currentTimeMillis, monotonicMillis());
+    }
+
+    /** Keep lease deadlines comparable to epoch milliseconds while measuring elapsed time monotonically. */
+    private static LongSupplier monotonicMillis() {
+        long wall = System.currentTimeMillis();
+        long start = System.nanoTime();
+        return () -> wall + java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
     }
 
     JobScheduler(Path data, LongSupplier clock) throws IOException {
+        this(data, clock, clock);
+    }
+
+    JobScheduler(Path data, LongSupplier clock, LongSupplier leaseClock) throws IOException {
         this.clock = clock;
+        this.leaseClock = leaseClock;
         this.file = data.resolve("jobs.json");
         if (Files.isSymbolicLink(file)) throw new IOException("Invalid job scheduler location");
         if (!Files.exists(file)) return;
@@ -66,9 +79,8 @@ final class JobScheduler {
         } catch (RuntimeException invalid) {
             throw new IOException("Cannot read job scheduler", invalid);
         }
-        // W-044: a restart never blindly resumes an uncertain physical step — any lease that lapsed while the
-        // Manager was down is marked for reconciliation before the first claim.
-        expire();
+        // The old process can no longer vouch for any outstanding physical lease.
+        fenceLeases(true);
     }
 
     synchronized Job submit(Job.Category category, String chain, String detail, int priority, String by)
@@ -105,7 +117,7 @@ final class JobScheduler {
         }
         var claimed = candidate.advance(Job.State.CLAIMED, agent);
         String token = UUID.randomUUID().toString();
-        long deadline = clock.getAsLong() + TTL;
+        long deadline = leaseClock.getAsLong() + TTL;
         var events = jobs.get(candidate.id()).events().deepCopy();
         events.add(event("claimed", agent));
         commit(candidate.id(), new Entry(claimed, deadline, token, events));
@@ -119,7 +131,7 @@ final class JobScheduler {
         expire();
         var entry = held(jobId, agent);
         if (!entry.token().equals(token)) throw new Conflict("Lease token mismatch");
-        long deadline = clock.getAsLong() + TTL;
+        long deadline = leaseClock.getAsLong() + TTL;
         var events = entry.events().deepCopy();
         events.add(event("renewed", agent));
         commit(jobId, new Entry(entry.job(), deadline, token, events));
@@ -155,7 +167,13 @@ final class JobScheduler {
 
     synchronized Job revoke(String jobId, String by) throws IOException {
         var entry = require(jobId);
+        if (entry.job().state() == Job.State.NEEDS_RECONCILIATION) return entry.job();
         if (entry.job().terminal()) throw new Conflict("A terminal job cannot be revoked");
+        if (entry.job().held()) {
+            var uncertain = fenced(entry, "revoked_while_held", by);
+            commit(jobId, uncertain);
+            return uncertain.job();
+        }
         return advanceTo(jobId, entry, entry.job().advance(Job.State.REVOKED, by), "revoked", by);
     }
 
@@ -222,18 +240,24 @@ final class JobScheduler {
 
     /** Lapses any held job whose lease has run out into NEEDS_RECONCILIATION (never a blind reassignment). */
     private void expire() throws IOException {
-        long now = clock.getAsLong();
+        fenceLeases(false);
+    }
+
+    private Entry fenced(Entry e, String reason, String by) {
+        var events = e.events().deepCopy();
+        events.add(event(reason, by));
+        return new Entry(e.job().advance(Job.State.NEEDS_RECONCILIATION, null), 0, null, events);
+    }
+
+    private void fenceLeases(boolean restart) throws IOException {
+        long now = leaseClock.getAsLong();
         boolean changed = false;
         var updated = new LinkedHashMap<>(jobs);
         for (var entry : jobs.entrySet()) {
             var e = entry.getValue();
             var j = e.job();
-            if (j.held() && e.deadline() > 0 && now >= e.deadline()) {
-                var events = e.events().deepCopy();
-                events.add(event("expired", j.agent()));
-                updated.put(
-                        entry.getKey(),
-                        new Entry(j.advance(Job.State.NEEDS_RECONCILIATION, null), 0, e.token(), events));
+            if (j.held() && (restart || now >= e.deadline())) {
+                updated.put(entry.getKey(), fenced(e, restart ? "manager_restart" : "expired", j.agent()));
                 changed = true;
             }
         }

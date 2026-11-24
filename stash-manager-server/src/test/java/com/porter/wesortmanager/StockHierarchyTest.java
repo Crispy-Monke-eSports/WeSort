@@ -362,6 +362,7 @@ class StockHierarchyTest {
         store.load();
         store.putIndex(index(ledger, 32));
         var orders = new OrderStore(data, store);
+        orders.load();
         var order = orders.place("s", "a", List.of(new OrderStore.Line("shulker", "kit", 1)), null);
         String agent = UUID.randomUUID().toString();
         assertNotNull(orders.claimPayload("s", "a", agent));
@@ -432,6 +433,7 @@ class StockHierarchyTest {
         store.load();
         store.putIndex(index(ledger, 32));
         var orders = new OrderStore(data, store);
+        orders.load();
         var order = orders.place("s", "a", List.of(new OrderStore.Line("shulker", "kit", 1)), null);
         String agent = UUID.randomUUID().toString();
         assertNotNull(orders.claimPayload("s", "a", agent));
@@ -456,6 +458,7 @@ class StockHierarchyTest {
         store.load();
         store.putIndex(index(ledger, 32));
         var orders = new OrderStore(data, store);
+        orders.load();
         var order = orders.place("s", "a", List.of(new OrderStore.Line("shulker", "kit", 1)), null);
         String agent = UUID.randomUUID().toString();
         assertNotNull(orders.claimPayload("s", "a", agent));

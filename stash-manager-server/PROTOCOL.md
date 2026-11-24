@@ -322,6 +322,12 @@ and history. Registration is idempotent and atomic inside the physical
 observation transaction; two identical nameless boxes stay position- and
 fingerprint-identified and are never assigned the same UUID.
 
+An invalid `WeSort-` label, a UUID outside its registered slot, or the same UUID
+observed at multiple active locations quarantines the affected boxes and their
+contents. They remain visible as observed stock. New reservations, offline
+allocations and previously issued allocations checked at claim all use this
+rule. Plain personal labels and unnamed boxes retain slot-based allocation.
+
 Owner `POST /api/v1/boxes/jobs` starts a `REGISTER_BOX` or `RETURN_INTAKE`
 job for a verified, unprotected, still-unreserved root shulker slot
 (`server`, `stash`, `source`, `path`, `kind`). The Manager mints a fresh

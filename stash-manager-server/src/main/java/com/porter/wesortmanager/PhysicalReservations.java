@@ -53,6 +53,7 @@ final class PhysicalReservations {
     }
 
     static PhysicalReservations read(StockLedger ledger, String server, String stash) throws IOException {
+        var quarantined = ledger.quarantinedBoxes(server);
         var candidates = new ArrayList<Candidate>();
         var sources = new LinkedHashMap<String, StockLedger.Source>();
         for (var source : ledger.sources()) {
@@ -77,6 +78,8 @@ final class PhysicalReservations {
             for (var slot : ledger.physicalSlots(id)) {
                 if (!slot.get("present").getAsBoolean()) continue;
                 String path = slot.get("path").getAsString();
+                int nested = path.indexOf('/');
+                boolean safe = !quarantined.contains(new Root(id, nested < 0 ? path : path.substring(0, nested)));
                 String group = slot.get("group").getAsString();
                 boolean whole = slot.get("kind").getAsString().equals("SHULKER") && !group.isEmpty();
                 if (whole && path.contains("/")) continue;
@@ -90,8 +93,8 @@ final class PhysicalReservations {
                                 slot.get("copies").getAsLong()),
                         slot.get("fingerprint").getAsString(),
                         slot.get("revision").getAsLong(),
-                        fresh,
-                        queueable));
+                        safe && fresh,
+                        safe && queueable));
             }
         }
         return new PhysicalReservations(List.copyOf(candidates), Map.copyOf(sources));

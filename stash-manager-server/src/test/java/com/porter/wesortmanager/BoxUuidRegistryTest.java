@@ -140,6 +140,24 @@ class BoxUuidRegistryTest {
     }
 
     @Test
+    void ambiguousAndMalformedBoxLabelsFenceWholeBoxesAndTheirContents() throws Exception {
+        var ledger = new StockLedger(data);
+        ledger.accept(indexes(ledger, new String[] {"WeSort-" + V4}, new int[] {0}));
+        var first = PhysicalReservations.read(ledger, "s", "a");
+        var allocation = first.allocate(List.of(new OrderStore.Line("shulker", "kit", 1)), Set.of(), Map.of());
+        assertTrue(first.matches(allocation));
+        ledger.accept(
+                indexes(ledger, new String[] {"WeSort-" + V4, "WeSort-" + V4, "WeSort-invalid"}, new int[] {0, 1, 2}));
+        var blocked = PhysicalReservations.read(ledger, "s", "a");
+        assertFalse(blocked.matches(allocation));
+        assertTrue(blocked.available(Set.of()).isEmpty());
+        assertTrue(blocked.available(Set.of(), null, true).isEmpty());
+        ledger.accept(indexes(ledger, new String[] {"WeSort-" + V4, null, "Personal box"}, new int[] {0, 1, 2}));
+        var resolved = PhysicalReservations.read(ledger, "s", "a");
+        assertEquals(64L, resolved.available(Set.of()).get("item:minecraft:diamond"));
+    }
+
+    @Test
     void deregisteredUuidMovesToHistoryAndIsRegisteredAgainWhenSeen() throws Exception {
         var ledger = new StockLedger(data);
         var index = indexes(ledger, new String[] {"WeSort-" + V4}, new int[] {0});

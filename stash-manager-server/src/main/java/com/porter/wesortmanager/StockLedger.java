@@ -923,6 +923,54 @@ final class StockLedger {
         }
     }
 
+    /** UUIDs are installation-wide; evidence in another stash can invalidate both apparent copies. */
+    synchronized Set<PhysicalReservations.Root> quarantinedBoxes(String server) throws IOException {
+        var unsafe = new HashSet<PhysicalReservations.Root>();
+        var registered = new HashMap<String, PhysicalReservations.Root>();
+        var seen = new HashMap<String, PhysicalReservations.Root>();
+        try (var c = open();
+                var registry = c.prepareStatement("SELECT uuid,source,path FROM box_uuids WHERE server=?");
+                var slots = c.prepareStatement("""
+                    SELECT p.source,p.path,json_extract(p.payload,'$.components'),p.count
+                    FROM physical_slots p JOIN stock_sources s ON s.id=p.source
+                    WHERE s.server=? AND p.present=1 AND instr(p.path,'/')=0
+                    AND json_extract(p.payload,'$.kind')='SHULKER'
+                    AND EXISTS (SELECT 1 FROM stock_members m WHERE m.source=p.source AND m.present=1)
+                    """)) {
+            registry.setString(1, server);
+            try (var rows = registry.executeQuery()) {
+                while (rows.next())
+                    registered.put(
+                            rows.getString(1), new PhysicalReservations.Root(rows.getString(2), rows.getString(3)));
+            }
+            slots.setString(1, server);
+            try (var rows = slots.executeQuery()) {
+                while (rows.next()) {
+                    String name = ShulkerUuid.customName(rows.getString(3));
+                    if (name == null
+                            || !name.strip().regionMatches(true, 0, ShulkerUuid.PREFIX, 0, ShulkerUuid.PREFIX.length()))
+                        continue;
+                    var root = new PhysicalReservations.Root(rows.getString(1), rows.getString(2));
+                    UUID uuid = ShulkerUuid.parse(name);
+                    if (uuid == null) {
+                        unsafe.add(root);
+                        continue;
+                    }
+                    String key = uuid.toString();
+                    var other = seen.putIfAbsent(key, root);
+                    if (other != null) {
+                        unsafe.add(other);
+                        unsafe.add(root);
+                    }
+                    if (rows.getLong(4) != 1 || !root.equals(registered.get(key))) unsafe.add(root);
+                }
+            }
+        } catch (SQLException failure) {
+            throw new IOException("Cannot check physical box identities", failure);
+        }
+        return unsafe;
+    }
+
     /** The identity of each root-level shulker box in a source, derived from its server-observed name and the registry. */
     synchronized JsonArray boxIdentities(String source) throws IOException {
         var out = new JsonArray();

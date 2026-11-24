@@ -913,6 +913,10 @@ public class StashSorter extends Module {
     private com.porter.wesort.inventory.PhysicalWork repackWork;
     private ItemStack repackOuter = ItemStack.EMPTY;
     private String repackExpected = "";
+    private long repackBlockedProof = -1;
+    private String repackConflict = "";
+    private String lastRepackAlert = "";
+    private long lastRepackAlertAt;
     private Map<String, Long> repackConservation;
     private final Map<String, Integer> repackStoreBefore = new HashMap<>();
     private long repackStoreAt;
@@ -1722,11 +1726,14 @@ public class StashSorter extends Module {
         // What was carried from the stash before the last stop is carried again, before the slots are chosen
         ensureStash();
         restoreHeld();
+        startupDepositPending = StashManager.ownsClient() && !user;
+        startupDump = false;
+        startupStock.clear();
 
         // A recovered world shulker may still be in our inventory after a stop. Restore
         // its carry slot even if warehouse orders are disabled, so it is deposited.
         if (sorting()) {
-            if (!pickCarrySlots()) {
+            if (!pickCarrySlots(!startupDepositPending)) {
                 turnOff();
                 return;
             }
@@ -1754,6 +1761,7 @@ public class StashSorter extends Module {
 
         // A shulker step that was under way is finished first
         pendingResume = stash.inFlight;
+        repackConflict = pendingResume == null ? "" : pendingResume.repackConflict;
         if (pendingResume != null && pendingResume.placed != null) {
             info(
                     "A shulker step was under way at %s when I stopped, finishing it first.",
@@ -1910,6 +1918,8 @@ public class StashSorter extends Module {
             xpSwapped = false;
         }
         xpPending = false;
+        xpThrowQueued = false;
+        xpAttempt++;
         xpMoveTo = -1;
         uuidNaming = false;
         uuidTarget = null;
@@ -2009,6 +2019,9 @@ public class StashSorter extends Module {
     /**
      * Works out which slots to carry stash items in, from the settings or, by default, every empty slot.
      */
+    private boolean startupDepositPending, startupDump;
+    private final Map<Integer, ItemStack> startupStock = new LinkedHashMap<>();
+
     private boolean pickCarrySlots() {
         return pickCarrySlots(true);
     }
@@ -2080,6 +2093,11 @@ public class StashSorter extends Module {
         if (repackWork != null && !repackWork.terminal()) {
             if (InventorySync.failed()) blockRepack("Physical readback failed: " + InventorySync.reason());
             else if (repackWork.expired(System.nanoTime())) blockRepack("Physical phase deadline expired");
+        }
+        if (!repackConflict.isEmpty()) {
+            ledgeGuard(false);
+            gateLogThrottled("operator attention: " + repackConflict);
+            return;
         }
         // A resume or STORE wait makes no progress behind the recovery gates (the tick
         // counters freeze there), so it is watched on the wall clock: after ten minutes
@@ -2214,7 +2232,7 @@ public class StashSorter extends Module {
             else if (!sorting() && !ordersWanted() && stashHeld.isEmpty() && orderHeld.isEmpty() && !carry.isEmpty())
                 carry.clear();
             // Scan-only was switched off: there are carry slots to find now
-            if (sorting() && carry.isEmpty()) {
+            if (sorting() && carry.isEmpty() && !startupDepositPending) {
                 if (!pickCarrySlots()) {
                     turnOff();
                     return;
@@ -3087,6 +3105,14 @@ public class StashSorter extends Module {
                 .toList());
         if (unread != null) return start(Job.Survey, unread);
 
+        // Initial inventory belongs to the dedicated bot only. Finish all saved work and
+        // read the destination before moving anything. No cleanup runs in scan-only mode.
+        if (sorting() && startupDepositPending && !pendingPhysicalRecovery() && !orderRunner.holdsOrder()) {
+            Box old = nearest(staleBoxes());
+            if (old != null) return start(Job.Survey, old);
+            if (startStartupDeposit()) return true;
+        }
+
         // Scan-only: the containers last seen before a stop are read again, then everything is read, nothing is moved.
         if (!sorting()) {
             Box old = nearest(staleBoxes());
@@ -3764,7 +3790,8 @@ public class StashSorter extends Module {
      */
     /** Finish a previously started physical move before surrendering the server lease. */
     private boolean finishingPhysicalMaintenance() {
-        return handle != null
+        return !repackConflict.isEmpty()
+                || handle != null
                 || compactor.active()
                 || (repackWork != null && !repackWork.terminal())
                 || (job != null && job != Job.Survey);
@@ -3809,6 +3836,7 @@ public class StashSorter extends Module {
     }
 
     public boolean sortingPermitted() {
+        if (!repackConflict.isEmpty()) return false;
         if (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror()) return false;
         if (!requiresSortingPermit()) return true;
         // Never continue an already active physical step after the lease expires.
@@ -5278,9 +5306,13 @@ public class StashSorter extends Module {
     private String nameFailure;
     private int nameSlot = -1, nameSentAt, nameJobTicks, nameResultSeen;
     private boolean nameSent, namePlaced;
+    private ItemStack nameExpected = ItemStack.EMPTY;
+    private boolean nameStashOwned, nameOrderOwned;
     // Topping up XP with bottles of enchanting before the rename: thrown standing still, then the walk starts
     private boolean xpPending, xpSwapped;
     private int xpThrows, xpLastThrow, xpMoveTo = -1;
+    private long xpAttempt;
+    private boolean xpThrowQueued;
     private static final int XP_THROW_GAP = 40, XP_TIMEOUT_TICKS = 20 * 120, XP_MAX_THROWS = 32;
 
     /** Whether the rename must wait for thrown bottles: short on levels, stash bottles in hand. */
@@ -6140,10 +6172,10 @@ public class StashSorter extends Module {
 
     /** Whether the shulker needs a WeSort UUID name: non-empty without a valid one, or a duplicated one. */
     private boolean needsUuidName(ItemStack stack, Set<String> dupes) {
-        if (stack.isEmpty() || !Utils.isShulker(stack.getItem()) || isEmptyShulker(stack)) return false;
-        String uuid = uuidOf(stack);
-        if (uuid == null) return true;
-        return dupes != null && dupes.contains(uuid);
+        if (stack.isEmpty() || !Utils.isShulker(stack.getItem()) || isEmptyShulker(stack) || isKitShulker(stack))
+            return false;
+        var name = stack.get(DataComponents.CUSTOM_NAME);
+        return ShulkerUuid.needsAutomaticName(name == null ? null : name.getString(), dupes);
     }
 
     private static String newUuidName() {
@@ -6178,7 +6210,7 @@ public class StashSorter extends Module {
                     || stuckCarried.containsKey(slot)) continue;
             String uuid = uuidOf(stack);
             // The box fetched for renaming, even mid-scan: it still needs its new name
-            if (uuidTarget != null && uuidTarget.equals(uuid)) return slot;
+            if (uuidTarget != null && uuidTarget.equals(uuid) && needsUuidName(stack, uuidDupes)) return slot;
             if (!needsUuidName(stack, uuidDupes)) continue;
             String key = StashIndex.groupKey(stack);
             Long cool = key == null ? null : uuidCooldown.get(key);
@@ -6209,6 +6241,8 @@ public class StashSorter extends Module {
             }
             if (!held || ticks - uuidTargetAt > UUID_TARGET_TIMEOUT) uuidTarget = null;
         }
+        int slot = uuidRenameSlot();
+        if (slot < 0) return false;
         if (anvilMissing()) {
             // Finding one is expensive (area scan): at most every few minutes while none is known
             if (ticks - uuidAnvilAt < UUID_ANVIL_RETRY) return false;
@@ -6216,10 +6250,10 @@ public class StashSorter extends Module {
             return startFindAnvil();
         }
         if (anvilProblem() != null) return false;
-        int slot = uuidRenameSlot();
-        if (slot < 0) return false;
         // Short on XP: throw carried bottles first, else fetch some
-        if (mc.player.experienceLevel < OrderRunner.XP_MIN_LEVELS && xpBottlesCarried() <= 0) {
+        if (!mc.player.hasInfiniteMaterials()
+                && mc.player.experienceLevel < OrderRunner.XP_MIN_LEVELS
+                && xpBottlesCarried() <= 0) {
             OrderRunner.XpBottles xp = xpBottleSource();
             if (xp == null) {
                 uuidCooldownSlot(slot);
@@ -6264,8 +6298,7 @@ public class StashSorter extends Module {
                 if (s.isEmpty() || !Utils.isShulker(s.getItem()) || isEmptyShulker(s)) continue;
                 if (!orderRunner.mayTakeFrom(box, i)) continue;
                 String uuid = uuidOf(s);
-                // Unnamed or invalid names always qualify; valid ones only when shared with another box
-                if (uuid != null && !uuidDupes.contains(uuid)) continue;
+                if (!needsUuidName(s, uuidDupes)) continue;
                 String key = StashIndex.groupKey(s);
                 if (key == null) continue;
                 Long cool = uuidCooldown.get(key);
@@ -6281,7 +6314,9 @@ public class StashSorter extends Module {
         }
         if (bestBox == null) return false;
         // Short on XP with none carried: bottles first, the shulker waits for the next pass
-        if (mc.player.experienceLevel < OrderRunner.XP_MIN_LEVELS && xpBottlesCarried() <= 0) {
+        if (!mc.player.hasInfiniteMaterials()
+                && mc.player.experienceLevel < OrderRunner.XP_MIN_LEVELS
+                && xpBottlesCarried() <= 0) {
             OrderRunner.XpBottles xp = xpBottleSource();
             if (xp == null) return false;
             return fetchXp(xp.box(), xp.slot());
@@ -6736,10 +6771,19 @@ public class StashSorter extends Module {
     }
 
     private boolean startName(OrderRunner.Rename rename) {
-        uuidNaming = false;
+        return startName(rename, false);
+    }
+
+    private boolean startName(OrderRunner.Rename rename, boolean idleUuid) {
+        uuidNaming = idleUuid;
         String bad = anvilProblem();
         if (bad == null && !walkOn() && !inReachOf(rename.anvil())) bad = NOT_REACHED;
         if (bad != null) {
+            if (idleUuid) {
+                uuidCooldownSlot(rename.slot());
+                uuidNaming = false;
+                return false;
+            }
             orderRunner.nameFailed(bad);
             return runOrder(orderRunner.next());
         }
@@ -6747,6 +6791,9 @@ public class StashSorter extends Module {
         namePos = rename.anvil();
         nameText = rename.name();
         nameSlot = relocateSlot = rename.slot();
+        nameExpected = mc.player.getInventory().getItem(nameSlot).copy();
+        nameStashOwned = ItemStack.matches(nameExpected, stashHeld.getOrDefault(nameSlot, ItemStack.EMPTY));
+        nameOrderOwned = orderHeld.containsKey(nameSlot);
         nameSent = namePlaced = false;
         nameSentAt = nameJobTicks = nameResultSeen = 0;
         nameTakes = nameCheckTicks = nameOpenTries = nameOpenClickAt = nameDrainTries = 0;
@@ -6770,7 +6817,9 @@ public class StashSorter extends Module {
         openMenuBefore = null;
         recoveries = 0;
         swapStep = 0;
-        step("order: naming a shulker at the anvil; next: deliver it.");
+        step(idleUuid
+                ? "naming a stash shulker its WeSort UUID."
+                : "order: naming a shulker at the anvil; next: deliver it.");
 
         // Short on XP: throw stash bottles of enchanting first, then walk to the anvil
         if (needsXpTopUp()) {
@@ -6779,6 +6828,8 @@ public class StashSorter extends Module {
             xpLastThrow = -100000;
             xpSwapped = false;
             xpMoveTo = -1;
+            xpThrowQueued = false;
+            xpAttempt++;
             stepTicks = 0;
             step = Step.Walking;
             step("order: topping up XP with bottles of enchanting; next: name it.");
@@ -6802,11 +6853,10 @@ public class StashSorter extends Module {
      */
     private boolean startUuidName(int slot) {
         if (stash == null || stash.anvilPos == null) return false;
-        if (!startName(new OrderRunner.Rename(stash.anvilPos, newUuidName(), slot))) return false;
-        uuidNaming = true;
+        if (!startName(new OrderRunner.Rename(stash.anvilPos, newUuidName(), slot), true)) return false;
         uuidTarget = uuidOf(mc.player.getInventory().getItem(slot));
         uuidTargetAt = ticks;
-        step("order: naming a shulker its WeSort UUID; next: carry on.");
+        step("naming a shulker its WeSort UUID; next: carry on.");
         return true;
     }
 
@@ -6851,8 +6901,8 @@ public class StashSorter extends Module {
             return;
         }
         if (stepTicks > XP_TIMEOUT_TICKS || xpThrows >= XP_MAX_THROWS) {
-            nameFailure = TOO_FEW_LEVELS;
-            nameEnd();
+            if (stepTicks <= XP_TIMEOUT_TICKS && ticks - xpLastThrow < 100) return;
+            finishXpBudget();
             return;
         }
         // The anvil window isn't open yet: anything open is closed first, bottles need the inventory
@@ -6863,18 +6913,29 @@ public class StashSorter extends Module {
         }
         int bottle = xpBottleSlot();
         if (bottle < 0) {
-            // Nothing left to throw: whoever needs the name gets it unnamed, as without bottles
-            nameFailure = TOO_FEW_LEVELS;
-            nameEnd();
+            // The last bottle's XP orbs may still be in flight.
+            if (xpThrowQueued || ticks - xpLastThrow < 100) return;
+            finishXpBudget();
             return;
         }
-        if (ticks - xpLastThrow < XP_THROW_GAP) return;
+        if (xpThrowQueued || ticks - xpLastThrow < XP_THROW_GAP) return;
         throwXpBottle(bottle);
+    }
+
+    private void finishXpBudget() {
+        // Three levels are a buffer; the anvil's actual cost is checked before taking the result.
+        if (mc.player.experienceLevel >= OrderRunner.XP_MIN_LEVELS) beginNameWalk();
+        else {
+            nameFailure = TOO_FEW_LEVELS;
+            nameEnd();
+        }
     }
 
     /** The XP is topped up: restore the hotbar and start the walk to the anvil. */
     private void beginNameWalk() {
         xpPending = false;
+        xpThrowQueued = false;
+        xpAttempt++;
         if (xpSwapped) {
             InvUtils.swapBack();
             xpSwapped = false;
@@ -6921,18 +6982,39 @@ public class StashSorter extends Module {
             wait = Math.max(wait, delay.get());
             return;
         }
-        if (!xpSwapped) {
-            if (!InvUtils.swap(hand, true)) return;
-            xpSwapped = true;
-        }
-        xpThrows++;
-        xpLastThrow = ticks;
-        Runnable toss = () -> {
-            if (gate != Gate.Running || job != Job.Name || !xpPending || mc.player == null) return;
+        if (!InvUtils.swap(hand, !xpSwapped)) return;
+        xpSwapped = true;
+        int selected = hand;
+        long attempt = ++xpAttempt;
+        xpThrowQueued = true;
+        Runnable toss = InventorySync.scopedAutomation(() -> {
+            if (attempt != xpAttempt) return;
+            xpThrowQueued = false;
+            if (gate != Gate.Running
+                    || job != Job.Name
+                    || !xpPending
+                    || mc.player == null
+                    || !InventorySync.ready()
+                    || !sortingPermitted()
+                    || mc.player.containerMenu != mc.player.inventoryMenu
+                    || mc.player.getInventory().getSelectedSlot() != selected
+                    || !xpBottleUsable(selected)
+                    || !isXpBottle(mc.player.getMainHandItem())) return;
+            xpThrows++;
+            xpLastThrow = ticks;
             mc.gameMode.useItem(mc.player, InteractionHand.MAIN_HAND);
-        };
-        if (rotate.get()) Rotations.rotate(mc.player.getYRot(), 65.0f, toss);
-        else toss.run();
+        });
+        // Bottles must hit the ground close enough to collect the XP, even with rotate disabled.
+        if (rotate.get()) Rotations.rotate(mc.player.getYRot(), 85.0f, toss);
+        else {
+            float pitch = mc.player.getXRot();
+            mc.player.setXRot(85.0f);
+            try {
+                toss.run();
+            } finally {
+                mc.player.setXRot(pitch);
+            }
+        }
         wait = Math.max(wait, delay.get());
     }
 
@@ -7055,9 +7137,12 @@ public class StashSorter extends Module {
             if (namePlaced) {
                 // Taken out of the anvil: the slot it came from must now carry the name
                 if (nameTakes > 0 && !result.isEmpty()) return;
-                net.minecraft.network.chat.Component shown =
-                        mc.player.getInventory().getItem(nameSlot).get(DataComponents.CUSTOM_NAME);
-                if (shown != null && shown.getString().equals(nameText)) {
+                ItemStack renamed = mc.player.getInventory().getItem(nameSlot);
+                if (exactNamedResult(renamed)) {
+                    if (nameStashOwned) stashHeld.put(nameSlot, renamed.copy());
+                    if (nameOrderOwned) orderHeld.put(nameSlot, renamed.copy());
+                    syncHeld();
+                    if (stash != null) stash.save();
                     nameSucceeded = true;
                     nameEnd();
                     return;
@@ -7065,8 +7150,10 @@ public class StashSorter extends Module {
                 if (++nameCheckTicks > NAME_CHECK_TICKS) nameFailure = NOT_TAKEN;
                 return;
             }
-            // An idle UUID naming takes whatever shulker it was started for; only orders claim theirs
-            if (!uuidNaming && !orderRunner.claims(mc.player.getInventory().getItem(nameSlot))) {
+            ItemStack source = mc.player.getInventory().getItem(nameSlot);
+            if (!ItemStack.matches(source, nameExpected)
+                    || (uuidNaming && (!nameStashOwned || !needsUuidName(source, uuidDupes)))
+                    || (!uuidNaming && !orderRunner.claims(source))) {
                 nameFailure = CLOSED;
                 return;
             }
@@ -7074,6 +7161,11 @@ public class StashSorter extends Module {
             yielder.inventoryChangedByUs();
             namePlaced = true;
             wait = delay.get();
+            return;
+        }
+
+        if (!ItemStack.matches(input, nameExpected)) {
+            nameFailure = CLOSED;
             return;
         }
 
@@ -7088,11 +7180,7 @@ public class StashSorter extends Module {
             return;
         }
 
-        net.minecraft.network.chat.Component custom = result.get(DataComponents.CUSTOM_NAME);
-        boolean named = !result.isEmpty()
-                && Utils.isShulker(result.getItem())
-                && custom != null
-                && custom.getString().equals(nameText);
+        boolean named = exactNamedResult(result);
         if (!named) {
             nameResultSeen = 0;
             // After a take that did not go through, the result is gone with it: that is the refused take
@@ -7125,6 +7213,16 @@ public class StashSorter extends Module {
         nameTakes++;
         nameClick(net.minecraft.world.inventory.AnvilMenu.RESULT_SLOT);
         wait = Math.max(wait, NAME_SETTLE_TICKS * 2);
+    }
+
+    private boolean exactNamedResult(ItemStack result) {
+        var custom = result.get(DataComponents.CUSTOM_NAME);
+        if (result.isEmpty() || custom == null || !custom.getString().equals(nameText)) return false;
+        ItemStack actual = result.copy();
+        ItemStack original = nameExpected.copy();
+        actual.remove(DataComponents.CUSTOM_NAME);
+        original.remove(DataComponents.CUSTOM_NAME);
+        return ItemStack.matches(actual, original);
     }
 
     private void rememberAnvil(String why) {
@@ -7177,6 +7275,8 @@ public class StashSorter extends Module {
             xpSwapped = false;
         }
         xpPending = false;
+        xpThrowQueued = false;
+        xpAttempt++;
         xpMoveTo = -1;
         AbstractContainerMenu menu = mc.player.containerMenu;
         if (nameDrain(menu)) return;
@@ -7770,12 +7870,17 @@ public class StashSorter extends Module {
         var hit = net.minecraft.world.phys.Vec3.atCenterOf(spot)
                 .add(side.getStepX() * 0.5, side.getStepY() * 0.5, side.getStepZ() * 0.5);
         BlockPos target = spot.immutable();
+        ItemStack expected = mc.player.getInventory().getItem(item.slot()).copy();
         Rotations.rotate(
                 Rotations.getYaw(hit),
                 Rotations.getPitch(hit),
                 50,
                 com.porter.wesort.compat.InventorySync.scopedAutomation(() -> {
-                    if (!BlockUtils.place(target, item, false, 50, true, true, true))
+                    if (mc.player == null
+                            || !InventorySync.ready()
+                            || !sortingPermitted()
+                            || !ItemStack.matches(expected, mc.player.getInventory().getItem(item.slot()))
+                            || !BlockUtils.place(target, item, false, 50, true, true, true))
                         com.porter.wesort.compat.InventorySync.clearPlacementExpectation();
                 }));
         return true;
@@ -7845,6 +7950,10 @@ public class StashSorter extends Module {
         ItemStack shulker = mc.player.getInventory().getItem(handledSlot);
         if (!Utils.isShulker(shulker.getItem())) {
             endHandling();
+            return;
+        }
+        if (handlingProof && !repackExpected.isEmpty() && !repackMatches(shulker)) {
+            blockRepack("The selected shulker changed before placement");
             return;
         }
 
@@ -8025,16 +8134,17 @@ public class StashSorter extends Module {
             if (handlingProof) {
                 try {
                     ItemStack[] contents = repackMenuContents(mc.player.containerMenu);
-                    if (!repackExpected.isEmpty()
-                            && !repackExpected.equals(
-                                    com.porter.wesort.compat.RepackRuntime.signature(repackOuter, contents))) {
+                    String observed = com.porter.wesort.compat.RepackRuntime.signature(repackOuter, contents);
+                    if (!repackExpected.isEmpty() && !repackExpected.equals(observed)) {
                         // The placed shulker isn't the one fetched: take it back down, put it back and
                         // try again with another one, instead of aborting. Nothing was moved yet.
                         if (job == Job.KitFill || job == Job.KitUnpack) {
                             recoverWrongShulker("it isn't the shulker I fetched");
                             return;
                         }
-                        blockRepack("Standing shulker differs from its last verified contents");
+                        blockRepackConflict("Standing shulker differs from its last verified contents at "
+                                + placed.toShortString() + " (expected " + repackExpected + ", observed " + observed + ")");
+
                         return;
                     }
                     var actual = repackCombined(contents);
@@ -8043,7 +8153,8 @@ public class StashSorter extends Module {
                             recoverWrongShulker("its contents changed under me");
                             return;
                         }
-                        blockRepack("Shulker placement did not conserve exact items/components");
+                        blockRepackConflict("Shulker placement did not conserve exact items/components at "
+                                + placed.toShortString());
                         return;
                     }
                     repackConservation = actual;
@@ -8173,7 +8284,8 @@ public class StashSorter extends Module {
             try {
                 var contents = repackMenuContents(menu);
                 if (!repackConservation.equals(repackCombined(contents))) {
-                    blockRepack("Transfer did not conserve exact item components/counts");
+                    blockRepackConflict("Transfer did not conserve exact item components/counts at "
+                            + placed.toShortString());
                     return;
                 }
                 repackExpected = com.porter.wesort.compat.RepackRuntime.signature(repackOuter, contents);
@@ -8634,11 +8746,12 @@ public class StashSorter extends Module {
         if ((PhysicalJournalRuntime.blocked() && !PhysicalJournalRuntime.debtGated())
                 || PhysicalJournalRuntime.awaitingMirror()
                 || !InventorySync.ready()) return;
+        if (!repackConflict.isEmpty() || PhysicalJournalRuntime.recoveryProof() <= repackBlockedProof) return;
         repackVerifyReads = 0;
         repackVerifySeen.clear();
         storeWatchMs = 0;
         if ((stash != null && stash.inFlight != null) || pendingResume != null || resuming) {
-            repackWork = null;
+            repackWork = new com.porter.wesort.inventory.PhysicalWork("Shulker", System.nanoTime());
             step("verified recovery finished; next: resume the saved shulker step.");
         } else {
             repackWork = new com.porter.wesort.inventory.PhysicalWork("Shulker", System.nanoTime());
@@ -8877,7 +8990,14 @@ public class StashSorter extends Module {
         return false;
     }
 
+    private void blockRepackConflict(String why) {
+        repackConflict = why;
+        syncInFlight();
+        blockRepack(why);
+    }
+
     private void blockRepack(String why) {
+        repackBlockedProof = PhysicalJournalRuntime.recoveryProof();
         if (repackWork == null
                 || repackWork.terminal()
                         && repackWork.phase() != com.porter.wesort.inventory.PhysicalWork.Phase.NEEDS_RECONCILIATION)
@@ -8886,7 +9006,12 @@ public class StashSorter extends Module {
         PhysicalJournalRuntime.block(why);
         dropLost = true;
         storeWatchMs = 0;
-        alertError("Shulker operation waiting for automatic recovery: %s. No unverified physical retry is sent.", why);
+        long now = System.currentTimeMillis();
+        if (!why.equals(lastRepackAlert) || now - lastRepackAlertAt >= 60_000) {
+            lastRepackAlert = why;
+            lastRepackAlertAt = now;
+            alertError("Shulker operation waiting for recovery: %s. No unverified physical retry is sent.", why);
+        }
     }
 
     /**
@@ -8980,7 +9105,10 @@ public class StashSorter extends Module {
      * status with what it holds and where, and no more shulkers are put down until sorting is restarted. Sorting carries on.
      */
     private void abandonShulker(String why) {
-        if (repackWork != null && !repackWork.terminal()) repackWork.reconcile(why);
+        if (repackWork != null && !repackWork.terminal()) {
+            repackBlockedProof = PhysicalJournalRuntime.recoveryProof();
+            repackWork.reconcile(why);
+        }
         Compactor.Plan plan = compactor.plan;
         BlockPos at = placed != null ? placed : plan != null ? plan.placedPos : null;
         String what = placedName();
@@ -9095,6 +9223,7 @@ public class StashSorter extends Module {
         f.placedStacks = plan != null ? plan.placedSize : placedStacks;
         f.fillSample =
                 plan != null ? plan.sample.copy() : live && fillKey != null ? fillSample.copy() : ItemStack.EMPTY;
+        f.repackConflict = repackConflict;
         f.cleanMainId = live && job == Job.Clean && mainItem != null
                 ? BuiltInRegistries.ITEM.getKey(mainItem).getPath()
                 : "";
@@ -9953,6 +10082,7 @@ public class StashSorter extends Module {
     private long jobStartedAt;
 
     private boolean start(Job next, Box box) {
+        if (next != Job.Dump) startupDump = false;
         // A kit being built has its own limits: its trips are not what the circle watchdog counts
         // Repacking trips (fetching a shulker), compacting, surveys and kit builds don't shrink the backlog, so they
         // aren't
@@ -11048,7 +11178,61 @@ public class StashSorter extends Module {
     /**
      * Puts carried stacks down in a container with space, when nowhere they belong has room for them.
      */
+    private boolean startStartupDeposit() {
+        if (startupStock.isEmpty()) {
+            Set<Integer> keep = parseSlots(keepSlots.get());
+            for (int slot = 0; slot < 36; slot++) {
+                ItemStack stack = mc.player.getInventory().getItem(slot);
+                if (stack.isEmpty() || keep.contains(slot) || ownKind(stack) || orderRunner.claims(stack)) continue;
+                startupStock.put(slot, stack.copy());
+            }
+        }
+        startupStock.entrySet().removeIf(entry -> !ItemStack.matches(
+                entry.getValue(), mc.player.getInventory().getItem(entry.getKey())));
+        for (var entry : startupStock.entrySet()) {
+            ItemStack stack = entry.getValue();
+            Box home = nearest(destinationsFor(stack).stream()
+                    .filter(box -> startupDestination(box, stack))
+                    .toList());
+            if (home == null)
+                home = nearest(stash.boxes.stream()
+                        .filter(box -> startupDestination(box, stack))
+                        .toList());
+            if (home != null) {
+                startupDump = true;
+                step("startup: putting away excess inventory before sorting.");
+                return start(Job.Dump, home);
+            }
+        }
+        if (!startupStock.isEmpty())
+            warning("Startup inventory: no verified storage room for %d remaining stacks; keeping them in inventory.",
+                    startupStock.size());
+        startupStock.clear();
+        startupDepositPending = false;
+        startupDump = false;
+        pickCarrySlots(false);
+        return false;
+    }
+
+    private boolean startupDestination(Box box, ItemStack stack) {
+        return returnable(box, stack) && box.sortable() && !box.foreign && !blocked(box, Job.Dump);
+    }
+
     private boolean dumpOne() {
+        if (startupDump && startupDepositPending) {
+            if (!mc.player.containerMenu.getCarried().isEmpty()) return recoverBounded();
+            for (var entry : startupStock.entrySet()) {
+                int slot = entry.getKey();
+                ItemStack stack = mc.player.getInventory().getItem(slot);
+                if (!ItemStack.matches(stack, entry.getValue())
+                        || parseSlots(keepSlots.get()).contains(slot)
+                        || orderRunner.claims(stack)
+                        || !startupDestination(target, stack)) continue;
+                InvUtils.shiftClick().slotId(inventoryToMenu(slot, target.contents.length));
+                return true;
+            }
+            return false;
+        }
         for (int slot : carriedSlots()) {
             if (kitBuilder.holds(slot)
                     || fullBundle(mc.player.getInventory().getItem(slot))
@@ -12404,7 +12588,8 @@ public class StashSorter extends Module {
 
     /** A durable shulker/workspace checkpoint must finish before another order is claimed. */
     public boolean pendingPhysicalRecovery() {
-        return pendingResume != null
+        return !repackConflict.isEmpty()
+                || pendingResume != null
                 || stash != null && stash.inFlight != null
                 || repackWork != null && !repackWork.terminal();
     }
@@ -12503,6 +12688,7 @@ public class StashSorter extends Module {
             syncedHandle = null;
             syncedPlaced = null;
             stash = null;
+            repackConflict = "";
             triedKey = null;
             trackedMenu = null;
             trackedBox = null;

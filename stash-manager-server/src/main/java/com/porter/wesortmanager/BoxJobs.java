@@ -260,6 +260,65 @@ final class BoxJobs {
         }
     }
 
+    /**
+     * Owner verdict on a stuck box job. Only a job waiting for reconciliation can be resolved:
+     * {@code complete} requires the same proof as the agent path (the issued UUID verifiably
+     * registered at the target), {@code fail} records the operator's reason as-is. Both are
+     * terminal and free the server for the next job. Deliberately no automatic resolution:
+     * a physical box needs a human inspection before it is written off.
+     */
+    synchronized JsonObject resolve(String id, String decision, String message, String actor) throws IOException {
+        if (!List.of("complete", "fail").contains(decision))
+            throw new IllegalArgumentException("decision must be complete or fail");
+        try (var c = ledger.open();
+                var tx = c.createStatement()) {
+            tx.execute("BEGIN IMMEDIATE");
+            try {
+                expire(c);
+                JsonObject job;
+                String state;
+                try (var p = c.prepareStatement("SELECT payload,state FROM box_jobs WHERE id=?")) {
+                    p.setString(1, id);
+                    try (var r = p.executeQuery()) {
+                        if (!r.next()) throw new IllegalArgumentException("No such box job");
+                        job = JsonParser.parseString(r.getString(1)).getAsJsonObject();
+                        state = r.getString(2);
+                    }
+                }
+                if (!state.equals("NEEDS_RECONCILIATION"))
+                    throw new IllegalArgumentException("Only a box job awaiting reconciliation can be resolved");
+                if (decision.equals("complete")) {
+                    if (!registered(c, job))
+                        throw new IllegalArgumentException(
+                                "The issued UUID is not verifiably registered at the target; inspect it first");
+                    state = "COMPLETED";
+                    job.remove("message");
+                    job.addProperty("completedAt", clock.getAsLong());
+                    job.addProperty("resolvedBy", actor);
+                } else {
+                    state = "FAILED";
+                    job.addProperty(
+                            "message", message == null ? "" : message.substring(0, Math.min(1000, message.length())));
+                    job.addProperty("resolvedBy", actor);
+                }
+                try (var p = c.prepareStatement("UPDATE box_jobs SET state=?,payload=? WHERE id=?")) {
+                    p.setString(1, state);
+                    p.setString(2, job.toString());
+                    p.setString(3, id);
+                    p.executeUpdate();
+                }
+                tx.execute("COMMIT");
+                job.addProperty("state", state);
+                return job;
+            } catch (Exception failure) {
+                tx.execute("ROLLBACK");
+                throw failure;
+            }
+        } catch (SQLException failure) {
+            throw new IOException("Cannot resolve box job", failure);
+        }
+    }
+
     private boolean registered(Connection c, JsonObject job) throws SQLException {
         try (var p = c.prepareStatement("SELECT source,path,status FROM box_uuids WHERE uuid=? AND server=?")) {
             p.setString(1, job.get("uuid").getAsString());

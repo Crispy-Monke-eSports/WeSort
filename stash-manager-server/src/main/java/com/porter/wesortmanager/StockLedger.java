@@ -908,7 +908,7 @@ final class StockLedger {
             throws SQLException {
         Set<String> seen = new HashSet<>();
         for (var boxes : fresh.values()) seen.addAll(boxes.keySet());
-        try (var read = c.prepareStatement("SELECT uuid,source,status FROM box_uuids WHERE server=?")) {
+        try (var read = c.prepareStatement("SELECT uuid,source,path,status FROM box_uuids WHERE server=?")) {
             read.setString(1, server);
             try (var rows = read.executeQuery()) {
                 while (rows.next()) {
@@ -919,9 +919,9 @@ final class StockLedger {
                             c,
                             server,
                             uuid,
-                            rows.getString(3),
-                            rows.getString(1),
+                            rows.getString(4),
                             rows.getString(2),
+                            rows.getString(3),
                             "VANISHED",
                             revision,
                             now);

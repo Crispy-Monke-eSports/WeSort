@@ -171,4 +171,63 @@ class BoxJobsTest {
                 "NEEDS_RECONCILIATION",
                 listed.get(0).getAsJsonObject().get("state").getAsString());
     }
+
+    @Test
+    void ownerCanFailAStuckJobAndStartANewOne() throws Exception {
+        var ledger = new StockLedger(data);
+        ledger.accept(index(ledger, null));
+        var jobs = new BoxJobs(ledger);
+        var created = jobs.create("owner", createRequest(sourceId(index(ledger, null)), "REGISTER_BOX"));
+        String agent = UUID.randomUUID().toString();
+        var claimed = jobs.claim("s", "a", agent);
+        assertEquals("IN_PROGRESS", claimed.get("state").getAsString());
+
+        var restarted = new BoxJobs(ledger); // constructor fences interrupted jobs
+        assertEquals(
+                "NEEDS_RECONCILIATION",
+                restarted.list("s").get(0).getAsJsonObject().get("state").getAsString());
+
+        // The stuck job blocks the whole server until an owner inspects the box and decides.
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> restarted.create("owner", createRequest(sourceId(index(ledger, null)), "REGISTER_BOX")));
+        var failed = restarted.resolve(created.get("id").getAsString(), "fail", "box crushed", "owner");
+        assertEquals("FAILED", failed.get("state").getAsString());
+        // The invariant is freed: a new job can start.
+        var next = restarted.create("owner", createRequest(sourceId(index(ledger, null)), "REGISTER_BOX"));
+        assertEquals("PLANNED", next.get("state").getAsString());
+    }
+
+    @Test
+    void ownerCanCompleteAVerifiedJobButNotAnUnverifiedOne() throws Exception {
+        var ledger = new StockLedger(data);
+        ledger.accept(index(ledger, null));
+        var jobs = new BoxJobs(ledger);
+        var created = jobs.create("owner", createRequest(sourceId(index(ledger, null)), "REGISTER_BOX"));
+        String agent = UUID.randomUUID().toString();
+        String uuid = created.get("uuid").getAsString();
+        var claimed = jobs.claim("s", "a", agent);
+        String id = claimed.get("id").getAsString();
+        String token = claimed.get("token").getAsString();
+        var renamed = jobs.advance(id, agent, token, "renamed", "");
+        assertEquals("VERIFYING", renamed.get("state").getAsString());
+
+        // A Manager restart fences the in-flight job; completing without proof is refused.
+        var fenced = new BoxJobs(ledger);
+        assertEquals(
+                "NEEDS_RECONCILIATION",
+                fenced.list("s").get(0).getAsJsonObject().get("state").getAsString());
+        assertThrows(IllegalArgumentException.class, () -> fenced.resolve(id, "complete", null, "owner"));
+        assertThrows(IllegalArgumentException.class, () -> fenced.resolve(id, "maybe", null, "owner"));
+        assertThrows(IllegalArgumentException.class, () -> fenced.resolve("no-such-job", "fail", null, "owner"));
+
+        // Once the renamed box is re-observed and registered, completion goes through.
+        var named = index(ledger, "WeSort-" + uuid);
+        ledger.accept(named);
+        var completed = new BoxJobs(ledger).resolve(id, "complete", null, "owner");
+        assertEquals("COMPLETED", completed.get("state").getAsString());
+        // And resolving a finished job is refused.
+        var done = new BoxJobs(ledger);
+        assertThrows(IllegalArgumentException.class, () -> done.resolve(id, "fail", null, "owner"));
+    }
 }

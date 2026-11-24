@@ -224,13 +224,19 @@ class BoxUuidRegistryTest {
         var ledger = new StockLedger(data);
         ledger.accept(indexes(ledger, new String[] {"WeSort-" + V4}, new int[] {0}));
         assertEquals(1, ledger.boxUuids().size());
+        var registered = ledger.boxUuids().get(0).getAsJsonObject();
         // The same chest re-read fresh holding only an unnamed box: the UUID box left, deregistered.
         ledger.accept(indexes(ledger, new String[] {null}, new int[] {0}));
         assertTrue(ledger.boxUuids().isEmpty());
         assertEquals(1, ledger.boxUuidHistory().size());
-        assertEquals(
-                "VANISHED",
-                ledger.boxUuidHistory().get(0).getAsJsonObject().get("reason").getAsString());
+        var vanished = ledger.boxUuidHistory().get(0).getAsJsonObject();
+        assertEquals("VANISHED", vanished.get("reason").getAsString());
+        // The history row must point at the box's last known slot, not shuffle the columns:
+        // source holds the container id, path the slot, and the uuid stays the box's uuid.
+        assertEquals(registered.get("uuid").getAsString(), vanished.get("uuid").getAsString());
+        assertEquals(registered.get("source").getAsString(), vanished.get("source").getAsString());
+        assertEquals(registered.get("path").getAsString(), vanished.get("path").getAsString());
+        assertEquals("IN_STOCK", vanished.get("status").getAsString());
         // ...and registered again if the same box shows up again with its name intact.
         ledger.accept(indexes(ledger, new String[] {"WeSort-" + V4}, new int[] {1}));
         assertEquals(1, ledger.boxUuids().size());

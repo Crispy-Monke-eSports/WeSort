@@ -204,8 +204,16 @@ class DashboardTest {
         AtomicLong now = new AtomicLong(1_000_000);
         BotHub hub = new BotHub(now::get);
         String session = "agent-session";
-        assertEquals(200, hub.register("b", "Builder", new JsonObject(), new JsonObject(),
-                List.of("settings"), List.of("plugin"), session));
+        assertEquals(
+                200,
+                hub.register(
+                        "b",
+                        "Builder",
+                        new JsonObject(),
+                        new JsonObject(),
+                        List.of("settings"),
+                        List.of("plugin"),
+                        session));
         var bot = hub.bot("b");
         String epoch = bot.controlEpoch;
         assertEquals(200, hub.next(bot, 0, session).status()); // initial watch state
@@ -218,8 +226,16 @@ class DashboardTest {
         // immediately registers again and issues a new epoch.
         var restarted = new BotHub(now::get);
         assertNull(restarted.bot("b"));
-        assertEquals(200, restarted.register("b", "Builder", new JsonObject(), new JsonObject(),
-                List.of("settings"), List.of("plugin"), session));
+        assertEquals(
+                200,
+                restarted.register(
+                        "b",
+                        "Builder",
+                        new JsonObject(),
+                        new JsonObject(),
+                        List.of("settings"),
+                        List.of("plugin"),
+                        session));
         var replacement = restarted.bot("b");
         assertFalse(restarted.currentControlSession(replacement, session, epoch));
         assertTrue(restarted.currentControlSession(replacement, session, replacement.controlEpoch));
@@ -230,8 +246,16 @@ class DashboardTest {
         AtomicLong now = new AtomicLong(1_000_000);
         var hub = new BotHub(now::get);
         String session = "agent-session";
-        assertEquals(200, hub.register("b", "Builder", new JsonObject(), new JsonObject(),
-                List.of("settings"), List.of("plugin"), session));
+        assertEquals(
+                200,
+                hub.register(
+                        "b",
+                        "Builder",
+                        new JsonObject(),
+                        new JsonObject(),
+                        List.of("settings"),
+                        List.of("plugin"),
+                        session));
         var bot = hub.bot("b");
         now.addAndGet(30_000);
         hub.state(bot, "plugin", "schema", "values", new JsonArray(), new HashMap<>(), new JsonObject());

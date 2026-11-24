@@ -208,8 +208,8 @@ public class StashManager extends Module {
             HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 
     // A slow physical request must never monopolize the control connection.
-    private final ExecutorService controlExecutor = new ThreadPoolExecutor(
-            1, 1, 0, TimeUnit.MILLISECONDS, new SynchronousQueue<>(), r -> {
+    private final ExecutorService controlExecutor =
+            new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, new SynchronousQueue<>(), r -> {
                 Thread t = new Thread(r, "wesort-manager-control");
                 t.setDaemon(true);
                 return t;
@@ -334,7 +334,8 @@ public class StashManager extends Module {
         // Operational blockers (inventory, navigation or no stash) are not link failures.
         // Only a verified, recent Manager reply for the CURRENT address, key and MC server
         // can assert ONLINE. Explicit auth/transport errors still win immediately.
-        boolean authenticated = controlRegistered && verifiedManagerScope.equals(linkScope())
+        boolean authenticated = controlRegistered
+                && verifiedManagerScope.equals(linkScope())
                 && controlSchedule.recentlyVerified(monotonicMs());
         String linkStatus = parse(serverUrl.get()) == null ? "bad url" : controlStatus;
         if (controlScope == null || !controlScope.link().equals(linkScope())) {
@@ -764,7 +765,12 @@ public class StashManager extends Module {
     }
 
     private record ControlScope(
-            URI manager, String server, String stash, String dimension, java.util.UUID player, String keyId,
+            URI manager,
+            String server,
+            String stash,
+            String dimension,
+            java.util.UUID player,
+            String keyId,
             String link) {
         /** The bot id is the API key id: the Manager binds the player, never the other way around. */
         String botId() {
@@ -794,7 +800,8 @@ public class StashManager extends Module {
     private ControlScope observeControlScope(URI base, String key) {
         String server = Stash.currentServer();
         String stash = current != null && server.equals(current.server()) ? current.stash() : null;
-        return new ControlScope(base, server, stash, StashIndex.dimension(), mc.player.getUUID(), keyId(key), linkScope());
+        return new ControlScope(
+                base, server, stash, StashIndex.dimension(), mc.player.getUUID(), keyId(key), linkScope());
     }
 
     private boolean serviceControl(URI base, String key, long now) {
@@ -1088,7 +1095,8 @@ public class StashManager extends Module {
         AgentIncident incident = null;
         if (mc.player.getHealth() <= 0) incident = AgentIncident.DEATH;
         else if (recoveringInventory) incident = AgentIncident.INVENTORY_UNVERIFIED;
-        else if (controlStatus.equals("wrong server") || status.equals("wrong server")) incident = AgentIncident.WRONG_SERVER;
+        else if (controlStatus.equals("wrong server") || status.equals("wrong server"))
+            incident = AgentIncident.WRONG_SERVER;
         else if (controlStatus.equals("error 401") || controlStatus.equals("server signature invalid")) {
             incident = AgentIncident.AUTH_FAILED;
         } else if (com.porter.wesort.compat.NavigationRuntime.paused()) {
@@ -2072,8 +2080,8 @@ public class StashManager extends Module {
                 failureType = "InterruptedException";
             } catch (Exception e) {
                 code = -1;
-                Throwable cause = e instanceof java.util.concurrent.ExecutionException && e.getCause() != null
-                        ? e.getCause() : e;
+                Throwable cause =
+                        e instanceof java.util.concurrent.ExecutionException && e.getCause() != null ? e.getCause() : e;
                 failureType = cause.getClass().getSimpleName();
             }
 
@@ -2103,7 +2111,8 @@ public class StashManager extends Module {
                 if (control) {
                     // Also fence the dimension, stash and player; a reply sent before
                     // a world transition must not apply settings or acknowledge a manifest.
-                    if (mc.level == null || mc.player == null
+                    if (mc.level == null
+                            || mc.player == null
                             || !requestedControlScope.equals(observeControlScope(base, key))) {
                         controlRegistered = false;
                         verifiedManagerScope = "";
@@ -2111,10 +2120,15 @@ public class StashManager extends Module {
                         return;
                     }
                     if (finalBad || finalCode < 0 || finalCode == 401 || finalCode == 403 || finalCode >= 500) {
-                        String reason = finalBad ? "server signature invalid"
+                        String reason = finalBad
+                                ? "server signature invalid"
                                 : finalCode == 401 || finalCode == 403 ? "error 401" : "offline";
-                        controlFailure(reason, path + ": " + (finalBad ? "invalid signature"
-                                : finalCode < 0 ? finalFailureType : "HTTP " + finalCode));
+                        controlFailure(
+                                reason,
+                                path + ": "
+                                        + (finalBad
+                                                ? "invalid signature"
+                                                : finalCode < 0 ? finalFailureType : "HTTP " + finalCode));
                         return;
                     }
                     if (finalCode == 409 && isWrongServer(finalText)) {

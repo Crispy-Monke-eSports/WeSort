@@ -2020,6 +2020,7 @@ public class StashSorter extends Module {
      * Works out which slots to carry stash items in, from the settings or, by default, every empty slot.
      */
     private boolean startupDepositPending, startupDump;
+
     private final Map<Integer, ItemStack> startupStock = new LinkedHashMap<>();
 
     private boolean pickCarrySlots() {
@@ -6817,9 +6818,10 @@ public class StashSorter extends Module {
         openMenuBefore = null;
         recoveries = 0;
         swapStep = 0;
-        step(idleUuid
-                ? "naming a stash shulker its WeSort UUID."
-                : "order: naming a shulker at the anvil; next: deliver it.");
+        step(
+                idleUuid
+                        ? "naming a stash shulker its WeSort UUID."
+                        : "order: naming a shulker at the anvil; next: deliver it.");
 
         // Short on XP: throw stash bottles of enchanting first, then walk to the anvil
         if (needsXpTopUp()) {
@@ -7879,7 +7881,8 @@ public class StashSorter extends Module {
                     if (mc.player == null
                             || !InventorySync.ready()
                             || !sortingPermitted()
-                            || !ItemStack.matches(expected, mc.player.getInventory().getItem(item.slot()))
+                            || !ItemStack.matches(
+                                    expected, mc.player.getInventory().getItem(item.slot()))
                             || !BlockUtils.place(target, item, false, 50, true, true, true))
                         com.porter.wesort.compat.InventorySync.clearPlacementExpectation();
                 }));
@@ -8142,8 +8145,9 @@ public class StashSorter extends Module {
                             recoverWrongShulker("it isn't the shulker I fetched");
                             return;
                         }
-                        blockRepackConflict("Standing shulker differs from its last verified contents at "
-                                + placed.toShortString() + " (expected " + repackExpected + ", observed " + observed + ")");
+                        blockRepackConflict(
+                                "Standing shulker differs from its last verified contents at " + placed.toShortString()
+                                        + " (expected " + repackExpected + ", observed " + observed + ")");
 
                         return;
                     }
@@ -8284,8 +8288,8 @@ public class StashSorter extends Module {
             try {
                 var contents = repackMenuContents(menu);
                 if (!repackConservation.equals(repackCombined(contents))) {
-                    blockRepackConflict("Transfer did not conserve exact item components/counts at "
-                            + placed.toShortString());
+                    blockRepackConflict(
+                            "Transfer did not conserve exact item components/counts at " + placed.toShortString());
                     return;
                 }
                 repackExpected = com.porter.wesort.compat.RepackRuntime.signature(repackOuter, contents);
@@ -11187,8 +11191,10 @@ public class StashSorter extends Module {
                 startupStock.put(slot, stack.copy());
             }
         }
-        startupStock.entrySet().removeIf(entry -> !ItemStack.matches(
-                entry.getValue(), mc.player.getInventory().getItem(entry.getKey())));
+        startupStock
+                .entrySet()
+                .removeIf(entry -> !ItemStack.matches(
+                        entry.getValue(), mc.player.getInventory().getItem(entry.getKey())));
         for (var entry : startupStock.entrySet()) {
             ItemStack stack = entry.getValue();
             Box home = nearest(destinationsFor(stack).stream()
@@ -11205,7 +11211,8 @@ public class StashSorter extends Module {
             }
         }
         if (!startupStock.isEmpty())
-            warning("Startup inventory: no verified storage room for %d remaining stacks; keeping them in inventory.",
+            warning(
+                    "Startup inventory: no verified storage room for %d remaining stacks; keeping them in inventory.",
                     startupStock.size());
         startupStock.clear();
         startupDepositPending = false;

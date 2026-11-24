@@ -28,6 +28,7 @@ final class AgentCredentials {
     private static final int MAX_ENTRIES = 64;
     /** Revoked slots carry no secret; keep the registry small so rotation never fills it with tombstones. */
     static final int MAX_REVOKED_SLOTS = 16;
+
     private final Path file;
     private final LongSupplier clock;
     private final Map<String, Slot> entries = new TreeMap<>();

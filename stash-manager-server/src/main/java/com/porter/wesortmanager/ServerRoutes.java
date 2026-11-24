@@ -67,9 +67,8 @@ final class ServerRoutes {
         String want = config == null ? null : config.minecraftServer();
         if (want == null || want.isEmpty() || server == null || server.isEmpty()) return 400;
         if (sameServer(want, server)) return -1;
-        System.err.println(
-                "WeSort Manager: refusing agent server '" + normalizeServer(server) + "' (serves '"
-                        + normalizeServer(want) + "')");
+        System.err.println("WeSort Manager: refusing agent server '" + normalizeServer(server) + "' (serves '"
+                + normalizeServer(want) + "')");
         return 409;
     }
 
@@ -91,7 +90,8 @@ final class ServerRoutes {
         }
         // host:port (single colon only; leave raw IPv6 with several colons untouched)
         int colon = host.indexOf(':');
-        if (colon >= 0 && host.indexOf(':', colon + 1) < 0) host = host.substring(0, colon).trim();
+        if (colon >= 0 && host.indexOf(':', colon + 1) < 0)
+            host = host.substring(0, colon).trim();
         while (host.endsWith(".") && host.length() > 1) host = host.substring(0, host.length() - 1);
         return host;
     }

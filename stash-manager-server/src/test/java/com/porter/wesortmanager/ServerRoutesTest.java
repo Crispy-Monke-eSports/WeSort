@@ -34,8 +34,7 @@ class ServerRoutesTest {
     @Test
     void agentServerStatusUsesNormalizedIdentity(@TempDir Path data) throws Exception {
         Config.load(data);
-        Files.writeString(
-                data.resolve("config.properties"), "port=8765\neula=true\nminecraftServer=6b6t.org\n");
+        Files.writeString(data.resolve("config.properties"), "port=8765\neula=true\nminecraftServer=6b6t.org\n");
         Config config = Config.load(data);
         assertEquals(-1, ServerRoutes.agentServerStatus(config, "alt.6b6t.org:25565"));
         assertEquals(-1, ServerRoutes.agentServerStatus(config, "6B6T.ORG."));

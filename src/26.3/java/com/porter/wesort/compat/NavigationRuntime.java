@@ -218,8 +218,7 @@ public final class NavigationRuntime {
             finish("PAUSED_NAVIGATION_RELEASED", true);
             return;
         }
-        if (!dedicated && BaritoneHelper.controlledByOther(ours))
-            finish("PAUSED_NAVIGATION_OTHER_PROCESS", true);
+        if (!dedicated && BaritoneHelper.controlledByOther(ours)) finish("PAUSED_NAVIGATION_OTHER_PROCESS", true);
     }
 
     private static boolean touchingPortal() {

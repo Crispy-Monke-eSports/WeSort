@@ -4095,8 +4095,8 @@ public class StashSorter extends Module {
             // Lobby navigation is allowed before inventory readback, so only dismiss
             // non-container screens here. Never close an unverified server menu.
             if (mc.player.containerMenu == mc.player.inventoryMenu
-                    && mc.player.containerMenu.getCarried().isEmpty() && mc.screen != null)
-                mc.setScreen(null);
+                    && mc.player.containerMenu.getCarried().isEmpty()
+                    && mc.screen != null) mc.setScreen(null);
             if (mc.screen != null) return "SCREEN_OPEN";
         } else {
             if (mc.screen != null) return "SCREEN_OPEN";

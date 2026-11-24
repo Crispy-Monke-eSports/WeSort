@@ -51,6 +51,7 @@ final class BotRoutes {
 
     void register(Router router) {
         router.exact(Router.POST, "/api/v1/bot/hello", Router.Guard.ADDON_KEY, this::hello)
+                .exact(Router.POST, "/api/v1/bot/heartbeat", Router.Guard.ADDON_KEY, this::heartbeat)
                 .exact(Router.POST, "/api/v1/bot/state", Router.Guard.ADDON_KEY, this::state)
                 .exact(Router.GET, "/api/v1/bot/next", Router.Guard.ADDON_KEY, this::next)
                 .exact(Router.POST, "/api/v1/bot/next", Router.Guard.ADDON_KEY, this::nextNow)
@@ -185,6 +186,7 @@ final class BotRoutes {
             var bot = hub.bot(botId);
             synchronized (bot) {
                 out.addProperty("controlEpoch", bot.controlEpoch);
+                if (caps.contains("heartbeat")) out.addProperty("heartbeat", true);
             }
         }
         // Announce the Manager-defined stashes so a clean client can adopt one
@@ -195,6 +197,26 @@ final class BotRoutes {
             out.add("stashes", names);
         }
         Http.json(ex, 200, out);
+    }
+
+    /** Signed, session-fenced ping/pong, independent of jobs, physical reservations and index state. */
+    private void heartbeat(HttpExchange ex) throws IOException {
+        JsonObject request = body(ex);
+        if (request == null) return;
+        String botId = AddonRoutes.string(request, "botId");
+        String ping = AddonRoutes.string(request, "ping");
+        if (botId == null || !BOT_ID.matcher(botId).matches() || ping == null || !ping.matches("[0-9a-f]{32}")) {
+            Http.error(ex, 400, "Invalid heartbeat");
+            return;
+        }
+        if (!hub.heartbeat(botId, AddonRoutes.string(request, "controlSession"),
+                AddonRoutes.string(request, "controlEpoch"))) {
+            Http.error(ex, 409, "Control session does not match; say hello first");
+            return;
+        }
+        JsonObject pong = Http.ok();
+        pong.addProperty("pong", ping);
+        Http.json(ex, 200, pong);
     }
 
     private static BotHub.ManifestScope manifestScope(JsonElement input, String player, String botId) {

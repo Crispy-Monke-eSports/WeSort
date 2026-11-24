@@ -217,6 +217,18 @@ public class StashManager extends Module {
     private final HttpClient controlHttp =
             HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 
+    private final ExecutorService heartbeatExecutor =
+            new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, new SynchronousQueue<>(), r -> {
+                Thread t = new Thread(r, "wesort-manager-heartbeat");
+                t.setDaemon(true);
+                return t;
+            });
+    private final HttpClient heartbeatHttp =
+            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
+    private static final String HEARTBEAT_PATH = "/api/v1/bot/heartbeat";
+    private static final long PING_INTERVAL_MS = 5_000;
+    private static final long PING_TIMEOUT_MS = 5_000;
+
     // Everything below is client thread only
     private StashIndex.Built current;
     private long fingerprint, lastBuild;
@@ -239,7 +251,11 @@ public class StashManager extends Module {
     private JsonArray controlResults;
     private JsonObject lastControlResult;
     private boolean controlInFlight;
+    private long controlFence;
     private final ControlRetrySchedule controlSchedule = new ControlRetrySchedule();
+    private boolean heartbeatSupported, heartbeatInFlight;
+    private String heartbeatStatus = "idle";
+    private final ControlRetrySchedule heartbeatSchedule = new ControlRetrySchedule(PING_INTERVAL_MS);
     private final RequestRetry sortingRetry = new RequestRetry();
     private PendingManifest pendingManifest;
 
@@ -334,11 +350,14 @@ public class StashManager extends Module {
         // Operational blockers (inventory, navigation or no stash) are not link failures.
         // Only a verified, recent Manager reply for the CURRENT address, key and MC server
         // can assert ONLINE. Explicit auth/transport errors still win immediately.
-        boolean authenticated = controlRegistered
-                && verifiedManagerScope.equals(linkScope())
-                && controlSchedule.recentlyVerified(monotonicMs());
-        String linkStatus = parse(serverUrl.get()) == null ? "bad url" : controlStatus;
+        boolean authenticated = heartbeatSupported
+                ? heartbeatSchedule.recentlyVerified(monotonicMs())
+                : controlRegistered && verifiedManagerScope.equals(linkScope())
+                        && controlSchedule.recentlyVerified(monotonicMs());
+        String linkStatus = parse(serverUrl.get()) == null ? "bad url"
+                : heartbeatSupported ? heartbeatStatus : controlStatus;
         if (controlScope == null || !controlScope.link().equals(linkScope())) {
+            authenticated = false;
             if (!linkStatus.equals("bad url")) linkStatus = "idle";
         }
         return com.porter.wesort.commands.ConnectionState.ofVerified(
@@ -368,6 +387,27 @@ public class StashManager extends Module {
             lastControlFailure = detail;
         }
         controlStatus = reason;
+    }
+
+    private void heartbeatFailure(String reason) {
+        heartbeatSchedule.failed(monotonicMs());
+        if (!reason.equals(heartbeatStatus)) {
+            WeSortAddon.LOG.warn("wesort-manager-heartbeat: {}; retrying every 15 seconds", reason);
+        }
+        heartbeatStatus = reason;
+        // An in-flight control reply from before the failed heartbeat must not
+        // restore an obsolete session or apply a stale command.
+        if (controlRegistered) {
+            controlFence++;
+            controlFailure(reason);
+            controlSchedule.reset(); // first hello immediately; subsequent failures use the fixed retry interval
+        }
+    }
+
+    private void resetHeartbeat() {
+        heartbeatSupported = false;
+        heartbeatStatus = "idle";
+        heartbeatSchedule.reset();
     }
 
     // Only the isolated real-Minecraft E2E fixture can request this. Keep the
@@ -452,7 +492,10 @@ public class StashManager extends Module {
         sentControlValues = null;
         controlResults = null;
         controlInFlight = false;
+        controlFence++;
         controlSchedule.reset();
+        heartbeatInFlight = false;
+        resetHeartbeat();
         sortingRetry.reset();
         sortingPoll = 0;
         pendingManifest = null;
@@ -627,6 +670,7 @@ public class StashManager extends Module {
         // Service the signed control channel even if physical calls are failing or the inventory is blocked.
         // Its completion-based retry interval leaves the other traffic a chance to make progress.
         serviceControlWhenDue();
+        serviceHeartbeatWhenDue();
         if (servicePhysicalJournal() || serviceSorting()) return;
         if (com.porter.wesort.compat.NavigationRuntime.paused()) {
             setStatus(com.porter.wesort.compat.NavigationRuntime.status());
@@ -764,6 +808,29 @@ public class StashManager extends Module {
         }
     }
 
+    /** Dedicated ping/pong: never waits for a work request, settings push or job poll. */
+    private void serviceHeartbeatWhenDue() {
+        if (!heartbeatSupported || heartbeatInFlight || controlScope == null
+                || mc.player == null || mc.level == null || !dedicatedProfile()) return;
+        String key = apiKey.get().trim();
+        URI base = parse(serverUrl.get());
+        if (base == null || !controlScope.equals(observeControlScope(base, key))) return;
+        long now = monotonicMs();
+        if (!heartbeatSchedule.due(now)) return;
+        heartbeatSchedule.started(now);
+        var ping = new JsonObject();
+        ping.addProperty("botId", controlScope.botId());
+        ping.addProperty("controlSession", controlSession);
+        ping.addProperty("controlEpoch", controlEpoch);
+        String challenge = randomHex(16);
+        ping.addProperty("ping", challenge);
+        send(base, HEARTBEAT_PATH, bytes(ping), key, (code, body) -> {
+            if (code != 200) return false;
+            var pong = JsonParser.parseString(body).getAsJsonObject();
+            return challenge.equals(text(pong, "pong"));
+        }, true);
+    }
+
     private record ControlScope(
             URI manager,
             String server,
@@ -821,6 +888,7 @@ public class StashManager extends Module {
             verifiedManagerScope = "";
             controlStatus = "idle";
             controlSchedule.reset();
+            resetHeartbeat();
         }
         if (!controlSchedule.due(now)) return false;
         controlSchedule.started(now);
@@ -855,6 +923,7 @@ public class StashManager extends Module {
             capabilities.add("warehouse-sort");
             capabilities.add("pack");
             capabilities.add("stage");
+            capabilities.add("heartbeat");
             request.add("caps", capabilities);
             var scopes = new JsonArray();
             scopes.add("plugin");
@@ -874,7 +943,13 @@ public class StashManager extends Module {
                                     lastControlResult = null;
                                     controlResults = null;
                                     pendingManifest = null;
+                                    resetHeartbeat();
                                 }
+                                boolean supported = hello.has("heartbeat") && hello.get("heartbeat").isJsonPrimitive()
+                                        && hello.getAsJsonPrimitive("heartbeat").isBoolean()
+                                        && hello.get("heartbeat").getAsBoolean();
+                                if (supported != heartbeatSupported) resetHeartbeat();
+                                heartbeatSupported = supported;
                                 controlEpoch = epoch;
                                 controlRegistered = true;
                                 sentControlValues = null;
@@ -1981,13 +2056,17 @@ public class StashManager extends Module {
 
     /** @param isolated the request is not part of the module's link to the server: its failures never set the shared backoff or the status */
     private void send(URI base, String path, byte[] body, String key, Reply reply, boolean isolated) {
-        boolean control = path.startsWith("/api/v1/bot/");
-        ControlScope requestedControlScope = control ? controlScope : null;
+        boolean heartbeat = HEARTBEAT_PATH.equals(path);
+        boolean control = path.startsWith("/api/v1/bot/") && !heartbeat;
+        ControlScope requestedControlScope = control || heartbeat ? controlScope : null;
+        String requestedEpoch = heartbeat ? controlEpoch : null;
+        long requestedControlFence = controlFence;
         URI uri;
         try {
             uri = URI.create(base + path);
         } catch (IllegalArgumentException e) {
-            if (control) controlFailure("bad url");
+            if (heartbeat) heartbeatFailure("bad url");
+            else if (control) controlFailure("bad url");
             else if (!isolated) setStatus("bad url");
             return;
         }
@@ -2014,12 +2093,14 @@ public class StashManager extends Module {
                     .POST(HttpRequest.BodyPublishers.ofByteArray(body))
                     .build();
         } catch (IllegalArgumentException e) {
-            if (control) controlFailure("bad url");
+            if (heartbeat) heartbeatFailure("bad url");
+            else if (control) controlFailure("bad url");
             else if (!isolated) setStatus("bad url");
             return;
         }
 
-        if (control) controlInFlight = true;
+        if (heartbeat) heartbeatInFlight = true;
+        else if (control) controlInFlight = true;
         else inFlight = true;
         int gen = generation;
         // Capture the *request's* endpoint and signing credential, not whichever
@@ -2034,12 +2115,13 @@ public class StashManager extends Module {
             String failureType = "";
             try {
                 HttpResponse<byte[]> response;
-                if (control) {
-                    // The future completes only after the body is received. A header-only
-                    // response or slow body must not indefinitely keep the control lane busy.
-                    var future = controlHttp.sendAsync(request, HttpResponse.BodyHandlers.ofByteArray());
+                if (control || heartbeat) {
+                    // A header-only response or slow body must not monopolize either lane.
+                    var client = heartbeat ? heartbeatHttp : controlHttp;
+                    var future = client.sendAsync(request, HttpResponse.BodyHandlers.ofByteArray());
                     try {
-                        response = future.get(ControlRetrySchedule.REQUEST_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+                        response = future.get(heartbeat ? PING_TIMEOUT_MS : ControlRetrySchedule.REQUEST_TIMEOUT_MS,
+                                TimeUnit.MILLISECONDS);
                     } finally {
                         if (!future.isDone()) future.cancel(true);
                     }
@@ -2091,8 +2173,34 @@ public class StashManager extends Module {
             boolean finalBad = badSignature;
             mc.execute(() -> {
                 if (gen != generation) return;
-                if (control) controlInFlight = false;
+                if (heartbeat) heartbeatInFlight = false;
+                else if (control) controlInFlight = false;
                 else inFlight = false;
+                if (control && requestedControlFence != controlFence) return;
+                if (heartbeat) {
+                    if (!heartbeatSupported || mc.level == null || mc.player == null
+                            || !java.util.Objects.equals(requestedEpoch, controlEpoch)
+                            || !com.porter.wesort.commands.ManagerLinkScope.matches(requestScope, linkScope())
+                            || !requestedControlScope.equals(observeControlScope(base, key))) return;
+                    boolean pong = false;
+                    if (!finalBad && finalCode == 200) {
+                        try {
+                            pong = reply.done(finalCode, finalText);
+                        } catch (RuntimeException ignored) {
+                            // Invalid pong is indistinguishable from a failed heartbeat.
+                        }
+                    }
+                    if (pong) {
+                        if (!heartbeatStatus.equals("online")) WeSortAddon.LOG.info("wesort-manager-heartbeat: online");
+                        heartbeatStatus = "online";
+                        heartbeatSchedule.succeeded(monotonicMs());
+                    } else {
+                        heartbeatFailure(finalBad ? "server signature invalid"
+                                : finalCode == 401 || finalCode == 403 ? "error 401"
+                                : finalCode == 409 ? "reconnecting" : "offline");
+                    }
+                    return;
+                }
                 if (!com.porter.wesort.commands.ManagerLinkScope.matches(requestScope, linkScope())) {
                     // Even an authentic reply signed with the *old* key must not
                     // verify a new connection, apply old control jobs or continue
@@ -2120,15 +2228,10 @@ public class StashManager extends Module {
                         return;
                     }
                     if (finalBad || finalCode < 0 || finalCode == 401 || finalCode == 403 || finalCode >= 500) {
-                        String reason = finalBad
-                                ? "server signature invalid"
+                        String reason = finalBad ? "server signature invalid"
                                 : finalCode == 401 || finalCode == 403 ? "error 401" : "offline";
-                        controlFailure(
-                                reason,
-                                path + ": "
-                                        + (finalBad
-                                                ? "invalid signature"
-                                                : finalCode < 0 ? finalFailureType : "HTTP " + finalCode));
+                        controlFailure(reason, path + ": " + (finalBad ? "invalid signature"
+                                : finalCode < 0 ? finalFailureType : "HTTP " + finalCode));
                         return;
                     }
                     if (finalCode == 409 && isWrongServer(finalText)) {
@@ -2210,9 +2313,12 @@ public class StashManager extends Module {
             });
         };
         try {
-            (control ? controlExecutor : executor).execute(exchange);
+            (heartbeat ? heartbeatExecutor : control ? controlExecutor : executor).execute(exchange);
         } catch (RejectedExecutionException rejected) {
-            if (control) {
+            if (heartbeat) {
+                heartbeatInFlight = false;
+                heartbeatFailure("offline");
+            } else if (control) {
                 controlInFlight = false;
                 controlFailure("offline");
             } else {

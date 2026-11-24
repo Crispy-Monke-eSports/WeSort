@@ -7,6 +7,16 @@ final class ControlRetrySchedule {
     static final long POLL_MS = 2_000;
     static final long VERIFIED_TTL_MS = 35_000;
 
+    private final long pollMs;
+
+    ControlRetrySchedule() {
+        this(POLL_MS);
+    }
+
+    ControlRetrySchedule(long pollMs) {
+        this.pollMs = pollMs;
+    }
+
     private boolean scheduled;
     private boolean started;
     private boolean verified;
@@ -35,7 +45,7 @@ final class ControlRetrySchedule {
     void succeeded(long now) {
         started = false;
         scheduled = verified = true;
-        nextAt = now + POLL_MS;
+        nextAt = now + pollMs;
         verifiedAt = now;
     }
 

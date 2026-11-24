@@ -16,3 +16,7 @@ Control presence is based on verified control replies, not a successful warehous
 - Change endpoint/key/world while a response is in flight. Verify stale results are ignored and a new scope is registered.
 - Keep the work lane blocked, inventory unready and sorting denied: the control channel must still poll.
 - Disable the module or leave the world: no new control requests until eligible.
+
+## Dedicated signed heartbeat (negotiated)
+
+A modern agent advertises `heartbeat` in hello. The Manager acknowledges support in its signed hello response. `/api/v1/bot/heartbeat` accepts only the current signed bot identity, session and epoch, and returns the exact random `ping` challenge as `pong`. It does not consult the order book, stash index, automation lease, or job queue. The client uses its own HTTP client and worker for ping/pong, separate from both control and physical traffic. Normal pings run every 5 seconds after a verified response; complete response timeout is 5 seconds; failure retries start at 15-second intervals and trigger fresh hello if the control session was registered. A fresh epoch pings immediately. Modern Manager presence requires a real heartbeat within 35 seconds; hello and work polls cannot manufacture it. Legacy peers without negotiated support retain signed control polling. Both versions must be deployed for dedicated heartbeat.

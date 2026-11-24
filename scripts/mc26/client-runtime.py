@@ -13,7 +13,7 @@ evidence.mkdir(parents=True, exist_ok=True)
 logfile = evidence / 'client-runtime.log'
 with logfile.open('w') as log:
     try:
-        subprocess.run([str(root / 'gradlew'), '--no-daemon', 'build', 'runClient',
+        subprocess.run([str(root / 'gradlew'), '--no-daemon', 'assemble', 'runClient',
             '-Pmc=26.3', '-PwithBaritone=true', '-PruntimeProbe=true'],
             cwd=root, stdout=log, stderr=subprocess.STDOUT, timeout=600, check=True)
     except subprocess.CalledProcessError as failed:

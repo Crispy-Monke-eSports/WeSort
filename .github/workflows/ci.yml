@@ -13,6 +13,10 @@ on:
   schedule:
     - cron: '29 3 * * *'
   workflow_call:
+    inputs:
+      journal_repeats:
+        type: string
+        default: '1'
 permissions:
   contents: read
 
@@ -26,10 +30,21 @@ jobs:
     name: Java, web and Markdown formatting gate
     runs-on: ubuntu-26.04
     timeout-minutes: 20
+    outputs:
+      extended: ${{ steps.scope.outputs.extended }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          fetch-depth: 2
           persist-credentials: false
+      - name: Verify and select dependency/metadata probes
+        id: scope
+        env:
+          CI_EVENT: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          python3 scripts/ci/probe-scope.py --self-test
+          python3 scripts/ci/probe-scope.py
       - name: Verify consistent Java 25 pins
         run: python3 scripts/check-java-versions.py
       - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6
@@ -48,23 +63,30 @@ jobs:
       - name: Require formatted web UI and all Markdown
         run: cd web && bun run format:check
   verify:
-    name: Compile, unit and Docker smoke
+    name: Compile and unit tests
     needs: format
     uses: ./.github/workflows/_verify.yml
     permissions:
       contents: read
+  manager-image:
+    name: Build Manager CI image
+    needs: format
+    uses: ./.github/workflows/_manager-ci-image.yml
+    permissions:
+      contents: read
   e2e:
-    name: Full Minecraft 26.3 E2E
-    needs: verify
+    name: Full Minecraft 26.3 E2E and Docker smoke
+    needs: [format, verify, manager-image]
     uses: ./.github/workflows/_mc26-e2e.yml
     permissions:
       contents: read
     with:
-      journal_repeats: ${{ inputs.journal_repeats || '1' }}
+      journal_repeats: ${{ github.event_name == 'schedule' && '2' || inputs.journal_repeats || '1' }}
+      extended: ${{ needs.format.outputs.extended != 'false' }}
   status:
     name: ci-required
     if: always()
-    needs: [format, verify, e2e]
+    needs: [format, verify, manager-image, e2e]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
@@ -72,8 +94,9 @@ jobs:
         env:
           FORMAT_RESULT: ${{ needs.format.result }}
           VERIFY_RESULT: ${{ needs.verify.result }}
+          IMAGE_RESULT: ${{ needs.manager-image.result }}
           E2E_RESULT: ${{ needs.e2e.result }}
         shell: bash
         run: |
-          echo "Java/web/Markdown format: $FORMAT_RESULT; verification: $VERIFY_RESULT; full E2E: $E2E_RESULT" >> "$GITHUB_STEP_SUMMARY"
-          [[ "$FORMAT_RESULT" == success && "$VERIFY_RESULT" == success && "$E2E_RESULT" == success ]]
+          echo "Java/web/Markdown format: $FORMAT_RESULT; verification: $VERIFY_RESULT; Manager image: $IMAGE_RESULT; full E2E: $E2E_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          [[ "$FORMAT_RESULT" == success && "$VERIFY_RESULT" == success && "$IMAGE_RESULT" == success && "$E2E_RESULT" == success ]]

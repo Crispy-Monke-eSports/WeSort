@@ -18,9 +18,9 @@ runs:
     - name: Install software display dependencies
       shell: bash
       run: |
-        # The ubuntu-24.04 image usually already provides these. Skip the
-        # ~13 MB archive update and ~30 MB mesa upgrade when nothing is
-        # missing; only truly absent packages are installed, never upgraded.
+        set -euo pipefail
+        # Install only missing libraries. Some hosted runners arrive without
+        # Mesa or OpenAL, and the regional EC2 mirror can take several minutes.
         missing=()
         for pkg in xvfb libgl1-mesa-dri libglx-mesa0 libgl1 libegl1 libegl-mesa0 mesa-vulkan-drivers libvulkan1 libopenal1; do
           if ! dpkg -s "$pkg" >/dev/null 2>&1; then
@@ -31,5 +31,39 @@ runs:
           echo "Display dependencies already installed; skipping apt."
           exit 0
         fi
-        sudo apt-get update
-        sudo apt-get install -y --no-upgrade "${missing[@]}"
+        printf 'Missing display packages: %s\n' "${missing[*]}"
+        # Keep the runner's Ubuntu release, suites, components, architectures
+        # and signing key. Only replace its regional mirror for this command.
+        # Avoid updating unrelated third-party repositories and translations.
+        source=/etc/apt/sources.list.d/ubuntu.sources
+        if [[ -r "$source" ]]; then
+          alternate="$(mktemp --suffix=.sources)"
+          trap 'rm -f "$alternate"' EXIT
+          sed -E 's@^URIs: (mirror\+file:/etc/apt/apt-mirrors\.txt|https?://[^ ]+\.archive\.ubuntu\.com/ubuntu)/?[[:space:]]*$@URIs: https://archive.ubuntu.com/ubuntu@' "$source" > "$alternate"
+          chmod 644 "$alternate"
+          install_display() {
+            local sources="$1"
+            local -a opts=(
+              -o "Dir::Etc::sourcelist=$sources"
+              -o "Dir::Etc::sourceparts=-"
+              -o Acquire::Languages=none
+              -o Acquire::Retries=1
+              -o Acquire::http::Timeout=15
+              -o Acquire::https::Timeout=15
+              -o APT::Update::Error-Mode=any
+            )
+            sudo apt-get "${opts[@]}" update &&
+              sudo apt-get "${opts[@]}" install -y --no-upgrade --no-install-recommends "${missing[@]}"
+          }
+          # Alternate first; keep the hosted runner's mirror as fallback.
+          if ! install_display "$alternate"; then
+            echo "::warning::Ubuntu archive mirror unavailable; retrying runner mirror"
+            install_display "$source"
+          fi
+        else
+          sudo apt-get -o Acquire::Languages=none update
+          sudo apt-get install -y --no-upgrade --no-install-recommends "${missing[@]}"
+        fi
+        for pkg in "${missing[@]}"; do
+          dpkg-query -W -f='${Status}\n' "$pkg" | grep -qx 'install ok installed'
+        done

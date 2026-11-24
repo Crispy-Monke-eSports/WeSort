@@ -6150,6 +6150,9 @@ public class StashSorter extends Module {
     private boolean uuidNaming;
     private final Map<Integer, ItemStack> uuidBatch = new LinkedHashMap<>();
     private boolean uuidBatchSealed, uuidBatchFunded, uuidBatchYield;
+    private int uuidBatchRefills;
+    private final Map<String, Integer> uuidCopies = new HashMap<>();
+    private static final int UUID_MAX_XP_REFILLS = 3;
     private int xpTargetLevels = OrderRunner.XP_TARGET_LEVELS;
     /** UUIDs seen on more than one box: one copy keeps it, the rest are renamed. Recomputed on every stash scan. */
     private Set<String> uuidDupes = new HashSet<>();
@@ -6234,6 +6237,7 @@ public class StashSorter extends Module {
         uuidBatch.clear();
         uuidBatchSealed = false;
         uuidBatchFunded = false;
+        uuidBatchRefills = 0;
     }
 
     private void finishUuidBatch() {
@@ -6258,8 +6262,25 @@ public class StashSorter extends Module {
             String uuid = uuidOf(stack);
             if (uuid != null) counts.merge(uuid, 1, Integer::sum);
         }
+        uuidCopies.clear();
+        uuidCopies.putAll(counts);
         uuidDupes = new HashSet<>();
         for (var entry : counts.entrySet()) if (entry.getValue() > 1) uuidDupes.add(entry.getKey());
+    }
+
+    private boolean uuidBatchCanAdd(ItemStack stack) {
+        String uuid = uuidOf(stack);
+        if (uuid == null) return true;
+        long selected = uuidBatch.values().stream().filter(s -> uuid.equals(uuidOf(s))).count();
+        return selected < uuidCopies.getOrDefault(uuid, 0) - 1L;
+    }
+
+    private void pruneDuplicateKeepers() {
+        Map<String, Integer> selected = new HashMap<>();
+        uuidBatch.entrySet().removeIf(entry -> {
+            String uuid = uuidOf(entry.getValue());
+            return uuid != null && selected.merge(uuid, 1, Integer::sum) >= uuidCopies.getOrDefault(uuid, 0);
+        });
     }
 
     private int uuidRenameCost(ItemStack stack) {
@@ -6300,6 +6321,7 @@ public class StashSorter extends Module {
         refreshUuidDuplicates();
         uuidBatch.entrySet().removeIf(entry -> !ItemStack.matches(
                 entry.getValue(), mc.player.getInventory().getItem(entry.getKey())) || !uuidEligibleSlot(entry.getKey()));
+        pruneDuplicateKeepers();
         if (uuidBatch.isEmpty() && uuidBatchSealed) {
             finishUuidBatch();
             return false;
@@ -6307,8 +6329,9 @@ public class StashSorter extends Module {
         if (!uuidBatchSealed) {
             for (int slot : carriedSlots()) {
                 if (uuidBatch.size() >= com.porter.wesort.inventory.RenameBatchBudget.MAX_BOXES) break;
-                if (uuidEligibleSlot(slot))
-                    uuidBatch.putIfAbsent(slot, mc.player.getInventory().getItem(slot).copy());
+                ItemStack stack = mc.player.getInventory().getItem(slot);
+                if (!uuidBatch.containsKey(slot) && uuidEligibleSlot(slot) && uuidBatchCanAdd(stack))
+                    uuidBatch.put(slot, stack.copy());
             }
         }
         if (uuidBatch.isEmpty()) return false;
@@ -6333,8 +6356,19 @@ public class StashSorter extends Module {
                     && mc.player.experienceLevel < uuidBatchLevels() + 39
                     && xpBottlesCarried() == 0;
             int reserve = needBottleSlot ? 1 : 0;
+            // Keep a free hotbar slot for throwing bottles from the main inventory.
+            int freeHotbar = 0;
+            boolean bottleInHotbar = false;
+            for (int i = 0; i < 9; i++) {
+                if (parseSlots(keepSlots.get()).contains(i)) continue;
+                if (mc.player.getInventory().getItem(i).isEmpty()) freeHotbar++;
+                if (xpBottleUsable(i)) bottleInHotbar = true;
+            }
+            boolean preserveHotbar = !mc.player.hasInfiniteMaterials() && !bottleInHotbar
+                    && mc.player.experienceLevel < uuidBatchLevels() + 39;
             if (uuidBatch.size() < com.porter.wesort.inventory.RenameBatchBudget.MAX_BOXES
                     && freeCarryCount() > reserve
+                    && (!preserveHotbar || freeCarrySlot() >= 9 || freeHotbar > 1)
                     && fetchUuidCandidate()) return true;
             uuidBatchSealed = true;
             info("Planned UUID batch: %d shulkers, %d XP levels.", uuidBatch.size(), uuidBatchLevels());
@@ -6343,7 +6377,11 @@ public class StashSorter extends Module {
             uuidBatchFunded = true;
         } else if (!uuidBatchFunded && xpBottlesCarried() == 0) {
             OrderRunner.XpBottles xp = xpBottleSource();
-            if (xp != null && freeCarryCount() > 0 && fetchXp(xp.box(), xp.slot())) return true;
+            if (xp != null && freeCarryCount() > 0 && uuidBatchRefills < UUID_MAX_XP_REFILLS
+                    && fetchXp(xp.box(), xp.slot())) {
+                uuidBatchRefills++;
+                return true;
+            }
             if (!trimUuidBatchToXp()) {
                 uuidCooldownSlot(slot);
                 finishUuidBatch();
@@ -6378,7 +6416,8 @@ public class StashSorter extends Module {
             if (!boxKnownReadable(box) || blocked(box, Job.Fetch)) continue;
             for (int i = 0; i < box.contents.length; i++) {
                 ItemStack stack = box.contents[i];
-                if (!orderRunner.mayTakeFrom(box, i) || !needsUuidName(stack, uuidDupes)) continue;
+                if (!orderRunner.mayTakeFrom(box, i) || !needsUuidName(stack, uuidDupes)
+                        || !uuidBatchCanAdd(stack)) continue;
                 String key = StashIndex.groupKey(stack);
                 if (key == null || uuidCooldown.getOrDefault(key, 0L) > ticks) continue;
                 double d = mc.player.getEyePosition().distanceToSqr(Vec3.atCenterOf(nearestPart(box)));
@@ -6993,6 +7032,22 @@ public class StashSorter extends Module {
 
     private void finishXpBudget() {
         if (uuidNaming) {
+            // If the first supply ran out, fetch more before any rename. Keep the
+            // planned batch and bound the number of refill trips.
+            if (xpBottleSlot() < 0 && freeCarryCount() > 0 && uuidBatchRefills < UUID_MAX_XP_REFILLS
+                    && xpBottleSource() != null) {
+                xpPending = false;
+                xpThrowQueued = false;
+                xpAttempt++;
+                if (xpSwapped) InvUtils.swapBack();
+                xpSwapped = false;
+                xpMoveTo = -1;
+                uuidNaming = false;
+                job = null;
+                target = null;
+                wait = delay.get();
+                return;
+            }
             if (trimUuidBatchToXp()) beginNameWalk();
             else {
                 nameFailure = TOO_FEW_LEVELS;

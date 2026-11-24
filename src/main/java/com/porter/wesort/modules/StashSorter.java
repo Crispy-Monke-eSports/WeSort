@@ -2888,14 +2888,15 @@ public class StashSorter extends Module {
     private boolean surveyCandidate(Box box, long now, boolean periodic) {
         if (!surveyDue(box, now)) return false;
         if (!box.known() || box.stale) return true;
-        return periodic && keepOn() && now >= nextBackgroundBatchAt
+        return periodic
+                && keepOn()
+                && now >= nextBackgroundBatchAt
                 && (!smartRecheck.get() || now >= dropBackoffUntil.getOrDefault(box, 0L));
     }
 
     private boolean queueSurveyBatch(boolean periodic, boolean nearbyOnly) {
         long now = System.currentTimeMillis();
-        surveyBatch.removeIf(box -> !stash.boxes.contains(box) || !surveyDue(box, now)
-                || box.known() && !box.stale);
+        surveyBatch.removeIf(box -> !stash.boxes.contains(box) || !surveyDue(box, now) || box.known() && !box.stale);
         if (!surveyBatch.isEmpty()) return true;
         surveyAttemptAt.keySet().retainAll(stash.boxes);
         dropBackoffUntil.keySet().retainAll(stash.boxes);
@@ -3100,7 +3101,6 @@ public class StashSorter extends Module {
         }
 
         // Scan-only: the containers last seen before a stop are read again, then everything is read, nothing is moved.
-
 
         // Scan-only: crafting whose order is over is driven to its end (the grid emptied, what was gathered put back)
         if (!sorting() && crafter.active() && (!craftForOrder || !orderRunner.running()) && runCraft(crafter.next()))

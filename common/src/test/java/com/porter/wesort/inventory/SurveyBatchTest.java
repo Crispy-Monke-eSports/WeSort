@@ -20,7 +20,8 @@ class SurveyBatchTest {
 
     @Test
     void oldestTenAreSelectedAndSmallerBatchesAreAllowed() {
-        List<Integer> candidates = IntStream.rangeClosed(1, 13).map(i -> 14 - i).boxed().toList();
+        List<Integer> candidates =
+                IntStream.rangeClosed(1, 13).map(i -> 14 - i).boxed().toList();
         assertEquals(
                 IntStream.rangeClosed(1, 10).boxed().toList(),
                 SurveyBatch.oldest(candidates, Integer::longValue, ignored -> 0));

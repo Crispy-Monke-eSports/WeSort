@@ -16,8 +16,7 @@ public final class SurveyBatch {
         return last <= 0 || now >= last && now - last >= Math.max(MIN_INTERVAL_MS, intervalMs);
     }
 
-    public static <T> List<T> oldest(
-            List<T> candidates, ToLongFunction<T> lastRead, ToLongFunction<T> lastAttempt) {
+    public static <T> List<T> oldest(List<T> candidates, ToLongFunction<T> lastRead, ToLongFunction<T> lastAttempt) {
         return candidates.stream()
                 .sorted(Comparator.comparingLong(lastRead).thenComparingLong(lastAttempt))
                 .limit(MAX_BOXES)

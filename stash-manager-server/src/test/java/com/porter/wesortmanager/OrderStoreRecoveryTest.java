@@ -42,9 +42,7 @@ class OrderStoreRecoveryTest {
     private IndexStore stockedIndex() throws Exception {
         var index = new IndexStore(dir, CreativeTabs.NONE);
         index.load();
-        StockFixtures.put(
-                index,
-                JsonParser.parseString("""
+        StockFixtures.put(index, JsonParser.parseString("""
                     {"version":1,"server":"s","stash":"a","items":[
                       {"key":"minecraft:diamond","id":"minecraft:diamond","count":64,"maxStack":64}]}
                     """).getAsJsonObject());

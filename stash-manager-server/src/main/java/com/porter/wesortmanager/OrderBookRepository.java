@@ -36,10 +36,13 @@ final class OrderBookRepository {
             }
             var snapshots = new ArrayList<Snapshot>();
             try (var q = c.createStatement();
-                    var rows = q.executeQuery("SELECT server,stash,revision,payload FROM order_books ORDER BY server,stash")) {
+                    var rows = q.executeQuery(
+                            "SELECT server,stash,revision,payload FROM order_books ORDER BY server,stash")) {
                 while (rows.next()) {
                     var snapshot = new Snapshot(
-                            rows.getString(1), rows.getString(2), rows.getLong(3),
+                            rows.getString(1),
+                            rows.getString(2),
+                            rows.getLong(3),
                             JsonParser.parseString(rows.getString(4)).getAsJsonObject());
                     validateScope(snapshot);
                     snapshots.add(snapshot);
@@ -52,9 +55,13 @@ final class OrderBookRepository {
                     try (var files = Files.newDirectoryStream(legacy, "*.json")) {
                         for (Path file : files) {
                             if (Files.isSymbolicLink(file)) throw new IOException("Invalid legacy order file");
-                            var root = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
+                            var root = JsonParser.parseString(Files.readString(file))
+                                    .getAsJsonObject();
                             var snapshot = new Snapshot(
-                                    root.get("server").getAsString(), root.get("stash").getAsString(), 1, root);
+                                    root.get("server").getAsString(),
+                                    root.get("stash").getAsString(),
+                                    1,
+                                    root);
                             validateScope(snapshot);
                             snapshots.add(snapshot);
                         }

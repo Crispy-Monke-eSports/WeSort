@@ -53,4 +53,19 @@ class PhysicalWorkTest {
         assertEquals(PhysicalWork.Phase.FAILED, blocked.phase());
         assertFalse(blocked.attempt(0));
     }
+
+    @Test
+    void latchedReasonIsExposedForRecoveryLogging() {
+        var work = new PhysicalWork("repack", 0);
+        assertEquals("", work.reason());
+        work.enter(PhysicalWork.Phase.STORE, 0);
+        assertEquals("", work.reason());
+        work.reconcile("Physical readback failed: gate");
+        assertEquals(PhysicalWork.Phase.NEEDS_RECONCILIATION, work.phase());
+        assertEquals("Physical readback failed: gate", work.reason());
+        assertEquals("Physical readback failed: gate", work.json().get("reason").getAsString());
+        work.enter(PhysicalWork.Phase.COMPLETED, 0);
+        assertEquals(PhysicalWork.Phase.NEEDS_RECONCILIATION, work.phase());
+        assertEquals("Physical readback failed: gate", work.reason());
+    }
 }

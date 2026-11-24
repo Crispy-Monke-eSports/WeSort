@@ -99,8 +99,14 @@ final class StashYield {
      * Looks at what else is going on, once a tick.
      * @return why someone else is using the client, or null if nobody is
      */
-    Reason check() {
+    Reason check(boolean ownsClient) {
         now++;
+        if (ownsClient) {
+            // Do not freeze an old lastForeign timestamp or interruption backoff.
+            // When ownership ends, the next normal tick takes a fresh inventory baseline.
+            reset();
+            return null;
+        }
         while (!interruptions.isEmpty() && now - interruptions.peekFirst() > INTERRUPTION_WINDOW)
             interruptions.pollFirst();
 

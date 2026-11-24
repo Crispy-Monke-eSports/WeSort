@@ -340,13 +340,6 @@ public class StashSorter extends Module {
             .defaultValue(false)
             .build());
 
-    private final Setting<Boolean> exclusiveControl = sgBot.add(new BoolSetting.Builder()
-            .name("exclusive-control")
-            .description(
-                    "Dedicated bot account: never give way to screens, movement keys, other modules, auto eat or inventory changes made outside the sorter. The sorter keeps full control of the client even while it is used. Only enable on an account nobody plays on: with this on, the sorter can open containers, move items and walk while you do.")
-            .defaultValue(false)
-            .build());
-
     private final Setting<Integer> recheck = sgBot.add(new IntSetting.Builder()
             .name("recheck")
             .description(
@@ -2068,10 +2061,11 @@ public class StashSorter extends Module {
         // Time spent giving way does not count against the time allowed to finish a saved shulker step
         if (resuming && gate != Gate.Running) resumeStarted++;
 
-        // What else is using the client, every tick: nothing of ours goes on while it's anything.
-        // Exclusive control (dedicated bot account) skips the check entirely: with nobody
-        // to give way to, lastForeign stays ancient so every quiet gate already passes.
-        StashYield.Reason foreign = exclusiveControl.get() ? null : yielder.check();
+        // The Meteor Agent toggle is the sole client-ownership authority. Clear
+        // foreign activity history as well as ignoring new courtesy interruptions.
+        boolean ownsClient = StashManager.ownsClient();
+        StashYield.Reason foreign = yielder.check(ownsClient);
+        if (ownsClient && !reclaimClientScreen()) return;
         foreignNow = foreign != null;
         // The sorter has the controls while it walks or works; a ledge with a drop gets a sneak, which is let go of
         // otherwise
@@ -2265,6 +2259,28 @@ public class StashSorter extends Module {
         settled = false;
         openPos = null;
         openMenuBefore = null;
+        return true;
+    }
+
+    /**
+     * An active agent need not wait for chat, inventory screens or foreign menus.
+     * Never close a menu carrying a stack or interfere with our own transaction.
+     * The caller has already checked inventory readback and the physical journal.
+     */
+    private boolean reclaimClientScreen() {
+        AbstractContainerMenu menu = mc.player.containerMenu;
+        if (menu != mc.player.inventoryMenu && ourMenu(menu)) {
+            // Chat or another screen over our own menu must not close the transaction.
+            return true;
+        }
+        if (menu != mc.player.inventoryMenu) {
+            if (!menu.getCarried().isEmpty()) return false;
+            mc.player.closeContainer();
+            lastCloseTick = ticks;
+            yielder.inventoryChangedByUs();
+            return false;
+        }
+        if (mc.screen != null) mc.setScreen(null);
         return true;
     }
 
@@ -4075,11 +4091,20 @@ public class StashSorter extends Module {
             return com.porter.wesort.compat.NavigationRuntime.status();
         }
         if (!BARITONE) return "BARITONE_UNAVAILABLE";
-        if (mc.screen != null) return "SCREEN_OPEN";
-        if (Input.isPressed(mc.options.keyDown)
-                || Input.isPressed(mc.options.keyLeft)
-                || Input.isPressed(mc.options.keyRight)
-                || Input.isPressed(mc.options.keyJump)) return "MANUAL_MOVEMENT";
+        if (StashManager.ownsClient()) {
+            // Lobby navigation is allowed before inventory readback, so only dismiss
+            // non-container screens here. Never close an unverified server menu.
+            if (mc.player.containerMenu == mc.player.inventoryMenu
+                    && mc.player.containerMenu.getCarried().isEmpty() && mc.screen != null)
+                mc.setScreen(null);
+            if (mc.screen != null) return "SCREEN_OPEN";
+        } else {
+            if (mc.screen != null) return "SCREEN_OPEN";
+            if (Input.isPressed(mc.options.keyDown)
+                    || Input.isPressed(mc.options.keyLeft)
+                    || Input.isPressed(mc.options.keyRight)
+                    || Input.isPressed(mc.options.keyJump)) return "MANUAL_MOVEMENT";
+        }
         if (BaritoneHelper.controlledByOther(ourGoal == null ? null : (baritone.api.pathing.goals.Goal) ourGoal)) {
             return "BARITONE_BUSY";
         }

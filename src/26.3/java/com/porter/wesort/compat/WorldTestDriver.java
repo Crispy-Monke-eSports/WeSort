@@ -368,6 +368,24 @@ public final class WorldTestDriver {
                     ((Setting<String>) manager.settings.get("server-url")).set("");
                     respond(true, "isolated fixture returned to local sorting", state());
                 }
+                case "agent-ownership-probe" -> {
+                    var manager = Modules.get().get(StashManager.class);
+                    var url = (Setting<String>) manager.settings.get("server-url");
+                    var key = (Setting<String>) manager.settings.get("api-key");
+                    String savedUrl = url.get(), savedKey = key.get();
+                    boolean owns = manager.isActive();
+                    try {
+                        url.set("");
+                        key.set("");
+                        respond(
+                                manager.dedicatedProfile() == owns && StashManager.ownsClient() == owns,
+                                "Client ownership depends on the module toggle, not Manager credentials",
+                                state());
+                    } finally {
+                        url.set(savedUrl);
+                        key.set(savedKey);
+                    }
+                }
                 case "manager-pause" -> {
                     var manager = Modules.get().get(StashManager.class);
                     if (manager.isActive()) manager.toggle();
@@ -804,6 +822,7 @@ public final class WorldTestDriver {
                 mc.gui.screen() == null ? "none" : mc.gui.screen().getClass().getSimpleName());
         out.addProperty("navigation", NavigationRuntime.status());
         out.addProperty("navigationPaused", NavigationRuntime.paused());
+        out.addProperty("agentOwnsClient", StashManager.ownsClient());
         var settings = baritone.api.BaritoneAPI.getSettings();
         out.addProperty("allowBreak", settings.allowBreak.value);
         out.addProperty("allowBreakAnyway", settings.allowBreakAnyway.value.size());

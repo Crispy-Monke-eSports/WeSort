@@ -152,13 +152,17 @@ public final class NavigationRuntime {
 
     @EventHandler
     private void tick(TickEvent.Pre ignored) {
-        if (WorldInteractionGuard.dedicated()) {
+        boolean dedicated = WorldInteractionGuard.dedicated();
+        boolean foreign = false;
+        if (dedicated) {
             BaritoneHelper.enforceAgentProfile();
-            if (BaritoneHelper.controlledByOther(ours)) {
+            foreign = BaritoneHelper.controlledByOther(ours);
+            if (foreign) {
                 BaritoneHelper.stop();
-                if (!paused || ours != null) finish("PAUSED_NAVIGATION_OTHER_PROCESS", true);
-                return;
+                if (ours == null && !paused) status = "FOREIGN_PROCESS_CANCELLED";
             }
+        } else {
+            BaritoneHelper.restoreAgentProfile();
         }
         if (ours == null) return;
         if (mc.player == null || mc.level == null) {
@@ -192,7 +196,17 @@ public final class NavigationRuntime {
             finish("PAUSED_NAVIGATION_PHYSICAL_UNCERTAINTY", true);
             return;
         }
-        if (WorldInteractionGuard.dedicated() && !allowedRoute()) {
+        // Do not inspect a foreign executor's path. The current position still
+        // needs to be safe, and the watchdog/inventory checks above still run.
+        if (dedicated && foreign) {
+            if (!NavigationGuard.permits(mc.player.blockPosition())) {
+                finish("PAUSED_NAVIGATION_UNSAFE_BLOCK", true);
+                return;
+            }
+            if (!paused) BaritoneHelper.reassertGoal(ours);
+            return;
+        }
+        if (dedicated && !allowedRoute()) {
             finish("PAUSED_NAVIGATION_UNSAFE_BLOCK", true);
             return;
         }
@@ -204,7 +218,8 @@ public final class NavigationRuntime {
             finish("PAUSED_NAVIGATION_RELEASED", true);
             return;
         }
-        if (BaritoneHelper.controlledByOther(ours)) finish("PAUSED_NAVIGATION_OTHER_PROCESS", true);
+        if (!dedicated && BaritoneHelper.controlledByOther(ours))
+            finish("PAUSED_NAVIGATION_OTHER_PROCESS", true);
     }
 
     private static boolean touchingPortal() {

@@ -163,6 +163,63 @@ class AutomationGateTest {
     }
 
     @Test
+    void orphanedUncertainLeaseWithoutAnyJournalIsDroppedAfterGrace() throws Exception {
+        var store = store();
+        var clock = new AtomicLong(1_000_000);
+        var gate = new AutomationGate(store.stock(), clock::get);
+        var lease = gate.acquire("s", "agent", null);
+        assertNotNull(lease);
+        // Simulate a restart: reopening the ledger fences the ACTIVE lease.
+        var restartedLedger = new StockLedger(data);
+        var restarted = new AutomationGate(restartedLedger, clock::get);
+        assertEquals("NEEDS_RECONCILIATION", restarted.current("s").state());
+        // Still fenced inside the grace period ...
+        clock.set(lease.deadline() + AutomationGate.ORPHAN_GRACE_MS - 1);
+        assertNotNull(restarted.current("s"));
+        assertNull(restarted.acquire("s", "other", null));
+        // ... but dropped once the grace period passes with no journal posted.
+        // No physical_operations row exists, so releaseInspectedLease could never run for it.
+        clock.set(lease.deadline() + AutomationGate.ORPHAN_GRACE_MS);
+        assertNull(restarted.current("s"));
+        var next = restarted.acquire("s", "other", null);
+        assertNotNull(next);
+        assertEquals(next, restarted.current("s"));
+    }
+
+    @Test
+    void uncertainLeaseWithALiveJournalIsNeverAutoDropped() throws Exception {
+        var store = store();
+        var clock = new AtomicLong(1_000_000);
+        var gate = new AutomationGate(store.stock(), clock::get);
+        var lease = gate.acquire("s", "agent", null);
+        assertNotNull(lease);
+        var restartedLedger = new StockLedger(data);
+        try (var c = restartedLedger.open();
+                var tx = new SqliteWriteTransaction(c);
+                var p = c.prepareStatement(
+                        "INSERT INTO physical_operations(id,server,agent,stash,revision,checksum,payload,state,last_seen,fence_revision) VALUES(?,?,?,?,?,?,?,?,?,?)")) {
+            p.setString(1, UUID.randomUUID().toString());
+            p.setString(2, "s");
+            p.setString(3, "agent");
+            p.setString(4, "a");
+            p.setLong(5, 1);
+            p.setString(6, "checksum");
+            p.setString(7, "{}");
+            p.setString(8, "PLANNED");
+            p.setLong(9, clock.get());
+            p.setLong(10, 0);
+            p.executeUpdate();
+            tx.commit();
+        }
+        var restarted = new AutomationGate(restartedLedger, clock::get);
+        // Far past the grace period, but a live journal demands inspection first.
+        clock.set(lease.deadline() + AutomationGate.ORPHAN_GRACE_MS + 60_000);
+        assertNotNull(restarted.current("s"));
+        assertEquals("NEEDS_RECONCILIATION", restarted.current("s").state());
+        assertNull(restarted.acquire("s", "other", null));
+    }
+
+    @Test
     void fastManagerRestartFencesEvenAnUnexpiredSortingToken() throws Exception {
         var store = store();
         var lease = store.automation().acquire("s", "agent", null);

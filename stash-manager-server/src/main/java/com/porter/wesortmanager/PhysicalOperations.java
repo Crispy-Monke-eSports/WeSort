@@ -15,6 +15,15 @@ final class PhysicalOperations {
         }
     }
 
+    /**
+     * Automatic re-inspections per operation revision before the loop gives up and waits for an
+     * operator. A fenced operation whose agent keeps failing inspection without ever posting
+     * accepted proof would otherwise mint REQUESTED decisions forever.
+     */
+    static final int MAX_AUTO_INSPECT_PER_REVISION = 5;
+    /** Clock skew tolerated before a journal from slightly in the future is treated as expired. */
+    static final long FUTURE_SKEW_MS = 5_000;
+
     private final StockLedger ledger;
     private final LongSupplier clock;
 
@@ -51,6 +60,7 @@ final class PhysicalOperations {
             tx.execute("BEGIN IMMEDIATE");
             try {
                 expire(c);
+                boolean priorTerminal = false;
                 try (var p =
                         c.prepareStatement("SELECT payload,state,fence_revision FROM physical_operations WHERE id=?")) {
                     p.setString(1, id);
@@ -72,6 +82,7 @@ final class PhysicalOperations {
                                         throw new Conflict("Physical history cannot be rewritten");
                             }
                             fence = rows.getLong(3);
+                            priorTerminal = List.of("COMPLETED", "FAILED").contains(rows.getString(2));
                             if (rows.getString(2).equals("NEEDS_RECONCILIATION")) {
                                 if (!state.equals("NEEDS_RECONCILIATION")) {
                                     inspectionVerified = inspected(c, id, record, fence);
@@ -81,6 +92,7 @@ final class PhysicalOperations {
                         }
                     }
                 }
+                heldByOther(c, server, agent, priorTerminal);
                 try (var p = c.prepareStatement(
                         "INSERT INTO physical_operations VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET "
                                 + "revision=excluded.revision,checksum=excluded.checksum,payload=excluded.payload,state="
@@ -125,6 +137,27 @@ final class PhysicalOperations {
             }
         } catch (SQLException failure) {
             throw new IOException("Cannot commit physical evidence", failure);
+        }
+    }
+
+    /**
+     * A journal names its own agent, but the sorting lease names its holder: evidence from any
+     * other agent is rejected before it is stored, so a new identity can neither inspect nor
+     * prolong someone else's fence. The rejection also keeps the orphan-lease collector
+     * working — foreign journals would otherwise count as unsettled evidence forever.
+     */
+    private static void heldByOther(Connection c, String server, String agent, boolean priorTerminal)
+            throws SQLException, Conflict {
+        if (priorTerminal) return; // A replay of settled evidence re-affirms it; it cannot prolong a fence.
+        try (var p = c.prepareStatement("SELECT agent FROM automation_leases WHERE server=?")) {
+            p.setString(1, server);
+            try (var rows = p.executeQuery()) {
+                if (rows.next() && !agent.equals(rows.getString(1))) {
+                    System.err.println("Physical journal from '" + agent + "' rejected: sorting lease on '"
+                            + server + "' is held by another agent");
+                    throw new Conflict("lease held by other agent");
+                }
+            }
         }
     }
 
@@ -199,7 +232,9 @@ final class PhysicalOperations {
                 "UPDATE physical_operations SET state='NEEDS_RECONCILIATION',fence_revision=revision WHERE state IN "
                         + "('PLANNED','IN_PROGRESS','VERIFYING') AND (last_seen<=? OR last_seen>?)")) {
             p.setLong(1, clock.getAsLong() - 15_000);
-            p.setLong(2, clock.getAsLong());
+            // A journal slightly in the future is clock skew, not evidence of life: only a
+            // timestamp beyond the skew budget fences the operation.
+            p.setLong(2, clock.getAsLong() + FUTURE_SKEW_MS);
             p.executeUpdate();
         }
     }
@@ -211,7 +246,8 @@ final class PhysicalOperations {
             try (var p = c.prepareStatement("""
                      SELECT o.payload,o.state,o.last_seen,
                        (SELECT d.state FROM physical_decisions d WHERE d.operation=o.id ORDER BY d.issued_at DESC LIMIT 1),
-                       (SELECT d.detail FROM physical_decisions d WHERE d.operation=o.id ORDER BY d.issued_at DESC LIMIT 1)
+                       (SELECT d.detail FROM physical_decisions d WHERE d.operation=o.id ORDER BY d.issued_at DESC LIMIT 1),
+                       (SELECT count(*) FROM physical_decisions d WHERE d.operation=o.id AND d.action='INSPECT')
                      FROM physical_operations o
                      ORDER BY (o.state='NEEDS_RECONCILIATION') DESC,o.last_seen DESC LIMIT 128
                      """);
@@ -224,6 +260,7 @@ final class PhysicalOperations {
                         value.addProperty("inspectionState", rows.getString(4));
                         value.addProperty("inspectionDetail", rows.getString(5));
                     }
+                    value.addProperty("inspectionAttempts", rows.getInt(6));
                     out.add(value);
                 }
             }
@@ -377,9 +414,27 @@ final class PhysicalOperations {
             throw new IOException("Cannot schedule automatic physical inspection", failure);
         }
         try {
+            if (autoInspections(operation, revision, checksum) >= MAX_AUTO_INSPECT_PER_REVISION) return null;
             return inspect(operation, revision, checksum, "system:self-heal");
         } catch (Conflict changed) {
             return null; // The operation advanced since the readback receipt.
+        }
+    }
+
+    /** Automatic inspection attempts for one operation revision under this Manager run. */
+    private int autoInspections(String operation, long revision, String checksum) throws IOException {
+        try (var c = ledger.open();
+                var p = c.prepareStatement("SELECT count(*) FROM physical_decisions WHERE operation=? AND revision=? "
+                        + "AND checksum=? AND action='INSPECT' AND manager_run=?")) {
+            p.setString(1, operation);
+            p.setLong(2, revision);
+            p.setString(3, checksum);
+            p.setString(4, ledger.boot());
+            try (var rows = p.executeQuery()) {
+                return rows.next() ? rows.getInt(1) : 0;
+            }
+        } catch (SQLException failure) {
+            throw new IOException("Cannot schedule automatic physical inspection", failure);
         }
     }
 
@@ -410,7 +465,11 @@ final class PhysicalOperations {
         }
     }
 
-    synchronized void decisionResult(String agent, String id, String outcome, String detail) throws IOException {
+    /**
+     * Records the agent's inspection outcome. Returns false when no pending request matched,
+     * so callers surface a 409 instead of silently dropping the outcome.
+     */
+    synchronized boolean decisionResult(String agent, String id, String outcome, String detail) throws IOException {
         if (!List.of("COMPLETED", "FAILED").contains(outcome))
             throw new IllegalArgumentException("Invalid inspection outcome");
         try (var c = ledger.open();
@@ -421,7 +480,7 @@ final class PhysicalOperations {
             p.setString(2, detail == null ? "" : detail.substring(0, Math.min(1000, detail.length())));
             p.setString(3, id);
             p.setString(4, agent);
-            p.executeUpdate();
+            return p.executeUpdate() > 0;
         } catch (SQLException failure) {
             throw new IOException("Cannot record physical inspection outcome", failure);
         }

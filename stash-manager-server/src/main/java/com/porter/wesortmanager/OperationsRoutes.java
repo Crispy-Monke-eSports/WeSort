@@ -62,6 +62,7 @@ final class OperationsRoutes {
                 if (!perms.seesStash(en.getKey())) continue;
                 for (String code : en.getValue()) count(alerts, code);
             }
+            countPhysicalInspections(alerts);
         }
         var states = perms.ordersAll() ? orders.activeStates(viewer) : Map.<String, Integer>of();
         if (perms.ordersAll()) {
@@ -88,5 +89,21 @@ final class OperationsRoutes {
 
     private static void count(Map<String, Integer> counts, String key) {
         counts.merge(key, 1, Integer::sum);
+    }
+
+    /**
+     * A fenced operation that exhausted its automatic re-inspections waits for an operator
+     * (POST /api/v1/physical/inspect): surface it here instead of looping silently.
+     */
+    private void countPhysicalInspections(Map<String, Integer> alerts) throws IOException {
+        int stalled = 0;
+        for (var element : new PhysicalOperations(index.stock()).list()) {
+            var op = element.getAsJsonObject();
+            if (!op.has("managerState") || !"RECOVERING".equals(op.get("managerState").getAsString())) continue;
+            if (op.has("inspectionAttempts")
+                    && op.get("inspectionAttempts").getAsInt() >= PhysicalOperations.MAX_AUTO_INSPECT_PER_REVISION)
+                stalled++;
+        }
+        if (stalled > 0) alerts.put("PHYSICAL_INSPECTION_STALLED", stalled);
     }
 }

@@ -356,4 +356,75 @@ class PhysicalOperationsTest {
         assertNotNull(again);
         assertNotEquals(first.get("id").getAsString(), again.get("id").getAsString());
     }
+
+    @Test
+    void journalFromAnotherAgentIsRejectedWhileALeaseIsHeld() throws Exception {
+        var ledger = new StockLedger(data);
+        var gate = new AutomationGate(ledger);
+        var lease = gate.acquire("s", agent, null);
+        assertNotNull(lease);
+        String other = java.util.UUID.randomUUID().toString();
+        var foreign = new PhysicalJournal(data.resolve("foreign-client"));
+        foreign.start(JsonParser.parseString(
+                        "{\"server\":\"s\",\"stash\":\"a\",\"dimension\":\"minecraft:overworld\",\"agent\":\"" + other
+                                + "\",\"kind\":\"DIRECT\",\"orderId\":\"o-test\"}")
+                .getAsJsonObject());
+        var operations = new PhysicalOperations(ledger);
+        var failure = assertThrows(
+                PhysicalOperations.Conflict.class, () -> operations.accept(other, foreign.current()));
+        assertEquals("lease held by other agent", failure.getMessage());
+        // The rejected evidence was never stored, so the holder keeps its active lease.
+        assertEquals("ACTIVE", gate.current("s").state());
+    }
+
+    @Test
+    void unknownInspectionOutcomeIsSurfacedInsteadOfDropped() throws Exception {
+        var operations = new PhysicalOperations(new StockLedger(data));
+        assertFalse(operations.decisionResult(
+                agent, java.util.UUID.randomUUID().toString(), "COMPLETED", "No such request"));
+    }
+
+    @Test
+    void automaticInspectionGivesUpAfterMaxAttemptsAndEscalates() throws Exception {
+        var clock = new AtomicLong(10_000);
+        var operations = new PhysicalOperations(new StockLedger(data), clock::get);
+        var local = journal();
+        intent(local);
+        local.block("Inspect original slot");
+        var receipt = operations.accept(agent, local.current());
+        for (int i = 0; i < PhysicalOperations.MAX_AUTO_INSPECT_PER_REVISION; i++) {
+            var decision = operations.inspectAutomatically(agent, receipt);
+            assertNotNull(decision, "attempt " + i);
+            assertTrue(operations.decisionResult(agent, decision.get("id").getAsString(), "FAILED", "away"));
+            clock.addAndGet(60_001);
+        }
+        // The loop stops minting REQUESTED decisions: an operator must inspect by hand.
+        assertNull(operations.inspectAutomatically(agent, receipt));
+        var listed = operations.list().get(0).getAsJsonObject();
+        assertEquals("RECOVERING", listed.get("managerState").getAsString());
+        assertTrue(listed.get("inspectionAttempts").getAsInt() >= PhysicalOperations.MAX_AUTO_INSPECT_PER_REVISION);
+        // A manual inspection is still available after the automatic loop gives up.
+        var manual = operations.inspect(
+                local.id(), receipt.get("revision").getAsLong(), receipt.get("checksum").getAsString(), "owner");
+        assertNotNull(manual);
+    }
+
+    @Test
+    void journalSlightlyInTheFutureIsClockSkewNotDeath() throws Exception {
+        var clock = new AtomicLong(100_000);
+        var operations = new PhysicalOperations(new StockLedger(data), clock::get);
+        var local = journal();
+        intent(local);
+        operations.accept(agent, local.current());
+        // The Manager clock jumps a second backwards: the journal is newer than "now",
+        // but well within skew tolerance, so it must not be fenced as expired.
+        clock.set(99_000);
+        var listed = operations.list().get(0).getAsJsonObject();
+        assertEquals("IN_PROGRESS", listed.get("managerState").getAsString());
+        // ... while a journal from long ago is still fenced.
+        clock.set(100_000 + 15_001);
+        assertEquals(
+                "RECOVERING",
+                operations.list().get(0).getAsJsonObject().get("managerState").getAsString());
+    }
 }

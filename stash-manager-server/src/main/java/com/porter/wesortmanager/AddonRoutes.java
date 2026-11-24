@@ -107,10 +107,8 @@ final class AddonRoutes {
                 Http.json(ex, released ? 200 : 409, released ? Http.ok() : error("Automation requires reconciliation"));
                 return;
             }
-            if (orders.hasOpenOnServer(server)) {
-                Http.json(ex, 409, error("Reserved stock: sorting paused"));
-                return;
-            }
+            // OrderStore distinguishes a new lease from renewal of the
+            // current holder while newly queued orders are still deferred.
             var lease = orders.acquireSorting(server, agent, token);
             if (lease == null) {
                 Http.json(ex, 409, error("Another physical operation is active or uncertain"));

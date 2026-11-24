@@ -176,6 +176,64 @@ class AutomationGateTest {
     }
 
     @Test
+    void concurrentGateInstancesCannotBothAcquireThePhysicalSlot() throws Exception {
+        var ledger = store().stock();
+        var first = new AutomationGate(ledger);
+        var second = new AutomationGate(ledger);
+        var start = new CountDownLatch(1);
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var a = pool.submit(() -> {
+                start.await();
+                return first.acquire("s", "agent-a", null);
+            });
+            var b = pool.submit(() -> {
+                start.await();
+                return second.acquire("s", "agent-b", null);
+            });
+            start.countDown();
+            var left = a.get();
+            var right = b.get();
+            assertTrue((left == null) != (right == null));
+            assertEquals(left == null ? right : left, first.current("s"));
+        }
+    }
+
+    @Test
+    void lateRenewalCannotReviveAReleasedLease() throws Exception {
+        var gate = store().automation();
+        var first = gate.acquire("s", "agent", null);
+        assertTrue(gate.finish("s", "agent", first.token(), true));
+        assertNull(gate.acquire("s", "agent", first.token()));
+        assertNull(gate.current("s"));
+        var next = gate.acquire("s", "agent", null);
+        assertNotEquals(first.token(), next.token());
+        assertFalse(gate.finish("s", "agent", first.token(), true));
+        assertEquals(next, gate.current("s"));
+    }
+
+    @Test
+    void unresolvedNativeJournalCannotBeReleasedByAClaimedSuccess() throws Exception {
+        var ledger = store().stock();
+        var gate = new AutomationGate(ledger);
+        String agent = UUID.randomUUID().toString();
+        var lease = gate.acquire("s", agent, null);
+        var journal = new com.porter.wesort.inventory.PhysicalJournal(data.resolve("lease-client"));
+        var context = new JsonObject();
+        context.addProperty("server", "s");
+        context.addProperty("dimension", "minecraft:overworld");
+        context.addProperty("kind", "DIRECT");
+        context.addProperty("agent", agent);
+        context.addProperty("stash", "a");
+        context.addProperty("leaseFingerprint", com.porter.wesort.data.ContainerIdentity.hash(lease.token()));
+        journal.start(context);
+        var operations = new PhysicalOperations(ledger);
+        operations.accept(agent, journal.current());
+        assertFalse(gate.finish("s", agent, lease.token(), true));
+        assertEquals("NEEDS_RECONCILIATION", gate.current("s").state());
+        assertNull(gate.acquire("s", "other", null));
+    }
+
+    @Test
     void verifiedReleaseInvalidatesCachedProofBeforeAllowingNewReservations() throws Exception {
         var store = store();
         var orders = new OrderStore(data, store);

@@ -162,6 +162,7 @@ public class Stash {
         public BlockPos placed;
         public boolean confirmed;
         public String placedItemId = "";
+        public String repackConflict = "";
         public int placedStacks;
         // A stack of what is being packed, and the item a mixed shulker is mostly full of
         public ItemStack fillSample = ItemStack.EMPTY;
@@ -802,6 +803,7 @@ public class Stash {
         if (f.placed != null) tag.put("placed", positions(List.of(f.placed)));
         tag.putBoolean("confirmed", f.confirmed);
         tag.putString("placedItemId", f.placedItemId);
+        if (!f.repackConflict.isEmpty()) tag.putString("repackConflict", f.repackConflict);
         tag.putInt("placedStacks", f.placedStacks);
         if (!f.fillSample.isEmpty())
             ItemStack.CODEC.encodeStart(ops, f.fillSample).result().ifPresent(item -> tag.put("fillSample", item));
@@ -858,6 +860,7 @@ public class Stash {
         f.placed = readPos(tag, "placed");
         f.confirmed = flag(tag, "confirmed");
         f.placedItemId = text(tag, "placedItemId");
+        f.repackConflict = text(tag, "repackConflict");
         f.placedStacks = number(tag.get("placedStacks"), 0);
         f.fillSample = readStack(ops, tag.get("fillSample"));
         f.cleanMainId = text(tag, "cleanMainId");

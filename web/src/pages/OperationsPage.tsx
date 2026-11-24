@@ -33,12 +33,35 @@ import {
   useOperations,
   usePermissions,
   usePhysicalOps,
+  useStashes,
   type OpsList,
 } from "../api/queries";
+import { classifyStaleAlert } from "../lib/attention";
 
 function rowsOf(data: OpsList | undefined, key: string): any[] {
   const v = (data as any)?.[key];
   return Array.isArray(v) ? v : [];
+}
+
+/** Split rescan-expected stale alerts (muted) from actionable ones. */
+function partitionAlerts(
+  alerts: { code: string; count: number }[],
+  rescanPending: boolean,
+): {
+  actionableAlerts: { code: string; count: number }[];
+  mutedAlerts: { code: string; count: number }[];
+} {
+  const actionableAlerts: { code: string; count: number }[] = [];
+  const mutedAlerts: { code: string; count: number }[] = [];
+  for (const a of alerts) {
+    if (a.code === "STALE" || a.code.startsWith("STALE_")) {
+      const kind = classifyStaleAlert(a.code, rescanPending);
+      (kind.muted ? mutedAlerts : actionableAlerts).push(a);
+    } else {
+      actionableAlerts.push(a);
+    }
+  }
+  return { actionableAlerts, mutedAlerts };
 }
 
 /**
@@ -56,6 +79,8 @@ export function OperationsPage() {
   const [tab, setTab] = useState(0);
 
   const ops = useOperations(canActivity);
+  const stashes = useStashes(loggedIn && perms.can("view"));
+  const rescanPending = (stashes.data ?? []).some((s) => s.rescanPending);
   const physical = usePhysicalOps(owner);
   const jobs = useJobQueue(owner);
   const handoffs = useHandoffs(owner);
@@ -87,6 +112,13 @@ export function OperationsPage() {
     Record<string, number> | undefined;
   const orderStates = (ops.data as any)?.orders as
     Record<string, number> | undefined;
+  // STALE_RESCAN (expected rescan fallout) renders muted/info; every other
+  // alert code stays actionable. Older servers only emit the bare STALE code,
+  // which maps defensively through the stash rescanPending flags.
+  const { actionableAlerts, mutedAlerts } = partitionAlerts(
+    alerts,
+    rescanPending,
+  );
 
   return (
     <Stack spacing={2}>
@@ -99,9 +131,24 @@ export function OperationsPage() {
         </Alert>
       )}
 
-      {alerts.length > 0 && (
+      {actionableAlerts.length > 0 && (
         <Alert severity="warning">
-          {alerts.map((a) => `${a.code} (${a.count})`).join(" · ")}
+          <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
+            {actionableAlerts.map((a) => (
+              <Chip
+                key={a.code}
+                size="small"
+                color="warning"
+                label={`${a.code} ×${a.count}`}
+              />
+            ))}
+          </Stack>
+        </Alert>
+      )}
+      {mutedAlerts.length > 0 && (
+        <Alert severity="info">
+          Stock {mutedAlerts.map((a) => `${a.code} ×${a.count}`).join(", ")}{" "}
+          during rescan (expected) — availability settles when the rescan lands.
         </Alert>
       )}
 

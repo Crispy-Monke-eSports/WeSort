@@ -4703,7 +4703,12 @@ public class StashSorter extends Module {
                     orderRunner.craftEnded(new Crafter.Outcome(item, 0, "the selected workbench is missing"));
                     return false;
                 }
-                orderRunner.manufacturingIntent();
+                if (!orderRunner.manufacturingIntent()) {
+                    // The checkpoint never reached disk: starting the craft now would run it
+                    // against a stale recovery point, so fail before the first physical step.
+                    orderRunner.craftEnded(new Crafter.Outcome(item, 0, "couldn't persist manufacturing checkpoint"));
+                    return false;
+                }
             }
             // For shulker packing, retain the existing fallback to find/place a
             // missing table. For new product manufacturing, the table is pinned.

@@ -580,9 +580,18 @@ public class Stash {
     }
 
     public void save() {
+        persist();
+    }
+
+    /**
+     * Durable pre-action checkpoint. Unlike {@link #save()}, reports whether the checkpoint
+     * actually reached disk, so callers can refuse to start irreversible work on a stale
+     * recovery point. The early registries-missing return and any write failure report false.
+     */
+    public boolean persist() {
         remember();
         net.minecraft.core.RegistryAccess registries = mc.level != null ? mc.level.registryAccess() : lastRegistries;
-        if (registries == null) return;
+        if (registries == null) return false;
         RegistryOps<Tag> ops = registries.createSerializationContext(NbtOps.INSTANCE);
 
         CompoundTag root = new CompoundTag();
@@ -786,8 +795,10 @@ public class Stash {
                 Files.move(temp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             }
             dirty = false;
+            return true;
         } catch (IOException e) {
             WeSortAddon.LOG.error("Couldn't save stash {}", name, e);
+            return false;
         }
     }
 

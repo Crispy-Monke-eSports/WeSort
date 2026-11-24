@@ -888,15 +888,25 @@ final class OrderRunner {
         return pool;
     }
 
-    /** Durable pre-click intent; an interrupted craft can never be blindly replayed. */
-    void manufacturingIntent() {
-        if (!manufacturing()) return;
+    /**
+     * Durable pre-click intent; an interrupted craft can never be blindly replayed.
+     *
+     * @return false when the checkpoint did not reach disk: the caller must not start
+     *     manufacturing, and any half-set in-flight flags are rolled back.
+     */
+    boolean manufacturingIntent() {
+        if (!manufacturing()) return true;
         Stash stash = owner.stash();
         if (stash == null || stash.activeOrder == null || !stash.activeOrder.id.equals(order.id))
             throw new IllegalStateException("Missing manufacturing order journal");
         craftInFlight = stash.activeOrder.craftInFlight = true;
         stash.markDirty();
-        stash.save();
+        if (!stash.persist()) {
+            craftInFlight = false;
+            if (stash.activeOrder.id.equals(order.id)) stash.activeOrder.craftInFlight = false;
+            return false;
+        }
+        return true;
     }
 
     Map<String, Long> craftPool() {

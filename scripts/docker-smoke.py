@@ -430,7 +430,7 @@ try:
             "Chromium: two members log in, search shared stock, browse the stash, reserve stock and see private order histories"
         )
         ok(
-            "Chromium: an officer searches by person and item and inspects the corresponding order audit"
+            "Chromium: officer audit denied; Owner searches by person and item and inspects the order audit"
         )
         ok(
             "Chromium: Member checkout sends SELF; Owner checkout validates recipient names and confirms GUILD with the verified account"

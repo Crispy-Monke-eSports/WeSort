@@ -345,17 +345,17 @@ public class StashSorter extends Module {
     private final Setting<Integer> recheck = sgBot.add(new IntSetting.Builder()
             .name("recheck")
             .description(
-                    "Seconds between checks of drop-off containers for new items. With smart-recheck it is the shortest wait.")
-            .defaultValue(30)
-            .range(5, 600)
-            .sliderRange(5, 120)
+                    "Seconds between routine container observations (minimum five minutes). Oldest observations are checked first.")
+            .defaultValue(300)
+            .range(300, 600)
+            .sliderRange(300, 600)
             .visible(stayOn::get)
             .build());
 
     private final Setting<Boolean> smartRecheck = sgBot.add(new BoolSetting.Builder()
             .name("smart-recheck")
             .description(
-                    "Only drop-offs that can change without anyone opening them (a hopper, dropper or dispenser next to or above them, or out of loaded range) are checked, and the wait grows from the recheck time up to 5 minutes while nothing is found. Opened drop-offs are noticed from their lids. Off: every drop-off is checked every recheck seconds.")
+                    "When enabled, unchanged drop-off containers back off up to ten minutes. Player activity and Manager requests still queue a re-read, subject to the minimum five-minute interval.")
             .defaultValue(true)
             .visible(stayOn::get)
             .build());
@@ -875,13 +875,11 @@ public class StashSorter extends Module {
     private final StashWatch stashWatch = new StashWatch();
     private static final int LID_POLL_TICKS = 4;
     private static final int OWN_TOUCH_TICKS = 20 * 10;
-    private static final int REREAD_COOLDOWN_TICKS = 20 * 60;
-    // When the sorter or the player last had each container open, and when the sorter last read it
     private final Map<Box, Integer> ownTouch = new HashMap<>();
-    private final Map<Box, Integer> readAt = new HashMap<>();
-    // Containers someone else used, to be read again between jobs, and the ones held back by the cooldown
+    // Dirty observations are retained even during cooldown; they are never used as fresh stock.
     private final Set<Box> staleBoxes = new LinkedHashSet<>();
-    private final Map<Box, Integer> deferredAccess = new HashMap<>();
+    private final Map<Box, Long> surveyAttemptAt = new HashMap<>();
+    private final Queue<Box> surveyBatch = new ArrayDeque<>();
     // Jobs that opened a container and clicked nothing, with what the carry slots and the container held then: not
     // repeated until one of them changes, however often stalled is cleared meanwhile
     private final Map<String, Long> futile = new HashMap<>();
@@ -1534,7 +1532,7 @@ public class StashSorter extends Module {
             new RemoteControl("rotate", "Rotate while interacting", "bool", 0, 0),
             new RemoteControl("log-level", "Log level", "enum", 0, 0),
             new RemoteControl("stay-on", "Stay on when idle", "bool", 0, 0),
-            new RemoteControl("recheck", "Recheck interval", "int", 5, 600),
+            new RemoteControl("recheck", "Recheck interval", "int", 300, 600),
             new RemoteControl("smart-recheck", "Smart recheck", "bool", 0, 0),
             new RemoteControl("collect-ground", "Collect ground items", "bool", 0, 0),
             new RemoteControl("collect-range", "Ground collection range", "int", 0, 64),
@@ -2215,7 +2213,6 @@ public class StashSorter extends Module {
             pruneHeld();
             if (relocateNamed()) return;
             remindStuck();
-            releaseDeferred();
             applyStale();
             // The perimeter changed while a job was under way: containers outside it go, the ones inside come in
             if (areaDirty) applyArea();
@@ -2871,43 +2868,73 @@ public class StashSorter extends Module {
                 own);
     }
 
-    // Drop-offs: per container, when it is due for a check and how long to wait after that (it grows while checks find
-    // nothing new). The ones being checked now are in dropRechecked
-    private static final int DROP_RECHECK_MAX = 20 * 60 * 5;
-    private final Map<Box, int[]> dropState = new HashMap<>();
-    private final Set<Box> dropRechecked = new HashSet<>();
+    // Smart drop-off backoff applies only to periodic surveys, never to a dirty observation.
+    private final Map<Box, Long> dropBackoffUntil = new HashMap<>();
 
-    /**
-     * Whether items can arrive in or leave this container without anyone opening it, so no lid shows it: a hopper,
-     * dropper or dispenser next to it or above it (or below, which empties it), or the place not being loaded.
-     */
-    private boolean changesSilently(Box box) {
-        for (BlockPos part : box.parts) {
-            if (!mc.level.isLoaded(part)) return true;
-            for (Direction d : Direction.values()) {
-                var block = mc.level.getBlockState(part.relative(d)).getBlock();
-                if (block == Blocks.HOPPER || block == Blocks.DROPPER || block == Blocks.DISPENSER) return true;
+    private long surveyIntervalMs() {
+        return Math.max(com.porter.wesort.inventory.SurveyBatch.MIN_INTERVAL_MS, recheck.get() * 1000L);
+    }
+
+    private boolean surveyDue(Box box, long now) {
+        if (!readableBox(box)) return false;
+        // A fresh receipt for an already-started physical operation is not
+        // routine polling. Waiting five minutes here could expire the journal.
+        if (awaitingRepackStorage() && box.stale && box.lastRead < repackStoreAt) return true;
+        return com.porter.wesort.inventory.SurveyBatch.due(
+                now, box.lastRead, surveyAttemptAt.getOrDefault(box, 0L), surveyIntervalMs());
+    }
+
+    private boolean surveyCandidate(Box box, long now, boolean periodic) {
+        if (!surveyDue(box, now)) return false;
+        if (!box.known() || box.stale) return true;
+        return periodic && keepOn()
+                && (!smartRecheck.get() || now >= dropBackoffUntil.getOrDefault(box, 0L));
+    }
+
+    private boolean queueSurveyBatch(boolean periodic, boolean nearbyOnly) {
+        long now = System.currentTimeMillis();
+        surveyBatch.removeIf(box -> !stash.boxes.contains(box) || !surveyDue(box, now)
+                || box.known() && !box.stale);
+        if (!surveyBatch.isEmpty()) return true;
+        surveyAttemptAt.keySet().retainAll(stash.boxes);
+        dropBackoffUntil.keySet().retainAll(stash.boxes);
+        var candidates = stash.boxes.stream()
+                .filter(box -> surveyCandidate(box, now, periodic) && (!nearbyOnly || inReach(box)))
+                .toList();
+        var selected = com.porter.wesort.inventory.SurveyBatch.oldest(
+                candidates, box -> box.lastRead, box -> surveyAttemptAt.getOrDefault(box, 0L));
+        if (selected.isEmpty()) return false;
+        // The selected batch stays stable until every member is attempted or
+        // has been refreshed by another verified job in the meantime.
+        for (Box box : selected) {
+            box.stale = true;
+            surveyBatch.add(box);
+        }
+        info("Checking %d containers, oldest observations first.", selected.size());
+        return true;
+    }
+
+    private boolean startSurveyBatch(boolean nearbyOnly) {
+        if (!queueSurveyBatch(false, nearbyOnly)) return false;
+        long now = System.currentTimeMillis();
+        Box selected = null;
+        for (Box box : surveyBatch) {
+            if (surveyDue(box, now) && (!nearbyOnly || inReach(box))) {
+                selected = box;
+                break;
             }
         }
-        return false;
+        if (selected == null) return false;
+        surveyBatch.remove(selected);
+        surveyAttemptAt.put(selected, now);
+        return start(Job.Survey, selected);
     }
 
-    /**
-     * A check of a drop-off is over: its waiting time starts again when it held something new, else it is doubled.
-     */
     private void dropChecked(Box box, boolean differed) {
-        if (!dropRechecked.remove(box)) return;
-        dropDone(box, differed);
-    }
-
-    private void dropDone(Box box, boolean differed) {
-        int base = recheck.get() * 20;
-        int[] state = dropState.computeIfAbsent(box, b -> new int[] {0, base});
-        state[1] = differed ? base : Math.min(DROP_RECHECK_MAX, Math.max(base, state[1]) * 2);
-        state[0] = ticks + state[1];
-        debug(
-                "Drop-off at %s %s, next check in %d s.",
-                xyz(box.pos), differed ? "held something new" : "held nothing new", state[1] / 20);
+        if (!box.dropOff) return;
+        long now = System.currentTimeMillis();
+        long interval = surveyIntervalMs();
+        dropBackoffUntil.put(box, now + (differed ? interval : Math.min(600_000L, interval * 2)));
     }
 
     /**
@@ -2921,6 +2948,7 @@ public class StashSorter extends Module {
         // One failure per job: the skip paths and finishJob can both get here for the same read
         int delay = surveyRetry.failOnce(box, ticks);
         if (delay < 0) return;
+        delay = Math.max(delay, 20 * 300);
         step(String.format(
                 "skipped %s at %s: %s; will retry in %s.",
                 blockName(box), xyz(box.pos), why, com.porter.wesort.utils.SurveyRetry.describe(delay)));
@@ -2949,60 +2977,11 @@ public class StashSorter extends Module {
     private boolean wakeUp() {
         idleTicks++;
 
-        // Never rest while there is work: a chest a player used, a changed area, or a container not read yet or due to
-        // be
-        String why = null;
-        if (!staleBoxes.isEmpty()) why = "a used chest is queued for a re-read";
-        else if (areaDirty) why = "the stash area changed";
-        else {
-            // Containers that couldn't be read are tried again on their schedule (releaseDueSurveys, every tick)
-            for (Box box : stash.boxes) {
-                if (box.excluded || box.unreachable || failedSurvey.contains(box)) continue;
-                if (!box.known() || box.stale) {
-                    Box found = box;
-                    why = "the container at " + xyz(found.pos) + " is " + (box.known() ? "stale" : "unread");
-                    break;
-                }
-            }
-        }
-        if (why != null) {
-            debug("Waking from rest: %s.", why);
+        // Dirty and periodic reads share one oldest-first scheduler. A recent
+        // dirty box does not keep waking the idle loop throughout its cooldown.
+        if (areaDirty || queueSurveyBatch(true, false)) {
             idle = false;
             return true;
-        }
-
-        // Drop-offs are only emptied when sorting; scan-only learns of their changes from the lids
-        int base = recheck.get() * 20;
-        // A drop-off that can't be reached or read any more is no longer being waited for: it counts as a check that
-        // found
-        // nothing
-        for (Box box : new ArrayList<>(dropRechecked)) {
-            if (box.unreachable || failedSurvey.contains(box) || !box.stale || !stash.boxes.contains(box)) {
-                dropRechecked.remove(box);
-                dropDone(box, false);
-            }
-        }
-        if (sorting() && ticks % 20 == 0) {
-            boolean any = false;
-            for (Box box : stash.boxes) {
-                if (!box.dropOff || box.unreachable || box.excluded || box.stale) continue;
-                int[] state = dropState.computeIfAbsent(box, b -> new int[] {ticks + base, base});
-                if (ticks < state[0]) continue;
-                // Without smart-recheck every drop-off, as before; with it only those that can change unseen
-                if (!smartRecheck.get()) {
-                    state[0] = ticks + base;
-                    box.stale = true;
-                    any = true;
-                } else if (changesSilently(box)) {
-                    box.stale = true;
-                    dropRechecked.add(box);
-                    any = true;
-                } else state[0] = ticks + DROP_RECHECK_MAX;
-            }
-            if (any) {
-                idle = false;
-                return true;
-            }
         }
 
         if (Kits.version() != seenKits) {
@@ -3093,41 +3072,23 @@ public class StashSorter extends Module {
         if (startOrphanRecovery()) return true;
 
         // Exploring: whatever unknown or old is within reach is read before moving on to the next waypoint
-        if (exploring && stash.hasArea()) {
-            Box close = nearest(stash.boxes.stream()
-                    .filter(b -> (!b.known() || b.stale)
-                            && !b.excluded
-                            && !b.foreign
-                            && !b.unreachable
-                            && !failedSurvey.contains(b)
-                            && inReach(b))
-                    .toList());
-            if (close != null) return start(Job.Survey, close);
-        }
+        if (exploring && stash.hasArea() && startSurveyBatch(true)) return true;
 
         // With a perimeter, its chunks are loaded first, so its containers are known before anything is sorted
         if (explorePending && exploreRan && !exploring) explorePending = false;
         if ((sorting() || explorePending) && startExplore()) return true;
         if (!running()) return false;
 
-        Box unread = nearest(stash.boxes.stream()
-                .filter(b -> !b.known() && !b.unreachable && !failedSurvey.contains(b))
-                .toList());
-        if (unread != null) return start(Job.Survey, unread);
+        if (startSurveyBatch(false)) return true;
 
         // Initial inventory belongs to the dedicated bot only. Finish all saved work and
         // read the destination before moving anything. No cleanup runs in scan-only mode.
         if (sorting() && startupDepositPending && !pendingPhysicalRecovery() && !orderRunner.holdsOrder()) {
-            Box old = nearest(staleBoxes());
-            if (old != null) return start(Job.Survey, old);
             if (startStartupDeposit()) return true;
         }
 
         // Scan-only: the containers last seen before a stop are read again, then everything is read, nothing is moved.
-        if (!sorting()) {
-            Box old = nearest(staleBoxes());
-            if (old != null) return start(Job.Survey, old);
-        }
+
 
         // Scan-only: crafting whose order is over is driven to its end (the grid emptied, what was gathered put back)
         if (!sorting() && crafter.active() && (!craftForOrder || !orderRunner.running()) && runCraft(crafter.next()))
@@ -3175,8 +3136,7 @@ public class StashSorter extends Module {
 
         // Containers last seen before a stop are read again before anything is taken from them or built from them; what
         // is carried is put away first
-        List<Box> toReread = staleBoxes();
-        boolean rereading = !toReread.isEmpty();
+        boolean rereading = !staleBoxes().isEmpty();
 
         // An order kit left over from an order that is over is let go of, so it can't be taken for a saved kit
         if (orderKit() && !orderRunner.running()) kitBuilder.dropOrderKit();
@@ -3289,10 +3249,7 @@ public class StashSorter extends Module {
         }
 
         // Now the containers that were last seen before the stop are read again
-        if (rereading) {
-            Box old = nearest(toReread);
-            if (old != null) return start(Job.Survey, old);
-        }
+        if (rereading && startSurveyBatch(false)) return true;
 
         // Mixed shulkers sitting in the stash: fetch one to clean out
         if (repackOn() && freeCarryCount() >= 2) {
@@ -7566,7 +7523,7 @@ public class StashSorter extends Module {
     }
 
     /**
-     * For wesort-stash-manager (the website's rescan button): every known container is read again, nearest first, and the area
+     * For wesort-stash-manager (the website's rescan button): every known container is queued, oldest first, and the area
      * is explored again for new ones. What is known stays in place, so the index keeps showing it until each is read.
      * Works with sort-items off, and with the sorter off: the reading starts when it is turned on.
      * @return how many containers will be read, or -1 when no stash is loaded
@@ -9086,11 +9043,7 @@ public class StashSorter extends Module {
             }
             return true;
         }
-        Box unread = nearest(
-                stash.boxes.stream().filter(b -> !b.known() && readableBox(b)).toList());
-        if (unread == null) unread = nearest(staleBoxes());
-        if (unread == null) return false;
-        return start(Job.Survey, unread);
+        return startSurveyBatch(false);
     }
 
     /** A container that a survey would actually read: known filters live with the jobs. */
@@ -10945,7 +10898,7 @@ public class StashSorter extends Module {
         stashWatch.clear();
         deliveryWatch.clear();
         staleBoxes.clear();
-        deferredAccess.clear();
+        surveyBatch.clear();
         futile.clear();
         noOpReported.clear();
         failedSurvey.clear();
@@ -12979,9 +12932,10 @@ public class StashSorter extends Module {
             stashWatch.clear();
             deliveryWatch.clear();
             ownTouch.clear();
-            readAt.clear();
+            surveyAttemptAt.clear();
+            surveyBatch.clear();
+            dropBackoffUntil.clear();
             staleBoxes.clear();
-            deferredAccess.clear();
             lastPlayer = null;
             ground.reset();
             forgetExploration();
@@ -13182,17 +13136,13 @@ public class StashSorter extends Module {
             box.stale = true;
             return false;
         }
-        box.lastRead = System.currentTimeMillis();
         if (stash.dimension.isEmpty() && mc.level != null) {
             stash.dimension = Stash.currentDimension();
             stash.markDirty();
         }
-        readAt.put(box, clock);
         AbstractContainerMenu menu = mc.player.containerMenu;
         boolean differs = changed(box, menu);
         if (differs) stash.markDirty();
-        dropChecked(box, differs);
-
         int size = menu.slots.size() - 36;
         ItemStack[] contents = new ItemStack[size];
         for (int i = 0; i < size; i++) contents[i] = menu.getSlot(i).getItem().copy();
@@ -13200,6 +13150,7 @@ public class StashSorter extends Module {
         box.stale = false;
         box.unreachable = false;
         com.porter.wesort.compat.ObservationRuntime.record(box);
+        if (!box.stale) dropChecked(box, differs);
         stash.markDirty();
         if (differs && !box.stale && actions == 0) {
             version++;
@@ -13251,33 +13202,8 @@ public class StashSorter extends Module {
      */
     private void accessed(Box box) {
         debug("Another player used the container at %s.", box.pos.toShortString());
-        if (running()) {
-            // One we've just read ourselves isn't read again for a minute: a late lid event from our own opening on a
-            // laggy server would otherwise start a loop. The visit is kept, once per container, for after that
-            Integer last = readAt.get(box);
-            if (last != null && clock - last < REREAD_COOLDOWN_TICKS) deferredAccess.putIfAbsent(box, clock);
-            else staleBoxes.add(box);
-            return;
-        }
-
-        // Read again when it runs next; what is known stays in use for searching until then
-        box.stale = true;
-    }
-
-    /**
-     * Visits held back by the cooldown are read once it has passed, or dropped if we have read the container again
-     * since the visit, which has shown what it holds now.
-     */
-    private void releaseDeferred() {
-        if (deferredAccess.isEmpty()) return;
-        for (Map.Entry<Box, Integer> entry : new ArrayList<>(deferredAccess.entrySet())) {
-            Box box = entry.getKey();
-            Integer last = readAt.get(box);
-            if (last != null && clock - last < REREAD_COOLDOWN_TICKS) continue;
-
-            deferredAccess.remove(box);
-            if (last == null || last <= entry.getValue()) staleBoxes.add(box);
-        }
+        if (running()) staleBoxes.add(box);
+        else box.stale = true;
     }
 
     /**
@@ -13293,10 +13219,10 @@ public class StashSorter extends Module {
             box.stale = true;
             clearStalled();
             compacted.remove(box);
-            failedSurvey.remove(box);
-            surveyRetry.succeed(box);
+            // A lid event does not reset the retry or survey cooldown.
+            stash.markDirty();
             idle = false;
-            info("A player used the chest at %s, re-checking it.", box.pos.toShortString());
+            debug("A player used the chest at %s, queued for the next eligible survey batch.", box.pos.toShortString());
         }
     }
 

@@ -169,8 +169,8 @@ final class BotRoutes {
                             : "Too many bots (limit " + BotHub.MAX_BOTS + ")");
             return;
         }
-        System.out.println("WeSort Manager: agent hello id=" + botId + " plugin=" + safeVersion(plugin)
-                + " mc=" + safeVersion(runtime));
+        System.out.println("WeSort Manager: agent hello id=" + botId + " plugin=" + safeVersion(plugin) + " mc="
+                + safeVersion(runtime));
         JsonObject out = Http.ok();
         out.addProperty("protocol", controlSession == null ? 1 : 2);
         if (controlSession != null) {
@@ -275,8 +275,9 @@ final class BotRoutes {
     private static String safeVersion(JsonObject o) {
         if (o == null) return "?";
         String id = o.has("id") && o.get("id").isJsonPrimitive() ? o.get("id").getAsString() : null;
-        String version =
-                o.has("version") && o.get("version").isJsonPrimitive() ? o.get("version").getAsString() : null;
+        String version = o.has("version") && o.get("version").isJsonPrimitive()
+                ? o.get("version").getAsString()
+                : null;
         String mc = o.has("mc") && o.get("mc").isJsonPrimitive() ? o.get("mc").getAsString() : null;
         if (id != null && version != null) return id + "@" + version;
         if (version != null) return version;
@@ -285,7 +286,8 @@ final class BotRoutes {
     }
 
     /** {a, b} with optional short string fields only; missing object = empty. Null when malformed. */
-    private static JsonObject smallObject(JsonObject o, String field, String... keys) {        JsonObject out = new JsonObject();
+    private static JsonObject smallObject(JsonObject o, String field, String... keys) {
+        JsonObject out = new JsonObject();
         if (!o.has(field) || o.get(field).isJsonNull()) return out;
         if (!o.get(field).isJsonObject()) return null;
         JsonObject in = o.getAsJsonObject(field);

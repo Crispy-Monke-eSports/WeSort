@@ -70,7 +70,7 @@ publiceras av workflow `Minecraft 26.3 toolchain`.
 
 ## Portningsrisker och nästa gräns
 
-- Java 25 krävs av Mojangs manifest; Manager ligger kvar på Java 21.
+- Java 25 krävs av Mojangs manifest; även Manager använder Java 25.
 - Gamla remap-pluginet, `modImplementation` och officialMojangMappings ska
   inte användas för 26.3. Den gamla byggvägen för 1.21.4/1.21.11 är nu avvecklad.
 - `ResourceLocation` har ersatts av `Identifier`; klientens GUI/rendering,
@@ -92,7 +92,8 @@ med saknad addon-author rättades innan slutkörningen. Se separat
 
 `./gradlew build` bygger nu **endast Minecraft 26.3** via `build.gradle.kts`.
 `-Pmc=26.3` är frivilligt och andra `-Pmc`-värden nekas. Klienten använder
-Java 25; endast den fristående Manager-applikationen behåller Java 21. Root-wrappern är
+Java 25; den fristående Manager-applikationen använder också Java 25.
+Root-wrappern är
 uppdaterad till samma checksummalåsta Gradle 9.6.0 som provprojektet.
 
 Algoritmer och domänlogik ligger kvar i `src/main/java`. De explicita

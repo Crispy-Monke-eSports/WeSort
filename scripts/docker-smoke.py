@@ -150,6 +150,9 @@ try:
     run(compose + ["up", "-d", "--no-build"])
     container = run(compose + ["ps", "-q", "manager"]).stdout.strip()
     wait_ready(container)
+    java_version = run(["docker", "exec", container, "java", "--version"]).stdout
+    assert java_version.splitlines()[0].startswith("openjdk 25."), "Manager must run on Java 25"
+    ok("Manager Java 25 runtime")
     info = json.loads(run(["docker", "inspect", container]).stdout)[0]
     network = next(iter(info["NetworkSettings"]["Networks"]))
     agent_url = (

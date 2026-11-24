@@ -2058,8 +2058,20 @@ final class OrderStore {
 
     /** { pending: n, cancel: [ids of held orders with a cancel requested] } for the heartbeat reply. */
     JsonObject heartbeatJson(String server, String stash) {
+        return heartbeatJson(server, stash, null);
+    }
+
+    /**
+     * Heartbeat view of orders. Pending counts and cancel notices are unchanged; when the caller
+     * identifies its agent, {@code mine} additionally lists that agent's own unfinished orders.
+     * A bot that was assigned an order and then restarted before persisting the order id sees an
+     * empty pending count (the order is no longer pending) and would never ask again — {@code mine}
+     * lets it resume exactly its own assignment via resumeClaim instead.
+     */
+    JsonObject heartbeatJson(String server, String stash, String agent) {
         JsonObject out = new JsonObject();
         JsonArray cancel = new JsonArray();
+        JsonArray mine = new JsonArray();
         int pending = 0;
         Book b = books.get(new IndexStore.StashKey(server, stash));
         if (b != null) {
@@ -2068,11 +2080,13 @@ final class OrderStore {
                     if (o.status.equals("pending") && o.approval != Approval.PENDING) pending++;
                     else if (o.cancelRequested && (o.status.equals("accepted") || o.status.equals("in_progress")))
                         cancel.add(o.id);
+                    if (agent != null && agent.equals(o.agent) && isExecuting(o)) mine.add(o.id);
                 }
             }
         }
         out.addProperty("pending", pending);
         out.add("cancel", cancel);
+        if (agent != null) out.add("mine", mine);
         return out;
     }
 

@@ -245,6 +245,15 @@ final class AddonRoutes {
             Http.error(ex, 400, "player and indexHash must be strings");
             return;
         }
+        // Optional agent identity (Minecraft agent UUID, same form as orders/claim requires).
+        // Lets the heartbeat answer with this agent's own unfinished assignments ("mine"),
+        // so a bot that lost its order id across a restart can resume exactly its own order.
+        // Absent or invalid input keeps the legacy coarser view; invalid input is refused.
+        String agent = AddonRoutes.string(o, "agent");
+        if (agent != null && !agent.matches("[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")) {
+            Http.error(ex, 400, "Invalid agent ID");
+            return;
+        }
         // PROTOCOL.md, "Additions: delivery storage contents": absent = an older bot, null = no delivery container.
         boolean hasDeliveryHash = o.has("deliveryHash");
         String deliveryHash = string(o, "deliveryHash");
@@ -285,7 +294,7 @@ final class AddonRoutes {
         // Always sent, so a bot knows this server takes delivery reports (it only sends them once it has seen the key).
         if (hasDeliveryHash && deliveryHash == null) delivery.clear(server, stash); // the container was unset
         out.addProperty("needDelivery", delivery.needed(server, stash, deliveryHash));
-        out.add("orders", orders.heartbeatJson(server, stash));
+        out.add("orders", orders.heartbeatJson(server, stash, agent));
         if (result.rescan() != null) out.addProperty("rescan", result.rescan());
         // Manager-owned directive: region cube, drop-off chest, delivery, anvil and workbench. The bot executes
         // headlessly.

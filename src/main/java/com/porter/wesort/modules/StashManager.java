@@ -262,6 +262,12 @@ public class StashManager extends Module {
 
     // Orders
     private int pendingOrders;
+    /**
+     * An assigned order the Manager still holds for us but we never saved locally (e.g. the
+     * client restarted between claim and checkpoint). Refreshed from every heartbeat's
+     * {@code mine} list; cleared when a resume is sent, when reset, or when superseded.
+     */
+    private String strandedResumeId;
     private long lastClaim, lastStatusAt;
     private String lastStatusSig = "";
     private String rejectedId, rejectedWhy, rejectedStatus = "failed";
@@ -513,6 +519,7 @@ public class StashManager extends Module {
         sortingPoll = 0;
         pendingManifest = null;
         pendingOrders = 0;
+        strandedResumeId = null;
         lastClaim = lastStatusAt = 0;
         lastStatusSig = "";
         rejectedId = rejectedWhy = null;
@@ -1539,6 +1546,12 @@ public class StashManager extends Module {
                 return resumeOrder(base, key, now, sorter, runner, stash, runner.resumeId());
             return false;
         }
+        // The Manager still holds one of our orders but we never saved its id (e.g. the
+        // client restarted between claim and checkpoint): ask for exactly that order.
+        if (stash != null && shouldResumeStranded(runner.resumeId(), strandedResumeId, now, lastClaim)) {
+            return resumeOrder(base, key, now, sorter, runner, stash, strandedResumeId);
+        }
+        if (stash != null && strandedResumeId != null) return false;
         // Nothing in hand: take the oldest pending order.
         if (acceptOrders.get()
                 && !orderIntakePaused.get()
@@ -1564,9 +1577,21 @@ public class StashManager extends Module {
         return false;
     }
 
+    /**
+     * Whether a stranded assignment (heartbeat {@code mine}, never checkpointed locally) should
+     * be resumed right now. Pure decision for unit tests: a saved resume id always wins, and the
+     * claim throttle applies to stranded resumes too.
+     */
+    static boolean shouldResumeStranded(String resumeId, String strandedId, long now, long lastClaim) {
+        return resumeId == null && strandedId != null && now - lastClaim >= CLAIM_MS;
+    }
+
     private boolean resumeOrder(
             URI base, String key, long now, StashSorter sorter, OrderRunner runner, Stash stash, String id) {
         lastClaim = now;
+        // A stranded id is only a hint: the next heartbeat re-adds it while the Manager
+        // still holds the order, so a lost/unknown id cannot loop here forever.
+        if (id.equals(strandedResumeId)) strandedResumeId = null;
         var request = new JsonObject();
         request.addProperty("server", stash.server);
         request.addProperty("stash", stash.name);
@@ -1933,6 +1958,19 @@ public class StashManager extends Module {
             JsonObject orders = e.getAsJsonObject().getAsJsonObject("orders");
             pendingOrders = orders.has("pending") ? orders.get("pending").getAsInt() : 0;
             StashSorter sorter = WeSortAddon.sorter();
+            // Orders the Manager still holds for exactly this agent ("mine"): if we never
+            // saved the id locally (restart between claim and checkpoint), resume it.
+            String stranded = null;
+            if (orders.has("mine") && orders.get("mine").isJsonArray()) {
+                String saved = sorter == null ? null : sorter.orders().resumeId();
+                for (JsonElement id : orders.getAsJsonArray("mine")) {
+                    if (id.isJsonPrimitive() && !id.getAsString().equals(saved)) {
+                        stranded = id.getAsString();
+                        break;
+                    }
+                }
+            }
+            strandedResumeId = stranded;
             if (sorter != null && orders.has("cancel") && orders.get("cancel").isJsonArray()) {
                 for (JsonElement id : orders.getAsJsonArray("cancel")) {
                     String cancelled = id.getAsString();

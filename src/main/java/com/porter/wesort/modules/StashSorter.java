@@ -340,6 +340,13 @@ public class StashSorter extends Module {
             .defaultValue(false)
             .build());
 
+    private final Setting<Boolean> exclusiveControl = sgBot.add(new BoolSetting.Builder()
+            .name("exclusive-control")
+            .description(
+                    "Dedicated bot account: never give way to screens, movement keys, other modules, auto eat or inventory changes made outside the sorter. The sorter keeps full control of the client even while it is used. Only enable on an account nobody plays on: with this on, the sorter can open containers, move items and walk while you do.")
+            .defaultValue(false)
+            .build());
+
     private final Setting<Integer> recheck = sgBot.add(new IntSetting.Builder()
             .name("recheck")
             .description(
@@ -2061,8 +2068,10 @@ public class StashSorter extends Module {
         // Time spent giving way does not count against the time allowed to finish a saved shulker step
         if (resuming && gate != Gate.Running) resumeStarted++;
 
-        // What else is using the client, every tick: nothing of ours goes on while it's anything
-        StashYield.Reason foreign = yielder.check();
+        // What else is using the client, every tick: nothing of ours goes on while it's anything.
+        // Exclusive control (dedicated bot account) skips the check entirely: with nobody
+        // to give way to, lastForeign stays ancient so every quiet gate already passes.
+        StashYield.Reason foreign = exclusiveControl.get() ? null : yielder.check();
         foreignNow = foreign != null;
         // The sorter has the controls while it walks or works; a ledge with a drop gets a sneak, which is let go of
         // otherwise

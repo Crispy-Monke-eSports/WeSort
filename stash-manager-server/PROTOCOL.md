@@ -134,7 +134,14 @@ A replay returns its committed response without advancing the order again.
 `state` is the physical progress of a complete order. The legacy agent
 report `delivered` describes warehouse staging. Manager requires exact
 native staging receipts before exposing `PICKUP_READY`. An uncertain
-report leaves the order in `NEEDS_RECONCILIATION`.
+report moves the order to `RECOVERING` (automatic rollback); a silent
+rollback fails it after 30 minutes so its holds release on the next
+verified observation. A packed order whose bot goes silent releases its
+holds after 30 minutes while staying collectible.
+The implemented terminal set is `PICKUP_READY` plus the verified sweep
+release; `PICKED_UP`/`IN_TRANSIT`/`AWAITING_CUSTOMER`/`DELIVERED` exist
+only as reserved stages for a future custody flow and are never emitted
+by the current bot API.
 
 ## W-058 guild order review and destination
 

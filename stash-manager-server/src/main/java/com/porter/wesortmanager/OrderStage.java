@@ -6,6 +6,12 @@ enum OrderStage {
     RESERVED,
     PACKING,
     PICKUP_READY,
+    /**
+     * Delivery-chain stages for a future custody flow. The current bot API never emits them:
+     * a bot report of {@code delivered} means warehouse staging and lands on PICKUP_READY
+     * (or RECOVERING when uncertain), so the implemented terminal set is PICKUP_READY plus
+     * the verified sweep release. PICKED_UP and later stay reserved, never assigned.
+     */
     PICKED_UP,
     IN_TRANSIT,
     AWAITING_CUSTOMER,

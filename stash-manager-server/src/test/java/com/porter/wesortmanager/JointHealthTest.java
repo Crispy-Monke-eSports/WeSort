@@ -317,8 +317,8 @@ class JointHealthTest {
     private JsonObject observation(StockLedger l, String stash, long count, long base, long sequence, int x) {
         return StockFixtures.physical(
                 JsonParser.parseString("{\"version\":1,\"server\":\"s\",\"stash\":\"" + stash
-                                + "\",\"receivedAt\":1000,\"items\":[{\"key\":\"minecraft:diamond\",\"id\":\"minecraft:diamond\",\"count\":"
-                                + count + "}]}")
+                                + "\",\"receivedAt\":1000,\"items\":[{\"key\":\"minecraft:diamond\","
+                                + "\"id\":\"minecraft:diamond\",\"count\":" + count + "}]}")
                         .getAsJsonObject(),
                 l.epoch(),
                 base,

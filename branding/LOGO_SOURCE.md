@@ -16,12 +16,16 @@ På WeAB.nu skapas texten under logotypen via [BrandMark.astro](https://github.c
 
 Fontfamiljen Press Start 2P distribueras av Google Fonts under **SIL Open Font License 1.1**. Typsnittets licens finns i `branding/PRESS_START_2P_LICENSE.txt`. Ingen binär fontfil ingår i projektet.
 
+## Sidhuvud och inloggning
+
+`branding/wesort-horizontal.svg` och Manager-resursen `/wesort-horizontal.svg` är identiska. De använder samma oförändrade WE-skylt och samma Press Start 2P-konturer för SORT som den stående lockupfilen, med enbart en ny viewBox och en enhetlig transform av suffixgruppen för horisontell placering. Appens sidhuvud använder den horisontella lockupen. Inloggning och första konfiguration använder den ursprungliga stående lockupen centrerad ovanför formuläret.
+
 ## Minecraft-ikon
 
 `src/main/resources/assets/wesort/icon.png` är en 128×128 PNG-rendering av samma granskade SVG-lockup, med bibehållna proportioner. PNG-format behövs för moddens icon i Fabric och är därmed en rasteriserad användning av samma grafik.
 
 ## Regressionstester
 
-`web-tests/smoke.cjs` säkerställer att SVG-källans Git-blobhash är exakt, att originalet är identiskt i Manager/webb och branding, att vektorkonturerna i lockup är oförändrade, att båda UI-ytorna använder lockup och att modikonens PNG har rätt SHA-256.
+`web-tests/smoke.cjs` säkerställer att SVG-källans Git-blobhash är exakt, att originalet är identiskt i Manager/webb och branding, att vektorkonturerna i lockup är oförändrade, att båda UI-ytorna använder rätt lockup och att den horisontella varianten behåller samma originalgrafik och glyphkonturer och att modikonens PNG har rätt SHA-256.
 
 För att visa logotypen behöver ingen Google Fonts-anslutning användas. Symbolen är identisk med WeAB.nu-källan; den fristående lockupfilen behåller webbplatsens typsnitt och proportioner (renderingens kantutjämning kan variera mellan webbläsare).

@@ -74,7 +74,15 @@ export function LoginPage() {
           component="img"
           src="/wesort-lockup.svg"
           alt="WeSort"
-          sx={{ height: 56, mb: 1 }}
+          data-testid="login-brand"
+          sx={{
+            display: "block",
+            width: { xs: 152, sm: 184 },
+            maxWidth: "100%",
+            height: "auto",
+            mx: "auto",
+            mb: 2,
+          }}
         />
         <Typography color="text.secondary">
           Guild stash &amp; order manager

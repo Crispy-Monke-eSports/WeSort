@@ -52,14 +52,37 @@ class BlockSafetyTest {
         // Geometry and support are Baritone's responsibility, not a registry-id
         // denylist. The dedicated interaction guard still refuses these blocks.
         for (String id : new String[] {
-            "oak_trapdoor", "iron_trapdoor", "lever", "tripwire_hook",
-            "redstone_wire", "redstone_torch", "redstone_wall_torch",
-            "redstone_block", "repeater", "comparator", "observer", "target",
-            "piston", "sticky_piston", "piston_head", "dispenser", "dropper",
-            "trapped_chest", "crafter", "bell", "lectern", "daylight_detector",
-            "lightning_rod", "powered_rail", "activator_rail",
-            "future_pressure_plate", "future_door", "future_trapdoor",
-            "future_fence_gate", "future_button", "future_sculk_sensor"
+            "oak_trapdoor",
+            "iron_trapdoor",
+            "lever",
+            "tripwire_hook",
+            "redstone_wire",
+            "redstone_torch",
+            "redstone_wall_torch",
+            "redstone_block",
+            "repeater",
+            "comparator",
+            "observer",
+            "target",
+            "piston",
+            "sticky_piston",
+            "piston_head",
+            "dispenser",
+            "dropper",
+            "trapped_chest",
+            "crafter",
+            "bell",
+            "lectern",
+            "daylight_detector",
+            "lightning_rod",
+            "powered_rail",
+            "activator_rail",
+            "future_pressure_plate",
+            "future_door",
+            "future_trapdoor",
+            "future_fence_gate",
+            "future_button",
+            "future_sculk_sensor"
         }) {
             for (String namespace : new String[] {"minecraft:", "othermod:", ""}) {
                 assertTrue(BlockSafety.safetySensitive(namespace + id), id);
@@ -70,9 +93,7 @@ class BlockSafetyTest {
 
     @Test
     void onlyExplicitNavigationHazardsBlockPassage() {
-        for (String id : new String[] {
-            "nether_portal", "end_portal", "end_gateway", "moving_piston"
-        }) {
+        for (String id : new String[] {"nether_portal", "end_portal", "end_gateway", "moving_piston"}) {
             assertTrue(BlockSafety.blocksNavigation(id), id);
             assertTrue(BlockSafety.blocksNavigation("minecraft:" + id), id);
             assertTrue(BlockSafety.blocksNavigation("othermod:" + id), id);

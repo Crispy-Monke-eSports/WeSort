@@ -61,11 +61,11 @@ och pausar som `PAUSED_NAVIGATION_OTHER_PROCESS`, även mellan WeSort-jobb.
 `scripts/mc26/navigation-harness.py` utökar navigationsprovet med
 `dedicated_guard_cases()`:
 
-| Prov                            | Kontroll                                                                                      |
-| ------------------------------- | --------------------------------------------------------------------------------------------- |
-| Staketgrind, trapdoor, spak     | Klienten vägrar use/break; serverns blockstates matchar referensen                            |
+| Prov                                    | Kontroll                                                                                                                                         |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Staketgrind, trapdoor, spak             | Klienten vägrar use/break; serverns blockstates matchar referensen                                                                               |
 | Tryckplatta, redstone och dörr i rutten | Baritone går över redstone, når plattan, passerar den plattstyrda järndörren och en öppen grind. Servern bekräftar aktivering och återställning. |
-| Osäker Bot-profil + externt mål | `allowBreakAnyway` töms, externt mål avbryts, `PAUSED_NAVIGATION_OTHER_PROCESS`               |
+| Osäker Bot-profil + externt mål         | `allowBreakAnyway` töms, externt mål avbryts, `PAUSED_NAVIGATION_OTHER_PROCESS`                                                                  |
 
 `mc26-navigation.yml` kör samma prov med Xvfb/Mesa i CI.
 

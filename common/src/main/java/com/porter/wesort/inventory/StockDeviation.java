@@ -14,7 +14,12 @@ public final class StockDeviation {
             boolean cursorEmpty,
             int transfers,
             boolean alreadyReturning) {
-        return sourceConfirmed && journalClear && workspaceMatches && cursorEmpty && transfers == 0 && !alreadyReturning;
+        return sourceConfirmed
+                && journalClear
+                && workspaceMatches
+                && cursorEmpty
+                && transfers == 0
+                && !alreadyReturning;
     }
 
     /** Only the verified source contents may change; unrelated inventory differences are not forgiven. */
@@ -31,8 +36,7 @@ public final class StockDeviation {
             if (rest == 0) expected.remove(entry.getKey());
             else expected.put(entry.getKey(), rest);
         }
-        for (var entry : observedSource.entrySet())
-            expected.merge(entry.getKey(), entry.getValue(), Math::addExact);
+        for (var entry : observedSource.entrySet()) expected.merge(entry.getKey(), entry.getValue(), Math::addExact);
         return expected.equals(actual);
     }
 }

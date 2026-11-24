@@ -6196,8 +6196,7 @@ public class StashSorter extends Module {
 
     /** Whether idle UUID work may run now: no order in the way, nothing else going on, none waiting to be claimed. */
     private boolean awaitingRepackStorage() {
-        return repackWork != null
-                && repackWork.phase() == com.porter.wesort.inventory.PhysicalWork.Phase.STORE;
+        return repackWork != null && repackWork.phase() == com.porter.wesort.inventory.PhysicalWork.Phase.STORE;
     }
 
     private boolean uuidIdleAllowed(boolean rereading) {
@@ -8150,8 +8149,9 @@ public class StashSorter extends Module {
                     ItemStack[] contents = repackMenuContents(mc.player.containerMenu);
                     String observed = com.porter.wesort.compat.RepackRuntime.signature(repackOuter, contents);
                     if (!repackExpected.isEmpty() && !repackExpected.equals(observed)) {
-                        String why = "Standing shulker differs from its last verified contents at "
-                                + placed.toShortString() + " (expected " + repackExpected + ", observed " + observed + ")";
+                        String why =
+                                "Standing shulker differs from its last verified contents at " + placed.toShortString()
+                                        + " (expected " + repackExpected + ", observed " + observed + ")";
                         if (!returningChangedShulker && returnObservedShulker(contents, why)) return;
                         blockRepackConflict(why);
                         return;
@@ -8174,7 +8174,8 @@ public class StashSorter extends Module {
                 resumeVerify = false;
                 String problem = resumeContentsProblem(mc.player.containerMenu);
                 if (problem != null) {
-                    if (!returningChangedShulker && !repackOuter.isEmpty()
+                    if (!returningChangedShulker
+                            && !repackOuter.isEmpty()
                             && returnObservedShulker(repackMenuContents(mc.player.containerMenu), problem)) return;
                     if (handlingProof || returningChangedShulker) {
                         blockRepackConflict("Cannot verify changed shulker for intact return: " + problem);
@@ -8289,7 +8290,9 @@ public class StashSorter extends Module {
         if (!com.porter.wesort.inventory.StockDeviation.mayReturnIntact(
                         InventorySync.ready() && InventorySync.confirmedSource(List.of(placed)),
                         !PhysicalJournalRuntime.blocked() && !PhysicalJournalRuntime.awaitingMirror(),
-                        placedConfirmed && !repackOuter.isEmpty() && blockId(mc.level, placed).equals(placedItemId),
+                        placedConfirmed
+                                && !repackOuter.isEmpty()
+                                && blockId(mc.level, placed).equals(placedItemId),
                         mc.player.containerMenu.getCarried().isEmpty(),
                         actions,
                         returningChangedShulker)
@@ -8298,14 +8301,15 @@ public class StashSorter extends Module {
             // Other player inventory must still match: only the source's observed
             // contents may differ, not the result of an uncertain transfer.
             if (repackConservation != null) {
-                var previousContents = com.porter.wesort.compat.RepackRuntime.conservation(
-                        Arrays.asList(Kits.inside(repackOuter)));
+                var previousContents =
+                        com.porter.wesort.compat.RepackRuntime.conservation(Arrays.asList(Kits.inside(repackOuter)));
                 var observedContents = com.porter.wesort.compat.RepackRuntime.conservation(Arrays.asList(contents));
                 if (!com.porter.wesort.inventory.StockDeviation.matchesWithObservedSource(
                         repackConservation, previousContents, observedContents, repackCombined(contents))) return false;
             }
             ItemStack observed = repackOuter.copy();
-            observed.set(DataComponents.CONTAINER,
+            observed.set(
+                    DataComponents.CONTAINER,
                     net.minecraft.world.item.component.ItemContainerContents.fromItems(Arrays.asList(contents)));
             String signature = com.porter.wesort.compat.RepackRuntime.signature(repackOuter, contents);
             if (!signature.equals(com.porter.wesort.compat.RepackRuntime.signature(observed))) return false;
@@ -8314,8 +8318,10 @@ public class StashSorter extends Module {
             repackOuter = observed.copy();
             repackExpected = signature;
             repackConservation = repackCombined(contents);
-            repackExistingCopies = (int) repackInventory().stream().filter(this::repackMatches).count();
-            placedStacks = (int) Arrays.stream(contents).filter(stack -> !stack.isEmpty()).count();
+            repackExistingCopies =
+                    (int) repackInventory().stream().filter(this::repackMatches).count();
+            placedStacks = (int)
+                    Arrays.stream(contents).filter(stack -> !stack.isEmpty()).count();
             shulkerSlotsBefore.clear();
             for (int i = 0; i < 36; i++)
                 if (Utils.isShulker(mc.player.getInventory().getItem(i).getItem())) shulkerSlotsBefore.add(i);
@@ -8568,8 +8574,8 @@ public class StashSorter extends Module {
         if (pickedUp()) {
             // Picked up: the new shulker, or failing that the one that holds what the plan was packing, in any slot
             int found = !repackExpected.isEmpty() ? verifiedRepackPickup() : -1;
-            if (returningChangedShulker && (found < 0 || found >= 36
-                    || parseSlots(keepSlots.get()).contains(found))) {
+            if (returningChangedShulker
+                    && (found < 0 || found >= 36 || parseSlots(keepSlots.get()).contains(found))) {
                 blockRepackConflict("Changed shulker pickup could not be assigned to a safe inventory slot");
                 return;
             }
@@ -9449,7 +9455,8 @@ public class StashSorter extends Module {
      * opening it (or picking it up, if it was already broken).
      */
     private boolean resumeObservedReturn(Stash.InFlight r) {
-        if (r.placed == null || !Stash.sameDimension(r.dimension, Stash.currentDimension())
+        if (r.placed == null
+                || !Stash.sameDimension(r.dimension, Stash.currentDimension())
                 || mc.player.containerMenu != mc.player.inventoryMenu) return false;
         if (!beginOrphanRecovery(r)) return false;
         returningChangedShulker = true;
@@ -9486,7 +9493,8 @@ public class StashSorter extends Module {
                 // Without the standing source, identical pre-existing copies cannot
                 // be attributed to this pickup after a restart.
                 if (repackExistingCopies > 0) {
-                    blockRepackConflict("Cannot identify the changed shulker among pre-existing identical copies after restart");
+                    blockRepackConflict(
+                            "Cannot identify the changed shulker among pre-existing identical copies after restart");
                     return;
                 }
                 shulkerSlotsBefore.clear();

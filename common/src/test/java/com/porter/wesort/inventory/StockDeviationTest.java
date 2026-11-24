@@ -21,8 +21,7 @@ class StockDeviationTest {
                 baseline, previous, observed, Map.of("diamond", 32L, "iron", 8L, "gold", 3L, "shulker", 1L)));
         assertFalse(StockDeviation.matchesWithObservedSource(
                 baseline, previous, observed, Map.of("diamond", 32L, "iron", 7L, "gold", 3L, "shulker", 1L)));
-        assertFalse(StockDeviation.matchesWithObservedSource(
-                baseline, Map.of("diamond", 65L), observed, baseline));
+        assertFalse(StockDeviation.matchesWithObservedSource(baseline, Map.of("diamond", 65L), observed, baseline));
     }
 
     @Test

@@ -918,6 +918,33 @@ public class StashSorter extends Module {
     private long repackStoreAt;
     private int repackExistingCopies;
     private boolean handlingProof;
+    // Verified box observations since the current STORE wait began, and full passes
+    // without a match: after a few, the stored shulker is declared missing (fail closed).
+    private int repackVerifyReads;
+    private final Set<String> repackVerifySeen = new HashSet<>();
+    private static final int MAX_REPACK_VERIFY_PASSES = 3;
+    // Last pre-gate reason that parked the tick, for the status line and heartbeat. Set on
+    // every silent early return, cleared once the tick gets past the gates.
+    private String gateReason = "";
+    private int lastGateLogClock = -100_000;
+    private static final int GATE_LOG_CLOCKS = 200;
+    // Wall-clock arm for the resume/STORE watchdog: tick counters freeze behind the
+    // recovery gates, so a stuck resume or STORE wait is timed in milliseconds instead.
+    private long storeWatchMs;
+    private static final long RESUME_MAX_TICKS_MS = 20L * 60 * 10 * 50;
+    private int lastResumeLogClock = -100_000;
+    // A stack on the cursor with nowhere to go: when it sits too long, say so once and
+    // stop clicking until the player frees a slot, instead of spinning silently.
+    private int cursorFirstSeen = -1;
+    private boolean cursorBlocked;
+    // Waiting-timeout escalation for the yield gate: alert once, then step periodically
+    // and escalate jobInterruptions so a lingering handle is eventually dropped.
+    private static final int WAIT_TIMEOUT_TICKS = 20 * 60 * 5;
+    private int lastWaitLogClock = -100_000;
+    private int lastWaitEscalation = -100_000;
+    private boolean waitTimeoutAlerted;
+    // Unexpected toggle combos: sorter on while the Agent toggle is off. Throttled.
+    private int lastToggleWarnClock = -100_000;
 
     public String shulkerPhase() {
         return handle == null ? "" : handle.name();
@@ -944,6 +971,7 @@ public class StashSorter extends Module {
     private static final int RESUME_MAX_TICKS = 20 * 60 * 10;
     private Stash.InFlight pendingResume;
     private boolean resuming, resumeVerify, resumeFinishOnly, resumeDimensionSaid;
+    private int resumeDimLogTick = -100_000;
     private boolean recoveringOrphan;
     private final Map<BlockPos, Integer> recoveryRetryAt = new HashMap<>();
     private int resumeStarted;
@@ -1607,6 +1635,9 @@ public class StashSorter extends Module {
     public String getInfoString() {
         if (com.porter.wesort.compat.NavigationRuntime.paused())
             return com.porter.wesort.compat.NavigationRuntime.status();
+        String waiting = gateStatus();
+        if (waiting != null) return waiting;
+        if (!gateReason.isEmpty()) return gateReason;
         return InventorySync.ready()
                 ? null
                 : (InventorySync.failed() ? "AUTO_RECOVERING" : "awaiting server inventory");
@@ -1673,6 +1704,15 @@ public class StashSorter extends Module {
         resumeVerify = false;
         resumeFinishOnly = false;
         resumeDimensionSaid = false;
+        resumeDimLogTick = -100_000;
+        gateReason = "";
+        repackVerifyReads = 0;
+        repackVerifySeen.clear();
+        storeWatchMs = 0;
+        cursorFirstSeen = -1;
+        cursorBlocked = false;
+        waitTimeoutAlerted = false;
+        lastWaitEscalation = clock;
         recoveringOrphan = false;
         recoveryRetryAt.clear();
         syncedHandle = null;
@@ -1719,6 +1759,17 @@ public class StashSorter extends Module {
                     "A shulker step was under way at %s when I stopped, finishing it first.",
                     pendingResume.placed.toShortString());
         } else pendingResume = null;
+        if (pendingResume != null
+                && !com.porter.wesort.compat.PhysicalJournalRuntime.blocked()
+                && !com.porter.wesort.compat.PhysicalJournalRuntime.awaitingMirror()
+                && (repackWork == null
+                        || repackWork.phase() == com.porter.wesort.inventory.PhysicalWork.Phase.COMPLETED
+                        || repackWork.phase() == com.porter.wesort.inventory.PhysicalWork.Phase.FAILED)) {
+            // The journal is not fenced but a restart stranded the in-memory tracking: track
+            // the resumed step again instead of leaving the next STORE without verification.
+            repackWork = new com.porter.wesort.inventory.PhysicalWork("Shulker", System.nanoTime());
+            debug("Rebuilt shulker tracking for the saved step; the journal is not blocked.");
+        }
 
         // Driven: reads, orders and leftovers only. New containers, marking everything stale, the checks and the
         // talk
@@ -1830,6 +1881,7 @@ public class StashSorter extends Module {
         }
         ownedMenu = null;
         gate = Gate.Running;
+        gateReason = "";
         ledgeGuard(false);
         ground.abort();
         // Emptying a bundle: whatever is on the cursor goes into a carry slot
@@ -2021,11 +2073,24 @@ public class StashSorter extends Module {
             if (InventorySync.failed()) blockRepack("Physical readback failed: " + InventorySync.reason());
             else if (repackWork.expired(System.nanoTime())) blockRepack("Physical phase deadline expired");
         }
+        // A resume or STORE wait makes no progress behind the recovery gates (the tick
+        // counters freeze there), so it is watched on the wall clock: after ten minutes
+        // with nothing verified the shulker step is abandoned loudly instead of hanging.
+        watchResumeStore();
+        // A verified re-read of the stored shulker can still complete the work...
+        verifyRepackStored();
+        // ...and a healed journal heals the stranded in-memory state, so the bot does not
+        // sit in NEEDS_RECONCILIATION forever after automatic recovery finished.
+        healRepackState();
         // Lobby navigation uses no inventory or physical permit, but still obeys the
         // reconciliation/navigation safety fences below. Sorting itself remains permit-gated.
         if (repackWork != null
                 && repackWork.phase() == com.porter.wesort.inventory.PhysicalWork.Phase.NEEDS_RECONCILIATION) {
             ledgeGuard(false);
+            gateLogThrottled("waiting for automatic recovery: "
+                    + (repackWork.reason().isEmpty()
+                            ? "physical work needs reconciliation"
+                            : repackWork.reason()));
             return;
         }
         if (PhysicalJournalRuntime.blocked()
@@ -2033,23 +2098,36 @@ public class StashSorter extends Module {
                 || !InventorySync.ready()
                 || com.porter.wesort.compat.NavigationRuntime.paused()) {
             ledgeGuard(false);
+            // Read-only surveys interleave while only the physical journal blocks us: a
+            // repack wait must not freeze re-reads.
+            if (surveyWhileBlocked()) {
+                gateReason = "surveying while " + preGateReason();
+                return;
+            }
+            gateLogThrottled(preGateReason());
             return;
         }
-        verifyRepackStored();
         // 6b6t portal transit is navigation-only; it cannot require a sorting lease or
         // a configured stash before the Manager has assigned one.
         if (portalTick()) {
             ledgeGuard(false);
+            gateLogThrottled("6b6t portal: " + (portalBlocker != null ? portalBlocker : "moving to the portal"));
             return;
         }
         if (!sortingPermitted()) {
-            step("sorting paused: Manager must exclude reservations before physical moves.");
+            gateLogThrottled("sorting paused: Manager must exclude reservations before physical moves.");
             ledgeGuard(false);
             return;
         }
         if (stash == null) {
             turnOff();
             return;
+        }
+        gateReason = "";
+        if (isActive() && !StashManager.ownsClient() && clock - lastToggleWarnClock >= 1200) {
+            lastToggleWarnClock = clock;
+            warning(
+                    "Sort-items is on but the WeSort-Agent toggle is off: the sorter runs without a Manager link. Turn the Agent on, or sort-items off.");
         }
         ticks++;
         // Track every placed shulker in the loaded portion of the assigned bounding box, including
@@ -2065,7 +2143,11 @@ public class StashSorter extends Module {
         // foreign activity history as well as ignoring new courtesy interruptions.
         boolean ownsClient = StashManager.ownsClient();
         StashYield.Reason foreign = yielder.check(ownsClient);
-        if (ownsClient && !reclaimClientScreen()) return;
+        boolean reclaimed = !ownsClient || reclaimClientScreen();
+        // A screen that could not be reclaimed (a foreign menu holding the cursor) parks
+        // the bot like any other interruption instead of spinning silently on the tick.
+        if (!reclaimed && gate == Gate.Running && !restingIdle()) beginYield(StashYield.Reason.Screen);
+        if (!reclaimed && gate == Gate.Running) return;
         foreignNow = foreign != null;
         // The sorter has the controls while it walks or works; a ledge with a drop gets a sneak, which is let go of
         // otherwise
@@ -2501,6 +2583,11 @@ public class StashSorter extends Module {
                 "Giving way to %s%s.",
                 reason == null ? "a stack on the cursor" : reason.label, job == null ? "" : " in the middle of " + job);
         cleanupTries = 0;
+        cursorFirstSeen = -1;
+        cursorBlocked = false;
+        waitTimeoutAlerted = false;
+        lastWaitLogClock = clock;
+        lastWaitEscalation = clock;
         wait = 0;
         releaseGoal();
         ledgeGuard(false);
@@ -2568,20 +2655,65 @@ public class StashSorter extends Module {
             cleanupStep();
             return false;
         }
+        waitingTimeoutTick(foreign);
         if (foreign != null || !yielder.quietElapsed()) return false;
 
         // A stack left on the cursor with no screen open (the server doesn't always hand it back) goes into a free slot
         if (!mc.player.containerMenu.getCarried().isEmpty()) {
-            if (mc.screen == null && mc.player.containerMenu == mc.player.inventoryMenu && cleanupTries++ % 4 == 0)
-                returnCursor();
+            if (mc.screen == null && mc.player.containerMenu == mc.player.inventoryMenu && !cursorBlocked) {
+                if (cursorFirstSeen < 0) cursorFirstSeen = clock;
+                if (cleanupTries++ % 4 == 0) returnCursor();
+                // No free slot for a while: say so once and stop clicking until the
+                // player frees one, instead of spinning silently.
+                if (clock - cursorFirstSeen > CURSOR_TRIES * 3) {
+                    cursorBlocked = true;
+                    alert(
+                            "The stack on the cursor has nowhere to go (no free slot); waiting for a free slot instead of retrying.");
+                }
+            }
             return false;
         }
+        cursorFirstSeen = -1;
+        cursorBlocked = false;
 
         yielder.endWaiting();
         gate = Gate.Running;
         yielder.inventoryChangedByUs();
         resumeJob();
         return true;
+    }
+
+    /**
+     * Every wait says what is awaited every few seconds, and a wait that never ends
+     * escalates: one alert, then the backed-off quiet time grows and the parked job counts
+     * as interrupted, so a lingering handle is eventually dropped instead of hanging.
+     */
+    private void waitingTimeoutTick(StashYield.Reason foreign) {
+        long waited = yielder.waitingTicks();
+        if (waited < 0) return;
+        if (clock - lastWaitLogClock >= GATE_LOG_CLOCKS) {
+            lastWaitLogClock = clock;
+            StashYield.Reason reason = foreign != null ? foreign : yielder.lastReason();
+            step(String.format(
+                    "waiting %ds for %s; next: carry on after %ds of quiet.",
+                    waited / 20,
+                    reason == null ? "a stack on the cursor" : reason.label,
+                    yielder.quietRemainingTicks() / 20));
+        }
+        if (waited <= WAIT_TIMEOUT_TICKS) return;
+        if (!waitTimeoutAlerted) {
+            waitTimeoutAlerted = true;
+            StashYield.Reason reason = foreign != null ? foreign : yielder.lastReason();
+            alert(
+                    "Waiting %d minutes for %s, backing off; the job is parked until they are quiet.",
+                    waited / 20 / 60,
+                    reason == null ? "a stack on the cursor" : reason.label);
+        }
+        if (clock - lastWaitEscalation >= 1200) {
+            lastWaitEscalation = clock;
+            yielder.interrupted();
+            jobInterruptions++;
+        }
     }
 
     /**
@@ -3798,6 +3930,11 @@ public class StashSorter extends Module {
     private final PortalWorldSession portalSession = new PortalWorldSession();
     private long portalLastScan = 0;
     private long portalWaitWarnedAt = 0;
+    // Retried portal approaches eventually give up with a blocker instead of looping forever.
+    private int portalAttempts;
+    private long portalGiveUpUntilMs;
+    private static final int PORTAL_MAX_ATTEMPTS = 10;
+    private static final long PORTAL_GIVE_UP_MS = 10L * 60 * 1000;
     private BlockPos portalTarget;
     private BlockPos portalApproach;
     private Vec3 portalLastPosition;
@@ -3934,6 +4071,12 @@ public class StashSorter extends Module {
         portalEntering = false;
         portalOtherSide = !portalOtherSide;
         portalLastScan = 0;
+        if (++portalAttempts > PORTAL_MAX_ATTEMPTS && portalGiveUpUntilMs == 0) {
+            portalGiveUpUntilMs = System.currentTimeMillis() + PORTAL_GIVE_UP_MS;
+            warning(
+                    "6b6t lobby: portal transit failed %d times, pausing attempts for %d minutes; cross manually.",
+                    portalAttempts, PORTAL_GIVE_UP_MS / 60_000);
+        }
     }
 
     /**
@@ -3950,6 +4093,19 @@ public class StashSorter extends Module {
             portalForward(false);
             return true;
         }
+        // A latched warehouse pause must not fence the lobby transit forever: with positive
+        // lobby evidence it is dropped (a portal-route pause stays latched).
+        if (portalSession.inLobby()) com.porter.wesort.compat.NavigationRuntime.clearWarehousePause();
+        if (System.currentTimeMillis() < portalGiveUpUntilMs) {
+            portalForward(false);
+            reportPortalBlocker("portal transit paused after repeated failures; cross manually");
+            return true;
+        }
+        if (portalGiveUpUntilMs != 0) {
+            // The pause expired: count fresh attempts from here.
+            portalGiveUpUntilMs = 0;
+            portalAttempts = 0;
+        }
         // Proxy worker switches do not always emit GameLeftEvent. If the
         // player is now in the likely lobby region, revoke an old warehouse
         // goal before any portal evidence is available. Never revoke a
@@ -3959,6 +4115,8 @@ public class StashSorter extends Module {
         if (portalSession.observe(mc.level, Stash.currentDimension(), mc.player.getX(), mc.player.getZ())) {
             stopPortalNavigation();
             portalBlocker = null;
+            portalAttempts = 0;
+            portalGiveUpUntilMs = 0;
             info("6b6t: confirmed survival transfer. Starting normal work.");
             return false;
         }
@@ -7142,6 +7300,8 @@ public class StashSorter extends Module {
         if (!shulkersOk()) return "sorter can't use shulkers";
         if (carry.isEmpty()) return "no free inventory slot";
         if (ensureStash() == null) return "no stash";
+        String away = notInStashWorld();
+        if (away != null) return away;
         if (orderRunner.deliveryBox() == null) return "no delivery box";
         if (pendingPhysicalRecovery()) return "finishing automatically recovered physical work";
         if (kitBuilder.active() && !orderKit()) return "busy: building a kit";
@@ -7163,7 +7323,9 @@ public class StashSorter extends Module {
         for (Box box : stash.boxes) {
             if (box.excluded) continue;
             box.stale = true;
-            count++;
+            // Only readable containers are counted: unreachable and failed-survey ones
+            // would inflate the "re-reading N" count without any subsequent reads.
+            if (readableBox(box)) count++;
         }
         forgetExploration();
         // Refresh membership at the next safe job boundary, including radius-only stashes.
@@ -8420,34 +8582,287 @@ public class StashSorter extends Module {
         return count;
     }
 
+    /** Why the tick is parked before any work: journal, inventory, navigation or permit. */
+    private String preGateReason() {
+        if (PhysicalJournalRuntime.blocked())
+            return "waiting for automatic recovery: " + PhysicalJournalRuntime.status();
+        if (PhysicalJournalRuntime.awaitingMirror())
+            return "waiting for the Manager receipt: " + PhysicalJournalRuntime.status();
+        if (!InventorySync.ready())
+            return InventorySync.failed()
+                    ? "awaiting automatic inventory recovery"
+                    : "awaiting server inventory";
+        if (com.porter.wesort.compat.NavigationRuntime.paused())
+            return "navigation paused: " + com.porter.wesort.compat.NavigationRuntime.status();
+        return "waiting";
+    }
+
+    /**
+     * Records the pre-gate reason for the status line and heartbeat, and says it at most
+     * every few seconds: a parked tick is visible without flooding the log.
+     */
+    private void gateLogThrottled(String reason) {
+        gateReason = reason;
+        if (clock - lastGateLogClock < GATE_LOG_CLOCKS) return;
+        lastGateLogClock = clock;
+        // The chat line needs a world; the log line does not.
+        if (mc.player != null && mc.level != null) step(reason);
+        else WeSortAddon.LOG.info("[wesort-stash-sorter] Stash: {}", reason);
+    }
+
+    /**
+     * The durable journal healed (a verified inspection completed) but the in-memory repack
+     * state still says NEEDS_RECONCILIATION: without a reset the bot sits there forever.
+     * With a saved shulker step the resume path rebuilds the state, so the memory is
+     * dropped; otherwise fresh tracking starts.
+     */
+    private void healRepackState() {
+        if (repackWork == null
+                || repackWork.phase() != com.porter.wesort.inventory.PhysicalWork.Phase.NEEDS_RECONCILIATION
+                || mc.player == null
+                || mc.level == null) return;
+        if (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror() || !InventorySync.ready())
+            return;
+        repackVerifyReads = 0;
+        repackVerifySeen.clear();
+        storeWatchMs = 0;
+        if ((stash != null && stash.inFlight != null) || pendingResume != null || resuming) {
+            repackWork = null;
+            step("verified recovery finished; next: resume the saved shulker step.");
+        } else {
+            repackWork = new com.porter.wesort.inventory.PhysicalWork("Shulker", System.nanoTime());
+            step("verified recovery finished; next: carry on.");
+        }
+    }
+
+    /**
+     * Wall-clock watchdog for a resume or STORE wait: the tick counters freeze behind the
+     * recovery gates, so RESUME_MAX_TICKS never fires there. After ten minutes with nothing
+     * verified the shulker step is abandoned loudly, saying what was awaited. While waiting,
+     * what is awaited is repeated every minute, not just once.
+     */
+    private void watchResumeStore() {
+        // Without a world nothing can be awaited or abandoned: re-arm on return.
+        if (mc.player == null || mc.level == null) {
+            storeWatchMs = 0;
+            return;
+        }
+        boolean watched = (resuming && handle != null)
+                || (repackWork != null
+                        && !repackWork.terminal()
+                        && repackWork.phase() == com.porter.wesort.inventory.PhysicalWork.Phase.STORE);
+        if (!watched) {
+            storeWatchMs = 0;
+            return;
+        }
+        if (storeWatchMs == 0) {
+            storeWatchMs = System.currentTimeMillis();
+            return;
+        }
+        if (System.currentTimeMillis() - storeWatchMs < RESUME_MAX_TICKS_MS) {
+            if (clock - lastResumeLogClock >= 1200) {
+                lastResumeLogClock = clock;
+                step("resuming: " + resumeWhat() + "; next: automatic recovery or resume.");
+            }
+            return;
+        }
+        storeWatchMs = 0;
+        if (resuming)
+            abandonShulker("Couldn't finish the shulker step at "
+                    + (placed == null ? "the saved place" : placed.toShortString()) + " within 10 minutes (awaited "
+                    + resumeWhat() + ").");
+        else
+            abandonShulker("The stored shulker was not verified within 10 minutes (awaited STORE verification"
+                    + (placed == null ? "" : " at " + placed.toShortString()) + ").");
+    }
+
+    /** What a stuck resume or STORE wait is waiting on, for alerts and the status line. */
+    private String resumeWhat() {
+        Stash.InFlight r = pendingResume;
+        if (r != null
+                && !r.dimension.isEmpty()
+                && mc.level != null
+                && !r.dimension.equals(mc.level.dimension().toString()))
+            return "the shulker at " + r.placed.toShortString() + " is in another dimension";
+        if (handle != null && placed != null) return handle.name() + " at " + placed.toShortString();
+        if (handle != null) return handle.name();
+        if (repackWork != null) return "STORE verification (" + repackWork.phase().name() + ")";
+        return "the saved shulker step";
+    }
+
+    /**
+     * Read-only surveys while the physical journal (but nothing else) blocks the loop: a
+     * repack wait must not freeze re-reads. Drives a Survey job already in hand, or starts
+     * one; anything physical (including resume) stays parked until recovery. Never touches a
+     * foreign screen or menu.
+     * @return true when the tick was consumed by a survey wait
+     */
+    private boolean surveyWhileBlocked() {
+        if (!PhysicalJournalRuntime.blocked() && !PhysicalJournalRuntime.awaitingMirror()) return false;
+        if (!InventorySync.ready() || com.porter.wesort.compat.NavigationRuntime.paused()) return false;
+        if (stash == null || handle != null) return false;
+        if (wait > 0) {
+            wait--;
+            return false;
+        }
+        if (mc.player == null
+                || mc.level == null
+                || mc.player.containerMenu != mc.player.inventoryMenu
+                || mc.screen != null) return false;
+        StashYield.Reason foreign = yielder.check(StashManager.ownsClient());
+        if (foreign != null) return false;
+        if (job != null) {
+            if (job != Job.Survey || target == null || step == null) return false;
+            stepTicks++;
+            if (++jobTicks > SURVEY_WATCHDOG_TICKS) {
+                Box stuck = target;
+                releaseGoal();
+                if (BARITONE) BaritoneHelper.unconfine();
+                surveyFailed(
+                        stuck,
+                        "reading it took " + jobTicks / 20 + "s behind the recovery wait (stuck in step " + step
+                                + ")");
+                finishJob();
+                return true;
+            }
+            switch (step) {
+                case Walking -> tickWalking();
+                case Opening -> tickOpening();
+                case Working -> tickWorking();
+            }
+            return true;
+        }
+        Box unread = nearest(stash.boxes.stream()
+                .filter(b -> !b.known() && readableBox(b))
+                .toList());
+        if (unread == null) unread = nearest(staleBoxes());
+        if (unread == null) return false;
+        return start(Job.Survey, unread);
+    }
+
+    /** A container that a survey would actually read: known filters live with the jobs. */
+    private boolean readableBox(Box box) {
+        return !box.excluded && !box.foreign && !box.unreachable && !failedSurvey.contains(box);
+    }
+
+    /** Containers skipped after failed reads, waiting for their retry time. For the heartbeat. */
+    public int failedSurveyCount() {
+        return failedSurvey.size();
+    }
+
+    /** Containers a survey would actually read now. For the rescan blocker. */
+    public int readableCount() {
+        if (stash == null) return 0;
+        return (int) stash.boxes.stream().filter(this::readableBox).count();
+    }
+
+    /** Why the bot is away from the stash, or null. For the Manager's alerts and blockers. */
+    public String awayReason() {
+        return notInStashWorld();
+    }
+
+    /**
+     * What the yield gate is waiting on, with the quiet remaining: for the status line and
+     * the Manager heartbeat. Null while running.
+     */
+    public String gateStatus() {
+        if (gate == Gate.Waiting) {
+            StashYield.Reason reason = yielder.lastReason();
+            long quiet = yielder.quietRemainingTicks() / 20;
+            return "WAITING " + (reason == null ? "cursor" : reason.name())
+                    + (quiet > 0 ? " quiet " + quiet + "s" : "");
+        }
+        if (gate == Gate.Yielding) {
+            StashYield.Reason reason = yielder.lastReason();
+            return "YIELDING " + (reason == null ? "cursor" : reason.name());
+        }
+        return null;
+    }
+
     private void verifyRepackStored() {
         if (stash == null
                 || repackWork == null
                 || repackWork.phase() != com.porter.wesort.inventory.PhysicalWork.Phase.STORE
-                || mc.player == null) return;
+                || mc.player == null) {
+            repackVerifyReads = 0;
+            repackVerifySeen.clear();
+            return;
+        }
+        if (storeWatchMs == 0) storeWatchMs = System.currentTimeMillis();
         long carriedCopies =
                 repackInventory().stream().filter(this::repackMatches).count();
         if (carriedCopies > repackExistingCopies) {
+            // More identical carried stock than when storage began (a re-pickup, a drop
+            // collected): recount the baseline with a debug line instead of silently
+            // re-arming the stored counts.
+            int before = repackExistingCopies;
+            repackExistingCopies = (int) carriedCopies;
+            debug(
+                    "repack verify: carried identical copies grew from %d to %d, recounting the stored baseline.",
+                    before, carriedCopies);
             for (var box : stash.boxes)
                 if (box.known() && com.porter.wesort.compat.ObservationRuntime.current(box))
                     repackStoreBefore.put(box.parts.toString(), repackCount(box.contents));
-            return;
         }
         if (carriedCopies < repackExistingCopies) {
             blockRepack("Other identical carried stock changed during storage verification");
             return;
         }
-        for (var box : stash.boxes)
-            if (box.known()
+        int readable = 0, verified = 0;
+        for (var box : stash.boxes) {
+            if (!readableBox(box)) continue;
+            readable++;
+            if (!(box.known()
                     && box.lastRead >= repackStoreAt
-                    && com.porter.wesort.compat.ObservationRuntime.current(box)
-                    && repackCount(box.contents)
-                            > repackStoreBefore.getOrDefault(box.parts.toString(), Integer.MAX_VALUE)) {
+                    && com.porter.wesort.compat.ObservationRuntime.current(box))) continue;
+            verified++;
+            repackVerifySeen.add(box.parts.toString());
+            if (repackCount(box.contents) > repackStoreBefore.getOrDefault(box.parts.toString(), 0)) {
+                repackVerifyReads = 0;
+                repackVerifySeen.clear();
+                storeWatchMs = 0;
                 PhysicalJournalRuntime.complete();
                 if (!PhysicalJournalRuntime.blocked())
                     repackWork.enter(com.porter.wesort.inventory.PhysicalWork.Phase.COMPLETED, System.nanoTime());
                 return;
             }
+        }
+        final int verifiedBoxes = verified;
+        final int readableBoxes = readable;
+        stepProgress(
+                "repack-verify",
+                verifiedBoxes,
+                Math.max(1, readableBoxes),
+                () -> {
+                    StringBuilder pending = new StringBuilder();
+                    if (readableBoxes - verifiedBoxes <= 5 && readableBoxes - verifiedBoxes > 0) {
+                        for (var box : stash.boxes) {
+                            if (!readableBox(box)
+                                    || (box.known()
+                                            && box.lastRead >= repackStoreAt
+                                            && com.porter.wesort.compat.ObservationRuntime.current(box))) continue;
+                            if (pending.length() > 0) pending.append(", ");
+                            pending.append(xyz(box.pos));
+                        }
+                    }
+                    return String.format(
+                            "verifying storage: re-read %d of %d containers%s, carrying %d of %d expected stacks; next: finish the pass.",
+                            verifiedBoxes,
+                            readableBoxes,
+                            pending.length() == 0 ? "" : " (still waiting on " + pending + ")",
+                            carriedCopies,
+                            repackExistingCopies);
+                });
+        // Every readable box re-read since storage began without a match is one full pass.
+        // After a few the stored shulker is declared missing, fail closed with the cause.
+        if (readable > 0 && repackVerifySeen.size() >= readable) {
+            repackVerifySeen.clear();
+            if (++repackVerifyReads >= MAX_REPACK_VERIFY_PASSES) {
+                repackVerifyReads = 0;
+                blockRepack("re-read every container " + MAX_REPACK_VERIFY_PASSES
+                        + " times without finding the stored shulker");
+            }
+        }
     }
 
     private boolean repackPrecondition(String why) {
@@ -8464,6 +8879,7 @@ public class StashSorter extends Module {
         repackWork.reconcile(why);
         PhysicalJournalRuntime.block(why);
         dropLost = true;
+        storeWatchMs = 0;
         alertError("Shulker operation waiting for automatic recovery: %s. No unverified physical retry is sent.", why);
     }
 
@@ -8756,9 +9172,15 @@ public class StashSorter extends Module {
         if (!r.dimension.isEmpty() && !r.dimension.equals(here)) {
             if (!resumeDimensionSaid) {
                 resumeDimensionSaid = true;
+                resumeDimLogTick = ticks;
                 alert(
                         "A shulker I left at %s is in another dimension, it will be finished when I'm back there. No shulkers are put down until then.",
                         r.placed.toShortString());
+            } else if (ticks - resumeDimLogTick >= 1200) {
+                resumeDimLogTick = ticks;
+                step(String.format(
+                        "resuming: waiting to be back in %s for the shulker at %s; next: automatic recovery or resume.",
+                        r.dimension, r.placed.toShortString()));
             }
             return false;
         }
@@ -9942,6 +10364,16 @@ public class StashSorter extends Module {
             if (job == Job.Survey)
                 surveyFailed(target, "could not open it (no window after " + OPEN_TIMEOUT / 20 + "s)");
             else debug("Could not open %s at %s, trying it again later.", home(target), xyz(target.pos));
+            debug(
+                    "Open timeout at %s: job %s, nav %s (%s, %s), baritone active=%s calculating=%s, goal %s.",
+                    xyz(target.pos),
+                    job,
+                    com.porter.wesort.compat.NavigationRuntime.paused() ? "paused" : "running",
+                    com.porter.wesort.compat.NavigationRuntime.status(),
+                    com.porter.wesort.compat.NavigationRuntime.denialSummary(),
+                    BARITONE && BaritoneHelper.isActive(),
+                    BARITONE && BaritoneHelper.isCalculating(),
+                    ourGoal == null ? "none" : "ours");
             finishJob();
             return;
         }

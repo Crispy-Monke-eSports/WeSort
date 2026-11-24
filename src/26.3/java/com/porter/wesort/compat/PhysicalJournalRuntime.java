@@ -298,6 +298,22 @@ public final class PhysicalJournalRuntime {
         if (inspectionResult != null && inspectionResult.get("id").getAsString().equals(id)) inspectionResult = null;
     }
 
+    /**
+     * Drops a pending inspection and its result without acting on it, e.g. when the link
+     * scope changes: evidence gathered for the old scope must never verify the new one.
+     */
+    public static void dropInspection() {
+        inspection = null;
+        inspectionResult = null;
+        inspectedSource = null;
+        inspectInventoryPending = false;
+    }
+
+    /** The next upload goes out at once instead of waiting for the throttle. */
+    public static void requestUpload() {
+        nextUpload = 0;
+    }
+
     public static void inspect(JsonObject decision) {
         if (inspection != null) return;
         var value = journal == null ? null : journal.current();

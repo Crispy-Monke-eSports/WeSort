@@ -127,10 +127,19 @@ public final class BaritoneHelper {
     }
 
     /**
-     * True while Baritone is still working out a path, which can take a while for far away goals.
+     * True while Baritone is still working out a path for a precise reach goal, which can take a
+     * while for far away goals.
      */
     public static boolean isCalculating() {
         return baritone().getPathingBehavior().getInProgress().isPresent();
+    }
+
+    /**
+     * Whether the goal is a precise reach goal (eyes within reach of a container part): those get
+     * a longer stuck allowance.
+     */
+    public static boolean isReachGoal(Object goal) {
+        return goal instanceof Goal && goal.getClass().getSimpleName().equals("GoalReach");
     }
 
     public static void stop() {

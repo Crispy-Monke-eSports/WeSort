@@ -217,6 +217,15 @@ final class StashYield {
         return now - lastForeign >= quietTicks();
     }
 
+    /**
+     * Ticks of quiet still required before carrying on, 0 when carrying on now. For the
+     * status line, so a wait never looks frozen.
+     */
+    long quietRemainingTicks() {
+        long remaining = (long) quietTicks() - (now - lastForeign);
+        return Math.max(0, remaining);
+    }
+
     Reason lastReason() {
         return lastReason;
     }
@@ -257,5 +266,13 @@ final class StashYield {
 
     boolean waiting() {
         return waitStart >= 0;
+    }
+
+    /**
+     * How long the current wait has lasted in ticks, or -1 when not waiting. The caller
+     * owns the timeout policy; this only exposes the elapsed wait.
+     */
+    long waitingTicks() {
+        return waitStart >= 0 ? now - waitStart : -1;
     }
 }

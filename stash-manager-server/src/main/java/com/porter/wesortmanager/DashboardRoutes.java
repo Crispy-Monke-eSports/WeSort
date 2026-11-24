@@ -60,6 +60,7 @@ final class DashboardRoutes {
                 o.addProperty("player", b.player);
                 o.addProperty("online", BotHub.online(b, now));
                 o.addProperty("lastSeen", b.lastSeen);
+                o.addProperty("lastHeartbeat", b.lastHeartbeat);
                 o.add("plugin", b.plugin.deepCopy());
                 o.add("runtime", b.runtime.deepCopy());
                 JsonArray caps = new JsonArray();

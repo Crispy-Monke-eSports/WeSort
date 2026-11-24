@@ -102,6 +102,30 @@ class PhysicalOperationsSweepTest {
     }
 
     @Test
+    void freshKeepaliveCannotProtectOperationWithFencedLease() throws Exception {
+        var order = acceptedOrder();
+        long now = System.currentTimeMillis();
+        plantOperation(order.id, now);
+        try (var c = DriverManager.getConnection("jdbc:sqlite:" + data.resolve("guild.sqlite"));
+                var p = c.prepareStatement("INSERT INTO automation_leases VALUES(?,?,?,?,?)")) {
+            p.setString(1, "s");
+            p.setString(2, "agent");
+            p.setString(3, "token");
+            p.setLong(4, now + 60_000);
+            p.setString(5, "NEEDS_RECONCILIATION");
+            p.executeUpdate();
+        }
+        new PhysicalOperations(index.stock(), () -> now).sweepStale();
+        try (var c = DriverManager.getConnection("jdbc:sqlite:" + data.resolve("guild.sqlite"));
+                var q = c.createStatement();
+                var rows = q.executeQuery("SELECT state,fence_revision FROM physical_operations")) {
+            assertTrue(rows.next());
+            assertEquals("NEEDS_RECONCILIATION", rows.getString(1));
+            assertEquals(1, rows.getLong(2));
+        }
+    }
+
+    @Test
     void freshOperationIsLeftAlone() throws Exception {
         var order = acceptedOrder();
         plantOperation(order.id, System.currentTimeMillis());

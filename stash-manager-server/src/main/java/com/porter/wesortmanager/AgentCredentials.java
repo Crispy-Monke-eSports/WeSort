@@ -218,7 +218,11 @@ final class AgentCredentials {
     synchronized void requireScoped() throws IOException {
         if (entries.values().stream().noneMatch(Slot::active))
             throw new IllegalArgumentException("Issue an agent credential first");
-        save(entries, true);
+        // save prunes revoked entries, so never pass the live map to a fallible write.
+        var updated = new TreeMap<>(entries);
+        save(updated, true);
+        entries.clear();
+        entries.putAll(updated);
     }
 
     private void save(Map<String, Slot> updated, boolean required) throws IOException {

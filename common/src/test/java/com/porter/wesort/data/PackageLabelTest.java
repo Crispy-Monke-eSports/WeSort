@@ -66,6 +66,23 @@ class PackageLabelTest {
     }
 
     @Test
+    void ambiguousAndMalformedFrozenLabelsAreRejected() {
+        var both = new JsonObject();
+        both.addProperty("text", "A");
+        both.add("texts", new com.google.gson.JsonArray());
+        assertThrows(IllegalArgumentException.class, () -> PackageLabel.normalize(both));
+        var wrongMode = new JsonObject();
+        wrongMode.addProperty("mode", "each");
+        wrongMode.addProperty("text", "A");
+        assertThrows(IllegalArgumentException.class, () -> PackageLabel.generate(wrongMode, 1));
+        var invalid = new JsonObject();
+        invalid.addProperty("mode", "all");
+        invalid.addProperty("text", "a".repeat(34));
+        assertThrows(IllegalArgumentException.class, () -> PackageLabel.generate(invalid, 1));
+        assertThrows(IllegalArgumentException.class, () -> PackageLabel.name(1, 1, "bad§text"));
+    }
+
+    @Test
     void generateProducesEveryBoxForFrozenTotal() {
         var common = new JsonObject();
         common.addProperty("text", "Projekt A");

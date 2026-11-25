@@ -44,7 +44,7 @@ The client log for Minecraft 26.3 on `6b6t.org:25565` shows:
 
 The actual pre-patch navigation guard rejects a route cell containing
 `minecraft:nether_portal` (classified as a safety-sensitive block), and the
-generic navigator latches the pause until `.wesort-navigation resume`.
+generic navigator auto-resumes transient pauses with backoff and expires hazardous or operator-taken routes instead of parking forever (#197); a dedicated agent never waits for a manual `.wesort-navigation resume`.
 The previous portal goal aimed at a portal block itself. The production log
 does not include coordinates identifying the rejected cell, so other unsafe
 route blocks cannot be excluded solely from this evidence.

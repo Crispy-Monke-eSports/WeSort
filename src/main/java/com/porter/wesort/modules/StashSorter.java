@@ -431,7 +431,7 @@ public class StashSorter extends Module {
     private final Setting<Boolean> repack = sgShulkers.add(new BoolSetting.Builder()
             .name("repack")
             .description(
-                    "Tier mode: takes items that belong elsewhere out of mixed shulkers, and packs loose items into shulkers that already hold only that item. Places the shulker beside you to do it, then breaks it and picks it back up. Named shulkers, and shulkers when a sign asks for them whole (like \"kits\"), are left as they are.")
+                    "Tier mode: takes items that belong elsewhere out of mixed shulkers, and packs loose items into shulkers that already hold only that item. Places the shulker beside you to do it, then breaks it and picks it back up. Named/kit-protected shulkers are left as they are.")
             .defaultValue(true)
             .build());
 
@@ -2600,6 +2600,13 @@ public class StashSorter extends Module {
      */
     private void walkNear(BlockPos pos, int range) {
         if (!BARITONE) return;
+        // #197: never start a walk into an unloaded target (e.g. chunks still
+        // streaming at login). Park in the gate with a throttled reason instead
+        // of latching RELEASED and waiting for a manual resume.
+        if (mc.level == null || !mc.level.isLoaded(pos)) {
+            gateLogThrottled("waiting for chunks: unloaded target " + xyz(pos));
+            return;
+        }
         BaritoneHelper.protect(List.of());
         usedBaritone = true;
         BaritoneHelper.confine(safeWalk.get());
@@ -2627,6 +2634,12 @@ public class StashSorter extends Module {
      */
     private void walkReach(Box box) {
         if (!BARITONE) return;
+        // #197: same chunk-await as walkNear; a high container is opened from
+        // below only once its parts are loaded.
+        if (box == null || mc.level == null || !mc.level.isLoaded(box.pos)) {
+            gateLogThrottled("waiting for chunks: unloaded target " + (box == null ? "null" : xyz(box.pos)));
+            return;
+        }
         BaritoneHelper.protect(List.of());
         usedBaritone = true;
         BaritoneHelper.confine(safeWalk.get());
@@ -2643,6 +2656,11 @@ public class StashSorter extends Module {
      */
     private void walkXZ(int x, int z) {
         if (!BARITONE) return;
+        // #197: column walks also wait for a loaded cell instead of pathing blind.
+        if (mc.level == null || !mc.level.isLoaded(new BlockPos(x, mc.player == null ? 64 : mc.player.blockPosition().getY(), z))) {
+            gateLogThrottled("waiting for chunks: unloaded column " + x + ", " + z);
+            return;
+        }
         BaritoneHelper.protect(List.of());
         usedBaritone = true;
         BaritoneHelper.confine(safeWalk.get());

@@ -410,7 +410,8 @@ class HierarchyHarness(stock.StockHarness):
                 'Heartbeat from a foreign server was not refused with 409')
         self.ok('one active named agent key, durable revoke-then-rotate, legacy-key denial and signed server/stash guards')
 
-    def verify_fleet_sessions(self):
+    def verify_single_agent_sessions(self):
+        """Single active agent: session fencing for one bot ID (renamed per #11/#26)."""
         native = None
         active_id = self.key.split('.', 1)[0]
 
@@ -530,7 +531,7 @@ class HierarchyHarness(stock.StockHarness):
                 self.settle_test_menus()
                 self.verify_order_lifecycle(detail)
                 if self.scoped_agent:
-                    self.verify_fleet_sessions()
+                    self.verify_single_agent_sessions()
             self.command('screenshot'); shutil.copyfile(self.game_dir/'screenshots/fixture.png',self.evidence/'fixture.png')
             (self.evidence/'changed-detail.json').write_text(json.dumps(detail,indent=2)+'\n')
             result = {'result':'PASS','source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=world.ROOT,text=True).strip(),

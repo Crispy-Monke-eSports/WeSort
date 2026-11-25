@@ -817,11 +817,8 @@ function KitEditor({
 function UsersSection() {
   const [users, setUsers] = useState<any[]>([]);
   const [presets, setPresets] = useState<string[]>([
-    "viewer",
     "orderer",
     "member",
-    "officer",
-    "operator",
   ]);
   const [presetDefs, setPresetDefs] = useState<Record<string, any>>({});
   const [msg, setMsg] = useState<{

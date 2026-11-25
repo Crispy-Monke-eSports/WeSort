@@ -229,15 +229,12 @@ final class Users {
     static final Map<String, Perms> PRESETS;
 
     static {
+        // PR1 (#26/#43): exactly two identities — Owner (special id, not in PRESETS)
+        // and Member. "orderer" stays as an alias with identical perms for
+        // backward-compatible imports; viewer/officer/operator were removed.
         Map<String, Perms> p = new LinkedHashMap<>();
-        p.put("viewer", Perms.of(true, false, false, false, false, false, false, null, null));
         p.put("orderer", Perms.of(true, true, false, false, false, false, false, null, null));
         p.put("member", p.get("orderer"));
-        p.put(
-                "officer",
-                Perms.of(true, true, true, true, false, false, false, null, null)
-                        .withGuildOrders(true));
-        p.put("operator", Perms.of(true, true, true, true, true, true, false, null, null));
         PRESETS = java.util.Collections.unmodifiableMap(p);
     }
 

@@ -1,8 +1,8 @@
 # W-034: jobbscheduler med claim, leases, prioritet och återkallning
 
 Manager allokerar atomiskt jobb och lease till den enda aktiva agenten utan
-dubbla actions. Agenten kedjar alla steg utan överlämning. [Fleet/failover
-för 1–5 agenter är borttaget per bindande scope #139.]
+dubbla actions (single-agent lease; ingen fleet/failover). Agenten kedjar alla steg utan överlämning. Fleet/failover
+för 1–5 agenter är borttaget per bindande scope #139.
 
 ## Manager-sidan (denna commit)
 

@@ -52,8 +52,7 @@ Enhetstester prövar fastkörning trots pågående beräkning, små positionsska
 äkta framsteg, absolut timeout trots rörelse och dimensionsbyte. Detta är
 lokal lagernavigation. Portaler, långdistanstransport och global routing
 ingår i W-036. Ett nekat oladdat mål i testdrivern innebär inte att generisk
-Baritone förbjuder all chunkstreaming. Äldre klienttargets behåller sin
-befintliga navigationsadapter.
+Baritone förbjuder all chunkstreaming. Endast 26.3-targetet är aktivt per #11/#139; äldre 1.21.x-targets är historik.
 
 Lokal körning dokumenteras i [rapporten](verification/W-016-navigation.json).
 Rapportens bascommit och dirty_worktree anger att provet föregår issue-

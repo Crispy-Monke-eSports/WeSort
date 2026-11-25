@@ -22,7 +22,7 @@ jobbgräns och kräver sedan ny serveravläsning.
 
 ## Verifiering av W-018
 
-Lokal JUnit: samtliga klienttargets kör 455 tester vardera utan fel. Manager
+Lokal JUnit: det enda aktiva 26.3-klienttargetet kör 455 tester utan fel (historiskt: flera targets; endast 26.3 aktiv per #11/#139). Manager
 kör 160 tester, 159 passerar och ett befintligt prov mot gamla 1.21.x-speljar
 hoppar över när de inte finns. Webbens DOM-prov visar guild-/stashsaldo och
 osäkra fysiska källor, och behandlar itemnamn med HTML som vanlig text.

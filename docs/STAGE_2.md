@@ -21,8 +21,8 @@ kräver uttryckligen sin egen markerade, nyskapade testprofil.
 
 ## Verifiering
 
-Lokalt bygger samtliga tre klienttargets och kör vardera 452 enhetstester
-utan fel. [Historiskt W-055-bevis:] Java 21 Manager körde då 131 tester: 130 passerade, ett befintligt test
+Lokalt bygger det enda aktiva 26.3-klienttargetet och kör 452 enhetstester
+utan fel (historiskt: tre targets; endast 26.3 aktiv per #11/#139). [Historiskt W-055-bevis:] Java 21 Manager körde då 131 tester: 130 passerade, ett befintligt test
 för gamla 1.21.x-speljar hoppar över när dessa inte finns. De riktiga 26.3-
 ikonfallen verifieras separat med faktisk officiell jar i Docker. Webbens
 regressioner och Docker-smoke för Owner-bootstrap, signerade agentanrop,

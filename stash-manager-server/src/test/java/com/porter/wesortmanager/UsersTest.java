@@ -269,12 +269,12 @@ class UsersTest {
     }
 
     @Test
-    void membersUseOneGuildStockAndOfficersRetainOrdersAfterMemberRevocation() throws Exception {
+    void membersUseOneGuildStockAndMembersRetainOrdersAfterMemberRevocation() throws Exception {
         String owner = owner();
         defineOrderStashes(owner);
         String memberId = create(owner, "Maker", "member", false);
-        String officerId = create(owner, "Officer", "officer", false);
-        create(owner, "Reader", "viewer", false);
+        String officerId = create(owner, "Officer", "{\"view\":true,\"order\":true,\"ordersAll\":true,\"activity\":true,\"guildOrders\":true}", false);
+        create(owner, "Reader", "{\"view\":true}", false);
         String member = login("Maker", TEMP_PW);
         String officer = login("Officer", TEMP_PW);
         String viewer = login("Reader", TEMP_PW);
@@ -420,7 +420,7 @@ class UsersTest {
     void guildApprovalIsOptionalScopedAndKeepsStockReservedBeforeClaim() throws Exception {
         String owner = owner();
         defineOrderStashes(owner);
-        create(owner, "Officer", "officer", false);
+        create(owner, "Officer", "{\"view\":true,\"order\":true,\"ordersAll\":true,\"activity\":true,\"guildOrders\":true}", false);
         create(owner, "Builder", "member", false);
         String member = login("Builder", TEMP_PW);
         String officer = login("Officer", TEMP_PW);
@@ -500,7 +500,7 @@ class UsersTest {
     @Test
     void aNewUserMustChangeThePasswordFirst() throws Exception {
         String owner = owner();
-        create(owner, "alice", "viewer", true);
+        create(owner, "alice", "member", true);
         Res login = post(null, "/api/v1/auth/login", "{\"username\":\"alice\",\"password\":\"" + TEMP_PW + "\"}");
         assertEquals(200, login.status);
         assertTrue(login.obj().get("mustChange").getAsBoolean());
@@ -539,7 +539,7 @@ class UsersTest {
     @Test
     void loginErrorsDontTellWhichNamesExist() throws Exception {
         String owner = owner();
-        String id = create(owner, "bob", "viewer", false);
+        String id = create(owner, "bob", "member", false);
         Res unknown = post(null, "/api/v1/auth/login", "{\"username\":\"nobody\",\"password\":\"whatever-password\"}");
         Res wrong = post(null, "/api/v1/auth/login", "{\"username\":\"bob\",\"password\":\"whatever-password\"}");
         assertEquals(401, unknown.status);
@@ -562,7 +562,7 @@ class UsersTest {
         String owner = owner();
         defineOrderStashes(owner);
         String ownerOrder = placeOrder(owner, "a", "minecraft:diamond", 10);
-        create(owner, "viewer1", "viewer", false);
+        create(owner, "viewer1", "{\"view\":true}", false);
         String v = login("viewer1", TEMP_PW);
 
         assertEquals(200, get(v, "/api/v1/stashes").status);
@@ -646,11 +646,11 @@ class UsersTest {
     }
 
     @Test
-    void anOperatorWithAllOrdersCanChangeOthersButNotManageUsers() throws Exception {
+    void anOwnerDelegateWithAllOrdersCanChangeOthersButNotManageUsers() throws Exception {
         String owner = owner();
         defineOrderStashes(owner);
         String ownerOrder = placeOrder(owner, "a", "minecraft:diamond", 10);
-        create(owner, "dave", "operator", false);
+        create(owner, "dave", "{\"view\":true,\"order\":true,\"ordersAll\":true,\"activity\":true,\"settings\":true,\"rescan\":true}", false);
         String d = login("dave", TEMP_PW);
         assertEquals(200, post(d, "/api/v1/orders/" + ownerOrder + "/cancel", null).status);
         assertEquals(200, post(d, "/api/v1/orders/clear", "{\"stash\":\"a\"}").status);
@@ -658,7 +658,7 @@ class UsersTest {
         assertEquals(200, post(d, "/api/v1/rescan", "{\"stash\":\"a\"}").status);
         assertEquals(403, get(d, "/api/v1/link").status);
         assertEquals(403, get(d, "/api/v1/users").status);
-        // Console is "none" for an operator: refused before the password check.
+        // Console is "none" for a delegate: refused before the password check.
         Res console = get(d, "/api/v1/bots/bot1/console");
         assertEquals(404, console.status);
     }
@@ -775,7 +775,7 @@ class UsersTest {
     @Test
     void disablingResettingAndDeletingEndSessionsAtOnce() throws Exception {
         String owner = owner();
-        String id = create(owner, "hank", "viewer", false);
+        String id = create(owner, "hank", "member", false);
         String h = login("hank", TEMP_PW);
         String h2 = login("hank", TEMP_PW);
         assertEquals(200, get(h, "/api/v1/stashes").status);
@@ -783,7 +783,7 @@ class UsersTest {
         // Permissions change on the next request.
         assertEquals(200, post(owner, "/api/v1/users/" + id, "{\"perms\":{\"view\":false}}").status);
         assertEquals(403, get(h, "/api/v1/stashes").status);
-        assertEquals(200, post(owner, "/api/v1/users/" + id, "{\"preset\":\"viewer\"}").status);
+        assertEquals(200, post(owner, "/api/v1/users/" + id, "{\"preset\":\"member\"}").status);
         assertEquals(200, get(h, "/api/v1/stashes").status);
 
         Res disabled = post(owner, "/api/v1/users/" + id, "{\"disabled\":true}");
@@ -836,7 +836,7 @@ class UsersTest {
                 post(owner, "/api/v1/users", "{\"name\":\"ivy\",\"password\":\"" + TEMP_PW + "\",\"preset\":\"god\"}")
                         .status);
         assertEquals(409, post(owner, "/api/v1/users", "{\"name\":\"OWNER\",\"password\":\"" + TEMP_PW + "\"}").status);
-        create(owner, "ivy", "viewer", true);
+        create(owner, "ivy", "member", true);
         assertEquals(409, post(owner, "/api/v1/users", "{\"name\":\"IVY\",\"password\":\"" + TEMP_PW + "\"}").status);
 
         // Renaming the owner: the new name logs in, and no sub-user may take it.
@@ -851,7 +851,11 @@ class UsersTest {
         JsonObject list = get(owner, "/api/v1/users").obj();
         assertEquals("boss", list.getAsJsonObject("owner").get("name").getAsString());
         assertEquals(1, list.getAsJsonArray("users").size());
-        assertTrue(list.getAsJsonObject("presets").has("operator"));
+        assertTrue(list.getAsJsonObject("presets").has("member"));
+        assertTrue(list.getAsJsonObject("presets").has("orderer"));
+        assertFalse(list.getAsJsonObject("presets").has("viewer"));
+        assertFalse(list.getAsJsonObject("presets").has("officer"));
+        assertFalse(list.getAsJsonObject("presets").has("operator"));
         assertFalse(list.toString().contains("pbkdf2"), "hashes never leave the server");
     }
 
@@ -889,11 +893,14 @@ class UsersTest {
     @Test
     void badPresetsAndEmptyUpdatesAre400NotDroppedConnections() throws Exception {
         String owner = owner();
-        String id = create(owner, "lou", "viewer", false);
+        String id = create(owner, "lou", "member", false);
         assertEquals(400, post(owner, "/api/v1/users/" + id, "{\"preset\":5}").status);
         assertEquals(400, post(owner, "/api/v1/users/" + id, "{\"preset\":\"god\"}").status);
+        assertEquals(400, post(owner, "/api/v1/users/" + id, "{\"preset\":\"viewer\"}").status);
+        assertEquals(400, post(owner, "/api/v1/users/" + id, "{\"preset\":\"officer\"}").status);
+        assertEquals(400, post(owner, "/api/v1/users/" + id, "{\"preset\":\"operator\"}").status);
         assertEquals(
-                400, post(owner, "/api/v1/users/" + id, "{\"preset\":\"viewer\",\"perms\":{\"view\":true}}").status);
+                400, post(owner, "/api/v1/users/" + id, "{\"preset\":\"member\",\"perms\":{\"view\":true}}").status);
         assertEquals(400, post(owner, "/api/v1/users/" + id, "{}").status);
         assertEquals(
                 400,
@@ -913,7 +920,7 @@ class UsersTest {
     @Test
     void oneAccountCantPushTheOwnerOut() throws Exception {
         String owner = owner();
-        String id = create(owner, "nia", "viewer", false);
+        String id = create(owner, "nia", "member", false);
         for (int i = 0; i < 230; i++) sessions.create(id);
         assertEquals(SessionStore.MAX_PER_USER, sessions.countByUser().get(id));
         assertEquals(200, get(owner, "/api/v1/users").status, "the owner's session survived");
@@ -942,7 +949,7 @@ class UsersTest {
     @Test
     void aSessionMadeWithAnOldPasswordEndsEvenIfItWasCreatedAfterTheChange() throws Exception {
         String owner = owner();
-        String id = create(owner, "pat", "viewer", false);
+        String id = create(owner, "pat", "member", false);
         String oldHash = users.byId(id).hash();
         // A login that verified the old password, but only creates its session after the reset went through.
         assertEquals(
@@ -973,7 +980,7 @@ class UsersTest {
     @Test
     void namesDontMatchThroughUnicodeCaseFolding() throws Exception {
         String owner = owner();
-        create(owner, "kai", "viewer", false);
+        create(owner, "kai", "member", false);
         // U+212A KELVIN SIGN folds to k with equalsIgnoreCase; it must not name "kai" or the owner.
         assertEquals(
                 401,
@@ -1014,7 +1021,7 @@ class UsersTest {
     @Test
     void aSubUserLogsOutOnlyThemselvesEverywhere() throws Exception {
         String owner = owner();
-        create(owner, "kim", "viewer", false);
+        create(owner, "kim", "member", false);
         String k = login("kim", TEMP_PW);
         Res r = post(k, "/api/v1/auth/logout-all", null);
         assertEquals(200, r.status);

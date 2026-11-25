@@ -231,7 +231,7 @@ async function main() {
         .waitFor();
     }
 
-    // Officer: Operations is available, but guild-wide audit is Owner-only.
+    // Member reviewer: Operations is available, but guild-wide audit is Owner-only.
     const reviewer = await login(officer);
     await reviewer
       .getByRole("navigation")

@@ -119,7 +119,7 @@ final class UserRoutes {
         Boolean mustChange;
         try {
             perms = perms(o);
-            if (perms == null) perms = Users.PRESETS.get("viewer");
+            if (perms == null) perms = Users.PRESETS.get("member");
             mustChange = optBool(o, "mustChange");
         } catch (IllegalArgumentException e) {
             Http.error(ex, 400, e.getMessage());

@@ -16,7 +16,7 @@ state och Manager-tidsstämplar. Kommentar tolkas inte som destination/permissio
 
 ReadStock: global vy samt fysiska källor med observed/reserved/available,
 freshness, dimension och sourceRevision. ListOrders/OrderEvents scope: medlem
-ser sina tillåtna orders; officers ser den tillåtna guildvyn. Tillgänglighet är
+ser sina tillåtna orders; Owner ser den tillåtna guildvyn (Member-preset har guildOrders=false). Tillgänglighet är
 alltid återkontrollerad vid commit; en UI-snapshot reserverar inget.
 
 Approve/Reject/Cancel kräver actor + expectedOrderRevision + idempotencyKey.

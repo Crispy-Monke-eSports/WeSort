@@ -255,7 +255,7 @@ export function isStaleStockState(state: string): boolean {
 // ---------- silent-bot watchdog ----------
 
 /**
- * Bots that are "online" (transport heartbeat) but silent on progress while
+ * Bots that are "online" (connection heartbeat, not TransportProfiles — removed per #139) but silent on progress while
  * holding open work. Judged from the server clock (`serverNow`, e.g. the
  * operations `at` field) and the lease/order tables — never from the
  * agent-reported summary text.

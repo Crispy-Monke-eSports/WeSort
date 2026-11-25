@@ -3712,18 +3712,12 @@ public class StashSorter extends Module {
     }
 
     private boolean returnable(Box box, ItemStack stack) {
-        return box != null
-                && stash.boxes.contains(box)
-                && box.known()
-                && !box.stale
-                && !box.excluded
-                && !box.protectedStorage
-                && !box.delivery
-                && !box.dropOff
-                && !box.unreachable
-                && !isKitBox(box)
-                && !blocked(box, Job.Return)
-                && roomFor(box, stack);
+        return storageAcceptsReturn(box, stack) && !blocked(box, Job.Return);
+    }
+
+    private boolean storageAcceptsReturn(Box box, ItemStack stack) {
+        return box != null && stash.boxes.contains(box) && box.sortable()
+                && !box.stale && !box.dropOff && !isKitBox(box) && roomFor(box, stack);
     }
 
     /**
@@ -3777,7 +3771,7 @@ public class StashSorter extends Module {
             ItemStack stack = pending.stack();
             plan();
             home = nearest(destinationsFor(stack).stream()
-                    .filter(b -> returnable(b, stack) && b.sortable() && !returnRetry.waiting(b, ticks))
+                    .filter(b -> storageAcceptsReturn(b, stack) && !returnRetry.waiting(b, ticks))
                     .toList());
             if (home == null)
                 home = nearest(stash.boxes.stream()
@@ -3788,12 +3782,28 @@ public class StashSorter extends Module {
                                 && !b.unreachable
                                 && !b.dropOff
                                 && !isKitBox(b)
-                                && !blocked(b, Job.Return)
+                                && !failedSurvey.contains(b)
                                 && !returnRetry.waiting(b, ticks)
                                 && (!b.known() || b.stale || roomFor(b, stack)))
                         .toList());
+            if (home == null) {
+                // The cached contents may still say "full" after someone makes room.
+                // Re-read one eligible return destination on the normal survey clock.
+                long now = System.currentTimeMillis();
+                Box probe = stash.boxes.stream()
+                        .filter(b -> !b.protectedStorage && !b.delivery && !b.dropOff && !isKitBox(b)
+                                && !returnRetry.waiting(b, ticks) && surveyDue(b, now))
+                        .min(Comparator.comparingLong(b -> b.lastRead))
+                        .orElse(null);
+                if (probe != null) {
+                    surveyAttemptAt.put(probe, now);
+                    return start(Job.Survey, probe);
+                }
+            }
         }
         if (home == null
+                || returnRetry.waiting(home, ticks)
+                || failedSurvey.contains(home)
                 || home.excluded
                 || home.foreign
                 || home.delivery
@@ -3835,8 +3845,7 @@ public class StashSorter extends Module {
         }
         if (returnRetry.waiting(target, ticks)) return false;
         if (!ItemStack.matches(held, expected)
-                || !returnable(target, expected)
-                || !target.sortable()
+                || !storageAcceptsReturn(target, expected)
                 || (pending.before() >= 0 && copies != pending.before())) return false;
         if (pending.destination() == null) {
             stash.recoveredBox = new Stash.RecoveredBox(pending.slot(), expected, target.pos, copies);
@@ -10741,6 +10750,8 @@ public class StashSorter extends Module {
 
         startSigSet = endSigSet = false;
 
+        if (job == Job.Return && stash.recoveredBox != null && target != null)
+            returnRetry.failOnce(target, ticks);
         if (stash.isDirty()) stash.save();
         job = null;
         target = null;

@@ -194,6 +194,7 @@ class JointHealthTest {
         var l = ledger(100);
         var missing = observation(l, "a", 64, 0, 1, 0);
         source(missing).addProperty("state", "MISSING");
+        source(missing).add("snbt", JsonNull.INSTANCE);
         l.accept(missing);
         assertEquals("MISSING", l.sources().getFirst().status());
         assertTrue(l.acceptLoss(l.sources().getFirst().value().get("id").getAsString(), "owner"));
@@ -222,6 +223,7 @@ class JointHealthTest {
         var l = ledger(100);
         var missing = observation(l, "a", 64, 0, 1, 0);
         source(missing).addProperty("state", "MISSING");
+        source(missing).add("snbt", JsonNull.INSTANCE);
         l.accept(missing);
         time.set(time.get() + StockLedger.MISSING_WITHDRAWN_AFTER_MS + 1);
         assertEquals("WITHDRAWN", l.sources().getFirst().status());
@@ -310,10 +312,9 @@ class JointHealthTest {
         root = StockFixtures.physical(root, ledger.epoch(), ledger.revision(), ledger.revision() + 1, stash.hashCode());
         var writer = new com.porter.wesort.data.PhysicalSlots.Writer();
         var src = root.getAsJsonArray("physicalSources").get(0).getAsJsonObject();
-        src.add("slots", writer.slots(frame.slots()));
+        src.addProperty("snbt", frame.snbt());
         src.addProperty("fingerprint", frame.fingerprint());
-        root.addProperty("physicalVersion", 2);
-        root.add("slotVariants", writer.variants());
+        root.addProperty("physicalVersion", 3);
         return root;
     }
 

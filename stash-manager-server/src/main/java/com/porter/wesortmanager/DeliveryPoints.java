@@ -80,8 +80,7 @@ final class DeliveryPoints {
     }
 
     /** Pauses a point with a machine-readable reason (PR8 #216); OWNER_DISABLED is never auto-cleared. */
-    synchronized DeliveryPoint pause(String id, long expectedRevision, String by, String reason)
-            throws IOException {
+    synchronized DeliveryPoint pause(String id, long expectedRevision, String by, String reason) throws IOException {
         var entry = require(id);
         var point = entry.point();
         if (point.revision() != expectedRevision) throw new Conflict();

@@ -27,9 +27,17 @@ class CraftPlanTest2 {
         assertEquals(64, sample().canonicalHash().length());
         assertEquals(sample().canonicalHash(), sample().canonicalHash());
         var other = new CraftPlan(
-                1, "plan-1", "recipes-sha", 8L, sample().requestedOutputs(), sample().steps(),
-                sample().produced(), sample().consumed(), sample().plannedSurplus(),
-                sample().dependencies(), sample().physicalAllocations());
+                1,
+                "plan-1",
+                "recipes-sha",
+                8L,
+                sample().requestedOutputs(),
+                sample().steps(),
+                sample().produced(),
+                sample().consumed(),
+                sample().plannedSurplus(),
+                sample().dependencies(),
+                sample().physicalAllocations());
         assertNotEquals(sample().canonicalHash(), other.canonicalHash());
     }
 
@@ -53,16 +61,27 @@ class CraftPlanTest2 {
 
     @Test
     void overflowFailsClosed() {
-        assertTrue(CraftPlan.verifyMassBalance(
-                        Map.of("a", Long.MAX_VALUE), Map.of(), Map.of(), Map.of(), Map.of("a", 1L))
-                .isPresent());
+        assertTrue(
+                CraftPlan.verifyMassBalance(Map.of("a", Long.MAX_VALUE), Map.of(), Map.of(), Map.of(), Map.of("a", 1L))
+                        .isPresent());
     }
 
     @Test
     void schemaVersionIsLocked() {
-        assertThrows(IllegalArgumentException.class, () -> new CraftPlan(
-                2, "p", "r", 1L, Map.of("a", 1L), List.of(), Map.of(), Map.of(), Map.of(), List.of(),
-                List.of()));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new CraftPlan(
+                        2,
+                        "p",
+                        "r",
+                        1L,
+                        Map.of("a", 1L),
+                        List.of(),
+                        Map.of(),
+                        Map.of(),
+                        Map.of(),
+                        List.of(),
+                        List.of()));
     }
 
     @Test

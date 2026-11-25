@@ -66,9 +66,7 @@ public final class CraftIngredientPolicy {
     }
 
     /** Base ids that are never recipe inputs, shared by both sides. */
-    public static final Set<String> ALWAYS_FORBIDDEN = Set.of(
-            "minecraft:shulker_box",
-            "minecraft:bundle");
+    public static final Set<String> ALWAYS_FORBIDDEN = Set.of("minecraft:shulker_box", "minecraft:bundle");
 
     public static boolean isForbiddenId(String baseId) {
         if (baseId == null) return true;
@@ -101,12 +99,7 @@ public final class CraftIngredientPolicy {
     }
 
     /** Cell allocation locked by the approved plan (PR9 #239, additive contract). */
-    public record CellAllocation(
-            int recipeIndex,
-            int cellIndex,
-            String exactVariantDigest,
-            String lotRef,
-            long count) {
+    public record CellAllocation(int recipeIndex, int cellIndex, String exactVariantDigest, String lotRef, long count) {
         public CellAllocation {
             if (recipeIndex < 0 || cellIndex < 0) throw new IllegalArgumentException("negative index");
             if (exactVariantDigest == null || exactVariantDigest.isEmpty())

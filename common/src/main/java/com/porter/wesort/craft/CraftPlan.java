@@ -82,9 +82,16 @@ public record CraftPlan(
             StringBuilder sb = new StringBuilder();
             sb.append("craft-plan:1\n");
             sb.append(recipeDatasetDigest).append('\n').append(orderRevision).append('\n');
-            requestedOutputs.forEach((k, v) -> sb.append(k).append('=').append(v).append(';'));
+            requestedOutputs.forEach(
+                    (k, v) -> sb.append(k).append('=').append(v).append(';'));
             sb.append('\n');
-            for (PlanStep s : steps) sb.append(s.stepId()).append(':').append(s.recipeId()).append('x').append(s.crafts()).append(';');
+            for (PlanStep s : steps)
+                sb.append(s.stepId())
+                        .append(':')
+                        .append(s.recipeId())
+                        .append('x')
+                        .append(s.crafts())
+                        .append(';');
             sb.append('\n');
             produced.forEach((k, v) -> sb.append(k).append('=').append(v).append(';'));
             sb.append('\n');
@@ -92,10 +99,18 @@ public record CraftPlan(
             sb.append('\n');
             plannedSurplus.forEach((k, v) -> sb.append(k).append('=').append(v).append(';'));
             sb.append('\n');
-            for (DependencyEdge e : dependencies) sb.append(e.fromStep()).append("->").append(e.toStep()).append(';');
+            for (DependencyEdge e : dependencies)
+                sb.append(e.fromStep()).append("->").append(e.toStep()).append(';');
             sb.append('\n');
             for (AllocationRef a : physicalAllocations)
-                sb.append(a.sourceId()).append('/').append(a.path()).append('=').append(a.variantRef()).append(':').append(a.count()).append(';');
+                sb.append(a.sourceId())
+                        .append('/')
+                        .append(a.path())
+                        .append('=')
+                        .append(a.variantRef())
+                        .append(':')
+                        .append(a.count())
+                        .append(';');
             byte[] digest = md.digest(sb.toString().getBytes(StandardCharsets.UTF_8));
             StringBuilder hex = new StringBuilder(64);
             for (byte b : digest) hex.append(String.format("%02x", b));
@@ -126,8 +141,7 @@ public record CraftPlan(
         for (String key : keys) {
             long left, right;
             try {
-                left = Math.addExact(
-                        externalTake.getOrDefault(key, 0L), producedAll.getOrDefault(key, 0L));
+                left = Math.addExact(externalTake.getOrDefault(key, 0L), producedAll.getOrDefault(key, 0L));
                 right = Math.addExact(
                         Math.addExact(finalAllocated.getOrDefault(key, 0L), consumedAll.getOrDefault(key, 0L)),
                         surplus.getOrDefault(key, 0L));

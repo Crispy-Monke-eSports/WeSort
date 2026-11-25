@@ -25,6 +25,16 @@ class PortalNavigationPolicyTest {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
+    void deprecatedJournalOverloadIgnoresJournalFlag() {
+        // Backwards compat: the old 6-arg overload must behave identically
+        // regardless of the journal flag — transit never depends on it.
+        assertTrue(PortalNavigationPolicy.mayBootstrap(true, true, true, true, true, true));
+        assertTrue(PortalNavigationPolicy.mayBootstrap(true, true, true, true, true, false));
+        assertFalse(PortalNavigationPolicy.mayBootstrap(false, true, true, true, true, true));
+    }
+
+    @Test
     void onlyPortalScopedFailuresCanResetOnLogout() {
         assertTrue(PortalNavigationPolicy.clearPauseOnDisconnect(true, true));
         assertFalse(PortalNavigationPolicy.clearPauseOnDisconnect(true, false));

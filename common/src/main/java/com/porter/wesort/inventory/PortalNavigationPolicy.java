@@ -20,6 +20,23 @@ public final class PortalNavigationPolicy {
         return dedicatedAgent && awaitingPortal && portalBlockVerified && adjacentApproach && approachIsSafe;
     }
 
+    /**
+     * Backwards-compatible overload. The journal flag is accepted but intentionally
+     * ignored: manager is truth, lobby transit is navigation-only and must never be
+     * fenced by agent-local journal state. Physical mutation paths keep their own
+     * fence in {@code PhysicalJournalRuntime}. Deprecated: use the 5-arg version.
+     */
+    @Deprecated
+    public static boolean mayBootstrap(
+            boolean dedicatedAgent,
+            boolean awaitingPortal,
+            boolean portalBlockVerified,
+            boolean adjacentApproach,
+            boolean approachIsSafe,
+            boolean physicalJournalClear) {
+        return mayBootstrap(dedicatedAgent, awaitingPortal, portalBlockVerified, adjacentApproach, approachIsSafe);
+    }
+
     /** A failed portal route belongs to one login, unlike failures of ordinary warehouse routes. */
     public static boolean clearPauseOnDisconnect(boolean paused, boolean portalRouteFailure) {
         return paused && portalRouteFailure;

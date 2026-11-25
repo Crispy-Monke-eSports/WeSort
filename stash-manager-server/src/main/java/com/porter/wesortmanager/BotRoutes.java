@@ -50,7 +50,8 @@ final class BotRoutes {
     }
 
     void register(Router router) {
-        router.exact(Router.POST, "/api/v1/bot/hello", Router.Guard.ADDON_KEY, this::hello)
+        router.exact(Router.POST, "/api/v1/bot/command", Router.Guard.BROWSER_WRITE, Router.Perm.OWNER, this::command)
+                .exact(Router.POST, "/api/v1/bot/hello", Router.Guard.ADDON_KEY, this::hello)
                 .exact(Router.POST, "/api/v1/bot/heartbeat", Router.Guard.ADDON_KEY, this::heartbeat)
                 .exact(Router.POST, "/api/v1/bot/state", Router.Guard.ADDON_KEY, this::state)
                 .exact(Router.GET, "/api/v1/bot/next", Router.Guard.ADDON_KEY, this::next)
@@ -522,6 +523,7 @@ final class BotRoutes {
                     return;
                 }
                 hub.activity(b, snapshot, new JsonArray());
+                maybeAutoOrderEnterPortal(b, snapshot, ex);
             }
         }
         BotHub.Poll p;
@@ -606,6 +608,55 @@ final class BotRoutes {
         Http.json(ex, 200, Http.ok());
     }
 
+    /** Owner orders a marionette command (e.g. ENTER_PORTAL); the bot executes once under lease. */
+    private void command(HttpExchange ex) throws IOException {
+        JsonObject o = body(ex);
+        if (o == null) return;
+        String botId = AddonRoutes.string(o, "botId");
+        String op = AddonRoutes.string(o, "op");
+        if (botId == null || !BOT_ID.matcher(botId).matches()) {
+            Http.error(ex, 400, "botId must be 1-64 letters, digits, - or _");
+            return;
+        }
+        if (op == null || !BotHub.COMMAND_OPS.contains(op)) {
+            Http.error(ex, 400, "op must be one of " + BotHub.COMMAND_OPS);
+            return;
+        }
+        BotHub.Bot b = hub.bot(botId);
+        if (b == null || !Router.user(ex).perms().seesBot(botId)) {
+            Http.error(ex, 404, "no such bot");
+            return;
+        }
+        String id;
+        synchronized (b) {
+            if (!b.caps.contains("portal-command")) {
+                Http.error(ex, 400, "this bot doesn't offer portal-command");
+                return;
+            }
+            if (!hub.online(b)) {
+                Http.error(ex, 409, "bot is offline");
+                return;
+            }
+            if (hub.hasLiveCommand(b, op)) {
+                Http.error(ex, 409, "command already live for this bot");
+                return;
+            }
+            JsonObject args =
+                    o.has("args") && o.get("args").isJsonObject() ? o.getAsJsonObject("args") : new JsonObject();
+            try {
+                id = hub.queueCommand(b, op, args);
+            } catch (IllegalArgumentException invalid) {
+                Http.error(ex, 400, "unknown command op");
+                return;
+            }
+        }
+        audit.add(Router.user(ex), "agent.command." + op, id, AuthRoutes.address(ex));
+        JsonObject out = new JsonObject();
+        out.addProperty("id", id);
+        out.addProperty("op", op);
+        Http.json(ex, 200, out);
+    }
+
     private static boolean controlSession(HttpExchange ex, BotHub.Bot bot, JsonObject request) throws IOException {
         if (java.util.Objects.equals(bot.controlSession, AddonRoutes.string(request, "controlSession"))) return true;
         Http.error(ex, 409, "Control session does not match");
@@ -638,8 +689,21 @@ final class BotRoutes {
         synchronized (b) {
             if (!controlSession(ex, b, o)) return;
             hub.activity(b, snapshot, Activity.events(o.get("activity"), now));
+            maybeAutoOrderEnterPortal(b, snapshot, ex);
         }
         Http.json(ex, 200, Http.ok());
+    }
+
+    /**
+     * Marionette auto-order: a bot reporting WAITING_ON_6B6T_LOBBY gets an explicit
+     * ENTER_PORTAL lease. Throttled to one live command. The lease authorizes only
+     * navigation; physical work stays fenced server-side regardless.
+     */
+    private void maybeAutoOrderEnterPortal(BotHub.Bot b, JsonObject snapshot, HttpExchange ex) {
+        if (!b.caps.contains("portal-command") || hub.hasLiveCommand(b, "ENTER_PORTAL")) return;
+        if (!"WAITING_ON_6B6T_LOBBY".equals(AddonRoutes.string(snapshot, "incident"))) return;
+        String autoId = hub.queueCommand(b, "ENTER_PORTAL", new JsonObject());
+        audit.add("manager", "manager", "agent.command.ENTER_PORTAL", autoId, AuthRoutes.address(ex));
     }
 
     private static boolean bool(JsonObject o, String f) {

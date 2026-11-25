@@ -57,6 +57,7 @@ public final class NavigationRuntime {
     // Wall-clock start of the current world: an engine-dropped goal with zero progress
     // right after login is chunks still streaming in, not a sealed start (#197).
     private static long worldStartMs;
+    private static long lastFencedTransitLogMs;
     private static final java.util.Map<String, Integer> denialCounts = new java.util.LinkedHashMap<>();
     /** Operator-taken routes expire after idle timeout instead of parking the headless bot forever. */
     static final long OPERATOR_IDLE_TIMEOUT_MS = NavigationRecovery.OPERATOR_IDLE_TIMEOUT_MS;
@@ -99,9 +100,22 @@ public final class NavigationRuntime {
         }
         StashManager manager = Modules.get().get(StashManager.class);
         StashSorter sorter = WeSortAddon.sorter();
-        // Manager is truth: lobby transit is navigation-only and never mutates
-        // inventory. Agent-local journal state must not fence walking to the
-        // portal; the physical mutation paths keep their own fence.
+        // Manager is truth: lobby transit moves only the player (position /
+        // dimension), never inventory slots. Inventory mutations stay fenced in
+        // PhysicalJournalRuntime.ensure() + InventorySync.allowInput(), which this
+        // path never calls. A fenced journal therefore cannot fence walking, but
+        // any inventory readback from before transit is stale afterwards and the
+        // manager must order a fresh survey after arrival.
+        // Diagnostics: report (not fence) when transiting with a fenced journal
+        // so the operator still sees why physical work is parked.
+        if (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror()) {
+            long nowMs = System.currentTimeMillis();
+            if (nowMs - lastFencedTransitLogMs >= 60_000) {
+                lastFencedTransitLogMs = nowMs;
+                MeteorClient.LOG.warn(
+                        "WeSort navigation: portal approach with fenced journal (navigation-only, mutations stay fenced).");
+            }
+        }
         boolean allowed = PortalNavigationPolicy.mayBootstrap(
                 manager != null && manager.dedicatedProfile(),
                 sorter != null && sorter.portalAwaiting(),
@@ -253,6 +267,12 @@ public final class NavigationRuntime {
      */
     public static void clearWarehousePause() {
         if (paused && !pausedPortalRoute) {
+            // Never discard a genuine safety latch to make way for lobby transit:
+            // unsafe-block and operator-taken routes require explicit resume.
+            if (status.contains("UNSAFE") || isOperatorLatch(status)) {
+                MeteorClient.LOG.warn("WeSort navigation: keeping {} for lobby transit; resume it explicitly.", status);
+                return;
+            }
             paused = false;
             pauseDetail = "";
             dropRetries = 0;
@@ -330,11 +350,9 @@ public final class NavigationRuntime {
         }
         if (!transientPause || nowMs < retryAt || mc.player == null || mc.level == null) return;
         if (!InventorySync.ready() || PhysicalJournalRuntime.inspecting()) return;
-        // Manager is truth: a portal-route pause is navigation-only and must be
-        // allowed to auto-resume even while the agent-local journal is fenced.
-        // Warehouse pauses stay fenced on physical uncertainty.
+        // Physical uncertainty fences auto-resume. Portal routes no longer latch this
+        // status (removed); this guard only covers pre-existing warehouse latches.
         if (status.equals("PAUSED_NAVIGATION_PHYSICAL_UNCERTAINTY")
-                && !pausedPortalRoute
                 && (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror())) return;
         if (!NavigationGuard.permits(mc.player.blockPosition())) return;
         // The previous goal was released; the sorter replans under all normal guards.

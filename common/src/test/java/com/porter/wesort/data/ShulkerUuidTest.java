@@ -65,8 +65,8 @@ class ShulkerUuidTest {
         String patch = "{\"minecraft:custom_name\":\"WeSort-" + V4 + "\"}";
         assertEquals("WeSort-" + V4, ShulkerUuid.customName(patch));
         assertEquals(UUID.fromString(V4), ShulkerUuid.boxUuid(patch));
-        assertEquals(UUID.fromString(V4), ShulkerUuid.boxUuid(
-                "{\"minecraft:custom_name\":{text:\"WeSort-" + V4 + "\"}}"));
+        assertEquals(
+                UUID.fromString(V4), ShulkerUuid.boxUuid("{\"minecraft:custom_name\":{text:\"WeSort-" + V4 + "\"}}"));
     }
 
     @Test

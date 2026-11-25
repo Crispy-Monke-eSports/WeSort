@@ -470,8 +470,9 @@ final class StockLedger {
                     throw new IllegalArgumentException("Expected SNBT-only physical observation");
                 if (!state.equals("FRESH") && !source.get("snbt").isJsonNull())
                     throw new IllegalArgumentException("Unverified source cannot publish new SNBT");
-                if (state.equals("FRESH") && (!source.get("snbt").isJsonPrimitive()
-                        || !source.get("snbt").getAsJsonPrimitive().isString()))
+                if (state.equals("FRESH")
+                        && (!source.get("snbt").isJsonPrimitive()
+                                || !source.get("snbt").getAsJsonPrimitive().isString()))
                     throw new IllegalArgumentException("Fresh source requires canonical SNBT");
             }
             if (version >= 2 && state.equals("FRESH")) {

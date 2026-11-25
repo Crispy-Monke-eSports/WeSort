@@ -89,5 +89,4 @@ public final class ShulkerUuid {
         if (uuid != null) out.addProperty("boxUUID", uuid.toString());
         return out;
     }
-
 }

@@ -2,8 +2,8 @@ package com.porter.wesortmanager;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.porter.wesort.data.CanonicalSnbt;
 import com.porter.wesort.data.CanonicalJson;
+import com.porter.wesort.data.CanonicalSnbt;
 import com.porter.wesort.data.ContainerIdentity;
 import java.util.HashSet;
 import java.util.List;
@@ -119,10 +119,13 @@ final class PackageManifest {
         var item = CanonicalSnbt.compound(fingerprint);
         var count = item.get("count");
         var id = item.get("id");
-        return (count == null || count instanceof CanonicalSnbt.NumberTag n
-                        && n.type() == CanonicalSnbt.Type.INT && n.longValue() == 1)
+        return (count == null
+                        || count instanceof CanonicalSnbt.NumberTag n
+                                && n.type() == CanonicalSnbt.Type.INT
+                                && n.longValue() == 1)
                 && id instanceof CanonicalSnbt.Text name
-                && name.value().matches(
-                        "minecraft:(?:(?:white|orange|magenta|light_blue|yellow|lime|pink|gray|light_gray|cyan|purple|blue|brown|green|red|black)_)?shulker_box");
+                && name.value()
+                        .matches(
+                                "minecraft:(?:(?:white|orange|magenta|light_blue|yellow|lime|pink|gray|light_gray|cyan|purple|blue|brown|green|red|black)_)?shulker_box");
     }
 }

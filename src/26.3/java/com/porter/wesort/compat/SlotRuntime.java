@@ -34,8 +34,8 @@ public final class SlotRuntime {
 
     private static PhysicalSlots.Item item(ItemStack stack, int depth) {
         var ops = mc.level.registryAccess().createSerializationContext(NbtOps.INSTANCE);
-        var nativeStack = CanonicalSnbt.compound(NbtFingerprint.encode(
-                ItemStack.CODEC.encodeStart(ops, stack).getOrThrow()));
+        var nativeStack = CanonicalSnbt.compound(
+                NbtFingerprint.encode(ItemStack.CODEC.encodeStart(ops, stack).getOrThrow()));
         var componentPatch = nativeStack.get("components");
         String patch = componentPatch == null ? "{}" : CanonicalSnbt.write(componentPatch);
         if (componentPatch != null && !(componentPatch instanceof CanonicalSnbt.Compound))

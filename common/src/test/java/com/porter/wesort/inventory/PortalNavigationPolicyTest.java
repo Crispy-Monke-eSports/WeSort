@@ -8,13 +8,21 @@ import org.junit.jupiter.api.Test;
 class PortalNavigationPolicyTest {
     @Test
     void onlyAnExplicitlyValidatedLobbyPortalCanNavigateBeforeInventoryReadback() {
-        assertTrue(PortalNavigationPolicy.mayBootstrap(true, true, true, true, true, true));
-        for (int missing = 0; missing < 6; missing++) {
-            boolean[] inputs = {true, true, true, true, true, true};
+        assertTrue(PortalNavigationPolicy.mayBootstrap(true, true, true, true, true));
+        for (int missing = 0; missing < 5; missing++) {
+            boolean[] inputs = {true, true, true, true, true};
             inputs[missing] = false;
             assertFalse(PortalNavigationPolicy.mayBootstrap(
-                    inputs[0], inputs[1], inputs[2], inputs[3], inputs[4], inputs[5]));
+                    inputs[0], inputs[1], inputs[2], inputs[3], inputs[4]));
         }
+    }
+
+    @Test
+    void lobbyTransitNeverDependsOnAgentLocalJournal() {
+        // Manager is truth: even with a fenced local journal the navigation-only
+        // portal bootstrap must stay allowed. Physical mutation paths keep their
+        // own fence; this policy no longer takes a journal input at all.
+        assertTrue(PortalNavigationPolicy.mayBootstrap(true, true, true, true, true));
     }
 
     @Test

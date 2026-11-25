@@ -99,13 +99,15 @@ public final class NavigationRuntime {
         }
         StashManager manager = Modules.get().get(StashManager.class);
         StashSorter sorter = WeSortAddon.sorter();
+        // Manager is truth: lobby transit is navigation-only and never mutates
+        // inventory. Agent-local journal state must not fence walking to the
+        // portal; the physical mutation paths keep their own fence.
         boolean allowed = PortalNavigationPolicy.mayBootstrap(
                 manager != null && manager.dedicatedProfile(),
                 sorter != null && sorter.portalAwaiting(),
                 validPortal,
                 adjacent,
-                stand != null && mc.player != null && mc.level != null && NavigationGuard.permits(stand),
-                !PhysicalJournalRuntime.blocked() && !PhysicalJournalRuntime.awaitingMirror());
+                stand != null && mc.player != null && mc.level != null && NavigationGuard.permits(stand));
         if (paused || mc.player == null || mc.level == null || !allowed) {
             BaritoneHelper.unconfine();
             throw new IllegalStateException("Unverified or unsafe lobby portal approach");
@@ -328,7 +330,11 @@ public final class NavigationRuntime {
         }
         if (!transientPause || nowMs < retryAt || mc.player == null || mc.level == null) return;
         if (!InventorySync.ready() || PhysicalJournalRuntime.inspecting()) return;
+        // Manager is truth: a portal-route pause is navigation-only and must be
+        // allowed to auto-resume even while the agent-local journal is fenced.
+        // Warehouse pauses stay fenced on physical uncertainty.
         if (status.equals("PAUSED_NAVIGATION_PHYSICAL_UNCERTAINTY")
+                && !pausedPortalRoute
                 && (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror())) return;
         if (!NavigationGuard.permits(mc.player.blockPosition())) return;
         // The previous goal was released; the sorter replans under all normal guards.
@@ -397,10 +403,10 @@ public final class NavigationRuntime {
             finish("PAUSED_NAVIGATION_INVENTORY", true);
             return;
         }
-        if (portalApproachGoal && (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror())) {
-            finish("PAUSED_NAVIGATION_PHYSICAL_UNCERTAINTY", true);
-            return;
-        }
+        // Manager is truth: portal approach is navigation-only and must never
+        // pause for agent-local physical uncertainty. Physical mutation paths
+        // keep their own fence; walking to the lobby portal does not mutate.
+        // (Removed: finish PAUSED_NAVIGATION_PHYSICAL_UNCERTAINTY for portal goals.)
         // Do not inspect a foreign executor's path. The current position still
         // needs to be safe, and the watchdog/inventory checks above still run.
         if (dedicated && foreign) {

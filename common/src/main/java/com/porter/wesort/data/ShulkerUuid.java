@@ -1,7 +1,6 @@
 package com.porter.wesort.data;
 
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import java.util.UUID;
 
 /**
@@ -60,36 +59,30 @@ public final class ShulkerUuid {
         return name == null || hasUuid(name);
     }
 
-    /**
-     * The plain {@code CUSTOM_NAME} text carried by a typed-NBT component patch (the transport produced
-     * by {@code DataComponentPatch.CODEC}), or {@code null}. Only a bare plain-text component counts; a
-     * styled/translated/compound name is not a canonical WeSort label.
-     */
-    public static String customName(String componentsJson) {
-        if (componentsJson == null || componentsJson.isBlank()) return null;
+    /** Only a literal native custom_name qualifies; no tooltip or rich-text resolution. */
+    public static String customName(String componentsSnbt) {
+        if (componentsSnbt == null || componentsSnbt.isBlank()) return null;
         try {
-            var root = JsonParser.parseString(componentsJson);
-            if (!root.isJsonObject()) return null;
-            var values = root.getAsJsonObject().get("value");
-            if (values == null || !values.isJsonObject()) return null;
-            var custom = values.getAsJsonObject().get(CUSTOM_NAME);
-            if (custom == null || !custom.isJsonObject()) return null;
-            var node = custom.getAsJsonObject();
-            if (!node.has("type") || node.get("type").getAsInt() != 8) return null; // StringTag
-            return plainText(node.get("value").getAsString());
+            var root = CanonicalSnbt.compound(componentsSnbt);
+            var custom = root.get(CUSTOM_NAME);
+            if (custom instanceof CanonicalSnbt.Text text) return text.value();
+            if (custom instanceof CanonicalSnbt.Compound literal
+                    && literal.entries().size() == 1
+                    && literal.get("text") instanceof CanonicalSnbt.Text text) return text.value();
+            return null;
         } catch (RuntimeException invalid) {
             return null;
         }
     }
 
     /** The UUID of a box whose component patch carries an exact WeSort-UUID name, or {@code null}. */
-    public static UUID boxUuid(String componentsJson) {
-        String name = customName(componentsJson);
+    public static UUID boxUuid(String componentsSnbt) {
+        String name = customName(componentsSnbt);
         return name == null ? null : parse(name);
     }
 
-    public static JsonObject identity(String componentsJson) {
-        String name = customName(componentsJson);
+    public static JsonObject identity(String componentsSnbt) {
+        String name = customName(componentsSnbt);
         UUID uuid = name == null ? null : parse(name);
         var out = new JsonObject();
         out.addProperty("hasUUID", uuid != null);
@@ -97,14 +90,4 @@ public final class ShulkerUuid {
         return out;
     }
 
-    private static String plainText(String componentJson) {
-        if (componentJson == null) return null;
-        try {
-            var element = JsonParser.parseString(componentJson);
-            if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) return null;
-            return element.getAsString();
-        } catch (RuntimeException invalid) {
-            return null;
-        }
-    }
 }

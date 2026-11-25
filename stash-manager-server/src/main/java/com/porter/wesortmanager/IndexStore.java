@@ -290,8 +290,7 @@ public final class IndexStore {
         return nowMs / 1000 - requestedSec > RESCAN_EXPIRE_SEC;
     }
 
-    private static String expireNotice(
-            String server, String stash, long requestedSec, long nowMs, String blocked) {
+    private static String expireNotice(String server, String stash, long requestedSec, long nowMs, String blocked) {
         return "WARNING: rescan for " + stash + " on " + server + " expired after "
                 + (nowMs / 1000 - requestedSec)
                 + "s without acknowledgement (last blocked: " + blocked

@@ -337,7 +337,12 @@ describe("rescan pending age (#217)", () => {
 
   it("labels pending age and the blocker verbatim", () => {
     expect(rescanPendingAge(nowSec - 90, NOW_MS)).toBe(90);
-    const label = rescanPendingLabel(true, nowSec - 90, "no readable containers", NOW_MS);
+    const label = rescanPendingLabel(
+      true,
+      nowSec - 90,
+      "no readable containers",
+      NOW_MS,
+    );
     expect(label).toContain("rescan pending 1m");
     expect(label).toContain("no readable containers");
   });

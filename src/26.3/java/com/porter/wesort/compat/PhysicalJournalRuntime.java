@@ -535,8 +535,8 @@ public final class PhysicalJournalRuntime {
         // The decision id is unique per manager attempt: a fresh INSPECT decision
         // re-probes the world (a healed TOO_FAR/SOURCE_GONE can clear), while a
         // redelivered duplicate keeps the cached answer instead of reopening menus.
-        return keyPart(decision, "id") + "|" + keyPart(decision, "operation") + "|"
-                + keyPart(decision, "revision") + "|" + keyPart(decision, "checksum");
+        return keyPart(decision, "id") + "|" + keyPart(decision, "operation") + "|" + keyPart(decision, "revision")
+                + "|" + keyPart(decision, "checksum");
     }
 
     /** World-state key for failure counting across manager retries (no decision id). */

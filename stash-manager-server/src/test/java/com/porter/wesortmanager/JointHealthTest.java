@@ -182,8 +182,7 @@ class JointHealthTest {
         assertTrue(store.sweepStaleRescans(System.currentTimeMillis()).isEmpty());
         assertEquals(first, store.rescanPending("s", "a").longValue());
         // A dead bot never heartbeats: the sweep still clears the id and lifts the freeze.
-        var expired = store.sweepStaleRescans(
-                System.currentTimeMillis() + (IndexStore.RESCAN_EXPIRE_SEC + 60) * 1000);
+        var expired = store.sweepStaleRescans(System.currentTimeMillis() + (IndexStore.RESCAN_EXPIRE_SEC + 60) * 1000);
         assertEquals(1, expired.size());
         assertNull(store.rescanPending("s", "a"));
     }

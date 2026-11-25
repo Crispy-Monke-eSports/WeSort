@@ -213,9 +213,12 @@ export function OperationsPage() {
                     color="text.secondary"
                   >
                     {s.stash}:{" "}
-                    {rescanPendingLabel(true, s.rescanRequestedAt, s.rescanBlocked) ??
-                      "rescan pending"}
-                    {" "}(auto-expires; a fresh pass is requested on new stale stock)
+                    {rescanPendingLabel(
+                      true,
+                      s.rescanRequestedAt,
+                      s.rescanBlocked,
+                    ) ?? "rescan pending"}{" "}
+                    (auto-expires; a fresh pass is requested on new stale stock)
                   </Typography>
                 ))}
               {rescanMsg && (

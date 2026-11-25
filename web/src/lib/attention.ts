@@ -390,8 +390,11 @@ export function rescanPendingLabel(
   nowMs: number = Date.now(),
 ): string | null {
   if (!rescanPending) return null;
-  const parts = [`rescan pending ${formatAge((rescanPendingAge(requestedAtSec, nowMs) ?? 0) * 1000)}`];
-  if (typeof rescanBlocked === "string" && rescanBlocked) parts.push(rescanBlocked);
+  const parts = [
+    `rescan pending ${formatAge((rescanPendingAge(requestedAtSec, nowMs) ?? 0) * 1000)}`,
+  ];
+  if (typeof rescanBlocked === "string" && rescanBlocked)
+    parts.push(rescanBlocked);
   return parts.join(" · ");
 }
 

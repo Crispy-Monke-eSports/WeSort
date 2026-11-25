@@ -201,15 +201,9 @@ public final class WeSortManager {
                             for (String expired : store.sweepStaleRescans(System.currentTimeMillis())) {
                                 System.err.println(expired);
                                 try {
-                                    audit.add(
-                                            "system",
-                                            "system",
-                                            "rescan.auto-expire",
-                                            expired,
-                                            "scheduler");
+                                    audit.add("system", "system", "rescan.auto-expire", expired, "scheduler");
                                 } catch (RuntimeException auditFailure) {
-                                    System.err.println(
-                                            "Could not audit rescan expiry: " + auditFailure.getMessage());
+                                    System.err.println("Could not audit rescan expiry: " + auditFailure.getMessage());
                                 }
                             }
                         } catch (IOException | RuntimeException failure) {

@@ -60,19 +60,27 @@ class DeferredPhysicalOrderTest {
         var timed = new OrderStore(data, index, clock::get);
         timed.load();
         var placed = timed.submit(
-                        "s", "a", diamonds(20), null, null, null, null, OrderIntent.DEFAULT, null, true, ignored -> null)
+                        "s",
+                        "a",
+                        diamonds(20),
+                        null,
+                        null,
+                        null,
+                        null,
+                        OrderIntent.DEFAULT,
+                        null,
+                        true,
+                        ignored -> null)
                 .order();
         assertEquals(OrderStore.Approval.PENDING, placed.approval);
         assertEquals("pending", placed.status);
         assertNull(timed.claim("s", "a"));
         // Still pending inside the deadline: no human, no decision, no expiry yet.
-        var waiting =
-                timed.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
+        var waiting = timed.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
         assertEquals("pending", waiting.get("status").getAsString());
         clock.addAndGet(OrderStore.AUTO_CANCEL_AFTER_MS + 1);
         assertNull(timed.claim("s", "a"));
-        var cancelled =
-                timed.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
+        var cancelled = timed.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
         assertEquals("cancelled", cancelled.get("status").getAsString());
         assertEquals("REJECTED", cancelled.get("approvalState").getAsString());
         assertTrue(cancelled.get("message").getAsString().contains("automatically"));

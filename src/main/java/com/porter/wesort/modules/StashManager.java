@@ -296,6 +296,7 @@ public class StashManager extends Module {
      * Manager's rescanPending outstanding forever. No human resumes this.
      */
     private long rescanStartMs;
+
     private static final long RESCAN_ATTEMPT_TIMEOUT_MS = 10 * 60_000;
 
     public StashManager() {
@@ -2031,8 +2032,7 @@ public class StashManager extends Module {
             rescanStartMs = System.currentTimeMillis();
             info(
                     "Rescan %d still incomplete after 10m: acknowledged attempted reads so far (%s); continuing.",
-                    activeRescanId,
-                    rescanBlocked() == null ? "no reads attempted yet" : rescanBlocked());
+                    activeRescanId, rescanBlocked() == null ? "no reads attempted yet" : rescanBlocked());
         }
         // The 6b6t lobby transit drives too: walking through the portal comes before everything.
         boolean want = dedicatedProfile()

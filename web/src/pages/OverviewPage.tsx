@@ -687,7 +687,11 @@ export function OverviewPage() {
                     s.stash,
                     s.online === false && "offline",
                     s.orderBlocker && `blocked: ${s.orderBlocker}`,
-                    rescanPendingLabel(s.rescanPending, s.rescanRequestedAt, s.rescanBlocked),
+                    rescanPendingLabel(
+                      s.rescanPending,
+                      s.rescanRequestedAt,
+                      s.rescanBlocked,
+                    ),
                   ]
                     .filter(Boolean)
                     .join(" · ")}

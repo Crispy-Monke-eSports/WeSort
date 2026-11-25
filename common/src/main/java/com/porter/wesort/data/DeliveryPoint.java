@@ -61,9 +61,7 @@ public record DeliveryPoint(
         // CONFIG_CHANGED. Null when not paused. Never auto-cleared except by
         // an explicit status change away from PAUSED.
         if (pauseReason != null
-                && (pauseReason.isBlank()
-                        || pauseReason.length() > 64
-                        || !pauseReason.matches("[A-Z_]+")))
+                && (pauseReason.isBlank() || pauseReason.length() > 64 || !pauseReason.matches("[A-Z_]+")))
             throw new IllegalArgumentException("Invalid pause reason");
         if (policyRevision < 0) throw new IllegalArgumentException("Invalid policy revision");
     }
@@ -112,12 +110,14 @@ public record DeliveryPoint(
     /** An optimistic update: present fields replace the current value and the revision increments. */
     public DeliveryPoint updated(JsonObject request) {
         Status nextStatus = request.has("status") ? enumerated(request, "status", Status.class) : status;
-        String nextReason = request.has("pauseReason") && !request.get("pauseReason").isJsonNull()
-                ? request.get("pauseReason").getAsString()
-                : (nextStatus == Status.PAUSED ? pauseReason : null);
-        long nextPolicy = request.has("policyRevision") && !request.get("policyRevision").isJsonNull()
-                ? request.get("policyRevision").getAsLong()
-                : policyRevision;
+        String nextReason =
+                request.has("pauseReason") && !request.get("pauseReason").isJsonNull()
+                        ? request.get("pauseReason").getAsString()
+                        : (nextStatus == Status.PAUSED ? pauseReason : null);
+        long nextPolicy =
+                request.has("policyRevision") && !request.get("policyRevision").isJsonNull()
+                        ? request.get("policyRevision").getAsLong()
+                        : policyRevision;
         var proposed = new DeliveryPoint(
                 id,
                 request.has("server") ? str(request, "server") : server,

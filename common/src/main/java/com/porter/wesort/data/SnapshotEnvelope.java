@@ -44,24 +44,17 @@ public final class SnapshotEnvelope {
     public record SlotEntry(int slot, String itemSnbt, int count) {
         public SlotEntry {
             if (slot < 0) throw new IllegalArgumentException("slot must be >= 0");
-            if (itemSnbt == null || itemSnbt.isEmpty())
-                throw new IllegalArgumentException("item SNBT required");
+            if (itemSnbt == null || itemSnbt.isEmpty()) throw new IllegalArgumentException("item SNBT required");
             if (count <= 0) throw new IllegalArgumentException("count must be > 0");
             SnbtCodec.parse(itemSnbt);
         }
     }
 
     public record Provenance(
-            String server,
-            String dimension,
-            String session,
-            long sequence,
-            long observedAtMs,
-            String registryContext) {
+            String server, String dimension, String session, long sequence, long observedAtMs, String registryContext) {
         public Provenance {
             if (server == null || server.isEmpty()) throw new IllegalArgumentException("server required");
-            if (dimension == null || dimension.isEmpty())
-                throw new IllegalArgumentException("dimension required");
+            if (dimension == null || dimension.isEmpty()) throw new IllegalArgumentException("dimension required");
             if (registryContext == null || registryContext.isEmpty())
                 throw new IllegalArgumentException("registryContext required");
         }
@@ -74,8 +67,11 @@ public final class SnapshotEnvelope {
     private final Provenance provenance;
 
     public SnapshotEnvelope(
-            SourceKind kind, int capacity, List<SlotEntry> slots,
-            Map<String, String> storageMeta, Provenance provenance) {
+            SourceKind kind,
+            int capacity,
+            List<SlotEntry> slots,
+            Map<String, String> storageMeta,
+            Provenance provenance) {
         if (kind == null) throw new IllegalArgumentException("kind required");
         if (capacity <= 0 || capacity > 256) throw new IllegalArgumentException("capacity 1..256");
         if (slots == null) throw new IllegalArgumentException("slots required");
@@ -120,8 +116,13 @@ public final class SnapshotEnvelope {
         for (int i = 0; i < ordered.size(); i++) {
             if (i > 0) sb.append(',');
             SlotEntry e = ordered.get(i);
-            sb.append("{slot:").append(e.slot()).append(",count:").append(e.count())
-                    .append(",item:").append(e.itemSnbt()).append('}');
+            sb.append("{slot:")
+                    .append(e.slot())
+                    .append(",count:")
+                    .append(e.count())
+                    .append(",item:")
+                    .append(e.itemSnbt())
+                    .append('}');
         }
         sb.append("]}");
         return sb.toString();

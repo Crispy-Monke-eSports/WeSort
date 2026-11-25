@@ -146,7 +146,6 @@ class HandoffsTest {
 
         // Neither sweep nor agent paths can reach DELIVERED without a receipt.
         assertThrows(Handoffs.Conflict.class, () -> restarted.resolve(h.id(), Handoff.State.DELIVERED, ""));
-        assertThrows(
-                Handoffs.Conflict.class, () -> restarted.resolve(h.id(), Handoff.State.DELIVERED, "owner"));
+        assertThrows(Handoffs.Conflict.class, () -> restarted.resolve(h.id(), Handoff.State.DELIVERED, "owner"));
     }
 }

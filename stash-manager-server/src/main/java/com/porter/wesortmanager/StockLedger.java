@@ -1073,7 +1073,7 @@ final class StockLedger {
                 var slots = c.prepareStatement("""
                     SELECT p.source,p.path,json_extract(p.payload,'$.components'),p.count
                     FROM physical_slots p JOIN stock_sources s ON s.id=p.source
-                    WHERE s.server=? AND p.present=1 AND instr(p.path,'/')=0
+                    WHERE s.server=? AND p.present=1
                     AND json_extract(p.payload,'$.kind')='SHULKER'
                     AND EXISTS (SELECT 1 FROM stock_members m WHERE m.source=p.source AND m.present=1)
                     """)) {
@@ -1090,7 +1090,12 @@ final class StockLedger {
                     if (name == null
                             || !name.strip().regionMatches(true, 0, ShulkerUuid.PREFIX, 0, ShulkerUuid.PREFIX.length()))
                         continue;
-                    var root = new PhysicalReservations.Root(rows.getString(1), rows.getString(2));
+                    var fullPath = rows.getString(2);
+                    int nested = fullPath.indexOf('/');
+                    // PR6 (#269/#67): nested UUID subtrees quarantine the root —
+                    // read() checks the top segment, so report the top segment.
+                    var root = new PhysicalReservations.Root(
+                            rows.getString(1), nested < 0 ? fullPath : fullPath.substring(0, nested));
                     UUID uuid = ShulkerUuid.parse(name);
                     if (uuid == null) {
                         unsafe.add(root);

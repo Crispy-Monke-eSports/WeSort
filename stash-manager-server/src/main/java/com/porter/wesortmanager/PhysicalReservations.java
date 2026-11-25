@@ -144,9 +144,25 @@ final class PhysicalReservations {
                 if (remaining == 0) break;
             }
             if (remaining != 0) {
+                // #199: machine-readable precondition. A bare "0 verified" hides whether the
+                // stock is merely aged (queueable with queueWhenStale) or void (needs a real re-read).
+                long lastVerified = 0;
+                var voidStates = new java.util.TreeSet<String>();
+                for (var candidate : candidates) {
+                    if (!candidate.reference().equals(line.ref())) continue;
+                    var src = sources.get(candidate.source());
+                    String st = src == null ? "unknown" : src.status();
+                    if (candidate.queueable() && !candidate.fresh()) lastVerified += candidate.count();
+                    else if (!candidate.queueable()) voidStates.add(st);
+                }
+                String staleHint = lastVerified > 0
+                        ? "; " + lastVerified + " more last-verified but stale (queue with queueWhenStale; claim still needs a fresh re-read)"
+                        : "";
+                String voidHint = voidStates.isEmpty() ? "" : "; void states: " + String.join(",", voidStates);
                 throw new OrderStore.OrderException(
                         409,
-                        "Only " + (line.count() - remaining) + " verified unreserved units for " + line.key(),
+                        "Only " + (line.count() - remaining) + " verified unreserved units for " + line.key()
+                                + staleHint + voidHint,
                         firstIndex.get(line.ref()));
             }
         }

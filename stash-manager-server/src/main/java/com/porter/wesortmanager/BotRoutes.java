@@ -628,7 +628,8 @@ final class BotRoutes {
         JsonObject o = json.getAsJsonObject();
         BotHub.Bot b = known(ex, AddonRoutes.string(o, "botId"));
         if (b == null) return;
-        long now = System.currentTimeMillis();
+        // #142: use the hub clock, not the wall clock, like the state path above.
+        long now = hub.now();
         JsonObject snapshot = Activity.clean(o.get("activity"), now);
         if (snapshot == null) {
             Http.error(ex, 400, "activity must be an object");

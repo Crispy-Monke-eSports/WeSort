@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.LongSupplier;
 
 /**
  * Orders per (server, stash), persisted in the shared guild SQLite database.
@@ -504,13 +505,21 @@ final class OrderStore {
 
     private final Path dir;
     private final IndexStore index;
+    /** Injected clock (#142): domain timestamps never read the wall clock directly, so
+     * timeouts (auto-cancel, recovering, deferred retry) are deterministic in tests. */
+    private final LongSupplier clock;
     private OrderBookRepository repository;
     private final Map<IndexStore.StashKey, Book> books = new ConcurrentHashMap<>();
     private final Map<String, Book> byOrderId = new ConcurrentHashMap<>();
 
     OrderStore(Path dataDir, IndexStore index) {
+        this(dataDir, index, System::currentTimeMillis);
+    }
+
+    OrderStore(Path dataDir, IndexStore index, LongSupplier clock) {
         this.dir = dataDir.resolve("orders");
         this.index = index;
+        this.clock = clock;
     }
 
     private volatile KitTemplates kits;
@@ -813,7 +822,7 @@ final class OrderStore {
                         if (observations.refreshedAfter(order.allocations, order.updatedAt)
                                 && !index.stock().unsettledPhysicalOrder(order.id)) {
                             released.add(order);
-                            order.releasedAt = System.currentTimeMillis();
+                            order.releasedAt = clock.getAsLong();
                         }
                     }
                     if (!released.isEmpty()) {
@@ -863,7 +872,7 @@ final class OrderStore {
      * sources are freshly observed; otherwise all holds remain protected.
      */
     private void autoHeal(String server) throws IOException {
-        long now = System.currentTimeMillis();
+        long now = clock.getAsLong();
         for (var entry : books.entrySet()) {
             if (!entry.getKey().server().equals(server)) continue;
             var book = entry.getValue();
@@ -1562,7 +1571,7 @@ final class OrderStore {
                                 + MAX_SHULKERS + " (one double chest)",
                         -1);
             }
-            long now = System.currentTimeMillis();
+            long now = clock.getAsLong();
             Order o = new Order();
             o.id = newId();
             o.server = server;
@@ -2015,7 +2024,7 @@ final class OrderStore {
                 Order next = Order.fromJson(before.snapshot());
                 next.approval = decision;
                 next.decidedBy = actor;
-                next.decidedAt = next.updatedAt = System.currentTimeMillis();
+                next.decidedAt = next.updatedAt = clock.getAsLong();
                 if (!approve) {
                     next.advance(OrderStage.CANCELLED);
                     next.status = "cancelled";
@@ -2055,9 +2064,9 @@ final class OrderStore {
                 o.message = "Cancelled before the bot started.";
             } else if (!o.cancelRequested) {
                 o.cancelRequested = true;
-                o.cancelRequestedAt = System.currentTimeMillis();
+                o.cancelRequestedAt = clock.getAsLong();
             } else return previous;
-            o.updatedAt = System.currentTimeMillis();
+            o.updatedAt = clock.getAsLong();
             o.record(o.cancelRequested ? "order.cancel.request" : "order.cancel", actor, o.updatedAt);
             update(b, previous, o);
             return o;
@@ -2104,7 +2113,7 @@ final class OrderStore {
             o.advance(OrderStage.CANCELLED);
             o.status = "cancelled";
             o.message = "cancelled from the website (bot didn't confirm)";
-            o.updatedAt = System.currentTimeMillis();
+            o.updatedAt = clock.getAsLong();
             o.record("order.force-cancel", actor, o.updatedAt);
             update(b, previous, o);
             return o;
@@ -2131,7 +2140,7 @@ final class OrderStore {
                 // path must terminate every non-terminal stage, allocations or not.
                 o.stage = OrderStage.FAILED;
                 o.status = "failed";
-                o.releasedAt = o.updatedAt = System.currentTimeMillis();
+                o.releasedAt = o.updatedAt = clock.getAsLong();
                 o.message = "Released by the owner without bot confirmation; verify the stash by hand.";
                 o.record("order.owner-force", actor, o.updatedAt);
                 update(b, previous, o);
@@ -2309,7 +2318,7 @@ final class OrderStore {
                     }
                     updated.status = "in_progress";
                     updated.cancelRequested = true;
-                    updated.cancelRequestedAt = updated.updatedAt = System.currentTimeMillis();
+                    updated.cancelRequestedAt = updated.updatedAt = clock.getAsLong();
                     updated.phase = "returning items to stash";
                     updated.message = "Agent restarted; automatically returning interrupted order";
                     updated.record("order.resume.rollback", agent, updated.updatedAt);
@@ -2403,7 +2412,7 @@ final class OrderStore {
             ready.deferredBlockedAt = 0;
             ready.advance(OrderStage.RESERVED);
             ready.message = null;
-            ready.updatedAt = System.currentTimeMillis();
+            ready.updatedAt = clock.getAsLong();
             ready.record("order.reserve.from-queue", Users.OWNER_ID, ready.updatedAt);
             update(book, queued, ready);
             return ready;
@@ -2425,7 +2434,7 @@ final class OrderStore {
                 || queued.agent != null
                 || queued.stage() != OrderStage.CREATED
                 || index.stock().unsettledPhysicalOrder(queued.id)) return;
-        long now = System.currentTimeMillis();
+        long now = clock.getAsLong();
         if (queued.deferredBlockedAt > 0
                 && (queued.queuedOffline || now - queued.deferredBlockedAt < DEFERRED_RETRY_AFTER_MS)) return;
         Order next = Order.fromJson(queued.snapshot());
@@ -2480,7 +2489,7 @@ final class OrderStore {
                 if (!order.stage().allows(OrderStage.PACKING)) continue;
                 order.stage = OrderStage.PACKING;
                 order.status = "accepted";
-                order.claimedAt = order.updatedAt = System.currentTimeMillis();
+                order.claimedAt = order.updatedAt = clock.getAsLong();
                 // Legacy aggregate claims may omit identity. An authenticated agent keeps one claim across its stashes.
                 order.agent = order.allocations == null && "local".equals(agent) ? null : agent;
                 order.record("order.claim", agent, order.claimedAt);
@@ -2612,10 +2621,10 @@ final class OrderStore {
             if (next == OrderStage.RECOVERING) {
                 o.result = null;
                 o.cancelRequested = true;
-                if (o.cancelRequestedAt == 0) o.cancelRequestedAt = System.currentTimeMillis();
+                if (o.cancelRequestedAt == 0) o.cancelRequestedAt = clock.getAsLong();
                 o.phase = "returning items to stash";
             } else if (result != null) o.result = result;
-            o.updatedAt = System.currentTimeMillis();
+            o.updatedAt = clock.getAsLong();
             if (next != previous.stage()) o.record("order.transition", agent, o.updatedAt);
             StockLedger.BoxRelease release = next == OrderStage.PICKUP_READY ? boxRelease(o, deliveredUuids) : null;
             b.receipts.put(key, new Receipt(fingerprint, o.toJson()));
@@ -2724,7 +2733,7 @@ final class OrderStore {
                 throw new OrderException(409, "Manifest hash differs", -1);
             if (order.manifestAcknowledgedAt > 0) return new ManifestReceipt(order.manifestAcknowledgedAt, false);
             var updated = Order.fromJson(order.snapshot());
-            updated.manifestAcknowledgedAt = System.currentTimeMillis();
+            updated.manifestAcknowledgedAt = clock.getAsLong();
             updated.record("order.manifest.confirm", scope.agent(), updated.manifestAcknowledgedAt);
             update(book, order, updated);
             return new ManifestReceipt(updated.manifestAcknowledgedAt, true);

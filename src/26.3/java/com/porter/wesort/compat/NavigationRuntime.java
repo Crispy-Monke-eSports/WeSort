@@ -49,11 +49,19 @@ public final class NavigationRuntime {
     private static long lastTransientCheckMs, retryAt, lastRetryAt;
     private static long pausedAtMs;
     private static int transientFailures;
+    // Non-unloaded unsafe blocks have their own bounded retry budget: the generic
+    // transient counter only counts retryable outcomes, so it can never reach the
+    // degrade threshold for this case (dead-counter fix, #197).
+    private static int unsafeBlockRetries;
+    private static long unsafeBlockRetryAt;
+    // Wall-clock start of the current world: an engine-dropped goal with zero progress
+    // right after login is chunks still streaming in, not a sealed start (#197).
+    private static long worldStartMs;
     private static final java.util.Map<String, Integer> denialCounts = new java.util.LinkedHashMap<>();
     /** Operator-taken routes expire after idle timeout instead of parking the headless bot forever. */
-    static final long OPERATOR_IDLE_TIMEOUT_MS = 10 * 60_000;
+    static final long OPERATOR_IDLE_TIMEOUT_MS = NavigationRecovery.OPERATOR_IDLE_TIMEOUT_MS;
     /** Non-unloaded unsafe blocks degrade to replanning after bounded retries instead of eternal latch. */
-    static final int UNSAFE_BLOCK_MAX_RETRIES = 3;
+    static final int UNSAFE_BLOCK_MAX_RETRIES = NavigationRecovery.UNSAFE_BLOCK_MAX_RETRIES;
 
     private NavigationRuntime() {}
 
@@ -156,10 +164,32 @@ public final class NavigationRuntime {
     }
 
     public static boolean resume() {
-        if (ours != null || mc.player == null || mc.level == null || !InventorySync.ready()) return false;
+        if (!resumeDenial().isEmpty()) return false;
         paused = false;
+        pauseDetail = "";
+        dropRetries = 0;
+        transientFailures = 0;
+        unsafeBlockRetries = 0;
         status = "IDLE";
         return true;
+    }
+
+    /** Why {@link #resume()} would refuse right now, or "" when resume is allowed. */
+    public static String resumeDenial() {
+        if (ours != null) return "a route goal is still active";
+        if (mc.player == null || mc.level == null) return "no world loaded";
+        if (!InventorySync.ready()) return "inventory not verified";
+        return "";
+    }
+
+    /** True for latches that only a human operator (or their idle timeout) clears. */
+    static boolean isOperatorLatch(String status) {
+        return NavigationRecovery.operatorLatch(status);
+    }
+
+    /** Operator-latch expiry: headless agents replan sooner than attended ones. */
+    static long operatorTimeoutMs() {
+        return NavigationRecovery.operatorTimeoutMs(WorldInteractionGuard.dedicated());
     }
 
     private static void finish(String outcome, boolean pause) {
@@ -189,13 +219,21 @@ public final class NavigationRuntime {
             retryAt = now + NavigationRecovery.delayMs(++transientFailures);
             lastRetryAt = now;
         } else if (!pause) transientFailures = 0;
+        if (pause
+                && outcome.equals("PAUSED_NAVIGATION_UNSAFE_BLOCK")
+                && !pauseDetail.startsWith("unloaded ")) {
+            long now = System.currentTimeMillis();
+            if (now - unsafeBlockRetryAt > 120_000) unsafeBlockRetries = 0;
+            unsafeBlockRetryAt = now;
+            unsafeBlockRetries++;
+        } else if (!pause) unsafeBlockRetries = 0;
         denialCounts.merge(outcome, 1, Integer::sum);
         status = outcome;
         if (pause)
             MeteorClient.LOG.warn(
                     "WeSort navigation stopped: {}.{} Inspect the route, then use .wesort-navigation resume",
                     outcome,
-                    baritoneState());
+                    pauseDetail.isEmpty() ? baritoneState() : " detail=" + pauseDetail + "." + baritoneState());
     }
 
     /** Baritone liveness at pause time, for timeout diagnostics. Never throws. */
@@ -239,9 +277,14 @@ public final class NavigationRuntime {
         long nowMs = System.currentTimeMillis();
         if (nowMs - lastPauseLogMs >= 60_000) {
             lastPauseLogMs = nowMs;
+            String extra = pauseDetail.isEmpty() ? "" : " detail=" + pauseDetail;
+            if (isOperatorLatch(status) && pausedAtMs > 0)
+                extra += " operator latch expires in "
+                        + Math.max(0, (operatorTimeoutMs() - (nowMs - pausedAtMs)) / 1000) + "s";
             MeteorClient.LOG.info(
-                    "WeSort navigation paused ({}); pauses so far {}; use .wesort-navigation resume",
+                    "WeSort navigation paused ({}{}); pauses so far {}; use .wesort-navigation resume",
                     status,
+                    extra,
                     denialSummary());
         }
         if (nowMs - lastTransientCheckMs < 5_000) return;
@@ -249,16 +292,13 @@ public final class NavigationRuntime {
         boolean transientPause = WorldInteractionGuard.dedicated()
                 ? NavigationRecovery.retryable(status, pauseDetail) || status.equals("PAUSED_NAVIGATION_DISCONNECTED")
                 : status.equals("PAUSED_NAVIGATION_INVENTORY")
+                        || status.equals("PAUSED_NAVIGATION_DISCONNECTED")
                         || (status.equals("PAUSED_NAVIGATION_UNSAFE_BLOCK") && pauseDetail.startsWith("unloaded "));
         // Operator-taken routes expire: a headless bot must not wait forever for a human
         // who may never return. Expiry only replans (goal stays released), never steals control.
-        boolean operatorLatched = status.equals("PAUSED_NAVIGATION_OTHER_PROCESS")
-                || status.equals("PAUSED_NAVIGATION_CANCELLED")
-                || status.equals("FOREIGN_PROCESS_CANCELLED")
-                || status.equals("PAUSED_NAVIGATION_DISCONNECTED");
-        if (operatorLatched
+        if (isOperatorLatch(status)
                 && pausedAtMs > 0
-                && nowMs - pausedAtMs >= OPERATOR_IDLE_TIMEOUT_MS
+                && nowMs - pausedAtMs >= operatorTimeoutMs()
                 && mc.player != null
                 && mc.level != null
                 && InventorySync.ready()
@@ -267,20 +307,21 @@ public final class NavigationRuntime {
             pauseDetail = "";
             dropRetries = 0;
             transientFailures = 0;
+            unsafeBlockRetries = 0;
             status = "IDLE";
             MeteorClient.LOG.info(
-                    "WeSort navigation auto-resumed: operator-taken latch expired after 10m idle ({}). Replanning.",
-                    status);
+                    "WeSort navigation auto-resumed: operator-taken latch expired after idle timeout. Replanning.");
             return;
         }
         // Persistently unsafe (non-unloaded) targets degrade to replanning after bounded
         // retries: the sorter marks the target unreachable and plans the next box.
         if (status.equals("PAUSED_NAVIGATION_UNSAFE_BLOCK")
                 && !pauseDetail.startsWith("unloaded ")
-                && transientFailures >= UNSAFE_BLOCK_MAX_RETRIES) {
+                && NavigationRecovery.unsafeDegraded(unsafeBlockRetries)) {
             paused = false;
             pauseDetail = "";
             dropRetries = 0;
+            unsafeBlockRetries = 0;
             status = "IDLE";
             MeteorClient.LOG.info(
                     "WeSort navigation degraded unsafe-block latch to replanning after {} retries: no mining through the barrier.",
@@ -297,6 +338,7 @@ public final class NavigationRuntime {
         paused = false;
         pauseDetail = "";
         dropRetries = 0;
+        unsafeBlockRetries = 0;
         status = "IDLE";
         MeteorClient.LOG.info("WeSort navigation auto-resumed: the transient pause cause cleared.");
     }
@@ -304,6 +346,11 @@ public final class NavigationRuntime {
     @EventHandler
     private void tick(TickEvent.Pre ignored) {
         boolean dedicated = WorldInteractionGuard.dedicated();
+        long tickMs = System.currentTimeMillis();
+        // Fresh-world tracking: an engine-dropped goal with zero progress right after
+        // login is chunks still streaming in, not a sealed start (#197).
+        if (mc.player == null || mc.level == null) worldStartMs = 0;
+        else if (worldStartMs == 0) worldStartMs = tickMs;
         boolean foreign = false;
         if (dedicated) {
             BaritoneHelper.enforceAgentProfile();
@@ -392,7 +439,18 @@ public final class NavigationRuntime {
                 lastDropMs = nowMs;
                 boolean progressed =
                         mc.player != null && (mc.player.distanceToSqr(dropAnchorX, dropAnchorY, dropAnchorZ) > 0.25);
-                if (progressed && ++dropRetries <= 3) {
+                // No human can ever interact with the agent instance: a dropped goal with
+                // zero progress right after login (chunks still streaming) or while Baritone
+                // is still calculating is reasserted like a progressed drop. Only a route the
+                // engine keeps dropping latches. Confinement is set first, so a retry can
+                // never mine through the barrier that made the goal unreachable.
+                boolean freshStart = worldStartMs > 0 && tickMs - worldStartMs < 60_000;
+                boolean thinking = false;
+                try {
+                    thinking = BaritoneHelper.isCalculating();
+                } catch (RuntimeException unavailable) {
+                }
+                if ((progressed || freshStart || thinking) && ++dropRetries <= 3) {
                     // Re-asserting must never widen permissions: confine first so a retry
                     // cannot mine through the barrier that made the goal unreachable.
                     BaritoneHelper.confine(true);
@@ -445,9 +503,11 @@ public final class NavigationRuntime {
     @EventHandler
     private void left(GameLeftEvent ignored) {
         if (ours != null) finish("PAUSED_NAVIGATION_DISCONNECTED", true);
+        worldStartMs = 0;
         // The failed, client-owned portal route no longer exists after logout. The
-        // next login must pass fresh portal/approach/route guards; all warehouse
-        // safety pauses remain latched until the operator explicitly resumes.
+        // next login must pass fresh portal/approach/route guards. Warehouse pauses
+        // stay latched across the disconnect but expire automatically: no human can
+        // ever interact with the agent instance, so every latch has a bounded way out.
         if (PortalNavigationPolicy.clearPauseOnDisconnect(paused, pausedPortalRoute)) {
             paused = false;
             pausedPortalRoute = false;

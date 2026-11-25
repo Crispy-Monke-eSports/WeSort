@@ -2,7 +2,6 @@ package com.porter.wesort.compat;
 
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
-import com.google.gson.*;
 import com.porter.wesort.data.KitTemplate;
 import com.porter.wesort.stash.Kit;
 import java.util.Arrays;
@@ -31,8 +30,7 @@ public final class KitRuntime {
             var patch = DataComponentPatch.CODEC
                     .parse(
                             ops,
-                            NbtFingerprint.decode(
-                                    JsonParser.parseString(slot.item().components())))
+                            NbtFingerprint.decode(slot.item().components()))
                     .getOrThrow();
             stack.applyComponentsAndValidate(patch);
             layout[slot.slot()] = stack;

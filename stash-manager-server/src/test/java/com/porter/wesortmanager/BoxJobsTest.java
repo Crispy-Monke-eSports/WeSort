@@ -16,7 +16,7 @@ class BoxJobsTest {
     Path data;
 
     private static String namedComponents(String name) {
-        return "{\"type\":10,\"value\":{\"minecraft:custom_name\":{\"type\":8,\"value\":\"\\\"" + name + "\\\"\"}}}";
+        return "{\"minecraft:custom_name\":\"" + name + "\"}";
     }
 
     private static JsonArray amounts(Map<String, Long> counts) {

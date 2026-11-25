@@ -1,60 +1,34 @@
 package com.porter.wesort.compat;
 
-import com.google.gson.*;
-import com.porter.wesort.data.CanonicalJson;
-import net.minecraft.nbt.*;
+import com.porter.wesort.data.CanonicalSnbt;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.nbt.Tag;
+import net.minecraft.nbt.TagParser;
 
-/** Compound order is irrelevant; NBT numeric types, slot order and arrays are significant. */
+/** Native NBT is authoritative. Canonical SNBT preserves types and logical list order. */
 public final class NbtFingerprint {
     private NbtFingerprint() {}
 
     public static String encode(Tag tag) {
-        return CanonicalJson.stringify(typed(tag));
-    }
-    /** Typed component transport for new WeSort kit templates; numeric NBT types remain significant. */
-    public static Tag decode(JsonElement value) {
-        return decode(value, 0);
+        String canonical = CanonicalSnbt.canonicalize(tag.toString());
+        if (!tag.equals(parseNative(canonical)))
+            throw new IllegalArgumentException("Native NBT cannot round-trip through canonical SNBT");
+        return canonical;
     }
 
-    private static Tag decode(JsonElement value, int depth) {
-        if (depth > 64) throw new IllegalArgumentException("Typed NBT exceeds template nesting limit");
-        var node = value.getAsJsonObject();
-        int type = node.get("type").getAsBigDecimal().intValueExact();
-        if (type == 10) {
-            var out = new CompoundTag();
-            node.getAsJsonObject("value")
-                    .entrySet()
-                    .forEach(entry -> out.put(entry.getKey(), decode(entry.getValue(), depth + 1)));
-            return out;
-        }
-        if (type == 9) {
-            var out = new ListTag();
-            node.getAsJsonArray("value").forEach(item -> out.add(decode(item, depth + 1)));
-            return out;
-        }
+    public static Tag decode(String value) {
+        String canonical = CanonicalSnbt.canonicalize(value);
+        Tag tag = parseNative(canonical);
+        if (!canonical.equals(encode(tag)))
+            throw new IllegalArgumentException("SNBT differs from its native typed representation");
+        return tag;
+    }
+
+    private static Tag parseNative(String value) {
         try {
-            Tag tag = TagParser.create(NbtOps.INSTANCE)
-                    .parseFully(node.get("value").getAsString());
-            if (tag.getId() != type || type <= 0 || type > 12)
-                throw new IllegalArgumentException("Typed NBT type mismatch");
-            return tag;
+            return TagParser.create(NbtOps.INSTANCE).parseFully(value);
         } catch (com.mojang.brigadier.exceptions.CommandSyntaxException failure) {
-            throw new IllegalArgumentException("Invalid typed NBT in template", failure);
+            throw new IllegalArgumentException("Invalid native SNBT", failure);
         }
-    }
-
-    private static JsonElement typed(Tag tag) {
-        JsonObject out = new JsonObject();
-        out.addProperty("type", tag.getId());
-        if (tag instanceof CompoundTag compound) {
-            JsonObject values = new JsonObject();
-            compound.keySet().forEach(key -> values.add(key, typed(compound.get(key))));
-            out.add("value", values);
-        } else if (tag instanceof ListTag list) {
-            JsonArray values = new JsonArray();
-            list.forEach(value -> values.add(typed(value)));
-            out.add("value", values);
-        } else out.addProperty("value", tag.toString());
-        return out;
     }
 }

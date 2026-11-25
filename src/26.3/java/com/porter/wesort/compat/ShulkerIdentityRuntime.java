@@ -13,7 +13,8 @@ public final class ShulkerIdentityRuntime {
     public static UUID uuid(ItemStack stack) {
         var name = stack.get(DataComponents.CUSTOM_NAME);
         return name != null && name.equals(Component.literal(name.getString()))
-                ? ShulkerUuid.parse(name.getString()) : null;
+                ? ShulkerUuid.parse(name.getString())
+                : null;
     }
 
     public static boolean hasForeignName(ItemStack stack) {

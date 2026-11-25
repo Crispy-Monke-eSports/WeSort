@@ -390,7 +390,7 @@ public class StashSorter extends Module {
     private final Setting<Boolean> watch = sgWatch.add(new BoolSetting.Builder()
             .name("watch")
             .description(
-                    "Notices when another player opens a container of the stash and closes it again, and reads it again after the delay below. Works while the module is off.")
+                    "Notices when another player opens a container of the stash and closes it again, flags it for re-read after the delay below, and logs it operator-visible. Works while the module is off.")
             .defaultValue(true)
             .build());
 
@@ -6025,11 +6025,11 @@ public class StashSorter extends Module {
         return d.chests() + (d.chests() == 1 ? " chest, " : " chests, ") + d.full() + " full, " + tail;
     }
 
-    /** Another player opened a delivery chest and closed it again (StashWatch): a full one is to be looked at. */
+    /** Another player opened a delivery chest and closed it again (StashWatch): flagged for re-read. */
     private void deliveryTouched(Box box) {
         if (stash == null) return;
         if (book().lidClosedByOther(dp(box.pos))) {
-            debug("Another player used the delivery chest at %s.", box.pos.toShortString());
+            info("Another player used the delivery chest at %s; flagged for re-read.", box.pos.toShortString());
             stash.markDirty();
         }
     }
@@ -13682,9 +13682,14 @@ public class StashSorter extends Module {
      * jobs while sorting, between jobs. With the module off it's only forgotten, to be read the next time it runs.
      */
     private void accessed(Box box) {
-        debug("Another player used the container at %s.", box.pos.toShortString());
+        // Safety first: another player may have changed the contents, so the box
+        // must not be trusted until re-read. Manager direction: this is a fact
+        // report (operator-visible info + dirty flag); re-read itself is still
+        // scheduled via the existing survey path until manager-ordered READ lands.
+        info("Another player used the container at %s; queued for re-read.", box.pos.toShortString());
         if (running()) staleBoxes.add(box);
         else box.stale = true;
+        if (stash != null) stash.markDirty();
     }
 
     /**

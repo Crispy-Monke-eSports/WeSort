@@ -14,9 +14,11 @@ class StockHierarchyTest {
     Path data;
 
     private PhysicalSlots.Snapshot frame(int count) {
-        return new PhysicalSlots.Snapshot(27, List.of(
-                new PhysicalSlots.Slot(0, 1, managedBox(count, "550e8400-e29b-41d4-a716-446655440000")),
-                new PhysicalSlots.Slot(2, 1, managedBox(count, "7c9e6679-7425-40de-944b-e07fc1f90ae7"))));
+        return new PhysicalSlots.Snapshot(
+                27,
+                List.of(
+                        new PhysicalSlots.Slot(0, 1, managedBox(count, "550e8400-e29b-41d4-a716-446655440000")),
+                        new PhysicalSlots.Slot(2, 1, managedBox(count, "7c9e6679-7425-40de-944b-e07fc1f90ae7"))));
     }
 
     private PhysicalSlots.Item managedBox(int count, String uuid) {
@@ -26,7 +28,8 @@ class StockHierarchyTest {
                 "minecraft:shulker_box",
                 "minecraft:shulker_box",
                 1,
-                "{\"minecraft:custom_name\":\"WeSort-" + uuid + "\",\"minecraft:container\":[{slot:26,item:{id:\"minecraft:diamond\",count:" + count + "}}]}",
+                "{\"minecraft:custom_name\":\"WeSort-" + uuid
+                        + "\",\"minecraft:container\":[{slot:26,item:{id:\"minecraft:diamond\",count:" + count + "}}]}",
                 PhysicalSlots.Kind.SHULKER,
                 27,
                 List.of(new PhysicalSlots.Slot(26, count, diamond)),

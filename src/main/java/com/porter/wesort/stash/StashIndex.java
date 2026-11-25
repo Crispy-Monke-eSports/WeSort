@@ -529,7 +529,9 @@ public final class StashIndex {
         return info;
     }
 
-    /** The key of a stack as the index lists it, or null with no world. Only on the client thread. */
+    /** The key of a stack as the index lists it, or null with no world. Only on the client thread.
+     * Display/grouping key only (truncated hash) — never an authoritative variant identity
+     * (see docs/SNBT_CONTRACT.md, #266: use ExactVariantId for identity). */
     public static String keyOf(ItemStack stack) {
         if (mc.level == null || stack == null || stack.isEmpty()) return null;
         return infoOf(mc.level.registryAccess().createSerializationContext(NbtOps.INSTANCE), stack)

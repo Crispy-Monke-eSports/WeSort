@@ -369,6 +369,35 @@ function formatAge(ms: number): string {
   return `${Math.floor(s / 86400)}d`;
 }
 
+/**
+ * Age of an outstanding rescan request in seconds, or null when there is none.
+ * `requestedAtSec` is the epoch-seconds id the Manager puts in
+ * `rescanRequestedAt` (null when nothing is pending). Pure: the caller passes now.
+ */
+export function rescanPendingAge(
+  requestedAtSec: unknown,
+  nowMs: number = Date.now(),
+): number | null {
+  if (typeof requestedAtSec !== "number" || !(requestedAtSec > 0)) return null;
+  return Math.max(0, Math.floor(nowMs / 1000) - Math.floor(requestedAtSec));
+}
+
+/** One-line rescan state for stash chips: pending age plus the blocker verbatim. */
+export function rescanPendingLabel(
+  rescanPending: unknown,
+  requestedAtSec: unknown,
+  rescanBlocked: unknown,
+  nowMs: number = Date.now(),
+): string | null {
+  if (!rescanPending) return null;
+  const parts = [
+    `rescan pending ${formatAge((rescanPendingAge(requestedAtSec, nowMs) ?? 0) * 1000)}`,
+  ];
+  if (typeof rescanBlocked === "string" && rescanBlocked)
+    parts.push(rescanBlocked);
+  return parts.join(" · ");
+}
+
 // ---------- journal / lease display ----------
 
 /**

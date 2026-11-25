@@ -105,11 +105,11 @@ public final class PhysicalJournalRuntime {
         if (waiting < MIRROR_ESCALATION_MS || journal == null) return null;
         return "WAITING_MANAGER_RECEIPT since " + (waiting / 1000) + "s: journal " + journal.id() + " rev "
                 + journal.revision() + " is terminal but the manager receipt is missing; the fence is kept"
-                + " and the completed receipt keeps uploading. Operator: check the manager link/lease, or run"
-                + " a manual reconcile once the manager is reachable.";
+                + " and the completed receipt keeps uploading. The link/lease heals automatically once"
+                + " the manager is reachable again; no manual step can clear a terminal receipt.";
     }
 
-    /** Operator path while the fence is kept: only a genuinely failed readback can reopen recovery. */
+    /** Debug hook while the fence is kept: only a genuinely failed readback can reopen recovery. */
     public static boolean requestManualReconciliation() {
         return InventorySync.requestReconciliation();
     }
@@ -508,15 +508,18 @@ public final class PhysicalJournalRuntime {
             // waiting for: the world provably matches, so the gate has served its purpose.
             clearWorkspaceDebt();
         } else if (!detail.equals(escalation)) {
-            String key = decisionKey(inspection);
+            // Count repeated world failures per operation+revision+category so the
+            // escalation still trips across manager retries; the skip-probe above is
+            // per decision id, so every fresh INSPECT decision re-probes the world.
             String category = categoryOf(detail);
-            if (key.equals(failureKey) && category.equals(failureCategory)) failureCount++;
+            String world = worldKey(inspection, category);
+            if (world.equals(failureKey)) failureCount++;
             else {
-                failureKey = key;
+                failureKey = world;
                 failureCategory = category;
                 failureCount = 1;
             }
-            if (failureCount >= ESCALATION_THRESHOLD) detail = escalate(category, key, detail);
+            if (failureCount >= ESCALATION_THRESHOLD) detail = escalate(category, decisionKey(inspection), detail);
         }
         inspectionResult = new JsonObject();
         inspectionResult.add("id", inspection.get("id"));
@@ -529,8 +532,17 @@ public final class PhysicalJournalRuntime {
     }
 
     private static String decisionKey(JsonObject decision) {
-        return keyPart(decision, "operation") + "|" + keyPart(decision, "revision") + "|"
-                + keyPart(decision, "checksum");
+        // The decision id is unique per manager attempt: a fresh INSPECT decision
+        // re-probes the world (a healed TOO_FAR/SOURCE_GONE can clear), while a
+        // redelivered duplicate keeps the cached answer instead of reopening menus.
+        return keyPart(decision, "id") + "|" + keyPart(decision, "operation") + "|" + keyPart(decision, "revision")
+                + "|" + keyPart(decision, "checksum");
+    }
+
+    /** World-state key for failure counting across manager retries (no decision id). */
+    private static String worldKey(JsonObject inspection, String category) {
+        return keyPart(inspection, "operation") + "|" + keyPart(inspection, "revision") + "|"
+                + keyPart(inspection, "checksum") + "|" + category;
     }
 
     private static String keyPart(JsonObject decision, String field) {
@@ -552,14 +564,14 @@ public final class PhysicalJournalRuntime {
         escalationKey = key;
         if (permanentCategory(category))
             escalation = category + " x" + failureCount + " for op " + key
-                    + ": precondition cannot be met, human action required: " + detail;
+                    + ": precondition cannot be met, waiting for the world to change: " + detail;
         else
             escalation = category + " x" + failureCount + " for op " + key
-                    + ": repeated inspection failure, operator attention advised: " + detail;
+                    + ": repeated inspection failure, automatic recovery keeps retrying with backoff: " + detail;
         return escalation;
     }
 
-    /** Clears the human-readable escalation once the operator (or a fresh decision) resolves it. */
+    /** Clears the human-readable escalation once the world changes or a fresh decision resolves it. */
     public static void clearEscalation() {
         escalation = "";
         escalationKey = "";

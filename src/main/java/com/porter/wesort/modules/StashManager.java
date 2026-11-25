@@ -289,6 +289,15 @@ public class StashManager extends Module {
     private boolean rescanning;
     private long activeRescanId = -1;
     private long lastRescanId = -1;
+    /**
+     * When the active rescan started. A parked bot must still report progress:
+     * after a bounded attempt window the reads done so far are acknowledged
+     * (the blocked reason flows with every heartbeat) instead of holding the
+     * Manager's rescanPending outstanding forever. No human resumes this.
+     */
+    private long rescanStartMs;
+
+    private static final long RESCAN_ATTEMPT_TIMEOUT_MS = 10 * 60_000;
 
     public StashManager() {
         super(
@@ -584,6 +593,7 @@ public class StashManager extends Module {
         activeRescanId = -1;
         lastRescanId = -1;
         rescanning = false;
+        rescanStartMs = 0;
         StashIndex.clearCache();
     }
 
@@ -1848,6 +1858,7 @@ public class StashManager extends Module {
             if (count < 0) warning("Rescan requested from the website, but no stash is loaded.");
             else {
                 activeRescanId = id;
+                rescanStartMs = System.currentTimeMillis();
                 rescanning = true;
                 info("Rescan requested from the website: re-reading %d containers.", count);
             }
@@ -2005,9 +2016,23 @@ public class StashManager extends Module {
             if (activeRescanId >= 0) {
                 lastRescanId = rescanDone = activeRescanId;
                 activeRescanId = -1;
+                rescanStartMs = 0;
                 scanTicks = 0;
                 needIndex = true;
             }
+        } else if (rescanning
+                && activeRescanId >= 0
+                && rescanStartMs > 0
+                && System.currentTimeMillis() - rescanStartMs >= RESCAN_ATTEMPT_TIMEOUT_MS) {
+            // Bounded attempt, not bounded perfection: acknowledge the reads done so
+            // far (the blocked reason already flows with every heartbeat) instead of
+            // holding the Manager's rescanPending outstanding forever while parked.
+            // Surveying continues; a later clean pass still fully acknowledges.
+            rescanDone = activeRescanId;
+            rescanStartMs = System.currentTimeMillis();
+            info(
+                    "Rescan %d still incomplete after 10m: acknowledged attempted reads so far (%s); continuing.",
+                    activeRescanId, rescanBlocked() == null ? "no reads attempted yet" : rescanBlocked());
         }
         // The 6b6t lobby transit drives too: walking through the portal comes before everything.
         boolean want = dedicatedProfile()

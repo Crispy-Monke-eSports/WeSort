@@ -22,8 +22,8 @@ Temurin 21.0.9+10, wrapper Gradle 9.2.0, låsta Loom/Meteor/Baritone-versioner.
 
 | Körning                                     | Resultat                                                                                                                     |
 | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `clean build -Pmc=1.21.4`                   | PASS, 430 tester, inga fel/skips                                                                                             |
-| `clean build -Pmc=1.21.11`                  | PASS, 430 tester, inga fel/skips                                                                                             |
+| `clean build -Pmc=1.21.4` [historiskt]      | PASS, 430 tester, inga fel/skips                                                                                             |
+| `clean build -Pmc=1.21.11` [historiskt]     | PASS, 430 tester, inga fel/skips                                                                                             |
 | `-p stash-manager-server clean build`       | PASS, 100 tester, inga fel, 1 skip (99 godkända)                                                                             |
 | `scripts/smoke-isolation.py` mot byggd jar  | PASS: riktig start, signerat index/heartbeat/order/claim, omstart och isolerad backup; legacy SHA-256/mtime/mode oförändrade |
 | Webb DOM/no-undef + legacy-storage-sentinel | PASS: login, orders/bots/activity/settings/stash, eget scope, inga gamla data lästa/ändrade                                  |

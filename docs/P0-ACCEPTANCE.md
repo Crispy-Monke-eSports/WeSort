@@ -30,3 +30,26 @@ If any prerequisite is unavailable, record BLOCKED with the exact missing prereq
 ## Status
 
 All acceptance tests above require evidence on the final PR revision. This plan does not close issues. The long-duration soak, live 6b6t test and full transaction migration have not been completed in this PR revision.
+
+## Release blockers (W-051, #52) — BLOCKED, not passed
+
+No release approval is given. Each item below names the exact missing evidence;
+nothing here may be called done until its gate is green on the final revision:
+
+- P0 troika: #140 (unified SQLite transaction — only first durability steps
+  landed: OrderStore clock, SessionStore fail-closed saves, UUID history truth),
+  #141 (live 6b6t proof steps 1–6; preflight without `--live` reports SKIP),
+  #197 (headless park-free operation without manual resume/rescan/restart).
+- Follow-ups with bounded automatic exits landed but not closed: #198 (collect
+  reconcile + 5m drop-expiry), #199 (preconditions, rescan-stall warning),
+  #200 (lease↔journal inspectability), #201 (60s survey floor vs 1800s TTL —
+  soak ≥5400s with sampling every 5s still unrun), #217 (rescan expiry +
+  re-assert; dead-bot sweep, audit and UI countdown landed).
+- Program tracks: #142 (OrderStore/BotHub split — only clock injection done),
+  #139 (scope enforcement), #68 (X-ordering, anvil gate, physical matrix),
+  #67 (agent box-job worker), #40/#30/#35 (custody/handoff/job auto-exit —
+  server sweeps still missing), #46/#47 (full 26.3 + guild E2E with two
+  members, two stashes, CHEST + PLAYER).
+- Rule: every latch needs a bounded automatic way out before release.
+  Anything still waiting on a human — chat command, dashboard click, owner
+  decision, manual restart/rescan — blocks the release.

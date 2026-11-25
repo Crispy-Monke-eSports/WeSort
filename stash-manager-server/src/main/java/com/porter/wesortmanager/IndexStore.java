@@ -275,6 +275,50 @@ public final class IndexStore {
     static final long RESCAN_DEBOUNCE_MS = 5 * 60 * 1000;
 
     /**
+     * An outstanding rescan acknowledgement expires instead of deadlocking the
+     * freshness loop: the bot may be parked behind recovery gates while the
+     * Manager waits for its ack. Longer than the client's re-assert window so a
+     * merely slow pass is never cut off, shorter than any soak.
+     */
+    static final long RESCAN_EXPIRE_SEC = 15 * 60;
+
+    /**
+     * Whether an outstanding rescan id is older than the bounded wait: no human can
+     * ever ack it, so the flag must expire instead of deadlocking freshness (#217).
+     */
+    static boolean rescanExpired(long requestedSec, long nowMs) {
+        return nowMs / 1000 - requestedSec > RESCAN_EXPIRE_SEC;
+    }
+
+    private static String expireNotice(String server, String stash, long requestedSec, long nowMs, String blocked) {
+        return "WARNING: rescan for " + stash + " on " + server + " expired after "
+                + (nowMs / 1000 - requestedSec)
+                + "s without acknowledgement (last blocked: " + blocked
+                + "); pending cleared, a fresh rescan may be requested.";
+    }
+
+    /**
+     * Expire outstanding rescans without any acknowledgement — including dead bots
+     * that never heartbeat, which the heartbeat path above can never see (#217).
+     * Returns human-readable descriptions for logging/audit; unfreezes aging so a
+     * cleared rescan does not keep the freeze applied.
+     */
+    synchronized java.util.List<String> sweepStaleRescans(long nowMs) {
+        var expired = new java.util.ArrayList<String>();
+        for (var stash : stashes.values()) {
+            Long outstanding;
+            synchronized (stash) {
+                outstanding = rescanPending(stash);
+                if (outstanding == null || !rescanExpired(outstanding, nowMs)) continue;
+                stash.rescanDone = outstanding;
+            }
+            if (stock != null) stock.unfreezeAging(stash.server);
+            expired.add(expireNotice(stash.server, stash.stash, outstanding, nowMs, stash.rescanBlocked));
+        }
+        return expired;
+    }
+
+    /**
      * Whether a pending rescan suppresses a fresh request: the bot is visibly
      * alive on it, or the request itself is still new.
      */
@@ -747,6 +791,16 @@ public final class IndexStore {
             if (status.hasStorage()) s.storage = status.storage();
             if (status.hasRescanBlocked()) s.rescanBlocked = status.rescanBlocked();
             if (status.rescanDone() > s.rescanDone) s.rescanDone = status.rescanDone();
+            // Scout runda 4: an outstanding rescan with no acknowledgement must expire
+            // instead of deadlocking both sides (the bot waits to finish reading, the
+            // Manager waits for the ack, freshness waits for both). Clearing lets the
+            // stale-burst path below request a fresh, debounced pass if stock is still
+            // stale; the bot's rescanBlocked string keeps flowing every heartbeat.
+            Long stalled = rescanPending(s);
+            if (stalled != null && rescanExpired(stalled, now)) {
+                s.rescanDone = stalled;
+                System.err.println(expireNotice(server, stash, stalled, now, s.rescanBlocked));
+            }
             if (stock != null)
                 try {
                     var stale = stock.sources().stream()
@@ -905,6 +959,9 @@ public final class IndexStore {
                 }
                 o.addProperty("orderBlocker", s.orderBlocker);
                 o.addProperty("rescanPending", rescanPending(s));
+                // Explicit request time (epoch seconds, null when none) so the dashboard
+                // can show rescan age instead of a permanent chip (#217).
+                o.addProperty("rescanRequestedAt", rescanPending(s));
                 o.addProperty("rescanBlocked", s.rescanBlocked);
                 long[] c = s.index != null ? s.index.containers : null;
                 if (c != null) {

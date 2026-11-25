@@ -245,13 +245,13 @@ public final class InventorySync {
                         + String.format(java.util.Locale.ROOT, "%.1f", blocks)
                         + " blocks away (reach is 5) while navigation is "
                         + (NavigationRuntime.paused() ? "paused" : "running")
-                        + "; move the agent within reach or intervene by hand";
+                        + "; waiting for navigation to bring the agent within reach";
             var block = mc.level.getBlockState(at).getBlock();
             if (!(block instanceof net.minecraft.world.level.block.ChestBlock
                     || block instanceof net.minecraft.world.level.block.BarrelBlock
                     || block instanceof net.minecraft.world.level.block.ShulkerBoxBlock))
                 return "SOURCE_GONE: recorded source " + coords + " is now " + blockId(at)
-                        + ", not a storage block; human action required";
+                        + ", not a storage block; awaiting world change or automatic re-observation";
         }
         for (var value : evidence.getAsJsonArray("blocks")) {
             var b = value.getAsJsonObject();
@@ -261,7 +261,7 @@ public final class InventorySync {
             if (!mc.level.isLoaded(at)) return "INSPECT_NOT_READY: recorded block " + coords + " is not loaded";
             if (!blockId(at).equals(b.get("block").getAsString()))
                 return "SOURCE_GONE: recorded block " + coords + " is now " + blockId(at) + ", expected "
-                        + b.get("block").getAsString() + "; human action required";
+                        + b.get("block").getAsString() + "; awaiting world change or automatic re-observation";
         }
         return null;
     }
@@ -1076,7 +1076,7 @@ public final class InventorySync {
                         + String.format(java.util.Locale.ROOT, "%.1f", blocks)
                         + " blocks away (reach is 5) while navigation is "
                         + (NavigationRuntime.paused() ? "paused" : "running")
-                        + "; move the agent within reach or intervene by hand";
+                        + "; waiting for navigation to bring the agent within reach";
             if (mc.player.containerMenu == mc.player.inventoryMenu)
                 return "TOO_FAR: recorded source " + coords
                         + " is within reach but its screen has not reopened; retry the recovery reopen";
@@ -1136,7 +1136,7 @@ public final class InventorySync {
                 return "INSPECT_NOT_READY: recorded block " + coords + " (expected " + block.block + ") is not loaded";
             if (!blockId(block.pos).equals(block.block))
                 return "SOURCE_GONE: recorded block " + coords + " is now " + blockId(block.pos) + ", expected "
-                        + block.block + "; human action required";
+                        + block.block + "; awaiting world change or automatic re-observation";
         }
         return null;
     }

@@ -16,11 +16,17 @@ final class PhysicalOperations {
     }
 
     /**
-     * Automatic re-inspections per operation revision before the loop gives up and waits for an
-     * operator. A fenced operation whose agent keeps failing inspection without ever posting
-     * accepted proof would otherwise mint REQUESTED decisions forever.
+     * Automatic re-inspections per operation revision before the loop backs off: no human
+     * can ever run the manual inspect, so after 5 rapid attempts the manager retries
+     * every 10 minutes instead of parking forever (#214). A fenced operation whose
+     * agent keeps failing inspection without ever posting accepted proof would
+     * otherwise mint REQUESTED decisions forever.
      */
     static final int MAX_AUTO_INSPECT_PER_REVISION = 5;
+    /** Quiet period between automatic inspections once the rapid attempts are spent. Counts
+     * and timestamps are revision-scoped, not run-scoped, so a Manager restart neither
+     * hot-mints fresh attempts nor forgets the backoff. */
+    static final long AUTO_INSPECT_BACKOFF_MS = 10 * 60_000;
     /** Clock skew tolerated before a journal from slightly in the future is treated as expired. */
     static final long FUTURE_SKEW_MS = 5_000;
 
@@ -499,22 +505,48 @@ final class PhysicalOperations {
             throw new IOException("Cannot schedule automatic physical inspection", failure);
         }
         try {
-            if (autoInspections(operation, revision, checksum) >= MAX_AUTO_INSPECT_PER_REVISION) return null;
+            int attempts = autoInspections(operation, revision, checksum);
+            if (attempts >= MAX_AUTO_INSPECT_PER_REVISION && !autoInspectBackoffElapsed(operation, revision, checksum))
+                return null;
             return inspect(operation, revision, checksum, "system:self-heal");
         } catch (Conflict changed) {
             return null; // The operation advanced since the readback receipt.
         }
     }
 
-    /** Automatic inspection attempts for one operation revision under this Manager run. */
-    private int autoInspections(String operation, long revision, String checksum) throws IOException {
+    /**
+     * After the per-revision auto-inspect cap, keep trying with a bounded backoff
+     * instead of parking forever (#214): no human can run the manual inspect this
+     * used to wait for. Counts and timestamps are revision-scoped, not run-scoped,
+     * so a Manager restart neither hot-mints fresh attempts nor forgets the backoff.
+     */
+    private boolean autoInspectBackoffElapsed(String operation, long revision, String checksum) throws IOException {
         try (var c = ledger.open();
-                var p = c.prepareStatement("SELECT count(*) FROM physical_decisions WHERE operation=? AND revision=? "
-                        + "AND checksum=? AND action='INSPECT' AND manager_run=?")) {
+                var p = c.prepareStatement(
+                        "SELECT max(issued_at) FROM physical_decisions WHERE operation=? AND revision=? "
+                                + "AND checksum=? AND action='INSPECT'")) {
             p.setString(1, operation);
             p.setLong(2, revision);
             p.setString(3, checksum);
-            p.setString(4, ledger.boot());
+            try (var rows = p.executeQuery()) {
+                if (!rows.next()) return true;
+                long last = rows.getLong(1);
+                return rows.wasNull() || clock.getAsLong() - last >= AUTO_INSPECT_BACKOFF_MS;
+            }
+        } catch (SQLException failure) {
+            throw new IOException("Cannot schedule automatic physical inspection", failure);
+        }
+    }
+
+    /** Automatic inspection attempts for one operation revision (all Manager runs: a restart
+     * neither resets the cap nor forgets the backoff). */
+    private int autoInspections(String operation, long revision, String checksum) throws IOException {
+        try (var c = ledger.open();
+                var p = c.prepareStatement("SELECT count(*) FROM physical_decisions WHERE operation=? AND revision=? "
+                        + "AND checksum=? AND action='INSPECT'")) {
+            p.setString(1, operation);
+            p.setLong(2, revision);
+            p.setString(3, checksum);
             try (var rows = p.executeQuery()) {
                 return rows.next() ? rows.getInt(1) : 0;
             }

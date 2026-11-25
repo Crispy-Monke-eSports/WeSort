@@ -22,7 +22,7 @@ kräver uttryckligen sin egen markerade, nyskapade testprofil.
 ## Verifiering
 
 Lokalt bygger samtliga tre klienttargets och kör vardera 452 enhetstester
-utan fel. Java 21 Manager kör 131 tester: 130 passerar, ett befintligt test
+utan fel. [Historiskt W-055-bevis:] Java 21 Manager körde då 131 tester: 130 passerade, ett befintligt test
 för gamla 1.21.x-speljar hoppar över när dessa inte finns. De riktiga 26.3-
 ikonfallen verifieras separat med faktisk officiell jar i Docker. Webbens
 regressioner och Docker-smoke för Owner-bootstrap, signerade agentanrop,
@@ -55,9 +55,9 @@ addonstart; världsscenarierna körs i separata nya spelprofiler.
 ## Avgränsning
 
 Detta steg godkänner den portade testade 26.3-grunden. Full sortering,
-kit/repack/crafting, global guildstock, reservationer/kvoter, transaktionell
-custodyjournal, 1–5-agentscheduler och verifierad slutleverans återstår i
-senare steg. Recepttabellen eller en lyckad QUICK_MOVE är inte bevis på en
+kit/repack/crafting, global guildstock, reservationer, transaktionell
+custodyjournal, en-agent-scheduler och verifierad slutleverans återstår i
+senare steg. [Kvoter är borttagna.] Recepttabellen eller en lyckad QUICK_MOVE är inte bevis på en
 full guildorder. Anticheat-plugin, långdistans och portalrouting ingår inte
 i dessa privata vanilla-prov. Alla data börjar i egna tomma WeSort-kataloger;
 inga Qwerte-data läses/importeras eller påverkas.

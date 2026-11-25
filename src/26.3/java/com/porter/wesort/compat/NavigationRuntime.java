@@ -229,7 +229,7 @@ public final class NavigationRuntime {
         status = outcome;
         if (pause)
             MeteorClient.LOG.warn(
-                    "WeSort navigation stopped: {}.{} Inspect the route, then use .wesort-navigation resume",
+                    "WeSort navigation stopped: {}.{} Auto-resuming with backoff; manual resume is debug-only.",
                     outcome,
                     pauseDetail.isEmpty() ? baritoneState() : " detail=" + pauseDetail + "." + baritoneState());
     }
@@ -280,7 +280,7 @@ public final class NavigationRuntime {
                 extra += " operator latch expires in "
                         + Math.max(0, (operatorTimeoutMs() - (nowMs - pausedAtMs)) / 1000) + "s";
             MeteorClient.LOG.info(
-                    "WeSort navigation paused ({}{}); pauses so far {}; use .wesort-navigation resume",
+                    "WeSort navigation paused ({}{}); pauses so far {}; auto-resume pending.",
                     status,
                     extra,
                     denialSummary());

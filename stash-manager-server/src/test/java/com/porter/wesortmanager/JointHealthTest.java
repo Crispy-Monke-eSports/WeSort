@@ -164,6 +164,29 @@ class JointHealthTest {
         assertEquals(first, store.rescanPending("s", "a").longValue(), "a live bot keeps its outstanding rescan id");
     }
 
+    @Test
+    void rescanExpiryIsBoundedAndTestable() {
+        long now = 1_700_000_000_000L;
+        assertFalse(IndexStore.rescanExpired(now / 1000, now));
+        assertFalse(IndexStore.rescanExpired(now / 1000 - IndexStore.RESCAN_EXPIRE_SEC, now));
+        assertTrue(IndexStore.rescanExpired(now / 1000 - IndexStore.RESCAN_EXPIRE_SEC - 1, now));
+    }
+
+    @Test
+    void sweepClearsADeadBotsOutstandingRescan() throws Exception {
+        observe("a", 10);
+        long first = store.requestRescan("s", "a");
+        assertTrue(first > 0);
+        assertEquals(first, store.rescanPending("s", "a").longValue());
+        // A fresh sweep leaves a fresh request alone.
+        assertTrue(store.sweepStaleRescans(System.currentTimeMillis()).isEmpty());
+        assertEquals(first, store.rescanPending("s", "a").longValue());
+        // A dead bot never heartbeats: the sweep still clears the id and lifts the freeze.
+        var expired = store.sweepStaleRescans(System.currentTimeMillis() + (IndexStore.RESCAN_EXPIRE_SEC + 60) * 1000);
+        assertEquals(1, expired.size());
+        assertNull(store.rescanPending("s", "a"));
+    }
+
     // ---------- StockLedger loss, escalation and freeze ----------
 
     @Test

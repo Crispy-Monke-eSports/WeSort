@@ -8,11 +8,9 @@ ID, namn, beskrivning och revision. Owner kan ändra den i
 revisionen och audit anger vilken medlem som gjorde ändringen.
 
 Guildens lagerkatalog omfattar alla verifierade källor. Rollens
-stashscope styr positioner, stashnamn och källdetaljer. Member och
-Officer är presets i den befintliga behörighetsmodellen. Viewer läser,
-Member lägger order, Officer följer upp andras order och Operator kan
-hantera agentinställningar och omskanning. Owner administrerar
-konton och guildprofil.
+stashscope styr positioner, stashnamn och källdetaljer. Endast två kontoroller
+finns som produkt: Owner och Member (övriga presets är borttagna). Owner
+administrerar konton och guildprofil.
 
 En order bär guildens ID, medlemmens ID, ändamål och frivillig kommentar.
 SELF är förvalt. Officer och Owner får begära GUILD och ange en separat
@@ -63,6 +61,8 @@ alla order i **Settings → Guild profile**. Direktbeställning är förval.
 En order som väntar på godkännande reserverar fysiskt lager men blir
 tillgänglig för agenten först när en orderansvarig med åtkomst till
 stashen godkänner den. Avslag från granskningsläget frigör reservationen.
+Ingen människa kan godkänna i drift: ett väntande godkännande äldre än 10
+minuter avslås automatiskt med frigivning och audit, så kön aldrig parkerar.
 Ordern sparar granskarens medlems-ID och tidpunkt. Audit loggar aktör,
 åtgärd och order-ID. Unicodekommentaren visas som text för beställaren
 och behöriga orderansvariga.
@@ -128,24 +128,24 @@ Orderlistan visar egna beställningar för medlem. Behörigheten
 Stashens sammanfattning visar gemensamt antal öppna order och
 filtrerar den aktiva orderns detaljer enligt samma medlemsregel.
 
-`positions` styr fysisk insyn utöver stashscope. Owner och
-Operator har den, med separat tilldelning till andra roller.
-Äldre anpassade roller med agentinställningar får samma
-positionsåtkomst vid migrering om fältet saknas. Medlemmar utan
-behörigheten har åtkomst till gemensamma saldon och orderbara
-varianter. Manager skyddar fysiska snapshots, positioner, råa
+`positions` styr fysisk insyn utöver stashscope. Owner har den; Member får
+den endast vid behov (sekretess förblir förval). Äldre anpassade roller är
+borttagna per bindande scope (#139) — ingen `officer`/`operator`-migrering
+finns kvar. Medlemmar utan behörigheten har åtkomst till gemensamma saldon
+och orderbara varianter. Manager skyddar fysiska snapshots, positioner, råa
 agentmeddelanden och packningsallokeringar på servern.
 
 Värdens administratör utfärdar agentnycklar via den ägarbegränsade
-Unix-sockeln. Manager binder varje nyckel till Minecraft-kontot, servern
-och stashen. Rotation och spärr gäller direkt för individuella nycklar.
+Unix-sockeln. Nycklar är namngivna platser (slot-ID är display-only, ingen
+ägarbindning per PROTOCOL): rotation och spärr gäller direkt för
+individuella nycklar.
 Efter migrering stänger värdens administratör av den delade nyckeln
 med `agent-require-scoped`. Link-vyn visar anslutningsstatus.
 
 Medlemsfönstret och dess kommando registreras inte i produktionsklienten.
 Beställningar går via Manager-webben. Agentens tekniska koppling,
-Minecraft-chatt och lokala nödstopp finns kvar. Kvoter och verkställighet
-av den fysiska policyn hör till W-059 och W-061.
+Minecraft-chatt och lokala nödstopp finns kvar. Verkställighet
+av den fysiska policyn hör till W-061 (kvoter är borttagna).
 
 ## W-030 – gemensam lagerportal
 
@@ -163,16 +163,17 @@ låter provet endast anropa Manager. Den signerade lagerfixturen ersätter
 Minecraft i detta prov. W-027 och W-042 har separata 26.3-prov för fysisk
 packning och staging.
 
-Personkvoter och webbvyer för kvoter, säkerhetspolicy, teleport och
-verifierad UUID-hantering följer W-059 och W-061–W-064.
+Personkvoter är borttagna (se MC_26_3_QUOTAS.md); säkerhetspolicy och
+verifierad UUID-hantering följer W-061–W-064. Generella teleportprofiler
+finns inte (se MC_26_3_TRANSPORT.md).
 
-## W-033 – 1–5 agenter och flera stashes per konto
+## W-033 — en agent och flera stashes per konto [omsatt till bindande scope]
 
-Varje agent har en egen nyckel för sitt Minecraft-konto, sin server och
+En agent har en egen nyckel för sitt Minecraft-konto, sin server och
 en eller flera stashes. Samma konto har ett stabilt bot-ID oavsett aktiv
-stash. Ett nyckelbyte ändrar bara den agentens autentisering. Gamla
-nyckelfiler med en stash läses vid uppgradering. Manager tillåter högst
-fem aktiva individuella agentnycklar.
+stash. [Historiskt: högst fem aktiva individuella agentnycklar och ett
+flottprov med fyra signerade protokollklienter — borttaget per #139; en
+aktiv agent gäller.]
 
 En stash har en ägare. För överföring, avsluta eller stäm av arbetet,
 rotera den gamla ägarens nyckel utan den berörda stashen och frigör
@@ -186,11 +187,10 @@ samtidigt kitjobb blockeras för agenten som redan arbetar. Webben visar
 senaste kontakt, faktiskt ansluten server och dimension för behöriga
 roller, och de lagerförmågor som klienten annonserat.
 
-Flottprovet använder en verklig 26.3-agent och fyra signerade
-protokollklienter. Det kontrollerar fem oberoende sessioner och en agents
-fysiska flöde fram till staging. Själva upphämtningen, transporten,
-mottagarkvittensen och de tillhörande säkerhets- och teleportprofilerna
-följer W-036–W-039 och W-061–W-062.
+Flottprovet är borttaget per bindande scope (en aktiv agent, #139).
+Själva upphämtningen, transporten och mottagarkvittensen följer
+W-036–W-039; generella teleportprofiler finns inte (W-061–W-062
+avser grindar, inte transport).
 
 ## W-043 – orderrevision och driftstatus
 
@@ -212,12 +212,13 @@ Exportera de filtrerade posterna som JSON från `GET /api/v1/audit/orders`
 via en inloggad, behörig session. Sökningen returnerar högst 200
 ordrar. Exakt order-ID returnerar högst 128 fysiska operationer. Auditen
 innehåller ingen rå inventariesnapshot, slotallokering eller manifestposition.
-Tvingat streamerläge spärrar orderrevisionen. Ägarens separata konto-
-och administrationslogg behåller de senaste 2 000 posterna.
+[Streamer-läget är borttaget per PROTOCOL; ingen tvingad revisionsspärr finns.]
+Ägarens separata konto-
+och administrationslogg behåller de senaste 2 000 posterna.
 
 **Bots** visar aktuell stock-, order- och agentsammanställning samt
 larm om gamla eller onåbara källor, frånkopplade agenter och order som
 behöver avstämmas. Agenten rapporterar också sitt lokala tillstånd för
 död, osäker inventarie och platsbrist. Larmsidan använder signerade
-observationer och visar aktiva förhållanden. Leverans, kvoter och
-specialiserade transportjobb får sina händelser när respektive flöde finns.
+observationer och visar aktiva förhållanden. [Kvoter och specialiserade
+transportjobb är borttagna per #139.]

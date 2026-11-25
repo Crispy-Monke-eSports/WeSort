@@ -37,7 +37,7 @@ import {
   useStashes,
   type OpsList,
 } from "../api/queries";
-import { classifyStaleAlert } from "../lib/attention";
+import { classifyStaleAlert, rescanPendingLabel } from "../lib/attention";
 
 function rowsOf(data: OpsList | undefined, key: string): any[] {
   const v = (data as any)?.[key];
@@ -180,7 +180,7 @@ export function OperationsPage() {
                         s.online === false
                           ? "Bot offline — rescan queues until the bot returns"
                           : s.rescanPending
-                            ? "Rescan already pending"
+                            ? `Rescan already pending (${rescanPendingLabel(s.rescanPending, s.rescanRequestedAt, s.rescanBlocked) ?? "unknown age"})`
                             : `Request rescan of ${s.stash}`
                       }
                       onClick={async () => {
@@ -204,6 +204,23 @@ export function OperationsPage() {
                     </Button>
                   ))}
               </Stack>
+              {(stashes.data ?? [])
+                .filter((s) => perms.seesStash(s.stash) && s.rescanPending)
+                .map((s) => (
+                  <Typography
+                    key={`pending-${s.stash}`}
+                    variant="caption"
+                    color="text.secondary"
+                  >
+                    {s.stash}:{" "}
+                    {rescanPendingLabel(
+                      true,
+                      s.rescanRequestedAt,
+                      s.rescanBlocked,
+                    ) ?? "rescan pending"}{" "}
+                    (auto-expires; a fresh pass is requested on new stale stock)
+                  </Typography>
+                ))}
               {rescanMsg && (
                 <Typography variant="body2" color="text.secondary">
                   {rescanMsg}

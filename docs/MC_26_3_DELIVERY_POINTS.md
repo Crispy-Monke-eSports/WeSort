@@ -19,8 +19,8 @@ välja en ändrar inte vem som äger övrigt lager.
   verifierade punkter med koordinater; övriga får bara verifierade `MEMBER`
   (egna) och `PROJECT`, redacted, och aldrig en hemlig `INTERNAL`-stash.
 - **`DeliveryPointRoutes`**: Owner `GET/POST /api/v1/delivery-points` och
-  medlemslista `GET /api/v1/delivery-points/selectable` (VIEW). Forced
-  streamer: `server` maskas automatiskt av `Http.json`.
+  medlemslista `GET /api/v1/delivery-points/selectable` (VIEW). [Forced
+  streamer är borttaget per PROTOCOL; ingen server-maskning finns.]
 
 ## Testbevis
 
@@ -38,4 +38,4 @@ välja en ändrar inte vem som äger övrigt lager.
 Återstår: agentverifiering av kista (nåbarhet, blocktyp, slots, double
 chest, chunkstatus) som sätter `VERIFIED`, och att en ändrad/trasig punkt
 pausar ett aktivt uppdrag innan dumpning (W-030/W-033/W-042), webb-/DOM-vy
-för formulär och historik, samt verklig 26.3-E2E med 1–5 agenter.
+för formulär och historik, samt verklig 26.3-E2E med en agent.

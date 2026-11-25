@@ -2,7 +2,7 @@
 
 WeSort behåller den faktiska StashSorter/Compactor-pipelinen och dess
 Signs-kategorier. Denna ändring gäller endast Minecraft 26.3 (Java 25).
-Manager använder Java 21. Ingen Qwerte-installation eller befintlig spelvärld
+Manager använder Java 25. Ingen Qwerte-installation eller befintlig spelvärld
 behöver läsas eller importeras.
 
 ## Faser och verifiering

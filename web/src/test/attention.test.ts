@@ -9,6 +9,8 @@ import {
   isStaleStockState,
   journalDisplayState,
   orderHeldBy,
+  rescanPendingAge,
+  rescanPendingLabel,
   silentBots,
   stuckOrderEntries,
   visibleWithOverflow,
@@ -319,5 +321,29 @@ describe("journal display state", () => {
     );
     expect(journalDisplayState({})).toBe("unknown");
     expect(journalDisplayState({ inspectionState: null })).toBe("unknown");
+  });
+});
+
+describe("rescan pending age (#217)", () => {
+  const NOW_MS = 1_700_000_000_000;
+  const nowSec = Math.floor(NOW_MS / 1000);
+  it("returns null without a request id", () => {
+    expect(rescanPendingAge(null, NOW_MS)).toBeNull();
+    expect(rescanPendingAge(undefined, NOW_MS)).toBeNull();
+    expect(rescanPendingAge(0, NOW_MS)).toBeNull();
+    expect(rescanPendingAge("123", NOW_MS)).toBeNull();
+    expect(rescanPendingLabel(false, nowSec - 10, null, NOW_MS)).toBeNull();
+  });
+
+  it("labels pending age and the blocker verbatim", () => {
+    expect(rescanPendingAge(nowSec - 90, NOW_MS)).toBe(90);
+    const label = rescanPendingLabel(
+      true,
+      nowSec - 90,
+      "no readable containers",
+      NOW_MS,
+    );
+    expect(label).toContain("rescan pending 1m");
+    expect(label).toContain("no readable containers");
   });
 });

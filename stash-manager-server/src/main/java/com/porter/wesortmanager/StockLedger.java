@@ -178,6 +178,17 @@ final class StockLedger {
                             "CREATE TABLE IF NOT EXISTS order_event_log(order_id TEXT NOT NULL,seq INTEGER NOT NULL CHECK(seq>0),server TEXT NOT NULL,stash TEXT NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(order_id,seq))");
                     s.execute(
                             "CREATE TABLE IF NOT EXISTS order_resume_receipts(order_id TEXT PRIMARY KEY,server TEXT NOT NULL,stash TEXT NOT NULL,agent TEXT NOT NULL,payload TEXT NOT NULL)");
+                    // PR3 (#140/#228/#267, additive): normalized SNBT authority + variant
+                    // register. New writes adopt these; legacy payload-JSON rows stay
+                    // untouched until fresh observations supersede them (no migration).
+                    s.execute(
+                            "CREATE TABLE IF NOT EXISTS snbt_snapshots(snapshot_id TEXT PRIMARY KEY,schema_version INTEGER NOT NULL,canonical_version TEXT NOT NULL,minecraft_version TEXT NOT NULL,registry_context TEXT NOT NULL,content_snbt TEXT NOT NULL,sha256 TEXT NOT NULL,created_revision INTEGER NOT NULL)");
+                    s.execute(
+                            "CREATE TABLE IF NOT EXISTS variant_register(variant_id INTEGER PRIMARY KEY,codec_domain TEXT NOT NULL,registry_context TEXT NOT NULL,digest BLOB NOT NULL,canonical_variant_snbt TEXT NOT NULL,item_id TEXT NOT NULL,max_stack INTEGER NOT NULL,kind TEXT NOT NULL,metadata_version TEXT NOT NULL,UNIQUE(codec_domain,registry_context,digest))");
+                    s.execute(
+                            "CREATE TABLE IF NOT EXISTS slot_projection(source_id TEXT NOT NULL,snapshot_ref TEXT NOT NULL,logical_path TEXT NOT NULL,parent_path TEXT NOT NULL,variant_id INTEGER NOT NULL REFERENCES variant_register(variant_id),count INTEGER NOT NULL,copies INTEGER NOT NULL,slot_fingerprint TEXT NOT NULL,content_revision INTEGER NOT NULL,present INTEGER NOT NULL CHECK(present IN (0,1)),PRIMARY KEY(source_id,logical_path))");
+                    s.execute(
+                            "CREATE TABLE IF NOT EXISTS shulker_identity(uuid TEXT PRIMARY KEY,status TEXT NOT NULL,source TEXT NOT NULL,slot_path TEXT NOT NULL,current_snapshot_ref TEXT,current_revision INTEGER NOT NULL,registration_proof TEXT NOT NULL,export_receipt TEXT)");
                     s.execute("PRAGMA user_version=9");
                     var interruptedServers = new ArrayList<String>();
                     try (var leases = s.executeQuery("SELECT server FROM automation_leases WHERE state='ACTIVE'")) {

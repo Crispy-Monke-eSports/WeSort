@@ -90,8 +90,7 @@ final class BoxJobs {
         job.addProperty("baselineRevision", destination.revision());
         job.addProperty("stackFingerprint", slot.get("fingerprint").getAsString());
         try (var c = ledger.open();
-                var tx = c.createStatement()) {
-            tx.execute("BEGIN IMMEDIATE");
+                var tx = new SqliteWriteTransaction(c)) {
             try {
                 try (var p = c.prepareStatement(
                         "SELECT count(*) FROM box_jobs WHERE server=? AND state IN ('PLANNED','IN_PROGRESS','VERIFYING','NEEDS_RECONCILIATION')")) {
@@ -110,9 +109,8 @@ final class BoxJobs {
                     p.setString(4, job.toString());
                     p.executeUpdate();
                 }
-                tx.execute("COMMIT");
+                tx.commit();
             } catch (Exception failure) {
-                tx.execute("ROLLBACK");
                 throw failure;
             }
         } catch (SQLException failure) {
@@ -147,8 +145,7 @@ final class BoxJobs {
     synchronized JsonObject claim(String server, String stash, String agent) throws IOException {
         UUID.fromString(agent);
         try (var c = ledger.open();
-                var tx = c.createStatement()) {
-            tx.execute("BEGIN IMMEDIATE");
+                var tx = new SqliteWriteTransaction(c)) {
             try {
                 expire(c);
                 JsonObject job = null;
@@ -164,7 +161,7 @@ final class BoxJobs {
                     }
                 }
                 if (job == null || !stash.equals(job.get("stash").getAsString())) {
-                    tx.execute("COMMIT");
+                    tx.commit();
                     return null;
                 }
                 String token = UUID.randomUUID().toString() + UUID.randomUUID();
@@ -178,12 +175,11 @@ final class BoxJobs {
                     p.setString(5, id);
                     if (p.executeUpdate() != 1) throw new IllegalArgumentException("Box job claim conflict");
                 }
-                tx.execute("COMMIT");
+                tx.commit();
                 job.addProperty("state", "IN_PROGRESS");
                 job.addProperty("token", token);
                 return job;
             } catch (Exception failure) {
-                tx.execute("ROLLBACK");
                 throw failure;
             }
         } catch (SQLException failure) {
@@ -195,8 +191,7 @@ final class BoxJobs {
             throws IOException {
         synchronized (ledger) {
             try (var c = ledger.open();
-                    var tx = c.createStatement()) {
-                tx.execute("BEGIN IMMEDIATE");
+                    var tx = new SqliteWriteTransaction(c)) {
                 try {
                     expire(c);
                     JsonObject job;
@@ -213,7 +208,7 @@ final class BoxJobs {
                         }
                     }
                     if (!List.of("IN_PROGRESS", "VERIFYING").contains(state)) {
-                        tx.execute("COMMIT");
+                        tx.commit();
                         job.addProperty("state", state);
                         return job;
                     }
@@ -247,11 +242,10 @@ final class BoxJobs {
                         p.setString(4, id);
                         p.executeUpdate();
                     }
-                    tx.execute("COMMIT");
+                    tx.commit();
                     job.addProperty("state", state);
                     return job;
                 } catch (Exception failure) {
-                    tx.execute("ROLLBACK");
                     throw failure;
                 }
             } catch (SQLException failure) {

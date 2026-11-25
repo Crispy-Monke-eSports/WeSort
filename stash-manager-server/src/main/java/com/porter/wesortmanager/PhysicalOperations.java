@@ -62,8 +62,7 @@ final class PhysicalOperations {
         boolean inspectionVerified = false;
         long fence = state.equals("NEEDS_RECONCILIATION") ? revision : 0;
         try (var c = ledger.open();
-                var tx = c.createStatement()) {
-            tx.execute("BEGIN IMMEDIATE");
+                var tx = new SqliteWriteTransaction(c)) {
             try {
                 expire(c);
                 boolean priorTerminal = false;
@@ -140,7 +139,7 @@ final class PhysicalOperations {
                     // so echoing its own fingerprint back cannot free anything that is still held.
                     released = context.get("leaseFingerprint").getAsString();
                 }
-                tx.execute("COMMIT");
+                tx.commit();
                 var out = new JsonObject();
                 out.addProperty("id", id);
                 out.addProperty("revision", revision);
@@ -149,7 +148,6 @@ final class PhysicalOperations {
                 if (released != null) out.addProperty("releasedLease", released);
                 return out;
             } catch (Exception failure) {
-                tx.execute("ROLLBACK");
                 throw failure;
             }
         } catch (SQLException failure) {
@@ -275,13 +273,11 @@ final class PhysicalOperations {
             try (var rows = q.executeQuery()) {
                 if (!rows.next()) return;
             }
-            try (var tx = c.createStatement()) {
-                tx.execute("BEGIN IMMEDIATE");
+            try (var tx = new SqliteWriteTransaction(c)) {
                 try {
                     expire(c);
-                    tx.execute("COMMIT");
+                    tx.commit();
                 } catch (SQLException failure) {
-                    tx.execute("ROLLBACK");
                     throw failure;
                 }
             }
@@ -372,8 +368,7 @@ final class PhysicalOperations {
     synchronized JsonObject inspect(String id, long revision, String checksum, String actor) throws IOException {
         UUID.fromString(id);
         try (var c = ledger.open();
-                var tx = c.createStatement()) {
-            tx.execute("BEGIN IMMEDIATE");
+                var tx = new SqliteWriteTransaction(c)) {
             try {
                 expire(c);
                 String liveState = null;
@@ -431,7 +426,7 @@ final class PhysicalOperations {
                     p.setString(1, id);
                     p.executeUpdate();
                 }
-                tx.execute("COMMIT");
+                tx.commit();
                 var out = new JsonObject();
                 out.addProperty("id", decision);
                 out.addProperty("operation", id);
@@ -444,7 +439,6 @@ final class PhysicalOperations {
                 out.addProperty("action", "INSPECT");
                 return out;
             } catch (Exception failure) {
-                tx.execute("ROLLBACK");
                 throw failure;
             }
         } catch (SQLException failure) {

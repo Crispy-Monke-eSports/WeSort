@@ -206,6 +206,24 @@ public final class WeSortManager {
                                     System.err.println("Could not audit rescan expiry: " + auditFailure.getMessage());
                                 }
                             }
+                            // No human can confirm a handoff or reconcile a job, so uncertain
+                            // handoffs and jobs get a bounded automatic way out (#210, #213).
+                            for (String noShow : built.handoffs().sweepStaleAwaiting(System.currentTimeMillis())) {
+                                System.err.println(noShow);
+                                try {
+                                    audit.add("system", "system", "handoff.auto-no-show", noShow, "scheduler");
+                                } catch (RuntimeException auditFailure) {
+                                    System.err.println("Could not audit handoff sweep: " + auditFailure.getMessage());
+                                }
+                            }
+                            for (String requeued : built.jobs().sweepStaleUncertain(System.currentTimeMillis())) {
+                                System.err.println(requeued);
+                                try {
+                                    audit.add("system", "system", "job.auto-requeue", requeued, "scheduler");
+                                } catch (RuntimeException auditFailure) {
+                                    System.err.println("Could not audit job sweep: " + auditFailure.getMessage());
+                                }
+                            }
                         } catch (IOException | RuntimeException failure) {
                             System.err.println("Automatic order recovery failed: " + failure.getMessage());
                         }
@@ -269,7 +287,13 @@ public final class WeSortManager {
         }
     }
 
-    record Routes(Router router, AuthRoutes auth, DeliveryContents delivery, AgentCredentials agentCredentials) {}
+    record Routes(
+            Router router,
+            AuthRoutes auth,
+            DeliveryContents delivery,
+            AgentCredentials agentCredentials,
+            JobScheduler jobs,
+            Handoffs handoffs) {}
 
     /** Every route, in order (the static files last). Shared with the tests, so they check the real registrations. */
     static Routes routes(
@@ -341,8 +365,10 @@ public final class WeSortManager {
         new StashDefRoutes(stashDefs, audit).register(router);
         new KitTemplateRoutes(kits, audit).register(router);
         new DepositRoutes(new Deposits(config.dataDir()), audit, config).register(router);
-        new JobRoutes(new JobScheduler(config.dataDir()), audit, config).register(router);
-        new HandoffRoutes(new Handoffs(config.dataDir()), audit, config).register(router);
+        var jobs = new JobScheduler(config.dataDir());
+        var handoffs = new Handoffs(config.dataDir());
+        new JobRoutes(jobs, audit, config).register(router);
+        new HandoffRoutes(handoffs, audit, config).register(router);
         new PhysicalRoutes(store, audit, config).register(router);
         new BotRoutes(hub, audit, orders, config, stashDefs).register(router);
         new DashboardRoutes(hub, store, sessions, audit, credentials).register(router);
@@ -354,7 +380,7 @@ public final class WeSortManager {
         // 404 here falls back to the bundled dirt.svg layer in style.css.
         new DirtRoutes(VanillaTexture.dirt(config.dataDir().resolve("icons"))).register(router);
         new StaticRoutes().register(router); // last: the catch-all
-        return new Routes(router, authRoutes, delivery, credentials);
+        return new Routes(router, authRoutes, delivery, credentials, jobs, handoffs);
     }
 
     private static void setDefault(String key, String value) {

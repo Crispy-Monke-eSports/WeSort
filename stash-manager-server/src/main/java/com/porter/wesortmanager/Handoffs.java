@@ -136,6 +136,47 @@ final class Handoffs {
         return advanceTo(id, entry, entry.handoff().advance(Handoff.State.RETURNED, agent), "RETURNED", agent);
     }
 
+    /**
+     * Bounded wait in AWAITING_RECIPIENT before the manager records the no-show
+     * itself (#210): no human can ever confirm for the recipient and a dead
+     * agent can never report it, so without this the cargo stays fenced and
+     * invisible forever.
+     */
+    static final long AWAITING_NOSHOW_AFTER_MS = 4 * 60 * 60_000;
+
+    /**
+     * Records a no-show for handoffs stuck awaiting a recipient past the bounded
+     * wait, as {@code system} so the actor trail stays honest. NO_SHOW is
+     * non-terminal (retryable back to AWAITING_RECIPIENT, returnable to
+     * RETURNED), so nothing is fabricated and no stock is credited; an explicit
+     * recipient receipt is still the only path to DELIVERED. Returns human-
+     * readable descriptions for logging/audit.
+     */
+    synchronized java.util.List<String> sweepStaleAwaiting(long nowMs) throws IOException {
+        var swept = new java.util.ArrayList<String>();
+        for (String id : new java.util.ArrayList<>(handoffs.keySet())) {
+            var entry = handoffs.get(id);
+            if (entry == null || entry.handoff().state() != Handoff.State.AWAITING_RECIPIENT) continue;
+            if (nowMs - lastEventAt(entry.events()) <= AWAITING_NOSHOW_AFTER_MS) continue;
+            var next = entry.handoff().advance(Handoff.State.NO_SHOW, "system");
+            advanceTo(id, entry, next, "NO_SHOW_AUTO", "system");
+            swept.add("Handoff " + id + " (order " + entry.handoff().orderId() + ") had no recipient for "
+                    + ((nowMs - lastEventAt(entry.events())) / 1000)
+                    + "s; recorded NO_SHOW, retry or return remains available.");
+        }
+        return swept;
+    }
+
+    private static long lastEventAt(JsonArray events) {
+        long last = 0;
+        for (var e : events) {
+            var o = e.getAsJsonObject();
+            if (o.has("at") && !o.get("at").isJsonNull())
+                last = Math.max(last, o.get("at").getAsLong());
+        }
+        return last;
+    }
+
     synchronized Handoff get(String id) {
         var entry = handoffs.get(id);
         return entry == null ? null : entry.handoff();

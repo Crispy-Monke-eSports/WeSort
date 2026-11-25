@@ -219,4 +219,30 @@ class JobSchedulerTest {
         assertEquals(reloaded.queue(), scheduler().queue(), "repeated startup must not append another fence");
         assertEquals(A1, reloaded.get(job.id()).agent());
     }
+
+    @Test
+    void staleUncertainJobsRequeueWithoutCompleting() throws Exception {
+        var s = scheduler();
+        var job = s.submit(Job.Category.SCAN, "o-1", "", 0, "owner");
+        var claimed = s.claim(A1);
+
+        // Let the lease lapse so the job fences uncertain.
+        clock.addAndGet(JobScheduler.TTL + 1);
+        s.queue();
+        assertEquals(Job.State.NEEDS_RECONCILIATION, s.get(job.id()).state());
+
+        // A fresh fence is left alone.
+        assertTrue(s.sweepStaleUncertain(clock.get()).isEmpty());
+
+        // Past the bounded wait: the manager requeues for claiming — never completes.
+        clock.addAndGet(JobScheduler.UNCERTAIN_AUTO_REQUEUE_AFTER_MS + 1);
+        var swept = s.sweepStaleUncertain(clock.get());
+        assertEquals(1, swept.size());
+        assertEquals(Job.State.QUEUED, s.get(job.id()).state());
+        assertNull(s.get(job.id()).agent(), "requeue clears the owner");
+        var reclaimed = s.claim(A2);
+        assertEquals(job.id(), id(reclaimed), "another agent may now claim the requeued job");
+        s.complete(job.id(), A2, token(reclaimed));
+        assertEquals(Job.State.COMPLETED, s.get(job.id()).state());
+    }
 }

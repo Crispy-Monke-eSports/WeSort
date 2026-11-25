@@ -156,7 +156,8 @@ final class PhysicalReservations {
                     else if (!candidate.queueable()) voidStates.add(st);
                 }
                 String staleHint = lastVerified > 0
-                        ? "; " + lastVerified + " more last-verified but stale (queue with queueWhenStale; claim still needs a fresh re-read)"
+                        ? "; " + lastVerified
+                                + " more last-verified but stale (queue with queueWhenStale; claim still needs a fresh re-read)"
                         : "";
                 String voidHint = voidStates.isEmpty() ? "" : "; void states: " + String.join(",", voidStates);
                 throw new OrderStore.OrderException(

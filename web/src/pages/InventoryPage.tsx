@@ -2452,8 +2452,9 @@ function CheckoutDialog(props: {
             />
             {props.queueWhenStale && (
               <Typography variant="caption" color="text.secondary">
-                Only covers aged or restart-pending stock: voided, unreachable or missing
-                sources still need a real re-read, and the bot re-verifies before touching anything.
+                Only covers aged or restart-pending stock: voided, unreachable
+                or missing sources still need a real re-read, and the bot
+                re-verifies before touching anything.
               </Typography>
             )}
             <Typography variant="body2" color="text.secondary">

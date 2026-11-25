@@ -508,6 +508,7 @@ final class OrderStore {
     /** Injected clock (#142): domain timestamps never read the wall clock directly, so
      * timeouts (auto-cancel, recovering, deferred retry) are deterministic in tests. */
     private final LongSupplier clock;
+
     private OrderBookRepository repository;
     private final Map<IndexStore.StashKey, Book> books = new ConcurrentHashMap<>();
     private final Map<String, Book> byOrderId = new ConcurrentHashMap<>();
@@ -2515,8 +2516,7 @@ final class OrderStore {
                     if (order.allocations == null
                             && order.claimedAt == 0
                             && order.sourceGuards != null
-                            && order.lines.stream()
-                                    .allMatch(line -> counts.total(line.type, line.key) >= line.count)) {
+                            && order.lines.stream().allMatch(line -> counts.total(line.type, line.key) >= line.count)) {
                         JsonObject prev = order.sourceGuards;
                         order.sourceGuards = sourceGuards(server, stash);
                         if (orderSourcesReady(order, counts, agent)) {
@@ -2538,8 +2538,7 @@ final class OrderStore {
                             long now = clock.getAsLong();
                             order.deferredBlockedAt = now;
                             order.updatedAt = now;
-                            order.message =
-                                    "Sources changed since reservation; awaiting automatic re-reservation.";
+                            order.message = "Sources changed since reservation; awaiting automatic re-reservation.";
                             order.record("order.reserve.drift", agent, now);
                             save(b);
                         }

@@ -617,6 +617,7 @@ public class StashSorter extends Module {
     /** A lost-shulker latch expires instead of parking the headless bot forever (#198).
      * Drops despawn after 5 minutes, so waiting longer for a drop is pointless. */
     private static final long DROP_LOST_TIMEOUT_MS = 5 * 60_000;
+
     private static final int PLACE_GAP_TICKS = 20 * 5;
     private static final int PAUSE_TICKS = 20 * 60 * 3;
 
@@ -1021,6 +1022,7 @@ public class StashSorter extends Module {
     private boolean dropLost;
     /** Wall-clock arm for the lost-shulker latch: it expires instead of parking forever (#198). */
     private long dropLostAtMs;
+
     private boolean placedConfirmed;
     private int placedStacks;
     private int breakTicks;
@@ -2183,10 +2185,9 @@ public class StashSorter extends Module {
         }
         if (!sortingPermitted()) {
             if (surveyWhileBlocked()) return;
-            gateLogThrottled(
-                    "sorting paused (navigation "
-                            + com.porter.wesort.compat.NavigationRuntime.status()
-                            + "): Manager must exclude reservations before physical moves.");
+            gateLogThrottled("sorting paused (navigation "
+                    + com.porter.wesort.compat.NavigationRuntime.status()
+                    + "): Manager must exclude reservations before physical moves.");
             ledgeGuard(false);
             return;
         }
@@ -9102,8 +9103,7 @@ public class StashSorter extends Module {
         Compactor.Plan plan = compactor.plan;
         if (plan != null)
             return inside.size() == plan.placedSize && inside.stream().allMatch(c -> plan.key.equals(c.bulkKey()));
-        else if (job == Job.Fill && fillKey != null)
-            return inside.stream().allMatch(c -> fillKey.equals(c.bulkKey()));
+        else if (job == Job.Fill && fillKey != null) return inside.stream().allMatch(c -> fillKey.equals(c.bulkKey()));
         else if (job == Job.Clean && mainItem != null) {
             String main = BuiltInRegistries.ITEM.getKey(mainItem).getPath();
             return inside.stream().allMatch(c -> main.equals(c.id));
@@ -9185,9 +9185,11 @@ public class StashSorter extends Module {
         ItemStack cursor = cursorStack();
         String cursorDesc = cursor.isEmpty()
                 ? "empty"
-                : (Utils.isShulker(cursor.getItem()) ? "shulker" : cursor.getItem().toString());
-        return " (verifiedSlot=" + verified + " heldSlot=" + held + " cursor=" + cursorDesc + " matchingCount="
-                + count + " expectedCopies=" + repackExistingCopies + ")";
+                : (Utils.isShulker(cursor.getItem())
+                        ? "shulker"
+                        : cursor.getItem().toString());
+        return " (verifiedSlot=" + verified + " heldSlot=" + held + " cursor=" + cursorDesc + " matchingCount=" + count
+                + " expectedCopies=" + repackExistingCopies + ")";
     }
 
     /**
@@ -9228,8 +9230,7 @@ public class StashSorter extends Module {
             repackExistingCopies = (int) count - 1;
             warning(
                     "Late pickup of the shulker from %s: adopted the unique same-colour box in slot %d with drifted contents.",
-                    placed != null ? placed.toShortString() : "?",
-                    unique + 1);
+                    placed != null ? placed.toShortString() : "?", unique + 1);
             return true;
         }
         return false;

@@ -219,9 +219,7 @@ public final class NavigationRuntime {
             retryAt = now + NavigationRecovery.delayMs(++transientFailures);
             lastRetryAt = now;
         } else if (!pause) transientFailures = 0;
-        if (pause
-                && outcome.equals("PAUSED_NAVIGATION_UNSAFE_BLOCK")
-                && !pauseDetail.startsWith("unloaded ")) {
+        if (pause && outcome.equals("PAUSED_NAVIGATION_UNSAFE_BLOCK") && !pauseDetail.startsWith("unloaded ")) {
             long now = System.currentTimeMillis();
             if (now - unsafeBlockRetryAt > 120_000) unsafeBlockRetries = 0;
             unsafeBlockRetryAt = now;

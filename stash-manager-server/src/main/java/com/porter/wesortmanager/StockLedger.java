@@ -337,16 +337,14 @@ final class StockLedger {
         // apart from rescan fallout (requestRescan never voids; only this path does).
         if (voided > 0) {
             var trigger = StackWalker.getInstance()
-                    .walk(frames -> frames
-                            .filter(f -> f.getClassName().startsWith("com.porter.wesortmanager."))
+                    .walk(frames -> frames.filter(f -> f.getClassName().startsWith("com.porter.wesortmanager."))
                             .filter(f -> !f.getClassName().endsWith("StockLedger"))
-                            .map(f -> f.getClassName().replace("com.porter.wesortmanager.", "") + "."
-                                    + f.getMethodName())
+                            .map(f ->
+                                    f.getClassName().replace("com.porter.wesortmanager.", "") + "." + f.getMethodName())
                             .findFirst()
                             .orElse("unknown"));
-            System.err.println(
-                    "WARNING: voided " + voided + " stock sources to raw STALE for " + server + " from " + trigger
-                            + ": only a physical re-read heals these, freeze-aging does not cover them.");
+            System.err.println("WARNING: voided " + voided + " stock sources to raw STALE for " + server + " from "
+                    + trigger + ": only a physical re-read heals these, freeze-aging does not cover them.");
         }
         try (var p = c.prepareStatement("UPDATE stock_meta SET revision=? WHERE id=1")) {
             p.setLong(1, next);

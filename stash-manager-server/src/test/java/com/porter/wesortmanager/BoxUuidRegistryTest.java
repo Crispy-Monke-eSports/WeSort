@@ -225,8 +225,10 @@ class BoxUuidRegistryTest {
         var first = indexes(ledger, new String[] {"WeSort-" + V4}, new int[] {0});
         ledger.accept(first);
         assertEquals(1, ledger.boxUuids().size());
-        String expectedSource = ledger.boxUuids().get(0).getAsJsonObject().get("source").getAsString();
-        String expectedPath = ledger.boxUuids().get(0).getAsJsonObject().get("path").getAsString();
+        String expectedSource =
+                ledger.boxUuids().get(0).getAsJsonObject().get("source").getAsString();
+        String expectedPath =
+                ledger.boxUuids().get(0).getAsJsonObject().get("path").getAsString();
         // The same chest re-read fresh holding only an unnamed box: the UUID box left, deregistered.
         ledger.accept(indexes(ledger, new String[] {null}, new int[] {0}));
         assertTrue(ledger.boxUuids().isEmpty());

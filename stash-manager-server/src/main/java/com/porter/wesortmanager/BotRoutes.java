@@ -641,7 +641,8 @@ final class BotRoutes {
                 Http.error(ex, 409, "command already live for this bot");
                 return;
             }
-            JsonObject args = o.has("args") && o.get("args").isJsonObject() ? o.getAsJsonObject("args") : new JsonObject();
+            JsonObject args =
+                    o.has("args") && o.get("args").isJsonObject() ? o.getAsJsonObject("args") : new JsonObject();
             try {
                 id = hub.queueCommand(b, op, args);
             } catch (IllegalArgumentException invalid) {

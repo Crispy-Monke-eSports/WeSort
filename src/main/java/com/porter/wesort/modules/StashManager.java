@@ -1102,8 +1102,8 @@ public class StashManager extends Module {
             lastControlResult = null;
             pendingManifest = null;
             enterPortalAuthorizedUntil = 0;
-        enterPortalEpoch = null;
-        enterPortalSession = null;
+            enterPortalEpoch = null;
+            enterPortalSession = null;
             verifiedManagerScope = "";
             controlStatus = "idle";
             controlSchedule.reset();
@@ -1164,8 +1164,8 @@ public class StashManager extends Module {
                                     controlResults = null;
                                     pendingManifest = null;
                                     enterPortalAuthorizedUntil = 0;
-        enterPortalEpoch = null;
-        enterPortalSession = null;
+                                    enterPortalEpoch = null;
+                                    enterPortalSession = null;
                                     resetHeartbeat();
                                 }
                                 boolean supported = hello.has("heartbeat")

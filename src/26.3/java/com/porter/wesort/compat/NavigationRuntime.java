@@ -270,8 +270,7 @@ public final class NavigationRuntime {
             // Never discard a genuine safety latch to make way for lobby transit:
             // unsafe-block and operator-taken routes require explicit resume.
             if (status.contains("UNSAFE") || isOperatorLatch(status)) {
-                MeteorClient.LOG.warn(
-                        "WeSort navigation: keeping {} for lobby transit; resume it explicitly.", status);
+                MeteorClient.LOG.warn("WeSort navigation: keeping {} for lobby transit; resume it explicitly.", status);
                 return;
             }
             paused = false;

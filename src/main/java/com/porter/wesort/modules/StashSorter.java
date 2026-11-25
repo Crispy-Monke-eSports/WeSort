@@ -2168,7 +2168,8 @@ public class StashSorter extends Module {
         // Agent-driven transit requires dedication; with a fenced journal it
         // additionally requires an explicit manager ENTER_PORTAL lease, else park
         // with FENCED_AWAITING_MANAGER_COMMAND. Physical mutation below stays fenced.
-        var portalManager = meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
+        var portalManager =
+                meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
         boolean standalone = portalManager == null || !portalManager.isActive();
         // Transit is attempted whenever the lobby awaits it; dedication and the
         // ENTER_PORTAL lease are enforced inside for the fenced agent-driven case.
@@ -2200,7 +2201,8 @@ public class StashSorter extends Module {
                         gateLogThrottled("6b6t portal: TRANSITING_WITH_FENCED_JOURNAL (manual contact while parked)");
                     } else {
                         reportPortalBlocker("FENCED_AWAITING_MANAGER_COMMAND");
-                        gateLogThrottled("6b6t portal: FENCED_AWAITING_MANAGER_COMMAND (order ENTER_PORTAL in the dashboard)");
+                        gateLogThrottled(
+                                "6b6t portal: FENCED_AWAITING_MANAGER_COMMAND (order ENTER_PORTAL in the dashboard)");
                     }
                     return;
                 }
@@ -4399,7 +4401,8 @@ public class StashSorter extends Module {
             fencedParkSince = 0;
             cursorOccupiedSince = 0;
             if (stash != null) {
-                info("6b6t: confirmed survival transfer. Pre-transit readback is stale; awaiting manager survey before physical work.");
+                info(
+                        "6b6t: confirmed survival transfer. Pre-transit readback is stale; awaiting manager survey before physical work.");
                 wakeUp();
             } else {
                 info("6b6t: confirmed survival transfer. No stash loaded; awaiting stash assignment before any work.");
@@ -13462,9 +13465,7 @@ public class StashSorter extends Module {
                     if (touchingPortal()) {
                         portalSession.crossingAttempted();
                         if (portalAwaiting()) {
-                            reportPortalBlocker(fenced
-                                    ? "TRANSITING_WITH_FENCED_JOURNAL"
-                                    : "CURSOR_OCCUPIED");
+                            reportPortalBlocker(fenced ? "TRANSITING_WITH_FENCED_JOURNAL" : "CURSOR_OCCUPIED");
                         }
                     } else if (portalAwaiting()) {
                         reportPortalBlocker("CURSOR_OCCUPIED");

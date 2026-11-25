@@ -27,11 +27,11 @@ final class BotHub {
     static final long WATCH_MS = 10_000;
     static final int EVENTS_KEEP = 500;
     static final int JOBS_KEEP = 500;
-    private static final Set<String> CAPABILITIES =
-            Set.of("settings", "activity", "warehouse-scan", "warehouse-sort", "pack", "stage", "heartbeat",
-                    "portal-command");
+    private static final Set<String> CAPABILITIES = Set.of(
+            "settings", "activity", "warehouse-scan", "warehouse-sort", "pack", "stage", "heartbeat", "portal-command");
     /** Marionette command ops the manager may order; bot executes one at a time. */
     static final Set<String> COMMAND_OPS = Set.of("ENTER_PORTAL");
+
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final Set<String> RECEIPT_FIELDS = Set.of("id", "lease", "sequence", "ok", "value", "error");
 

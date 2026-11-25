@@ -508,6 +508,7 @@ final class OrderStore {
     /** Injected clock (#142): domain timestamps never read the wall clock directly, so
      * timeouts (auto-cancel, recovering, deferred retry) are deterministic in tests. */
     private final LongSupplier clock;
+
     private OrderBookRepository repository;
     private final Map<IndexStore.StashKey, Book> books = new ConcurrentHashMap<>();
     private final Map<String, Book> byOrderId = new ConcurrentHashMap<>();

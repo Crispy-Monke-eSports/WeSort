@@ -821,10 +821,9 @@ public final class IndexStore {
             // instead of healing it (freeze expires, raw STALE stays). Say so loudly so a
             // parked bot shows up as a stalled rescan, not as another routine request.
             if (outstanding != null && nowSec - outstanding > 600)
-                System.err.println(
-                        "WARNING: rescan for "
-                                + stash + " stalled: previous request " + outstanding + " outstanding for "
-                                + (nowSec - outstanding) + "s with no acknowledgement; the bot may be parked.");
+                System.err.println("WARNING: rescan for "
+                        + stash + " stalled: previous request " + outstanding + " outstanding for "
+                        + (nowSec - outstanding) + "s with no acknowledgement; the bot may be parked.");
             long id = Math.max(Math.max(s.rescanRequested, s.rescanDone) + 1, nowSec);
             s.rescanRequested = id;
             if (stock != null) stock.freezeAging(server, System.currentTimeMillis());

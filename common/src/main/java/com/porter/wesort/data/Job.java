@@ -5,11 +5,12 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * W-034: one schedulable unit of single-agent work. Categories {@code SCAN → SORT → PACK → PICKUP → DELIVER} form an
+ * W-034: one schedulable unit of single-agent work. Categories {@code SCAN → SORT → (CRAFT) → PACK → PICKUP → DEPOSIT} form an
  * explicit prerequisite chain (each step needs its predecessor completed for the same work unit, the {@code chain}),
- * and {@code RECONCILE} is an override that requires no predecessor. A job moves {@code QUEUED → CLAIMED → (PAUSED)
- * → COMPLETED}, or to {@code NEEDS_RECONCILIATION} when its lease lapses mid-physical-work, and is only reassignable
- * after an operator reconciles it back to {@code QUEUED}. {@code REVOKED} is terminal. Priority orders the queue.
+ * {@code TRAVEL} positions the agent between stashes, and {@code RECONCILE} is an override that requires no predecessor.
+ * {@code DELIVER} is the legacy name for {@code DEPOSIT} (kept for stored jobs; new work uses {@code DEPOSIT}).
+ * A job moves {@code QUEUED → CLAIMED → (PAUSED) → COMPLETED}, or to {@code NEEDS_RECONCILIATION} when its lease lapses mid-physical-work,
+ * and is only reassignable after an operator reconciles it back to {@code QUEUED}. {@code REVOKED} is terminal. Priority orders the queue.
  */
 public record Job(
         String id,
@@ -23,9 +24,13 @@ public record Job(
     public enum Category {
         SCAN,
         SORT,
+        CRAFT,
         PACK,
         PICKUP,
         DELIVER,
+        DEPOSIT,
+        TRAVEL,
+        HANDOFF,
         RECONCILE
     }
 
@@ -51,11 +56,12 @@ public record Job(
     /** The categories that must be COMPLETED for the same chain before this category may be claimed. */
     public static Set<Category> prerequisites(Category category) {
         return switch (category) {
-            case SCAN, RECONCILE -> Set.of();
+            case SCAN, RECONCILE, TRAVEL -> Set.of();
             case SORT -> Set.of(Category.SCAN);
+            case CRAFT -> Set.of(Category.SORT);
             case PACK -> Set.of(Category.SORT);
             case PICKUP -> Set.of(Category.PACK);
-            case DELIVER -> Set.of(Category.PICKUP);
+            case DELIVER, DEPOSIT, HANDOFF -> Set.of(Category.PICKUP);
         };
     }
 

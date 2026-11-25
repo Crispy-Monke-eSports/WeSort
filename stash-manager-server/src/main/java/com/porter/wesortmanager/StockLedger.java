@@ -410,7 +410,7 @@ final class StockLedger {
     static List<JsonObject> validate(JsonObject index) {
         if (!index.has("physicalSources")) return List.of();
         long version = number(index, "physicalVersion");
-        if (version != 1 && version != 2)
+        if (version != 1 && version != 2 && version != 3)
             throw new IllegalArgumentException("Unsupported physical observation version");
         var slots = version == 2 ? new PhysicalSlots.Reader(index.getAsJsonArray("slotVariants")) : null;
         String server = index.get("server").getAsString();
@@ -473,6 +473,26 @@ final class StockLedger {
                     if (number(row, "count") < 0 || !keys.add(row.get("key").getAsString()))
                         throw new IllegalArgumentException("Invalid or duplicate physical quantity");
                 }
+            }
+            if (version == 3 && state.equals("FRESH")) {
+                // PR4 (#227): v3 sources carry canonical SNBT instead of a variant
+                // dictionary. Parse strictly, require canonical round-trip, and
+                // bind the fingerprint to the snapshot digest (never JSON).
+                if (!source.has("snbt") || !source.get("snbt").isJsonPrimitive())
+                    throw new IllegalArgumentException("v3 source is missing canonical snbt");
+                String snbt = source.get("snbt").getAsString();
+                com.porter.wesort.snbt.SnbtCodec.Tag parsed;
+                try {
+                    parsed = com.porter.wesort.snbt.SnbtCodec.parse(snbt);
+                } catch (com.porter.wesort.snbt.SnbtCodec.SnbtException e) {
+                    throw new IllegalArgumentException("Invalid v3 source snbt: " + e.getMessage());
+                }
+                String canonical = com.porter.wesort.snbt.SnbtCodec.write(parsed);
+                if (!canonical.equals(snbt))
+                    throw new IllegalArgumentException("v3 source snbt is not canonical");
+                String digest = com.porter.wesort.snbt.SnbtCodec.snapshotDigest(canonical);
+                if (!digest.equals(source.get("fingerprint").getAsString()))
+                    throw new IllegalArgumentException("v3 snapshot digest mismatch");
             }
             if (version == 2 && state.equals("FRESH")) {
                 var snapshot = slots.snapshot(Math.toIntExact(number(source, "size")), source.getAsJsonArray("slots"));

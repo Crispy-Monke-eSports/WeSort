@@ -214,6 +214,32 @@ Protocol 1 remains available to agents that register without a control
 session. Legacy warehouse endpoints continue to use the signed v1
 exchange independently of the control session.
 
+### W-027 wire v3 (PR4, #28/#227/#263 — additive; v1/v2 still accepted)
+
+v3 standardizes every signed agent POST around one envelope
+(`AgentProtocol.PROTOCOL_VERSION == 3`, see `AgentProtocol.java`):
+`protocol`, `agent`, `lease`/`token`, `expectedRevision`, `idempotencyKey`
+plus operation fields. Rejections use machine-readable `reason`
+(`stale-lease`, `unknown-agent`, `wrong-server`, `lease-held`,
+`revision-mismatch`, `duplicate-receipt`, `snapshot-mismatch`;
+client bugs use 400/413 `unsupported-version`, `malformed-payload`,
+`payload-too-large`). HMAC canonicalization is unchanged.
+
+Physical observations move to `physicalVersion: 3` SNBT envelopes
+(`docs/SNBT_CONTRACT.md`, `SnapshotEnvelope`): per source
+`SourceKind`, capacity, slot list of canonical item-SNBT, provenance
+(`server/dimension/session/sequence/observedAt/registryContext`),
+snapshot digest bound to `fingerprint`. `StockLedger.validate` parses
+v3 strictly (canonical round-trip + digest match) and rejects v1/v2
+only for new writes once the agent migrates — legacy rows stay
+readable until fresh observations supersede them (no migration).
+
+Bulk uploads move to revision-bound batches (`BatchEnvelope`):
+`FULL_MEMBERSHIP` (explicit, atomic) vs `SOURCE_UPSERT` /
+`SOURCE_INVALIDATE` / `SOURCE_WITHDRAW` deltas. An omitted source in
+a delta is `UNCHANGED`, never withdrawn. The Manager ACKs per
+`sourceId/sourceRevision/digest`; the agent resends only unacked ops.
+
 Warehouse staging persists an internal versioned manifest with the order
 receipt. Manager derives it from completed `STAGE_PACKAGE` journal records
 for the order, stash and packing agent. Each entry binds an exact shulker

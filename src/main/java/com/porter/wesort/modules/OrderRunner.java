@@ -439,6 +439,14 @@ final class OrderRunner {
         if (stash.activeOrder != null && !stash.activeOrder.id.equals(o.id))
             return "another durable order checkpoint must be recovered first";
 
+        // Manager direction: report the accepted assignment as facts for future
+        // single-job ownership. No behavior change.
+        com.porter.wesort.WeSortAddon.LOG.info(
+                "WeSort order offered: id={} recovery={} lines={}.",
+                o.id,
+                managerRecovery,
+                o.lines);
+
         order = o;
         state = State.Running;
         pendingOutcome = null;

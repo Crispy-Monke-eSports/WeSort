@@ -18,7 +18,7 @@ class BoxUuidRegistryTest {
     private static final String OTHER = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
 
     private static String namedComponents(String name) {
-        return "{\"type\":10,\"value\":{\"minecraft:custom_name\":{\"type\":8,\"value\":\"\\\"" + name + "\\\"\"}}}";
+        return "{\"minecraft:custom_name\":\"" + name + "\"}";
     }
 
     private static PhysicalSlots.Snapshot frame(String boxName) {

@@ -126,4 +126,27 @@ class HandoffsTest {
                 restarted.resolve(h.id(), Handoff.State.RETURNED, "owner").state());
         assertEquals(Handoff.State.RETURNED, new Handoffs(data).get(h.id()).state());
     }
+
+    @Test
+    void autoExitNeverFabricatesDelivery() throws Exception {
+        var clock = new java.util.concurrent.atomic.AtomicLong(1_000_000L);
+        var handoffs = new Handoffs(data, clock::get);
+        var h = handoffs.schedule("o-1", "alice", "meet-1", A1);
+        handoffs.arrive(h.id(), A1);
+
+        // Bounded wait only ever yields non-terminal NO_SHOW, never DELIVERED.
+        clock.addAndGet(Handoffs.AWAITING_NOSHOW_AFTER_MS + 1);
+        handoffs.sweepStaleAwaiting(clock.get());
+        assertEquals(Handoff.State.NO_SHOW, handoffs.get(h.id()).state());
+        assertFalse(handoffs.get(h.id()).terminal());
+
+        // A restart of a swept handoff keeps it non-terminal too.
+        var restarted = new Handoffs(data, clock::get);
+        assertEquals(Handoff.State.NO_SHOW, restarted.get(h.id()).state());
+
+        // Neither sweep nor agent paths can reach DELIVERED without a receipt.
+        assertThrows(Handoffs.Conflict.class, () -> restarted.resolve(h.id(), Handoff.State.DELIVERED, ""));
+        assertThrows(
+                Handoffs.Conflict.class, () -> restarted.resolve(h.id(), Handoff.State.DELIVERED, "owner"));
+    }
 }

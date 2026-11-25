@@ -251,6 +251,12 @@ final class JobScheduler {
             var o = entry.job().json();
             o.addProperty("deadline", entry.deadline());
             o.add("events", entry.events().deepCopy());
+            // PR8 (#213): machine-readable fence reason + retry deadline for the
+            // dashboard; never an interactive instruction to the agent.
+            if (entry.job().state() == Job.State.NEEDS_RECONCILIATION) {
+                o.addProperty("reason", "lease-lapsed-needs-reconcile");
+                o.addProperty("retryEligibleAfter", UNCERTAIN_AUTO_REQUEUE_AFTER_MS);
+            }
             out.add(o);
         }
         return out;

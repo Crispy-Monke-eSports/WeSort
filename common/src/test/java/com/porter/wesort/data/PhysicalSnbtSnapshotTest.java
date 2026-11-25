@@ -24,7 +24,8 @@ class PhysicalSnbtSnapshotTest {
                 "minecraft:purple_shulker_box",
                 "box",
                 1,
-                "{\"minecraft:custom_name\":\"WeSort-550e8400-e29b-41d4-a716-446655440000\",\"minecraft:container\":[{slot:26,item:{id:\"minecraft:diamond\",count:32,components:" + diamond().components() + "}}]}",
+                "{\"minecraft:custom_name\":\"WeSort-550e8400-e29b-41d4-a716-446655440000\",\"minecraft:container\":[{slot:26,item:{id:\"minecraft:diamond\",count:32,components:"
+                        + diamond().components() + "}}]}",
                 PhysicalSlots.Kind.SHULKER,
                 27,
                 List.of(child),

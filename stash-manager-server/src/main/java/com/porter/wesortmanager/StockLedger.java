@@ -475,7 +475,8 @@ final class StockLedger {
                     throw new IllegalArgumentException("Fresh source requires canonical SNBT");
             }
             if (version == 3 && state.equals("FRESH")) {
-                var snapshot = PhysicalSlots.Snapshot.fromSnbt(source.get("snbt").getAsString());
+                var snapshot =
+                        PhysicalSlots.Snapshot.fromSnbt(source.get("snbt").getAsString());
                 if (snapshot.size() != number(source, "size"))
                     throw new IllegalArgumentException("SNBT inventory capacity mismatch");
                 if (!snapshot.fingerprint().equals(source.get("fingerprint").getAsString()))

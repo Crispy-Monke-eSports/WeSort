@@ -315,6 +315,7 @@ final class StockLedger {
     /** Called inside the same transaction that releases/expires an automation lease. */
     void invalidateServer(Connection c, String server) throws SQLException {
         long next = Math.addExact(revision(c), 1);
+        int voided = 0;
         try (var p = c.prepareStatement("SELECT id,payload FROM stock_sources WHERE server=?")) {
             p.setString(1, server);
             try (var rows = p.executeQuery()) {
@@ -327,8 +328,23 @@ final class StockLedger {
                         update.setString(3, rows.getString(1));
                         update.executeUpdate();
                     }
+                    voided++;
                 }
             }
+        }
+        // #199: bulk-voids are the difference between "rescan in progress" and "ordering
+        // dead". Log every one with its trigger site so a 69/69 STALE lock can be told
+        // apart from rescan fallout (requestRescan never voids; only this path does).
+        if (voided > 0) {
+            var trigger = StackWalker.getInstance()
+                    .walk(frames -> frames.filter(f -> f.getClassName().startsWith("com.porter.wesortmanager."))
+                            .filter(f -> !f.getClassName().endsWith("StockLedger"))
+                            .map(f ->
+                                    f.getClassName().replace("com.porter.wesortmanager.", "") + "." + f.getMethodName())
+                            .findFirst()
+                            .orElse("unknown"));
+            System.err.println("WARNING: voided " + voided + " stock sources to raw STALE for " + server + " from "
+                    + trigger + ": only a physical re-read heals these, freeze-aging does not cover them.");
         }
         try (var p = c.prepareStatement("UPDATE stock_meta SET revision=? WHERE id=1")) {
             p.setLong(1, next);

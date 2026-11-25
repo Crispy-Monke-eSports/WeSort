@@ -612,6 +612,12 @@ public class StashSorter extends Module {
 
     private static final int HANDLE_TIMEOUT = 20 * 10;
     private static final int COLLECT_TIMEOUT = 20 * 120;
+    /** Extra bounded settle window after COLLECT_TIMEOUT when the box is visibly held (cursor/magnet delay). */
+    private static final int COLLECT_SETTLE_TICKS = 20 * 60;
+    /** A lost-shulker latch expires instead of parking the headless bot forever (#198).
+     * Drops despawn after 5 minutes, so waiting longer for a drop is pointless. */
+    private static final long DROP_LOST_TIMEOUT_MS = 5 * 60_000;
+
     private static final int PLACE_GAP_TICKS = 20 * 5;
     private static final int PAUSE_TICKS = 20 * 60 * 3;
 
@@ -935,6 +941,10 @@ public class StashSorter extends Module {
     private int repackVerifyReads;
     private final Set<String> repackVerifySeen = new HashSet<>();
     private static final int MAX_REPACK_VERIFY_PASSES = 3;
+    // #198: a Collect-timeout re-baselines an unambiguous late pickup at most once per
+    // handle (adopt same-colour/same-content box or recount a fingerprint match), so a
+    // flapping baseline can never mask a genuinely lost shulker.
+    private boolean repackRebaselined;
     // Last pre-gate reason that parked the tick, for the status line and heartbeat. Set on
     // every silent early return, cleared once the tick gets past the gates.
     private String gateReason = "";
@@ -1010,6 +1020,9 @@ public class StashSorter extends Module {
     private int lastPlaceTick = -1000;
     private int repackPausedUntil;
     private boolean dropLost;
+    /** Wall-clock arm for the lost-shulker latch: it expires instead of parking forever (#198). */
+    private long dropLostAtMs;
+
     private boolean placedConfirmed;
     private int placedStacks;
     private int breakTicks;
@@ -1156,6 +1169,7 @@ public class StashSorter extends Module {
             placed = at;
             placedConfirmed = true;
             handle = Handle.Collect;
+            repackRebaselined = false;
             shulkersBefore = countShulkers() + 1;
             shulkerSlotsBefore.clear();
             for (int i = 0; i < 36; i++)
@@ -1705,6 +1719,7 @@ public class StashSorter extends Module {
         lastPlaceTick = -1000;
         repackPausedUntil = 0;
         dropLost = false;
+        dropLostAtMs = 0;
         placedConfirmed = false;
         kitBuilder.reset();
         crafter.reset();
@@ -2133,6 +2148,10 @@ public class StashSorter extends Module {
         // ...and a healed journal heals the stranded in-memory state, so the bot does not
         // sit in NEEDS_RECONCILIATION forever after automatic recovery finished.
         healRepackState();
+        // A lost-shulker latch without journal backing expires loudly instead of parking
+        // the headless bot forever: the step is quarantined as an orphan and other
+        // shulker work resumes. A fenced journal still parks below until inspected.
+        expireDropLost();
         // Lobby navigation uses no inventory or physical permit, but still obeys the
         // reconciliation/navigation safety fences below. Sorting itself remains permit-gated.
         if (repackWork != null
@@ -2166,7 +2185,9 @@ public class StashSorter extends Module {
         }
         if (!sortingPermitted()) {
             if (surveyWhileBlocked()) return;
-            gateLogThrottled("sorting paused: Manager must exclude reservations before physical moves.");
+            gateLogThrottled("sorting paused (navigation "
+                    + com.porter.wesort.compat.NavigationRuntime.status()
+                    + "): Manager must exclude reservations before physical moves.");
             ledgeGuard(false);
             return;
         }
@@ -8364,6 +8385,7 @@ public class StashSorter extends Module {
                 // Was there, now it isn't: broken, or picked up by someone
                 handle = Handle.Collect;
                 handleTicks = 0;
+                repackRebaselined = false;
                 return;
             }
             boolean gone = countShulkers() < shulkersBefore;
@@ -8381,6 +8403,7 @@ public class StashSorter extends Module {
                 placedConfirmed = true;
                 handle = Handle.Collect;
                 handleTicks = 0;
+                repackRebaselined = false;
                 return;
             }
 
@@ -8456,6 +8479,7 @@ public class StashSorter extends Module {
                     recordOrphan(placed, placedName(), actual);
                     compactor.drop();
                     dropLost = true;
+                    dropLostAtMs = System.currentTimeMillis();
                     endHandling();
                     return;
                 }
@@ -8933,10 +8957,31 @@ public class StashSorter extends Module {
                     placed.toShortString(), handleTicks / 20);
         }
         if (handleTicks > COLLECT_TIMEOUT) {
+            // #198: reconcile before fencing. A late pickup (magnet delay, cursor, drifted
+            // count) must not hard-lock all shulker work: adopt exactly one unambiguous
+            // candidate, wait boundedly for a cursor-held box to land, fence only the rest.
+            if (!repackRebaselined && tryAdoptLateCollect()) {
+                repackRebaselined = true;
+                return;
+            }
+            if (cursorMatchesRepack() && handleTicks <= COLLECT_TIMEOUT + COLLECT_SETTLE_TICKS) {
+                if (handleTicks % (20 * 30) == 0)
+                    alert(
+                            "The shulker from %s is on my cursor, waiting for it to land in the inventory.",
+                            placed.toShortString());
+                return;
+            }
+            if (cursorLikePlaced() && handleTicks <= COLLECT_TIMEOUT + COLLECT_SETTLE_TICKS) {
+                if (handleTicks % (20 * 30) == 0)
+                    alert(
+                            "A shulker like the one from %s is on my cursor, waiting for it to land.",
+                            placed.toShortString());
+                return;
+            }
             // Keep the exact workspace and pickup baseline for a signed read-only
             // recovery; never discard it or claim the box is still on the ground.
             syncInFlight();
-            blockRepack("Pickup not yet verified at " + placed.toShortString());
+            blockRepack("Pickup not yet verified at " + placed.toShortString() + collectDiagnostics());
             return;
         }
 
@@ -9031,26 +9076,11 @@ public class StashSorter extends Module {
      * holding what the job put in or left in it. -1 if there is none, or with {@code unique} if more than one could be.
      */
     private int heldLikePlaced(boolean unique) {
-        Compactor.Plan plan = compactor.plan;
         int match = -1;
         for (int i = 0; i <= 40; i++) {
             if (i >= 36 && i < 40) continue;
             ItemStack there = mc.player.getInventory().getItem(i);
-            if (!Utils.isShulker(there.getItem())) continue;
-            if (!placedItemId.isEmpty()
-                    && !BuiltInRegistries.ITEM.getKey(there.getItem()).getPath().equals(placedItemId)) continue;
-            List<StackInfo> inside = StackInfo.of(there).contents();
-            if (inside.isEmpty()) continue;
-            boolean fits;
-            if (plan != null)
-                fits = inside.size() == plan.placedSize && inside.stream().allMatch(c -> plan.key.equals(c.bulkKey()));
-            else if (job == Job.Fill && fillKey != null)
-                fits = inside.stream().allMatch(c -> fillKey.equals(c.bulkKey()));
-            else if (job == Job.Clean && mainItem != null) {
-                String main = BuiltInRegistries.ITEM.getKey(mainItem).getPath();
-                fits = inside.stream().allMatch(c -> main.equals(c.id));
-            } else fits = false;
-            if (!fits) continue;
+            if (!fitsPlacedPlan(there)) continue;
             if (!unique) return i;
             if (match != -1) return -1;
             match = i;
@@ -9058,12 +9088,57 @@ public class StashSorter extends Module {
         return match;
     }
 
+    /** True when the cursor holds a shulker that could be the one we put down (#198). */
+    private boolean cursorLikePlaced() {
+        return fitsPlacedPlan(cursorStack());
+    }
+
+    /** Same colour as the placed box, holding what the job put in or left in it. */
+    private boolean fitsPlacedPlan(ItemStack there) {
+        if (there.isEmpty() || !Utils.isShulker(there.getItem())) return false;
+        if (!placedItemId.isEmpty()
+                && !BuiltInRegistries.ITEM.getKey(there.getItem()).getPath().equals(placedItemId)) return false;
+        List<StackInfo> inside = StackInfo.of(there).contents();
+        if (inside.isEmpty()) return false;
+        Compactor.Plan plan = compactor.plan;
+        if (plan != null)
+            return inside.size() == plan.placedSize && inside.stream().allMatch(c -> plan.key.equals(c.bulkKey()));
+        else if (job == Job.Fill && fillKey != null) return inside.stream().allMatch(c -> fillKey.equals(c.bulkKey()));
+        else if (job == Job.Clean && mainItem != null) {
+            String main = BuiltInRegistries.ITEM.getKey(mainItem).getPath();
+            return inside.stream().allMatch(c -> main.equals(c.id));
+        }
+        return false;
+    }
+
     private List<ItemStack> repackInventory() {
         List<ItemStack> items = new ArrayList<>();
         for (int i = 0; i < 36; i++)
             items.add(mc.player.getInventory().getItem(i).copy());
         items.add(mc.player.getOffhandItem().copy());
+        // #198: a magnet-late pickup can sit on the cursor: it is carried inventory,
+        // so conservation counts it consistently on both sides of a move.
+        ItemStack cursor = cursorStack();
+        if (!cursor.isEmpty()) items.add(cursor.copy());
         return items;
+    }
+
+    /** Whatever the cursor holds right now, or EMPTY when nothing is carried. Never throws. */
+    private ItemStack cursorStack() {
+        try {
+            if (mc.player == null || mc.player.containerMenu == null) return ItemStack.EMPTY;
+            ItemStack carried = mc.player.containerMenu.getCarried();
+            return carried == null ? ItemStack.EMPTY : carried;
+        } catch (RuntimeException e) {
+            return ItemStack.EMPTY;
+        }
+    }
+
+    /** True when the cursor holds the expected repacked shulker (magnet/click delay, #198). */
+    private boolean cursorMatchesRepack() {
+        if (repackExpected.isEmpty()) return false;
+        ItemStack cursor = cursorStack();
+        return !cursor.isEmpty() && repackMatches(cursor);
     }
 
     private ItemStack[] repackMenuContents(AbstractContainerMenu menu) {
@@ -9088,6 +9163,77 @@ public class StashSorter extends Module {
         } catch (RuntimeException ignored) {
             return false;
         }
+    }
+
+    /**
+     * One-line Collect diagnostics for the fence message, heartbeat and logs: which
+     * pickup evidence exists (fingerprint slot, colour/content slot, cursor, counts).
+     */
+    private String collectDiagnostics() {
+        int verified = -1;
+        int held = -1;
+        try {
+            verified = verifiedRepackPickup();
+            held = heldLikePlaced(false);
+        } catch (RuntimeException ignored) {
+        }
+        long count = -1;
+        try {
+            count = repackInventory().stream().filter(this::repackMatches).count();
+        } catch (RuntimeException ignored) {
+        }
+        ItemStack cursor = cursorStack();
+        String cursorDesc = cursor.isEmpty()
+                ? "empty"
+                : (Utils.isShulker(cursor.getItem())
+                        ? "shulker"
+                        : cursor.getItem().toString());
+        return " (verifiedSlot=" + verified + " heldSlot=" + held + " cursor=" + cursorDesc + " matchingCount=" + count
+                + " expectedCopies=" + repackExistingCopies + ")";
+    }
+
+    /**
+     * Late-arrival reconciliation for a Collect that already timed out (#198). Adopts
+     * exactly one unambiguous candidate and re-baselines the pickup expectation so the
+     * strict gate verifies it next tick:
+     * <ul>
+     *   <li>exact fingerprint found but count drifted: recount the baseline;</li>
+     *   <li>otherwise a unique same-colour/same-content box: adopt its signature.</li>
+     * </ul>
+     * Anything ambiguous returns false and the caller fences. Logged loudly: adoption
+     * is an observation correction, never silent.
+     */
+    private boolean tryAdoptLateCollect() {
+        if (repackExpected.isEmpty() || mc.player == null || mc.level == null) return false;
+        int verified = verifiedRepackPickup();
+        if (verified >= 0) {
+            long count = repackInventory().stream().filter(this::repackMatches).count();
+            if (count != repackExistingCopies + 1L) {
+                repackExistingCopies = (int) count - 1;
+                warning(
+                        "Late pickup of the shulker from %s: exact box in slot %d but count drifted, re-baselined to %d expected copies.",
+                        placed != null ? placed.toShortString() : "?",
+                        verified < 36 ? verified + 1 : 41,
+                        repackExistingCopies);
+            }
+            return true;
+        }
+        int unique = heldLikePlaced(true);
+        if (unique >= 0) {
+            ItemStack held = mc.player.getInventory().getItem(unique).copy();
+            try {
+                repackExpected = com.porter.wesort.compat.RepackRuntime.signature(held);
+            } catch (RuntimeException e) {
+                return false;
+            }
+            long count = repackInventory().stream().filter(this::repackMatches).count();
+            repackExistingCopies = (int) count - 1;
+            warning(
+                    "Late pickup of the shulker from %s: adopted the unique same-colour box in slot %d with drifted contents.",
+                    placed != null ? placed.toShortString() : "?", unique + 1);
+            return true;
+        }
+        return false;
     }
 
     private int verifiedRepackPickup() {
@@ -9154,13 +9300,40 @@ public class StashSorter extends Module {
         repackVerifyReads = 0;
         repackVerifySeen.clear();
         storeWatchMs = 0;
-        dropLost = false; // only a new accepted reconciliation proof may clear this latch
+        dropLost = false; // a new accepted reconciliation proof clears this latch (or expireDropLost below)
+        dropLostAtMs = 0;
         if ((stash != null && stash.inFlight != null) || pendingResume != null || resuming) {
             repackWork = new com.porter.wesort.inventory.PhysicalWork("Shulker", System.nanoTime());
             step("verified recovery finished; next: resume the saved shulker step.");
         } else {
             repackWork = new com.porter.wesort.inventory.PhysicalWork("Shulker", System.nanoTime());
             step("verified recovery finished; next: carry on.");
+        }
+    }
+
+    /**
+     * Time-bounded lost-shulker latch (#198). A {@code dropLost} latch set by a local
+     * Collect/pickup failure without an unfinished journal behind it expires after
+     * {@link #DROP_LOST_TIMEOUT_MS}: the step is quarantined as an orphan (manual return
+     * still required for that box) and other shulker work resumes instead of parking
+     * the headless bot until a manual sorter restart. While the durable journal still
+     * has an unfinished operation the fence stays: that mutation needs the
+     * manager-inspection loop, not a local reset.
+     */
+    private void expireDropLost() {
+        if (!dropLost || dropLostAtMs <= 0 || mc.player == null || mc.level == null) return;
+        if (System.currentTimeMillis() - dropLostAtMs < DROP_LOST_TIMEOUT_MS) return;
+        boolean journalBacked = PhysicalJournalRuntime.unfinished();
+        if (placed != null) recordOrphan(placed, placedName(), placedStacks);
+        alertError(
+                "Shulker latch expired after 5m without verified recovery%s: quarantined %s for manual return; other shulker work resumes.",
+                journalBacked ? " (journal still holds an unfinished operation, its fence stays)" : "",
+                placed != null ? placed.toShortString() : "the step");
+        dropLost = false;
+        dropLostAtMs = 0;
+        if (!journalBacked) {
+            repackWork = new com.porter.wesort.inventory.PhysicalWork("Shulker", System.nanoTime());
+            if (handle != null || job == Job.Clean || job == Job.Fill) endHandling();
         }
     }
 
@@ -9411,6 +9584,7 @@ public class StashSorter extends Module {
         repackWork.reconcile(why);
         PhysicalJournalRuntime.block(why);
         dropLost = true;
+        dropLostAtMs = System.currentTimeMillis();
         storeWatchMs = 0;
         long now = System.currentTimeMillis();
         if (!why.equals(lastRepackAlert) || now - lastRepackAlertAt >= 60_000) {
@@ -9507,6 +9681,7 @@ public class StashSorter extends Module {
             if (job == Job.Recover) recoveryRetryAt.put(at, ticks + 20 * 60 * 5);
         }
         dropLost = true;
+        dropLostAtMs = System.currentTimeMillis();
         compactor.drop();
         if (isKitJob()) kitBuilder.suspend(why);
         if (job == Job.CraftUnpack) crafter.abort(why);
@@ -9860,6 +10035,7 @@ public class StashSorter extends Module {
             compactor.drop();
             clearOrphan(placed);
             dropLost = true;
+            dropLostAtMs = System.currentTimeMillis();
             endHandling();
             return;
         }

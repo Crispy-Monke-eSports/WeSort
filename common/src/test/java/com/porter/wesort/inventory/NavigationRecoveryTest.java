@@ -23,4 +23,24 @@ class NavigationRecoveryTest {
         assertFalse(NavigationRecovery.retryable("PAUSED_NAVIGATION_UNSAFE_BLOCK", "fluid"));
         assertFalse(NavigationRecovery.retryable("PAUSED_NAVIGATION_DISCONNECTED", ""));
     }
+
+    @Test
+    void everyLatchHasAnAutomaticWayOut() {
+        // Operator-taken latches expire instead of waiting for a human that never comes.
+        assertTrue(NavigationRecovery.operatorLatch("PAUSED_NAVIGATION_OTHER_PROCESS"));
+        assertTrue(NavigationRecovery.operatorLatch("PAUSED_NAVIGATION_CANCELLED"));
+        assertTrue(NavigationRecovery.operatorLatch("FOREIGN_PROCESS_CANCELLED"));
+        assertTrue(NavigationRecovery.operatorLatch("PAUSED_NAVIGATION_DISCONNECTED"));
+        assertTrue(NavigationRecovery.operatorLatch("PAUSED_WRONG_DIMENSION"));
+        assertFalse(NavigationRecovery.operatorLatch("PAUSED_NAVIGATION_RELEASED"));
+        assertFalse(NavigationRecovery.operatorLatch("IDLE"));
+        // Headless agents replan sooner than attended ones.
+        assertEquals(5 * 60_000L, NavigationRecovery.operatorTimeoutMs(true));
+        assertEquals(10 * 60_000L, NavigationRecovery.operatorTimeoutMs(false));
+        // Non-unloaded unsafe blocks degrade after bounded retries (own counter, not the transient one).
+        assertFalse(NavigationRecovery.unsafeDegraded(0));
+        assertFalse(NavigationRecovery.unsafeDegraded(2));
+        assertTrue(NavigationRecovery.unsafeDegraded(3));
+        assertTrue(NavigationRecovery.unsafeDegraded(99));
+    }
 }

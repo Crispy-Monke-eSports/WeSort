@@ -25,7 +25,7 @@ public final class NavigationCommand extends Command {
             info(
                     NavigationRuntime.resume()
                             ? "Navigation released for a new goal; no previous route is replayed."
-                            : "Cannot resume navigation in this state.");
+                            : "Cannot resume navigation: " + NavigationRuntime.resumeDenial() + ".");
             return SINGLE_SUCCESS;
         }));
     }

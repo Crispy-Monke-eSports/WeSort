@@ -2450,6 +2450,13 @@ function CheckoutDialog(props: {
               }
               label="Queue against last-verified stock when stale (owner understands data may be outdated)"
             />
+            {props.queueWhenStale && (
+              <Typography variant="caption" color="text.secondary">
+                Only covers aged or restart-pending stock: voided, unreachable
+                or missing sources still need a real re-read, and the bot
+                re-verifies before touching anything.
+              </Typography>
+            )}
             <Typography variant="body2" color="text.secondary">
               Box labels are set <strong>per stash order</strong>: each stash
               below becomes its own backend order, and the server freezes{" "}

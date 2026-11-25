@@ -213,8 +213,7 @@ public final class WeSortManager {
                                 try {
                                     audit.add("system", "system", "handoff.auto-no-show", noShow, "scheduler");
                                 } catch (RuntimeException auditFailure) {
-                                    System.err.println(
-                                            "Could not audit handoff sweep: " + auditFailure.getMessage());
+                                    System.err.println("Could not audit handoff sweep: " + auditFailure.getMessage());
                                 }
                             }
                             for (String requeued : built.jobs().sweepStaleUncertain(System.currentTimeMillis())) {
@@ -222,8 +221,7 @@ public final class WeSortManager {
                                 try {
                                     audit.add("system", "system", "job.auto-requeue", requeued, "scheduler");
                                 } catch (RuntimeException auditFailure) {
-                                    System.err.println(
-                                            "Could not audit job sweep: " + auditFailure.getMessage());
+                                    System.err.println("Could not audit job sweep: " + auditFailure.getMessage());
                                 }
                             }
                         } catch (IOException | RuntimeException failure) {

@@ -106,6 +106,7 @@ class HandoffsTest {
         assertEquals(1, swept.size());
         assertEquals(Handoff.State.NO_SHOW, handoffs.get(h.id()).state());
         assertFalse(handoffs.get(h.id()).terminal(), "no-show keeps the cargo held");
-        assertEquals(Handoff.State.AWAITING_RECIPIENT, handoffs.retry(h.id(), A1).state());
+        assertEquals(
+                Handoff.State.AWAITING_RECIPIENT, handoffs.retry(h.id(), A1).state());
     }
 }

@@ -13298,12 +13298,10 @@ public class StashSorter extends Module {
             if (portalModeOn() && manager != null && manager.dedicatedProfile()) {
                 // Probe for positive lobby evidence even if the user manually crossed the
                 // portal. A survival world without a nearby lobby portal proceeds normally.
-                if (!PhysicalJournalRuntime.blocked() && !PhysicalJournalRuntime.awaitingMirror()) {
-                    if (portalTick()) return;
-                } else {
-                    portalForward(false);
-                    if (portalAwaiting()) reportPortalBlocker("PHYSICAL_JOURNAL");
-                }
+                // Manager is truth: lobby transit is navigation-only and must run even
+                // when the agent-local physical journal is fenced. Sorting and physical
+                // mutation stay fenced on their own paths.
+                if (portalTick()) return;
             }
             if (portalHoldingForward && (manager == null || !manager.dedicatedProfile())) stopPortalNavigation();
             if (driven) StashSorter.this.onTick(event);

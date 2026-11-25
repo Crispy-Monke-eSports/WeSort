@@ -345,17 +345,17 @@ public class StashSorter extends Module {
     private final Setting<Integer> recheck = sgBot.add(new IntSetting.Builder()
             .name("recheck")
             .description(
-                    "Seconds between routine container observations (minimum five minutes). Oldest observations are checked first.")
-            .defaultValue(300)
-            .range(300, 600)
-            .sliderRange(300, 600)
+                    "Seconds between routine container observations (minimum one minute; keep well below stock TTL). Oldest observations are checked first.")
+            .defaultValue(60)
+            .range(30, 600)
+            .sliderRange(30, 600)
             .visible(stayOn::get)
             .build());
 
     private final Setting<Boolean> smartRecheck = sgBot.add(new BoolSetting.Builder()
             .name("smart-recheck")
             .description(
-                    "When enabled, unchanged drop-off containers back off up to ten minutes. Player activity and Manager requests still queue a re-read, subject to the minimum five-minute interval.")
+                    "When enabled, unchanged drop-off containers back off up to ten minutes. Player activity and Manager requests still queue a re-read, subject to the minimum one-minute interval.")
             .defaultValue(true)
             .visible(stayOn::get)
             .build());
@@ -1539,7 +1539,7 @@ public class StashSorter extends Module {
             new RemoteControl("rotate", "Rotate while interacting", "bool", 0, 0),
             new RemoteControl("log-level", "Log level", "enum", 0, 0),
             new RemoteControl("stay-on", "Stay on when idle", "bool", 0, 0),
-            new RemoteControl("recheck", "Recheck interval", "int", 300, 600),
+            new RemoteControl("recheck", "Recheck interval", "int", 30, 600),
             new RemoteControl("smart-recheck", "Smart recheck", "bool", 0, 0),
             new RemoteControl("collect-ground", "Collect ground items", "bool", 0, 0),
             new RemoteControl("collect-range", "Ground collection range", "int", 0, 64),

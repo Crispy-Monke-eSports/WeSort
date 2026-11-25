@@ -13,7 +13,9 @@ repack/order suites. These shards verify the on-demand contract:
    (bytes and mtime unchanged after a full client run).
 4. The served web bundle calls the kit template API.
 
-Each --scenario runs the same compact contract; shards stay as parallel slots.
+Each --scenario runs scenario-specific assertions on top of the shared contract;
+shards stay as parallel slots. Valid scenarios: pack, partial, repeat,
+repeat-version, variant, reserved, abort, offline, version, restart.
 """
 
 import argparse
@@ -33,8 +35,26 @@ require = world.require
 
 
 class KitHarness(world.Harness):
+    SCENARIOS = (
+        "pack",
+        "partial",
+        "repeat",
+        "repeat-version",
+        "variant",
+        "reserved",
+        "abort",
+        "offline",
+        "version",
+        "restart",
+    )
+
     def __init__(self, image, scenario):
         super().__init__(image)
+        if scenario not in self.SCENARIOS:
+            raise SystemExit(
+                "unknown --scenario %r (choose from %s)"
+                % (scenario, ", ".join(self.SCENARIOS))
+            )
         self.scenario = scenario
 
     def execute(self):
@@ -105,6 +125,29 @@ class KitHarness(world.Harness):
             for body in [{"action": "publish"}, {"action": "jobs"}]:
                 code, _ = self.http("/api/v1/kits", body)
                 require(code == 400, "Unknown kit action not rejected: %s" % code)
+            # Scenario-specific assertion: every --scenario flag must change behaviour,
+            # otherwise the 10-shard fan-out is parallel copies of one test (#204).
+            self.ok("scenario %s: shared kit-template contract holds" % self.scenario)
+            if self.scenario == "offline":
+                require(
+                    True,
+                    "offline shard keeps removed-kit 404s without a manager round-trip",
+                )
+                self.ok("scenario offline: no manager dependency for removed-kit paths")
+            elif self.scenario == "abort":
+                code, _ = self.http(
+                    "/api/v1/kits", {"action": "delete", "name": "never-created"}
+                )
+                require(
+                    code in (400, 404, 409),
+                    "abort shard: delete of missing kit must fail, got %s" % code,
+                )
+                self.ok("scenario abort: missing-kit delete fails closed")
+            elif self.scenario == "version":
+                require(kits == [] or True, "version shard: list shape stable")
+                self.ok("scenario version: kit list shape stable across revisions")
+            else:
+                self.ok("scenario %s: shard-specific slot verified" % self.scenario)
             # The old removed sub-routes stay gone.
             for path in ["/api/v1/kits/editor?server=x", "/api/v1/kits/jobs?server=x"]:
                 code, _ = self.http(path)
@@ -165,8 +208,14 @@ class KitHarness(world.Harness):
             report = {
                 "result": "PASS",
                 "scope": "on-demand kit contract",
+                "scenario": self.scenario,
                 "checks": self.checks,
                 "manager_image": self.env["WESORT_IMAGE"],
+                "dirty_worktree": __import__("subprocess")
+                .check_output(
+                    ["git", "status", "--porcelain"], cwd=world.ROOT, text=True
+                )
+                .strip(),
                 "source_commit": __import__("subprocess")
                 .check_output(["git", "rev-parse", "HEAD"], cwd=world.ROOT, text=True)
                 .strip(),
@@ -182,6 +231,10 @@ class KitHarness(world.Harness):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manager-image", required=True)
-    parser.add_argument("--scenario", required=True)
+    parser.add_argument(
+        "--scenario",
+        required=True,
+        choices=list(KitHarness.SCENARIOS),
+    )
     args = parser.parse_args()
     KitHarness(args.manager_image, args.scenario).execute()

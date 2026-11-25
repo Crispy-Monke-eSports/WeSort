@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   AuthUserSchema,
+  HealthSchema,
   KitTemplateSchema,
   ManagedUserSchema,
   OrderLineSchema,
@@ -38,6 +39,37 @@ describe("StashRef server contract", () => {
     expect(parsed.online).toBe(true);
     expect(parsed.rescanPending).toBe(true);
     expect(parsed.rescanBlocked).toBe(false);
+  });
+
+  it("parses a stash with a verbatim orderBlocker (#203)", () => {
+    const parsed = StashRefSchema.parse({
+      stash: "main-hall",
+      online: true,
+      orderBlocker: "sorting paused: Manager must exclude reservations",
+    });
+    expect(parsed.orderBlocker).toContain("sorting paused");
+  });
+});
+
+describe("health contract (#203)", () => {
+  it("parses the real /health body with STALE_STOCK warnings", () => {
+    const parsed = HealthSchema.parse({
+      status: "ready",
+      warnings: ["STALE_STOCK"],
+      staleStock: true,
+      oldestStockAgeMs: 514_000,
+      oldestIndexAgeMs: 12_000,
+      checkedAt: Date.now(),
+    });
+    expect(parsed.warnings).toContain("STALE_STOCK");
+    expect(parsed.staleStock).toBe(true);
+    expect(parsed.oldestStockAgeMs).toBe(514_000);
+  });
+
+  it("stays compatible with older servers without the new fields", () => {
+    const parsed = HealthSchema.parse({ status: "ready" });
+    expect(parsed.warnings).toEqual([]);
+    expect(parsed.staleStock).toBeFalsy();
   });
 });
 

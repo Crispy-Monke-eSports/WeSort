@@ -33,6 +33,7 @@ import {
   useOperations,
   usePermissions,
   usePhysicalOps,
+  useRescan,
   useStashes,
   type OpsList,
 } from "../api/queries";
@@ -101,6 +102,9 @@ export function OperationsPage() {
     stash: "",
   });
   const audit = useAuditOrders(canAudit, { limit: 50, ...auditGo });
+  const rescan = useRescan();
+  const [rescanMsg, setRescanMsg] = useState("");
+  const [rescanBusy, setRescanBusy] = useState("");
 
   const alerts: { code: string; count: number }[] = Array.isArray(
     (ops.data as any)?.alerts,
@@ -150,6 +154,53 @@ export function OperationsPage() {
           Stock {mutedAlerts.map((a) => `${a.code} ×${a.count}`).join(", ")}{" "}
           during rescan (expected) — availability settles when the rescan lands.
         </Alert>
+      )}
+      {owner && (
+        <Card>
+          <CardHeader title="Owner controls" subheader="Rescan requests a fresh survey; the server replies with a rescanId" />
+          <CardContent sx={{ pt: 0 }}>
+            <Stack spacing={1}>
+              <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
+                {(stashes.data ?? [])
+                  .filter((s) => perms.seesStash(s.stash))
+                  .map((s) => (
+                    <Button
+                      key={s.stash}
+                      size="small"
+                      variant="outlined"
+                      disabled={rescanBusy !== "" || s.online === false}
+                      title={
+                        s.online === false
+                          ? "Bot offline — rescan queues until the bot returns"
+                          : s.rescanPending
+                            ? "Rescan already pending"
+                            : `Request rescan of ${s.stash}`
+                      }
+                      onClick={async () => {
+                        setRescanMsg("");
+                        setRescanBusy(s.stash);
+                        try {
+                          const res = await rescan(s.stash);
+                          setRescanMsg(`Rescan ${s.stash}: ${res.rescanId ?? "requested"}.`);
+                        } catch (e: any) {
+                          setRescanMsg(`Rescan ${s.stash} failed: ${e?.message ?? e}.`);
+                        } finally {
+                          setRescanBusy("");
+                        }
+                      }}
+                    >
+                      Rescan {s.stash}
+                    </Button>
+                  ))}
+              </Stack>
+              {rescanMsg && (
+                <Typography variant="body2" color="text.secondary">
+                  {rescanMsg}
+                </Typography>
+              )}
+            </Stack>
+          </CardContent>
+        </Card>
       )}
 
       <Grid container spacing={2}>

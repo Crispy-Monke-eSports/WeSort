@@ -23,7 +23,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.NetherPortalBlock;
 
-/** Limits only goals started by WeSort. A failure requires an explicit player resume. */
+/** Limits only goals started by WeSort. Transient stalls auto-resume with backoff; hazardous or operator-taken routes expire instead of parking forever (#197). */
 public final class NavigationRuntime {
     private static final NavigationRuntime INSTANCE = new NavigationRuntime();
     private static Goal ours;
@@ -47,8 +47,13 @@ public final class NavigationRuntime {
     private static String pauseDetail = "";
     private static long lastPauseLogMs;
     private static long lastTransientCheckMs, retryAt, lastRetryAt;
+    private static long pausedAtMs;
     private static int transientFailures;
     private static final java.util.Map<String, Integer> denialCounts = new java.util.LinkedHashMap<>();
+    /** Operator-taken routes expire after idle timeout instead of parking the headless bot forever. */
+    static final long OPERATOR_IDLE_TIMEOUT_MS = 10 * 60_000;
+    /** Non-unloaded unsafe blocks degrade to replanning after bounded retries instead of eternal latch. */
+    static final int UNSAFE_BLOCK_MAX_RETRIES = 3;
 
     private NavigationRuntime() {}
 
@@ -171,6 +176,7 @@ public final class NavigationRuntime {
         BaritoneHelper.unconfine();
         BaritoneHelper.unprotect();
         paused = pause;
+        if (pause) pausedAtMs = System.currentTimeMillis();
         pausedPortalRoute = pause && wasPortal;
         if (!pause || !outcome.equals("PAUSED_NAVIGATION_UNSAFE_BLOCK")) pauseDetail = "";
         else if (pauseDetail.isEmpty() && mc.player != null && mc.level != null) {
@@ -225,8 +231,9 @@ public final class NavigationRuntime {
 
     /**
      * While latched with no goal: say so every minute (a silent pause looks exactly like a
-     * dead bot), and auto-clear obviously-transient causes — an unloaded chunk that loaded,
-     * or an inventory fence that healed — instead of waiting for a manual resume.
+     * dead bot), auto-clear transient causes, expire operator-taken latches after idle
+     * timeout, and degrade persistently unsafe targets to replanning instead of parking
+     * forever (#197). Never replays the released goal or mines through the barrier.
      */
     private static void pauseTick() {
         long nowMs = System.currentTimeMillis();
@@ -241,8 +248,46 @@ public final class NavigationRuntime {
         lastTransientCheckMs = nowMs;
         boolean transientPause = WorldInteractionGuard.dedicated()
                 ? NavigationRecovery.retryable(status, pauseDetail)
+                        || status.equals("PAUSED_NAVIGATION_DISCONNECTED")
                 : status.equals("PAUSED_NAVIGATION_INVENTORY")
                         || (status.equals("PAUSED_NAVIGATION_UNSAFE_BLOCK") && pauseDetail.startsWith("unloaded "));
+        // Operator-taken routes expire: a headless bot must not wait forever for a human
+        // who may never return. Expiry only replans (goal stays released), never steals control.
+        boolean operatorLatched = status.equals("PAUSED_NAVIGATION_OTHER_PROCESS")
+                || status.equals("PAUSED_NAVIGATION_CANCELLED")
+                || status.equals("FOREIGN_PROCESS_CANCELLED")
+                || status.equals("PAUSED_NAVIGATION_DISCONNECTED");
+        if (operatorLatched
+                && pausedAtMs > 0
+                && nowMs - pausedAtMs >= OPERATOR_IDLE_TIMEOUT_MS
+                && mc.player != null
+                && mc.level != null
+                && InventorySync.ready()
+                && NavigationGuard.permits(mc.player.blockPosition())) {
+            paused = false;
+            pauseDetail = "";
+            dropRetries = 0;
+            transientFailures = 0;
+            status = "IDLE";
+            MeteorClient.LOG.info(
+                    "WeSort navigation auto-resumed: operator-taken latch expired after 10m idle ({}). Replanning.",
+                    status);
+            return;
+        }
+        // Persistently unsafe (non-unloaded) targets degrade to replanning after bounded
+        // retries: the sorter marks the target unreachable and plans the next box.
+        if (status.equals("PAUSED_NAVIGATION_UNSAFE_BLOCK")
+                && !pauseDetail.startsWith("unloaded ")
+                && transientFailures >= UNSAFE_BLOCK_MAX_RETRIES) {
+            paused = false;
+            pauseDetail = "";
+            dropRetries = 0;
+            status = "IDLE";
+            MeteorClient.LOG.info(
+                    "WeSort navigation degraded unsafe-block latch to replanning after {} retries: no mining through the barrier.",
+                    UNSAFE_BLOCK_MAX_RETRIES);
+            return;
+        }
         if (!transientPause || nowMs < retryAt || mc.player == null || mc.level == null) return;
         if (!InventorySync.ready() || PhysicalJournalRuntime.inspecting()) return;
         if (status.equals("PAUSED_NAVIGATION_PHYSICAL_UNCERTAINTY")

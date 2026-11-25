@@ -468,3 +468,30 @@ export function useLogout() {
     await qc.refetchQueries({ queryKey: [...keys.auth] });
   };
 }
+
+/** #202: owner-only operational mutations (Rescan / owner-force). UI gates on perms.owner. */
+export function useRescan() {
+  const qc = useQueryClient();
+  return async (stash: string): Promise<{ ok: boolean; rescanId?: string }> => {
+    const res = await api<{ ok: boolean; rescanId?: string }>("/api/v1/rescan", {
+      method: "POST",
+      body: { stash },
+    });
+    await qc.invalidateQueries({ queryKey: [...keys.stashes] });
+    await qc.invalidateQueries({ queryKey: [...keys.operations] });
+    return res;
+  };
+}
+
+export function useOwnerForce() {
+  const qc = useQueryClient();
+  return async (orderId: string, stash?: string): Promise<{ ok: boolean }> => {
+    const res = await api<{ ok: boolean }>(`/api/v1/orders/${orderId}/owner-force`, {
+      method: "POST",
+      body: {},
+    });
+    if (stash) await qc.invalidateQueries({ queryKey: keys.orders(stash) });
+    await qc.invalidateQueries({ queryKey: [...keys.operations] });
+    return res;
+  };
+}

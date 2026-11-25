@@ -148,15 +148,17 @@ export function OrdersPage() {
     return list;
   }, [orders, statusFilter, hideSuperseded, query, perms, auth.data]);
 
-  function act(order: any, action: "cancel" | "force-cancel" | "retry") {
+  function act(order: any, action: "cancel" | "force-cancel" | "retry" | "owner-force") {
     setActionMsg("");
     const verb =
       action === "cancel"
         ? "Request cancel for"
         : action === "force-cancel"
           ? "Force-cancel"
-          : "Retry";
-    const danger = action === "force-cancel";
+          : action === "owner-force"
+            ? "Owner-force"
+            : "Retry";
+    const danger = action === "force-cancel" || action === "owner-force";
     setConfirm({
       title: `${verb} order ${order.id}?`,
       intro:
@@ -164,7 +166,9 @@ export function OrdersPage() {
           ? "A terminal order is retried as a new order with the same lines. The old order stays finished."
           : action === "force-cancel"
             ? "Force-cancel ends the order even if the bot is mid-pack. This cannot be undone."
-            : "The bot is asked to stop work on this order and its reservations are released.",
+            : action === "owner-force"
+              ? "Owner-force terminates the order even with outstanding allocations. The server keeps the abandoned roots in the audit trail. Verify the physical stash manually afterwards."
+              : "The bot is asked to stop work on this order and its reservations are released.",
       changes: [
         `order: ${order.id}`,
         `stash: ${order.stash ?? "?"}`,
@@ -176,7 +180,9 @@ export function OrdersPage() {
         const path =
           action === "retry"
             ? `/api/v1/orders/${order.id}/retry`
-            : `/api/v1/orders/${order.id}/${action}`;
+            : action === "owner-force"
+              ? `/api/v1/orders/${order.id}/owner-force`
+              : `/api/v1/orders/${order.id}/${action}`;
         const res = await api<{ ok: boolean; order?: any }>(path, {
           method: "POST",
           body: {},
@@ -508,6 +514,7 @@ export function OrdersPage() {
         onClose={() => setDetail(null)}
         canChange={canChange}
         canAudit={perms.can("ordersAll") || perms.owner}
+        isOwner={perms.owner}
         onAction={act}
       />
       {confirm && (
@@ -535,13 +542,15 @@ function OrderDialog({
   onClose,
   canChange,
   canAudit,
+  isOwner,
   onAction,
 }: {
   order: any | null;
   onClose: () => void;
   canChange: boolean;
   canAudit: boolean;
-  onAction: (o: any, a: "cancel" | "force-cancel" | "retry") => void;
+  isOwner: boolean;
+  onAction: (o: any, a: "cancel" | "force-cancel" | "retry" | "owner-force") => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [audit, setAudit] = useState<any[] | null>(null);
@@ -573,7 +582,7 @@ function OrderDialog({
   const retryable = ui.retryable;
   const lines: any[] = order.lines ?? [];
 
-  async function run(action: "cancel" | "force-cancel" | "retry") {
+  async function run(action: "cancel" | "force-cancel" | "retry" | "owner-force") {
     setBusy(true);
     try {
       await onAction(order, action);
@@ -781,6 +790,17 @@ function OrderDialog({
             onClick={() => run("retry")}
           >
             Retry as new order
+          </Button>
+        )}
+        {isOwner && (
+          <Button
+            color="error"
+            variant="outlined"
+            disabled={busy}
+            onClick={() => run("owner-force")}
+            title="Owner-force terminates the order even with outstanding allocations. Verify the stash manually afterwards."
+          >
+            Owner-force
           </Button>
         )}
         <Button onClick={onClose}>Close</Button>

@@ -83,6 +83,14 @@ final class StockLedger {
         this.maxAge = maxAge;
         Files.createDirectories(data);
         file = data.resolve("guild.sqlite");
+        // #203: Data/orders/*.json are legacy import inputs, not live mirrors. Warn loudly
+        // so humans/tools never read order truth from them; guild.sqlite order_books is authoritative.
+        try (var ordersDir = Files.list(data.resolve("orders"))) {
+            if (ordersDir.filter(p -> p.getFileName().toString().endsWith(".json")).findAny().isPresent())
+                System.err.println(
+                        "WARNING: Data/orders/*.json are legacy import inputs and are ignored — authoritative orders live in guild.sqlite order_books. See INCIDENT-RECOVERY.md.");
+        } catch (java.nio.file.NoSuchFileException ignored) {
+        }
         for (String suffix : List.of("", "-wal", "-shm"))
             if (Files.isSymbolicLink(Path.of(file + suffix))) throw new IOException("Symlink guild database");
         boolean existed = Files.exists(file);
@@ -253,6 +261,13 @@ final class StockLedger {
         long seconds = Long.parseLong(value);
         if (seconds < 1 || seconds > 86400)
             throw new IllegalArgumentException("WESORT_STOCK_MAX_AGE_SECONDS must be 1..86400");
+        // Steady-state invariant from #201: TTL must stay well above the client survey
+        // floor (SurveyBatch.MIN_INTERVAL_MS = 60s). Below ~4x the floor a full pass over
+        // 69 containers plus one retry can never catch up and staleStock latches permanently.
+        if (seconds * 1000 < 4 * 60_000)
+            System.err.println(
+                    "WARNING: WESORT_STOCK_MAX_AGE_SECONDS=" + seconds
+                            + " is below 4x the survey floor (60s): steady-state freshness is impossible, see #201.");
         return seconds * 1000;
     }
 

@@ -130,6 +130,8 @@ export interface OrderBody {
   purpose: "SELF" | "GUILD";
   recipient: string | null;
   comment: string | null;
+  /** #202: explicit opt-in to queue against last-verified stock when stale. Never default-on. */
+  queueWhenStale?: boolean;
 }
 
 export interface CheckoutGroup {
@@ -170,6 +172,7 @@ const CheckoutGroupSchema = z.object({
     purpose: z.enum(["SELF", "GUILD"]),
     recipient: z.string().nullable(),
     comment: z.string().nullable(),
+    queueWhenStale: z.boolean().optional(),
   }),
   hash: z.string(),
   key: z.string(),

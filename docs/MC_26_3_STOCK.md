@@ -30,7 +30,8 @@ så en redan pågående korrekt serveravläsning kan fortfarande slutföras.
 
 ## Färskhet och saldo
 
-`WESORT_STOCK_MAX_AGE_SECONDS` har standardvärdet 300 och tillåter 1–86400.
+`WESORT_STOCK_MAX_AGE_SECONDS` har standardvärdet 1800 och tillåter 1–86400.
+Håll TTL minst 4x survey-golvet (60 s, se #201): under ~240 s är steady-state omöjlig.
 Manager använder den tidigaste av egen mottagningstid och klientens pakettid.
 För gammal tid, bakåtgående Manager-klocka och omstart stänger tillgängligheten.
 En felställd klientklocka kan därför kräva ny avläsning men inte förlänga TTL.

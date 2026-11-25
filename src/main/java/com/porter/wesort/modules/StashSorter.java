@@ -6433,7 +6433,8 @@ public class StashSorter extends Module {
     /** The WeSort UUID carried by a shulker name, or null. */
     private static String uuidOf(ItemStack stack) {
         var custom = stack.get(DataComponents.CUSTOM_NAME);
-        if (custom == null || !custom.equals(net.minecraft.network.chat.Component.literal(custom.getString()))) return null;
+        if (custom == null || !custom.equals(net.minecraft.network.chat.Component.literal(custom.getString())))
+            return null;
         java.util.UUID uuid = ShulkerUuid.parse(custom.getString());
         return uuid == null ? null : uuid.toString();
     }

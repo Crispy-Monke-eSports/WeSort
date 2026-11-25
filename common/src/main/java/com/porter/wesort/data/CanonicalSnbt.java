@@ -19,10 +19,11 @@ public final class CanonicalSnbt {
     private static final Pattern WORD = Pattern.compile("[A-Za-z0-9_+.-]+");
     private static final String DEC = "(?:0|[1-9](?:_*[0-9])*)";
     private static final String DIGITS = "[0-9](?:_*[0-9])*";
-    private static final Pattern DECIMAL = Pattern.compile("([+-]?(?:" + DIGITS + "(?:\\.(?:" + DIGITS
-            + ")?)?|\\." + DIGITS + ")(?:[eE][+-]?" + DIGITS + ")?)([fFdD]?)");
+    private static final Pattern DECIMAL = Pattern.compile("([+-]?(?:" + DIGITS + "(?:\\.(?:" + DIGITS + ")?)?|\\."
+            + DIGITS + ")(?:[eE][+-]?" + DIGITS + ")?)([fFdD]?)");
     private static final Pattern INTEGER = Pattern.compile("([+-]?)(" + DEC + ")([sSuU]?[bBsSiIlL])?");
-    private static final Pattern HEX = Pattern.compile("([+-]?)0[xX]([0-9a-fA-F](?:_*[0-9a-fA-F])*)([sSuU][bBsSiIlL]|[sSiIlL])?");
+    private static final Pattern HEX =
+            Pattern.compile("([+-]?)0[xX]([0-9a-fA-F](?:_*[0-9a-fA-F])*)([sSuU][bBsSiIlL]|[sSiIlL])?");
     private static final Pattern BINARY = Pattern.compile("([+-]?)0[bB]([01](?:_*[01])*)([sSuU]?[bBsSiIlL])?");
 
     private CanonicalSnbt() {}
@@ -56,7 +57,12 @@ public final class CanonicalSnbt {
     }
 
     public enum Type {
-        BYTE(8, "b"), SHORT(16, "s"), INT(32, ""), LONG(64, "L"), FLOAT(0, "f"), DOUBLE(0, "d");
+        BYTE(8, "b"),
+        SHORT(16, "s"),
+        INT(32, ""),
+        LONG(64, "L"),
+        FLOAT(0, "f"),
+        DOUBLE(0, "d");
 
         private final int bits;
         private final String suffix;
@@ -95,11 +101,9 @@ public final class CanonicalSnbt {
 
     public record ArrayTag(Type type, List<NumberTag> values) implements Value {
         public ArrayTag {
-            if (type != Type.BYTE && type != Type.INT && type != Type.LONG)
-                throw invalid("Invalid typed array");
+            if (type != Type.BYTE && type != Type.INT && type != Type.LONG) throw invalid("Invalid typed array");
             values = List.copyOf(values);
-            for (NumberTag n : values)
-                if (n.type != type) throw invalid("Array element type mismatch");
+            for (NumberTag n : values) if (n.type != type) throw invalid("Array element type mismatch");
         }
     }
 
@@ -169,12 +173,15 @@ public final class CanonicalSnbt {
             case Text s -> quote(s.value, out);
             case NumberTag n -> out.append(n.value).append(n.type.suffix);
             case ArrayTag a -> {
-                out.append('[').append(switch (a.type) {
-                    case BYTE -> 'B';
-                    case INT -> 'I';
-                    case LONG -> 'L';
-                    default -> throw invalid("Invalid array type");
-                }).append(';');
+                out.append('[')
+                        .append(
+                                switch (a.type) {
+                                    case BYTE -> 'B';
+                                    case INT -> 'I';
+                                    case LONG -> 'L';
+                                    default -> throw invalid("Invalid array type");
+                                })
+                        .append(';');
                 boolean first = true;
                 for (NumberTag n : a.values) {
                     if (!first) out.append(',');
@@ -336,8 +343,10 @@ public final class CanonicalSnbt {
                     UUID uuid = UUID.fromString(s.value);
                     if (!uuid.toString().equalsIgnoreCase(s.value)) throw invalid("Invalid UUID");
                     long hi = uuid.getMostSignificantBits(), lo = uuid.getLeastSignificantBits();
-                    return new ArrayTag(Type.INT, List.of(
-                            intTag((int) (hi >>> 32)), intTag((int) hi), intTag((int) (lo >>> 32)), intTag((int) lo)));
+                    return new ArrayTag(
+                            Type.INT,
+                            List.of(intTag((int) (hi >>> 32)), intTag((int) hi), intTag((int) (lo >>> 32)), intTag((int)
+                                    lo)));
                 }
                 throw invalid("Invalid SNBT operation argument");
             }
@@ -402,8 +411,13 @@ public final class CanonicalSnbt {
             int start = at;
             while (at < in.length()) {
                 char c = in.charAt(at);
-                if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
-                        || (c >= '0' && c <= '9') || c == '_' || c == '+' || c == '-' || c == '.') at++;
+                if ((c >= 'A' && c <= 'Z')
+                        || (c >= 'a' && c <= 'z')
+                        || (c >= '0' && c <= '9')
+                        || c == '_'
+                        || c == '+'
+                        || c == '-'
+                        || c == '.') at++;
                 else break;
             }
             if (start == at) throw invalid("Expected SNBT token at " + at);
@@ -466,8 +480,7 @@ public final class CanonicalSnbt {
     }
 
     private static void appendCodePoint(StringBuilder s, int c) {
-        if (!Character.isValidCodePoint(c) || c >= 0xd800 && c <= 0xdfff)
-            throw invalid("Invalid Unicode code point");
+        if (!Character.isValidCodePoint(c) || c >= 0xd800 && c <= 0xdfff) throw invalid("Invalid Unicode code point");
         s.appendCodePoint(c);
     }
 

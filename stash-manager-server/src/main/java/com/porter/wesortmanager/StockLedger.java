@@ -470,8 +470,9 @@ final class StockLedger {
                     throw new IllegalArgumentException("Expected SNBT-only physical observation");
                 if (!state.equals("FRESH") && !source.get("snbt").isJsonNull())
                     throw new IllegalArgumentException("Unverified source cannot publish new SNBT");
-                if (state.equals("FRESH") && (!source.get("snbt").isJsonPrimitive()
-                        || !source.get("snbt").getAsJsonPrimitive().isString()))
+                if (state.equals("FRESH")
+                        && (!source.get("snbt").isJsonPrimitive()
+                                || !source.get("snbt").getAsJsonPrimitive().isString()))
                     throw new IllegalArgumentException("Fresh source requires canonical SNBT");
             }
             if (version >= 2 && state.equals("FRESH")) {
@@ -796,7 +797,8 @@ final class StockLedger {
                         throw new IllegalArgumentException("Persisted snapshot digest mismatch");
                     return snapshot;
                 } catch (RuntimeException invalid) {
-                    throw new IOException("Invalid or unsupported persisted physical SNBT; clean data or restore required", invalid);
+                    throw new IOException(
+                            "Invalid or unsupported persisted physical SNBT; clean data or restore required", invalid);
                 }
             }
         }
@@ -822,7 +824,8 @@ final class StockLedger {
                 try (var r = p.executeQuery()) {
                     if (r.next()) {
                         var metadata = JsonParser.parseString(r.getString(1)).getAsJsonObject();
-                        if (metadata.has("slotFingerprint")) fingerprint = metadata.get("slotFingerprint").getAsString();
+                        if (metadata.has("slotFingerprint"))
+                            fingerprint = metadata.get("slotFingerprint").getAsString();
                     }
                 }
             }

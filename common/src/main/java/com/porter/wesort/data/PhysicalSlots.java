@@ -68,9 +68,17 @@ public final class PhysicalSlots {
                     || kind == Kind.SHULKER && size != 27)
                 throw new IllegalArgumentException("Invalid physical container shape");
             this.contents = ordered(contents, size);
-            fingerprint = CanonicalSnbt.fingerprint("physical-item", new CanonicalSnbt.Sequence(List.of(
-                    text(id), text(key), text(this.group), integerTag(maxStack), patch, text(kind.name()), integerTag(size),
-                    slotIdentities(this.contents))));
+            fingerprint = CanonicalSnbt.fingerprint(
+                    "physical-item",
+                    new CanonicalSnbt.Sequence(List.of(
+                            text(id),
+                            text(key),
+                            text(this.group),
+                            integerTag(maxStack),
+                            patch,
+                            text(kind.name()),
+                            integerTag(size),
+                            slotIdentities(this.contents))));
         }
 
         public String id() {
@@ -390,7 +398,8 @@ public final class PhysicalSlots {
     }
 
     private static List<Slot> decodeSlots(CanonicalSnbt.Value value, int depth, int[] nodes) {
-        if (!(value instanceof CanonicalSnbt.Sequence list) || list.values().size() > 256
+        if (!(value instanceof CanonicalSnbt.Sequence list)
+                || list.values().size() > 256
                 || (depth > MAX_DEPTH && !list.values().isEmpty()))
             throw new IllegalArgumentException("Invalid SNBT slot sequence");
         List<Slot> slots = new ArrayList<>();
@@ -431,8 +440,7 @@ public final class PhysicalSlots {
     }
 
     private static String textValue(CanonicalSnbt.Value value) {
-        if (!(value instanceof CanonicalSnbt.Text text))
-            throw new IllegalArgumentException("Expected string tag");
+        if (!(value instanceof CanonicalSnbt.Text text)) throw new IllegalArgumentException("Expected string tag");
         return text.value();
     }
 

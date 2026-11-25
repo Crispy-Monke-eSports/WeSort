@@ -38,8 +38,7 @@ public record SourceContribution(
 
     /** Delta of selectable counts from {@code old} to {@code next} (same source). */
     public static Map<String, Long> selectableDelta(SourceContribution old, SourceContribution next) {
-        if (!old.sourceId().equals(next.sourceId()))
-            throw new IllegalArgumentException("delta across sources");
+        if (!old.sourceId().equals(next.sourceId())) throw new IllegalArgumentException("delta across sources");
         var delta = new java.util.HashMap<String, Long>();
         for (var e : old.selectable().entrySet()) delta.merge(e.getKey(), -e.getValue(), Math::addExact);
         for (var e : next.selectable().entrySet()) delta.merge(e.getKey(), e.getValue(), Math::addExact);

@@ -73,7 +73,8 @@ class ShulkerUuidTest {
         String snbt = "{id:\"minecraft:shulker_box\",components:{\"minecraft:custom_name\":\"WeSort-" + V4 + "\"}}";
         assertEquals(UUID.fromString(V4), ShulkerUuid.boxUuidFromSnbt(snbt));
         assertNull(ShulkerUuid.boxUuidFromSnbt("{id:\"minecraft:stone\",components:{}}"));
-        assertNull(ShulkerUuid.boxUuidFromSnbt("{id:\"minecraft:shulker_box\",components:{\"minecraft:custom_name\":\"Beställning\"}}"));
+        assertNull(ShulkerUuid.boxUuidFromSnbt(
+                "{id:\"minecraft:shulker_box\",components:{\"minecraft:custom_name\":\"Beställning\"}}"));
         assertNull(ShulkerUuid.boxUuidFromSnbt("not snbt {{{"));
     }
 

@@ -8,6 +8,14 @@ import org.junit.jupiter.api.Test;
 
 class PlacedShulkerRecoveryTest {
     @Test
+    void rejectedDepositCanBeReplannedOnlyWithUnchangedInventories() {
+        assertTrue(PlacedShulkerRecovery.depositUnchanged(true, 2, 2));
+        assertFalse(PlacedShulkerRecovery.depositUnchanged(true, -1, -1));
+        assertFalse(PlacedShulkerRecovery.depositUnchanged(false, 2, 2));
+        assertFalse(PlacedShulkerRecovery.depositUnchanged(true, 2, 3));
+    }
+
+    @Test
     void pickupCanFollowAnExistingCopyInInventoryOrder() {
         assertEquals(7, PlacedShulkerRecovery.pickupSlot(List.of(2, 7), Set.of(2), 1));
         assertEquals(7, PlacedShulkerRecovery.pickupSlot(List.of(7, 2), Set.of(2), 1));

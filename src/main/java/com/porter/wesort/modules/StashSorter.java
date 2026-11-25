@@ -896,6 +896,7 @@ public class StashSorter extends Module {
     private final Set<Box> failedSurvey = new HashSet<>();
     // When each of them is tried again: 1 min, 2 min, then every 5 min
     private final com.porter.wesort.utils.SurveyRetry<Box> surveyRetry = new com.porter.wesort.utils.SurveyRetry<>();
+    private final com.porter.wesort.utils.SurveyRetry<Box> returnRetry = new com.porter.wesort.utils.SurveyRetry<>();
     private final com.porter.wesort.utils.WalkProgress walkProgress = new com.porter.wesort.utils.WalkProgress();
 
     // Carried stacks nothing has room for right now: slot to item id, left out of the plans until something changes
@@ -3761,7 +3762,7 @@ public class StashSorter extends Module {
             ItemStack stack = pending.stack();
             plan();
             home = nearest(destinationsFor(stack).stream()
-                    .filter(b -> returnable(b, stack) && b.sortable())
+                    .filter(b -> returnable(b, stack) && b.sortable() && !returnRetry.waiting(b, ticks))
                     .toList());
             if (home == null)
                 home = nearest(stash.boxes.stream()
@@ -3773,6 +3774,7 @@ public class StashSorter extends Module {
                                 && !b.dropOff
                                 && !isKitBox(b)
                                 && !blocked(b, Job.Return)
+                                && !returnRetry.waiting(b, ticks)
                                 && (!b.known() || b.stale || roomFor(b, stack)))
                         .toList());
         }
@@ -3800,11 +3802,23 @@ public class StashSorter extends Module {
             if (ItemStack.isSameItemSameComponents(item, expected)) copies += item.getCount();
         if (pending.destination() != null && !target.has(pending.destination())) return false;
         if (PlacedShulkerRecovery.depositConfirmed(held.isEmpty(), pending.before(), copies, expected.getCount())) {
+            returnRetry.clear();
             stash.recoveredBox = null;
             stash.markDirty();
             stash.save();
             return false;
         }
+        if (PlacedShulkerRecovery.depositUnchanged(ItemStack.matches(held, expected), pending.before(), copies)) {
+            // A confirmed read of both inventories proves the attempted transfer had no effect.
+            // Release only its destination, retaining custody of the exact carried box.
+            returnRetry.failOnce(target, ticks);
+            stash.recoveredBox = new Stash.RecoveredBox(pending.slot(), expected, null, -1);
+            stash.markDirty();
+            stash.save();
+            step("Recovered shulker is still carried; choosing another storage container.");
+            return false;
+        }
+        if (returnRetry.waiting(target, ticks)) return false;
         if (!ItemStack.matches(held, expected)
                 || !returnable(target, expected)
                 || !target.sortable()
@@ -11055,6 +11069,7 @@ public class StashSorter extends Module {
         noOpReported.clear();
         failedSurvey.clear();
         surveyRetry.clear();
+        returnRetry.clear();
         unconfirmedRuns.clear();
         closedEarlyReported.clear();
         boxVisits.clear();
@@ -12572,6 +12587,7 @@ public class StashSorter extends Module {
         unreachableReported.clear();
         failedSurvey.clear();
         surveyRetry.clear();
+        returnRetry.clear();
         futile.clear();
         noOpReported.clear();
         cancelRetries.clear();

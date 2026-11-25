@@ -28,6 +28,10 @@ public final class PlacedShulkerRecovery {
         return found;
     }
 
+    public static boolean depositUnchanged(boolean exactStackStillHeld, int before, int after) {
+        return exactStackStillHeld && before >= 0 && after == before;
+    }
+
     public static boolean depositConfirmed(boolean carrySlotEmpty, int before, int after, int carried) {
         return carrySlotEmpty && before >= 0 && carried > 0 && after == before + carried;
     }

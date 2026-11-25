@@ -273,7 +273,11 @@ class UsersTest {
         String owner = owner();
         defineOrderStashes(owner);
         String memberId = create(owner, "Maker", "member", false);
-        String officerId = create(owner, "Officer", "{\"view\":true,\"order\":true,\"ordersAll\":true,\"activity\":true,\"guildOrders\":true}", false);
+        String officerId = create(
+                owner,
+                "Officer",
+                "{\"view\":true,\"order\":true,\"ordersAll\":true,\"activity\":true,\"guildOrders\":true}",
+                false);
         create(owner, "Reader", "{\"view\":true}", false);
         String member = login("Maker", TEMP_PW);
         String officer = login("Officer", TEMP_PW);
@@ -420,7 +424,11 @@ class UsersTest {
     void guildApprovalIsOptionalScopedAndKeepsStockReservedBeforeClaim() throws Exception {
         String owner = owner();
         defineOrderStashes(owner);
-        create(owner, "Officer", "{\"view\":true,\"order\":true,\"ordersAll\":true,\"activity\":true,\"guildOrders\":true}", false);
+        create(
+                owner,
+                "Officer",
+                "{\"view\":true,\"order\":true,\"ordersAll\":true,\"activity\":true,\"guildOrders\":true}",
+                false);
         create(owner, "Builder", "member", false);
         String member = login("Builder", TEMP_PW);
         String officer = login("Officer", TEMP_PW);
@@ -650,7 +658,11 @@ class UsersTest {
         String owner = owner();
         defineOrderStashes(owner);
         String ownerOrder = placeOrder(owner, "a", "minecraft:diamond", 10);
-        create(owner, "dave", "{\"view\":true,\"order\":true,\"ordersAll\":true,\"activity\":true,\"settings\":true,\"rescan\":true}", false);
+        create(
+                owner,
+                "dave",
+                "{\"view\":true,\"order\":true,\"ordersAll\":true,\"activity\":true,\"settings\":true,\"rescan\":true}",
+                false);
         String d = login("dave", TEMP_PW);
         assertEquals(200, post(d, "/api/v1/orders/" + ownerOrder + "/cancel", null).status);
         assertEquals(200, post(d, "/api/v1/orders/clear", "{\"stash\":\"a\"}").status);

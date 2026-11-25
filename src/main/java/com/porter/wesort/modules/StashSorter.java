@@ -2657,7 +2657,9 @@ public class StashSorter extends Module {
     private void walkXZ(int x, int z) {
         if (!BARITONE) return;
         // #197: column walks also wait for a loaded cell instead of pathing blind.
-        if (mc.level == null || !mc.level.isLoaded(new BlockPos(x, mc.player == null ? 64 : mc.player.blockPosition().getY(), z))) {
+        if (mc.level == null
+                || !mc.level.isLoaded(new BlockPos(
+                        x, mc.player == null ? 64 : mc.player.blockPosition().getY(), z))) {
             gateLogThrottled("waiting for chunks: unloaded column " + x + ", " + z);
             return;
         }

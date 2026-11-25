@@ -189,6 +189,15 @@ final class StockLedger {
                             "CREATE TABLE IF NOT EXISTS slot_projection(source_id TEXT NOT NULL,snapshot_ref TEXT NOT NULL,logical_path TEXT NOT NULL,parent_path TEXT NOT NULL,variant_id INTEGER NOT NULL REFERENCES variant_register(variant_id),count INTEGER NOT NULL,copies INTEGER NOT NULL,slot_fingerprint TEXT NOT NULL,content_revision INTEGER NOT NULL,present INTEGER NOT NULL CHECK(present IN (0,1)),PRIMARY KEY(source_id,logical_path))");
                     s.execute(
                             "CREATE TABLE IF NOT EXISTS shulker_identity(uuid TEXT PRIMARY KEY,status TEXT NOT NULL,source TEXT NOT NULL,slot_path TEXT NOT NULL,current_snapshot_ref TEXT,current_revision INTEGER NOT NULL,registration_proof TEXT NOT NULL,export_receipt TEXT)");
+                    // PR5 (#44/#140: transaktionell affärsaudit + outbox, additiv).
+                    // Security-audit (login) stannar i AuditLog; affärshändelser
+                    // (order/job/package/custody/lease/reconciliation) hör hemma
+                    // här i samma SQLite-tx som dispositionen, aldrig i audit.json.
+                    s.execute(
+                            "CREATE TABLE IF NOT EXISTS business_audit(seq INTEGER PRIMARY KEY AUTOINCREMENT,at INTEGER NOT NULL,actor_id TEXT NOT NULL,actor_name TEXT NOT NULL,action TEXT NOT NULL,order_id TEXT,job_id TEXT,package_id TEXT,correlation_id TEXT,detail TEXT NOT NULL,server TEXT,stash TEXT)");
+                    s.execute("CREATE INDEX IF NOT EXISTS business_audit_order ON business_audit(order_id)");
+                    s.execute("CREATE INDEX IF NOT EXISTS business_audit_time ON business_audit(at)");
+                    s.execute("CREATE INDEX IF NOT EXISTS business_audit_correlation ON business_audit(correlation_id)");
                     s.execute("PRAGMA user_version=9");
                     var interruptedServers = new ArrayList<String>();
                     try (var leases = s.executeQuery("SELECT server FROM automation_leases WHERE state='ACTIVE'")) {

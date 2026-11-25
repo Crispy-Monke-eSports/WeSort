@@ -54,6 +54,11 @@ final class JobScheduler {
         this(data, clock, clock);
     }
 
+    /** PR5 (#142/#35): Clock-based wiring (wall + monotonic in one). */
+    JobScheduler(Path data, Clock clock) throws IOException {
+        this(data, clock::millis, clock::nano);
+    }
+
     JobScheduler(Path data, LongSupplier clock, LongSupplier leaseClock) throws IOException {
         this.clock = clock;
         this.leaseClock = leaseClock;

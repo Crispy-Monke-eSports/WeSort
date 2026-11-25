@@ -22,6 +22,11 @@ final class BoxJobs {
         this(ledger, System::currentTimeMillis);
     }
 
+    /** PR5 (#142/#35): Clock-based wiring. */
+    BoxJobs(StockLedger ledger, Clock clock) throws IOException {
+        this(ledger, clock::millis);
+    }
+
     BoxJobs(StockLedger ledger, LongSupplier clock) throws IOException {
         this.ledger = ledger;
         this.clock = clock;

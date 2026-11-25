@@ -55,6 +55,22 @@ final class Handoffs {
         } catch (RuntimeException invalid) {
             throw new IOException("Cannot read handoffs", invalid);
         }
+        // PR5 (#45): restart fence like JobScheduler/BoxJobs — an in-person
+        // handoff that never completed cannot survive a Manager restart as
+        // "awaiting": fence it until the owner reconciles (return or redeliver).
+        // Terminal states (DELIVERED/RETURNED/NO_SHOW/NEEDS_RECONCILIATION) pass through.
+        boolean fenced = false;
+        for (var id : new java.util.ArrayList<>(handoffs.keySet())) {
+            var entry = handoffs.get(id);
+            if (entry.handoff().state() == Handoff.State.AWAITING_RECIPIENT) {
+                var next = entry.handoff().advance(Handoff.State.NEEDS_RECONCILIATION, "system");
+                var events = entry.events().deepCopy();
+                events.add(event("MANAGER_RESTART_FENCE", "system"));
+                handoffs.put(id, new Entry(next, events));
+                fenced = true;
+            }
+        }
+        if (fenced) save(new LinkedHashMap<>(handoffs));
     }
 
     synchronized Handoff schedule(String orderId, String recipient, String meetingPoint, String agent)

@@ -69,6 +69,15 @@ class ShulkerUuidTest {
     }
 
     @Test
+    void extractsUuidFromCanonicalSnbt() {
+        String snbt = "{id:\"minecraft:shulker_box\",components:{\"minecraft:custom_name\":\"WeSort-" + V4 + "\"}}";
+        assertEquals(UUID.fromString(V4), ShulkerUuid.boxUuidFromSnbt(snbt));
+        assertNull(ShulkerUuid.boxUuidFromSnbt("{id:\"minecraft:stone\",components:{}}"));
+        assertNull(ShulkerUuid.boxUuidFromSnbt("{id:\"minecraft:shulker_box\",components:{\"minecraft:custom_name\":\"Beställning\"}}"));
+        assertNull(ShulkerUuid.boxUuidFromSnbt("not snbt {{{"));
+    }
+
+    @Test
     void ignoresMissingStyledOrForeignNames() {
         assertNull(ShulkerUuid.customName("{\"type\":10,\"value\":{}}"));
         // A foreign literal is a name, not a UUID.

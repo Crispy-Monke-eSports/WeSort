@@ -109,4 +109,21 @@ class HandoffsTest {
         assertEquals(
                 Handoff.State.AWAITING_RECIPIENT, handoffs.retry(h.id(), A1).state());
     }
+
+    @Test
+    void restartFencesAwaitingRecipientUntilOwnerReconciles() throws Exception {
+        var handoffs = new Handoffs(data);
+        var h = handoffs.schedule("o-1", "alice", "meet-1", A1);
+        handoffs.arrive(h.id(), A1);
+        assertEquals(Handoff.State.AWAITING_RECIPIENT, handoffs.get(h.id()).state());
+
+        // A Manager restart cannot prove what happened while disconnected:
+        // fence, never silently keep awaiting or auto-deliver.
+        var restarted = new Handoffs(data);
+        assertEquals(Handoff.State.NEEDS_RECONCILIATION, restarted.get(h.id()).state());
+        assertEquals(
+                Handoff.State.RETURNED,
+                restarted.resolve(h.id(), Handoff.State.RETURNED, "owner").state());
+        assertEquals(Handoff.State.RETURNED, new Handoffs(data).get(h.id()).state());
+    }
 }

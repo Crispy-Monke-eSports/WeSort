@@ -88,6 +88,30 @@ public final class ShulkerUuid {
         return name == null ? null : parse(name);
     }
 
+    /**
+     * PR5 (#229): UUID lookup from canonical SNBT item text.
+     *
+     * <p>Parses the SNBT item compound strictly, extracts
+     * {@code components."minecraft:custom_name"} as a typed SNBT string, and
+     * returns its UUID. The SNBT text form carries the same bare plain-text
+     * rule as {@link #customName(String)}: styled/compound names do not count.
+     * Returns {@code null} for any non-conforming input (fail-closed).
+     */
+    public static UUID boxUuidFromSnbt(String snbtItem) {
+        if (snbtItem == null || snbtItem.isBlank()) return null;
+        try {
+            var tag = com.porter.wesort.snbt.SnbtCodec.parse(snbtItem);
+            if (!(tag instanceof com.porter.wesort.snbt.SnbtCodec.TCompound root)) return null;
+            var components = root.value().get("components");
+            if (!(components instanceof com.porter.wesort.snbt.SnbtCodec.TCompound comp)) return null;
+            var custom = comp.value().get(CUSTOM_NAME);
+            if (!(custom instanceof com.porter.wesort.snbt.SnbtCodec.TString s)) return null;
+            return parse(s.value());
+        } catch (RuntimeException invalid) {
+            return null;
+        }
+    }
+
     public static JsonObject identity(String componentsJson) {
         String name = customName(componentsJson);
         UUID uuid = name == null ? null : parse(name);

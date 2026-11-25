@@ -391,9 +391,11 @@ format characters and broken surrogates, and stores the label plus the
 frozen `packageTotal` on the order. Full names are generated on the server
 (`Order.generatedNames()`), never from free client formatting; the client
 cannot replace the prefix or renumber boxes. Legacy orders using
-`names.all|each` remain readable unchanged. The anvil rename becomes a
-precondition for `PICKUP_READY` in the new flow; a failed rename never
-delivers an unmarked box.
+`names.all|each` remain readable unchanged. The anvil rename is best-effort:
+the agent reports boxes it could not name (`unnamedNote`: no anvil set, not
+enough XP), and `PICKUP_READY` is gated on staged lines, the frozen package
+total and a settled journal — not on the names. Unmarked boxes are flagged in
+the delivery report, never silently passed off as marked.
 
 ## 6b6t navigation and delivery boundary
 

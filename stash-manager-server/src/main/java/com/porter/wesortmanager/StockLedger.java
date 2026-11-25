@@ -972,20 +972,22 @@ final class StockLedger {
             throws SQLException {
         Set<String> seen = new HashSet<>();
         for (var boxes : fresh.values()) seen.addAll(boxes.keySet());
-        try (var read = c.prepareStatement("SELECT uuid,source,status FROM box_uuids WHERE server=?")) {
+        try (var read = c.prepareStatement("SELECT uuid,source,path,status FROM box_uuids WHERE server=?")) {
             read.setString(1, server);
             try (var rows = read.executeQuery()) {
                 while (rows.next()) {
                     String uuid = rows.getString(1);
                     if (seen.contains(uuid)) continue;
                     if (!fresh.containsKey(rows.getString(2))) continue;
+                    // #67: history must point at the real source/path (verified slot
+                    // revision); the old call passed uuid/source-id in those columns.
                     deregisterInTx(
                             c,
                             server,
                             uuid,
-                            rows.getString(3),
-                            rows.getString(1),
+                            rows.getString(4),
                             rows.getString(2),
+                            rows.getString(3),
                             "VANISHED",
                             revision,
                             now);

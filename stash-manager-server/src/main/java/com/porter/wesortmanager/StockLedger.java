@@ -1116,9 +1116,6 @@ final class StockLedger {
             try (var rows = slots.executeQuery()) {
                 while (rows.next()) {
                     String name = ShulkerUuid.customName(rows.getString(3));
-                    if (name == null
-                            || !name.strip().regionMatches(true, 0, ShulkerUuid.PREFIX, 0, ShulkerUuid.PREFIX.length()))
-                        continue;
                     var root = new PhysicalReservations.Root(rows.getString(1), rows.getString(2));
                     UUID uuid = ShulkerUuid.parse(name);
                     if (uuid == null) {

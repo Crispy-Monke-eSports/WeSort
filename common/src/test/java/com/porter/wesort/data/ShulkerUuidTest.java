@@ -17,8 +17,8 @@ class ShulkerUuidTest {
     }
 
     @Test
-    void automaticRepackingDoesNotDependOnSignsButProtectsHumanLabels() {
-        assertTrue(ShulkerUuid.repackableName(null)); // unnamed spare shulkers
+    void automaticRepackingRequiresValidIdentity() {
+        assertFalse(ShulkerUuid.repackableName(null));
         assertTrue(ShulkerUuid.repackableName("WeSort-" + V4));
         assertFalse(ShulkerUuid.repackableName("My private stash"));
         assertFalse(ShulkerUuid.repackableName("WeSort-not-a-valid-uuid"));
@@ -26,13 +26,13 @@ class ShulkerUuidTest {
     }
 
     @Test
-    void automaticNamingPreservesHumanLabelsAndUniqueUuid() {
+    void automaticNamingCoversAllUnregisteredNamesAndDuplicates() {
         var duplicates = java.util.Set.of(V4);
         assertTrue(ShulkerUuid.needsAutomaticName(null, duplicates));
         assertTrue(ShulkerUuid.needsAutomaticName("WeSort-" + V4, duplicates));
         assertFalse(ShulkerUuid.needsAutomaticName("WeSort-" + V4, java.util.Set.of()));
-        assertFalse(ShulkerUuid.needsAutomaticName("WeSort-not-a-uuid", duplicates));
-        assertFalse(ShulkerUuid.needsAutomaticName("My supplies", duplicates));
+        assertTrue(ShulkerUuid.needsAutomaticName("WeSort-not-a-uuid", duplicates));
+        assertTrue(ShulkerUuid.needsAutomaticName("My supplies", duplicates));
     }
 
     @Test

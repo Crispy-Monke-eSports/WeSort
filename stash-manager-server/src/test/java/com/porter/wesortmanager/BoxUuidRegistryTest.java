@@ -153,7 +153,7 @@ class BoxUuidRegistryTest {
         assertTrue(blocked.available(Set.of(), null, true).isEmpty());
         ledger.accept(indexes(ledger, new String[] {"WeSort-" + V4, null, "Personal box"}, new int[] {0, 1, 2}));
         var resolved = PhysicalReservations.read(ledger, "s", "a");
-        assertEquals(64L, resolved.available(Set.of()).get("item:minecraft:diamond"));
+        assertEquals(32L, resolved.available(Set.of()).get("item:minecraft:diamond"));
     }
 
     @Test

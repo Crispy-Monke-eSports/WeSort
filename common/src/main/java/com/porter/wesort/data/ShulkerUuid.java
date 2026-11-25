@@ -43,20 +43,15 @@ public final class ShulkerUuid {
         return parse(name) != null;
     }
 
-    /** Only unnamed boxes or duplicate canonical UUIDs may be automatically named. */
+    /** Every managed box without a valid identity needs intake naming. */
     public static boolean needsAutomaticName(String name, java.util.Set<String> duplicates) {
-        if (name == null) return true;
         UUID uuid = parse(name);
-        return uuid != null && duplicates != null && duplicates.contains(uuid.toString());
+        return uuid == null || (duplicates != null && duplicates.contains(uuid.toString()));
     }
 
-    /**
-     * Only unnamed boxes or boxes named by the WeSort UUID system are eligible
-     * for automatic repacking. A human label (including a malformed WeSort name)
-     * is never overwritten or altered by the optimizer.
-     */
+    /** Repacking must not bypass intake naming. */
     public static boolean repackableName(String name) {
-        return name == null || hasUuid(name);
+        return hasUuid(name);
     }
 
     /** Only a literal native custom_name qualifies; no tooltip or rich-text resolution. */

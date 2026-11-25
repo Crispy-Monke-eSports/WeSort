@@ -197,12 +197,12 @@ final class StockLedger {
                             "CREATE TABLE IF NOT EXISTS business_audit(seq INTEGER PRIMARY KEY AUTOINCREMENT,at INTEGER NOT NULL,actor_id TEXT NOT NULL,actor_name TEXT NOT NULL,action TEXT NOT NULL,order_id TEXT,job_id TEXT,package_id TEXT,correlation_id TEXT,detail TEXT NOT NULL,server TEXT,stash TEXT)");
                     s.execute("CREATE INDEX IF NOT EXISTS business_audit_order ON business_audit(order_id)");
                     s.execute("CREATE INDEX IF NOT EXISTS business_audit_time ON business_audit(at)");
-                    s.execute("CREATE INDEX IF NOT EXISTS business_audit_correlation ON business_audit(correlation_id)");
+                    s.execute(
+                            "CREATE INDEX IF NOT EXISTS business_audit_correlation ON business_audit(correlation_id)");
                     // PR7 (#255, additivt): scoped membership/presence-lookups utan fullscan.
                     s.execute(
                             "CREATE INDEX IF NOT EXISTS stock_members_present ON stock_members(server,stash,present)");
-                    s.execute(
-                            "CREATE INDEX IF NOT EXISTS physical_slots_present ON physical_slots(source,present)");
+                    s.execute("CREATE INDEX IF NOT EXISTS physical_slots_present ON physical_slots(source,present)");
                     s.execute("PRAGMA user_version=9");
                     var interruptedServers = new ArrayList<String>();
                     try (var leases = s.executeQuery("SELECT server FROM automation_leases WHERE state='ACTIVE'")) {

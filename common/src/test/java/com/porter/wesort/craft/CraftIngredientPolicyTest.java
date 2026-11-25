@@ -8,7 +8,8 @@ import org.junit.jupiter.api.Test;
 class CraftIngredientPolicyTest {
     @Test
     void plainStacksAreAllowed() {
-        assertTrue(CraftIngredientPolicy.classify(false, false, false, false, false).allowed());
+        assertTrue(CraftIngredientPolicy.classify(false, false, false, false, false)
+                .allowed());
     }
 
     @Test
@@ -50,8 +51,7 @@ class CraftIngredientPolicyTest {
     @Test
     void cellAllocationRequiresVariantAndLot() {
         assertThrows(
-                IllegalArgumentException.class,
-                () -> new CraftIngredientPolicy.CellAllocation(0, 0, "", "lot-1", 1));
+                IllegalArgumentException.class, () -> new CraftIngredientPolicy.CellAllocation(0, 0, "", "lot-1", 1));
         var cell = new CraftIngredientPolicy.CellAllocation(0, 2, "digest", "lot-1", 3);
         assertEquals(2, cell.cellIndex());
     }

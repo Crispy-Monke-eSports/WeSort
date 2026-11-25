@@ -36,12 +36,12 @@ public final class CraftPlanner {
     /** One recipe run {@code crafts} times. */
     public record Step(Recipes.Recipe recipe, int crafts) {
         public int output() {
-            return crafts * recipe.count();
+            return Math.multiplyExact(crafts, recipe.count());
         }
 
         /** Grid cells filled to do it. */
         public int ops() {
-            return crafts * recipe.filled();
+            return Math.multiplyExact(crafts, recipe.filled());
         }
     }
 
@@ -273,7 +273,7 @@ public final class CraftPlanner {
                     nodes++;
                     addStep(r, crafts);
                     long made = (long) crafts * r.count() - left;
-                    if (made > 0) spare.merge(item, made, Long::sum);
+                    if (made > 0) spare.merge(item, made, Math::addExact);
                     return true;
                 }
                 undo(before);
@@ -300,7 +300,9 @@ public final class CraftPlanner {
             long got = Math.min(have, want);
             if (got > 0) {
                 stock.put(item, have - got);
-                take.merge(item, (int) got, Integer::sum);
+                // PR9 (#232/#268): take stays int-keyed for the wire format; fail
+                // closed instead of silently truncating counts above int range.
+                take.merge(item, Math.toIntExact(got), Math::addExact);
             }
             return Math.max(0, got);
         }

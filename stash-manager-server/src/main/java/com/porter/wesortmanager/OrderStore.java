@@ -1018,6 +1018,26 @@ final class OrderStore {
             o.record("order.auto-cancel-drift", Users.OWNER_ID, now);
             return o;
         }
+        if (previous.status.equals("pending")
+                && previous.approval == Approval.PENDING
+                && previous.claimedAt == 0
+                && previous.stage().allows(OrderStage.CANCELLED)
+                && now - previous.updatedAt > AUTO_CANCEL_AFTER_MS) {
+            // #59: no human can approve. A pending approval that waits forever gates
+            // the shared stock and the single agent's queue, so default-deny releases
+            // cleanly after a bounded wait. Claims always skip PENDING approvals, so
+            // the bot never touched anything; the order must simply be placed again.
+            Order o = Order.fromJson(previous.snapshot());
+            o.approval = Approval.REJECTED;
+            o.decidedBy = Users.OWNER_ID;
+            o.decidedAt = now;
+            o.advance(OrderStage.CANCELLED);
+            o.status = "cancelled";
+            o.message = "cancelled automatically: approval pending too long with no approver; nothing was taken";
+            o.updatedAt = now;
+            o.record("order.approval.auto-reject", Users.OWNER_ID, now);
+            return o;
+        }
         return null;
     }
 

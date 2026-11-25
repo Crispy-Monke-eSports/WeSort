@@ -499,10 +499,36 @@ final class PhysicalOperations {
             throw new IOException("Cannot schedule automatic physical inspection", failure);
         }
         try {
-            if (autoInspections(operation, revision, checksum) >= MAX_AUTO_INSPECT_PER_REVISION) return null;
+            int attempts = autoInspections(operation, revision, checksum);
+            if (attempts >= MAX_AUTO_INSPECT_PER_REVISION
+                    && !autoInspectBackoffElapsed(operation, revision, checksum)) return null;
             return inspect(operation, revision, checksum, "system:self-heal");
         } catch (Conflict changed) {
             return null; // The operation advanced since the readback receipt.
+        }
+    }
+
+    /**
+     * After the per-revision auto-inspect cap, keep trying with a bounded backoff
+     * instead of parking forever (#214): no human can run the manual inspect this
+     * used to wait for. The cap still stops hot minting; the backoff keeps the
+     * automatic way out alive.
+     */
+    private boolean autoInspectBackoffElapsed(String operation, long revision, String checksum) throws IOException {
+        try (var c = ledger.open();
+                var p = c.prepareStatement("SELECT max(issued_at) FROM physical_decisions WHERE operation=? AND revision=? "
+                        + "AND checksum=? AND action='INSPECT' AND manager_run=?")) {
+            p.setString(1, operation);
+            p.setLong(2, revision);
+            p.setString(3, checksum);
+            p.setString(4, ledger.boot());
+            try (var rows = p.executeQuery()) {
+                if (!rows.next()) return true;
+                long last = rows.getLong(1);
+                return rows.wasNull() || clock.getAsLong() - last >= 10 * 60_000;
+            }
+        } catch (SQLException failure) {
+            throw new IOException("Cannot schedule automatic physical inspection", failure);
         }
     }
 

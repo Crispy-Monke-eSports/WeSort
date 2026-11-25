@@ -2136,7 +2136,7 @@ public class StashSorter extends Module {
         if (!repackConflict.isEmpty()) {
             ledgeGuard(false);
             if (surveyWhileBlocked()) return;
-            gateLogThrottled("operator attention: " + repackConflict);
+            gateLogThrottled("blocked on external change: " + repackConflict);
             return;
         }
         // A resume or STORE wait makes no progress behind the recovery gates (the tick

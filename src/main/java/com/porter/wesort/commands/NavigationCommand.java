@@ -7,7 +7,7 @@ import net.minecraft.commands.SharedSuggestionProvider;
 
 public final class NavigationCommand extends Command {
     public NavigationCommand() {
-        super("wesort-navigation", "Inspect, cancel or explicitly resume WeSort navigation after checking the route.");
+        super("wesort-navigation", "Inspect, cancel or explicitly resume WeSort navigation (debug; the agent recovers automatically).");
     }
 
     @Override

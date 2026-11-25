@@ -1,6 +1,6 @@
 # W-020: fysisk containerhierarki i Minecraft 26.3
 
-Klienten stöder endast 26.3 med Java 25; Manager använder Java 21.
+Klienten stöder endast 26.3 med Java 25; Manager använder Java 25.
 `physicalVersion=2` skickar en gemensam variantordlista och glesa rader
 `[slot, variant, count]` per serverbekräftad källa. En shulker har 27 slots,
 även när bara slot 26 är upptagen. Bundles och andra containerkomponenter

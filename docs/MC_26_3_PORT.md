@@ -133,7 +133,7 @@ klient-/addonstart, inte GUI-provet eller en värld; se
 [separat Prism-underlag](verification/W-014-prism-startup.json).
 **Historiskt portningsbevis:** 1.21.4 och 1.21.11 passerade då vardera
 431 tester. Dessa historiska resultat utgör inte stöd för äldre versioner.
-Manager passerade 104 tester med ett känt real-jar-ikonskip på Java 21.
+Manager passerade då 104 tester med ett känt real-jar-ikonskip på Java 21 [historiskt W-055-bevis; idag Java 25].
 W-014:s klientstart ensam godkänner inte fysiska operationer. Senare verkliga
 världsprov, komponenter, slotkvittens, sign-/shulkeroperationer, Baritone och
 26.3-resurser dokumenteras separat i [steg 2](STAGE_2.md). Den genererade

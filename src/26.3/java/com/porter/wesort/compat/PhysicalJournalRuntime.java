@@ -105,11 +105,11 @@ public final class PhysicalJournalRuntime {
         if (waiting < MIRROR_ESCALATION_MS || journal == null) return null;
         return "WAITING_MANAGER_RECEIPT since " + (waiting / 1000) + "s: journal " + journal.id() + " rev "
                 + journal.revision() + " is terminal but the manager receipt is missing; the fence is kept"
-                + " and the completed receipt keeps uploading. Operator: check the manager link/lease, or run"
-                + " a manual reconcile once the manager is reachable.";
+                + " and the completed receipt keeps uploading. The link/lease heals automatically once"
+                + " the manager is reachable again; no manual step can clear a terminal receipt.";
     }
 
-    /** Operator path while the fence is kept: only a genuinely failed readback can reopen recovery. */
+    /** Debug hook while the fence is kept: only a genuinely failed readback can reopen recovery. */
     public static boolean requestManualReconciliation() {
         return InventorySync.requestReconciliation();
     }
@@ -552,14 +552,14 @@ public final class PhysicalJournalRuntime {
         escalationKey = key;
         if (permanentCategory(category))
             escalation = category + " x" + failureCount + " for op " + key
-                    + ": precondition cannot be met, human action required: " + detail;
+                    + ": precondition cannot be met, waiting for the world to change: " + detail;
         else
             escalation = category + " x" + failureCount + " for op " + key
-                    + ": repeated inspection failure, operator attention advised: " + detail;
+                    + ": repeated inspection failure, automatic recovery keeps retrying with backoff: " + detail;
         return escalation;
     }
 
-    /** Clears the human-readable escalation once the operator (or a fresh decision) resolves it. */
+    /** Clears the human-readable escalation once the world changes or a fresh decision resolves it. */
     public static void clearEscalation() {
         escalation = "";
         escalationKey = "";

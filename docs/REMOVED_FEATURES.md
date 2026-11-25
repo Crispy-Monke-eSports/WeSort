@@ -1,4 +1,4 @@
-> **Versionavveckling (26.3-only):** Klientkällor, byggtargets, recipes och Manager-creative-tab-resurser för Minecraft 1.21.4/1.21.11 samt gamla verktyg för att generera dessa versioners assets har avlägsnats. Klienten byggs med Java 25 och endast 26.3; Manager använder fortsatt Java 21. Äldre testresultat i denna fil är historiska och inte supportåtaganden.
+> **Versionavveckling (26.3-only):** Klientkällor, byggtargets, recipes och Manager-creative-tab-resurser för Minecraft 1.21.4/1.21.11 samt gamla verktyg för att generera dessa versioners assets har avlägsnats. Klienten byggs med Java 25 och endast 26.3; Manager använder Java 25. Äldre testresultat i denna fil är historiska och inte supportåtaganden.
 
 # Avgränsningar och borttagningar
 

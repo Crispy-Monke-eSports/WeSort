@@ -217,7 +217,7 @@ signerad lagerfixtur. Fabric-sessioner och fysisk Minecraft-leverans
 verifieras separat i 26.3-proven.
 
 Lokalt slutresultat W-055: Manager 104 tester, 0 fel, 1 känt ikon-skip;
-historiska klienttester för 1.21.4 och 1.21.11: 431 vardera, 0 fel/skips (ej längre stödda). Webbens DOM-/
+[historiskt:] klienttester för 1.21.4 och 1.21.11: 431 vardera, 0 fel/skips (ej längre stödda — endast 26.3 stöds). Webbens DOM-/
 referensregression, Java-process-isolering, actionlint och Compose config
 passerar. Kända rendering-/Minecraft-begränsningar är samma som i steg 0.
 

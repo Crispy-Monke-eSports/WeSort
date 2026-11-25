@@ -275,6 +275,14 @@ public final class IndexStore {
     static final long RESCAN_DEBOUNCE_MS = 5 * 60 * 1000;
 
     /**
+     * An outstanding rescan acknowledgement expires instead of deadlocking the
+     * freshness loop: the bot may be parked behind recovery gates while the
+     * Manager waits for its ack. Longer than the client's re-assert window so a
+     * merely slow pass is never cut off, shorter than any soak.
+     */
+    static final long RESCAN_EXPIRE_SEC = 15 * 60;
+
+    /**
      * Whether a pending rescan suppresses a fresh request: the bot is visibly
      * alive on it, or the request itself is still new.
      */
@@ -747,6 +755,19 @@ public final class IndexStore {
             if (status.hasStorage()) s.storage = status.storage();
             if (status.hasRescanBlocked()) s.rescanBlocked = status.rescanBlocked();
             if (status.rescanDone() > s.rescanDone) s.rescanDone = status.rescanDone();
+            // Scout runda 4: an outstanding rescan with no acknowledgement must expire
+            // instead of deadlocking both sides (the bot waits to finish reading, the
+            // Manager waits for the ack, freshness waits for both). Clearing lets the
+            // stale-burst path below request a fresh, debounced pass if stock is still
+            // stale; the bot's rescanBlocked string keeps flowing every heartbeat.
+            Long stalled = rescanPending(s);
+            if (stalled != null && now / 1000 - stalled > RESCAN_EXPIRE_SEC) {
+                s.rescanDone = stalled;
+                System.err.println("WARNING: rescan for " + stash + " expired after "
+                        + (now / 1000 - stalled)
+                        + "s without acknowledgement (last blocked: " + s.rescanBlocked
+                        + "); pending cleared, a fresh rescan may be requested.");
+            }
             if (stock != null)
                 try {
                     var stale = stock.sources().stream()

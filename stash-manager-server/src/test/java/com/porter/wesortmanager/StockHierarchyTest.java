@@ -20,7 +20,7 @@ class StockHierarchyTest {
                 "minecraft:shulker_box",
                 "minecraft:shulker_box",
                 1,
-                "{}",
+                "{\"minecraft:container\":[{slot:26,item:{id:\"minecraft:diamond\",count:" + count + "}}]}",
                 PhysicalSlots.Kind.SHULKER,
                 27,
                 List.of(new PhysicalSlots.Slot(26, count, diamond)),
@@ -51,11 +51,9 @@ class StockHierarchyTest {
         root.add("items", amounts(frame.totals()));
         root.add("shulkers", amounts(frame.shulkers()));
         root = StockFixtures.physical(root, ledger.epoch(), ledger.revision(), ledger.revision() + 1, 0);
-        var writer = new PhysicalSlots.Writer();
-        source(root).add("slots", writer.slots(frame.slots()));
+        source(root).addProperty("snbt", frame.snbt());
         source(root).addProperty("fingerprint", frame.fingerprint());
-        root.addProperty("physicalVersion", 2);
-        root.add("slotVariants", writer.variants());
+        root.addProperty("physicalVersion", 3);
         return root;
     }
 
@@ -125,6 +123,7 @@ class StockHierarchyTest {
         ledger.accept(original);
         var stale = index(ledger, 1);
         source(stale).addProperty("state", "UNREACHABLE");
+        source(stale).add("snbt", JsonNull.INSTANCE);
         ledger.accept(stale);
         var source = ledger.sources().getFirst();
         assertEquals("UNREACHABLE", source.status());

@@ -187,6 +187,48 @@ final class JobScheduler {
         return advanceTo(jobId, entry, entry.job().advance(outcome, by), "reconciled", by);
     }
 
+    /**
+     * Bounded wait in NEEDS_RECONCILIATION before the manager requeues the job
+     * itself (#213): no human can ever open the owner browser to reconcile, and
+     * one uncertain job blocks the single physical work slot ({@code busy()})
+     * forever.
+     */
+    static final long UNCERTAIN_AUTO_REQUEUE_AFTER_MS = 30 * 60_000;
+
+    /**
+     * Requeues jobs stuck uncertain past the bounded wait, as {@code system}.
+     * The lease is already fenced and chain prerequisites still gate claiming,
+     * so no blind restart of in-flight physical work is possible; the automatic
+     * path only ever yields QUEUED, never COMPLETED (completion needs proof).
+     * Returns human-readable descriptions for logging/audit.
+     */
+    synchronized java.util.List<String> sweepStaleUncertain(long nowMs) throws IOException {
+        expire();
+        var swept = new java.util.ArrayList<String>();
+        for (var id : new java.util.ArrayList<>(jobs.keySet())) {
+            var entry = jobs.get(id);
+            if (entry == null || entry.job().state() != Job.State.NEEDS_RECONCILIATION) continue;
+            if (nowMs - lastEventAt(entry.events()) <= UNCERTAIN_AUTO_REQUEUE_AFTER_MS) continue;
+            var next = entry.job().advance(Job.State.QUEUED, "system");
+            advanceTo(id, entry, next, "auto_reconciled", "system");
+            swept.add("Job " + id + " (" + entry.job().category() + " "
+                    + entry.job().chain()
+                    + ") was uncertain for " + ((nowMs - lastEventAt(entry.events())) / 1000)
+                    + "s; requeued for claiming.");
+        }
+        return swept;
+    }
+
+    private static long lastEventAt(JsonArray events) {
+        long last = 0;
+        for (var e : events) {
+            var o = e.getAsJsonObject();
+            if (o.has("at") && !o.get("at").isJsonNull())
+                last = Math.max(last, o.get("at").getAsLong());
+        }
+        return last;
+    }
+
     synchronized Job get(String jobId) {
         var entry = jobs.get(jobId);
         return entry == null ? null : entry.job();

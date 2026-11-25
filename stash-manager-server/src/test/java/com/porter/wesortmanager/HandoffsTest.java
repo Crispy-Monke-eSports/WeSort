@@ -87,4 +87,25 @@ class HandoffsTest {
                 restarted.resolve(legacy.id(), Handoff.State.RETURNED, "owner").state());
         assertEquals(Handoff.State.RETURNED, new Handoffs(data).get(legacy.id()).state());
     }
+
+    @Test
+    void staleAwaitingRecipientIsRecordedNoShowWithoutFabricatingDelivery() throws Exception {
+        var clock = new java.util.concurrent.atomic.AtomicLong(1_000_000L);
+        var handoffs = new Handoffs(data, clock::get);
+        var h = handoffs.schedule("o-1", "alice", "meet-1", A1);
+        handoffs.arrive(h.id(), A1);
+
+        // A fresh arrival is left alone.
+        assertTrue(handoffs.sweepStaleAwaiting(clock.get()).isEmpty());
+        assertEquals(Handoff.State.AWAITING_RECIPIENT, handoffs.get(h.id()).state());
+
+        // Past the bounded wait with no recipient and no agent report: system
+        // records NO_SHOW (retryable, returnable) — never DELIVERED.
+        clock.addAndGet(Handoffs.AWAITING_NOSHOW_AFTER_MS + 1);
+        var swept = handoffs.sweepStaleAwaiting(clock.get());
+        assertEquals(1, swept.size());
+        assertEquals(Handoff.State.NO_SHOW, handoffs.get(h.id()).state());
+        assertFalse(handoffs.get(h.id()).terminal(), "no-show keeps the cargo held");
+        assertEquals(Handoff.State.AWAITING_RECIPIENT, handoffs.retry(h.id(), A1).state());
+    }
 }

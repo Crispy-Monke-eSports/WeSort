@@ -12,7 +12,7 @@ class KitTemplateTest {
                 "minecraft:diamond",
                 "minecraft:diamond",
                 64,
-                "{\"type\":10,\"value\":{}}",
+                "{}",
                 PhysicalSlots.Kind.ITEM,
                 0,
                 List.of(),

@@ -2715,7 +2715,8 @@ final class OrderStore {
             } else if (result != null) o.result = result;
             o.updatedAt = clock.getAsLong();
             if (next != previous.stage()) o.record("order.transition", agent, o.updatedAt);
-            StockLedger.BoxRelease release = next == OrderStage.PICKUP_READY ? boxRelease(o, deliveredUuids) : null;
+            // Warehouse staging is not external export: do not retire physical identities here.
+            StockLedger.BoxRelease release = null;
             b.receipts.put(key, new Receipt(fingerprint, o.toJson()));
             try {
                 update(b, previous, o, release);

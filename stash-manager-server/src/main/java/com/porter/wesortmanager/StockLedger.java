@@ -978,6 +978,14 @@ final class StockLedger {
                 ObservedBox at = seen.getValue();
                 String[] where = findBoxUuid(c, uuid);
                 if (where == null) {
+                    // Explicitly exported identities can never become active again.
+                    try (var retired = c.prepareStatement(
+                            "SELECT 1 FROM box_uuid_history WHERE uuid=? AND reason='DEREGISTERED_FOR_ORDER' LIMIT 1")) {
+                        retired.setString(1, uuid);
+                        try (var rows = retired.executeQuery()) {
+                            if (rows.next()) continue;
+                        }
+                    }
                     try (var insert = c.prepareStatement("INSERT INTO box_uuids VALUES(?,?,?,?,'IN_STOCK',?,?,?,?)")) {
                         insert.setString(1, uuid);
                         insert.setString(2, server);

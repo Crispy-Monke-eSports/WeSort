@@ -191,7 +191,7 @@ public class Stash {
             /** How naming went: done (named or given up on), named, why not, and the key it has with its name. */
             public boolean nameDone, named;
 
-            public String nameFailure = "", namedKey = "";
+            public String nameFailure = "", namedKey = "", internalName = "";
             /** Exact verified delivery source, slot and item fingerprint for rollback. */
             public String stagedSource = "", stagedFingerprint = "";
 
@@ -726,6 +726,7 @@ public class Stash {
                 if (u.named) unit.putBoolean("named", true);
                 if (!u.nameFailure.isEmpty()) unit.putString("nameFailure", u.nameFailure);
                 if (!u.namedKey.isEmpty()) unit.putString("namedKey", u.namedKey);
+                if (!u.internalName.isEmpty()) unit.putString("internalName", u.internalName);
                 if (!u.stagedSource.isEmpty()) {
                     unit.putString("stagedSource", u.stagedSource);
                     unit.putString("stagedFingerprint", u.stagedFingerprint);
@@ -1026,6 +1027,7 @@ public class Stash {
                         u.named = flag(unit, "named");
                         u.nameFailure = text(unit, "nameFailure");
                         u.namedKey = text(unit, "namedKey");
+                        u.internalName = text(unit, "internalName");
                         u.stagedSource = text(unit, "stagedSource");
                         u.stagedFingerprint = text(unit, "stagedFingerprint");
                         u.stagedSlot = number(unit.get("stagedSlot"), -1);

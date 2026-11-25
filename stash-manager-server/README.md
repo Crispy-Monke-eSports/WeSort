@@ -43,3 +43,7 @@ Sessioner löper ut efter sju dygn från inloggning eller efter tolv timmar utan
 ## Ikoncache
 
 Manager begränsar renderade ikoner och cachemarkörer till 16 MiB totalt, med minst 4 KiB räknat per fil. Vid uppstart och före nya skrivningar rensas de minst nyligen använda filerna tills cachebudgeten räcker. Antalet rensade filer loggas. Den separata, verifierade 26.3-klienten i `icons/sources` har en fast storlek på 41 483 720 byte.
+
+### Orderhistorik efter SQLite-migreringen
+
+Efter migreringen är tabellen `order_books` i `guild.sqlite` källan för aktiva och arkiverade order. Filer under `Data/orders/*.json` är föråldrade migreringsunderlag. Manager uppdaterar dem aldrig efter migreringen. Använd order-API:t eller dashboarden för aktuell orderstatus.

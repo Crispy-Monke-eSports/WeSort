@@ -229,6 +229,13 @@ export function OrdersPage() {
       <Typography variant="h5" component="h1">
         Orders
       </Typography>
+      {visible
+        .filter((s) => s.orderBlocker)
+        .map((s) => (
+          <Alert key={s.stash} severity="warning">
+            {s.stash} · {s.orderBlocker}
+          </Alert>
+        ))}
       {failedStashes.length > 0 && (
         <Alert severity="error">
           Could not load orders for {failedStashes.join(", ")} — the table below

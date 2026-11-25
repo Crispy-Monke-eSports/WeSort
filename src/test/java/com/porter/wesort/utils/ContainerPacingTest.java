@@ -8,6 +8,15 @@ import org.junit.jupiter.api.Test;
 
 class ContainerPacingTest {
     @Test
+    void cursorRecoveryStillRetriesAfterAProlongedFullInventory() {
+        assertTrue(ContainerPacing.cursorRetryDue(0, 120));
+        assertTrue(ContainerPacing.cursorRetryDue(4, 120));
+        assertFalse(ContainerPacing.cursorRetryDue(124, 120));
+        assertTrue(ContainerPacing.cursorRetryDue(140, 120));
+        assertTrue(ContainerPacing.cursorRetryDue(1200, 120));
+    }
+
+    @Test
     void zeroDelayNeverHolds() {
         assertFalse(ContainerPacing.openHeld(100, 100, 0));
         assertFalse(ContainerPacing.openHeld(100, 99, 0));

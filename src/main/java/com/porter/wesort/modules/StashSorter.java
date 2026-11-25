@@ -9220,7 +9220,8 @@ public class StashSorter extends Module {
 
     /** A container that a survey would actually read: known filters live with the jobs. */
     private boolean readableBox(Box box) {
-        return !box.excluded && !box.foreign && !box.unreachable && !failedSurvey.contains(box);
+        return !box.excluded && !box.foreign && !failedSurvey.contains(box)
+                && (!box.unreachable || surveyRetry.failures(box) > 0);
     }
 
     /** Containers skipped after failed reads, waiting for their retry time. For the heartbeat. */
@@ -10538,6 +10539,7 @@ public class StashSorter extends Module {
         } else {
             if (stash.hasArea() && !BARITONE) warnNoBaritone();
             box.unreachable = true;
+            surveyFailed(box, "outside interaction range while walking is unavailable");
             job = null;
             target = null;
             return false;
@@ -10722,7 +10724,7 @@ public class StashSorter extends Module {
         if (circle) {
             circular.add(target);
             stalled.add(target);
-        } else if (job == Job.Survey && target != null && (!target.known() || target.stale)) {
+        } else if (job == Job.Survey && target != null && (!target.unreachable || surveyRetry.failures(target) > 0) && (!target.known() || target.stale)) {
             surveyFailed(target, "the window closed before it could be read");
         } else if (job != null && job != Job.Survey && target != null && !target.unreachable) {
             if (unconfirmed) {
@@ -10792,6 +10794,7 @@ public class StashSorter extends Module {
             releaseGoal();
             reportUnreachable(target, Cause.Area);
             target.unreachable = true;
+            surveyRetry.succeed(target);
             finishJob();
             return;
         }
@@ -10831,6 +10834,7 @@ public class StashSorter extends Module {
             }
             reportUnreachable(target, Cause.Path);
             target.unreachable = true;
+            surveyFailed(target, "route to storage is temporarily unavailable");
             finishJob();
         }
     }

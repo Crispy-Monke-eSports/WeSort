@@ -65,4 +65,34 @@ class SnbtObservationTest {
         assertEquals("26", slots.getFirst().get("path").getAsString());
         assertTrue(slots.getFirst().get("components").getAsString().contains("9007199254740993L"));
     }
+
+    @Test
+    void rawSnbtIsTheDatabaseAuthorityAndCorruptProjectionFailsClosed() throws Exception {
+        var ledger = new StockLedger(data);
+        var root = observation(ledger);
+        var physical = source(root);
+        String id = physical.get("id").getAsString();
+        String fingerprint = physical.get("fingerprint").getAsString();
+        String snbt = physical.get("snbt").getAsString();
+        ledger.accept(root);
+        try (var c = java.sql.DriverManager.getConnection("jdbc:sqlite:" + data.resolve("guild.sqlite"));
+                var p = c.prepareStatement("SELECT payload,typeof(payload) FROM physical_snapshots WHERE source=?")) {
+            p.setString(1, id);
+            try (var r = p.executeQuery()) {
+                assertTrue(r.next());
+                assertEquals(snbt, r.getString(1));
+                assertEquals("text", r.getString(2));
+            }
+        }
+        var restarted = new StockLedger(data);
+        assertEquals(PhysicalSlots.Snapshot.fromSnbt(snbt).json(), restarted.snapshot(id, fingerprint));
+        assertEquals(1, restarted.physicalSlots(id).size());
+        try (var c = java.sql.DriverManager.getConnection("jdbc:sqlite:" + data.resolve("guild.sqlite"));
+                var p = c.prepareStatement("UPDATE physical_slots SET payload='{}' WHERE source=?")) {
+            p.setString(1, id);
+            assertEquals(1, p.executeUpdate());
+        }
+        assertThrows(java.io.IOException.class, () -> restarted.physicalSlots(id));
+        assertEquals(PhysicalSlots.Snapshot.fromSnbt(snbt).json(), restarted.snapshot(id, fingerprint));
+    }
 }

@@ -530,7 +530,7 @@ final class StockLedger {
                         ? source.remove("slotSnapshot").getAsJsonObject()
                         : null;
                 if (snapshot != null) {
-                    source.addProperty("slotSchema", 1);
+                    source.addProperty("slotSchema", 2);
                     source.addProperty(
                             "slotFingerprint", snapshot.get("fingerprint").getAsString());
                     source.addProperty(
@@ -741,10 +741,19 @@ final class StockLedger {
             try (var p = c.prepareStatement("INSERT OR IGNORE INTO physical_snapshots VALUES(?,?,?,?)")) {
                 p.setString(1, source);
                 p.setString(2, snapshot.get("fingerprint").getAsString());
-                p.setString(3, snapshot.toString());
+                String snbt = snapshot.get("snbt").getAsString();
+                var decoded = PhysicalSlots.Snapshot.fromSnbt(snbt);
+                if (!decoded.fingerprint().equals(snapshot.get("fingerprint").getAsString()))
+                    throw new IllegalArgumentException("SNBT snapshot fingerprint mismatch before persistence");
+                var expected = snapshot.deepCopy();
+                expected.remove("snbt");
+                if (!decoded.json().equals(expected))
+                    throw new IllegalArgumentException("Physical projection differs from SNBT");
+                p.setString(3, snbt);
                 p.setLong(4, revision);
                 p.executeUpdate();
             }
+            // physical_slots is a rebuildable index, never a second content authority.
             try (var p = c.prepareStatement(
                     "INSERT INTO physical_slots VALUES(?,?,?,?,?,?,?,?,?,?,1) ON CONFLICT(source,path) DO UPDATE SET parent=excluded.parent,payload=excluded.payload,item_fingerprint=excluded.item_fingerprint,count=excluded.count,copies=excluded.copies,revision=CASE WHEN physical_slots.present=1 AND physical_slots.fingerprint=excluded.fingerprint AND physical_slots.copies=excluded.copies THEN physical_slots.revision ELSE excluded.revision END,fingerprint=excluded.fingerprint,seen_revision=excluded.seen_revision,present=1")) {
                 for (var value : snapshot.getAsJsonArray("positions")) {
@@ -773,17 +782,30 @@ final class StockLedger {
         }
     }
 
-    synchronized JsonObject snapshot(String source, String fingerprint) throws IOException {
-        try (var c = open();
-                var p = c.prepareStatement("SELECT payload FROM physical_snapshots WHERE source=? AND fingerprint=?")) {
+    private static PhysicalSlots.Snapshot readSnbtSnapshot(Connection c, String source, String fingerprint)
+            throws SQLException, IOException {
+        try (var p = c.prepareStatement("SELECT payload FROM physical_snapshots WHERE source=? AND fingerprint=?")) {
             p.setString(1, source);
             p.setString(2, fingerprint);
             try (var r = p.executeQuery()) {
                 if (!r.next()) return null;
-                var payload = JsonParser.parseString(r.getString(1)).getAsJsonObject();
-                payload.remove("snbt");
-                return payload;
+                try {
+                    var snapshot = PhysicalSlots.Snapshot.fromSnbt(r.getString(1));
+                    if (!fingerprint.equals(snapshot.fingerprint()))
+                        throw new IllegalArgumentException("Persisted snapshot digest mismatch");
+                    return snapshot;
+                } catch (RuntimeException invalid) {
+                    throw new IOException(
+                            "Invalid or unsupported persisted physical SNBT; clean data or restore required", invalid);
+                }
             }
+        }
+    }
+
+    synchronized JsonObject snapshot(String source, String fingerprint) throws IOException {
+        try (var c = open()) {
+            var snapshot = readSnbtSnapshot(c, source, fingerprint);
+            return snapshot == null ? null : snapshot.json();
         } catch (SQLException e) {
             throw new IOException("Cannot read physical snapshot", e);
         }
@@ -791,19 +813,46 @@ final class StockLedger {
 
     synchronized List<JsonObject> physicalSlots(String source) throws IOException {
         List<JsonObject> result = new ArrayList<>();
-        try (var c = open();
-                var p = c.prepareStatement(
-                        "SELECT payload,revision,present FROM physical_slots WHERE source=? ORDER BY path")) {
-            p.setString(1, source);
-            try (var r = p.executeQuery()) {
-                while (r.next()) {
-                    var row = JsonParser.parseString(r.getString(1)).getAsJsonObject();
-                    row.addProperty("revision", r.getLong(2));
-                    row.addProperty("present", r.getBoolean(3));
-                    result.add(row);
+        Map<String, JsonObject> expected = new HashMap<>();
+        try (var c = open()) {
+            // A present slot is readable/allocatable only when it agrees with the authoritative snapshot.
+            String fingerprint = null;
+            try (var p = c.prepareStatement("SELECT payload FROM stock_sources WHERE id=?")) {
+                p.setString(1, source);
+                try (var r = p.executeQuery()) {
+                    if (r.next()) {
+                        var metadata = JsonParser.parseString(r.getString(1)).getAsJsonObject();
+                        if (metadata.has("slotFingerprint"))
+                            fingerprint = metadata.get("slotFingerprint").getAsString();
+                    }
                 }
             }
-        } catch (SQLException e) {
+            if (fingerprint != null) {
+                var snapshot = readSnbtSnapshot(c, source, fingerprint);
+                if (snapshot == null) throw new IOException("Missing authoritative physical SNBT");
+                for (var value : snapshot.json().getAsJsonArray("positions")) {
+                    var row = value.getAsJsonObject();
+                    expected.put(row.get("path").getAsString(), row);
+                }
+            }
+            try (var p = c.prepareStatement(
+                    "SELECT path,payload,revision,present FROM physical_slots WHERE source=? ORDER BY path")) {
+                p.setString(1, source);
+                try (var r = p.executeQuery()) {
+                    while (r.next()) {
+                        var cached = JsonParser.parseString(r.getString(2)).getAsJsonObject();
+                        boolean present = r.getBoolean(4);
+                        var row = present ? expected.remove(r.getString(1)) : cached;
+                        if (row == null || !row.equals(cached))
+                            throw new IOException("Physical slot projection differs from authoritative SNBT");
+                        row.addProperty("revision", r.getLong(3));
+                        row.addProperty("present", present);
+                        result.add(row);
+                    }
+                }
+            }
+            if (!expected.isEmpty()) throw new IOException("Physical slot projection is incomplete");
+        } catch (SQLException | RuntimeException e) {
             throw new IOException("Cannot read physical slots", e);
         }
         return result;

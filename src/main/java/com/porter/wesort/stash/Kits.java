@@ -157,7 +157,7 @@ public final class Kits {
         if (shulker == null
                 || shulker.isEmpty()
                 || !Utils.isShulker(shulker.getItem())
-                || shulker.has(DataComponents.CUSTOM_NAME)) return null;
+                || com.porter.wesort.compat.ShulkerIdentityRuntime.hasForeignName(shulker)) return null;
         ensureLoaded();
         if (kits.isEmpty()) return null;
 

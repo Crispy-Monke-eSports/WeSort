@@ -2039,6 +2039,7 @@ public class StashSorter extends Module {
      * Works out which slots to carry stash items in, from the settings or, by default, every empty slot.
      */
     private boolean startupDepositPending, startupDump;
+
     private int startupRetryAt;
     private boolean waitingForContainers;
     private int nextDiscoveryTick;
@@ -3156,7 +3157,11 @@ public class StashSorter extends Module {
 
         // Initial inventory belongs to the dedicated bot only. Finish all saved work and
         // read the destination before moving anything. No cleanup runs in scan-only mode.
-        if (sorting() && startupDepositPending && ticks >= startupRetryAt && !pendingPhysicalRecovery() && !orderRunner.holdsOrder()) {
+        if (sorting()
+                && startupDepositPending
+                && ticks >= startupRetryAt
+                && !pendingPhysicalRecovery()
+                && !orderRunner.holdsOrder()) {
             if (startStartupDeposit()) return true;
         }
 
@@ -3741,8 +3746,13 @@ public class StashSorter extends Module {
     }
 
     private boolean storageAcceptsReturn(Box box, ItemStack stack) {
-        return box != null && stash.boxes.contains(box) && box.sortable()
-                && !box.stale && !box.dropOff && !isKitBox(box) && roomFor(box, stack);
+        return box != null
+                && stash.boxes.contains(box)
+                && box.sortable()
+                && !box.stale
+                && !box.dropOff
+                && !isKitBox(box)
+                && roomFor(box, stack);
     }
 
     /**
@@ -3816,8 +3826,12 @@ public class StashSorter extends Module {
                 // Re-read one eligible return destination on the normal survey clock.
                 long now = System.currentTimeMillis();
                 Box probe = stash.boxes.stream()
-                        .filter(b -> !b.protectedStorage && !b.delivery && !b.dropOff && !isKitBox(b)
-                                && !returnRetry.waiting(b, ticks) && surveyDue(b, now))
+                        .filter(b -> !b.protectedStorage
+                                && !b.delivery
+                                && !b.dropOff
+                                && !isKitBox(b)
+                                && !returnRetry.waiting(b, ticks)
+                                && surveyDue(b, now))
                         .min(Comparator.comparingLong(b -> b.lastRead))
                         .orElse(null);
                 if (probe != null) {
@@ -9254,7 +9268,9 @@ public class StashSorter extends Module {
 
     /** A container that a survey would actually read: known filters live with the jobs. */
     private boolean readableBox(Box box) {
-        return !box.excluded && !box.foreign && !failedSurvey.contains(box)
+        return !box.excluded
+                && !box.foreign
+                && !failedSurvey.contains(box)
                 && (!box.unreachable || surveyRetry.failures(box) > 0);
     }
 
@@ -10758,7 +10774,10 @@ public class StashSorter extends Module {
         if (circle) {
             circular.add(target);
             stalled.add(target);
-        } else if (job == Job.Survey && target != null && (!target.unreachable || surveyRetry.failures(target) > 0) && (!target.known() || target.stale)) {
+        } else if (job == Job.Survey
+                && target != null
+                && (!target.unreachable || surveyRetry.failures(target) > 0)
+                && (!target.known() || target.stale)) {
             surveyFailed(target, "the window closed before it could be read");
         } else if (job != null && job != Job.Survey && target != null && !target.unreachable) {
             if (unconfirmed) {
@@ -10775,8 +10794,7 @@ public class StashSorter extends Module {
 
         startSigSet = endSigSet = false;
 
-        if (job == Job.Return && stash.recoveredBox != null && target != null)
-            returnRetry.failOnce(target, ticks);
+        if (job == Job.Return && stash.recoveredBox != null && target != null) returnRetry.failOnce(target, ticks);
         if (stash.isDirty()) stash.save();
         job = null;
         target = null;
@@ -11651,7 +11669,9 @@ public class StashSorter extends Module {
         }
         if (!startupStock.isEmpty()) {
             if (startupRetryAt == 0)
-                warning("Startup inventory: waiting for verified storage room for %d stacks; retrying automatically.", startupStock.size());
+                warning(
+                        "Startup inventory: waiting for verified storage room for %d stacks; retrying automatically.",
+                        startupStock.size());
             startupRetryAt = ticks + 20 * 60;
             startupDump = false;
             pickCarrySlots(false);

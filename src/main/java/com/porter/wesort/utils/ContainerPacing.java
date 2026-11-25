@@ -18,6 +18,11 @@ public final class ContainerPacing {
         return containerDelay > 0 && now - lastClose < containerDelay;
     }
 
+    /** Retry frequently at first, then once per second while waiting for a free slot. */
+    public static boolean cursorRetryDue(int elapsedTicks, int slowAfter) {
+        return elapsedTicks % (elapsedTicks < slowAfter ? 4 : 20) == 0;
+    }
+
     /** Ticks to wait after a window opened, before the first click. */
     public static int firstClickWait(int clickDelay, int containerDelay) {
         return Math.max(0, clickDelay) + Math.max(0, containerDelay);

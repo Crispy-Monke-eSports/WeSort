@@ -2676,10 +2676,10 @@ public class StashSorter extends Module {
                     return false;
                 }
             }
-            // Never closed with something on the cursor, it would be merged into the inventory or dropped. After a few
-            // tries it is closed anyway, so the others are not kept waiting for a click that never works
-            if (!menu.getCarried().isEmpty() && cleanupTries < CURSOR_TRIES) {
-                if (cleanupTries++ % 4 == 0) recoverCursor();
+            // Keep ownership until the server answers with an empty cursor. A full
+            // inventory or a rejected click can resolve while the menu stays open.
+            if (!menu.getCarried().isEmpty()) {
+                if (cursorRecoveryDue()) recoverCursor();
                 return false;
             }
             closeOurWindow(menu);
@@ -2687,6 +2687,16 @@ public class StashSorter extends Module {
         }
         ownedMenu = null;
         return true;
+    }
+
+    private boolean cursorRecoveryDue() {
+        if (cursorFirstSeen < 0) cursorFirstSeen = clock;
+        int elapsed = clock - cursorFirstSeen;
+        if (!cursorBlocked && elapsed >= CURSOR_TRIES * 3) {
+            cursorBlocked = true;
+            step("Waiting for space to put away the cursor stack; retrying automatically.");
+        }
+        return com.porter.wesort.utils.ContainerPacing.cursorRetryDue(elapsed, CURSOR_TRIES * 3);
     }
 
     /**
@@ -2704,17 +2714,8 @@ public class StashSorter extends Module {
 
         // A stack left on the cursor with no screen open (the server doesn't always hand it back) goes into a free slot
         if (!mc.player.containerMenu.getCarried().isEmpty()) {
-            if (mc.screen == null && mc.player.containerMenu == mc.player.inventoryMenu && !cursorBlocked) {
-                if (cursorFirstSeen < 0) cursorFirstSeen = clock;
-                if (cleanupTries++ % 4 == 0) returnCursor();
-                // No free slot for a while: say so once and stop clicking until the
-                // player frees one, instead of spinning silently.
-                if (clock - cursorFirstSeen > CURSOR_TRIES * 3) {
-                    cursorBlocked = true;
-                    alert(
-                            "The stack on the cursor has nowhere to go (no free slot); waiting for a free slot instead of retrying.");
-                }
-            }
+            if (mc.screen == null && mc.player.containerMenu == mc.player.inventoryMenu && cursorRecoveryDue())
+                returnCursor();
             return false;
         }
         cursorFirstSeen = -1;
@@ -10648,15 +10649,14 @@ public class StashSorter extends Module {
     }
 
     private void finishJob() {
-        if (mc.player.containerMenu != mc.player.inventoryMenu) {
-            // Never close with something on the cursor, it would be merged into the inventory or dropped
-            if (!mc.player.containerMenu.getCarried().isEmpty() && !recoverCursor()) {
-                alertError(
-                        "Couldn't put away the stack on the cursor, no free slot. Stopping, and the stack may be dropped when the container closes.");
-                turnOff();
+        AbstractContainerMenu menu = mc.player.containerMenu;
+        if (ourMenu(menu)) {
+            if (!menu.getCarried().isEmpty()) {
+                // A read-only survey behind a physical fence cannot move the cursor.
+                if (sortingPermitted() && gate == Gate.Running) beginYield(null);
                 return;
             }
-            closeOurWindow(mc.player.containerMenu);
+            closeOurWindow(menu);
         }
         ownedMenu = null;
         lastOwnAct = ticks;
@@ -11534,13 +11534,15 @@ public class StashSorter extends Module {
         if (menu.getCarried().isEmpty()) return true;
         lastOwnAct = ticks;
 
+        if (!ourMenu(menu) || menu.slots.size() < 36) return false;
+        Set<Integer> keep = parseSlots(keepSlots.get());
         int size = menu.slots.size() - 36;
         // The carry slots first, so the stack is put away with the rest, and noted as the stash's own
         for (int pass = 0; pass < 2; pass++) {
             for (int i = size; i < menu.slots.size(); i++) {
                 if (!menu.getSlot(i).getItem().isEmpty()) continue;
                 int slot = i - size < 27 ? 9 + i - size : i - size - 27;
-                if ((pass == 0) != carry.contains(slot)) continue;
+                if (keep.contains(slot) || (pass == 0) != carry.contains(slot)) continue;
 
                 stashHeld.put(slot, menu.getCarried().copy());
                 InvUtils.click().slotId(i);
@@ -11548,7 +11550,8 @@ public class StashSorter extends Module {
             }
         }
         // Only into the container we're working on, never some other menu
-        if (target != null && menu instanceof ChestMenu && size == target.parts.size() * 27) {
+        if (target != null && menu instanceof ChestMenu && size == target.parts.size() * 27
+                && InventorySync.confirmedSource(target.parts)) {
             for (int i = 0; i < size; i++) {
                 if (menu.getSlot(i).getItem().isEmpty()) {
                     InvUtils.click().slotId(i);

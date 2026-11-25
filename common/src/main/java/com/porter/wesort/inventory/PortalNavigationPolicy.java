@@ -17,11 +17,7 @@ public final class PortalNavigationPolicy {
             boolean portalBlockVerified,
             boolean adjacentApproach,
             boolean approachIsSafe) {
-        return dedicatedAgent
-                && awaitingPortal
-                && portalBlockVerified
-                && adjacentApproach
-                && approachIsSafe;
+        return dedicatedAgent && awaitingPortal && portalBlockVerified && adjacentApproach && approachIsSafe;
     }
 
     /**

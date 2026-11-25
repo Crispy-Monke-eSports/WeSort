@@ -4326,7 +4326,8 @@ public class StashSorter extends Module {
             portalBlocker = null;
             portalAttempts = 0;
             portalGiveUpUntilMs = 0;
-            info("6b6t: confirmed survival transfer. Pre-transit readback is stale; a fresh survey is required before physical work.");
+            info(
+                    "6b6t: confirmed survival transfer. Pre-transit readback is stale; a fresh survey is required before physical work.");
             wakeUp();
             return false;
         }
@@ -10341,11 +10342,7 @@ public class StashSorter extends Module {
         String what = placedName();
         int stacks = plan != null ? plan.placedSize : placedStacks;
         // Manager direction: report standing shulker as facts (pos + contents + stacks).
-        WeSortAddon.LOG.warn(
-                "WeSort standing shulker: pos={} what={} stacks={}.",
-                at.toShortString(),
-                what,
-                stacks);
+        WeSortAddon.LOG.warn("WeSort standing shulker: pos={} what={} stacks={}.", at.toShortString(), what, stacks);
         // Saved, and finished the next time the sorter starts
         syncInFlight();
         if (stash != null && stash.inFlight != null) {

@@ -442,10 +442,7 @@ final class OrderRunner {
         // Manager direction: report the accepted assignment as facts for future
         // single-job ownership. No behavior change.
         com.porter.wesort.WeSortAddon.LOG.info(
-                "WeSort order offered: id={} recovery={} lines={}.",
-                o.id,
-                managerRecovery,
-                o.lines);
+                "WeSort order offered: id={} recovery={} lines={}.", o.id, managerRecovery, o.lines);
 
         order = o;
         state = State.Running;

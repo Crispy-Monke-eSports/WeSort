@@ -174,13 +174,25 @@ final class SessionStore {
         if (s == null) return false;
         long now = clock.getAsLong();
         if (expired(s, now)) {
-            sessions.remove(h);
+            // #140: persist the removal first — memory must not drop a session the
+            // disk still holds (it would resurrect on restart).
+            var next = new HashMap<>(sessions);
+            next.remove(h);
             elevatedUntil.remove(h);
-            save();
+            try {
+                commit(next);
+            } catch (IOException ex) {
+                System.err.println("Could not save " + file.getFileName() + ": " + ex.getMessage());
+            }
             return false;
         }
+        long prevSeen = s.lastSeen;
         s.lastSeen = now;
-        if (now - s.writtenSeen >= SEEN_WRITE_MS) save();
+        if (now - s.writtenSeen >= SEEN_WRITE_MS && !save()) {
+            // #140: the heartbeat was never made durable — roll the memory back so a
+            // crash cannot leave a session that looks freshly seen but isn't on disk.
+            s.lastSeen = prevSeen;
+        }
         return true;
     }
 
@@ -203,8 +215,9 @@ final class SessionStore {
         if (token == null) return;
         Session s = sessions.get(hash(token));
         if (s != null) {
+            String prev = s.cred;
             s.cred = cred;
-            save();
+            if (!save()) s.cred = prev;
         }
     }
 
@@ -221,7 +234,7 @@ final class SessionStore {
 
     /** How many live sessions each user has. */
     synchronized Map<String, Integer> countByUser() {
-        prune();
+        if (prune()) save();
         Map<String, Integer> out = new HashMap<>();
         for (Session s : sessions.values()) out.merge(s.user, 1, Integer::sum);
         return out;
@@ -337,11 +350,14 @@ final class SessionStore {
         for (Session s : snapshot.values()) s.writtenSeen = s.lastSeen;
     }
 
-    private void save() {
+    /** Best-effort persist of the heartbeat path; true when durable. Callers roll back on false. */
+    private boolean save() {
         try {
             persist(sessions);
+            return true;
         } catch (IOException ex) {
             System.err.println("Could not save " + file.getFileName() + ": " + ex.getMessage());
+            return false;
         }
     }
 

@@ -222,15 +222,31 @@ class BoxUuidRegistryTest {
     @Test
     void boxGoneFromEveryChestIsDeregisteredAsVanished() throws Exception {
         var ledger = new StockLedger(data);
-        ledger.accept(indexes(ledger, new String[] {"WeSort-" + V4}, new int[] {0}));
+        var first = indexes(ledger, new String[] {"WeSort-" + V4}, new int[] {0});
+        ledger.accept(first);
         assertEquals(1, ledger.boxUuids().size());
+        String expectedSource =
+                ledger.boxUuids().get(0).getAsJsonObject().get("source").getAsString();
+        String expectedPath =
+                ledger.boxUuids().get(0).getAsJsonObject().get("path").getAsString();
         // The same chest re-read fresh holding only an unnamed box: the UUID box left, deregistered.
         ledger.accept(indexes(ledger, new String[] {null}, new int[] {0}));
         assertTrue(ledger.boxUuids().isEmpty());
         assertEquals(1, ledger.boxUuidHistory().size());
+        var history = ledger.boxUuidHistory().get(0).getAsJsonObject();
+        assertEquals("VANISHED", history.get("reason").getAsString());
+        // #67: the history row must point at the real source/path (verified slot
+        // revision), never at the UUID or source-id in the wrong columns.
+        assertEquals(V4, history.get("uuid").getAsString());
+        assertEquals(expectedSource, history.get("source").getAsString());
+        assertEquals(expectedPath, history.get("path").getAsString());
         assertEquals(
-                "VANISHED",
-                ledger.boxUuidHistory().get(0).getAsJsonObject().get("reason").getAsString());
+                first.getAsJsonArray("physicalSources")
+                        .get(0)
+                        .getAsJsonObject()
+                        .get("id")
+                        .getAsString(),
+                history.get("source").getAsString());
         // ...and registered again if the same box shows up again with its name intact.
         ledger.accept(indexes(ledger, new String[] {"WeSort-" + V4}, new int[] {1}));
         assertEquals(1, ledger.boxUuids().size());

@@ -998,6 +998,26 @@ final class OrderStore {
             o.record("order.auto-cancel-unclaimed", Users.OWNER_ID, now);
             return o;
         }
+        if (previous.status.equals("pending")
+                && previous.approval != Approval.PENDING
+                && previous.allocations == null
+                && previous.claimedAt == 0
+                && previous.deferredBlockedAt > 0
+                && previous.stage().allows(OrderStage.CANCELLED)
+                && now - previous.deferredBlockedAt > AUTO_CANCEL_AFTER_MS
+                && !index.stock().unsettledPhysicalOrder(previous.id)) {
+            // Scout runda 3: a drift-stamped aggregate reservation that could never
+            // be re-reserved. Nothing was ever touched, so cancelling releases
+            // cleanly instead of parking the queue forever with no human to intervene.
+            Order o = Order.fromJson(previous.snapshot());
+            o.advance(OrderStage.CANCELLED);
+            o.status = "cancelled";
+            o.message =
+                    "cancelled automatically: sources changed and stock could not be re-reserved; nothing was taken";
+            o.updatedAt = now;
+            o.record("order.auto-cancel-drift", Users.OWNER_ID, now);
+            return o;
+        }
         return null;
     }
 
@@ -2485,7 +2505,46 @@ final class OrderStore {
                         continue;
                     }
                 }
-                if (!orderSourcesReady(order, counts, agent)) continue;
+                if (!orderSourcesReady(order, counts, agent)) {
+                    // A RESERVED aggregate order whose source fingerprints drifted was
+                    // skipped silently forever: no stamp, no re-reservation, no expiry.
+                    // No human can intervene, so the server heals itself: fresh stock
+                    // that still covers every line re-reserves atomically under the
+                    // index lock; genuine shortage is stamped once and auto-cancelled
+                    // below after a bounded wait.
+                    boolean recovered = false;
+                    if (order.allocations == null
+                            && order.claimedAt == 0
+                            && order.sourceGuards != null
+                            && order.lines.stream().allMatch(line -> counts.total(line.type, line.key) >= line.count)) {
+                        JsonObject prev = order.sourceGuards;
+                        order.sourceGuards = sourceGuards(server, stash);
+                        if (orderSourcesReady(order, counts, agent)) {
+                            long now = clock.getAsLong();
+                            order.updatedAt = now;
+                            order.message = "Re-reserved automatically: sources changed since reservation.";
+                            order.record("order.reserve.refresh", agent, now);
+                            save(b);
+                            recovered = true;
+                        } else {
+                            order.sourceGuards = prev;
+                        }
+                    }
+                    if (!recovered) {
+                        if (order.allocations == null
+                                && order.claimedAt == 0
+                                && order.deferredBlockedAt == 0
+                                && order.stage() != OrderStage.RECOVERING) {
+                            long now = clock.getAsLong();
+                            order.deferredBlockedAt = now;
+                            order.updatedAt = now;
+                            order.message = "Sources changed since reservation; awaiting automatic re-reservation.";
+                            order.record("order.reserve.drift", agent, now);
+                            save(b);
+                        }
+                        continue;
+                    }
+                }
                 long before = order.updatedAt;
                 if (!order.stage().allows(OrderStage.PACKING)) continue;
                 order.stage = OrderStage.PACKING;
@@ -2619,6 +2678,15 @@ final class OrderStore {
             if (phase != null) o.phase = phase;
             if (progress != null) o.progress = progress;
             if (message != null) o.message = message;
+            if (next == OrderStage.RECOVERING && status.equals("delivered")) {
+                // #68: keep the frozen-Y reason visible. A partial report with covered lines
+                // fails closed here; without this the dashboard only shows a generic recovery.
+                long reported = exactPositiveCount(result == null ? null : result.get("shulkers"));
+                if (o.packageTotal > 0 && reported > 0 && reported != o.packageTotal)
+                    o.message = "delivered " + reported + " of frozen " + o.packageTotal
+                            + " packages; returning items to stash"
+                            + (message == null ? "" : " | agent: " + message);
+            }
             if (next == OrderStage.RECOVERING) {
                 o.result = null;
                 o.cancelRequested = true;
@@ -2677,9 +2745,14 @@ final class OrderStore {
             // A late completion cannot undo a cancellation or an already started rollback.
             if (order.cancelRequested || order.stage() == OrderStage.RECOVERING) return OrderStage.RECOVERING;
             long packages = exactPositiveCount(result == null ? null : result.get("shulkers"));
+            // #68: the frozen box count Y is authoritative. A partial report with covered
+            // lines must never become PICKUP_READY with a smaller Y: fail closed to
+            // RECOVERING so the missing boxes are packed against the same frozen total.
+            boolean countMatches = order.packageTotal <= 0 || packages == order.packageTotal;
             if (order.agent != null
                     && packages > 0
                     && packages <= MAX_SHULKERS
+                    && countMatches
                     && allLinesStaged(order.lines, result)
                     && !index.stock().unsettledPhysicalOrder(order.id)) {
                 order.manifest =

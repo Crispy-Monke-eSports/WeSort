@@ -491,6 +491,31 @@ class StockHierarchyTest {
     }
 
     @Test
+    void frozenPackageCountSurvivesPartialDelivery() throws Exception {
+        var ledger = new StockLedger(data);
+        var store = new IndexStore(data, CreativeTabs.NONE, ledger);
+        store.load();
+        store.putIndex(index(ledger, 32));
+        var orders = new OrderStore(data, store);
+        orders.load();
+        // Two kits need two frozen boxes (packageTotal Y=2).
+        var order = orders.place("s", "a", List.of(new OrderStore.Line("shulker", "kit", 2)), null);
+        assertEquals(2, order.packageTotal);
+        String agent = UUID.randomUUID().toString();
+        assertNotNull(orders.claimPayload("s", "a", agent));
+        stagedReceipt(ledger, order.id, agent);
+        // One staged box with all lines covered: must NOT become PICKUP_READY with Y=1.
+        // Fail closed to RECOVERING against the same frozen total instead (#68).
+        var partial = JsonParser.parseString("""
+            {"shulkers":1,"lines":[{"key":"kit","delivered":2}]}
+            """).getAsJsonObject();
+        var recovery = orders.status(order.id, "delivered", null, null, null, partial, agent, "partial-3-of-4");
+        assertEquals(OrderStage.RECOVERING, recovery.stage());
+        assertNull(recovery.manifest);
+        assertTrue(recovery.message.contains("1 of frozen 2"));
+    }
+
+    @Test
     void partialStagingReportsDoNotCoverAnEntireOrder() {
         var lines = List.of(new OrderStore.Line("shulker", "kit", 2));
         var partial = JsonParser.parseString("{\"lines\":[{\"key\":\"kit\",\"delivered\":1}]}")

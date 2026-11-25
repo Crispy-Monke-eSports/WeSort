@@ -1745,7 +1745,7 @@ public class StashSorter extends Module {
         // A recovered world shulker may still be in our inventory after a stop. Restore
         // its carry slot even if warehouse orders are disabled, so it is deposited.
         if (sorting()) {
-            if (!pickCarrySlots(!startupDepositPending)) {
+            if (!pickCarrySlots(!startupDepositPending && !keepOn())) {
                 turnOff();
                 return;
             }
@@ -2065,7 +2065,7 @@ public class StashSorter extends Module {
             if (there.isEmpty() || (held != null && ItemStack.matches(there, held))) carry.add(i);
         }
 
-        if (designated && carry.size() < chosen.size()) {
+        if (designated && carry.size() < chosen.size() && (required || !carry.isEmpty())) {
             warning("%d of your carry-slots have items in them, they'll be left alone.", chosen.size() - carry.size());
         }
 
@@ -2251,9 +2251,10 @@ public class StashSorter extends Module {
             // Not taking orders and nothing of an order held: no carry slots
             else if (!sorting() && !ordersWanted() && stashHeld.isEmpty() && orderHeld.isEmpty() && !carry.isEmpty())
                 carry.clear();
-            // Scan-only was switched off: there are carry slots to find now
+            // A one-shot sort reports unusable carry slots immediately. A persistent
+            // agent retries in the planner, where it can still do read-only work.
             if (sorting() && carry.isEmpty() && !startupDepositPending) {
-                if (!pickCarrySlots()) {
+                if (!keepOn() && !pickCarrySlots()) {
                     turnOff();
                     return;
                 }
@@ -3098,6 +3099,19 @@ public class StashSorter extends Module {
         // compacting,
         // labelling, saved kits, the ground. They wait until it is finished or parked
         if (orderRunner.planned() && orderPriorityStep()) return true;
+
+        if (sorting() && keepOn() && carry.isEmpty() && !startupDepositPending) {
+            pickCarrySlots(false);
+            if (carry.isEmpty()) {
+                if (!pendingPhysicalRecovery()) {
+                    queueSurveyBatch(true, false);
+                    if (startSurveyBatch(false)) return true;
+                }
+                step("Waiting for a free carry slot; stock checks continue.");
+                wait = 20;
+                return false;
+            }
+        }
 
         // Unclaimed world shulkers use the same stash put-away path as a drop-off.
         if (startOrphanRecovery()) return true;

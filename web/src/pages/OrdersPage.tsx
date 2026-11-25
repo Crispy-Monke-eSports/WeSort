@@ -148,7 +148,10 @@ export function OrdersPage() {
     return list;
   }, [orders, statusFilter, hideSuperseded, query, perms, auth.data]);
 
-  function act(order: any, action: "cancel" | "force-cancel" | "retry" | "owner-force") {
+  function act(
+    order: any,
+    action: "cancel" | "force-cancel" | "retry" | "owner-force",
+  ) {
     setActionMsg("");
     const verb =
       action === "cancel"
@@ -550,7 +553,10 @@ function OrderDialog({
   canChange: boolean;
   canAudit: boolean;
   isOwner: boolean;
-  onAction: (o: any, a: "cancel" | "force-cancel" | "retry" | "owner-force") => void;
+  onAction: (
+    o: any,
+    a: "cancel" | "force-cancel" | "retry" | "owner-force",
+  ) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [audit, setAudit] = useState<any[] | null>(null);
@@ -582,7 +588,9 @@ function OrderDialog({
   const retryable = ui.retryable;
   const lines: any[] = order.lines ?? [];
 
-  async function run(action: "cancel" | "force-cancel" | "retry" | "owner-force") {
+  async function run(
+    action: "cancel" | "force-cancel" | "retry" | "owner-force",
+  ) {
     setBusy(true);
     try {
       await onAction(order, action);

@@ -166,7 +166,10 @@ describe("health signals", () => {
   });
 
   it("flags STALE_STOCK warnings as warning, never silent (#203)", () => {
-    const viaWarnings = healthAttention({ warnings: ["STALE_STOCK"], oldestStockAgeMs: 514_000 });
+    const viaWarnings = healthAttention({
+      warnings: ["STALE_STOCK"],
+      oldestStockAgeMs: 514_000,
+    });
     expect(viaWarnings).toHaveLength(1);
     expect(viaWarnings[0].severity).toBe("warning");
     expect(viaWarnings[0].text.toLowerCase()).toContain("stale");

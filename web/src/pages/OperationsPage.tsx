@@ -157,10 +157,17 @@ export function OperationsPage() {
       )}
       {owner && (
         <Card>
-          <CardHeader title="Owner controls" subheader="Rescan requests a fresh survey; the server replies with a rescanId" />
+          <CardHeader
+            title="Owner controls"
+            subheader="Rescan requests a fresh survey; the server replies with a rescanId"
+          />
           <CardContent sx={{ pt: 0 }}>
             <Stack spacing={1}>
-              <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
+              <Stack
+                direction="row"
+                spacing={1}
+                sx={{ flexWrap: "wrap", gap: 1 }}
+              >
                 {(stashes.data ?? [])
                   .filter((s) => perms.seesStash(s.stash))
                   .map((s) => (
@@ -181,9 +188,13 @@ export function OperationsPage() {
                         setRescanBusy(s.stash);
                         try {
                           const res = await rescan(s.stash);
-                          setRescanMsg(`Rescan ${s.stash}: ${res.rescanId ?? "requested"}.`);
+                          setRescanMsg(
+                            `Rescan ${s.stash}: ${res.rescanId ?? "requested"}.`,
+                          );
                         } catch (e: any) {
-                          setRescanMsg(`Rescan ${s.stash} failed: ${e?.message ?? e}.`);
+                          setRescanMsg(
+                            `Rescan ${s.stash} failed: ${e?.message ?? e}.`,
+                          );
                         } finally {
                           setRescanBusy("");
                         }

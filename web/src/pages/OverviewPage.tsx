@@ -690,9 +690,21 @@ export function OverviewPage() {
                   ]
                     .filter(Boolean)
                     .join(" · ")}
-                  variant={s.online === false || s.orderBlocker ? "outlined" : "filled"}
-                  color={s.orderBlocker ? "error" : s.online === false ? "warning" : "default"}
-                  title={s.orderBlocker ? `Order blocker: ${s.orderBlocker}` : undefined}
+                  variant={
+                    s.online === false || s.orderBlocker ? "outlined" : "filled"
+                  }
+                  color={
+                    s.orderBlocker
+                      ? "error"
+                      : s.online === false
+                        ? "warning"
+                        : "default"
+                  }
+                  title={
+                    s.orderBlocker
+                      ? `Order blocker: ${s.orderBlocker}`
+                      : undefined
+                  }
                 />
               ))}
             {(stashes.data ?? []).length === 0 && !stashes.isLoading && (

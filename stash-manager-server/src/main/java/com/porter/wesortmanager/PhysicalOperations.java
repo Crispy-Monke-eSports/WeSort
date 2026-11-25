@@ -94,7 +94,8 @@ final class PhysicalOperations {
                             // matching lease is NEEDS_RECONCILIATION, but the lease can flip between
                             // expire() and this read; re-check explicitly before the upsert.
                             else if (revision == before
-                                    && List.of("PLANNED", "IN_PROGRESS", "VERIFYING").contains(state)
+                                    && List.of("PLANNED", "IN_PROGRESS", "VERIFYING")
+                                            .contains(state)
                                     && leaseFenced(c, server, agent)) {
                                 state = "NEEDS_RECONCILIATION";
                                 fence = Math.max(fence, revision);
@@ -372,7 +373,8 @@ final class PhysicalOperations {
                 String liveState = null;
                 String opServer = null;
                 String opAgent = null;
-                try (var p = c.prepareStatement("SELECT revision,checksum,state,server,agent FROM physical_operations WHERE id=?")) {
+                try (var p = c.prepareStatement(
+                        "SELECT revision,checksum,state,server,agent FROM physical_operations WHERE id=?")) {
                     p.setString(1, id);
                     try (var rows = p.executeQuery()) {
                         if (!rows.next() || revision != rows.getLong(1) || !checksum.equals(rows.getString(2)))
@@ -451,8 +453,7 @@ final class PhysicalOperations {
      */
     synchronized JsonObject inspectAutomatically(String agent, JsonObject receipt) throws IOException {
         String receiptState = receipt.get("state").getAsString();
-        boolean liveReceipt =
-                List.of("PLANNED", "IN_PROGRESS", "VERIFYING").contains(receiptState);
+        boolean liveReceipt = List.of("PLANNED", "IN_PROGRESS", "VERIFYING").contains(receiptState);
         if (!"NEEDS_RECONCILIATION".equals(receiptState) && !liveReceipt) return null;
         UUID.fromString(agent);
         String operation = receipt.get("id").getAsString();

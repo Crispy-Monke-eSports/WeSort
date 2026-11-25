@@ -86,7 +86,10 @@ final class StockLedger {
         // #203: Data/orders/*.json are legacy import inputs, not live mirrors. Warn loudly
         // so humans/tools never read order truth from them; guild.sqlite order_books is authoritative.
         try (var ordersDir = Files.list(data.resolve("orders"))) {
-            if (ordersDir.filter(p -> p.getFileName().toString().endsWith(".json")).findAny().isPresent())
+            if (ordersDir
+                    .filter(p -> p.getFileName().toString().endsWith(".json"))
+                    .findAny()
+                    .isPresent())
                 System.err.println(
                         "WARNING: Data/orders/*.json are legacy import inputs and are ignored — authoritative orders live in guild.sqlite order_books. See INCIDENT-RECOVERY.md.");
         } catch (java.nio.file.NoSuchFileException ignored) {
@@ -265,9 +268,8 @@ final class StockLedger {
         // floor (SurveyBatch.MIN_INTERVAL_MS = 60s). Below ~4x the floor a full pass over
         // 69 containers plus one retry can never catch up and staleStock latches permanently.
         if (seconds * 1000 < 4 * 60_000)
-            System.err.println(
-                    "WARNING: WESORT_STOCK_MAX_AGE_SECONDS=" + seconds
-                            + " is below 4x the survey floor (60s): steady-state freshness is impossible, see #201.");
+            System.err.println("WARNING: WESORT_STOCK_MAX_AGE_SECONDS=" + seconds
+                    + " is below 4x the survey floor (60s): steady-state freshness is impossible, see #201.");
         return seconds * 1000;
     }
 

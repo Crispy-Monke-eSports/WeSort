@@ -169,7 +169,11 @@ export function healthAttention(
     });
   }
   const rawWarnings = health.warnings;
-  const warnings = new Set(Array.isArray(rawWarnings) ? rawWarnings.filter((w) => typeof w === "string") : []);
+  const warnings = new Set(
+    Array.isArray(rawWarnings)
+      ? rawWarnings.filter((w) => typeof w === "string")
+      : [],
+  );
   if (health.staleStock) warnings.add("STALE_STOCK");
   for (const warning of warnings) {
     if (warning === "STALE_STOCK") {

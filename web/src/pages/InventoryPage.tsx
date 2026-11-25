@@ -1412,7 +1412,8 @@ function addDisabledReason(
   }
   if (slices?.some((s) => s.online === false))
     return "Stale — bot offline, availability is last-verified.";
-  if ((orderable ?? 0) <= 0) return "Empty or fully reserved — nothing orderable.";
+  if ((orderable ?? 0) <= 0)
+    return "Empty or fully reserved — nothing orderable.";
   return null;
 }
 
@@ -1731,7 +1732,10 @@ function KitCatalog({
                       startIcon={<AddShoppingCartIcon />}
                       onClick={() => onBuy(k)}
                       disabled={!canOrder || (orderable ?? 0) <= 0}
-                      title={addDisabledReason(canOrder, orderable, slices) ?? undefined}
+                      title={
+                        addDisabledReason(canOrder, orderable, slices) ??
+                        undefined
+                      }
                     >
                       Add
                     </Button>

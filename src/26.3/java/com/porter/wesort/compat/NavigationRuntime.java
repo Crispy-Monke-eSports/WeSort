@@ -247,8 +247,7 @@ public final class NavigationRuntime {
         if (nowMs - lastTransientCheckMs < 5_000) return;
         lastTransientCheckMs = nowMs;
         boolean transientPause = WorldInteractionGuard.dedicated()
-                ? NavigationRecovery.retryable(status, pauseDetail)
-                        || status.equals("PAUSED_NAVIGATION_DISCONNECTED")
+                ? NavigationRecovery.retryable(status, pauseDetail) || status.equals("PAUSED_NAVIGATION_DISCONNECTED")
                 : status.equals("PAUSED_NAVIGATION_INVENTORY")
                         || (status.equals("PAUSED_NAVIGATION_UNSAFE_BLOCK") && pauseDetail.startsWith("unloaded "));
         // Operator-taken routes expire: a headless bot must not wait forever for a human

@@ -500,8 +500,8 @@ final class PhysicalOperations {
         }
         try {
             int attempts = autoInspections(operation, revision, checksum);
-            if (attempts >= MAX_AUTO_INSPECT_PER_REVISION
-                    && !autoInspectBackoffElapsed(operation, revision, checksum)) return null;
+            if (attempts >= MAX_AUTO_INSPECT_PER_REVISION && !autoInspectBackoffElapsed(operation, revision, checksum))
+                return null;
             return inspect(operation, revision, checksum, "system:self-heal");
         } catch (Conflict changed) {
             return null; // The operation advanced since the readback receipt.
@@ -516,8 +516,9 @@ final class PhysicalOperations {
      */
     private boolean autoInspectBackoffElapsed(String operation, long revision, String checksum) throws IOException {
         try (var c = ledger.open();
-                var p = c.prepareStatement("SELECT max(issued_at) FROM physical_decisions WHERE operation=? AND revision=? "
-                        + "AND checksum=? AND action='INSPECT' AND manager_run=?")) {
+                var p = c.prepareStatement(
+                        "SELECT max(issued_at) FROM physical_decisions WHERE operation=? AND revision=? "
+                                + "AND checksum=? AND action='INSPECT' AND manager_run=?")) {
             p.setString(1, operation);
             p.setLong(2, revision);
             p.setString(3, checksum);

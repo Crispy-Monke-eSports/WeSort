@@ -236,6 +236,9 @@ public class Stash {
     // The stacks the sorter took out of the stash and carries, by inventory slot, so they are still known as the
     // stash's
     // after a restart
+    public record RecoveredBox(int slot, ItemStack stack, BlockPos destination, int before) {}
+    public RecoveredBox recoveredBox;
+
     public final java.util.Map<Integer, ItemStack> held = new java.util.LinkedHashMap<>();
     public InFlight inFlight;
     public final String name;
@@ -661,6 +664,14 @@ public class Stash {
             });
         }
         root.put("held", heldList);
+        if (recoveredBox != null) {
+            CompoundTag ret = new CompoundTag();
+            ret.putInt("slot", recoveredBox.slot());
+            ret.put("item", ItemStack.CODEC.encodeStart(ops, recoveredBox.stack()).getOrThrow());
+            if (recoveredBox.destination() != null) ret.put("destination", positions(List.of(recoveredBox.destination())));
+            ret.putInt("before", recoveredBox.before());
+            root.put("recoveredBox", ret);
+        }
 
         if (inFlight != null) root.put("inFlight", writeInFlight(inFlight, ops));
 
@@ -955,6 +966,12 @@ public class Stash {
                     ItemStack stack = readStack(ops, tag.get("item"));
                     if (slot >= 0 && !stack.isEmpty()) stash.held.put(slot, stack);
                 }
+            }
+            if (root.get("recoveredBox") instanceof CompoundTag ret) {
+                ItemStack item = readStack(ops, ret.get("item"));
+                int slot = number(ret.get("slot"), -1);
+                if (!item.isEmpty() && slot >= 0 && slot < 36)
+                    stash.recoveredBox = new RecoveredBox(slot, item, readPos(ret, "destination"), number(ret.get("before"), -1));
             }
             if (root.get("inFlight") instanceof CompoundTag flight) stash.inFlight = readInFlight(flight, ops);
             if (root.get("deliveryStorage") instanceof ListTag chests) {

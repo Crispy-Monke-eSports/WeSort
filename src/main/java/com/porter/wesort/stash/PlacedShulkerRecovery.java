@@ -11,4 +11,8 @@ public final class PlacedShulkerRecovery {
     public static boolean shouldRecover(String placedOrderId, String activeOrderId) {
         return placedOrderId == null || placedOrderId.isEmpty() || !placedOrderId.equals(activeOrderId);
     }
+
+    public static boolean depositConfirmed(boolean carrySlotEmpty, int before, int after, int carried) {
+        return carrySlotEmpty && before >= 0 && carried > 0 && after == before + carried;
+    }
 }

@@ -985,6 +985,7 @@ public class StashSorter extends Module {
     private boolean resuming, resumeVerify, resumeFinishOnly, resumeDimensionSaid;
     private int resumeDimLogTick = -100_000;
     private boolean recoveringOrphan;
+    private ItemStack[] recoveredContents;
     private final Map<BlockPos, Integer> recoveryRetryAt = new HashMap<>();
     private int resumeStarted;
     private String placedItemId = "";
@@ -2257,7 +2258,7 @@ public class StashSorter extends Module {
                 }
                 idle = false;
             }
-            if (idle && !wakeUp()) {
+            if (idle && stash.recoveredBox == null && !wakeUp()) {
                 // Resting: only something on the ground can still start a job. Looked at every half second, and only
                 // when nobody else is busy
                 if (ticks % 10 != 0 || foreign != null || !yielder.quietElapsed() || !startGround()) return;
@@ -3082,6 +3083,8 @@ public class StashSorter extends Module {
     }
 
     private boolean pickJob() {
+        if (stash.recoveredBox != null) return startRecoveredBoxReturn();
+
         // A shulker step that was saved comes before anything else
         if (startResume()) return true;
 
@@ -3751,9 +3754,72 @@ public class StashSorter extends Module {
         return start(Job.Return, home);
     }
 
+    private boolean startRecoveredBoxReturn() {
+        var pending = stash.recoveredBox;
+        Box home = pending.destination() == null ? null : stash.boxAt(pending.destination());
+        if (pending.destination() == null) {
+            ItemStack stack = pending.stack();
+            plan();
+            home = nearest(destinationsFor(stack).stream()
+                    .filter(b -> returnable(b, stack) && b.sortable())
+                    .toList());
+            if (home == null)
+                home = nearest(stash.boxes.stream()
+                        .filter(b -> !b.excluded && !b.foreign && !b.delivery && !b.protectedStorage && !b.unreachable
+                                && !b.dropOff
+                                && !isKitBox(b)
+                                && !blocked(b, Job.Return)
+                                && (!b.known() || b.stale || roomFor(b, stack)))
+                        .toList());
+        }
+        if (home == null
+                || home.excluded
+                || home.foreign
+                || home.delivery
+                || home.protectedStorage
+                || home.dropOff
+                || isKitBox(home)) {
+            step("Waiting for safe stash storage for the recovered shulker.");
+            wait = 20;
+            return false;
+        }
+        return start(Job.Return, home);
+    }
+
+    /** Called after the open destination has been read from the server. */
+    private boolean depositRecoveredBox() {
+        var pending = stash.recoveredBox;
+        ItemStack expected = pending.stack();
+        ItemStack held = mc.player.getInventory().getItem(pending.slot());
+        int copies = 0;
+        for (ItemStack item : target.contents)
+            if (ItemStack.isSameItemSameComponents(item, expected)) copies += item.getCount();
+        if (pending.destination() != null && !target.has(pending.destination())) return false;
+        if (PlacedShulkerRecovery.depositConfirmed(held.isEmpty(), pending.before(), copies, expected.getCount())) {
+            stash.recoveredBox = null;
+            stash.markDirty();
+            stash.save();
+            return false;
+        }
+        if (!ItemStack.matches(held, expected)
+                || !returnable(target, expected)
+                || !target.sortable()
+                || (pending.before() >= 0 && copies != pending.before())) return false;
+        if (pending.destination() == null) {
+            stash.recoveredBox = new Stash.RecoveredBox(pending.slot(), expected, target.pos, copies);
+            stash.markDirty();
+        }
+        stash.save();
+        if (stash.isDirty()) return false;
+        InvUtils.shiftClick().slotId(inventoryToMenu(pending.slot(), target.contents.length));
+        return true;
+    }
+
     /** Puts one leftover into the open container. */
     private boolean returnOne() {
         if (!mc.player.containerMenu.getCarried().isEmpty()) return recoverBounded();
+
+        if (stash.recoveredBox != null) return depositRecoveredBox();
 
         for (int slot : returnPool()) {
             ItemStack stack = mc.player.getInventory().getItem(slot);
@@ -3785,6 +3851,7 @@ public class StashSorter extends Module {
     /** Finish a previously started physical move before surrendering the server lease. */
     private boolean finishingPhysicalMaintenance() {
         return !repackConflict.isEmpty()
+                || stash != null && stash.recoveredBox != null
                 || handle != null
                 || compactor.active()
                 || (repackWork != null && !repackWork.terminal())
@@ -8313,6 +8380,7 @@ public class StashSorter extends Module {
                 }
             }
             ownedMenu = mc.player.containerMenu;
+            if (job == Job.Recover) recoveredContents = repackMenuContents(ownedMenu);
             shulkerSlotsBefore.clear();
             for (int i = 0; i < 36; i++)
                 if (Utils.isShulker(mc.player.getInventory().getItem(i).getItem())) shulkerSlotsBefore.add(i);
@@ -8329,7 +8397,7 @@ public class StashSorter extends Module {
         }
 
         if (handleTicks > HANDLE_TIMEOUT) {
-            if (handlingProof) {
+            if (handlingProof || job == Job.Recover) {
                 blockRepack("Shulker could not be opened for full physical verification");
                 return;
             }
@@ -8711,6 +8779,13 @@ public class StashSorter extends Module {
             }
             if (found == -1) found = heldLikePlaced(false);
 
+            if (job == Job.Recover) found = recoveredPickupSlot();
+            if (job == Job.Recover
+                    && (found < 0 || found >= 36 || parseSlots(keepSlots.get()).contains(found))) {
+                blockRepackConflict("Recovered shulker has no verified storage carry slot");
+                return;
+            }
+
             if (found == -1) {
                 alert("I picked up the shulker from %s but couldn't tell which slot it is in.", placed.toShortString());
                 compactor.collected(-1, placed, ItemStack.EMPTY);
@@ -8729,10 +8804,11 @@ public class StashSorter extends Module {
                     // until the updated box has been deposited.
                 } else if (job == Job.Recover && found < 36) {
                     // A collected world drop-off belongs to the warehouse, never to the player's
-                    // pre-existing inventory. In scan-only mode the return path uses orderHeld.
+                    // pre-existing inventory. Persist the priority return in both sorter modes.
                     carry.add(found);
                     stashHeld.put(found, got.copy());
-                    if (!sorting()) orderHeld.put(found, got.copy());
+                    stash.recoveredBox = new Stash.RecoveredBox(found, got.copy(), null, -1);
+                    stash.markDirty();
                 } else if (found < 36 && !carry.contains(found)) {
                     int free = freeCarrySlot();
                     if (free != -1) {
@@ -8804,6 +8880,25 @@ public class StashSorter extends Module {
     }
 
     private static final int PICKUP_GRACE_TICKS = 20 * 3;
+
+    private int recoveredPickupSlot() {
+        if (recoveredContents == null) return -1;
+        int found = -1;
+        for (int slot = 0; slot < 36; slot++) {
+            if (shulkerSlotsBefore.contains(slot)) continue;
+            ItemStack item = mc.player.getInventory().getItem(slot);
+            if (!Utils.isShulker(item.getItem())
+                    || !BuiltInRegistries.ITEM.getKey(item.getItem()).getPath().equals(placedItemId)) continue;
+            ItemStack[] contents = inside(item);
+            boolean matches = contents.length == recoveredContents.length;
+            for (int i = 0; matches && i < contents.length; i++)
+                matches = ItemStack.matches(contents[i] == null ? ItemStack.EMPTY : contents[i], recoveredContents[i]);
+            if (!matches) continue;
+            if (found >= 0) return -1;
+            found = slot;
+        }
+        return found;
+    }
 
     /**
      * Whether the shulker we broke is in the inventory now.
@@ -9047,7 +9142,7 @@ public class StashSorter extends Module {
     private boolean surveyWhileBlocked() {
         if (PhysicalJournalRuntime.inspecting() || portalAwaiting()) return false;
         if (!InventorySync.ready() || com.porter.wesort.compat.NavigationRuntime.paused()) return false;
-        if (stash == null || handle != null) return false;
+        if (stash == null || stash.recoveredBox != null || handle != null) return false;
         ticks++;
         if (wait > 0) {
             wait--;
@@ -9627,6 +9722,10 @@ public class StashSorter extends Module {
                 handleTicks = 0;
                 return;
             }
+            if (job == Job.Recover) {
+                blockRepackConflict("Recovered shulker is no longer standing and its pickup has no verified checkpoint");
+                return;
+            }
             // Broken since: on the ground nearby, or already in the inventory, or gone
             if (shulkerItemNearby(8)) {
                 shulkersBefore = countShulkers() + 1;
@@ -9890,6 +9989,7 @@ public class StashSorter extends Module {
                 || mc.player.containerMenu != mc.player.inventoryMenu
                 || !freeInventorySlot()) return false;
         recoveringOrphan = true;
+        recoveredContents = null;
         resuming = true;
         resumeStarted = ticks;
         resumeVerify = false;
@@ -12850,7 +12950,7 @@ public class StashSorter extends Module {
     public boolean pendingPhysicalRecovery() {
         return !repackConflict.isEmpty()
                 || pendingResume != null
-                || stash != null && stash.inFlight != null
+                || stash != null && (stash.inFlight != null || stash.recoveredBox != null)
                 || repackWork != null && !repackWork.terminal();
     }
 

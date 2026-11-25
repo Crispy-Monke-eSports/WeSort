@@ -285,10 +285,10 @@ public class StashManager extends Module {
     private com.porter.wesort.stash.DeliveryContents.Built deliveryPending;
     // The rescan id handled and not yet acknowledged to the server, or -1
     private long rescanDone = -1;
-    // A website rescan is being carried out: the bot reads until nothing is stale or unread
+    // A website rescan remains pending until the queued reads have been attempted.
     private boolean rescanning;
-    // The last rescan acted on, kept over a reset so one that was not acknowledged yet is not done twice
-    private long lastRescanId = -1, lastRescanAt;
+    private long activeRescanId = -1;
+    private long lastRescanId = -1;
 
     public StashManager() {
         super(
@@ -581,6 +581,8 @@ public class StashManager extends Module {
         sentDelivery = "";
         resetDelivery();
         rescanDone = -1;
+        activeRescanId = -1;
+        lastRescanId = -1;
         rescanning = false;
         StashIndex.clearCache();
     }
@@ -1827,34 +1829,31 @@ public class StashManager extends Module {
         return failed > 0 ? failed + " unreadable, retrying" : "no readable containers";
     }
 
-    /** The website asked for a rescan: every container is marked to be read again, and the server is told at once. */
+    /** Queue a rescan and acknowledge its completion only after the reads have been attempted. */
     private void readRescan(String body) {
         try {
             JsonObject in = JsonParser.parseString(body).getAsJsonObject();
             readDirective(in);
+            readRecheck(body);
             if (!in.has("rescan") || in.get("rescan").isJsonNull()) return;
             long id = in.get("rescan").getAsLong();
-            // The server sends an id until it has our rescanDone, so one handled and waiting to be acknowledged is not
-            // done twice
-            if (id == rescanDone) return;
-            boolean duplicate = id == lastRescanId && System.currentTimeMillis() - lastRescanAt < 120_000;
-            rescanDone = id;
-            if (duplicate) {
-                info("Rescan request %d already handled, ignoring duplicate.", id);
+            if (id == activeRescanId || id == rescanDone) return;
+            if (id == lastRescanId) {
+                rescanDone = id;
                 return;
             }
-            lastRescanId = id;
-            lastRescanAt = System.currentTimeMillis();
 
             StashSorter sorter = WeSortAddon.sorter();
             int count = sorter == null ? -1 : sorter.rescan();
-            rescanning = count >= 0;
             if (count < 0) warning("Rescan requested from the website, but no stash is loaded.");
-            else info("Rescan requested from the website: re-reading %d containers.", count);
+            else {
+                activeRescanId = id;
+                rescanning = true;
+                info("Rescan requested from the website: re-reading %d containers.", count);
+            }
         } catch (RuntimeException ex) {
             WeSortAddon.LOG.warn("wesort-stash-manager: couldn't read the rescan request", ex);
         }
-        readRecheck(body);
     }
 
     /**
@@ -2001,7 +2000,15 @@ public class StashManager extends Module {
         // shulkers and finish returning any it already collected, even when orders and
         // normal sorting are disabled. A website rescan alone can stop before that
         // physical recovery is safely deposited.
-        if (rescanning && !sorter.needsReading()) rescanning = false;
+        if (rescanning && !sorter.needsReading()) {
+            rescanning = false;
+            if (activeRescanId >= 0) {
+                lastRescanId = rescanDone = activeRescanId;
+                activeRescanId = -1;
+                scanTicks = 0;
+                needIndex = true;
+            }
+        }
         // The 6b6t lobby transit drives too: walking through the portal comes before everything.
         boolean want = dedicatedProfile()
                 && managerConfigured()

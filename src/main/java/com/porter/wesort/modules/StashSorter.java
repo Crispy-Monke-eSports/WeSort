@@ -883,6 +883,7 @@ public class StashSorter extends Module {
     // Explicit rescans (including Manager revision conflicts) need new receipts,
     // not a five-minute wait on observations from an obsolete index.
     private final Set<Box> forcedSurvey = new HashSet<>();
+    private final Set<Box> requestedSurvey = new HashSet<>();
     private long nextIdleSurveyAt, nextBackgroundBatchAt;
     // Jobs that opened a container and clicked nothing, with what the carry slots and the container held then: not
     // repeated until one of them changes, however often stalled is cleared meanwhile
@@ -1815,7 +1816,7 @@ public class StashSorter extends Module {
         // what is known stays in use until each one is
         // (not the ones read within the fresh-minutes window: those are only read again if something marks them stale)
         for (Box box : stash.boxes) {
-            box.stale = !box.excluded && (box.stale || forcedSurvey.contains(box) || !fresh(box));
+            box.stale = !box.excluded && (box.stale || !fresh(box));
             if (box.stale && readableBox(box)) forcedSurvey.add(box);
         }
 
@@ -2111,6 +2112,7 @@ public class StashSorter extends Module {
         }
         if (!repackConflict.isEmpty()) {
             ledgeGuard(false);
+            if (surveyWhileBlocked()) return;
             gateLogThrottled("operator attention: " + repackConflict);
             return;
         }
@@ -2128,6 +2130,7 @@ public class StashSorter extends Module {
         if (repackWork != null
                 && repackWork.phase() == com.porter.wesort.inventory.PhysicalWork.Phase.NEEDS_RECONCILIATION) {
             ledgeGuard(false);
+            if (surveyWhileBlocked()) return;
             gateLogThrottled("waiting for automatic recovery: "
                     + (repackWork.reason().isEmpty() ? "physical work needs reconciliation" : repackWork.reason()));
             return;
@@ -2154,6 +2157,7 @@ public class StashSorter extends Module {
             return;
         }
         if (!sortingPermitted()) {
+            if (surveyWhileBlocked()) return;
             gateLogThrottled("sorting paused: Manager must exclude reservations before physical moves.");
             ledgeGuard(false);
             return;
@@ -2894,7 +2898,7 @@ public class StashSorter extends Module {
 
     private boolean surveyCandidate(Box box, long now, boolean periodic) {
         if (!surveyDue(box, now)) return false;
-        if (!box.known() || box.stale) return true;
+        if (forcedSurvey.contains(box) || requestedSurvey.contains(box) || !box.known() || box.stale) return true;
         return periodic
                 && keepOn()
                 && now >= nextBackgroundBatchAt
@@ -2903,10 +2907,11 @@ public class StashSorter extends Module {
 
     private boolean queueSurveyBatch(boolean periodic, boolean nearbyOnly) {
         long now = System.currentTimeMillis();
-        surveyBatch.removeIf(box -> !stash.boxes.contains(box) || !surveyDue(box, now) || box.known() && !box.stale);
+        surveyBatch.removeIf(box -> !stash.boxes.contains(box) || !surveyDue(box, now));
         if (!surveyBatch.isEmpty()) return true;
         surveyAttemptAt.keySet().retainAll(stash.boxes);
         forcedSurvey.retainAll(stash.boxes);
+        requestedSurvey.retainAll(stash.boxes);
         dropBackoffUntil.keySet().retainAll(stash.boxes);
         var candidates = stash.boxes.stream()
                 .filter(box -> surveyCandidate(box, now, periodic) && (!nearbyOnly || inReach(box)))
@@ -2916,10 +2921,7 @@ public class StashSorter extends Module {
         if (selected.isEmpty()) return false;
         // The selected batch stays stable until every member is attempted or
         // has been refreshed by another verified job in the meantime.
-        for (Box box : selected) {
-            box.stale = true;
-            surveyBatch.add(box);
-        }
+        surveyBatch.addAll(selected);
         info("Checking %d containers, oldest observations first.", selected.size());
         return true;
     }
@@ -2939,9 +2941,12 @@ public class StashSorter extends Module {
         // A cancelled walk can be replanned. Consume an explicit request on read or failure.
         // A continuously busy stash still gets background batches, but the
         // next periodic batch leaves a window for ordinary work.
-        if (surveyBatch.isEmpty()) nextBackgroundBatchAt = now + 30_000L;
+        if (surveyBatch.isEmpty()) nextBackgroundBatchAt = now + 5_000L;
         surveyAttemptAt.put(selected, now);
-        return start(Job.Survey, selected);
+        if (start(Job.Survey, selected)) return true;
+        forcedSurvey.remove(selected);
+        requestedSurvey.remove(selected);
+        return false;
     }
 
     private void dropChecked(Box box, boolean differed) {
@@ -2957,6 +2962,7 @@ public class StashSorter extends Module {
      */
     private void surveyFailed(Box box, String why) {
         forcedSurvey.remove(box);
+        requestedSurvey.remove(box);
         box.stale = true;
         box.observationUnreachable = true;
         failedSurvey.add(box);
@@ -3866,7 +3872,7 @@ public class StashSorter extends Module {
     /** Containers waiting to be read: not read yet, or stale. */
     boolean needsReading() {
         if (stash == null) return false;
-        if (areaDirty) return true;
+        if (areaDirty || forcedSurvey.stream().anyMatch(b -> stash.boxes.contains(b) && readableBox(b))) return true;
         if (explorePending && stash.hasArea() && BARITONE) return true;
         return stash.boxes.stream()
                 .anyMatch(b -> !b.excluded
@@ -7556,7 +7562,6 @@ public class StashSorter extends Module {
         surveyBatch.clear();
         for (Box box : stash.boxes) {
             if (box.excluded || box.foreign) continue;
-            box.stale = true;
             forcedSurvey.add(box);
             // Only readable containers are counted: unreachable and failed-survey ones
             // would inflate the "re-reading N" count without any subsequent reads.
@@ -7588,14 +7593,9 @@ public class StashSorter extends Module {
             if (pos == null) continue;
             Box box = stash.boxAt(pos);
             if (box == null || box.excluded || box.foreign || box.unreachable || failedSurvey.contains(box)) continue;
-            if (!box.stale) {
-                box.stale = true;
-                marked++;
-            }
+            if (requestedSurvey.add(box)) marked++;
         }
         if (marked > 0) {
-            stash.markDirty();
-            stash.save();
             version++;
             idle = false;
         }
@@ -8776,8 +8776,10 @@ public class StashSorter extends Module {
                     placed.toShortString(), handleTicks / 20);
         }
         if (handleTicks > COLLECT_TIMEOUT) {
-            abandonShulker(
-                    "Couldn't pick the shulker back up, it's on the ground near " + placed.toShortString() + ".");
+            // Keep the exact workspace and pickup baseline for a signed read-only
+            // recovery; never discard it or claim the box is still on the ground.
+            syncInFlight();
+            blockRepack("Pickup not yet verified at " + placed.toShortString());
             return;
         }
 
@@ -8812,6 +8814,7 @@ public class StashSorter extends Module {
      */
     private boolean pickedUp() {
         if (!repackExpected.isEmpty()) {
+            if (placed == null || !mc.level.isLoaded(placed) || shulkerAt(placed)) return false;
             if (verifiedRepackPickup() < 0
                     || repackInventory().stream().filter(this::repackMatches).count() != repackExistingCopies + 1L)
                 return false;
@@ -8902,11 +8905,18 @@ public class StashSorter extends Module {
     }
 
     private int verifiedRepackPickup() {
-        for (int i = 0; i <= 40; i++)
-            if (!(i >= 36 && i < 40)
-                    && !shulkerSlotsBefore.contains(i)
-                    && repackMatches(mc.player.getInventory().getItem(i))) return i;
-        return -1;
+        // A pickup can land in a previously occupied slot after the inventory
+        // is rearranged. When the exact fingerprint was absent at break time
+        // and there is precisely one matching copy now, its slot is unambiguous.
+        int match = -1;
+        for (int i = 0; i <= 40; i++) {
+            if (i >= 36 && i < 40) continue;
+            if (!repackMatches(mc.player.getInventory().getItem(i))) continue;
+            if (!shulkerSlotsBefore.contains(i)) return i;
+            if (repackExistingCopies != 0 || match != -1) return -1;
+            match = i;
+        }
+        return match;
     }
 
     private int repackCount(ItemStack[] contents) {
@@ -8961,6 +8971,7 @@ public class StashSorter extends Module {
         repackVerifyReads = 0;
         repackVerifySeen.clear();
         storeWatchMs = 0;
+        dropLost = false; // only a new accepted reconciliation proof may clear this latch
         if ((stash != null && stash.inFlight != null) || pendingResume != null || resuming) {
             repackWork = new com.porter.wesort.inventory.PhysicalWork("Shulker", System.nanoTime());
             step("verified recovery finished; next: resume the saved shulker step.");
@@ -9034,17 +9045,16 @@ public class StashSorter extends Module {
      * @return true when the tick was consumed by a survey wait
      */
     private boolean surveyWhileBlocked() {
-        if (!PhysicalJournalRuntime.blocked() && !PhysicalJournalRuntime.awaitingMirror()) return false;
+        if (PhysicalJournalRuntime.inspecting() || portalAwaiting()) return false;
         if (!InventorySync.ready() || com.porter.wesort.compat.NavigationRuntime.paused()) return false;
         if (stash == null || handle != null) return false;
+        ticks++;
         if (wait > 0) {
             wait--;
             return false;
         }
-        if (mc.player == null
-                || mc.level == null
-                || mc.player.containerMenu != mc.player.inventoryMenu
-                || mc.screen != null) return false;
+        if (mc.player == null || mc.level == null) return false;
+        if (job == null && (mc.player.containerMenu != mc.player.inventoryMenu || mc.screen != null)) return false;
         StashYield.Reason foreign = yielder.check(StashManager.ownsClient());
         if (foreign != null) return false;
         if (job != null) {
@@ -9067,6 +9077,9 @@ public class StashSorter extends Module {
             }
             return true;
         }
+        releaseDueSurveys();
+        applyStale();
+        queueSurveyBatch(true, false);
         return startSurveyBatch(false);
     }
 
@@ -9301,7 +9314,7 @@ public class StashSorter extends Module {
         String what = placedName();
         int stacks = plan != null ? plan.placedSize : placedStacks;
         alertError(
-                "%s It holds %s of %s. No more shulkers are put down until sorting is restarted.",
+                "%s It holds %s of %s. New shulker work waits for verified recovery.",
                 why, stacks > 0 ? stacks + " stacks" : "some stacks", what);
         if (at != null) {
             recordOrphan(at, what, stacks);
@@ -12962,6 +12975,7 @@ public class StashSorter extends Module {
             surveyAttemptAt.clear();
             surveyBatch.clear();
             forcedSurvey.clear();
+            requestedSurvey.clear();
             nextIdleSurveyAt = nextBackgroundBatchAt = 0;
             dropBackoffUntil.clear();
             staleBoxes.clear();
@@ -13181,6 +13195,7 @@ public class StashSorter extends Module {
         com.porter.wesort.compat.ObservationRuntime.record(box);
         if (!box.stale) {
             forcedSurvey.remove(box);
+            requestedSurvey.remove(box);
             dropChecked(box, differs);
         }
         stash.markDirty();

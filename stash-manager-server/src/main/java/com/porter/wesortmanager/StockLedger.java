@@ -249,7 +249,7 @@ final class StockLedger {
     }
 
     private static long policy() {
-        String value = System.getenv().getOrDefault("WESORT_STOCK_MAX_AGE_SECONDS", "300");
+        String value = System.getenv().getOrDefault("WESORT_STOCK_MAX_AGE_SECONDS", "1800");
         long seconds = Long.parseLong(value);
         if (seconds < 1 || seconds > 86400)
             throw new IllegalArgumentException("WESORT_STOCK_MAX_AGE_SECONDS must be 1..86400");
@@ -327,32 +327,20 @@ final class StockLedger {
         }
     }
 
-    /**
-     * Pause stock aging for one server while its rescan is outstanding (see
-     * {@link #effectiveNow}). Re-freezing extends the pause; it always expires
-     * one grace period after the last freeze, so a dead bot cannot pin stock
-     * fresh forever.
-     */
+    /** A pending rescan may provide one bounded grace period, not renew stock forever. */
     synchronized void freezeAging(String server, long at) {
-        agingFreeze.put(server, at);
+        agingFreeze.putIfAbsent(server, at);
     }
 
-    /** Resume normal aging for one server: its rescan landed or was dropped. */
     synchronized void unfreezeAging(String server) {
         agingFreeze.remove(server);
     }
 
-    private synchronized long effectiveNow(String server, long now) {
+    private synchronized long effectiveNow(String server, long now, long observedAt) {
         Long frozen = agingFreeze.get(server);
-        if (frozen == null) return now;
-        if (now - frozen >= 2 * maxAge) {
-            // The bot went quiet mid-rescan: stop pretending the freeze is fresh.
-            agingFreeze.remove(server);
-            return now;
-        }
-        // While the rescan is outstanding, stock stops aging at the freeze:
-        // a slow full-stash re-read is not punished as STALE_AGE.
-        return Math.min(now, frozen);
+        if (frozen == null || now < frozen || now - frozen >= Math.min(maxAge / 4, 120_000L)) return now;
+        // A source read after the freeze is not a future-dated observation.
+        return Math.max(frozen, Math.min(now, observedAt));
     }
 
     private long revision(Connection c) throws SQLException {
@@ -1200,7 +1188,7 @@ final class StockLedger {
             while (r.next()) {
                 var value = JsonParser.parseString(r.getString(3)).getAsJsonObject();
                 String state = value.get("state").getAsString();
-                long at = effectiveNow(r.getString(1), now);
+                long at = effectiveNow(r.getString(1), now, r.getLong(5));
                 int activeParts = 0;
                 try (var p = c.prepareStatement("SELECT count(*) FROM stock_parts WHERE source=?")) {
                     p.setString(1, r.getString(8));

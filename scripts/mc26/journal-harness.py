@@ -88,6 +88,44 @@ class JournalHarness(repack.RepackHarness):
                 snapshot['standing'] = self.rcon.command(f'data get block {pos} Items')
         return snapshot
 
+    def stable_stock_snapshot(self, row, stage):
+        # Independent work after a safe no-INTENT abort may be transferring
+        # stock while RCON reads the barrels, player and standing box one by
+        # one. A mixed-time snapshot (or an item on the menu cursor) is not
+        # an authoritative stock count. Wait for two matching observations
+        # bracketed by unchanged mutation witnesses, without stopping work.
+        def witness():
+            state = self.command('state')['state']
+            progress = state.get('repackProgress') or {}
+            return (
+                state['attemptedClicks'], state['lastBlockSequence'],
+                state['lastBlockAck'], state.get('repackPosition'),
+                progress.get('id'), progress.get('phase'),
+                state['physicalJournal'], state['inventoryReady'],
+            )
+
+        deadline = time.monotonic() + 30
+        previous = None
+        while time.monotonic() < deadline:
+            start = witness()
+            cursor_before, _ = self.cursor()
+            snapshot = self.snapshot_after_restart(row)
+            cursor_after, _ = self.cursor()
+            end = witness()
+            (self.evidence / f'stock-{stage}-latest.json').write_text(
+                json.dumps({'snapshot': snapshot, 'start': start, 'end': end,
+                            'cursor_before': cursor_before, 'cursor_after': cursor_after},
+                           indent=2) + '\n', encoding='utf-8')
+            if start == end and end[-1] and not cursor_before and not cursor_after:
+                observation = (end, self.canonical_snapshot(snapshot))
+                if observation == previous:
+                    return snapshot
+                previous = observation
+            else:
+                previous = None
+            time.sleep(.2)
+        raise RuntimeError(f'No stable authoritative stock snapshot during {stage}')
+
     @staticmethod
     def canonical_snapshot(snapshot):
         # Raw RCON strings wobble (SNBT key order, Inventory list order, entity choice):
@@ -262,7 +300,6 @@ class JournalHarness(repack.RepackHarness):
                         + json.dumps(fenced_detail))
             require(fenced['attemptedClicks'] == 0,
                     'Client replayed an inventory click: ' + json.dumps(fenced_detail))
-            after = self.snapshot_after_restart(row)
             # For an interrupted operation with a transmitted INTENT the
             # physical world must not change under the recovery fence. When
             # SELECT/PLACE sent no INTENT at all, however, recovery ends safely
@@ -270,9 +307,16 @@ class JournalHarness(repack.RepackHarness):
             # new Manager lease. Such independent redistribution may change
             # slots, but may never change recursive item counts or metadata.
             no_mutation_sent = not any(event['type'] == 'INTENT' for event in crashed['events'])
+            independent = no_mutation_sent and initial['physicalJournal'] == 'READY'
+            after = (self.stable_stock_snapshot(row, 'after-restart') if independent
+                     else self.snapshot_after_restart(row))
             time.sleep(8)
-            later = self.snapshot_after_restart(row)
-            if no_mutation_sent and initial['physicalJournal'] == 'READY':
+            later = (self.stable_stock_snapshot(row, 'after-soak') if independent
+                     else self.snapshot_after_restart(row))
+            (self.evidence / 'stock-snapshots.json').write_text(
+                json.dumps({'before': before, 'after': after, 'later': later},
+                           indent=2) + '\n', encoding='utf-8')
+            if independent:
                 require(self.totals(after) == self.totals(later),
                         'Resumed independent sorting changed total stock or item metadata')
             else:

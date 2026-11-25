@@ -4,6 +4,7 @@ import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 import baritone.api.pathing.goals.Goal;
 import com.porter.wesort.WeSortAddon;
+import com.porter.wesort.inventory.NavigationRecovery;
 import com.porter.wesort.inventory.NavigationWatchdog;
 import com.porter.wesort.inventory.PortalNavigationPolicy;
 import com.porter.wesort.modules.StashManager;
@@ -45,7 +46,8 @@ public final class NavigationRuntime {
     // Transient pauses re-evaluate themselves instead of latching forever.
     private static String pauseDetail = "";
     private static long lastPauseLogMs;
-    private static long lastTransientCheckMs;
+    private static long lastTransientCheckMs, retryAt, lastRetryAt;
+    private static int transientFailures;
     private static final java.util.Map<String, Integer> denialCounts = new java.util.LinkedHashMap<>();
 
     private NavigationRuntime() {}
@@ -119,6 +121,7 @@ public final class NavigationRuntime {
             dropAnchorY = mc.player.getY();
             dropAnchorZ = mc.player.getZ();
         }
+        pauseDetail = "";
         status = "RUNNING";
     }
 
@@ -169,9 +172,17 @@ public final class NavigationRuntime {
         BaritoneHelper.unprotect();
         paused = pause;
         pausedPortalRoute = pause && wasPortal;
-        if (pause && outcome.equals("PAUSED_NAVIGATION_UNSAFE_BLOCK") && mc.player != null && mc.level != null)
-            pauseDetail = NavigationGuard.denial(mc.player.blockPosition());
-        else if (!pause) pauseDetail = "";
+        if (!pause || !outcome.equals("PAUSED_NAVIGATION_UNSAFE_BLOCK")) pauseDetail = "";
+        else if (pauseDetail.isEmpty() && mc.player != null && mc.level != null) {
+            String denial = NavigationGuard.denial(mc.player.blockPosition());
+            pauseDetail = denial == null ? "" : denial;
+        }
+        if (pause && NavigationRecovery.retryable(outcome, pauseDetail)) {
+            long now = System.currentTimeMillis();
+            if (now - lastRetryAt > 120_000) transientFailures = 0;
+            retryAt = now + NavigationRecovery.delayMs(++transientFailures);
+            lastRetryAt = now;
+        } else if (!pause) transientFailures = 0;
         denialCounts.merge(outcome, 1, Integer::sum);
         status = outcome;
         if (pause)
@@ -228,13 +239,17 @@ public final class NavigationRuntime {
         }
         if (nowMs - lastTransientCheckMs < 5_000) return;
         lastTransientCheckMs = nowMs;
-        boolean transientPause = status.equals("PAUSED_NAVIGATION_INVENTORY")
-                || (status.equals("PAUSED_NAVIGATION_UNSAFE_BLOCK")
-                        && pauseDetail != null
-                        && pauseDetail.contains("unloaded"));
-        if (!transientPause || mc.player == null || mc.level == null) return;
-        if (!InventorySync.ready()) return;
+        boolean transientPause = WorldInteractionGuard.dedicated()
+                ? NavigationRecovery.retryable(status, pauseDetail)
+                : status.equals("PAUSED_NAVIGATION_INVENTORY")
+                        || (status.equals("PAUSED_NAVIGATION_UNSAFE_BLOCK") && pauseDetail.startsWith("unloaded "));
+        if (!transientPause || nowMs < retryAt || mc.player == null || mc.level == null) return;
+        if (!InventorySync.ready() || PhysicalJournalRuntime.inspecting()) return;
+        if (status.equals("PAUSED_NAVIGATION_PHYSICAL_UNCERTAINTY")
+                && (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror())) return;
         if (!NavigationGuard.permits(mc.player.blockPosition())) return;
+        // The previous goal was released; the sorter replans under all normal guards.
+        // No old path or physical action is replayed here.
         paused = false;
         pauseDetail = "";
         dropRetries = 0;
@@ -361,8 +376,10 @@ public final class NavigationRuntime {
     }
 
     private boolean allowedRoute() {
+        pauseDetail = "";
         String blocked = NavigationGuard.denial(mc.player.blockPosition());
         if (blocked != null) {
+            pauseDetail = blocked;
             MeteorClient.LOG.warn("WeSort blocked route under player: {}", blocked);
             return false;
         }
@@ -373,6 +390,7 @@ public final class NavigationRuntime {
         for (int position = first; position < Math.min(first + 3, positions.size()); position++) {
             blocked = NavigationGuard.denial(positions.get(position));
             if (blocked != null) {
+                pauseDetail = blocked;
                 MeteorClient.LOG.warn("WeSort blocked route at path position {}: {}", position, blocked);
                 return false;
             }

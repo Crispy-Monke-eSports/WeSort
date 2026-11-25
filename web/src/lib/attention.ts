@@ -168,7 +168,7 @@ export function healthAttention(
       to: "/operations",
     });
   }
-<  const rawWarnings = health.warnings;
+  const rawWarnings = health.warnings;
   const warnings = new Set(Array.isArray(rawWarnings) ? rawWarnings.filter((w) => typeof w === "string") : []);
   if (health.staleStock) warnings.add("STALE_STOCK");
   for (const warning of warnings) {
@@ -177,7 +177,7 @@ export function healthAttention(
       items.push({
         severity: "warning",
         text: `STALE_STOCK — oldest stock observation: ${age == null ? "unknown age" : formatAge(age)}. Rescan or queue against last-verified.`,
-        to: "/operations",
+        to: "/inventory",
       });
     } else if (
       !(warning === "STALE_INDEX" && health.staleIndex) &&
@@ -185,6 +185,7 @@ export function healthAttention(
     ) {
       items.push({ severity: "warning", text: warning, to: "/operations" });
     }
+  }
   if (health.userRegistryUnavailable) {
     items.push({
       severity: "error",

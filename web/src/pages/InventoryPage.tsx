@@ -1398,7 +1398,7 @@ function AvailabilityLine({
   );
 }
 
-</** One-line reason why an Add button is disabled (permission vs unknown vs empty vs offline). Slices optional for call sites without slice context. */
+/* One-line reason why an Add button is disabled (permission vs unknown vs empty vs offline). Slices optional for call sites without slice context. */
 function addDisabledReason(
   canOrder: boolean,
   orderable: number | null,

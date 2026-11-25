@@ -170,12 +170,12 @@ describe("health signals", () => {
     expect(viaWarnings).toHaveLength(1);
     expect(viaWarnings[0].severity).toBe("warning");
     expect(viaWarnings[0].text.toLowerCase()).toContain("stale");
-    expect(viaWarnings[0].to).toBe("/operations");
+    expect(viaWarnings[0].to).toBe("/inventory");
     const viaFlag = healthAttention({ staleStock: true });
     expect(viaFlag).toHaveLength(1);
     expect(viaFlag[0].severity).toBe("warning");
-    // Unknown strings stay silent; absence of freshness is not freshness.
-    expect(healthAttention({ warnings: ["SOME_OTHER"] })).toEqual([]);
+    // Unknown warning codes surface generically (never silent); absence of freshness is not freshness.
+    expect(healthAttention({ warnings: ["SOME_OTHER"] })).toHaveLength(1);
   });
 
   it("yields nothing without data", () => {

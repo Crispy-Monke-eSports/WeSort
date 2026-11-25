@@ -16,7 +16,11 @@ class KitTemplateTest {
     @Test
     void ownFormatPreservesSparseSlotsCountsAndExactFingerprint() {
         var template = template("Raid alpha", 32);
-        var read = KitTemplate.read(template.json());
+        var payload = template.json();
+        assertTrue(payload.has("snbt"));
+        assertFalse(payload.has("slots"));
+        assertFalse(payload.has("slotVariants"));
+        var read = KitTemplate.read(payload);
         assertEquals(template.fingerprint(), read.fingerprint());
         assertEquals(26, read.layout().slots().getFirst().slot());
         assertEquals(32, read.layout().slots().getFirst().count());
@@ -32,7 +36,7 @@ class KitTemplateTest {
         json.addProperty("format", "qwerte-kit:1");
         assertThrows(IllegalArgumentException.class, () -> KitTemplate.read(json));
         json.addProperty("format", KitTemplate.FORMAT);
-        json.getAsJsonArray("slots").get(0).getAsJsonArray().set(2, new JsonPrimitive(0));
+        json.addProperty("snbt", "{}");
         assertThrows(IllegalArgumentException.class, () -> KitTemplate.read(json));
         var tampered = template("Raid", 32).json();
         tampered.addProperty("fingerprint", "0".repeat(64));

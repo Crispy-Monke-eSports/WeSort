@@ -9,14 +9,7 @@ import org.junit.jupiter.api.Test;
 class KitTemplateTest {
     private KitTemplate template(String name, int count) {
         var item = new PhysicalSlots.Item(
-                "minecraft:diamond",
-                "minecraft:diamond",
-                64,
-                "{}",
-                PhysicalSlots.Kind.ITEM,
-                0,
-                List.of(),
-                "");
+                "minecraft:diamond", "minecraft:diamond", 64, "{}", PhysicalSlots.Kind.ITEM, 0, List.of(), "");
         return new KitTemplate(name, new PhysicalSlots.Snapshot(27, List.of(new PhysicalSlots.Slot(26, count, item))));
     }
 

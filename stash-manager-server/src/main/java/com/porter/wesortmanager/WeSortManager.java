@@ -196,6 +196,22 @@ public final class WeSortManager {
                                     System.currentTimeMillis(),
                                     store.stock().maxAge());
                             orders.selfHealAll();
+                            // Dead bots never heartbeat, so the heartbeat path cannot expire
+                            // their outstanding rescans: sweep here so no rescan id latchs forever.
+                            for (String expired : store.sweepStaleRescans(System.currentTimeMillis())) {
+                                System.err.println(expired);
+                                try {
+                                    audit.add(
+                                            "system",
+                                            "system",
+                                            "rescan.auto-expire",
+                                            expired,
+                                            "scheduler");
+                                } catch (RuntimeException auditFailure) {
+                                    System.err.println(
+                                            "Could not audit rescan expiry: " + auditFailure.getMessage());
+                                }
+                            }
                         } catch (IOException | RuntimeException failure) {
                             System.err.println("Automatic order recovery failed: " + failure.getMessage());
                         }

@@ -35,8 +35,9 @@ box inventeras och får **nytt** UUID innan den åter blir tillgängligt lager.
 
 - Owner `GET /api/v1/stock/source` bär `boxIdentities` per rot-shulker.
 - Owner `GET /api/v1/stock/boxes` returnerar aktivt register och historik.
-  Båda är owner-only och maskeras för forced streamer; boxidentitet röjer
-  inte stashpositioner utöver det som redan är synligt för owner.
+  Båda är owner-only; boxidentitet röjer
+  inte stashpositioner utöver det som redan är synligt för owner (ingen
+  streamer-maskning — läget är borttaget).
 - `return-intake` med `markUuid=true` (W-042) fortsätter vara en avsikt
   (`UUID_REQUESTED`); det faktiska anvil-namnbytet sker via det
   Manager-auktoriserade box-jobbet nedan.

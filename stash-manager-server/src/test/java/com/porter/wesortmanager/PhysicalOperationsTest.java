@@ -410,8 +410,13 @@ class PhysicalOperationsTest {
             assertTrue(operations.decisionResult(agent, decision.get("id").getAsString(), "FAILED", "away"));
             clock.addAndGet(60_001);
         }
-        // The loop stops minting REQUESTED decisions: an operator must inspect by hand.
+        // The loop stops minting rapid REQUESTED decisions and backs off instead:
+        // no human can run the manual inspect, so the manager retries every 10 min.
         assertNull(operations.inspectAutomatically(agent, receipt));
+        clock.addAndGet(10 * 60_000 + 1);
+        var retried = operations.inspectAutomatically(agent, receipt);
+        assertNotNull(retried, "backoff elapsed");
+        assertTrue(operations.decisionResult(agent, retried.get("id").getAsString(), "FAILED", "away"));
         var listed = operations.list().get(0).getAsJsonObject();
         assertEquals("RECOVERING", listed.get("managerState").getAsString());
         assertTrue(listed.get("inspectionAttempts").getAsInt() >= PhysicalOperations.MAX_AUTO_INSPECT_PER_REVISION);

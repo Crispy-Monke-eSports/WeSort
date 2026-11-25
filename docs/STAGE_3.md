@@ -68,7 +68,7 @@ reserverad stock och låg nivå-skydd ligger i `verification/W-019-*`.
 Shulkers, sparse slots, fullständiga komponenter och nested container-items har
 nu en egen verifierad modell. SQLite-schema 3 lagrar plats- och innehållshistorik
 atomiskt, separerar identiska boxars slotadresser och binder nya order till
-källfingerprints. Detalj-API/webb följer stashbehörigheter och streamer-skydd.
+källfingerprints. Detalj-API/webb följer stashbehörigheter (streamer-skydd borttaget per PROTOCOL).
 Se [kontrakt och verifiering](MC_26_3_HIERARCHY.md).
 Manager-versionen är `0.1.0-dev.4`. Klienten har 461 godkända JUnit-tester
 och Manager 182, utan skip eller fel. Webbens DOM-prov och installations-

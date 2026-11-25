@@ -44,6 +44,7 @@ import {
   failedStashItems,
   healthAttention,
   isHealthFresh,
+  rescanPendingLabel,
   silentBots,
   visibleWithOverflow,
   withAlertCount,
@@ -686,7 +687,7 @@ export function OverviewPage() {
                     s.stash,
                     s.online === false && "offline",
                     s.orderBlocker && `blocked: ${s.orderBlocker}`,
-                    s.rescanPending && "rescan pending",
+                    rescanPendingLabel(s.rescanPending, s.rescanRequestedAt, s.rescanBlocked),
                   ]
                     .filter(Boolean)
                     .join(" · ")}
@@ -703,7 +704,9 @@ export function OverviewPage() {
                   title={
                     s.orderBlocker
                       ? `Order blocker: ${s.orderBlocker}`
-                      : undefined
+                      : typeof s.rescanBlocked === "string" && s.rescanBlocked
+                        ? `Rescan blocked: ${s.rescanBlocked}`
+                        : undefined
                   }
                 />
               ))}

@@ -97,9 +97,12 @@ export const StashRefSchema = z.object({
     .nullish()
     .transform((v) => (typeof v === "number" ? v > 0 : (v ?? false))),
   rescanBlocked: z
-    .union([z.boolean(), z.number()])
+    .union([z.boolean(), z.number(), z.string()])
     .nullish()
     .transform((v) => (typeof v === "number" ? v > 0 : (v ?? false))),
+  // Explicit request time (epoch seconds, null when none) so the UI can show
+  // rescan age instead of a permanent chip (#217).
+  rescanRequestedAt: z.number().nullable().optional(),
   owner: z.string().nullable().optional(),
   conflict: z.unknown().nullable().optional(),
   orders: StashSummarySchema.optional(),

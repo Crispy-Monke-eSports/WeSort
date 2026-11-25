@@ -10,12 +10,12 @@ import org.junit.jupiter.api.Test;
 
 class SurveyBatchTest {
     @Test
-    void neverPollAgainBeforeFiveMinutesEvenWithOldConfiguration() {
+    void neverPollAgainBeforeOneMinuteEvenWithOldConfiguration() {
         assertTrue(SurveyBatch.due(1000, 0, 0, 30_000));
-        assertFalse(SurveyBatch.due(300_999, 1000, 0, 30_000));
-        assertTrue(SurveyBatch.due(301_000, 1000, 0, 30_000));
-        assertFalse(SurveyBatch.due(301_000, 1000, 2000, 30_000));
-        assertFalse(SurveyBatch.due(301_000, 1000, 0, 600_000));
+        assertFalse(SurveyBatch.due(60_999, 1000, 0, 30_000));
+        assertTrue(SurveyBatch.due(61_000, 1000, 0, 30_000));
+        assertFalse(SurveyBatch.due(61_000, 1000, 2000, 30_000));
+        assertFalse(SurveyBatch.due(61_000, 1000, 0, 600_000));
     }
 
     @Test

@@ -271,6 +271,16 @@ export function OverviewPage() {
     if (a.code === "DISCONNECTED" || a.code === "NEEDS_RECONCILIATION") {
       continue;
     }
+    // #203: ORDER_BLOCKED was only an anonymous counter. Surface it with a link to
+    // the stash chips above (which now render the verbatim orderBlocker per stash).
+    if (a.code === "ORDER_BLOCKED") {
+      attention.push({
+        severity: "error",
+        text: `Operations alert: ORDER_BLOCKED (×${a.count}) — a stash refuses orders; see the stash chips for the blocker reason.`,
+        to: "/operations",
+      });
+      continue;
+    }
     if (
       a.code === "STALE" ||
       a.code.startsWith("STALE_") ||
@@ -675,12 +685,26 @@ export function OverviewPage() {
                   label={[
                     s.stash,
                     s.online === false && "offline",
-                    s.orderBlocker,
+                    s.orderBlocker && `blocked: ${s.orderBlocker}`,
+                    s.rescanPending && "rescan pending",
                   ]
                     .filter(Boolean)
                     .join(" · ")}
-                  variant={s.online === false ? "outlined" : "filled"}
-                  color={s.online === false ? "warning" : "default"}
+                  variant={
+                    s.online === false || s.orderBlocker ? "outlined" : "filled"
+                  }
+                  color={
+                    s.orderBlocker
+                      ? "error"
+                      : s.online === false
+                        ? "warning"
+                        : "default"
+                  }
+                  title={
+                    s.orderBlocker
+                      ? `Order blocker: ${s.orderBlocker}`
+                      : undefined
+                  }
                 />
               ))}
             {(stashes.data ?? []).length === 0 && !stashes.isLoading && (

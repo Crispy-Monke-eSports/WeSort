@@ -168,14 +168,19 @@ export function healthAttention(
       to: "/operations",
     });
   }
-  const warnings = new Set(health.warnings);
+  const rawWarnings = health.warnings;
+  const warnings = new Set(
+    Array.isArray(rawWarnings)
+      ? rawWarnings.filter((w) => typeof w === "string")
+      : [],
+  );
   if (health.staleStock) warnings.add("STALE_STOCK");
   for (const warning of warnings) {
     if (warning === "STALE_STOCK") {
       const age = health.oldestStockAgeMs;
       items.push({
         severity: "warning",
-        text: `STALE_STOCK — oldest stock observation: ${age == null ? "unknown age" : formatAge(age)}.`,
+        text: `STALE_STOCK — oldest stock observation: ${age == null ? "unknown age" : formatAge(age)}. Rescan or queue against last-verified.`,
         to: "/inventory",
       });
     } else if (

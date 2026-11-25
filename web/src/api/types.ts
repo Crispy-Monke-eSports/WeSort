@@ -158,7 +158,10 @@ export const HealthSchema = z.object({
     .number()
     .nullish()
     .transform((v) => v ?? 0),
-  warnings: z.array(z.string()).nullish(),
+  warnings: z
+    .array(z.string())
+    .nullish()
+    .transform((v) => v ?? []),
   staleStock: z.boolean().nullish(),
   oldestStockAgeMs: z.number().nullish(),
   oldestIndexAgeMs: z.number().nullable().optional(),

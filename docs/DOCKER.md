@@ -223,8 +223,9 @@ passerar. Kända rendering-/Minecraft-begränsningar är samma som i steg 0.
 
 ## Färskhetsgräns och SQLite (W-018)
 
-`WESORT_STOCK_MAX_AGE_SECONDS=300` styr hur länge en fysisk observation kan ge
-nya order (1–86400 sekunder). Ändrad gräns kräver omstart; gamla källor blir då
+`WESORT_STOCK_MAX_AGE_SECONDS` (default 1800) styr hur länge en fysisk observation kan ge
+nya order (1–86400 sekunder). Håll TTL minst 4x klientens survey-golv (60 s): lägre än
+240 s kan aldrig nå steady-state över 69 containrar plus retry (se #201). Ändrad gräns kräver omstart; gamla källor blir då
 osäkra tills nya serveravläsningar har gjorts. `guild.sqlite` och dess WAL/SHM
 finns på samma lokala volym som övrig WeSort-data. Säkerhetskopiera hela volymen
 med stoppad Manager. Se [fysiska observationer](MC_26_3_STOCK.md).

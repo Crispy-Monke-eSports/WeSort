@@ -4,9 +4,12 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.function.ToLongFunction;
 
-/** Routine inventory observations are rate-limited independently of physical-operation verification. */
+/** Routine inventory observations are rate-limited independently of physical-operation verification.
+ * Invariant: MIN_INTERVAL_MS must stay well below the stock TTL (WESORT_STOCK_MAX_AGE_SECONDS):
+ * steady-state requires TTL >= 4 * MIN_INTERVAL to absorb a full pass (69 containers) plus retries.
+ * See issues #199/#201. */
 public final class SurveyBatch {
-    public static final long MIN_INTERVAL_MS = 300_000;
+    public static final long MIN_INTERVAL_MS = 60_000;
     public static final int MAX_BOXES = 10;
 
     private SurveyBatch() {}

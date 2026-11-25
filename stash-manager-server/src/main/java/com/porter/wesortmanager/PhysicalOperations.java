@@ -89,6 +89,17 @@ final class PhysicalOperations {
                                     if (!inspectionVerified) state = "NEEDS_RECONCILIATION";
                                 }
                             } else if (state.equals("NEEDS_RECONCILIATION")) fence = revision;
+                            // #200 defense-in-depth: a same-revision keepalive must never regress a
+                            // fenced operation back to live. expire() above already fences when the
+                            // matching lease is NEEDS_RECONCILIATION, but the lease can flip between
+                            // expire() and this read; re-check explicitly before the upsert.
+                            else if (revision == before
+                                    && List.of("PLANNED", "IN_PROGRESS", "VERIFYING")
+                                            .contains(state)
+                                    && leaseFenced(c, server, agent)) {
+                                state = "NEEDS_RECONCILIATION";
+                                fence = Math.max(fence, revision);
+                            } else if (state.equals("NEEDS_RECONCILIATION")) fence = revision;
                         }
                     }
                 }
@@ -195,6 +206,19 @@ final class PhysicalOperations {
     private static boolean hasLease(Connection c, String server) throws SQLException {
         try (var p = c.prepareStatement("SELECT 1 FROM automation_leases WHERE server=? LIMIT 1")) {
             p.setString(1, server);
+            try (var rows = p.executeQuery()) {
+                return rows.next();
+            }
+        }
+    }
+
+    /** #200: true when the matching lease is fenced or past deadline: live-but-stalled journals become inspectable. */
+    private boolean leaseFenced(Connection c, String server, String agent) throws SQLException {
+        try (var p = c.prepareStatement(
+                "SELECT 1 FROM automation_leases WHERE server=? AND agent=? AND (state='NEEDS_RECONCILIATION' OR deadline<=?)")) {
+            p.setString(1, server);
+            p.setString(2, agent);
+            p.setLong(3, clock.getAsLong());
             try (var rows = p.executeQuery()) {
                 return rows.next();
             }
@@ -346,13 +370,28 @@ final class PhysicalOperations {
             tx.execute("BEGIN IMMEDIATE");
             try {
                 expire(c);
-                try (var p = c.prepareStatement("SELECT revision,checksum,state FROM physical_operations WHERE id=?")) {
+                String liveState = null;
+                String opServer = null;
+                String opAgent = null;
+                try (var p = c.prepareStatement(
+                        "SELECT revision,checksum,state,server,agent FROM physical_operations WHERE id=?")) {
                     p.setString(1, id);
                     try (var rows = p.executeQuery()) {
                         if (!rows.next() || revision != rows.getLong(1) || !checksum.equals(rows.getString(2)))
                             throw new Conflict("Reload the current physical operation before inspecting");
-                        if (!rows.getString(3).equals("NEEDS_RECONCILIATION"))
-                            throw new Conflict("Only a paused physical operation may be inspected");
+                        liveState = rows.getString(3);
+                        opServer = rows.getString(4);
+                        opAgent = rows.getString(5);
+                        if (!liveState.equals("NEEDS_RECONCILIATION")) {
+                            // #200: a live-but-stalled op with a fenced lease for the same
+                            // server+agent is inspectable: fence it instead of rejecting.
+                            // Foreign agents/servers still get 409 via heldByOther semantics.
+                            if (!List.of("PLANNED", "IN_PROGRESS", "VERIFYING").contains(liveState)
+                                    || opServer == null
+                                    || opAgent == null
+                                    || !leaseFenced(c, opServer, opAgent))
+                                throw new Conflict("Only a paused physical operation may be inspected");
+                        }
                     }
                 }
                 String decision = null;
@@ -413,11 +452,23 @@ final class PhysicalOperations {
      * An outcome without accepted journal proof is retried after the backoff.
      */
     synchronized JsonObject inspectAutomatically(String agent, JsonObject receipt) throws IOException {
-        if (!"NEEDS_RECONCILIATION".equals(receipt.get("state").getAsString())) return null;
+        String receiptState = receipt.get("state").getAsString();
+        boolean liveReceipt = List.of("PLANNED", "IN_PROGRESS", "VERIFYING").contains(receiptState);
+        if (!"NEEDS_RECONCILIATION".equals(receiptState) && !liveReceipt) return null;
         UUID.fromString(agent);
         String operation = receipt.get("id").getAsString();
         long revision = receipt.get("revision").getAsLong();
         String checksum = receipt.get("checksum").getAsString();
+        // #200: live-but-stalled keepalives with a fenced lease dispatch inspection directly.
+        // inspect() fences the op server-side; foreign leases never reach it (leaseFenced
+        // requires same server+agent, heldByOther still guards accept-path takeover).
+        if (liveReceipt) {
+            try {
+                return inspect(operation, revision, checksum, "system:self-heal");
+            } catch (Conflict notFenced) {
+                return null;
+            }
+        }
         try (var c = ledger.open();
                 var p = c.prepareStatement("""
                     SELECT d.state,d.issued_at

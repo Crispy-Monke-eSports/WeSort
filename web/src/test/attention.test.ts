@@ -165,6 +165,22 @@ describe("health signals", () => {
     expect(items[1].severity).toBe("error");
   });
 
+  it("flags STALE_STOCK warnings as warning, never silent (#203)", () => {
+    const viaWarnings = healthAttention({
+      warnings: ["STALE_STOCK"],
+      oldestStockAgeMs: 514_000,
+    });
+    expect(viaWarnings).toHaveLength(1);
+    expect(viaWarnings[0].severity).toBe("warning");
+    expect(viaWarnings[0].text.toLowerCase()).toContain("stale");
+    expect(viaWarnings[0].to).toBe("/inventory");
+    const viaFlag = healthAttention({ staleStock: true });
+    expect(viaFlag).toHaveLength(1);
+    expect(viaFlag[0].severity).toBe("warning");
+    // Unknown warning codes surface generically (never silent); absence of freshness is not freshness.
+    expect(healthAttention({ warnings: ["SOME_OTHER"] })).toHaveLength(1);
+  });
+
   it("yields nothing without data", () => {
     expect(healthAttention(null)).toEqual([]);
     expect(healthAttention({})).toEqual([]);

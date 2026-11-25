@@ -15,6 +15,7 @@ import Card from "@mui/material/Card";
 import CardActions from "@mui/material/CardActions";
 import CardContent from "@mui/material/CardContent";
 import CardHeader from "@mui/material/CardHeader";
+import Checkbox from "@mui/material/Checkbox";
 import Chip from "@mui/material/Chip";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
@@ -42,6 +43,7 @@ import TableHead from "@mui/material/TableHead";
 import TablePagination from "@mui/material/TablePagination";
 import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
@@ -706,6 +708,8 @@ export function InventoryPage() {
   // order. A shared label array across stashes would misattribute texts to
   // the wrong order. Estimated Y is explicit; retry reuses the exact array.
   const [labels, setLabels] = useState<Record<string, StashLabels>>({});
+  // #202: explicit per-checkout opt-in to queue against last-verified stock. Never default-on.
+  const [queueWhenStale, setQueueWhenStale] = useState(false);
   function labelsFor(stash: string): StashLabels {
     return labels[stash] ?? { mode: "none", text: "", texts: [] };
   }
@@ -729,6 +733,7 @@ export function InventoryPage() {
       purpose,
       recipient: recipientName || null,
       comment: comment.trim() ? comment.trim().slice(0, 500) : null,
+      ...(queueWhenStale ? { queueWhenStale: true } : {}),
     }));
   }
 
@@ -1286,6 +1291,8 @@ export function InventoryPage() {
         confirmedCount={confirmedCount}
         canOrder={canOrder}
         slices={slices}
+        queueWhenStale={queueWhenStale}
+        setQueueWhenStale={setQueueWhenStale}
       />
     </Stack>
   );
@@ -1391,10 +1398,22 @@ function AvailabilityLine({
   );
 }
 
-function addDisabledReason(canOrder: boolean, orderable: number | null) {
-  if (!canOrder) return "Order permission required.";
-  if (orderable === null) return "Available stock could not be verified.";
-  if (orderable <= 0) return "No units available to add.";
+/* One-line reason why an Add button is disabled (permission vs unknown vs empty vs offline). Slices optional for call sites without slice context. */
+function addDisabledReason(
+  canOrder: boolean,
+  orderable: number | null,
+  slices?: SliceState[],
+): string | null {
+  if (!canOrder) return "No order permission — ask the owner for access.";
+  if (orderable === null) {
+    if (slices?.some((s) => !s.ordersOk || !s.indexOk))
+      return "Unverified — orders/index fetch failed, availability unknown.";
+    return "Available stock could not be verified.";
+  }
+  if (slices?.some((s) => s.online === false))
+    return "Stale — bot offline, availability is last-verified.";
+  if ((orderable ?? 0) <= 0)
+    return "Empty or fully reserved — nothing orderable.";
   return null;
 }
 
@@ -1497,14 +1516,16 @@ function ItemCard({
           startIcon={<AddShoppingCartIcon />}
           onClick={onBuy}
           disabled={!canOrder || (orderable ?? 0) <= 0}
+          title={addDisabledReason(canOrder, orderable, slices) ?? undefined}
         >
           Add
         </Button>
-        {addDisabledReason(canOrder, orderable) && (
-          <Typography variant="caption" component="p">
-            {addDisabledReason(canOrder, orderable)}
-          </Typography>
-        )}
+        {(!canOrder || (orderable ?? 0) <= 0) &&
+          addDisabledReason(canOrder, orderable, slices) && (
+            <Typography variant="caption" color="text.secondary">
+              {addDisabledReason(canOrder, orderable, slices)}
+            </Typography>
+          )}
       </CardActions>
     </Card>
   );
@@ -1606,14 +1627,10 @@ function InventoryRow({
           variant="outlined"
           onClick={onBuy}
           disabled={!canOrder || (orderable ?? 0) <= 0}
+          title={addDisabledReason(canOrder, orderable, slices) ?? undefined}
         >
           Add
         </Button>
-        {addDisabledReason(canOrder, orderable) && (
-          <Typography variant="caption" component="p">
-            {addDisabledReason(canOrder, orderable)}
-          </Typography>
-        )}
       </TableCell>
     </TableRow>
   );
@@ -1715,14 +1732,13 @@ function KitCatalog({
                       startIcon={<AddShoppingCartIcon />}
                       onClick={() => onBuy(k)}
                       disabled={!canOrder || (orderable ?? 0) <= 0}
+                      title={
+                        addDisabledReason(canOrder, orderable, slices) ??
+                        undefined
+                      }
                     >
                       Add
                     </Button>
-                    {addDisabledReason(canOrder, orderable) && (
-                      <Typography variant="caption" component="p">
-                        {addDisabledReason(canOrder, orderable)}
-                      </Typography>
-                    )}
                   </Stack>
                 </Stack>
               </Paper>
@@ -2290,6 +2306,8 @@ function CheckoutDialog(props: {
   confirmedCount: number;
   canOrder: boolean;
   slices: SliceState[];
+  queueWhenStale: boolean;
+  setQueueWhenStale: (v: boolean) => void;
 }) {
   const { step, setStep } = props;
   const isXsStep = useMediaQuery(useTheme().breakpoints.down("sm"));
@@ -2422,6 +2440,15 @@ function CheckoutDialog(props: {
               multiline
               rows={2}
               slotProps={{ htmlInput: { maxLength: 500 } }}
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={props.queueWhenStale}
+                  onChange={(e) => props.setQueueWhenStale(e.target.checked)}
+                />
+              }
+              label="Queue against last-verified stock when stale (owner understands data may be outdated)"
             />
             <Typography variant="body2" color="text.secondary">
               Box labels are set <strong>per stash order</strong>: each stash

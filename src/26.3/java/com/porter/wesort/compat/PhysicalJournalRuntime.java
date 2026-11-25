@@ -416,6 +416,14 @@ public final class PhysicalJournalRuntime {
     }
 
     public static void inspect(JsonObject decision) {
+        // Manager direction: report the inspection order as facts, including dropped
+        // duplicates while one is in flight. No behavior change.
+        MeteorClient.LOG.info(
+                "WeSort inspection ordered: decision={} operation={} rev={} busy={}.",
+                keyPart(decision, "id"),
+                keyPart(decision, "operation"),
+                keyPart(decision, "revision"),
+                inspection != null);
         if (inspection != null) return;
         String key = decisionKey(decision);
         if (!escalation.isEmpty() && escalationKey.equals(key)) {

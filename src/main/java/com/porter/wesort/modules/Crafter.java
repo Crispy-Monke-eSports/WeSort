@@ -371,6 +371,21 @@ final class Crafter {
         owner.say(String.format(
                 "Crafting %d %s for %s: %s.",
                 plan.count(), CraftPlanner.pretty(r.item()), r.purpose(), describe(plan)));
+        // Manager direction: report the chosen plan as facts (recipe ids + crafts +
+        // take list) so a future manager can own the choice. No behavior change.
+        var steps = new StringBuilder();
+        for (CraftPlanner.Step s : plan.steps()) {
+            if (steps.length() > 0) steps.append(",");
+            steps.append(s.recipe().id()).append("x").append(s.crafts());
+        }
+        WeSortAddon.LOG.info(
+                "WeSort craft plan: item={} count={} steps=[{}] take={} ops={} limited={}.",
+                r.item(),
+                plan.count(),
+                steps,
+                plan.take(),
+                plan.ops(),
+                plan.limited());
         return null;
     }
 

@@ -24,7 +24,7 @@ public final class PhysicalSlots {
         }
 
         public String fingerprint() {
-            return hash("stack-1", item.fingerprint(), new JsonPrimitive(count));
+            return hash("stack", item.fingerprint(), integerTag(count));
         }
     }
 
@@ -53,12 +53,13 @@ public final class PhysicalSlots {
                     || size > 256
                     || components == null
                     || components.length() > 1_000_000) throw new IllegalArgumentException("Invalid physical item");
-            JsonElement patch = JsonParser.parseString(components);
-            if (!patch.isJsonObject()) throw new IllegalArgumentException("Expected structured component patch");
+            var patch = CanonicalSnbt.compound(components);
+            if (patch.entries().containsKey("type") && patch.entries().containsKey("value"))
+                throw new IllegalArgumentException("Legacy typed JSON component patches are not supported");
             this.id = id;
             this.key = key;
             this.maxStack = maxStack;
-            this.components = CanonicalJson.stringify(patch);
+            this.components = CanonicalSnbt.write(patch);
             this.kind = Objects.requireNonNull(kind);
             this.size = size;
             this.group = group == null ? "" : group;
@@ -67,15 +68,9 @@ public final class PhysicalSlots {
                     || kind == Kind.SHULKER && size != 27)
                 throw new IllegalArgumentException("Invalid physical container shape");
             this.contents = ordered(contents, size);
-            JsonArray identity = new JsonArray();
-            identity.add("physical-item-1");
-            identity.add(id);
-            identity.add(maxStack);
-            identity.add(patch);
-            identity.add(kind.name());
-            identity.add(size);
-            identity.add(slotIdentities(this.contents));
-            fingerprint = ContainerIdentity.hash(CanonicalJson.stringify(identity));
+            fingerprint = CanonicalSnbt.fingerprint("physical-item", new CanonicalSnbt.Sequence(List.of(
+                    text(id), text(key), text(this.group), integerTag(maxStack), patch, text(kind.name()), integerTag(size),
+                    slotIdentities(this.contents))));
         }
 
         public String id() {
@@ -125,7 +120,7 @@ public final class PhysicalSlots {
         private final int size;
         private final List<Slot> slots;
         private final List<Located> located;
-        private final String fingerprint;
+        private final String fingerprint, snbt;
 
         public Snapshot(int size, List<Slot> slots) {
             if (size < 1 || size > 256) throw new IllegalArgumentException("Invalid physical inventory size");
@@ -140,7 +135,12 @@ public final class PhysicalSlots {
                     throw new IllegalArgumentException("Physical component snapshot too large");
             }
             this.located = List.copyOf(positions);
-            fingerprint = hash("physical-inventory-1", String.valueOf(size), slotIdentities(this.slots));
+            var tree = new CanonicalSnbt.Compound(Map.of(
+                    "schema", integerTag(2),
+                    "size", integerTag(size),
+                    "slots", encodeSlots(this.slots)));
+            snbt = CanonicalSnbt.write(tree);
+            fingerprint = CanonicalSnbt.fingerprint("physical-inventory", tree);
         }
 
         public int size() {
@@ -157,6 +157,42 @@ public final class PhysicalSlots {
 
         public String fingerprint() {
             return fingerprint;
+        }
+
+        /** The complete versioned, authoritative snapshot; JSON is a derived view only. */
+        public String snbt() {
+            return snbt;
+        }
+
+        public static Snapshot fromSnbt(String snbt) {
+            var root = CanonicalSnbt.compound(snbt);
+            requireKeys(root, "schema", "size", "slots");
+            if (intValue(root.get("schema")) != 2)
+                throw new IllegalArgumentException("Unsupported SNBT snapshot version");
+            var result = new Snapshot(intValue(root.get("size")), decodeSlots(root.get("slots"), 0, new int[1]));
+            if (!snbt.equals(result.snbt()))
+                throw new IllegalArgumentException("Noncanonical or inconsistent physical SNBT");
+            return result;
+        }
+
+        /** JSON transport envelope; the SNBT field is the only inventory content. */
+        public JsonObject envelope() {
+            var out = new JsonObject();
+            out.addProperty("schema", 2);
+            out.addProperty("size", size);
+            out.addProperty("fingerprint", fingerprint);
+            out.addProperty("snbt", snbt);
+            return out;
+        }
+
+        public static Snapshot readEnvelope(JsonObject envelope) {
+            if (integer(envelope.get("schema")) != 2 || envelope.has("slots") || envelope.has("slotVariants"))
+                throw new IllegalArgumentException("Expected SNBT-only snapshot envelope");
+            var result = fromSnbt(envelope.get("snbt").getAsString());
+            if (result.size != integer(envelope.get("size"))
+                    || !result.fingerprint.equals(envelope.get("fingerprint").getAsString()))
+                throw new IllegalArgumentException("SNBT snapshot metadata mismatch");
+            return result;
         }
 
         public Map<String, Long> totals() {
@@ -179,7 +215,7 @@ public final class PhysicalSlots {
 
         public JsonObject json() {
             JsonObject out = new JsonObject();
-            out.addProperty("schema", 1);
+            out.addProperty("schema", 2);
             out.addProperty("size", size);
             out.addProperty("fingerprint", fingerprint);
             JsonArray positions = new JsonArray();
@@ -331,22 +367,91 @@ public final class PhysicalSlots {
         }
     }
 
-    private static JsonArray slotIdentities(List<Slot> slots) {
-        JsonArray out = new JsonArray();
+    private static CanonicalSnbt.Sequence encodeSlots(List<Slot> slots) {
+        List<CanonicalSnbt.Value> values = new ArrayList<>();
         for (Slot slot : slots) {
-            JsonArray row = new JsonArray();
-            row.add(slot.slot);
-            row.add(slot.fingerprint());
-            out.add(row);
+            Item item = slot.item();
+            // Native stack fields are typed SNBT, not a JSON string or an item hash.
+            var stack = new CanonicalSnbt.Compound(Map.of(
+                    "id", text(item.id()),
+                    "count", integerTag(slot.count()),
+                    "components", CanonicalSnbt.compound(item.components())));
+            values.add(new CanonicalSnbt.Compound(Map.of(
+                    "slot", integerTag(slot.slot()),
+                    "stack", stack,
+                    "key", text(item.key()),
+                    "maxStack", integerTag(item.maxStack()),
+                    "kind", text(item.kind().name()),
+                    "capacity", integerTag(item.size()),
+                    "group", text(item.group()),
+                    "children", encodeSlots(item.contents()))));
         }
-        return out;
+        return new CanonicalSnbt.Sequence(values);
     }
 
-    private static String hash(String domain, String value, JsonElement details) {
-        JsonArray out = new JsonArray();
-        out.add(domain);
-        out.add(value);
-        out.add(details);
-        return ContainerIdentity.hash(CanonicalJson.stringify(out));
+    private static List<Slot> decodeSlots(CanonicalSnbt.Value value, int depth, int[] nodes) {
+        if (!(value instanceof CanonicalSnbt.Sequence list) || list.values().size() > 256
+                || (depth > MAX_DEPTH && !list.values().isEmpty()))
+            throw new IllegalArgumentException("Invalid SNBT slot sequence");
+        List<Slot> slots = new ArrayList<>();
+        for (var entry : list.values()) {
+            if (++nodes[0] > MAX_NODES) throw new IllegalArgumentException("SNBT physical hierarchy too large");
+            var row = requireCompound(entry);
+            requireKeys(row, "slot", "stack", "key", "maxStack", "kind", "capacity", "group", "children");
+            var stack = requireCompound(row.get("stack"));
+            requireKeys(stack, "id", "count", "components");
+            var item = new Item(
+                    textValue(stack.get("id")),
+                    textValue(row.get("key")),
+                    intValue(row.get("maxStack")),
+                    CanonicalSnbt.write(requireCompound(stack.get("components"))),
+                    Kind.valueOf(textValue(row.get("kind"))),
+                    intValue(row.get("capacity")),
+                    decodeSlots(row.get("children"), depth + 1, nodes),
+                    textValue(row.get("group")));
+            slots.add(new Slot(intValue(row.get("slot")), intValue(stack.get("count")), item));
+        }
+        return slots;
+    }
+
+    private static CanonicalSnbt.Compound requireCompound(CanonicalSnbt.Value value) {
+        if (!(value instanceof CanonicalSnbt.Compound c)) throw new IllegalArgumentException("Expected compound");
+        return c;
+    }
+
+    private static void requireKeys(CanonicalSnbt.Compound value, String... keys) {
+        if (!value.entries().keySet().equals(Set.of(keys)))
+            throw new IllegalArgumentException("Unexpected SNBT snapshot fields");
+    }
+
+    private static int intValue(CanonicalSnbt.Value value) {
+        if (!(value instanceof CanonicalSnbt.NumberTag n) || n.type() != CanonicalSnbt.Type.INT)
+            throw new IllegalArgumentException("Expected int tag");
+        return Math.toIntExact(n.longValue());
+    }
+
+    private static String textValue(CanonicalSnbt.Value value) {
+        if (!(value instanceof CanonicalSnbt.Text text))
+            throw new IllegalArgumentException("Expected string tag");
+        return text.value();
+    }
+
+    private static CanonicalSnbt.Text text(String value) {
+        return new CanonicalSnbt.Text(value);
+    }
+
+    private static CanonicalSnbt.NumberTag integerTag(int value) {
+        return new CanonicalSnbt.NumberTag(CanonicalSnbt.Type.INT, Integer.toString(value));
+    }
+
+    private static CanonicalSnbt.Sequence slotIdentities(List<Slot> slots) {
+        List<CanonicalSnbt.Value> out = new ArrayList<>();
+        for (Slot slot : slots)
+            out.add(new CanonicalSnbt.Sequence(List.of(integerTag(slot.slot()), text(slot.fingerprint()))));
+        return new CanonicalSnbt.Sequence(out);
+    }
+
+    private static String hash(String domain, String value, CanonicalSnbt.Value details) {
+        return CanonicalSnbt.fingerprint(domain, new CanonicalSnbt.Sequence(List.of(text(value), details)));
     }
 }

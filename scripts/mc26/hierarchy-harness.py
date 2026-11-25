@@ -485,6 +485,11 @@ class HierarchyHarness(stock.StockHarness):
                 self.verify_reservations(a, before)
             if self.guild:
                 self.verify_guild()
+            for detail in (a, b):
+                frame = next(s for s in initial['physicalSources'] if s['id'] == detail['id'])
+                require(detail.get('snapshotSnbt') == frame['snbt'],
+                        'Manager readback differs from exact canonical SNBT sent by native client')
+            self.ok('Manager reads exact canonical SNBT from persisted snapshot after native signed sync')
             positions = {row['path']: row for row in a['snapshot']['positions']}
             other = {row['path']: row for row in b['snapshot']['positions']}
             require(positions['0']['fingerprint'] == positions['20']['fingerprint'] == other['0']['fingerprint'], 'Identical box contents differ by physical location')

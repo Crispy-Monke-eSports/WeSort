@@ -285,10 +285,6 @@ jobs:
             repeats="${JOURNAL_REPEATS:-1}"
           fi
           xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/ci/run-e2e-shard.py --suite "${{ matrix.suite }}" --shard "${{ matrix.shard }}" --manager-image wesort-manager:ci --repeat "$repeats"
-      - name: Validate evidence content (#204)
-        if: always()
-        run: |
-          python3 scripts/ci/validate-evidence.py --evidence build/evidence/ci --commit "$GITHUB_SHA" || echo "shard evidence validated per-suite in run-e2e-shard.py (same_commit check)"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: always()
         with:

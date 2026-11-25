@@ -811,6 +811,15 @@ final class StockLedger {
         }
     }
 
+    synchronized String snapshotSnbt(String source, String fingerprint) throws IOException {
+        try (var c = open()) {
+            var snapshot = readSnbtSnapshot(c, source, fingerprint);
+            return snapshot == null ? null : snapshot.snbt();
+        } catch (SQLException e) {
+            throw new IOException("Cannot read authoritative physical SNBT", e);
+        }
+    }
+
     synchronized List<JsonObject> physicalSlots(String source) throws IOException {
         List<JsonObject> result = new ArrayList<>();
         Map<String, JsonObject> expected = new HashMap<>();

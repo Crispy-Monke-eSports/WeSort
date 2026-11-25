@@ -38,6 +38,8 @@ jobs:
             echo "::warning::Maven rate limit (HTTP 429). Retrying Gradle build in ${delay}s."
             sleep "$delay"
           done
+      - name: Require executed native SNBT tests
+        run: python3 scripts/ci/require-snbt-tests.py build client
       - name: Record tests and build identity
         if: always()
         shell: bash
@@ -122,6 +124,8 @@ jobs:
         run: npm ci --prefix web-tests && npm test --prefix web-tests
       - name: Build and test Manager
         run: ./gradlew --no-daemon -p stash-manager-server build
+      - name: Require executed Manager SNBT tests
+        run: python3 scripts/ci/require-snbt-tests.py stash-manager-server/build manager
       - name: Scan Manager JAR for internal and removal-marked JDK APIs
         shell: bash
         run: |

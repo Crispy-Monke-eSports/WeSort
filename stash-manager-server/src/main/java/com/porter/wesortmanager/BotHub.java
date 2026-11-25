@@ -28,7 +28,10 @@ final class BotHub {
     static final int EVENTS_KEEP = 500;
     static final int JOBS_KEEP = 500;
     private static final Set<String> CAPABILITIES =
-            Set.of("settings", "activity", "warehouse-scan", "warehouse-sort", "pack", "stage", "heartbeat");
+            Set.of("settings", "activity", "warehouse-scan", "warehouse-sort", "pack", "stage", "heartbeat",
+                    "portal-command");
+    /** Marionette command ops the manager may order; bot executes one at a time. */
+    static final Set<String> COMMAND_OPS = Set.of("ENTER_PORTAL");
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final Set<String> RECEIPT_FIELDS = Set.of("id", "lease", "sequence", "ok", "value", "error");
 
@@ -667,6 +670,34 @@ final class BotHub {
             b.notifyAll();
         }
         return ids;
+    }
+
+    /** Queues a marionette command (e.g. ENTER_PORTAL); returns the job id. */
+    String queueCommand(Bot b, String op, JsonObject args) {
+        if (!COMMAND_OPS.contains(op)) throw new IllegalArgumentException("unknown command op");
+        long now = now();
+        synchronized (b) {
+            JsonObject p = new JsonObject();
+            p.addProperty("op", op);
+            p.add("args", args == null ? new JsonObject() : args);
+            Job j = new Job(newId(), "command", p, now);
+            j.sequence = ++b.jobSequence;
+            add(b, j);
+            b.notifyAll();
+            return j.id;
+        }
+    }
+
+    /** True while an ENTER_PORTAL-like command is queued or sent (throttle auto-orders). */
+    boolean hasLiveCommand(Bot b, String op) {
+        synchronized (b) {
+            expire(b, now());
+            for (Job j : b.jobs.values()) {
+                if (!"command".equals(j.type) || (!"queued".equals(j.status) && !"sent".equals(j.status))) continue;
+                if (j.payload.has("op") && op.equals(AddonRoutes.string(j.payload, "op"))) return true;
+            }
+            return false;
+        }
     }
 
     /** The same, remembering which website user sent it (a "list"-mode user only sees their own). */

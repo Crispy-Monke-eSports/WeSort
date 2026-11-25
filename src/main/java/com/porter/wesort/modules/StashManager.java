@@ -594,6 +594,9 @@ public class StashManager extends Module {
         lastRescanId = -1;
         rescanning = false;
         rescanStartMs = 0;
+        enterPortalAuthorizedUntil = 0;
+        enterPortalEpoch = null;
+        enterPortalSession = null;
         StashIndex.clearCache();
     }
 
@@ -1098,6 +1101,9 @@ public class StashManager extends Module {
             controlResults = null;
             lastControlResult = null;
             pendingManifest = null;
+            enterPortalAuthorizedUntil = 0;
+        enterPortalEpoch = null;
+        enterPortalSession = null;
             verifiedManagerScope = "";
             controlStatus = "idle";
             controlSchedule.reset();
@@ -1137,6 +1143,7 @@ public class StashManager extends Module {
             capabilities.add("pack");
             capabilities.add("stage");
             capabilities.add("heartbeat");
+            capabilities.add("portal-command");
             request.add("caps", capabilities);
             var scopes = new JsonArray();
             scopes.add("plugin");
@@ -1156,6 +1163,9 @@ public class StashManager extends Module {
                                     lastControlResult = null;
                                     controlResults = null;
                                     pendingManifest = null;
+                                    enterPortalAuthorizedUntil = 0;
+        enterPortalEpoch = null;
+        enterPortalSession = null;
                                     resetHeartbeat();
                                 }
                                 boolean supported = hello.has("heartbeat")
@@ -1383,27 +1393,27 @@ public class StashManager extends Module {
         boolean recoveringInventory = InventorySync.failed() || PhysicalJournalRuntime.blocked();
         AgentIncident incident = null;
         if (mc.player.getHealth() <= 0) incident = AgentIncident.DEATH;
-        else if (recoveringInventory) incident = AgentIncident.INVENTORY_UNVERIFIED;
-        else if (controlStatus.equals("wrong server") || status.equals("wrong server"))
-            incident = AgentIncident.WRONG_SERVER;
         else if (controlStatus.equals("error 401")
                 || controlStatus.equals(KEY_REVOKED)
                 || controlStatus.equals("server signature invalid")) {
             incident = AgentIncident.AUTH_FAILED;
+        } else if (controlStatus.equals("wrong server") || status.equals("wrong server")) {
+            incident = AgentIncident.WRONG_SERVER;
         } else if (com.porter.wesort.compat.NavigationRuntime.paused()) {
             incident = AgentIncident.NAVIGATION_PAUSED;
-        } else if (sorter != null && sorter.portalAwaiting()) {
-            incident = AgentIncident.WAITING_ON_6B6T_LOBBY;
-        } else if (!InventorySync.ready()) {
-            incident = AgentIncident.INVENTORY_UNVERIFIED;
-        } else if (sorter != null
+        } else if (sorter != null && sorter.portalAwaiting()) incident = AgentIncident.WAITING_ON_6B6T_LOBBY;
+        else if (recoveringInventory) incident = AgentIncident.INVENTORY_UNVERIFIED;
+        else if (!InventorySync.ready()) incident = AgentIncident.INVENTORY_UNVERIFIED;
+        else if (sorter != null
                 && acceptOrders.get()
                 && !orderIntakePaused.get()
                 && "no free inventory slot".equals(sorter.orderBlocker())) {
             incident = AgentIncident.NO_CAPACITY;
         }
         String task = "Monitoring stock";
-        if (incident == AgentIncident.INVENTORY_UNVERIFIED && recoveringInventory)
+        if (incident == AgentIncident.WAITING_ON_6B6T_LOBBY && recoveringInventory)
+            task = AgentIncident.WAITING_ON_6B6T_LOBBY.title() + " (physical recovery pending)";
+        else if (incident == AgentIncident.INVENTORY_UNVERIFIED && recoveringInventory)
             task = "Automatically recovering physical inventory";
         else if (incident != null) task = incident.title();
         else if (runner != null && runner.running()) task = "Packing " + runner.info();
@@ -1433,12 +1443,13 @@ public class StashManager extends Module {
     private JsonObject applyControlSetting(JsonObject job, JsonObject published) {
         String id = text(job, "id");
         if (id == null || !id.matches("[a-zA-Z0-9_-]{1,64}")) return null;
+        // Command jobs are handled by applyControlCommand, not here.
+        if (!"set".equals(text(job, "type"))) return null;
         var result = new JsonObject();
         result.addProperty("id", id);
         String path = text(job, "path");
         JsonElement newValue = job.get("value");
-        if (!"set".equals(text(job, "type"))
-                || !"plugin".equals(text(job, "scope"))
+        if (!"plugin".equals(text(job, "scope"))
                 || path == null
                 || !published.has(path)
                 || !(newValue instanceof JsonPrimitive value)) {
@@ -1501,12 +1512,66 @@ public class StashManager extends Module {
             if (order.getAsLong() <= lastControlResult.get("sequence").getAsLong()) return null;
         }
         var result = applyControlSetting(job, values);
-        if (result == null) return null;
+        if (result == null) result = applyControlCommand(job);
+        if (result == null) {
+            // Unknown job type (neither set nor command): explicit refusal so the
+            // server marks error immediately instead of unknown-after-60s.
+            String id = text(job, "id");
+            if (id == null) return null;
+            result = new JsonObject();
+            result.addProperty("id", id);
+            result.addProperty("ok", false);
+            result.addProperty("error", "Unsupported job type");
+        }
         result.addProperty("lease", lease);
         result.add("sequence", sequence);
         lastControlResult = result;
         return result;
     }
+
+    /** Marionette commands: manager-ordered, bot executes once under lease. */
+    private JsonObject applyControlCommand(JsonObject job) {
+        if (!"command".equals(text(job, "type"))) return null;
+        String id = text(job, "id");
+        String op = text(job, "op");
+        if (id == null || !id.matches("[a-zA-Z0-9_-]{1,64}") || !"ENTER_PORTAL".equals(op)) {
+            // Unknown command op (e.g. from a newer manager): explicit refusal so
+            // the server marks error immediately instead of unknown-after-60s.
+            if (id != null && "command".equals(text(job, "type"))) {
+                var refused = new JsonObject();
+                refused.addProperty("id", id);
+                refused.addProperty("ok", false);
+                refused.addProperty("error", "Unsupported command");
+                return refused;
+            }
+            return null;
+        }
+        // ENTER_PORTAL takes no args; any args are ignored explicitly so future
+        // ops with args cannot silently pass through this path.
+        long expiresAt = job.get("expiresAt").getAsLong();
+        enterPortalAuthorizedUntil = Math.min(expiresAt, System.currentTimeMillis() + 5 * 60_000L);
+        enterPortalSession = controlSession;
+        enterPortalEpoch = controlEpoch;
+        WeSortAddon.LOG.info("WeSort manager ordered ENTER_PORTAL id={} (lease until server expiry).", id);
+        var result = new JsonObject();
+        result.addProperty("id", id);
+        result.addProperty("ok", true);
+        return result;
+    }
+
+    /** True while a manager ENTER_PORTAL lease is live under its own control session and epoch. */
+    boolean enterPortalAuthorized() {
+        return controlRegistered
+                && controlSession != null
+                && controlSession.equals(enterPortalSession)
+                && controlEpoch != null
+                && controlEpoch.equals(enterPortalEpoch)
+                && System.currentTimeMillis() < enterPortalAuthorizedUntil;
+    }
+
+    private long enterPortalAuthorizedUntil = 0;
+    private String enterPortalEpoch = null;
+    private String enterPortalSession = null;
 
     private static boolean changeInteger(
             Setting<Integer> setting, JsonElement expected, JsonPrimitive newValue, int minimum, int maximum) {

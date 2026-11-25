@@ -267,6 +267,13 @@ public final class NavigationRuntime {
      */
     public static void clearWarehousePause() {
         if (paused && !pausedPortalRoute) {
+            // Never discard a genuine safety latch to make way for lobby transit:
+            // unsafe-block and operator-taken routes require explicit resume.
+            if (status.contains("UNSAFE") || isOperatorLatch(status)) {
+                MeteorClient.LOG.warn(
+                        "WeSort navigation: keeping {} for lobby transit; resume it explicitly.", status);
+                return;
+            }
             paused = false;
             pauseDetail = "";
             dropRetries = 0;

@@ -2162,19 +2162,85 @@ public class StashSorter extends Module {
                     + (repackWork.reason().isEmpty() ? "physical work needs reconciliation" : repackWork.reason()));
             return;
         }
-        // 6b6t portal transit is navigation-only; unified with Tracker: runs under
-        // manager authorization even with a fenced journal, empty cursor required.
-        // portalTick() preserves TRANSITING_WITH_FENCED_JOURNAL itself; no pre-set
-        // here to avoid flapping. Physical mutation below stays fenced.
+        // 6b6t portal transit is navigation-only. Standalone sorter-only (no agent
+        // control) keeps its historical path, including fenced transit with a
+        // warning (no manager exists to order it; update the manager for leases).
+        // Agent-driven transit requires dedication; with a fenced journal it
+        // additionally requires an explicit manager ENTER_PORTAL lease, else park
+        // with FENCED_AWAITING_MANAGER_COMMAND. Physical mutation below stays fenced.
+        var portalManager = meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
+        boolean standalone = portalManager == null || !portalManager.isActive();
+        // Transit is attempted whenever the lobby awaits it; dedication and the
+        // ENTER_PORTAL lease are enforced inside for the fenced agent-driven case.
         if (portalModeOn() && portalAwaiting()) {
+            boolean fenced = PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror();
+            boolean authorized = portalManager != null && portalManager.enterPortalAuthorized();
+            if (!fenced || authorized) fencedParkSince = 0;
+            if (fenced && !standalone && !authorized && portalTarget == null && !portalEntering) {
+                // Agent-driven with a fenced journal and no ENTER_PORTAL lease:
+                // park with an explicit fact. Legacy fallback: a manager that never
+                // orders (old server without portal-command) must not park forever;
+                // after 5 min allow the historical navigation-only transit with a
+                // loud warning so the deadlock is bounded.
+                long nowParkMs = System.currentTimeMillis();
+                if (fencedParkSince == 0) fencedParkSince = nowParkMs;
+                if (nowParkMs - fencedParkSince > 5 * 60_000L) {
+                    fencedParkSince = nowParkMs;
+                    WeSortAddon.LOG.warn(
+                            "WeSort portal: no ENTER_PORTAL order in 5 min; legacy fallback transit (update the manager).");
+                } else {
+                    ledgeGuard(false);
+                    portalForward(false);
+                    releaseGoal();
+                    // A manual crossing while parked must still count: record contact
+                    // without driving, so the post-transfer arrival can complete.
+                    if (touchingPortal()) {
+                        portalSession.crossingAttempted();
+                        reportPortalBlocker("TRANSITING_WITH_FENCED_JOURNAL");
+                        gateLogThrottled("6b6t portal: TRANSITING_WITH_FENCED_JOURNAL (manual contact while parked)");
+                    } else {
+                        reportPortalBlocker("FENCED_AWAITING_MANAGER_COMMAND");
+                        gateLogThrottled("6b6t portal: FENCED_AWAITING_MANAGER_COMMAND (order ENTER_PORTAL in the dashboard)");
+                    }
+                    return;
+                }
+            } else {
+                fencedParkSince = 0;
+            }
+            // Screens are handled inside portalTick()'s movement blocker
+            // (auto-dismiss when allowed, else SCREEN_OPEN); don't pre-empt it here.
             boolean cursorEmpty = mc.player != null
+                    && mc.player.containerMenu != null
                     && mc.player.containerMenu == mc.player.inventoryMenu
                     && mc.player.containerMenu.getCarried().isEmpty();
             if (!cursorEmpty) {
                 ledgeGuard(false);
-                gateLogThrottled("6b6t portal: CURSOR_OCCUPIED");
+                portalForward(false);
+                releaseGoal();
+                // A manual crossing with a held item still counts as contact (the
+                // crossing itself is user-driven); movement stays parked.
+                if (touchingPortal()) {
+                    portalSession.crossingAttempted();
+                    if (fenced) {
+                        reportPortalBlocker("TRANSITING_WITH_FENCED_JOURNAL");
+                        gateLogThrottled("6b6t portal: TRANSITING_WITH_FENCED_JOURNAL (manual contact, cursor held)");
+                    } else {
+                        reportPortalBlocker("CURSOR_OCCUPIED");
+                        gateLogThrottled("6b6t portal: CURSOR_OCCUPIED (manual contact, cursor held)");
+                    }
+                } else {
+                    reportPortalBlocker("CURSOR_OCCUPIED");
+                    gateLogThrottled("6b6t portal: CURSOR_OCCUPIED");
+                }
+                long nowMs = System.currentTimeMillis();
+                if (cursorOccupiedSince == 0) cursorOccupiedSince = nowMs;
+                else if (nowMs - cursorOccupiedSince >= 60_000) {
+                    cursorOccupiedSince = nowMs;
+                    alert("6b6t portal parked: cursor occupied. Clear the carried item to resume lobby transit.");
+                }
                 return;
             }
+            cursorOccupiedSince = 0;
             if (portalTick()) {
                 ledgeGuard(false);
                 gateLogThrottled("6b6t portal: " + (portalBlocker != null ? portalBlocker : "moving to the portal"));
@@ -4139,6 +4205,8 @@ public class StashSorter extends Module {
     private long portalLastScan = 0;
     private long portalWaitWarnedAt = 0;
     private long lastFencedTransitWarnedAt = 0;
+    private long cursorOccupiedSince = 0;
+    private long fencedParkSince = 0;
     // Retried portal approaches eventually give up with a blocker instead of looping forever.
     private int portalAttempts;
     private long portalGiveUpUntilMs;
@@ -4158,6 +4226,8 @@ public class StashSorter extends Module {
     /** The Manager can be disabled during a manual crossing; never leave a synthetic key held. */
     void stopPortalNavigation() {
         portalForward(false);
+        fencedParkSince = 0;
+        cursorOccupiedSince = 0;
         if (portalTarget != null || portalEntering) {
             releaseGoal();
             portalTarget = portalApproach = null;
@@ -4326,9 +4396,14 @@ public class StashSorter extends Module {
             portalBlocker = null;
             portalAttempts = 0;
             portalGiveUpUntilMs = 0;
-            info(
-                    "6b6t: confirmed survival transfer. Pre-transit readback is stale; a fresh survey is required before physical work.");
-            wakeUp();
+            fencedParkSince = 0;
+            cursorOccupiedSince = 0;
+            if (stash != null) {
+                info("6b6t: confirmed survival transfer. Pre-transit readback is stale; awaiting manager survey before physical work.");
+                wakeUp();
+            } else {
+                info("6b6t: confirmed survival transfer. No stash loaded; awaiting stash assignment before any work.");
+            }
             return false;
         }
 
@@ -4387,6 +4462,10 @@ public class StashSorter extends Module {
             // A manual crossing may contact the portal without a tracked goal.
             // Do not leave an active entering state pointing at a null target if
             // the player steps out again before the proxy transfers worlds.
+            // Fenced contact is still reported as a fact.
+            if (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror()) {
+                reportPortalBlocker("TRANSITING_WITH_FENCED_JOURNAL");
+            }
             portalEntering = false;
             portalEntryTicks = 0;
             if (portalTarget != null) {
@@ -4469,7 +4548,8 @@ public class StashSorter extends Module {
         if (StashManager.ownsClient()) {
             // Lobby navigation is allowed before inventory readback, so only dismiss
             // non-container screens here. Never close an unverified server menu.
-            if (mc.player.containerMenu == mc.player.inventoryMenu
+            if (mc.player.containerMenu != null
+                    && mc.player.containerMenu == mc.player.inventoryMenu
                     && mc.player.containerMenu.getCarried().isEmpty()
                     && mc.screen != null) mc.setScreen(null);
             if (mc.screen != null) return "SCREEN_OPEN";
@@ -13314,42 +13394,92 @@ public class StashSorter extends Module {
         // Driven by wesort-stash-manager the module's own handlers are not subscribed: the loop is ticked from here
         @EventHandler
         private void onEngineTick(TickEvent.Pre event) {
+            StashManager manager = Modules.get().get(StashManager.class);
+            // Dedication loss is handled by StashManager.onDeactivate(), which stops
+            // portal navigation and parks the sorter. No separate revocation here:
+            // dedicatedProfile()==isActive(), so an isActive&&!dedicated guard would
+            // be dead code.
             if (mc.player == null || mc.level == null || isActive()) return;
             // Lobby entry is a navigation-only bootstrap: it cannot depend on an already loaded
             // stash, a sorting lease or an enabled warehouse job. In particular it runs on re-login.
-            StashManager manager = Modules.get().get(StashManager.class);
             if (portalModeOn() && manager != null && manager.dedicatedProfile()) {
                 // Probe for positive lobby evidence even if the user manually crossed the
                 // portal. A survival world without a nearby lobby portal proceeds normally.
-                // Manager authorizes transit by holding this client as dedicated agent.
+                // Marionette: unfenced transit runs under dedication; fenced transit runs
+                // only on an explicit manager ENTER_PORTAL lease. Otherwise park with an
+                // explicit fact so the operator (or dashboard) can order the command.
                 // Navigation moves only the player; inventory mutations stay fenced in
-                // PhysicalJournalRuntime.ensure() + InventorySync.allowInput(). A fenced
-                // journal is reported (not silently dropped) while transiting, cursor must
-                // be empty before contact, and arrival schedules a fresh survey because
-                // pre-transit readback is stale. Scope (server+dimension+agent) is unchanged
-                // across lobby->survival (same overworld), so pending inspection survives.
+                // PhysicalJournalRuntime.ensure() + InventorySync.allowInput(). Arrival
+                // schedules a fresh survey because pre-transit readback is stale. Scope
+                // (server+dimension+agent) is unchanged across lobby->survival (same
+                // overworld), so pending inspection survives.
                 boolean fenced = PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror();
-                boolean cursorEmpty = mc.player.containerMenu == mc.player.inventoryMenu
+                boolean cursorEmpty = mc.player != null
+                        && mc.player.containerMenu != null
+                        && mc.player.containerMenu == mc.player.inventoryMenu
                         && mc.player.containerMenu.getCarried().isEmpty();
-                if (fenced) {
+                if (fenced && !manager.enterPortalAuthorized() && portalTarget == null && !portalEntering) {
+                    // Park with an explicit fact; legacy fallback after 5 min without
+                    // an order (old manager) so the deadlock from point-in-time
+                    // incompatibility is bounded. See driven path for the same rule.
+                    long nowParkMs = System.currentTimeMillis();
+                    if (fencedParkSince == 0) fencedParkSince = nowParkMs;
+                    if (nowParkMs - fencedParkSince <= 5 * 60_000L) {
+                        portalForward(false);
+                        releaseGoal();
+                        // A manual crossing while parked must still count.
+                        if (touchingPortal()) {
+                            portalSession.crossingAttempted();
+                            if (portalAwaiting()) reportPortalBlocker("TRANSITING_WITH_FENCED_JOURNAL");
+                        } else if (portalAwaiting()) {
+                            reportPortalBlocker("FENCED_AWAITING_MANAGER_COMMAND");
+                        }
+                        return;
+                    }
+                    WeSortAddon.LOG.warn(
+                            "WeSort portal: no ENTER_PORTAL order in 5 min; legacy fallback transit (update the manager).");
+                    fencedParkSince = nowParkMs;
+                } else {
+                    fencedParkSince = 0;
+                }
+                if (fenced && manager.enterPortalAuthorized()) {
                     long now = System.currentTimeMillis();
                     if (now - lastFencedTransitWarnedAt >= 60_000) {
                         lastFencedTransitWarnedAt = now;
                         WeSortAddon.LOG.warn(
-                                "6b6t portal transiting with fenced journal (navigation-only, physical work parked, cursorEmpty={}).",
+                                "6b6t portal transiting on manager ENTER_PORTAL order with fenced journal (navigation-only, physical work parked, cursorEmpty={}).",
                                 cursorEmpty);
                     }
                     // Fence stays visible via portalTick(); no pre-set here to avoid
                     // flapping against its preserved TRANSITING_WITH_FENCED_JOURNAL.
                 }
+                // Screens are handled inside portalTick()'s movement blocker
+                // (auto-dismiss when allowed, else SCREEN_OPEN); don't pre-empt it here.
                 if (!cursorEmpty) {
                     portalForward(false);
-                    if (portalAwaiting()) reportPortalBlocker("CURSOR_OCCUPIED");
+                    releaseGoal();
+                    // A manual crossing with a held item still counts as contact.
+                    if (touchingPortal()) {
+                        portalSession.crossingAttempted();
+                        if (portalAwaiting()) {
+                            reportPortalBlocker(fenced
+                                    ? "TRANSITING_WITH_FENCED_JOURNAL"
+                                    : "CURSOR_OCCUPIED");
+                        }
+                    } else if (portalAwaiting()) {
+                        reportPortalBlocker("CURSOR_OCCUPIED");
+                    }
+                    long nowMs = System.currentTimeMillis();
+                    if (cursorOccupiedSince == 0) cursorOccupiedSince = nowMs;
+                    else if (nowMs - cursorOccupiedSince >= 60_000) {
+                        cursorOccupiedSince = nowMs;
+                        alert("6b6t portal parked: cursor occupied. Clear the carried item to resume lobby transit.");
+                    }
                     return;
                 }
+                cursorOccupiedSince = 0;
                 if (portalTick()) return;
             }
-            if (portalHoldingForward && (manager == null || !manager.dedicatedProfile())) stopPortalNavigation();
             if (driven) StashSorter.this.onTick(event);
         }
 
@@ -13360,6 +13490,8 @@ public class StashSorter extends Module {
             // after a kick and resume in the proxy lobby on reconnect.
             releaseGoal();
             portalForward(false);
+            fencedParkSince = 0;
+            cursorOccupiedSince = 0;
             driven = false;
             setUp = false;
             // Before anything is forgotten: what is carried and the shulker standing in the world are written down

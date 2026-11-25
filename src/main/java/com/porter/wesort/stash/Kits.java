@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Map;
 import meteordevelopment.meteorclient.utils.Utils;
 import net.minecraft.core.component.DataComponentMap;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 

@@ -21,7 +21,6 @@ import java.util.Map;
 import java.util.Set;
 import meteordevelopment.meteorclient.utils.Utils;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ClickType;
@@ -443,7 +442,9 @@ final class KitBuilder {
             if (home.free() > 0) room = true;
             for (int i = 0; i < home.contents.length; i++) {
                 ItemStack s = home.contents[i];
-                if (s.isEmpty() || !Utils.isShulker(s.getItem()) || com.porter.wesort.compat.ShulkerIdentityRuntime.hasForeignName(s)) continue;
+                if (s.isEmpty()
+                        || !Utils.isShulker(s.getItem())
+                        || com.porter.wesort.compat.ShulkerIdentityRuntime.hasForeignName(s)) continue;
                 var known = Kits.match(s);
                 if (known != null && known.finished()) continue;
                 ItemStack[] in = Kits.inside(s);
@@ -611,7 +612,9 @@ final class KitBuilder {
             if (!com.porter.wesort.compat.ObservationRuntime.current(home)) continue;
             room += home.free();
             for (var stack : home.contents)
-                if (!stack.isEmpty() && Utils.isShulker(stack.getItem()) && !com.porter.wesort.compat.ShulkerIdentityRuntime.hasForeignName(stack)) {
+                if (!stack.isEmpty()
+                        && Utils.isShulker(stack.getItem())
+                        && !com.porter.wesort.compat.ShulkerIdentityRuntime.hasForeignName(stack)) {
                     var known = Kits.match(stack);
                     if (known != null && known.finished()) continue;
                     var inside = Kits.inside(stack);
@@ -819,7 +822,9 @@ final class KitBuilder {
 
     /** Empty, or part of this kit. */
     private boolean baseLike(ItemStack s) {
-        if (s.isEmpty() || !Utils.isShulker(s.getItem()) || com.porter.wesort.compat.ShulkerIdentityRuntime.hasForeignName(s)) return false;
+        if (s.isEmpty()
+                || !Utils.isShulker(s.getItem())
+                || com.porter.wesort.compat.ShulkerIdentityRuntime.hasForeignName(s)) return false;
         ItemStack[] in = Kits.inside(s);
         boolean any = false;
         for (ItemStack i : in) if (i != null && !i.isEmpty()) any = true;
@@ -879,7 +884,8 @@ final class KitBuilder {
             ItemStack s = inv.getItem(slot);
             if (s.isEmpty()
                     || !Utils.isShulker(s.getItem())
-                    || (com.porter.wesort.compat.ShulkerIdentityRuntime.hasForeignName(s) && !(kit.orderKit && owner.namedShulkers()))
+                    || (com.porter.wesort.compat.ShulkerIdentityRuntime.hasForeignName(s)
+                            && !(kit.orderKit && owner.namedShulkers()))
                     || Kits.claims(s)
                     || owner.claims(s)
                     || heldKit(s) != null) continue;

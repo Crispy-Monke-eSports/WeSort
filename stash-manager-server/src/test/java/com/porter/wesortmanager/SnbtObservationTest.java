@@ -10,13 +10,24 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class SnbtObservationTest {
-    @TempDir Path data;
+    @TempDir
+    Path data;
 
     private JsonObject observation(StockLedger ledger) throws Exception {
-        var frame = new PhysicalSlots.Snapshot(27, List.of(new PhysicalSlots.Slot(26, 7,
-                new PhysicalSlots.Item("minecraft:diamond", "minecraft:diamond", 64,
-                        "{\"minecraft:custom_data\":{exact:9007199254740993L}}",
-                        PhysicalSlots.Kind.ITEM, 0, List.of(), ""))));
+        var frame = new PhysicalSlots.Snapshot(
+                27,
+                List.of(new PhysicalSlots.Slot(
+                        26,
+                        7,
+                        new PhysicalSlots.Item(
+                                "minecraft:diamond",
+                                "minecraft:diamond",
+                                64,
+                                "{\"minecraft:custom_data\":{exact:9007199254740993L}}",
+                                PhysicalSlots.Kind.ITEM,
+                                0,
+                                List.of(),
+                                ""))));
         var root = JsonParser.parseString("""
                 {"version":1,"server":"s","stash":"a","items":[
                 {"key":"minecraft:diamond","id":"minecraft:diamond","count":7}],"shulkers":[]}

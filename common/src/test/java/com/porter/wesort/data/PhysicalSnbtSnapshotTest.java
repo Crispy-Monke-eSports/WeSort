@@ -7,16 +7,28 @@ import org.junit.jupiter.api.Test;
 
 class PhysicalSnbtSnapshotTest {
     private static PhysicalSlots.Item diamond() {
-        return new PhysicalSlots.Item("minecraft:diamond", "diamond", 64,
+        return new PhysicalSlots.Item(
+                "minecraft:diamond",
+                "diamond",
+                64,
                 "{\"minecraft:custom_data\":{n:9007199254740993L,bytes:[B;1b,-1b]}}",
-                PhysicalSlots.Kind.ITEM, 0, List.of(), "");
+                PhysicalSlots.Kind.ITEM,
+                0,
+                List.of(),
+                "");
     }
 
     private static PhysicalSlots.Snapshot sample() {
         var child = new PhysicalSlots.Slot(26, 32, diamond());
-        var box = new PhysicalSlots.Item("minecraft:purple_shulker_box", "box", 1,
+        var box = new PhysicalSlots.Item(
+                "minecraft:purple_shulker_box",
+                "box",
+                1,
                 "{\"minecraft:custom_name\":\"WeSort-550e8400-e29b-41d4-a716-446655440000\"}",
-                PhysicalSlots.Kind.SHULKER, 27, List.of(child), "group");
+                PhysicalSlots.Kind.SHULKER,
+                27,
+                List.of(child),
+                "group");
         return new PhysicalSlots.Snapshot(54, List.of(new PhysicalSlots.Slot(53, 1, box)));
     }
 
@@ -27,9 +39,13 @@ class PhysicalSnbtSnapshotTest {
         var read = PhysicalSlots.Snapshot.fromSnbt(snapshot.snbt());
         assertEquals(snapshot.json(), read.json());
         assertEquals(snapshot.fingerprint(), read.fingerprint());
-        assertEquals(List.of("53", "53/26"), read.located().stream().map(PhysicalSlots.Located::path).toList());
+        assertEquals(
+                List.of("53", "53/26"),
+                read.located().stream().map(PhysicalSlots.Located::path).toList());
         assertTrue(read.snbt().contains("9007199254740993L"));
-        assertEquals(snapshot.json(), PhysicalSlots.Snapshot.readEnvelope(snapshot.envelope()).json());
+        assertEquals(
+                snapshot.json(),
+                PhysicalSlots.Snapshot.readEnvelope(snapshot.envelope()).json());
     }
 
     @Test
@@ -42,8 +58,9 @@ class PhysicalSnbtSnapshotTest {
         alternate.add("slots", new com.google.gson.JsonArray());
         assertThrows(IllegalArgumentException.class, () -> PhysicalSlots.Snapshot.readEnvelope(alternate));
         assertThrows(IllegalArgumentException.class, () -> PhysicalSlots.Snapshot.fromSnbt(" " + original.snbt()));
-        assertThrows(IllegalArgumentException.class, () -> PhysicalSlots.Snapshot.fromSnbt(
-                original.snbt().replace("\"schema\":2", "\"schema\":2b")));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> PhysicalSlots.Snapshot.fromSnbt(original.snbt().replace("\"schema\":2", "\"schema\":2b")));
     }
 
     @Test

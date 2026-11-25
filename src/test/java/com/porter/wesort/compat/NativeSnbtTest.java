@@ -25,9 +25,11 @@ class NativeSnbtTest {
 
     @Test
     void numericWidthAndCompoundOrderRemainDistinct() throws Exception {
-        assertEquals(NbtFingerprint.encode(TagParser.create(NbtOps.INSTANCE).parseFully("{b:2,a:1}")),
+        assertEquals(
+                NbtFingerprint.encode(TagParser.create(NbtOps.INSTANCE).parseFully("{b:2,a:1}")),
                 NbtFingerprint.encode(TagParser.create(NbtOps.INSTANCE).parseFully("{a:1,b:2}")));
-        assertNotEquals(NbtFingerprint.encode(TagParser.create(NbtOps.INSTANCE).parseFully("1b")),
+        assertNotEquals(
+                NbtFingerprint.encode(TagParser.create(NbtOps.INSTANCE).parseFully("1b")),
                 NbtFingerprint.encode(TagParser.create(NbtOps.INSTANCE).parseFully("1")));
     }
 }

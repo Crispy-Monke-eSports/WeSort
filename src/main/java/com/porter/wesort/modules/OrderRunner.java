@@ -151,7 +151,8 @@ final class OrderRunner {
     private static String boxUuidOf(ItemStack stack) {
         if (stack == null || stack.isEmpty()) return null;
         var custom = stack.get(DataComponents.CUSTOM_NAME);
-        if (custom == null || !custom.equals(net.minecraft.network.chat.Component.literal(custom.getString()))) return null;
+        if (custom == null || !custom.equals(net.minecraft.network.chat.Component.literal(custom.getString())))
+            return null;
         try {
             java.util.UUID uuid = com.porter.wesort.data.ShulkerUuid.parse(custom.getString());
             return uuid == null ? null : uuid.toString();
@@ -1614,8 +1615,8 @@ final class OrderRunner {
                     u.content = tally(u, mc.player.getInventory().getItem(slot));
                     u.boxUuid = boxUuidOf(mc.player.getInventory().getItem(slot));
                     if (u.name == null) {
-                        u.name = com.porter.wesort.data.ShulkerUuid.label(u.boxUuid == null
-                                ? java.util.UUID.randomUUID() : java.util.UUID.fromString(u.boxUuid));
+                        u.name = com.porter.wesort.data.ShulkerUuid.label(
+                                u.boxUuid == null ? java.util.UUID.randomUUID() : java.util.UUID.fromString(u.boxUuid));
                         u.nameDone = false;
                         saveUnit(u);
                     }

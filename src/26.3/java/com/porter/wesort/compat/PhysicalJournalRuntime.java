@@ -326,6 +326,19 @@ public final class PhysicalJournalRuntime {
         try {
             journal.block(reason);
             if (unfinished()) recoveryFence = true;
+            // Manager direction: report the fence as a fact (id/rev/state), no local planning.
+            String state = "?";
+            try {
+                var cur = journal.current();
+                if (cur != null && cur.has("state")) state = cur.get("state").getAsString();
+            } catch (RuntimeException ignored) {
+            }
+            MeteorClient.LOG.warn(
+                    "WeSort physical fence: {} id={} rev={} state={}.",
+                    reason,
+                    journal.id(),
+                    journal.revision(),
+                    state);
         } catch (Exception failed) {
             failed("Cannot persist automatic physical recovery fence");
         }

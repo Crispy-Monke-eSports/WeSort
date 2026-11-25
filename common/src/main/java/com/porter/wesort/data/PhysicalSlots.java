@@ -68,9 +68,15 @@ public final class PhysicalSlots {
                     || kind == Kind.SHULKER && size != 27)
                 throw new IllegalArgumentException("Invalid physical container shape");
             this.contents = ordered(contents, size);
-            fingerprint = CanonicalSnbt.fingerprint("physical-item", new CanonicalSnbt.Sequence(List.of(
-                    text(id), integerTag(maxStack), patch, text(kind.name()), integerTag(size),
-                    slotIdentities(this.contents))));
+            fingerprint = CanonicalSnbt.fingerprint(
+                    "physical-item",
+                    new CanonicalSnbt.Sequence(List.of(
+                            text(id),
+                            integerTag(maxStack),
+                            patch,
+                            text(kind.name()),
+                            integerTag(size),
+                            slotIdentities(this.contents))));
         }
 
         public String id() {

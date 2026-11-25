@@ -17,8 +17,8 @@ class ShulkerUuidTest {
     }
 
     @Test
-    void automaticRepackingDoesNotDependOnSignsButProtectsHumanLabels() {
-        assertTrue(ShulkerUuid.repackableName(null)); // unnamed spare shulkers
+    void automaticRepackingRequiresValidIdentity() {
+        assertFalse(ShulkerUuid.repackableName(null));
         assertTrue(ShulkerUuid.repackableName("WeSort-" + V4));
         assertFalse(ShulkerUuid.repackableName("My private stash"));
         assertFalse(ShulkerUuid.repackableName("WeSort-not-a-valid-uuid"));
@@ -26,13 +26,13 @@ class ShulkerUuidTest {
     }
 
     @Test
-    void automaticNamingPreservesHumanLabelsAndUniqueUuid() {
+    void automaticNamingCoversAllUnregisteredNamesAndDuplicates() {
         var duplicates = java.util.Set.of(V4);
         assertTrue(ShulkerUuid.needsAutomaticName(null, duplicates));
         assertTrue(ShulkerUuid.needsAutomaticName("WeSort-" + V4, duplicates));
         assertFalse(ShulkerUuid.needsAutomaticName("WeSort-" + V4, java.util.Set.of()));
-        assertFalse(ShulkerUuid.needsAutomaticName("WeSort-not-a-uuid", duplicates));
-        assertFalse(ShulkerUuid.needsAutomaticName("My supplies", duplicates));
+        assertTrue(ShulkerUuid.needsAutomaticName("WeSort-not-a-uuid", duplicates));
+        assertTrue(ShulkerUuid.needsAutomaticName("My supplies", duplicates));
     }
 
     @Test
@@ -61,41 +61,31 @@ class ShulkerUuidTest {
     }
 
     @Test
-    void extractsPlainCustomNameFromTypedNbtPatch() {
-        String patch = "{\"type\":10,\"value\":{\"minecraft:custom_name\":{\"type\":8,\"value\":\"\\\"WeSort-" + V4
-                + "\\\"\"}}}";
+    void extractsPlainCustomNameFromSnbtPatch() {
+        String patch = "{\"minecraft:custom_name\":\"WeSort-" + V4 + "\"}";
         assertEquals("WeSort-" + V4, ShulkerUuid.customName(patch));
         assertEquals(UUID.fromString(V4), ShulkerUuid.boxUuid(patch));
+        assertEquals(UUID.fromString(V4), ShulkerUuid.boxUuid(
+                "{\"minecraft:custom_name\":{text:\"WeSort-" + V4 + "\"}}"));
     }
 
     @Test
     void ignoresMissingStyledOrForeignNames() {
-        assertNull(ShulkerUuid.customName("{\"type\":10,\"value\":{}}"));
-        // A foreign literal is a name, not a UUID.
-        assertEquals(
-                "Beställning",
-                ShulkerUuid.customName(
-                        "{\"type\":10,\"value\":{\"minecraft:custom_name\":{\"type\":8,\"value\":\"\\\"Beställning\\\"\"}}}"));
-        assertNull(ShulkerUuid.boxUuid(
-                "{\"type\":10,\"value\":{\"minecraft:custom_name\":{\"type\":8,\"value\":\"\\\"Beställning\\\"\"}}}"));
-        // A styled component object is not a canonical WeSort label.
-        assertNull(ShulkerUuid.boxUuid(
-                "{\"type\":10,\"value\":{\"minecraft:custom_name\":{\"type\":8,\"value\":\"{\\\"text\\\":\\\"WeSort-"
-                        + V4 + "\\\",\\\"color\\\":\\\"red\\\"}\"}}}"));
-        // Wrong tag type (e.g. a nested compound) is not a plain name.
-        assertNull(ShulkerUuid.customName(
-                "{\"type\":10,\"value\":{\"minecraft:custom_name\":{\"type\":10,\"value\":{}}}}"));
+        assertNull(ShulkerUuid.customName("{}"));
+        assertEquals("Beställning", ShulkerUuid.customName("{\"minecraft:custom_name\":\"Beställning\"}"));
+        assertNull(ShulkerUuid.boxUuid("{\"minecraft:custom_name\":\"Beställning\"}"));
+        assertNull(ShulkerUuid.boxUuid("{\"minecraft:custom_name\":{text:\"WeSort-" + V4 + "\",color:\"red\"}}"));
+        assertNull(ShulkerUuid.boxUuid("{\"minecraft:custom_name\":[\"WeSort-\",\"" + V4 + "\"]}"));
+        assertNull(ShulkerUuid.boxUuid("{\"minecraft:item_name\":\"WeSort-" + V4 + "\"}"));
+        assertNull(ShulkerUuid.customName("{\"minecraft:custom_name\":{}}"));
     }
 
     @Test
     void identityJsonIsSyntacticOnly() {
-        var plain = ShulkerUuid.identity(
-                "{\"type\":10,\"value\":{\"minecraft:custom_name\":{\"type\":8,\"value\":\"\\\"WeSort-" + V4
-                        + "\\\"\"}}}");
+        var plain = ShulkerUuid.identity("{\"minecraft:custom_name\":\"WeSort-" + V4 + "\"}");
         assertTrue(plain.get("hasUUID").getAsBoolean());
         assertEquals(V4, plain.get("boxUUID").getAsString());
-        var foreign = ShulkerUuid.identity(
-                "{\"type\":10,\"value\":{\"minecraft:custom_name\":{\"type\":8,\"value\":\"\\\"Other\\\"\"}}}");
+        var foreign = ShulkerUuid.identity("{\"minecraft:custom_name\":\"Other\"}");
         assertFalse(foreign.get("hasUUID").getAsBoolean());
         assertFalse(foreign.has("boxUUID"));
     }

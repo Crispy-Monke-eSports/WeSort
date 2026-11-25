@@ -2,12 +2,12 @@ package com.porter.wesort.compat;
 
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
+import com.porter.wesort.data.CanonicalSnbt;
 import com.porter.wesort.data.PhysicalSlots;
 import com.porter.wesort.stash.Kits;
 import com.porter.wesort.stash.StashIndex;
 import java.util.*;
 import meteordevelopment.meteorclient.utils.Utils;
-import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.NbtOps;
@@ -34,9 +34,12 @@ public final class SlotRuntime {
 
     private static PhysicalSlots.Item item(ItemStack stack, int depth) {
         var ops = mc.level.registryAccess().createSerializationContext(NbtOps.INSTANCE);
-        String patch = NbtFingerprint.encode(DataComponentPatch.CODEC
-                .encodeStart(ops, stack.getComponentsPatch())
-                .getOrThrow());
+        var nativeStack = CanonicalSnbt.compound(NbtFingerprint.encode(
+                ItemStack.CODEC.encodeStart(ops, stack).getOrThrow()));
+        var componentPatch = nativeStack.get("components");
+        String patch = componentPatch == null ? "{}" : CanonicalSnbt.write(componentPatch);
+        if (componentPatch != null && !(componentPatch instanceof CanonicalSnbt.Compound))
+            throw new IllegalArgumentException("Native item component patch is not a compound");
         var container = stack.get(DataComponents.CONTAINER);
         var bundle = stack.get(DataComponents.BUNDLE_CONTENTS);
         boolean shulker = Utils.isShulker(stack.getItem());

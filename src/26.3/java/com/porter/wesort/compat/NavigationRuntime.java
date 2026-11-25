@@ -57,6 +57,7 @@ public final class NavigationRuntime {
     // Wall-clock start of the current world: an engine-dropped goal with zero progress
     // right after login is chunks still streaming in, not a sealed start (#197).
     private static long worldStartMs;
+    private static long lastFencedTransitLogMs;
     private static final java.util.Map<String, Integer> denialCounts = new java.util.LinkedHashMap<>();
     /** Operator-taken routes expire after idle timeout instead of parking the headless bot forever. */
     static final long OPERATOR_IDLE_TIMEOUT_MS = NavigationRecovery.OPERATOR_IDLE_TIMEOUT_MS;
@@ -99,13 +100,28 @@ public final class NavigationRuntime {
         }
         StashManager manager = Modules.get().get(StashManager.class);
         StashSorter sorter = WeSortAddon.sorter();
+        // Manager is truth: lobby transit moves only the player (position /
+        // dimension), never inventory slots. Inventory mutations stay fenced in
+        // PhysicalJournalRuntime.ensure() + InventorySync.allowInput(), which this
+        // path never calls. A fenced journal therefore cannot fence walking, but
+        // any inventory readback from before transit is stale afterwards and the
+        // manager must order a fresh survey after arrival.
+        // Diagnostics: report (not fence) when transiting with a fenced journal
+        // so the operator still sees why physical work is parked.
+        if (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror()) {
+            long nowMs = System.currentTimeMillis();
+            if (nowMs - lastFencedTransitLogMs >= 60_000) {
+                lastFencedTransitLogMs = nowMs;
+                MeteorClient.LOG.warn(
+                        "WeSort navigation: portal approach with fenced journal (navigation-only, mutations stay fenced).");
+            }
+        }
         boolean allowed = PortalNavigationPolicy.mayBootstrap(
                 manager != null && manager.dedicatedProfile(),
                 sorter != null && sorter.portalAwaiting(),
                 validPortal,
                 adjacent,
-                stand != null && mc.player != null && mc.level != null && NavigationGuard.permits(stand),
-                !PhysicalJournalRuntime.blocked() && !PhysicalJournalRuntime.awaitingMirror());
+                stand != null && mc.player != null && mc.level != null && NavigationGuard.permits(stand));
         if (paused || mc.player == null || mc.level == null || !allowed) {
             BaritoneHelper.unconfine();
             throw new IllegalStateException("Unverified or unsafe lobby portal approach");
@@ -328,6 +344,8 @@ public final class NavigationRuntime {
         }
         if (!transientPause || nowMs < retryAt || mc.player == null || mc.level == null) return;
         if (!InventorySync.ready() || PhysicalJournalRuntime.inspecting()) return;
+        // Physical uncertainty fences auto-resume. Portal routes no longer latch this
+        // status (removed); this guard only covers pre-existing warehouse latches.
         if (status.equals("PAUSED_NAVIGATION_PHYSICAL_UNCERTAINTY")
                 && (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror())) return;
         if (!NavigationGuard.permits(mc.player.blockPosition())) return;
@@ -397,10 +415,10 @@ public final class NavigationRuntime {
             finish("PAUSED_NAVIGATION_INVENTORY", true);
             return;
         }
-        if (portalApproachGoal && (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror())) {
-            finish("PAUSED_NAVIGATION_PHYSICAL_UNCERTAINTY", true);
-            return;
-        }
+        // Manager is truth: portal approach is navigation-only and must never
+        // pause for agent-local physical uncertainty. Physical mutation paths
+        // keep their own fence; walking to the lobby portal does not mutate.
+        // (Removed: finish PAUSED_NAVIGATION_PHYSICAL_UNCERTAINTY for portal goals.)
         // Do not inspect a foreign executor's path. The current position still
         // needs to be safe, and the watchdog/inventory checks above still run.
         if (dedicated && foreign) {

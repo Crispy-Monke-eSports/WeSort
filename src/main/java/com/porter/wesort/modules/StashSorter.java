@@ -2162,6 +2162,25 @@ public class StashSorter extends Module {
                     + (repackWork.reason().isEmpty() ? "physical work needs reconciliation" : repackWork.reason()));
             return;
         }
+        // 6b6t portal transit is navigation-only; unified with Tracker: runs under
+        // manager authorization even with a fenced journal, empty cursor required.
+        // portalTick() preserves TRANSITING_WITH_FENCED_JOURNAL itself; no pre-set
+        // here to avoid flapping. Physical mutation below stays fenced.
+        if (portalModeOn() && portalAwaiting()) {
+            boolean cursorEmpty = mc.player != null
+                    && mc.player.containerMenu == mc.player.inventoryMenu
+                    && mc.player.containerMenu.getCarried().isEmpty();
+            if (!cursorEmpty) {
+                ledgeGuard(false);
+                gateLogThrottled("6b6t portal: CURSOR_OCCUPIED");
+                return;
+            }
+            if (portalTick()) {
+                ledgeGuard(false);
+                gateLogThrottled("6b6t portal: " + (portalBlocker != null ? portalBlocker : "moving to the portal"));
+                return;
+            }
+        }
         if (PhysicalJournalRuntime.blocked()
                 || PhysicalJournalRuntime.awaitingMirror()
                 || !InventorySync.ready()
@@ -2174,13 +2193,6 @@ public class StashSorter extends Module {
                 return;
             }
             gateLogThrottled(preGateReason());
-            return;
-        }
-        // 6b6t portal transit is navigation-only; it cannot require a sorting lease or
-        // a configured stash before the Manager has assigned one.
-        if (portalTick()) {
-            ledgeGuard(false);
-            gateLogThrottled("6b6t portal: " + (portalBlocker != null ? portalBlocker : "moving to the portal"));
             return;
         }
         if (!sortingPermitted()) {
@@ -4126,6 +4138,7 @@ public class StashSorter extends Module {
     private final PortalWorldSession portalSession = new PortalWorldSession();
     private long portalLastScan = 0;
     private long portalWaitWarnedAt = 0;
+    private long lastFencedTransitWarnedAt = 0;
     // Retried portal approaches eventually give up with a blocker instead of looping forever.
     private int portalAttempts;
     private long portalGiveUpUntilMs;
@@ -4313,7 +4326,8 @@ public class StashSorter extends Module {
             portalBlocker = null;
             portalAttempts = 0;
             portalGiveUpUntilMs = 0;
-            info("6b6t: confirmed survival transfer. Starting normal work.");
+            info("6b6t: confirmed survival transfer. Pre-transit readback is stale; a fresh survey is required before physical work.");
+            wakeUp();
             return false;
         }
 
@@ -4394,7 +4408,13 @@ public class StashSorter extends Module {
             reportPortalBlocker(blocker);
             return true;
         }
-        portalBlocker = null;
+        // Preserve the fenced-transit diagnostic instead of flapping to null:
+        // reportPortalBlocker dedupes, so no log spam while moving fenced.
+        if (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror()) {
+            reportPortalBlocker("TRANSITING_WITH_FENCED_JOURNAL");
+        } else {
+            portalBlocker = null;
+        }
 
         if (portalEntering) {
             if (portalTarget == null) {
@@ -13298,12 +13318,33 @@ public class StashSorter extends Module {
             if (portalModeOn() && manager != null && manager.dedicatedProfile()) {
                 // Probe for positive lobby evidence even if the user manually crossed the
                 // portal. A survival world without a nearby lobby portal proceeds normally.
-                if (!PhysicalJournalRuntime.blocked() && !PhysicalJournalRuntime.awaitingMirror()) {
-                    if (portalTick()) return;
-                } else {
-                    portalForward(false);
-                    if (portalAwaiting()) reportPortalBlocker("PHYSICAL_JOURNAL");
+                // Manager authorizes transit by holding this client as dedicated agent.
+                // Navigation moves only the player; inventory mutations stay fenced in
+                // PhysicalJournalRuntime.ensure() + InventorySync.allowInput(). A fenced
+                // journal is reported (not silently dropped) while transiting, cursor must
+                // be empty before contact, and arrival schedules a fresh survey because
+                // pre-transit readback is stale. Scope (server+dimension+agent) is unchanged
+                // across lobby->survival (same overworld), so pending inspection survives.
+                boolean fenced = PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror();
+                boolean cursorEmpty = mc.player.containerMenu == mc.player.inventoryMenu
+                        && mc.player.containerMenu.getCarried().isEmpty();
+                if (fenced) {
+                    long now = System.currentTimeMillis();
+                    if (now - lastFencedTransitWarnedAt >= 60_000) {
+                        lastFencedTransitWarnedAt = now;
+                        WeSortAddon.LOG.warn(
+                                "6b6t portal transiting with fenced journal (navigation-only, physical work parked, cursorEmpty={}).",
+                                cursorEmpty);
+                    }
+                    // Fence stays visible via portalTick(); no pre-set here to avoid
+                    // flapping against its preserved TRANSITING_WITH_FENCED_JOURNAL.
                 }
+                if (!cursorEmpty) {
+                    portalForward(false);
+                    if (portalAwaiting()) reportPortalBlocker("CURSOR_OCCUPIED");
+                    return;
+                }
+                if (portalTick()) return;
             }
             if (portalHoldingForward && (manager == null || !manager.dedicatedProfile())) stopPortalNavigation();
             if (driven) StashSorter.this.onTick(event);

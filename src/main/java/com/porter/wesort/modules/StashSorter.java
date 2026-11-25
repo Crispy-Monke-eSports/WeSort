@@ -11564,7 +11564,9 @@ public class StashSorter extends Module {
             }
         }
         // Only into the container we're working on, never some other menu
-        if (target != null && menu instanceof ChestMenu && size == target.parts.size() * 27
+        if (target != null
+                && menu instanceof ChestMenu
+                && size == target.parts.size() * 27
                 && InventorySync.confirmedSource(target.parts)) {
             for (int i = 0; i < size; i++) {
                 if (menu.getSlot(i).getItem().isEmpty()) {

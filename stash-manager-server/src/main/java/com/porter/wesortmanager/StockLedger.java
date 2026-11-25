@@ -497,8 +497,7 @@ final class StockLedger {
                     throw new IllegalArgumentException("Invalid v3 source snbt: " + e.getMessage());
                 }
                 String canonical = com.porter.wesort.snbt.SnbtCodec.write(parsed);
-                if (!canonical.equals(snbt))
-                    throw new IllegalArgumentException("v3 source snbt is not canonical");
+                if (!canonical.equals(snbt)) throw new IllegalArgumentException("v3 source snbt is not canonical");
                 String digest = com.porter.wesort.snbt.SnbtCodec.snapshotDigest(canonical);
                 if (!digest.equals(source.get("fingerprint").getAsString()))
                     throw new IllegalArgumentException("v3 snapshot digest mismatch");

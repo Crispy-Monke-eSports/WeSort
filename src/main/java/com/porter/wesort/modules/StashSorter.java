@@ -3765,7 +3765,11 @@ public class StashSorter extends Module {
                     .toList());
             if (home == null)
                 home = nearest(stash.boxes.stream()
-                        .filter(b -> !b.excluded && !b.foreign && !b.delivery && !b.protectedStorage && !b.unreachable
+                        .filter(b -> !b.excluded
+                                && !b.foreign
+                                && !b.delivery
+                                && !b.protectedStorage
+                                && !b.unreachable
                                 && !b.dropOff
                                 && !isKitBox(b)
                                 && !blocked(b, Job.Return)
@@ -9723,7 +9727,8 @@ public class StashSorter extends Module {
                 return;
             }
             if (job == Job.Recover) {
-                blockRepackConflict("Recovered shulker is no longer standing and its pickup has no verified checkpoint");
+                blockRepackConflict(
+                        "Recovered shulker is no longer standing and its pickup has no verified checkpoint");
                 return;
             }
             // Broken since: on the ground nearby, or already in the inventory, or gone

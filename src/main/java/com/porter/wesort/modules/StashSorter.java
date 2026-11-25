@@ -1005,7 +1005,7 @@ public class StashSorter extends Module {
 
     // Safe shulker handling: spots where a place failed, how many in a row, when the last was, a pause after problems,
     // and a shulker that could not be picked up (no more are put down)
-    private final Set<BlockPos> failedSpots = new HashSet<>();
+    private final Map<BlockPos, Integer> placementRetryAt = new HashMap<>();
     private int placeFailures;
     private int lastPlaceTick = -1000;
     private int repackPausedUntil;
@@ -1699,7 +1699,7 @@ public class StashSorter extends Module {
         handle = null;
         packTried.clear();
         compactor.reset();
-        failedSpots.clear();
+        placementRetryAt.clear();
         resetWander();
         placeFailures = 0;
         lastPlaceTick = -1000;
@@ -2180,6 +2180,11 @@ public class StashSorter extends Module {
         if (ticks % 100 == 0) observePlacedShulkers();
         // Whatever the sorter is doing, a skipped container whose time has come is made eligible again
         releaseDueSurveys();
+        if (ticks % 20 == 0 && placementRetryAt.values().removeIf(due -> ticks >= due)) idle = false;
+        if (repackPausedUntil > 0 && ticks >= repackPausedUntil) {
+            repackPausedUntil = 0;
+            idle = false;
+        }
         if (handle != null) lastOwnAct = ticks;
         // Time spent giving way does not count against the time allowed to finish a saved shulker step
         if (resuming && gate != Gate.Running) resumeStarted++;
@@ -8287,10 +8292,10 @@ public class StashSorter extends Module {
     }
 
     /**
-     * A spot where the shulker would not go: never tried again. After three in a row shulkers are left alone for a while.
+     * A rejected spot is skipped during the cooldown, then assessed against the current world. After three in a row shulkers are left alone for a while.
      */
     private void placeFailed(BlockPos spot) {
-        failedSpots.add(spot);
+        placementRetryAt.put(spot.immutable(), ticks + PAUSE_TICKS);
         debug("Couldn't put a shulker at %s.", spot.toShortString());
         if (++placeFailures >= 3) {
             placeFailures = 0;
@@ -10167,7 +10172,7 @@ public class StashSorter extends Module {
      * Why a shulker mustn't be put at this spot, or null if it may.
      */
     private String unsafeBecause(BlockPos spot) {
-        if (failedSpots.contains(spot)) return "placing there failed before";
+        if (placementRetryAt.containsKey(spot)) return "waiting before retrying placement here";
         if (stash.boxAt(spot) != null) return "a stash container is there";
         // What is dropped there when the shulker is broken has to be walkable to: floor under it, and open on two sides
         // at least (our own side and one more), not a gap between containers

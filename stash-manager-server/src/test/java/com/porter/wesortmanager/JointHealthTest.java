@@ -208,11 +208,11 @@ class JointHealthTest {
     void agingFreezeHoldsWhileTheRescanIsOutstanding() throws Exception {
         var l = ledger(100);
         l.accept(observation(l, "a", 64, 0, 1, 0));
-        time.addAndGet(50);
+        time.addAndGet(90);
         assertEquals("FRESH", l.sources().getFirst().status());
         l.freezeAging("s", time.get());
-        // Past the normal TTL but inside the freeze's own expiry: still fresh.
-        time.addAndGet(150);
+        // Past the normal TTL but inside the bounded 25 ms grace period.
+        time.addAndGet(15);
         assertEquals("FRESH", l.sources().getFirst().status(), "frozen stock does not age");
         l.unfreezeAging("s");
         assertEquals("STALE_AGE", l.sources().getFirst().status());
@@ -222,8 +222,26 @@ class JointHealthTest {
     void agingFreezeExpiresWhenTheBotGoesQuiet() throws Exception {
         var l = ledger(100);
         l.accept(observation(l, "a", 64, 0, 1, 0));
+        time.addAndGet(90);
         l.freezeAging("s", time.get());
-        time.addAndGet(2 * 100 + 1);
+        time.addAndGet(24);
+        assertEquals("FRESH", l.sources().getFirst().status());
+        time.addAndGet(1);
+        assertEquals("STALE_AGE", l.sources().getFirst().status());
+    }
+
+    @Test
+    void repeatedFreezeDoesNotExtendTheGracePeriod() throws Exception {
+        var l = ledger(100);
+        l.accept(observation(l, "a", 64, 0, 1, 0));
+        time.addAndGet(90);
+        l.freezeAging("s", time.get());
+        time.addAndGet(20);
+        l.freezeAging("s", time.get());
+        assertEquals("FRESH", l.sources().getFirst().status());
+        time.addAndGet(5);
+        assertEquals("STALE_AGE", l.sources().getFirst().status());
+        l.freezeAging("s", time.get());
         assertEquals("STALE_AGE", l.sources().getFirst().status());
     }
 

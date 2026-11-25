@@ -74,17 +74,30 @@ def main():
                 sys.executable, f"scripts/mc26/{script}", selector, name,
                 "--manager-image", args.manager_image,
             ]
+            previous_runs = set(Path("build").glob("mc26-e2e-*"))
+            evidence_path = None
             try:
                 returncode, timed_out = run(command)
             except OSError as exc:
                 print(f"Failed to start {name}: {exc}", flush=True)
                 returncode, timed_out = 127, False
+            if returncode == 0:
+                new_runs = set(Path("build").glob("mc26-e2e-*")) - previous_runs
+                if len(new_runs) != 1:
+                    print(f"Expected one new Minecraft run, found {len(new_runs)}", flush=True)
+                    returncode = 1
+                else:
+                    evidence_path = str(new_runs.pop() / "evidence")
+                    returncode = subprocess.run([
+                        sys.executable, "scripts/ci/validate-evidence.py",
+                        "--evidence", evidence_path, "--commit", source_commit, "--scenario", name,
+                    ]).returncode
             duration = round(time.monotonic() - started, 2)
             results.append({
                 "suite": args.suite, "scenario": name, "attempt": attempt,
                 "source_commit": source_commit, "passed": returncode == 0,
                 "exit_code": returncode, "timed_out": timed_out,
-                "duration_seconds": duration,
+                "duration_seconds": duration, "evidence": evidence_path,
             })
             print(f"::endgroup::\n{name} run {attempt}: "
                   f"{'PASS' if returncode == 0 else 'FAIL'} ({duration}s)", flush=True)

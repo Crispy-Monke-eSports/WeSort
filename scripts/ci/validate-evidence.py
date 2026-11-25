@@ -26,8 +26,13 @@ def main() -> int:
     if data.get("result") != "PASS":
         print("result != PASS: %s" % data.get("result"))
         return 1
-    if not data.get("checks"):
+    checks = data.get("checks")
+    if not isinstance(checks, list) or not checks:
         print("empty checks[]: evidence proves nothing")
+        return 1
+    if any(not isinstance(check, dict) or not check.get("scenario") or check.get("result") != "PASS"
+           for check in checks):
+        print("evidence contains an unnamed or unsuccessful check")
         return 1
     if data.get("source_commit") != args.commit:
         print("stale evidence: %s != %s" % (data.get("source_commit"), args.commit))

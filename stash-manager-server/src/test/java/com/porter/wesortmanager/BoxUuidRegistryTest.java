@@ -157,7 +157,7 @@ class BoxUuidRegistryTest {
     }
 
     @Test
-    void deregisteredUuidMovesToHistoryAndIsRegisteredAgainWhenSeen() throws Exception {
+    void deregisteredUuidStaysRetiredWhenSeenAgain() throws Exception {
         var ledger = new StockLedger(data);
         var index = indexes(ledger, new String[] {"WeSort-" + V4}, new int[] {0});
         ledger.accept(index);
@@ -184,13 +184,11 @@ class BoxUuidRegistryTest {
         assertEquals(
                 "DEREGISTERED_FOR_ORDER",
                 ledger.boxUuidHistory().get(0).getAsJsonObject().get("reason").getAsString());
-        // The same box found again in a chest keeps its UUID: historical UUIDs are registered again.
         ledger.accept(indexes(ledger, new String[] {"WeSort-" + V4}, new int[] {0}));
-        assertEquals(1, ledger.boxUuids().size());
+        assertTrue(ledger.boxUuids().isEmpty());
+        assertTrue(PhysicalReservations.read(ledger, "s", "a").available(Set.of()).isEmpty());
         assertEquals(
-                id, ledger.boxUuids().get(0).getAsJsonObject().get("source").getAsString());
-        assertEquals(
-                "REGISTERED",
+                "DUPLICATE",
                 ledger.boxIdentities(id)
                         .get(0)
                         .getAsJsonObject()

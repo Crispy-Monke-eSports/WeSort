@@ -506,3 +506,15 @@ leases, stock reservations and order reconciliation must survive process
 failure. An unknown physical outcome must remain blocked as
 `NEEDS_RECONCILIATION` until server-observed state permits safe progress.
 The transactional persistence refactor is tracked in #140.
+
+## Physical observation v3 (SNBT)
+
+The Minecraft 26.3 client sends `physicalVersion:3`. Every FRESH source contains a
+canonical version-2 physical snapshot in the string field `snbt`; source `size`
+and `fingerprint` must match its decoded tree. Non-FRESH sources use `snbt:null`
+and cannot publish new inventory content. The signed JSON request is a transport
+envelope; `items` and `shulkers` are derived aggregate projections checked
+against the SNBT tree. Version 3 rejects `slots` and `slotVariants`. Manager
+validates the entire payload before the existing revision/lease transaction.
+The remaining v1/v2 ingress and test-fixture cutover is tracked by #227;
+no migration of historical data is provided.

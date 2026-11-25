@@ -116,6 +116,19 @@ describe("health signals", () => {
     expect(isHealthFresh(null, NOW)).toBe(false);
   });
 
+  it("retains stock age and additional warning codes from a ready Manager", () => {
+    const items = healthAttention({
+      status: "ready",
+      staleStock: true,
+      oldestStockAgeMs: 120000,
+      warnings: ["STALE_STOCK", "OTHER_WARNING"],
+    });
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({ severity: "warning", to: "/inventory" });
+    expect(items[0].text).toContain("2m");
+    expect(items[1].text).toBe("OTHER_WARNING");
+  });
+
   it("flags stuck orders and a stale index as errors", () => {
     const items = healthAttention({ stuckOrders: 2, staleIndex: true });
     expect(items).toHaveLength(2);

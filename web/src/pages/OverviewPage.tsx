@@ -672,7 +672,13 @@ export function OverviewPage() {
               .map((s) => (
                 <Chip
                   key={s.stash}
-                  label={`${s.stash}${s.online === false ? " · offline" : ""}`}
+                  label={[
+                    s.stash,
+                    s.online === false && "offline",
+                    s.orderBlocker,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                   variant={s.online === false ? "outlined" : "filled"}
                   color={s.online === false ? "warning" : "default"}
                 />

@@ -57,6 +57,9 @@ export interface HealthLike {
   stuckOrderIds?: unknown;
   recovering?: number | null;
   reservationHoldingOrders?: number | null;
+  warnings?: string[] | null;
+  staleStock?: boolean | null;
+  oldestStockAgeMs?: number | null;
   oldestIndexAgeMs?: number | null;
   checkedAt?: number | null;
   userRegistryUnavailable?: boolean | null;
@@ -164,6 +167,23 @@ export function healthAttention(
       text: "Stock index is stale — availability data cannot be trusted.",
       to: "/operations",
     });
+  }
+  const warnings = new Set(health.warnings);
+  if (health.staleStock) warnings.add("STALE_STOCK");
+  for (const warning of warnings) {
+    if (warning === "STALE_STOCK") {
+      const age = health.oldestStockAgeMs;
+      items.push({
+        severity: "warning",
+        text: `STALE_STOCK — oldest stock observation: ${age == null ? "unknown age" : formatAge(age)}.`,
+        to: "/inventory",
+      });
+    } else if (
+      !(warning === "STALE_INDEX" && health.staleIndex) &&
+      !(warning === "RECOVERING_ORDERS" && health.recovering)
+    ) {
+      items.push({ severity: "warning", text: warning, to: "/operations" });
+    }
   }
   if (health.userRegistryUnavailable) {
     items.push({

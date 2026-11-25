@@ -1019,6 +1019,13 @@ export function InventoryPage() {
         </Button>
       </Stack>
 
+      {stashList
+        .filter((s) => s.orderBlocker)
+        .map((s) => (
+          <Alert key={s.stash} severity="warning">
+            {s.stash} · {s.orderBlocker}
+          </Alert>
+        ))}
       {!serverOk(slices) && canView && (
         <Alert severity="warning">
           Some stash data is unavailable — availability below may be partial.
@@ -1384,6 +1391,13 @@ function AvailabilityLine({
   );
 }
 
+function addDisabledReason(canOrder: boolean, orderable: number | null) {
+  if (!canOrder) return "Order permission required.";
+  if (orderable === null) return "Available stock could not be verified.";
+  if (orderable <= 0) return "No units available to add.";
+  return null;
+}
+
 function ItemCard({
   item,
   slices,
@@ -1486,6 +1500,11 @@ function ItemCard({
         >
           Add
         </Button>
+        {addDisabledReason(canOrder, orderable) && (
+          <Typography variant="caption" component="p">
+            {addDisabledReason(canOrder, orderable)}
+          </Typography>
+        )}
       </CardActions>
     </Card>
   );
@@ -1590,6 +1609,11 @@ function InventoryRow({
         >
           Add
         </Button>
+        {addDisabledReason(canOrder, orderable) && (
+          <Typography variant="caption" component="p">
+            {addDisabledReason(canOrder, orderable)}
+          </Typography>
+        )}
       </TableCell>
     </TableRow>
   );
@@ -1694,6 +1718,11 @@ function KitCatalog({
                     >
                       Add
                     </Button>
+                    {addDisabledReason(canOrder, orderable) && (
+                      <Typography variant="caption" component="p">
+                        {addDisabledReason(canOrder, orderable)}
+                      </Typography>
+                    )}
                   </Stack>
                 </Stack>
               </Paper>

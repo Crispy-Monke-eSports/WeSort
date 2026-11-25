@@ -418,9 +418,44 @@ public final class PhysicalSlots {
                     intValue(row.get("capacity")),
                     decodeSlots(row.get("children"), depth + 1, nodes),
                     textValue(row.get("group")));
+            validateNativeChildren(item, requireCompound(stack.get("components")));
             slots.add(new Slot(intValue(row.get("slot")), intValue(stack.get("count")), item));
         }
         return slots;
+    }
+
+    /** Verify every derived child against the authoritative native component before indexing it. */
+    private static void validateNativeChildren(Item item, CanonicalSnbt.Compound patch) {
+        var nativeChildren = new TreeMap<Integer, CanonicalSnbt.Compound>();
+        var container = patch.get("minecraft:container");
+        if (container != null) {
+            if (!(container instanceof CanonicalSnbt.Sequence list)) throw new IllegalArgumentException("Invalid native container");
+            for (var value : list.values()) {
+                var entry = requireCompound(value);
+                int slot = intValue(entry.get("slot"));
+                if (item.kind == Kind.ITEM || item.kind == Kind.BUNDLE
+                        || nativeChildren.put(slot, requireCompound(entry.get("item"))) != null)
+                    throw new IllegalArgumentException("Conflicting native container slots");
+            }
+        }
+        var bundle = patch.get("minecraft:bundle_contents");
+        if (bundle != null) {
+            if (!(bundle instanceof CanonicalSnbt.Sequence list)) throw new IllegalArgumentException("Invalid native bundle");
+            if (!list.values().isEmpty() && (item.kind != Kind.BUNDLE || !nativeChildren.isEmpty()))
+                throw new IllegalArgumentException("Conflicting native bundle contents");
+            for (var value : list.values()) nativeChildren.put(nativeChildren.size(), requireCompound(value));
+        }
+        if (nativeChildren.size() != item.contents.size() || (item.kind == Kind.BUNDLE && item.size != nativeChildren.size()))
+            throw new IllegalArgumentException("Native child count mismatch");
+        for (Slot child : item.contents) {
+            var original = nativeChildren.get(child.slot());
+            if (original == null || !child.item.id.equals(textValue(original.get("id"))))
+                throw new IllegalArgumentException("Native child identity mismatch");
+            int count = original.get("count") == null ? 1 : intValue(original.get("count"));
+            String components = original.get("components") == null ? "{}" : CanonicalSnbt.write(requireCompound(original.get("components")));
+            if (count != child.count || !components.equals(child.item.components))
+                throw new IllegalArgumentException("Native child content mismatch");
+        }
     }
 
     private static CanonicalSnbt.Compound requireCompound(CanonicalSnbt.Value value) {

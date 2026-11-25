@@ -186,7 +186,8 @@ class BoxUuidRegistryTest {
                 ledger.boxUuidHistory().get(0).getAsJsonObject().get("reason").getAsString());
         ledger.accept(indexes(ledger, new String[] {"WeSort-" + V4}, new int[] {0}));
         assertTrue(ledger.boxUuids().isEmpty());
-        assertTrue(PhysicalReservations.read(ledger, "s", "a").available(Set.of()).isEmpty());
+        assertTrue(
+                PhysicalReservations.read(ledger, "s", "a").available(Set.of()).isEmpty());
         assertEquals(
                 "DUPLICATE",
                 ledger.boxIdentities(id)

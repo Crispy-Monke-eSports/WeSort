@@ -1742,6 +1742,7 @@ public class StashSorter extends Module {
         startupDump = false;
         startupStock.clear();
         startupRetryAt = 0;
+        waitingForContainers = false;
 
         // A recovered world shulker may still be in our inventory after a stop. Restore
         // its carry slot even if warehouse orders are disabled, so it is deposited.
@@ -2039,6 +2040,8 @@ public class StashSorter extends Module {
      */
     private boolean startupDepositPending, startupDump;
     private int startupRetryAt;
+    private boolean waitingForContainers;
+    private int nextDiscoveryTick;
 
     private final Map<Integer, ItemStack> startupStock = new LinkedHashMap<>();
 
@@ -2247,6 +2250,15 @@ public class StashSorter extends Module {
                     version++;
                     idle = false;
                 }
+            }
+            if (waitingForContainers && ticks >= nextDiscoveryTick) {
+                int added = addNearbyBoxes();
+                if (added > 0) {
+                    orderBoxes();
+                    stash.save();
+                    version++;
+                }
+                if (checkStash()) idle = false;
             }
             // Scan-only with no carry slot yet: retry for orders and recovered warehouse items.
             if (!sorting()
@@ -3118,6 +3130,12 @@ public class StashSorter extends Module {
                 wait = 20;
                 return false;
             }
+        }
+
+        if (waitingForContainers) {
+            if (startSurveyBatch(false)) return true;
+            wait = 20;
+            return false;
         }
 
         // Unclaimed world shulkers use the same stash put-away path as a drop-off.
@@ -12726,6 +12744,13 @@ public class StashSorter extends Module {
     private boolean checkStash() {
         long sortable =
                 stash.boxes.stream().filter(b -> !b.excluded && !b.dropOff).count();
+        if (keepOn() && (sorting() ? sortable < 2 : stash.boxes.isEmpty())) {
+            if (!waitingForContainers) warning("Waiting for stash containers; checking again automatically.");
+            waitingForContainers = true;
+            nextDiscoveryTick = ticks + 20 * 30;
+            return false;
+        }
+        waitingForContainers = false;
         if (!sorting()) {
             if (stash.boxes.isEmpty()) {
                 error("Found no containers within %d blocks.", radius.get());

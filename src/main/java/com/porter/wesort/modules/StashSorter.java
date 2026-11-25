@@ -1741,6 +1741,7 @@ public class StashSorter extends Module {
         startupDepositPending = StashManager.ownsClient() && !user;
         startupDump = false;
         startupStock.clear();
+        startupRetryAt = 0;
 
         // A recovered world shulker may still be in our inventory after a stop. Restore
         // its carry slot even if warehouse orders are disabled, so it is deposited.
@@ -2037,6 +2038,7 @@ public class StashSorter extends Module {
      * Works out which slots to carry stash items in, from the settings or, by default, every empty slot.
      */
     private boolean startupDepositPending, startupDump;
+    private int startupRetryAt;
 
     private final Map<Integer, ItemStack> startupStock = new LinkedHashMap<>();
 
@@ -3014,7 +3016,7 @@ public class StashSorter extends Module {
             nextIdleSurveyAt = now + 1000;
             surveyReady = queueSurveyBatch(true, false);
         }
-        if (areaDirty || surveyReady) {
+        if (areaDirty || surveyReady || (sorting() && startupDepositPending && ticks >= startupRetryAt)) {
             idle = false;
             return true;
         }
@@ -3136,7 +3138,7 @@ public class StashSorter extends Module {
 
         // Initial inventory belongs to the dedicated bot only. Finish all saved work and
         // read the destination before moving anything. No cleanup runs in scan-only mode.
-        if (sorting() && startupDepositPending && !pendingPhysicalRecovery() && !orderRunner.holdsOrder()) {
+        if (sorting() && startupDepositPending && ticks >= startupRetryAt && !pendingPhysicalRecovery() && !orderRunner.holdsOrder()) {
             if (startStartupDeposit()) return true;
         }
 
@@ -11602,7 +11604,7 @@ public class StashSorter extends Module {
      * Puts carried stacks down in a container with space, when nowhere they belong has room for them.
      */
     private boolean startStartupDeposit() {
-        if (startupStock.isEmpty()) {
+        if (startupRetryAt == 0 && startupStock.isEmpty()) {
             Set<Integer> keep = parseSlots(keepSlots.get());
             for (int slot = 0; slot < 36; slot++) {
                 ItemStack stack = mc.player.getInventory().getItem(slot);
@@ -11629,11 +11631,14 @@ public class StashSorter extends Module {
                 return start(Job.Dump, home);
             }
         }
-        if (!startupStock.isEmpty())
-            warning(
-                    "Startup inventory: no verified storage room for %d remaining stacks; keeping them in inventory.",
-                    startupStock.size());
-        startupStock.clear();
+        if (!startupStock.isEmpty()) {
+            if (startupRetryAt == 0)
+                warning("Startup inventory: waiting for verified storage room for %d stacks; retrying automatically.", startupStock.size());
+            startupRetryAt = ticks + 20 * 60;
+            startupDump = false;
+            pickCarrySlots(false);
+            return false;
+        }
         startupDepositPending = false;
         startupDump = false;
         pickCarrySlots(false);

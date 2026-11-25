@@ -399,11 +399,10 @@ final class StockLedger {
     static List<JsonObject> validate(JsonObject index) {
         if (!index.has("physicalSources")) return List.of();
         long version = number(index, "physicalVersion");
-        if (version != 1 && version != 2 && version != 3)
+        if (version != 1 && version != 3)
             throw new IllegalArgumentException("Unsupported physical observation version");
         if (version == 3 && index.has("slotVariants"))
             throw new IllegalArgumentException("SNBT observations cannot contain a variant dictionary");
-        var slots = version == 2 ? new PhysicalSlots.Reader(index.getAsJsonArray("slotVariants")) : null;
         String server = index.get("server").getAsString();
         var values = index.getAsJsonArray("physicalSources");
         if (values.size() > 2048) throw new IllegalArgumentException("Too many physical sources");
@@ -475,10 +474,8 @@ final class StockLedger {
                                 || !source.get("snbt").getAsJsonPrimitive().isString()))
                     throw new IllegalArgumentException("Fresh source requires canonical SNBT");
             }
-            if (version >= 2 && state.equals("FRESH")) {
-                var snapshot = version == 3
-                        ? PhysicalSlots.Snapshot.fromSnbt(source.get("snbt").getAsString())
-                        : slots.snapshot(Math.toIntExact(number(source, "size")), source.getAsJsonArray("slots"));
+            if (version == 3 && state.equals("FRESH")) {
+                var snapshot = PhysicalSlots.Snapshot.fromSnbt(source.get("snbt").getAsString());
                 if (snapshot.size() != number(source, "size"))
                     throw new IllegalArgumentException("SNBT inventory capacity mismatch");
                 if (!snapshot.fingerprint().equals(source.get("fingerprint").getAsString()))

@@ -4,7 +4,6 @@ import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 import com.porter.wesort.data.CanonicalSnbt;
 import com.porter.wesort.data.PhysicalSlots;
-import com.porter.wesort.stash.Kits;
 import com.porter.wesort.stash.StashIndex;
 import java.util.*;
 import meteordevelopment.meteorclient.utils.Utils;
@@ -50,7 +49,11 @@ public final class SlotRuntime {
         int size = 0;
         if (shulker) {
             kind = PhysicalSlots.Kind.SHULKER;
-            contents = Arrays.asList(Kits.inside(stack));
+            if (container != null && container.size() > 27)
+                throw new IllegalArgumentException("Shulker contents exceed physical capacity");
+            if (bundle != null && !bundle.isEmpty())
+                throw new IllegalArgumentException("Shulker has ambiguous bundle contents");
+            contents = container == null ? List.of() : container.itemCopies().toList();
             size = 27;
         } else if (bundle != null) {
             kind = PhysicalSlots.Kind.BUNDLE;

@@ -8912,6 +8912,16 @@ public class StashSorter extends Module {
      * once nothing is lying near the spot for a few seconds, a held shulker that matches it counts as picked up.
      */
     private boolean pickedUp() {
+        if (job == Job.Recover && repackExpected.isEmpty()) {
+            if (placed == null || !mc.level.isLoaded(placed) || shulkerAt(placed) || recoveredPickupSlot() < 0)
+                return false;
+            if (!InventorySync.confirmedMenu()) {
+                releaseGoal();
+                InventorySync.verifyInventory();
+                return false;
+            }
+            return true;
+        }
         if (!repackExpected.isEmpty()) {
             if (placed == null || !mc.level.isLoaded(placed) || shulkerAt(placed)) return false;
             if (verifiedRepackPickup() < 0
@@ -9007,15 +9017,12 @@ public class StashSorter extends Module {
         // A pickup can land in a previously occupied slot after the inventory
         // is rearranged. When the exact fingerprint was absent at break time
         // and there is precisely one matching copy now, its slot is unambiguous.
-        int match = -1;
+        List<Integer> matches = new ArrayList<>();
         for (int i = 0; i <= 40; i++) {
             if (i >= 36 && i < 40) continue;
-            if (!repackMatches(mc.player.getInventory().getItem(i))) continue;
-            if (!shulkerSlotsBefore.contains(i)) return i;
-            if (repackExistingCopies != 0 || match != -1) return -1;
-            match = i;
+            if (repackMatches(mc.player.getInventory().getItem(i))) matches.add(i);
         }
-        return match;
+        return PlacedShulkerRecovery.pickupSlot(matches, shulkerSlotsBefore, repackExistingCopies);
     }
 
     private int repackCount(ItemStack[] contents) {

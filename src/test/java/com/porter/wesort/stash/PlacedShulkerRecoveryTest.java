@@ -2,9 +2,20 @@ package com.porter.wesort.stash;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class PlacedShulkerRecoveryTest {
+    @Test
+    void pickupCanFollowAnExistingCopyInInventoryOrder() {
+        assertEquals(7, PlacedShulkerRecovery.pickupSlot(List.of(2, 7), Set.of(2), 1));
+        assertEquals(7, PlacedShulkerRecovery.pickupSlot(List.of(7, 2), Set.of(2), 1));
+        assertEquals(2, PlacedShulkerRecovery.pickupSlot(List.of(2), Set.of(2), 0));
+        assertEquals(-1, PlacedShulkerRecovery.pickupSlot(List.of(2), Set.of(2), 1));
+        assertEquals(-1, PlacedShulkerRecovery.pickupSlot(List.of(5, 7), Set.of(2), 1));
+    }
+
     @Test
     void activeOrderRetainsOnlyItsOwnShulkers() {
         assertFalse(PlacedShulkerRecovery.shouldRecover("order-1", "order-1"));

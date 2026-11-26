@@ -1,6 +1,5 @@
 package com.porter.wesort.data;
 
-import com.porter.wesort.snbt.SnbtCodec;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.UUID;

@@ -240,6 +240,5 @@ class JobSchedulerTest {
         assertThrows(JobScheduler.Conflict.class, () -> s.claim(A2));
         clock.addAndGet(JobScheduler.QUARANTINE_AFTER_MS + 1);
         assertTrue(s.sweepStaleUncertain(clock.get()).isEmpty());
-
     }
 }

@@ -150,7 +150,7 @@ public final class TableFinder {
      */
     public static Material material(Recipes recipes, Map<String, Long> pool, Set<String> never) {
         if (recipes == null) return Material.NONE;
-        CraftPlanner.Result r = CraftPlanner.plan(recipes, TABLE_ID, 1, pool, never, CraftPlanner.Caps.NONE, 0, 0);
+        CraftPlanner.Result r = CraftPlanner.plan(recipes, TABLE_ID, 1, pool, never, CraftPlanner.Caps.NONE);
         if (!r.ok() || r.plan().count() < 1) return Material.NONE;
         // Only recipes that fit the 2x2 grid are used
         for (CraftPlanner.Step s : r.plan().steps())

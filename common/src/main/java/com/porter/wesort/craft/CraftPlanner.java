@@ -10,7 +10,7 @@ import java.util.Set;
 
 /**
  * Works out how to make an item from what a pool holds: which recipes to run, how many times, and which items of the
- * pool are used up. Pure (no Minecraft classes), so the addon and its tests share it, and it mirrors the proxy plugin's.
+ * pool are used up. Pure (no Minecraft classes), so the addon and its tests share the same planning rules.
  *
  * Rules: depth 3 (the item, what it is made of, what that is made of; the last level is taken from stock only), no
  * item twice on one path, needs are added up over all cells and crafts before they are rounded up to whole crafts,
@@ -28,20 +28,15 @@ public final class CraftPlanner {
     public static final String NOT_ENOUGH = "not enough materials";
     public static final String NO_SHELLS = "shulker shells can't be crafted";
 
-    /** The limits: crafts of the wanted item per order, grid fills per task, crafts of it per hour. */
-    public record Caps(int perOrder, int opsPerTask, int perHour) {
-        public static final Caps NONE = new Caps(Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE);
+    /** Grid fills permitted in one execution batch. */
+    public record Caps(int opsPerTask) {
+        public static final Caps NONE = new Caps(Integer.MAX_VALUE);
     }
 
     /** One recipe run {@code crafts} times. */
     public record Step(Recipes.Recipe recipe, int crafts) {
-        public int output() {
-            return crafts * recipe.count();
-        }
-
-        /** Grid cells filled to do it. */
-        public int ops() {
-            return crafts * recipe.filled();
+        public long ops() {
+            return (long) crafts * recipe.filled();
         }
     }
 
@@ -65,37 +60,21 @@ public final class CraftPlanner {
      * @param want      how many to make
      * @param pool      what there is, by item (a copy is worked on)
      * @param never     items never used as ingredients
-     * @param doneOrder how many were already crafted for this order
-     * @param doneHour  how many were already crafted in the last hour
      */
     public static Result plan(
-            Recipes recipes,
-            String item,
-            int want,
-            Map<String, Long> pool,
-            Set<String> never,
-            Caps caps,
-            int doneOrder,
-            int doneHour) {
+            Recipes recipes, String item, int want, Map<String, Long> pool, Set<String> never, Caps caps) {
         if (want <= 0) return new Result(null, "nothing to craft");
-        long leftOrder = (long) caps.perOrder() - doneOrder, leftHour = (long) caps.perHour() - doneHour;
-        if (leftOrder <= 0) return new Result(null, CAP_REACHED + " (0 more this order)");
-        if (leftHour <= 0) return new Result(null, CAP_REACHED + " (0 more this hour)");
-        int allowed = (int) Math.min((long) want, Math.min(leftOrder, leftHour));
-        String capText =
-                CAP_REACHED + " (" + allowed + " more this " + (leftOrder <= leftHour ? "order" : "hour") + ")";
-
         Attempt best;
         int lo, hi;
         // The most that can be made, found by halving: what can be made is the same or less with every craft more
-        Attempt full = attempt(recipes, item, allowed, pool, never, caps);
+        Attempt full = attempt(recipes, item, want, pool, never, caps);
         if (full.ok) best = full;
         else {
             Attempt one = attempt(recipes, item, 1, pool, never, caps);
             if (!one.ok) return new Result(null, one.reason == null ? NOT_ENOUGH : one.reason);
             best = one;
             lo = 1;
-            hi = allowed - 1;
+            hi = want - 1;
             while (lo < hi) {
                 int mid = (lo + hi + 1) >>> 1;
                 Attempt a = attempt(recipes, item, mid, pool, never, caps);
@@ -105,9 +84,7 @@ public final class CraftPlanner {
                 } else hi = mid - 1;
             }
         }
-        String limited = best.count >= want
-                ? null
-                : best.count == allowed ? capText : (full.reason == null ? NOT_ENOUGH : full.reason);
+        String limited = best.count == want ? null : full.reason;
         return new Result(new Plan(item, best.count, best.steps, best.take, best.ops, limited), null);
     }
 
@@ -138,19 +115,19 @@ public final class CraftPlanner {
             run.fail("too many steps");
         }
         if (ok) {
-            int ops = 0;
+            long ops = 0;
             for (Step s : run.steps) ops += s.ops();
             if (ops > caps.opsPerTask()) {
                 ok = false;
                 run.fail(CAP_REACHED + " (" + ops + " grid fills, at most " + caps.opsPerTask() + " a task)");
-            }
-            out.ops = ops;
+            } else out.ops = Math.toIntExact(ops);
         }
         out.ok = ok;
         out.reason = run.reason;
         if (ok) {
             out.steps = List.copyOf(run.steps);
-            out.take = new LinkedHashMap<>(run.take);
+            out.take = new LinkedHashMap<>();
+            run.take.forEach((key, value) -> out.take.put(key, Math.toIntExact(value)));
         }
         return out;
     }
@@ -161,7 +138,7 @@ public final class CraftPlanner {
         final Set<String> never;
         final Map<String, Long> stock = new HashMap<>();
         final Map<String, Long> spare = new HashMap<>();
-        final Map<String, Integer> take = new LinkedHashMap<>();
+        final Map<String, Long> take = new LinkedHashMap<>();
         List<Step> steps = new ArrayList<>();
         final Set<String> path = new HashSet<>();
         int nodes, trial;
@@ -177,7 +154,7 @@ public final class CraftPlanner {
         record Mark(
                 Map<String, Long> stock,
                 Map<String, Long> spare,
-                Map<String, Integer> take,
+                Map<String, Long> take,
                 List<Step> steps,
                 int nodes,
                 String reason) {}
@@ -282,7 +259,9 @@ public final class CraftPlanner {
         }
 
         void addStep(Recipes.Recipe r, int crafts) {
-            if (!steps.isEmpty() && steps.get(steps.size() - 1).recipe() == r) {
+            if (!steps.isEmpty()
+                    && steps.getLast().recipe() == r
+                    && (long) steps.getLast().crafts() + crafts <= Integer.MAX_VALUE) {
                 Step last = steps.remove(steps.size() - 1);
                 steps.add(new Step(r, last.crafts() + crafts));
             } else steps.add(new Step(r, crafts));
@@ -300,7 +279,7 @@ public final class CraftPlanner {
             long got = Math.min(have, want);
             if (got > 0) {
                 stock.put(item, have - got);
-                take.merge(item, (int) got, Integer::sum);
+                take.merge(item, got, Long::sum);
             }
             return Math.max(0, got);
         }

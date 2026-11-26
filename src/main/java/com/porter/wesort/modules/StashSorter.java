@@ -4926,14 +4926,7 @@ public class StashSorter extends Module {
             }
             case PLACE_FROM_STOCK -> {
                 String why = crafter.begin(new Crafter.Request(
-                        TableFinder.TABLE_ID,
-                        1,
-                        "placing",
-                        false,
-                        0,
-                        orderRunner::craftPool,
-                        orderRunner::lotKeys,
-                        true));
+                        TableFinder.TABLE_ID, 1, "placing", false, orderRunner::craftPool, orderRunner::lotKeys, true));
                 if (why != null) {
                     warning("No crafting table to place: %s.", why);
                     tableWhy = TableFinder.failure("couldn't take one from the stash: " + why);
@@ -4948,7 +4941,6 @@ public class StashSorter extends Module {
                         1,
                         "placing",
                         false,
-                        0,
                         orderRunner::craftPool,
                         orderRunner::lotKeys,
                         false));
@@ -5187,7 +5179,7 @@ public class StashSorter extends Module {
             // For shulker packing, retain the existing fallback to find/place a
             // missing table. For new product manufacturing, the table is pinned.
             if (!manufacturing && stash != null && tableMissing()) {
-                var preview = crafter.preview(item, craft.count(), orderRunner.crafted(), pool.get(), false);
+                var preview = crafter.preview(item, craft.count(), pool.get(), false);
                 if (!preview.ok()) {
                     orderRunner.craftEnded(new Crafter.Outcome(item, 0, preview.refusal()));
                     return false;
@@ -5211,7 +5203,6 @@ public class StashSorter extends Module {
                     craft.count(),
                     "order " + orderRunner.orderId(),
                     !manufacturing,
-                    manufacturing ? 0 : orderRunner.crafted(),
                     pool,
                     orderRunner::lotKeys,
                     false,
@@ -5233,7 +5224,7 @@ public class StashSorter extends Module {
         String why = craftBlocker();
         if (why == null && tableMissing()) {
             // The craft itself must be possible before a table is put in the world for it
-            var preview = crafter.preview(SHULKER_BOX_ID, 1, 0, crafter.survey(), false);
+            var preview = crafter.preview(SHULKER_BOX_ID, 1, crafter.survey(), false);
             if (!preview.ok()) why = preview.refusal();
             else {
                 switch (prepareTable(TableResume.Compaction)) {
@@ -5245,8 +5236,7 @@ public class StashSorter extends Module {
                 }
             }
         }
-        if (why == null)
-            why = crafter.begin(new Crafter.Request(SHULKER_BOX_ID, 1, purpose, false, 0, crafter::survey));
+        if (why == null) why = crafter.begin(new Crafter.Request(SHULKER_BOX_ID, 1, purpose, false, crafter::survey));
         if (why != null) {
             craftCooldownUntil = ticks + CRAFT_COOLDOWN_TICKS;
             craftCooldownWhy = why;
@@ -6039,7 +6029,7 @@ public class StashSorter extends Module {
         if (!craftingOn()) return "no chests left in the stash (crafting is off)";
         String blocker = craftBlocker();
         if (blocker != null) return "no chests left in the stash, and " + blocker;
-        com.porter.wesort.craft.CraftPlanner.Result plan = crafter.preview(CHEST_ID, need - have, 0, pool, false);
+        com.porter.wesort.craft.CraftPlanner.Result plan = crafter.preview(CHEST_ID, need - have, pool, false);
         return plan.ok() ? null : "no chests left in the stash, and " + plan.refusal();
     }
 
@@ -6220,7 +6210,7 @@ public class StashSorter extends Module {
         String why = inStock ? null : craftBlocker();
         if (why == null && !inStock && tableMissing()) {
             // The craft itself must be possible before a table is put in the world for it
-            var preview = crafter.preview(CHEST_ID, need, 0, pool, false);
+            var preview = crafter.preview(CHEST_ID, need, pool, false);
             if (!preview.ok()) why = preview.refusal();
             else {
                 switch (prepareTable(TableResume.Expand)) {
@@ -6237,14 +6227,7 @@ public class StashSorter extends Module {
         }
         if (why == null)
             why = crafter.begin(new Crafter.Request(
-                    CHEST_ID,
-                    need,
-                    "delivery storage",
-                    false,
-                    0,
-                    orderRunner::craftPool,
-                    orderRunner::lotKeys,
-                    inStock));
+                    CHEST_ID, need, "delivery storage", false, orderRunner::craftPool, orderRunner::lotKeys, inStock));
         if (why != null) {
             expandFailed(inStock ? why : "no chests left in the stash, and " + why);
             return false;
@@ -6912,7 +6895,7 @@ public class StashSorter extends Module {
                 String why = id == null
                         ? "none in the stash"
                         : crafter.begin(new Crafter.Request(
-                                id, 1, "naming", false, 0, orderRunner::craftPool, orderRunner::lotKeys, true));
+                                id, 1, "naming", false, orderRunner::craftPool, orderRunner::lotKeys, true));
                 if (why != null) {
                     warning("No anvil to place: %s.", why);
                     orderRunner.anvilFound(false);
@@ -6927,7 +6910,7 @@ public class StashSorter extends Module {
                 // A 3x3 craft needs a table: one is ensured first, then the anvil is crafted and placed.
                 if (tableMissing()) {
                     // The craft itself must be possible before a table is put in the world for it
-                    var preview = crafter.preview(AnvilFinder.ANVIL_ID, 1, 0, orderRunner.craftPool(), false);
+                    var preview = crafter.preview(AnvilFinder.ANVIL_ID, 1, orderRunner.craftPool(), false);
                     if (!preview.ok()) {
                         warning("No anvil to craft: %s.", preview.refusal());
                         orderRunner.anvilFound(false);
@@ -6961,7 +6944,7 @@ public class StashSorter extends Module {
     /** Crafts an anvil from the stash's iron and places it: the session is driven like a gathered one. */
     private boolean startAnvilCraft() {
         String why = crafter.begin(new Crafter.Request(
-                AnvilFinder.ANVIL_ID, 1, "naming", false, 0, orderRunner::craftPool, orderRunner::lotKeys, false));
+                AnvilFinder.ANVIL_ID, 1, "naming", false, orderRunner::craftPool, orderRunner::lotKeys, false));
         if (why != null) {
             warning("No anvil to craft: %s.", why);
             orderRunner.anvilFound(false);

@@ -6423,7 +6423,7 @@ public class StashSorter extends Module {
 
     // WeSort UUID naming of shulker boxes (idle work): a box without a valid WeSort-UUID name gets one,
     // so the registry can track boxes across chests. Internal bookkeeping only, never shown to users.
-    // Empty shulkers stay unnamed on purpose: kit bases and the empty pool require no custom name.
+    // Empty and previously named managed shulkers require identity too.
     // A UUID shared by two boxes is renamed on one of them.
     private boolean uuidNaming;
     private final Map<Integer, ItemStack> uuidBatch = new LinkedHashMap<>();
@@ -6453,17 +6453,22 @@ public class StashSorter extends Module {
     /** The WeSort UUID carried by a shulker name, or null. */
     private static String uuidOf(ItemStack stack) {
         var custom = stack.get(DataComponents.CUSTOM_NAME);
-        if (custom == null) return null;
+        if (custom == null || !custom.equals(net.minecraft.network.chat.Component.literal(custom.getString())))
+            return null;
         java.util.UUID uuid = ShulkerUuid.parse(custom.getString());
         return uuid == null ? null : uuid.toString();
     }
 
-    /** Whether the shulker needs a WeSort UUID name: non-empty without a valid one, or a duplicated one. */
+    /** Any managed shulker without a literal identity, or a duplicate, requires naming. */
     private boolean needsUuidName(ItemStack stack, Set<String> dupes) {
-        if (stack.isEmpty() || !Utils.isShulker(stack.getItem()) || isEmptyShulker(stack) || isKitShulker(stack))
-            return false;
-        var name = stack.get(DataComponents.CUSTOM_NAME);
-        return ShulkerUuid.needsAutomaticName(name == null ? null : name.getString(), dupes);
+        if (stack.isEmpty() || !Utils.isShulker(stack.getItem())) return false;
+        String uuid = uuidOf(stack);
+        return uuid == null || dupes.contains(uuid);
+    }
+
+    private static String uuidCooldownKey(ItemStack stack) {
+        String group = StashIndex.groupKey(stack);
+        return group == null ? "empty:" + idOf(stack) : group;
     }
 
     private static String newUuidName() {
@@ -6500,16 +6505,14 @@ public class StashSorter extends Module {
                 || slot == anvilSlot
                 || stuckCarried.containsKey(slot)
                 || !needsUuidName(stack, uuidDupes)) return false;
-        String key = StashIndex.groupKey(stack);
-        return key != null && uuidCooldown.getOrDefault(key, 0L) <= ticks;
+        return uuidCooldown.getOrDefault(uuidCooldownKey(stack), 0L) <= ticks;
     }
 
     private void uuidCooldownSlot(int slot) {
         if (mc.player == null || mc.level == null || slot < 0) return;
         ItemStack stack = mc.player.getInventory().getItem(slot);
         if (stack.isEmpty()) return;
-        String key = StashIndex.groupKey(stack);
-        if (key != null) uuidCooldown.put(key, ticks + UUID_RETRY_COOLDOWN);
+        uuidCooldown.put(uuidCooldownKey(stack), ticks + UUID_RETRY_COOLDOWN);
     }
 
     private void clearUuidBatch() {
@@ -6530,7 +6533,7 @@ public class StashSorter extends Module {
         for (Box box : stash.boxes) {
             if (!boxKnownReadable(box)) continue;
             for (ItemStack stack : box.contents) {
-                if (stack.isEmpty() || !Utils.isShulker(stack.getItem()) || isEmptyShulker(stack)) continue;
+                if (stack.isEmpty() || !Utils.isShulker(stack.getItem())) continue;
                 String uuid = uuidOf(stack);
                 if (uuid != null) counts.merge(uuid, 1, Integer::sum);
             }
@@ -6706,8 +6709,7 @@ public class StashSorter extends Module {
                 ItemStack stack = box.contents[i];
                 if (!orderRunner.mayTakeFrom(box, i) || !needsUuidName(stack, uuidDupes) || !uuidBatchCanAdd(stack))
                     continue;
-                String key = StashIndex.groupKey(stack);
-                if (key == null || uuidCooldown.getOrDefault(key, 0L) > ticks) continue;
+                if (uuidCooldown.getOrDefault(uuidCooldownKey(stack), 0L) > ticks) continue;
                 double d = mc.player.getEyePosition().distanceToSqr(Vec3.atCenterOf(nearestPart(box)));
                 if (d < bestDistance) {
                     bestDistance = d;
@@ -8082,8 +8084,7 @@ public class StashSorter extends Module {
     /** Protect human labels and duplicate UUID identities from physical optimization. */
     private boolean repackableName(ItemStack stack) {
         var name = stack.get(DataComponents.CUSTOM_NAME);
-        if (name == null) return true;
-        if (!com.porter.wesort.data.ShulkerUuid.repackableName(name.getString())) return false;
+        if (name == null || !com.porter.wesort.data.ShulkerUuid.repackableName(name.getString())) return false;
         String uuid = uuidOf(stack);
         if (uuid == null || stash == null) return false;
         int copies = 0;

@@ -981,7 +981,7 @@ final class StockLedger {
             var row = value.getAsJsonObject();
             if (!"SHULKER".equals(row.get("kind").getAsString())) continue;
             String path = row.get("path").getAsString();
-            if (path.indexOf('/') >= 0) continue; // only root boxes, never shulkers nested inside other shulkers
+            if (row.get("count").getAsLong() != 1 || row.get("copies").getAsLong() != 1) continue;
             UUID uuid = ShulkerUuid.boxUuid(row.get("components").getAsString());
             if (uuid != null)
                 boxes.putIfAbsent(
@@ -1017,6 +1017,14 @@ final class StockLedger {
                 ObservedBox at = seen.getValue();
                 String[] where = findBoxUuid(c, uuid);
                 if (where == null) {
+                    // Explicitly exported identities can never become active again.
+                    try (var retired = c.prepareStatement(
+                            "SELECT 1 FROM box_uuid_history WHERE uuid=? AND reason='DEREGISTERED_FOR_ORDER' LIMIT 1")) {
+                        retired.setString(1, uuid);
+                        try (var rows = retired.executeQuery()) {
+                            if (rows.next()) continue;
+                        }
+                    }
                     try (var insert = c.prepareStatement("INSERT INTO box_uuids VALUES(?,?,?,?,'IN_STOCK',?,?,?,?)")) {
                         insert.setString(1, uuid);
                         insert.setString(2, server);
@@ -1155,9 +1163,6 @@ final class StockLedger {
             try (var rows = slots.executeQuery()) {
                 while (rows.next()) {
                     String name = ShulkerUuid.customName(rows.getString(3));
-                    if (name == null
-                            || !name.strip().regionMatches(true, 0, ShulkerUuid.PREFIX, 0, ShulkerUuid.PREFIX.length()))
-                        continue;
                     var fullPath = rows.getString(2);
                     int nested = fullPath.indexOf('/');
                     // PR6 (#269/#67): nested UUID subtrees quarantine the root —
@@ -1175,7 +1180,7 @@ final class StockLedger {
                         unsafe.add(other);
                         unsafe.add(root);
                     }
-                    if (rows.getLong(4) != 1 || !root.equals(registered.get(key))) unsafe.add(root);
+                    if (rows.getLong(4) != 1 || !new PhysicalReservations.Root(rows.getString(1), fullPath).equals(registered.get(key))) unsafe.add(root);
                 }
             }
         } catch (SQLException failure) {

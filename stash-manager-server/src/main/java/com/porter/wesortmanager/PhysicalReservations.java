@@ -110,6 +110,23 @@ final class PhysicalReservations {
     }
 
     /**
+     * PR6 (#269): segment-wise ancestry on typed slot paths. {@code "2/4"} is an
+     * ancestor of {@code "2/4/0"} but {@code "2/10"} is not a child of {@code "2/1"}.
+     * Never compare with {@code String.startsWith}.
+     */
+    static boolean isAncestor(String maybeAncestor, String path) {
+        if (maybeAncestor == null || path == null) return false;
+        if (maybeAncestor.equals(path)) return false;
+        String[] a = maybeAncestor.split("/", -1);
+        String[] b = path.split("/", -1);
+        if (a.length >= b.length) return false;
+        for (int i = 0; i < a.length; i++) {
+            if (!a[i].equals(b[i])) return false;
+        }
+        return true;
+    }
+
+    /**
      * Slot-level reservation. Fresh candidates only, unless allowStale: while no bot is online the
      * sources are stale and verified counts read zero, so a queued order may reserve last-verified
      * slots. Claim ({@link #matches}) still requires fresh candidates, so the bot re-verifies
@@ -136,7 +153,12 @@ final class PhysicalReservations {
                                 && (allocation.outer()
                                         || existing.stream()
                                                 .anyMatch(part -> part.outer()
-                                                        || part.path().equals(allocation.path())))) continue;
+                                                        || part.path().equals(allocation.path())
+                                                        // PR6 (#269): ancestor+descendant are the same
+                                                        // physical atoms, never two lots. Segment-wise:
+                                                        // "2/10" is NOT a child of "2/1".
+                                                        || isAncestor(part.path(), allocation.path())
+                                                        || isAncestor(allocation.path(), part.path())))) continue;
                 selected.add(allocation);
                 used.computeIfAbsent(allocation.root(), ignored -> new ArrayList<>())
                         .add(allocation);

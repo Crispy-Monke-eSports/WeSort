@@ -151,7 +151,8 @@ final class OrderRunner {
     private static String boxUuidOf(ItemStack stack) {
         if (stack == null || stack.isEmpty()) return null;
         var custom = stack.get(DataComponents.CUSTOM_NAME);
-        if (custom == null) return null;
+        if (custom == null || !custom.equals(net.minecraft.network.chat.Component.literal(custom.getString())))
+            return null;
         try {
             java.util.UUID uuid = com.porter.wesort.data.ShulkerUuid.parse(custom.getString());
             return uuid == null ? null : uuid.toString();
@@ -605,6 +606,7 @@ final class OrderRunner {
                     lots.add(new Order.Lot(p.lotKeys.get(i), p.lotCounts.get(i)));
                 Unit restored = new Unit(p.kind == 0 ? Kind.Shulker : p.kind == 1 ? Kind.Empty : Kind.Bin, p.key, lots);
                 for (int i = 0; i < p.lotSlots.size() && i < lots.size(); i++) restored.lotSlots.add(p.lotSlots.get(i));
+                restored.name = p.internalName.isEmpty() ? null : p.internalName;
                 restored.nameDone = p.nameDone;
                 restored.named = p.named;
                 restored.unnamedReason = p.nameFailure == null || p.nameFailure.isEmpty() ? null : p.nameFailure;
@@ -634,7 +636,7 @@ final class OrderRunner {
         Order.Names names = resumed && !saved.namesMode.isEmpty()
                 ? Order.Names.of(saved.namesMode, saved.namesAll, saved.namesEach)
                 : o.names;
-        for (int i = 0; i < plan.size(); i++) plan.get(i).name = names == null ? null : names.nameFor(i);
+        // External order labels are metadata. Internal names are assigned only to acquired boxes.
 
         units.clear();
         units.addAll(plan);
@@ -1226,7 +1228,7 @@ final class OrderRunner {
         boolean ours = isOurName(u, stack);
         switch (u.kind) {
             case Bin -> {
-                if (stack.has(DataComponents.CUSTOM_NAME) && !ours) return false;
+                if (stack.has(DataComponents.CUSTOM_NAME) && !ours && boxUuidOf(stack) == null) return false;
                 if (u.kit != null) return u.kit.matchesFinished(Kits.inside(stack));
                 return matchesLots(u, stack);
             }
@@ -1282,6 +1284,7 @@ final class OrderRunner {
                 || i < 0
                 || i >= stash.activeOrder.units.size()) return;
         Stash.ActiveOrder.UnitPlan p = stash.activeOrder.units.get(i);
+        p.internalName = u.name == null ? "" : u.name;
         p.nameDone = u.nameDone;
         p.named = u.named;
         p.nameFailure = u.unnamedReason == null ? "" : u.unnamedReason;
@@ -1342,7 +1345,7 @@ final class OrderRunner {
     private static boolean isOurName(Unit u, ItemStack stack) {
         if (u.name == null || !Order.valid(u.name)) return false;
         net.minecraft.network.chat.Component custom = stack.get(DataComponents.CUSTOM_NAME);
-        return custom != null && custom.getString().equals(u.name);
+        return custom != null && custom.equals(net.minecraft.network.chat.Component.literal(u.name));
     }
 
     /** A finished shulker of a bin whose kit is not built yet (after a restart): exactly the planned totals. */
@@ -1611,6 +1614,12 @@ final class OrderRunner {
                     u.have = true;
                     u.content = tally(u, mc.player.getInventory().getItem(slot));
                     u.boxUuid = boxUuidOf(mc.player.getInventory().getItem(slot));
+                    if (u.name == null) {
+                        u.name = com.porter.wesort.data.ShulkerUuid.label(
+                                u.boxUuid == null ? java.util.UUID.randomUUID() : java.util.UUID.fromString(u.boxUuid));
+                        u.nameDone = false;
+                        saveUnit(u);
+                    }
                 }
                 // Back in the inventory: whatever was seen in the container was not it
                 u.confirmed = false;
@@ -1623,6 +1632,9 @@ final class OrderRunner {
                 if (!u.nameDone) {
                     Intent rename = naming(u, slot);
                     if (rename != null) return rename;
+                }
+                if (!isOurName(u, mc.player.getInventory().getItem(slot))) {
+                    return waitRetry(u, "verified internal UUID required before staging");
                 }
                 if (full) {
                     full = false;
@@ -1703,8 +1715,7 @@ final class OrderRunner {
                 if (u.confirmed) {
                     for (var e : u.content.entrySet()) delivered.merge(e.getKey(), e.getValue(), Integer::sum);
                     shulkersDelivered++;
-                    // A delivered shulker leaves the system: its UUID is deregistered, so it isn't expected back
-                    if (u.boxUuid != null && !deliveredUuids.contains(u.boxUuid)) deliveredUuids.add(u.boxUuid);
+                    // Warehouse staging is internal custody, not external export.
                     if (u.name != null && !u.named) {
                         unnamed++;
                         String reason = u.unnamedReason == null ? "naming didn't finish" : u.unnamedReason;

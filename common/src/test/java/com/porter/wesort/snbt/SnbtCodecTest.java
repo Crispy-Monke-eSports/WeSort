@@ -2,7 +2,6 @@ package com.porter.wesort.snbt;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -15,10 +14,8 @@ class SnbtCodecTest {
         assertEquals("1L", SnbtCodec.write(SnbtCodec.parse("1L")));
         assertEquals("1.0f", SnbtCodec.write(SnbtCodec.parse("1.0f")));
         assertEquals("1.0d", SnbtCodec.write(SnbtCodec.parse("1.0d")));
-        assertNotEquals(
-                SnbtCodec.write(SnbtCodec.parse("1b")), SnbtCodec.write(SnbtCodec.parse("1s")));
-        assertNotEquals(
-                SnbtCodec.write(SnbtCodec.parse("1")), SnbtCodec.write(SnbtCodec.parse("1L")));
+        assertNotEquals(SnbtCodec.write(SnbtCodec.parse("1b")), SnbtCodec.write(SnbtCodec.parse("1s")));
+        assertNotEquals(SnbtCodec.write(SnbtCodec.parse("1")), SnbtCodec.write(SnbtCodec.parse("1L")));
     }
 
     @Test
@@ -91,7 +88,8 @@ class SnbtCodecTest {
 
     @Test
     void canonicalFormIsStable() {
-        SnbtCodec.Tag t = SnbtCodec.parse("{id:\"minecraft:shulker_box\",Count:1b,tag:{display:{Name:'{\"text\":\"x\"}'}}}");
+        SnbtCodec.Tag t =
+                SnbtCodec.parse("{id:\"minecraft:shulker_box\",Count:1b,tag:{display:{Name:'{\"text\":\"x\"}'}}}");
         String once = SnbtCodec.write(t);
         assertEquals(once, SnbtCodec.write(SnbtCodec.parse(once)));
     }

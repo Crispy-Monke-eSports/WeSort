@@ -49,8 +49,18 @@ public final class SnbtCodec {
 
     /** NBT tag ids 1-12 (TAG_End == 0 is never a value). */
     public enum TagType {
-        BYTE(1), SHORT(2), INT(3), LONG(4), FLOAT(5), DOUBLE(6),
-        BYTE_ARRAY(7), STRING(8), LIST(9), COMPOUND(10), INT_ARRAY(11), LONG_ARRAY(12);
+        BYTE(1),
+        SHORT(2),
+        INT(3),
+        LONG(4),
+        FLOAT(5),
+        DOUBLE(6),
+        BYTE_ARRAY(7),
+        STRING(8),
+        LIST(9),
+        COMPOUND(10),
+        INT_ARRAY(11),
+        LONG_ARRAY(12);
 
         public final int id;
 
@@ -65,60 +75,101 @@ public final class SnbtCodec {
     }
 
     /** Immutable typed tag value. */
-    public sealed interface Tag permits TByte, TShort, TInt, TLong, TFloat, TDouble,
-            TByteArray, TString, TList, TCompound, TIntArray, TLongArray {
+    public sealed interface Tag
+            permits TByte,
+                    TShort,
+                    TInt,
+                    TLong,
+                    TFloat,
+                    TDouble,
+                    TByteArray,
+                    TString,
+                    TList,
+                    TCompound,
+                    TIntArray,
+                    TLongArray {
         TagType type();
     }
 
     public record TByte(byte value) implements Tag {
-        public TagType type() { return TagType.BYTE; }
+        public TagType type() {
+            return TagType.BYTE;
+        }
     }
 
     public record TShort(short value) implements Tag {
-        public TagType type() { return TagType.SHORT; }
+        public TagType type() {
+            return TagType.SHORT;
+        }
     }
 
     public record TInt(int value) implements Tag {
-        public TagType type() { return TagType.INT; }
+        public TagType type() {
+            return TagType.INT;
+        }
     }
 
     public record TLong(long value) implements Tag {
-        public TagType type() { return TagType.LONG; }
+        public TagType type() {
+            return TagType.LONG;
+        }
     }
 
     public record TFloat(float value) implements Tag {
-        public TagType type() { return TagType.FLOAT; }
+        public TagType type() {
+            return TagType.FLOAT;
+        }
     }
 
     public record TDouble(double value) implements Tag {
-        public TagType type() { return TagType.DOUBLE; }
+        public TagType type() {
+            return TagType.DOUBLE;
+        }
     }
 
     public record TByteArray(byte[] value) implements Tag {
-        public TagType type() { return TagType.BYTE_ARRAY; }
+        public TagType type() {
+            return TagType.BYTE_ARRAY;
+        }
     }
 
     public record TString(String value) implements Tag {
-        public TagType type() { return TagType.STRING; }
+        public TagType type() {
+            return TagType.STRING;
+        }
     }
 
     public record TList(List<Tag> value) implements Tag {
-        public TagType type() { return TagType.LIST; }
+        public TList { value = List.copyOf(value); }
+
+        public TagType type() {
+            return TagType.LIST;
+        }
     }
 
     public record TCompound(Map<String, Tag> value) implements Tag {
-        public TagType type() { return TagType.COMPOUND; }
+        public TCompound { value = Map.copyOf(value); }
+
+        public Tag get(String key) { return value.get(key); }
+
+        public TagType type() {
+            return TagType.COMPOUND;
+        }
     }
 
     public record TIntArray(int[] value) implements Tag {
-        public TagType type() { return TagType.INT_ARRAY; }
+        public TagType type() {
+            return TagType.INT_ARRAY;
+        }
     }
 
     public record TLongArray(long[] value) implements Tag {
-        public TagType type() { return TagType.LONG_ARRAY; }
+        public TagType type() {
+            return TagType.LONG_ARRAY;
+        }
     }
 
-    public static final class SnbtException extends RuntimeException {
+    public static final class SnbtException extends IllegalArgumentException {
         public SnbtException(String message) {
             super(message);
         }
@@ -133,6 +184,19 @@ public final class SnbtCodec {
         StringBuilder sb = new StringBuilder();
         writeTag(sb, tag);
         return sb.toString();
+    }
+
+    public static TCompound compound(String snbt) {
+        if (parse(snbt) instanceof TCompound compound) return compound;
+        throw new SnbtException("Expected SNBT compound");
+    }
+
+    public static String canonicalize(String snbt) {
+        return write(parse(snbt));
+    }
+
+    public static String fingerprint(String domain, Tag value) {
+        return sha256Hex(domain, write(value));
     }
 
     private static void writeTag(StringBuilder sb, Tag tag) {
@@ -265,7 +329,7 @@ public final class SnbtCodec {
             char c = s.charAt(pos);
             if (c == '{') return parseCompound(depth);
             if (c == '[') return parseListOrArray(depth);
-            if (c == '"') return new TString(parseQuoted());
+            if (c == '"' || c == '\'') return new TString(parseQuoted());
             return parseScalar();
         }
 
@@ -280,7 +344,7 @@ public final class SnbtCodec {
             while (true) {
                 skipWs();
                 String key;
-                if (!eof() && s.charAt(pos) == '"') key = parseQuoted();
+                if (!eof() && (s.charAt(pos) == '"' || s.charAt(pos) == '\'')) key = parseQuoted();
                 else key = parseUnquotedKey();
                 skipWs();
                 expect(':');
@@ -312,6 +376,7 @@ public final class SnbtCodec {
                     return emptyArray(kind);
                 }
                 while (true) {
+                    if (++nodes > MAX_NODES) throw new SnbtException("SNBT exceeds max nodes");
                     int start = pos;
                     while (!eof() && s.charAt(pos) != ',' && s.charAt(pos) != ']') pos++;
                     if (eof()) throw new SnbtException("unterminated typed array");
@@ -345,12 +410,12 @@ public final class SnbtCodec {
         }
 
         String parseQuoted() {
-            expect('"');
+            char quote = s.charAt(pos++);
             StringBuilder sb = new StringBuilder();
             while (true) {
                 if (eof()) throw new SnbtException("unterminated string");
                 char c = s.charAt(pos++);
-                if (c == '"') break;
+                if (c == quote) break;
                 if (c == '\\') {
                     if (eof()) throw new SnbtException("unterminated escape");
                     char e = s.charAt(pos++);
@@ -396,7 +461,8 @@ public final class SnbtCodec {
             if (eof()) throw new SnbtException("unterminated \\N{} escape");
             String name = s.substring(start, pos);
             pos++; // consume '}'
-            if (name.isEmpty() || !name.chars().allMatch(ch -> ch == ' ' || ch == '-' || Character.isLetterOrDigit(ch))) {
+            if (name.isEmpty()
+                    || !name.chars().allMatch(ch -> ch == ' ' || ch == '-' || Character.isLetterOrDigit(ch))) {
                 throw new SnbtException("invalid \\N{} escape name: " + name);
             }
             throw new SnbtException("\\N{name} escapes have no canonical mapping in " + CONTRACT_VERSION);
@@ -415,17 +481,6 @@ public final class SnbtCodec {
 
         Tag parseScalar() {
             int start = pos;
-            boolean quoted = false;
-            if (!eof() && (s.charAt(pos) == '\'')) {
-                quoted = true;
-                pos++;
-                start = pos;
-                while (!eof() && s.charAt(pos) != '\'') pos++;
-                if (eof()) throw new SnbtException("unterminated single-quoted string");
-                String inner = s.substring(start, pos);
-                pos++; // consume closing quote
-                return new TString(unescapeSingle(inner));
-            }
             while (!eof()) {
                 char c = s.charAt(pos);
                 if (c == ',' || c == ']' || c == '}' || c == ':' || Character.isWhitespace(c)) break;
@@ -436,31 +491,12 @@ public final class SnbtCodec {
             return scalarToken(tok);
         }
 
-        String unescapeSingle(String inner) {
-            // Single-quoted strings: only \\ and \' are special; anything else is literal.
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < inner.length(); i++) {
-                char c = inner.charAt(i);
-                if (c == '\\' && i + 1 < inner.length()) {
-                    char n = inner.charAt(i + 1);
-                    if (n == '\\' || n == '\'') {
-                        sb.append(n);
-                        i++;
-                    } else sb.append(c);
-                } else sb.append(c);
-            }
-            return sb.toString();
-        }
-
         Tag scalarToken(String tok) {
             // Booleans are bytes in NBT (via NbtOps): true -> 1b, false -> 0b.
             if (tok.equals("true")) return new TByte((byte) 1);
             if (tok.equals("false")) return new TByte((byte) 0);
             // Non-finite tokens are never values (fail closed, never bare strings).
-            if (tok.equals("NaN")
-                    || tok.equals("Infinity")
-                    || tok.equals("-Infinity")
-                    || tok.equals("+Infinity")) {
+            if (tok.equals("NaN") || tok.equals("Infinity") || tok.equals("-Infinity") || tok.equals("+Infinity")) {
                 throw new SnbtException("non-finite value has no SNBT form: " + tok);
             }
             // Two-letter unsigned byte suffix first (e.g. 255ub).

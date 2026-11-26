@@ -60,10 +60,9 @@ class SelfHealTest {
         root = StockFixtures.physical(root, ledger.epoch(), ledger.revision(), ledger.revision() + 1, stash.hashCode());
         var writer = new com.porter.wesort.data.PhysicalSlots.Writer();
         var src = root.getAsJsonArray("physicalSources").get(0).getAsJsonObject();
-        src.add("slots", writer.slots(frame.slots()));
+        src.addProperty("snbt", frame.snbt());
         src.addProperty("fingerprint", frame.fingerprint());
-        root.addProperty("physicalVersion", 2);
-        root.add("slotVariants", writer.variants());
+        root.addProperty("physicalVersion", 3);
         return root;
     }
 
@@ -446,6 +445,7 @@ class SelfHealTest {
         var doubleFrame =
                 new com.porter.wesort.data.PhysicalSlots.Snapshot(54, frame(10).slots());
         source.addProperty("fingerprint", doubleFrame.fingerprint());
+        source.addProperty("snbt", doubleFrame.snbt());
         source.addProperty("observedAt", time.get());
         store.putIndex(joined);
         orders.selfHealAll();

@@ -64,7 +64,9 @@ public final class WorldInteractionGuard {
                     job = jobTag(
                             manager.activeOrderId(),
                             sorter == null ? null : sorter.activeRepackJobId(),
-                            manager.activeTask());
+                            manager.activeTask(),
+                            sorter == null ? -1 : sorter.directiveRevision(),
+                            manager.physicalLeaseFingerprint());
             }
         }
         if (PERMITS.scope(mc.level, mc.player, mc.getConnection(), job)) authorizedBreak = null;
@@ -77,10 +79,21 @@ public final class WorldInteractionGuard {
         authorizedBreak = null;
     }
 
-    static String jobTag(String order, String repackId, String fallback) {
-        if (order != null && !order.isEmpty()) return order;
-        if (repackId != null && !repackId.isEmpty()) return "repack:" + repackId;
-        return fallback == null || fallback.isEmpty() ? "unknown" : fallback;
+    /**
+     * Job-bound permit identity (#65): the order (or repack work, or fallback task)
+     * plus the signed Manager workzone revision and the physical sorting-lease
+     * fingerprint. Rotating the directive or the lease changes the identity, so live
+     * permits issued under an old workzone/lease never authorize a new one. Both
+     * suffixes are stable while nothing rotates: no flapping on transient status.
+     */
+    static String jobTag(String order, String repackId, String fallback, long directiveRev, String lease) {
+        String base;
+        if (order != null && !order.isEmpty()) base = order;
+        else if (repackId != null && !repackId.isEmpty()) base = "repack:" + repackId;
+        else base = fallback == null || fallback.isEmpty() ? "unknown" : fallback;
+        if (directiveRev >= 0) base += "@d" + directiveRev;
+        if (lease != null && !lease.isEmpty()) base += "@l" + lease;
+        return base;
     }
 
     /**

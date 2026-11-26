@@ -51,6 +51,8 @@ public final class PackageLabel {
             }
         }
         String value = raw.strip();
+        if (value.toLowerCase(java.util.Locale.ROOT).contains("wesort-"))
+            throw new IllegalArgumentException(field + " cannot contain a WeSort internal identity");
         if (value.isEmpty()) return DEFAULT_TEXT;
         if (value.length() > MAX_TEXT)
             throw new IllegalArgumentException(field + " is longer than " + MAX_TEXT + " UTF-16 code units");

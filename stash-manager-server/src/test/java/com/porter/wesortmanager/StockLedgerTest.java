@@ -327,7 +327,7 @@ class StockLedgerTest {
         var first = ledger();
         try (var c = first.open();
                 var sql = c.createStatement()) {
-            sql.execute("INSERT INTO order_event_log VALUES('o-1',1,'s','stash','{}')");
+            sql.execute("INSERT INTO order_event_log VALUES('o-1',1,'s','stash','{\"at\":1,\"actor\":\"agent\",\"action\":\"staged\"}')");
         }
         assertThrows(java.io.IOException.class, this::ledger);
     }

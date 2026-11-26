@@ -214,6 +214,11 @@ final class AddonRoutes {
             Http.error(ex, 404, "unknown stash '" + stash + "': define it in Settings first");
             return;
         }
+        if (index.has("physicalSources")
+                && !new com.google.gson.JsonPrimitive(3).equals(index.get("physicalVersion"))) {
+            Http.error(ex, 400, "Physical observations require canonical SNBT version 3");
+            return;
+        }
         // Use the configured storage key without changing the agent's physical proof.
         server = configured;
         String player = string(index, "player");

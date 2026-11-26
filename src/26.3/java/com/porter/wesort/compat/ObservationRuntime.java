@@ -185,7 +185,6 @@ public final class ObservationRuntime {
 
     public static void append(Stash stash, JsonObject root, boolean includeExcluded) {
         JsonArray sources = new JsonArray();
-        var slots = new com.porter.wesort.data.PhysicalSlots.Writer();
         for (var box : boxes(stash)) {
             if (box.delivery || box.foreign || box.excluded && !includeExcluded) continue;
             String dim = dimension(stash, box);
@@ -223,10 +222,12 @@ public final class ObservationRuntime {
             source.addProperty("observedAt", box.observationAt);
             source.addProperty("fingerprint", box.observationFingerprint);
             source.addProperty("size", box.known() ? box.contents.length : box.parts.size() * 27);
-            if (source.get("state").getAsString().equals("FRESH"))
-                source.add(
-                        "slots", slots.slots(SlotRuntime.snapshot(box.contents).slots()));
-            else source.add("slots", JsonNull.INSTANCE);
+            if (source.get("state").getAsString().equals("FRESH")) {
+                var snapshot = SlotRuntime.snapshot(box.contents);
+                if (!snapshot.fingerprint().equals(box.observationFingerprint))
+                    throw new IllegalStateException("Physical inventory changed after its verified observation");
+                source.addProperty("snbt", snapshot.snbt());
+            } else source.add("snbt", JsonNull.INSTANCE);
             if (box.known()) {
                 JsonObject aggregate = StashIndex.aggregate(Arrays.asList(box.contents));
                 source.add("items", aggregate.get("items"));
@@ -237,8 +238,7 @@ public final class ObservationRuntime {
             }
             sources.add(source);
         }
-        root.addProperty("physicalVersion", 2);
-        root.add("slotVariants", slots.variants());
+        root.addProperty("physicalVersion", 3);
         root.add("physicalSources", sources);
     }
 

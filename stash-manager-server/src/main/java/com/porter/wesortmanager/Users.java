@@ -394,8 +394,7 @@ final class Users {
                 // on load, keeping view/order/activity and scope. The Owner must
                 // explicitly re-decide anything beyond that (which the API refuses).
                 if (parsed.elevated()) {
-                    System.err.println(
-                            "Downgrading stored elevated permissions to member-level for account " + name);
+                    System.err.println("Downgrading stored elevated permissions to member-level for account " + name);
                     parsed = Perms.of(
                             parsed.view(),
                             parsed.order(),

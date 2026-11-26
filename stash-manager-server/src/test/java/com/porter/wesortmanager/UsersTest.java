@@ -487,8 +487,7 @@ class UsersTest {
                 "legacy full-access grant must be refused");
         var second = post(member, "/api/v1/orders", draft).obj().getAsJsonObject("order");
         String rejected = second.get("id").getAsString();
-        assertEquals(
-                200, post(owner, "/api/v1/orders/" + rejected + "/approval", "{\"decision\":\"reject\"}").status);
+        assertEquals(200, post(owner, "/api/v1/orders/" + rejected + "/approval", "{\"decision\":\"reject\"}").status);
         assertEquals(2L, orders.reservedFor("s", "a").get("item:minecraft:diamond"));
     }
 
@@ -677,8 +676,8 @@ class UsersTest {
                     post(
                                     owner,
                                     "/api/v1/users",
-                                    "{\"name\":\"Delegate\",\"password\":\"" + TEMP_PW + "\",\"mustChange\":false,\"perms\":"
-                                            + perms + "}")
+                                    "{\"name\":\"Delegate\",\"password\":\"" + TEMP_PW
+                                            + "\",\"mustChange\":false,\"perms\":" + perms + "}")
                             .status,
                     "elevated grant must be refused: " + perms);
             assertEquals(before, users.list().size(), "refused grant must not create an account");

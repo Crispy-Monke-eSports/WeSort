@@ -1,7 +1,7 @@
 package com.porter.wesort.data;
 
-import com.porter.wesort.snbt.SnbtCodec;
 import com.google.gson.JsonObject;
+import com.porter.wesort.snbt.SnbtCodec;
 import java.util.UUID;
 
 /**

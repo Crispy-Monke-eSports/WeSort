@@ -140,12 +140,18 @@ public final class SnbtCodec {
     }
 
     public record TList(List<Tag> value) implements Tag {
+        public TList { value = List.copyOf(value); }
+
         public TagType type() {
             return TagType.LIST;
         }
     }
 
     public record TCompound(Map<String, Tag> value) implements Tag {
+        public TCompound { value = Map.copyOf(value); }
+
+        public Tag get(String key) { return value.get(key); }
+
         public TagType type() {
             return TagType.COMPOUND;
         }
@@ -163,7 +169,7 @@ public final class SnbtCodec {
         }
     }
 
-    public static final class SnbtException extends RuntimeException {
+    public static final class SnbtException extends IllegalArgumentException {
         public SnbtException(String message) {
             super(message);
         }
@@ -178,6 +184,19 @@ public final class SnbtCodec {
         StringBuilder sb = new StringBuilder();
         writeTag(sb, tag);
         return sb.toString();
+    }
+
+    public static TCompound compound(String snbt) {
+        if (parse(snbt) instanceof TCompound compound) return compound;
+        throw new SnbtException("Expected SNBT compound");
+    }
+
+    public static String canonicalize(String snbt) {
+        return write(parse(snbt));
+    }
+
+    public static String fingerprint(String domain, Tag value) {
+        return sha256Hex(domain, write(value));
     }
 
     private static void writeTag(StringBuilder sb, Tag tag) {
@@ -310,7 +329,7 @@ public final class SnbtCodec {
             char c = s.charAt(pos);
             if (c == '{') return parseCompound(depth);
             if (c == '[') return parseListOrArray(depth);
-            if (c == '"') return new TString(parseQuoted());
+            if (c == '"' || c == '\'') return new TString(parseQuoted());
             return parseScalar();
         }
 
@@ -325,7 +344,7 @@ public final class SnbtCodec {
             while (true) {
                 skipWs();
                 String key;
-                if (!eof() && s.charAt(pos) == '"') key = parseQuoted();
+                if (!eof() && (s.charAt(pos) == '"' || s.charAt(pos) == '\'')) key = parseQuoted();
                 else key = parseUnquotedKey();
                 skipWs();
                 expect(':');
@@ -357,6 +376,7 @@ public final class SnbtCodec {
                     return emptyArray(kind);
                 }
                 while (true) {
+                    if (++nodes > MAX_NODES) throw new SnbtException("SNBT exceeds max nodes");
                     int start = pos;
                     while (!eof() && s.charAt(pos) != ',' && s.charAt(pos) != ']') pos++;
                     if (eof()) throw new SnbtException("unterminated typed array");
@@ -390,12 +410,12 @@ public final class SnbtCodec {
         }
 
         String parseQuoted() {
-            expect('"');
+            char quote = s.charAt(pos++);
             StringBuilder sb = new StringBuilder();
             while (true) {
                 if (eof()) throw new SnbtException("unterminated string");
                 char c = s.charAt(pos++);
-                if (c == '"') break;
+                if (c == quote) break;
                 if (c == '\\') {
                     if (eof()) throw new SnbtException("unterminated escape");
                     char e = s.charAt(pos++);
@@ -461,17 +481,6 @@ public final class SnbtCodec {
 
         Tag parseScalar() {
             int start = pos;
-            boolean quoted = false;
-            if (!eof() && (s.charAt(pos) == '\'')) {
-                quoted = true;
-                pos++;
-                start = pos;
-                while (!eof() && s.charAt(pos) != '\'') pos++;
-                if (eof()) throw new SnbtException("unterminated single-quoted string");
-                String inner = s.substring(start, pos);
-                pos++; // consume closing quote
-                return new TString(unescapeSingle(inner));
-            }
             while (!eof()) {
                 char c = s.charAt(pos);
                 if (c == ',' || c == ']' || c == '}' || c == ':' || Character.isWhitespace(c)) break;
@@ -480,22 +489,6 @@ public final class SnbtCodec {
             String tok = s.substring(start, pos);
             if (tok.isEmpty()) throw new SnbtException("expected value at " + pos);
             return scalarToken(tok);
-        }
-
-        String unescapeSingle(String inner) {
-            // Single-quoted strings: only \\ and \' are special; anything else is literal.
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < inner.length(); i++) {
-                char c = inner.charAt(i);
-                if (c == '\\' && i + 1 < inner.length()) {
-                    char n = inner.charAt(i + 1);
-                    if (n == '\\' || n == '\'') {
-                        sb.append(n);
-                        i++;
-                    } else sb.append(c);
-                } else sb.append(c);
-            }
-            return sb.toString();
         }
 
         Tag scalarToken(String tok) {

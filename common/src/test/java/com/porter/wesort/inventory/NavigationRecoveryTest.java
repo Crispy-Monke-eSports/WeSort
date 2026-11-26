@@ -43,4 +43,29 @@ class NavigationRecoveryTest {
         assertTrue(NavigationRecovery.unsafeDegraded(3));
         assertTrue(NavigationRecovery.unsafeDegraded(99));
     }
+
+    @Test
+    void loginChunkStreamingNeverParksForever() {
+        // #197 incident (2026-11-24): restart next to the stash while regions stream,
+        // first walk into a not-yet-loaded area, Baritone drops the goal
+        // (PAUSED_NAVIGATION_RELEASED, zero progress at login). The headless agent
+        // must re-evaluate with backoff instead of latching for a manual resume.
+        // Engine-dropped goals and unloaded targets are transient, never operator latches.
+        assertTrue(NavigationRecovery.retryable("PAUSED_NAVIGATION_RELEASED", ""));
+        assertFalse(NavigationRecovery.operatorLatch("PAUSED_NAVIGATION_RELEASED"));
+        assertTrue(NavigationRecovery.retryable("PAUSED_NAVIGATION_UNSAFE_BLOCK", "unloaded target at 1 2 3"));
+        assertFalse(NavigationRecovery.operatorLatch("PAUSED_NAVIGATION_UNSAFE_BLOCK"));
+        // Bounded exponential backoff: 5s, 10s, 20s, 40s, then capped at 60s.
+        assertEquals(5000, NavigationRecovery.delayMs(1));
+        assertEquals(10000, NavigationRecovery.delayMs(2));
+        assertEquals(20000, NavigationRecovery.delayMs(3));
+        assertEquals(40000, NavigationRecovery.delayMs(4));
+        assertEquals(60000, NavigationRecovery.delayMs(5));
+        assertEquals(60000, NavigationRecovery.delayMs(99));
+        // A genuinely hazardous (non-unloaded) target degrades to replanning after
+        // bounded retries instead of parking — never mining through the barrier.
+        assertFalse(NavigationRecovery.retryable("PAUSED_NAVIGATION_UNSAFE_BLOCK", "navigation hazard lava"));
+        assertFalse(NavigationRecovery.unsafeDegraded(2));
+        assertTrue(NavigationRecovery.unsafeDegraded(3));
+    }
 }

@@ -196,8 +196,12 @@ final class JobScheduler {
 
     private static boolean quarantined(Entry entry) {
         var events = entry.events();
-        return !events.isEmpty() && events.get(events.size() - 1).getAsJsonObject()
-                .get("event").getAsString().equals("quarantined");
+        return !events.isEmpty()
+                && events.get(events.size() - 1)
+                        .getAsJsonObject()
+                        .get("event")
+                        .getAsString()
+                        .equals("quarantined");
     }
 
     synchronized java.util.List<String> sweepStaleUncertain(long nowMs) throws IOException {
@@ -243,8 +247,11 @@ final class JobScheduler {
             // PR8 (#213): machine-readable fence reason + retry deadline for the
             // dashboard; never an interactive instruction to the agent.
             if (entry.job().state() == Job.State.NEEDS_RECONCILIATION) {
-                o.addProperty("reason", quarantined(entry) ? "quarantined-awaiting-evidence" : "lease-lapsed-needs-reconcile");
-                if (!quarantined(entry)) o.addProperty("quarantineAt", lastEventAt(entry.events()) + QUARANTINE_AFTER_MS);
+                o.addProperty(
+                        "reason",
+                        quarantined(entry) ? "quarantined-awaiting-evidence" : "lease-lapsed-needs-reconcile");
+                if (!quarantined(entry))
+                    o.addProperty("quarantineAt", lastEventAt(entry.events()) + QUARANTINE_AFTER_MS);
             }
             out.add(o);
         }

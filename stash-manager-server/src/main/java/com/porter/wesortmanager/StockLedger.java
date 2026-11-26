@@ -213,7 +213,8 @@ final class StockLedger {
                             "CREATE INDEX IF NOT EXISTS stock_members_present ON stock_members(server,stash,present)");
                     s.execute("CREATE INDEX IF NOT EXISTS physical_slots_present ON physical_slots(source,present)");
                     s.execute("CREATE INDEX IF NOT EXISTS stock_parts_source ON stock_parts(source)");
-                    s.execute("CREATE INDEX IF NOT EXISTS stock_members_source_present ON stock_members(source,present)");
+                    s.execute(
+                            "CREATE INDEX IF NOT EXISTS stock_members_source_present ON stock_members(source,present)");
                     s.execute("PRAGMA user_version=9");
                     var interruptedServers = new ArrayList<String>();
                     try (var leases = s.executeQuery("SELECT server FROM automation_leases WHERE state='ACTIVE'")) {
@@ -673,7 +674,8 @@ final class StockLedger {
                     p.setString(8, verifiedRun);
                     p.executeUpdate();
                 }
-                boolean sameContent = snapshot != null && previous != null
+                boolean sameContent = snapshot != null
+                        && previous != null
                         && source.get("slotFingerprint").equals(previous.get("slotFingerprint"))
                         && source.get("slotSchema").equals(previous.get("slotSchema"));
                 if (fresh && !sameContent) saveSlots(c, id, snapshot, sourceRevision);
@@ -1189,7 +1191,9 @@ final class StockLedger {
                         unsafe.add(other);
                         unsafe.add(root);
                     }
-                    if (rows.getLong(4) != 1 || !new PhysicalReservations.Root(rows.getString(1), fullPath).equals(registered.get(key))) unsafe.add(root);
+                    if (rows.getLong(4) != 1
+                            || !new PhysicalReservations.Root(rows.getString(1), fullPath).equals(registered.get(key)))
+                        unsafe.add(root);
                 }
             }
         } catch (SQLException failure) {

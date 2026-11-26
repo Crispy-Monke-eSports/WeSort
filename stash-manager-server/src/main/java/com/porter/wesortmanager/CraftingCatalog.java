@@ -30,7 +30,9 @@ final class CraftingCatalog {
         for (var e : physicalAvailable.entrySet()) {
             if (!e.getKey().startsWith("item:")) continue;
             String id = e.getKey().substring("item:".length());
-            if (!id.matches("[a-z0-9_.-]+:[a-z0-9_./-]+") || e.getValue() <= 0) continue;
+            if (!id.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")
+                    || com.porter.wesort.craft.CraftIngredientPolicy.isForbiddenId(id)
+                    || e.getValue() <= 0) continue;
             pool.merge(id, e.getValue(), Math::addExact);
         }
         return pool;

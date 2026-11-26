@@ -3,8 +3,8 @@ package com.porter.wesortmanager;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.porter.wesort.data.CanonicalJson;
-import com.porter.wesort.snbt.SnbtCodec;
 import com.porter.wesort.data.ContainerIdentity;
+import com.porter.wesort.snbt.SnbtCodec;
 import java.util.HashSet;
 import java.util.List;
 
@@ -119,10 +119,7 @@ final class PackageManifest {
         var item = SnbtCodec.compound(fingerprint);
         var count = item.get("count");
         var id = item.get("id");
-        return (count == null
-                        || count instanceof SnbtCodec.TInt n
-                                
-                                && n.value() == 1)
+        return (count == null || count instanceof SnbtCodec.TInt n && n.value() == 1)
                 && id instanceof SnbtCodec.TString name
                 && name.value()
                         .matches(

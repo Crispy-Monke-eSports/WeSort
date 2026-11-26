@@ -4,6 +4,7 @@ import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 import com.porter.wesort.WeSortAddon;
 import com.porter.wesort.compat.GameVersion;
+import com.porter.wesort.craft.CraftIngredientPolicy;
 import com.porter.wesort.craft.CraftPlanner;
 import com.porter.wesort.craft.Recipes;
 import com.porter.wesort.stash.Kits;
@@ -488,8 +489,16 @@ final class Crafter {
 
     /** Whether the stack may be used as an ingredient: not damaged, holding nothing, not a shulker box, not on the never-use list. */
     boolean eligible(ItemStack s) {
-        if (s.isEmpty() || s.isDamaged() || Utils.isShulker(s.getItem()) || holdsItems(s)) return false;
-        return !owner.neverUse().contains(idOf(s));
+        if (s.isEmpty()) return false;
+        String id = idOf(s);
+        return CraftIngredientPolicy.classify(
+                        !s.getComponentsPatch().isEmpty(),
+                        s.isDamaged(),
+                        holdsItems(s),
+                        CraftIngredientPolicy.isForbiddenId(id)
+                                || owner.neverUse().contains(id),
+                        false)
+                .allowed();
     }
 
     private static boolean holdsItems(ItemStack s) {

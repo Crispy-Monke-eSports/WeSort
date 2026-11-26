@@ -1180,7 +1180,9 @@ final class StockLedger {
                         unsafe.add(other);
                         unsafe.add(root);
                     }
-                    if (rows.getLong(4) != 1 || !new PhysicalReservations.Root(rows.getString(1), fullPath).equals(registered.get(key))) unsafe.add(root);
+                    if (rows.getLong(4) != 1
+                            || !new PhysicalReservations.Root(rows.getString(1), fullPath).equals(registered.get(key)))
+                        unsafe.add(root);
                 }
             }
         } catch (SQLException failure) {

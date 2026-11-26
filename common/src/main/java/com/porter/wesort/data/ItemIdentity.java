@@ -49,8 +49,7 @@ public final class ItemIdentity {
             if (!canonical.equals(canonicalComponentsSnbt))
                 throw new IllegalArgumentException("components SNBT is not canonical");
             String expected = SnbtCodec.contentDigest(base.id() + "\n" + canonical);
-            if (!expected.equals(digest))
-                throw new IllegalArgumentException("variant digest does not match content");
+            if (!expected.equals(digest)) throw new IllegalArgumentException("variant digest does not match content");
         }
 
         public static ExactVariantId of(BaseItemId base, SnbtCodec.Tag components) {

@@ -112,10 +112,10 @@ class HierarchyHarness(stock.StockHarness):
         })
         require(status == 200, 'Owner could not edit the guild profile')
         try:
-            for name, role in [('Builder', 'member'), ('Quartermaster', 'officer'), ('Observer', 'viewer')]:
+            for name in ['Builder', 'Miner']:
                 self.browser = owner
                 status, created = self.http('/api/v1/users', {
-                    'name': name, 'password': password, 'preset': role, 'mustChange': False,
+                    'name': name, 'password': password, 'preset': 'member', 'mustChange': False,
                 })
                 require(status == 200, 'Owner could not provision the test member')
                 identities[name] = created['user']['id']
@@ -124,42 +124,63 @@ class HierarchyHarness(stock.StockHarness):
                 require(status == 200, 'Test member could not log in')
                 users[name] = self.browser
                 require(self.http('/api/v1/guild') == (200, guild), 'Member read a different guild profile')
-            self.browser = users['Observer']
-            status, rows = self.http('/api/v1/stock')
-            require(status == 200 and self.amount(rows, 'minecraft:diamond', 'observed') == 96,
-                    'Viewer did not observe the actual shared Minecraft stock')
-            require(not rows['sources'], 'Viewer saw physical stock locations')
+            # Legacy presets must fail closed: no officer/viewer/operator roles exist.
+            self.browser = owner
+            for legacy in ['officer', 'viewer', 'operator']:
+                status, _ = self.http('/api/v1/users', {
+                    'name': 'Legacy' + legacy, 'password': password, 'preset': legacy, 'mustChange': False,
+                })
+                require(status == 400, 'Legacy preset ' + legacy + ' was not rejected')
+            for name in ['Builder', 'Miner']:
+                self.browser = users[name]
+                status, rows = self.http('/api/v1/stock')
+                require(status == 200 and self.amount(rows, 'minecraft:diamond', 'observed') == 96,
+                        'Member did not observe the actual shared Minecraft stock')
+                require(not rows['sources'], 'Member saw physical stock locations')
             draft = {'server': self.server_name, 'stash': 'e2e-fixture',
                      'lines': [{'type': 'item', 'key': 'minecraft:diamond', 'count': 1}]}
-            require(self.http('/api/v1/orders', draft)[0] == 403, 'Viewer could order stock')
             self.browser = users['Builder']
             status, self_order = self.http('/api/v1/orders', draft)
             require(status == 200 and self_order['order']['purpose'] == 'SELF'
                     and self_order['order']['requestedBy'] == identities['Builder'],
                     'Member order did not record its independent requester')
+            self.browser = users['Miner']
+            status, miner_order = self.http('/api/v1/orders', draft)
+            require(status == 200 and miner_order['order']['requestedBy'] == identities['Miner'],
+                    'Second member could not place its own SELF order')
             guild_draft = dict(draft, purpose='GUILD', comment='Projekt Å')
             require(self.http('/api/v1/orders', guild_draft)[0] == 403, 'Member bypassed the guild order permission')
-            self.browser = users['Quartermaster']
+            self.browser = users['Builder']
+            require(self.http('/api/v1/orders', guild_draft)[0] == 403, 'Member bypassed the guild order permission')
+            # Guild orders are Owner-only under the strict model.
+            self.browser = owner
             status, guild_order = self.http('/api/v1/orders', guild_draft)
-            require(status == 200 and guild_order['order']['organizationId'] == guild['id']
-                    and guild_order['order']['requestedBy'] == identities['Quartermaster'],
-                    'Guild order did not reserve stock under the common organisation')
+            require(status == 200 and guild_order['order']['organizationId'] == guild['id'],
+                    'Owner could not place the guild order under the common organisation')
             query = urllib.parse.urlencode({'server': self.server_name, 'stash': 'e2e-fixture'})
             self.browser = users['Builder']
             status, history = self.http('/api/v1/orders?' + query)
             require(status == 200 and [order['id'] for order in history['orders']] == [self_order['order']['id']],
                     'Member order history included another requester')
             require('allocations' not in history['orders'][0], 'Member read physical order allocations')
+            # Members cannot cancel each other's orders; only the Owner can.
+            require(self.http('/api/v1/orders/' + miner_order['order']['id'] + '/cancel', {})[0] == 403,
+                    'Member cancelled another member order')
             self.browser = owner
+            require(self.http('/api/v1/orders/' + miner_order['order']['id'] + '/cancel', {})[0] == 200,
+                    'Owner could not cancel a member order')
             require(self.http('/api/v1/users/' + identities['Builder'], {'disabled': True})[0] == 200,
                     'Owner could not revoke membership')
-            self.browser = users['Quartermaster']
+            self.browser = users['Miner']
+            status, history = self.http('/api/v1/orders?' + query)
+            require(status == 200, 'Remaining member lost access after an unrelated revocation')
             for order in [self_order, guild_order]:
+                self.browser = owner
                 require(self.http('/api/v1/orders/' + order['order']['id'] + '/cancel', {})[0] == 200,
-                        'Officer lost control of a member order')
+                        'Owner lost control of an order')
         finally:
             self.browser = owner
-        self.ok('one real Fabric agent feeds a shared Docker guild stock; member, officer and viewer roles and recipient-independent order identity verified')
+        self.ok('one real Fabric agent feeds a shared Docker guild stock; strict Owner/Member with independent SELF order identity verified')
 
     def verify_order_lifecycle(self, row):
         self.rcon.command('setblock 8 64 -3 minecraft:chest')

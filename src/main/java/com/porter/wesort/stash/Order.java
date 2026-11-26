@@ -1,5 +1,7 @@
 package com.porter.wesort.stash;
 
+import com.porter.wesort.craft.CraftPlanner;
+import com.porter.wesort.craft.Recipes;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -92,7 +94,11 @@ public final class Order {
     public final String id;
     public final List<Line> lines;
     /** Output batches and the precise ingredient budgets pinned by Manager. */
-    public record CraftJob(String item, int count, Map<String, Integer> materials) {}
+    public record CraftJob(String item, int count, Map<String, Integer> materials, CraftPlanner.Plan plan) {}
+
+    private static final class CraftRecipes {
+        static final Recipes TABLE = Recipes.load("26.3");
+    }
 
     public final List<CraftJob> craftJobs;
     /** Null: no naming. */
@@ -216,7 +222,7 @@ public final class Order {
                 if (!e.isJsonObject()) throw new IllegalArgumentException("Invalid craft plan");
                 JsonObject c = e.getAsJsonObject();
                 String item = c.get("item").getAsString();
-                int count = c.get("count").getAsInt();
+                int count = c.get("count").getAsBigDecimal().intValueExact();
                 if (!item.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")
                         || count < 1
                         || !c.has("recipeVersion")
@@ -224,13 +230,30 @@ public final class Order {
                     throw new IllegalArgumentException("Unsupported craft");
                 var materials = new LinkedHashMap<String, Integer>();
                 for (var m : c.getAsJsonObject("materials").entrySet()) {
-                    int quantity = m.getValue().getAsInt();
+                    int quantity = m.getValue().getAsBigDecimal().intValueExact();
                     if (!m.getKey().matches("[a-z0-9_.-]+:[a-z0-9_./-]+") || quantity < 1)
                         throw new IllegalArgumentException("Invalid craft material");
                     materials.put(m.getKey(), quantity);
                 }
                 if (materials.isEmpty()) throw new IllegalArgumentException("Missing craft materials");
-                crafts.add(new CraftJob(item, count, Map.copyOf(materials)));
+                Recipes recipes = CraftRecipes.TABLE;
+                if (recipes == null || !recipes.digest().equals(c.get("recipeDigest").getAsString()))
+                    throw new IllegalArgumentException("Craft recipe dataset differs from Manager");
+                var steps = new ArrayList<CraftPlanner.Step>();
+                int ops = 0;
+                for (var raw : c.getAsJsonArray("steps")) {
+                    var step = raw.getAsJsonObject();
+                    var recipe = recipes.byId(step.get("recipe").getAsString());
+                    int runs = step.get("crafts").getAsBigDecimal().intValueExact();
+                    if (recipe == null || runs <= 0) throw new IllegalArgumentException("Invalid signed recipe step");
+                    var approved = new CraftPlanner.Step(recipe, runs);
+                    ops = Math.addExact(ops, approved.ops());
+                    steps.add(approved);
+                }
+                if (steps.isEmpty() || !item.equals(steps.getLast().recipe().result()) || steps.getLast().output() < count)
+                    throw new IllegalArgumentException("Craft steps do not produce the requested output");
+                var plan = new CraftPlanner.Plan(item, count, List.copyOf(steps), Map.copyOf(materials), ops, null);
+                crafts.add(new CraftJob(item, count, plan.take(), plan));
                 planned.merge(item, count, Math::addExact);
             }
             if (!planned.equals(required)) throw new IllegalArgumentException("Craft plans differ from order lines");

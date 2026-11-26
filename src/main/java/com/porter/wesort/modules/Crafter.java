@@ -309,6 +309,7 @@ final class Crafter {
         lastTake = crafting = false;
         craftedTarget = stamped = 0;
         replans = 0;
+        pinned = false;
         failure = null;
     }
 
@@ -338,6 +339,12 @@ final class Crafter {
 
     /** @return null when the session started, else why not */
     String begin(Request r) {
+        return begin(r, null);
+    }
+
+    private boolean pinned;
+
+    String begin(Request r, CraftPlanner.Plan approved) {
         if (active) return "already crafting";
         Map<String, Long> pool = r.pool().get();
         if (r.gatherOnly()) {
@@ -353,11 +360,16 @@ final class Crafter {
             snapshotBefore();
             return null;
         }
-        CraftPlanner.Result result = preview(r.item(), r.count(), r.doneOrder(), pool, false);
+        if (approved != null && (!approved.item().equals(r.item()) || approved.count() != r.count()
+                || approved.take().entrySet().stream().anyMatch(e -> pool.getOrDefault(e.getKey(), 0L) < e.getValue())))
+            return "Approved crafting plan no longer matches the reservation";
+        CraftPlanner.Result result = approved == null ? preview(r.item(), r.count(), r.doneOrder(), pool, false)
+                : new CraftPlanner.Result(approved, null);
         if (!result.ok()) return result.refusal();
         clearSession();
         req = r;
         plan = result.plan();
+        pinned = approved != null;
         active = true;
         startedAt = System.currentTimeMillis();
         snapshotBefore();
@@ -637,7 +649,7 @@ final class Crafter {
         }
 
         // The stash changed since it was planned: planned once more from what it holds now
-        if (replans < 1) {
+        if (!pinned && replans < 1) {
             replan();
             return next();
         }

@@ -1,8 +1,5 @@
 package com.porter.wesort.craft;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -75,49 +72,12 @@ public record CraftPlan(
         }
     }
 
+    private static final com.google.gson.Gson GSON = new com.google.gson.Gson();
+
     /** Canonical hash over sorted maps + stable step order. Integrity only, not auth. */
     public String canonicalHash() {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            StringBuilder sb = new StringBuilder();
-            sb.append("craft-plan:1\n");
-            sb.append(recipeDatasetDigest).append('\n').append(orderRevision).append('\n');
-            requestedOutputs.forEach(
-                    (k, v) -> sb.append(k).append('=').append(v).append(';'));
-            sb.append('\n');
-            for (PlanStep s : steps)
-                sb.append(s.stepId())
-                        .append(':')
-                        .append(s.recipeId())
-                        .append('x')
-                        .append(s.crafts())
-                        .append(';');
-            sb.append('\n');
-            produced.forEach((k, v) -> sb.append(k).append('=').append(v).append(';'));
-            sb.append('\n');
-            consumed.forEach((k, v) -> sb.append(k).append('=').append(v).append(';'));
-            sb.append('\n');
-            plannedSurplus.forEach((k, v) -> sb.append(k).append('=').append(v).append(';'));
-            sb.append('\n');
-            for (DependencyEdge e : dependencies)
-                sb.append(e.fromStep()).append("->").append(e.toStep()).append(';');
-            sb.append('\n');
-            for (AllocationRef a : physicalAllocations)
-                sb.append(a.sourceId())
-                        .append('/')
-                        .append(a.path())
-                        .append('=')
-                        .append(a.variantRef())
-                        .append(':')
-                        .append(a.count())
-                        .append(';');
-            byte[] digest = md.digest(sb.toString().getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder(64);
-            for (byte b : digest) hex.append(String.format("%02x", b));
-            return hex.toString();
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 unavailable", e);
-        }
+        var tree = GSON.toJsonTree(this);
+        return com.porter.wesort.data.ContainerIdentity.hash("craft-plan:1\n" + com.porter.wesort.data.CanonicalJson.stringify(tree));
     }
 
     /**

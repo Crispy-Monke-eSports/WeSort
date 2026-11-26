@@ -44,17 +44,24 @@ public final class Recipes {
     }
 
     private final String version;
+    private final String digest;
+    private final Map<String, Recipe> byId = new HashMap<>();
     private final Map<String, List<Recipe>> byResult = new HashMap<>();
     private final Map<String, String> stations = new HashMap<>();
     private int size;
 
-    private Recipes(String version) {
+    private Recipes(String version, String json) {
+        this.digest = com.porter.wesort.data.ContainerIdentity.hash(json);
         this.version = version;
     }
 
     public String version() {
         return version;
     }
+
+    public String digest() { return digest; }
+
+    public Recipe byId(String id) { return byId.get(id); }
 
     public int size() {
         return size;
@@ -91,7 +98,7 @@ public final class Recipes {
     public static Recipes parse(String json) {
         Object root = new Parser(json).value();
         if (!(root instanceof Map<?, ?> top)) throw new IllegalArgumentException("not an object");
-        Recipes out = new Recipes(top.get("version") instanceof String s ? s : "");
+        Recipes out = new Recipes(top.get("version") instanceof String s ? s : "", json);
 
         if (top.get("recipes") instanceof List<?> list) {
             for (Object o : list) {
@@ -109,6 +116,7 @@ public final class Recipes {
                 int count = Math.max(1, num(r.get("count")));
                 Recipe recipe =
                         new Recipe(id, shaped, w, h, java.util.Collections.unmodifiableList(cells), result, count);
+                if (out.byId.putIfAbsent(id, recipe) != null) throw new IllegalArgumentException("Duplicate recipe ID");
                 out.byResult.computeIfAbsent(result, k -> new ArrayList<>()).add(recipe);
                 out.size++;
             }

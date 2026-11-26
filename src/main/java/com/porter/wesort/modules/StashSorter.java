@@ -5214,7 +5214,7 @@ public class StashSorter extends Module {
                     pool,
                     orderRunner::lotKeys,
                     false,
-                    manufacturing && orderRunner.manufacturingHasProgress()));
+                    manufacturing && orderRunner.manufacturingHasProgress()), manufacturing ? orderRunner.approvedCraftPlan() : null);
             if (why != null) {
                 orderRunner.craftEnded(new Crafter.Outcome(item, 0, why));
                 return false;

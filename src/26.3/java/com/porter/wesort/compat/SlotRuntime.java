@@ -2,8 +2,8 @@ package com.porter.wesort.compat;
 
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
-import com.porter.wesort.snbt.SnbtCodec;
 import com.porter.wesort.data.PhysicalSlots;
+import com.porter.wesort.snbt.SnbtCodec;
 import com.porter.wesort.stash.StashIndex;
 import java.util.*;
 import meteordevelopment.meteorclient.utils.Utils;

@@ -1,7 +1,7 @@
 package com.porter.wesort.data;
 
-import com.porter.wesort.snbt.SnbtCodec;
 import com.google.gson.*;
+import com.porter.wesort.snbt.SnbtCodec;
 import java.util.*;
 
 /** Versioned physical snapshots. A fingerprint describes content; only source + slot path identifies its location. */
@@ -207,7 +207,9 @@ public final class PhysicalSlots {
         public Map<String, Long> totals() {
             var totals = new QuantityCounter();
             for (Located position : located)
-                totals.add(position.stack.item.key(), QuantityCounter.multiplyChecked(position.copies, position.stack.count));
+                totals.add(
+                        position.stack.item.key(),
+                        QuantityCounter.multiplyChecked(position.copies, position.stack.count));
             return totals.snapshot();
         }
 
@@ -427,11 +429,13 @@ public final class PhysicalSlots {
         var nativeChildren = new TreeMap<Integer, SnbtCodec.TCompound>();
         var container = patch.get("minecraft:container");
         if (container != null) {
-            if (!(container instanceof SnbtCodec.TList list)) throw new IllegalArgumentException("Invalid native container");
+            if (!(container instanceof SnbtCodec.TList list))
+                throw new IllegalArgumentException("Invalid native container");
             for (var value : list.value()) {
                 var entry = requireCompound(value);
                 int slot = intValue(entry.get("slot"));
-                if (item.kind == Kind.ITEM || item.kind == Kind.BUNDLE
+                if (item.kind == Kind.ITEM
+                        || item.kind == Kind.BUNDLE
                         || nativeChildren.put(slot, requireCompound(entry.get("item"))) != null)
                     throw new IllegalArgumentException("Conflicting native container slots");
             }
@@ -443,14 +447,17 @@ public final class PhysicalSlots {
                 throw new IllegalArgumentException("Conflicting native bundle contents");
             for (var value : list.value()) nativeChildren.put(nativeChildren.size(), requireCompound(value));
         }
-        if (nativeChildren.size() != item.contents.size() || (item.kind == Kind.BUNDLE && item.size != nativeChildren.size()))
+        if (nativeChildren.size() != item.contents.size()
+                || (item.kind == Kind.BUNDLE && item.size != nativeChildren.size()))
             throw new IllegalArgumentException("Native child count mismatch");
         for (Slot child : item.contents) {
             var original = nativeChildren.get(child.slot());
             if (original == null || !child.item.id.equals(textValue(original.get("id"))))
                 throw new IllegalArgumentException("Native child identity mismatch");
             int count = original.get("count") == null ? 1 : intValue(original.get("count"));
-            String components = original.get("components") == null ? "{}" : SnbtCodec.write(requireCompound(original.get("components")));
+            String components = original.get("components") == null
+                    ? "{}"
+                    : SnbtCodec.write(requireCompound(original.get("components")));
             if (count != child.count || !components.equals(child.item.components))
                 throw new IllegalArgumentException("Native child content mismatch");
         }
@@ -467,8 +474,7 @@ public final class PhysicalSlots {
     }
 
     private static int intValue(SnbtCodec.Tag value) {
-        if (!(value instanceof SnbtCodec.TInt n))
-            throw new IllegalArgumentException("Expected int tag");
+        if (!(value instanceof SnbtCodec.TInt n)) throw new IllegalArgumentException("Expected int tag");
         return Math.toIntExact(n.value());
     }
 

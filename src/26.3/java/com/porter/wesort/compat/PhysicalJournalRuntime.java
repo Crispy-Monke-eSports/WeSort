@@ -431,6 +431,9 @@ public final class PhysicalJournalRuntime {
     }
 
     public static void inspect(JsonObject decision) {
+        // The Manager redelivers an outstanding decision. A lobby inventory can never
+        // prove the warehouse postcondition, even on a proxy with the same dimension.
+        if (InventorySync.awaitingWarehouseWorld()) return;
         // Manager direction: report the inspection order as facts, including dropped
         // duplicates while one is in flight. No behavior change.
         MeteorClient.LOG.info(

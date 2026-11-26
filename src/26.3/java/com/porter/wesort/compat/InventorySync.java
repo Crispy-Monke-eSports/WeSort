@@ -135,7 +135,13 @@ public final class InventorySync {
         return gate.ready() && blocks.isEmpty();
     }
 
+    static boolean awaitingWarehouseWorld() {
+        var sorter = com.porter.wesort.WeSortAddon.sorter();
+        return sorter != null && sorter.portalAwaiting();
+    }
+
     public static boolean allowInput() {
+        if (awaitingWarehouseWorld()) return false;
         if (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror()) return false;
         var sorter = com.porter.wesort.WeSortAddon.sorter();
         if (sorter != null && !sorter.sortingPermitted()) return false;
@@ -739,6 +745,7 @@ public final class InventorySync {
 
     @EventHandler(priority = EventPriority.LOWEST)
     private void tick(TickEvent.Post event) {
+        if (awaitingWarehouseWorld()) return;
         PhysicalJournalRuntime.tickInspection();
         if (reconciling) {
             if (autoCloseForeignScreen()) {
@@ -876,7 +883,7 @@ public final class InventorySync {
     }
 
     public static void contents(ClientboundContainerSetContentPacket packet) {
-        if (mc.level == null) return;
+        if (mc.level == null || awaitingWarehouseWorld()) return;
         contentsReceivedAt = System.currentTimeMillis();
         serverContents = new InventoryReadback.Expected(
                 packet.containerId(), fingerprints(packet.items()), fingerprint(packet.carriedItem()));
@@ -884,6 +891,7 @@ public final class InventorySync {
     }
 
     public static void stats() {
+        if (awaitingWarehouseWorld()) return;
         gate.barrier();
         if (gate.failed()) {
             if (recoveringWorld)
@@ -929,6 +937,7 @@ public final class InventorySync {
     }
 
     public static void blockAck(int sequence) {
+        if (awaitingWarehouseWorld()) return;
         lastBlockAck = Math.max(lastBlockAck, sequence);
         if (readOpen != null && sequence >= readOpen.sequence) {
             var pending = readOpen;
@@ -962,6 +971,7 @@ public final class InventorySync {
 
     /** Explicitly requested by the player, then waits for the affected source to be reopened. No click is retried. */
     public static boolean requestReconciliation() {
+        if (awaitingWarehouseWorld()) return false;
         if (!gate.failed() || gate.expected() == null || origin == null) return false;
         reconciling = true;
         lastRecoveryReopenAt = 0;

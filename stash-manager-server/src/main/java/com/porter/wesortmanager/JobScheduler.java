@@ -40,14 +40,14 @@ final class JobScheduler {
     private record Entry(Job job, long deadline, String token, JsonArray events) {}
 
     JobScheduler(Path data) throws IOException {
-        this(data, System::currentTimeMillis, monotonicMillis());
+        this(data, Clock.system());
     }
 
     /** Keep lease deadlines comparable to epoch milliseconds while measuring elapsed time monotonically. */
-    private static LongSupplier monotonicMillis() {
-        long wall = System.currentTimeMillis();
-        long start = System.nanoTime();
-        return () -> wall + java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+    private static LongSupplier monotonicMillis(Clock clock) {
+        long wall = clock.millis();
+        long start = clock.nano();
+        return () -> wall + java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(clock.nano() - start);
     }
 
     JobScheduler(Path data, LongSupplier clock) throws IOException {
@@ -56,7 +56,7 @@ final class JobScheduler {
 
     /** PR5 (#142/#35): Clock-based wiring (wall + monotonic in one). */
     JobScheduler(Path data, Clock clock) throws IOException {
-        this(data, clock::millis, clock::nano);
+        this(data, clock::millis, monotonicMillis(clock));
     }
 
     JobScheduler(Path data, LongSupplier clock, LongSupplier leaseClock) throws IOException {
@@ -192,34 +192,27 @@ final class JobScheduler {
         return advanceTo(jobId, entry, entry.job().advance(outcome, by), "reconciled", by);
     }
 
-    /**
-     * Bounded wait in NEEDS_RECONCILIATION before the manager requeues the job
-     * itself (#213): no human can ever open the owner browser to reconcile, and
-     * one uncertain job blocks the single physical work slot ({@code busy()})
-     * forever.
-     */
-    static final long UNCERTAIN_AUTO_REQUEUE_AFTER_MS = 30 * 60_000;
+    static final long QUARANTINE_AFTER_MS = 30 * 60_000;
 
-    /**
-     * Requeues jobs stuck uncertain past the bounded wait, as {@code system}.
-     * The lease is already fenced and chain prerequisites still gate claiming,
-     * so no blind restart of in-flight physical work is possible; the automatic
-     * path only ever yields QUEUED, never COMPLETED (completion needs proof).
-     * Returns human-readable descriptions for logging/audit.
-     */
+    private static boolean quarantined(Entry entry) {
+        var events = entry.events();
+        return !events.isEmpty()
+                && events.get(events.size() - 1)
+                        .getAsJsonObject()
+                        .get("event")
+                        .getAsString()
+                        .equals("quarantined");
+    }
+
     synchronized java.util.List<String> sweepStaleUncertain(long nowMs) throws IOException {
         expire();
-        var swept = new java.util.ArrayList<String>();
-        for (var id : new java.util.ArrayList<>(jobs.keySet())) {
+        var swept = new ArrayList<String>();
+        for (var id : new ArrayList<>(jobs.keySet())) {
             var entry = jobs.get(id);
-            if (entry == null || entry.job().state() != Job.State.NEEDS_RECONCILIATION) continue;
-            if (nowMs - lastEventAt(entry.events()) <= UNCERTAIN_AUTO_REQUEUE_AFTER_MS) continue;
-            var next = entry.job().advance(Job.State.QUEUED, "system");
-            advanceTo(id, entry, next, "auto_reconciled", "system");
-            swept.add("Job " + id + " (" + entry.job().category() + " "
-                    + entry.job().chain()
-                    + ") was uncertain for " + ((nowMs - lastEventAt(entry.events())) / 1000)
-                    + "s; requeued for claiming.");
+            if (entry.job().state() != Job.State.NEEDS_RECONCILIATION || quarantined(entry)) continue;
+            if (nowMs - lastEventAt(entry.events()) < QUARANTINE_AFTER_MS) continue;
+            advanceTo(id, entry, entry.job(), "quarantined", "system");
+            swept.add("Job " + id + " quarantined pending verified physical disposition");
         }
         return swept;
     }
@@ -251,6 +244,15 @@ final class JobScheduler {
             var o = entry.job().json();
             o.addProperty("deadline", entry.deadline());
             o.add("events", entry.events().deepCopy());
+            // PR8 (#213): machine-readable fence reason + retry deadline for the
+            // dashboard; never an interactive instruction to the agent.
+            if (entry.job().state() == Job.State.NEEDS_RECONCILIATION) {
+                o.addProperty(
+                        "reason",
+                        quarantined(entry) ? "quarantined-awaiting-evidence" : "lease-lapsed-needs-reconcile");
+                if (!quarantined(entry))
+                    o.addProperty("quarantineAt", lastEventAt(entry.events()) + QUARANTINE_AFTER_MS);
+            }
             out.add(o);
         }
         return out;

@@ -76,6 +76,11 @@ final class DeliveryPoints {
 
     /** Pauses a point: it stops being selectable and any active assignment toward it is blocked before dumping. */
     synchronized DeliveryPoint pause(String id, long expectedRevision, String by) throws IOException {
+        return pause(id, expectedRevision, by, null);
+    }
+
+    /** Pauses a point with a machine-readable reason (PR8 #216); OWNER_DISABLED is never auto-cleared. */
+    synchronized DeliveryPoint pause(String id, long expectedRevision, String by, String reason) throws IOException {
         var entry = require(id);
         var point = entry.point();
         if (point.revision() != expectedRevision) throw new Conflict();
@@ -90,9 +95,11 @@ final class DeliveryPoints {
                 point.access(),
                 point.member(),
                 DeliveryPoint.Status.PAUSED,
-                Math.addExact(point.revision(), 1));
+                Math.addExact(point.revision(), 1),
+                reason,
+                point.policyRevision());
         var history = entry.history().deepCopy();
-        history.add(event("paused", by));
+        history.add(event(reason == null ? "paused" : "paused:" + reason, by));
         commit(id, new Entry(paused, history));
         return paused;
     }

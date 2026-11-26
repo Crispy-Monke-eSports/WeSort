@@ -234,15 +234,11 @@ class JobSchedulerTest {
         // A fresh fence is left alone.
         assertTrue(s.sweepStaleUncertain(clock.get()).isEmpty());
 
-        // Past the bounded wait: the manager requeues for claiming — never completes.
-        clock.addAndGet(JobScheduler.UNCERTAIN_AUTO_REQUEUE_AFTER_MS + 1);
-        var swept = s.sweepStaleUncertain(clock.get());
-        assertEquals(1, swept.size());
-        assertEquals(Job.State.QUEUED, s.get(job.id()).state());
-        assertNull(s.get(job.id()).agent(), "requeue clears the owner");
-        var reclaimed = s.claim(A2);
-        assertEquals(job.id(), id(reclaimed), "another agent may now claim the requeued job");
-        s.complete(job.id(), A2, token(reclaimed));
-        assertEquals(Job.State.COMPLETED, s.get(job.id()).state());
+        clock.addAndGet(JobScheduler.QUARANTINE_AFTER_MS + 1);
+        assertEquals(1, s.sweepStaleUncertain(clock.get()).size());
+        assertEquals(Job.State.NEEDS_RECONCILIATION, s.get(job.id()).state());
+        assertThrows(JobScheduler.Conflict.class, () -> s.claim(A2));
+        clock.addAndGet(JobScheduler.QUARANTINE_AFTER_MS + 1);
+        assertTrue(s.sweepStaleUncertain(clock.get()).isEmpty());
     }
 }

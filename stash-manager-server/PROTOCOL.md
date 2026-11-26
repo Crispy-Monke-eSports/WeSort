@@ -519,6 +519,13 @@ no-show is traceable and the stock is not returned until an explicit
 advance the handoff; a second agent cannot take over the cargo. Owner
 `GET /api/v1/handoffs` lists handoffs (optionally by `order`).
 
+Bounded auto-exit (#210): the 15s recovery loop sweeps `AWAITING_RECIPIENT`
+older than 4h to `NO_SHOW` as actor `system` (event `NO_SHOW_AUTO`, audit
+`handoff.auto-no-show`). `NO_SHOW` is non-terminal and retryable and can
+never become `DELIVERED` without an authenticated recipient receipt. A
+Manager restart fences `AWAITING_RECIPIENT → NEEDS_RECONCILIATION`
+immediately.
+
 ## Backups and crash recovery
 
 Manager does **not** provide an in-process backup/restore command or

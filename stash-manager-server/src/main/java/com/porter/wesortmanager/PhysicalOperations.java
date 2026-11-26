@@ -321,6 +321,9 @@ final class PhysicalOperations {
                         value.addProperty("inspectionDetail", rows.getString(5));
                     }
                     value.addProperty("inspectionAttempts", rows.getInt(6));
+                    // PR8 (#214): machine-readable next-probe deadline for the
+                    // dashboard; bounded backoff, never an interactive instruction.
+                    value.addProperty("autoInspectBackoffMs", AUTO_INSPECT_BACKOFF_MS);
                     out.add(value);
                 }
             }

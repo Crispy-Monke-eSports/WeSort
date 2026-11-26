@@ -21,7 +21,9 @@ public record DeliveryPoint(
         Access access,
         String member,
         Status status,
-        long revision) {
+        long revision,
+        String pauseReason,
+        long policyRevision) {
     public enum Type {
         CHEST,
         PLAYER_MEETING
@@ -54,6 +56,14 @@ public record DeliveryPoint(
         if (access != Access.MEMBER && member != null)
             throw new IllegalArgumentException("Only a member delivery point names a member");
         if (revision < 1) throw new IllegalArgumentException("Invalid delivery point revision");
+        // PR8 (#216): machine-readable pause reason. Known values:
+        // OWNER_DISABLED, MANUAL_REVIEW, TRANSIENT_BLOCKED, UNKNOWN_DESTINATION,
+        // CONFIG_CHANGED. Null when not paused. Never auto-cleared except by
+        // an explicit status change away from PAUSED.
+        if (pauseReason != null
+                && (pauseReason.isBlank() || pauseReason.length() > 64 || !pauseReason.matches("[A-Z_]+")))
+            throw new IllegalArgumentException("Invalid pause reason");
+        if (policyRevision < 0) throw new IllegalArgumentException("Invalid policy revision");
     }
 
     /** A new point from an owner request: a fresh id, PENDING until an agent verifies reachability, revision 1. */
@@ -69,7 +79,9 @@ public record DeliveryPoint(
                 enumerated(o, "access", Access.class),
                 memberId(o),
                 o.has("status") ? enumerated(o, "status", Status.class) : Status.PENDING,
-                1);
+                1,
+                null,
+                0);
     }
 
     public static DeliveryPoint read(JsonObject o) {
@@ -86,11 +98,26 @@ public record DeliveryPoint(
                         ? o.get("member").getAsString()
                         : null,
                 Status.valueOf(o.get("status").getAsString()),
-                o.get("revision").getAsLong());
+                o.get("revision").getAsLong(),
+                o.has("pauseReason") && !o.get("pauseReason").isJsonNull()
+                        ? o.get("pauseReason").getAsString()
+                        : null,
+                o.has("policyRevision") && !o.get("policyRevision").isJsonNull()
+                        ? o.get("policyRevision").getAsLong()
+                        : 0);
     }
 
     /** An optimistic update: present fields replace the current value and the revision increments. */
     public DeliveryPoint updated(JsonObject request) {
+        Status nextStatus = request.has("status") ? enumerated(request, "status", Status.class) : status;
+        String nextReason =
+                request.has("pauseReason") && !request.get("pauseReason").isJsonNull()
+                        ? request.get("pauseReason").getAsString()
+                        : (nextStatus == Status.PAUSED ? pauseReason : null);
+        long nextPolicy =
+                request.has("policyRevision") && !request.get("policyRevision").isJsonNull()
+                        ? request.get("policyRevision").getAsLong()
+                        : policyRevision;
         var proposed = new DeliveryPoint(
                 id,
                 request.has("server") ? str(request, "server") : server,
@@ -101,8 +128,10 @@ public record DeliveryPoint(
                 request.has("type") ? enumerated(request, "type", Type.class) : type,
                 request.has("access") ? enumerated(request, "access", Access.class) : access,
                 request.has("member") ? memberId(request) : member,
-                request.has("status") ? enumerated(request, "status", Status.class) : status,
-                Math.addExact(revision, 1));
+                nextStatus,
+                Math.addExact(revision, 1),
+                nextReason,
+                nextPolicy);
         boolean changed = !server.equals(proposed.server())
                 || !dimension.equals(proposed.dimension())
                 || x != proposed.x()
@@ -114,6 +143,7 @@ public record DeliveryPoint(
         if (!changed || proposed.status() != Status.VERIFIED) return proposed;
         // Verification describes a particular physical target and recipient scope.
         // Do not carry it forward even if the update explicitly submits VERIFIED.
+        // A changed target also resets the policy revision: it needs re-verify.
         return new DeliveryPoint(
                 id,
                 proposed.server(),
@@ -125,7 +155,9 @@ public record DeliveryPoint(
                 proposed.access(),
                 proposed.member(),
                 Status.PENDING,
-                proposed.revision());
+                proposed.revision(),
+                null,
+                0);
     }
 
     public JsonObject json() {
@@ -141,6 +173,8 @@ public record DeliveryPoint(
         out.addProperty("member", member);
         out.addProperty("status", status.name());
         out.addProperty("revision", revision);
+        if (pauseReason != null) out.addProperty("pauseReason", pauseReason);
+        out.addProperty("policyRevision", policyRevision);
         return out;
     }
 

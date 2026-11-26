@@ -15,6 +15,12 @@ utan verifierad pickup är aldrig DELIVERED.
   Endast den registrerade agenten kan avancera handoffen (andra agenten
   kan inte ta över cargo), och no-show lämnar lagret spärrat tills explicit
   `RETURNED` — ingen falsk återföring. Append-only events och persistens.
+- **Bounded auto-exit (#210):** `sweepStaleAwaiting` i 15s-loopen flyttar
+  `AWAITING_RECIPIENT` äldre än 4h till `NO_SHOW` som aktör `system`
+  (event `NO_SHOW_AUTO`, audit `handoff.auto-no-show`). `NO_SHOW` är
+  icke-terminalt och retrybart, krediterar aldrig lager, och kan aldrig bli
+  `DELIVERED` utan autentiserad mottagarkvittens (`advance` kräver actor).
+  Restart fencar `AWAITING_RECIPIENT → NEEDS_RECONCILIATION` omedelbart.
 - **`HandoffRoutes`**: Owner `GET/POST /api/v1/handoffs` (schedule/
   confirm/resolve) och signerad agent `POST /api/v1/handoffs/agent`
   (arrive/no-show/drop).

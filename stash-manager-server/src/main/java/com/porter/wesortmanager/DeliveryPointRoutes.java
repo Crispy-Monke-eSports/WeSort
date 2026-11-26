@@ -85,10 +85,12 @@ final class DeliveryPointRoutes {
                         Http.error(ex, 400, "id and expectedRevision are required");
                         return;
                     }
+                    var reason = AddonRoutes.string(body, "reason");
                     result = points.pause(
                             id,
                             expected.getAsBigDecimal().longValueExact(),
-                            Router.user(ex).id());
+                            Router.user(ex).id(),
+                            reason);
                     audit.add(Router.user(ex), "delivery-point.pause", id, AuthRoutes.address(ex));
                 }
             }

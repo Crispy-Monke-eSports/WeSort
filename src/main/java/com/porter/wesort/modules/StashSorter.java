@@ -967,6 +967,7 @@ public class StashSorter extends Module {
     private boolean waitTimeoutAlerted;
     // Unexpected toggle combos: sorter on while the Agent toggle is off. Throttled.
     private int lastToggleWarnClock = -100_000;
+
     public String shulkerPhase() {
         return handle == null ? "" : handle.name();
     }
@@ -5205,16 +5206,18 @@ public class StashSorter extends Module {
                     default -> {}
                 }
             }
-            String why = crafter.begin(new Crafter.Request(
-                    item,
-                    craft.count(),
-                    "order " + orderRunner.orderId(),
-                    !manufacturing,
-                    manufacturing ? 0 : orderRunner.crafted(),
-                    pool,
-                    orderRunner::lotKeys,
-                    false,
-                    manufacturing && orderRunner.manufacturingHasProgress()), manufacturing ? orderRunner.approvedCraftPlan() : null);
+            String why = crafter.begin(
+                    new Crafter.Request(
+                            item,
+                            craft.count(),
+                            "order " + orderRunner.orderId(),
+                            !manufacturing,
+                            manufacturing ? 0 : orderRunner.crafted(),
+                            pool,
+                            orderRunner::lotKeys,
+                            false,
+                            manufacturing && orderRunner.manufacturingHasProgress()),
+                    manufacturing ? orderRunner.approvedCraftPlan() : null);
             if (why != null) {
                 orderRunner.craftEnded(new Crafter.Outcome(item, 0, why));
                 return false;
@@ -12782,8 +12785,8 @@ public class StashSorter extends Module {
      * Local corner/delivery/drop-off picks are refused while this holds.
      */
     private boolean managerOwnsWorkzone() {
-        var manager = meteordevelopment.meteorclient.systems.modules.Modules.get()
-                .get(StashManager.class);
+        var manager =
+                meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
         if (manager != null && manager.managesWorkzones()) return true;
         return stash != null && stash.directiveRev >= 0;
     }

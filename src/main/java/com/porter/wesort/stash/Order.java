@@ -1,10 +1,10 @@
 package com.porter.wesort.stash;
 
-import com.porter.wesort.craft.CraftPlanner;
-import com.porter.wesort.craft.Recipes;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.porter.wesort.craft.CraftPlanner;
+import com.porter.wesort.craft.Recipes;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -237,7 +237,8 @@ public final class Order {
                 }
                 if (materials.isEmpty()) throw new IllegalArgumentException("Missing craft materials");
                 Recipes recipes = CraftRecipes.TABLE;
-                if (recipes == null || !recipes.digest().equals(c.get("recipeDigest").getAsString()))
+                if (recipes == null
+                        || !recipes.digest().equals(c.get("recipeDigest").getAsString()))
                     throw new IllegalArgumentException("Craft recipe dataset differs from Manager");
                 var steps = new ArrayList<CraftPlanner.Step>();
                 int ops = 0;
@@ -250,7 +251,9 @@ public final class Order {
                     ops = Math.addExact(ops, approved.ops());
                     steps.add(approved);
                 }
-                if (steps.isEmpty() || !item.equals(steps.getLast().recipe().result()) || steps.getLast().output() < count)
+                if (steps.isEmpty()
+                        || !item.equals(steps.getLast().recipe().result())
+                        || steps.getLast().output() < count)
                     throw new IllegalArgumentException("Craft steps do not produce the requested output");
                 var plan = new CraftPlanner.Plan(item, count, List.copyOf(steps), Map.copyOf(materials), ops, null);
                 crafts.add(new CraftJob(item, count, plan.take(), plan));

@@ -49,9 +49,7 @@ class WorldInteractionGuardTest {
     @Test
     void jobTagBindsDirectiveRevisionAndLease() {
         // Same work, no rotation: stable identity (no flapping).
-        assertEquals(
-                "order-1@d3@labc",
-                WorldInteractionGuard.jobTag("order-1", "physical-123", "online", 3, "abc"));
+        assertEquals("order-1@d3@labc", WorldInteractionGuard.jobTag("order-1", "physical-123", "online", 3, "abc"));
         // A rotated directive or lease invalidates live permits.
         assertNotEquals(
                 WorldInteractionGuard.jobTag("order-1", null, "online", 3, "abc"),

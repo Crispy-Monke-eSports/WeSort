@@ -77,7 +77,8 @@ public record CraftPlan(
     /** Canonical hash over sorted maps + stable step order. Integrity only, not auth. */
     public String canonicalHash() {
         var tree = GSON.toJsonTree(this);
-        return com.porter.wesort.data.ContainerIdentity.hash("craft-plan:1\n" + com.porter.wesort.data.CanonicalJson.stringify(tree));
+        return com.porter.wesort.data.ContainerIdentity.hash(
+                "craft-plan:1\n" + com.porter.wesort.data.CanonicalJson.stringify(tree));
     }
 
     /**

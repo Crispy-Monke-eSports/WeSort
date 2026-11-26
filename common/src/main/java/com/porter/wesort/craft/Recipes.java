@@ -59,9 +59,13 @@ public final class Recipes {
         return version;
     }
 
-    public String digest() { return digest; }
+    public String digest() {
+        return digest;
+    }
 
-    public Recipe byId(String id) { return byId.get(id); }
+    public Recipe byId(String id) {
+        return byId.get(id);
+    }
 
     public int size() {
         return size;

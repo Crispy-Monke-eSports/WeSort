@@ -153,15 +153,6 @@ public class StashManager extends Module {
             .visible(() -> false)
             .build());
 
-    private final Setting<Integer> craftMaxPerOrder = sgCrafting.add(new IntSetting.Builder()
-            .name("craft-max-per-order")
-            .description("The most Shulker Boxes crafted for one order.")
-            .defaultValue(27)
-            .min(1)
-            .sliderRange(1, 54)
-            .visible(() -> false)
-            .build());
-
     private final Setting<Integer> craftMaxOpsPerTask = sgCrafting.add(new IntSetting.Builder()
             .name("craft-max-ops-per-task")
             .description(
@@ -169,15 +160,6 @@ public class StashManager extends Module {
             .defaultValue(128)
             .min(8)
             .sliderRange(8, 512)
-            .visible(() -> false)
-            .build());
-
-    private final Setting<Integer> craftMaxPerHour = sgCrafting.add(new IntSetting.Builder()
-            .name("craft-max-per-hour")
-            .description("The most Shulker Boxes crafted in an hour.")
-            .defaultValue(54)
-            .min(1)
-            .sliderRange(1, 216)
             .visible(() -> false)
             .build());
 
@@ -342,6 +324,17 @@ public class StashManager extends Module {
     /** Transport configuration is not permission to take control of the client. */
     private boolean managerConfigured() {
         return !serverUrl.get().isBlank() && !apiKey.get().isBlank();
+    }
+
+    /**
+     * Whether the Owner defines this client's workzone through signed Manager
+     * stash-defs directives (#65). While managed, local corner/delivery/drop-off
+     * picks are refused — including before the first directive arrives
+     * ({@code directiveRev == -1}), so there is no initial window for a local
+     * override. Without a configured Manager the client is locally driven.
+     */
+    public boolean managesWorkzones() {
+        return managerConfigured();
     }
 
     /**
@@ -655,6 +648,10 @@ public class StashManager extends Module {
 
     private String sortingToken, sortingScope = "";
     private long sortingUntil, sortingPoll;
+    // Cached E2E-fixture marker verdict (#43: the lease-free sorting path below must
+    // never open outside the verified isolated fixture). Checked once per process;
+    // the marker cannot appear mid-run on a production client.
+    private volatile Boolean e2eFixtureVerified;
 
     public boolean sortingEnabled() {
         return dedicatedProfile() && managerConfigured() && sortEnabled.get() && !e2ePhysicalSortingHold;
@@ -666,13 +663,36 @@ public class StashManager extends Module {
     }
 
     public boolean sortingAllowed() {
-        // Only the isolated, marker-protected Minecraft E2E harness can run the legacy local sorter.
-        if (Boolean.getBoolean("wesort.e2e") && serverUrl.get().isBlank()) return true;
+        // Test-fixture hook ONLY (#43: no lease-free physical sorting in production):
+        // the isolated, marker-protected Minecraft E2E harness (gradle -PworldTest
+        // sets -Dwesort.e2e with no Manager URL) may run the local sorter without a
+        // lease. The fixture marker is verified, not just the flag — a bare JVM flag
+        // on a production client grants nothing. Not an order backdoor: orders
+        // themselves are wanted only via the signed Manager protocol.
+        if (Boolean.getBoolean("wesort.e2e") && serverUrl.get().isBlank() && e2eFixtureVerified()) return true;
         return isActive()
                 && mc.player != null
                 && sortingToken != null
                 && sortingScope.equals(sortingScope())
                 && System.nanoTime() < sortingUntil;
+    }
+
+    /** Cached fixture-marker verdict for the lease-free E2E sorting path (see above). */
+    private boolean e2eFixtureVerified() {
+        Boolean cached = e2eFixtureVerified;
+        if (cached != null) return cached;
+        boolean ok = false;
+        try {
+            if (mc.gameDirectory != null) {
+                var marker = mc.gameDirectory.toPath().resolve("wesort-e2e/installation.txt");
+                ok = java.nio.file.Files.isRegularFile(marker)
+                        && java.nio.file.Files.readString(marker).trim().equals("wesort-mc26-e2e-v1");
+            }
+        } catch (RuntimeException | java.io.IOException unreadable) {
+            ok = false;
+        }
+        e2eFixtureVerified = ok;
+        return ok;
     }
 
     public String physicalLeaseFingerprint() {
@@ -1292,9 +1312,7 @@ public class StashManager extends Module {
         values.addProperty(useNamedShulkers.name, useNamedShulkers.get());
         values.addProperty(autoExpandDelivery.name, autoExpandDelivery.get());
         values.addProperty(enableCrafting.name, enableCrafting.get());
-        values.addProperty(craftMaxPerOrder.name, craftMaxPerOrder.get());
         values.addProperty(craftMaxOpsPerTask.name, craftMaxOpsPerTask.get());
-        values.addProperty(craftMaxPerHour.name, craftMaxPerHour.get());
         values.addProperty(freshMinutes.name, freshMinutes.get());
         values.addProperty(orderChat.name, orderChat.get());
         values.addProperty(orderIntakePaused.name, orderIntakePaused.get());
@@ -1311,9 +1329,7 @@ public class StashManager extends Module {
             schema.add(controlSetting(useNamedShulkers.name, "Allow named shulkers in orders", "bool", null, null));
             schema.add(controlSetting(autoExpandDelivery.name, "Expand delivery storage", "bool", null, null));
             schema.add(controlSetting(enableCrafting.name, "Enable crafting", "bool", null, null));
-            schema.add(controlSetting(craftMaxPerOrder.name, "Crafting boxes per order", "int", 1, 54));
             schema.add(controlSetting(craftMaxOpsPerTask.name, "Crafting operations per task", "int", 8, 512));
-            schema.add(controlSetting(craftMaxPerHour.name, "Crafting boxes per hour", "int", 1, 216));
             schema.add(controlSetting(freshMinutes.name, "Stock freshness (minutes)", "int", 0, 30));
             schema.add(controlSetting(orderChat.name, "Order chat messages", "bool", null, null));
             schema.add(controlSetting(orderIntakePaused.name, "Pause new warehouse orders", "bool", null, null));
@@ -1477,12 +1493,8 @@ public class StashManager extends Module {
         else if (path.equals(autoExpandDelivery.name))
             applied = changeBoolean(autoExpandDelivery, job.get("expect"), value);
         else if (path.equals(enableCrafting.name)) applied = changeBoolean(enableCrafting, job.get("expect"), value);
-        else if (path.equals(craftMaxPerOrder.name))
-            applied = changeInteger(craftMaxPerOrder, job.get("expect"), value, 1, 54);
         else if (path.equals(craftMaxOpsPerTask.name))
             applied = changeInteger(craftMaxOpsPerTask, job.get("expect"), value, 8, 512);
-        else if (path.equals(craftMaxPerHour.name))
-            applied = changeInteger(craftMaxPerHour, job.get("expect"), value, 1, 216);
         else if (path.equals(orderChat.name)) applied = changeBoolean(orderChat, job.get("expect"), value);
         else if (path.startsWith("sorter.")) {
             var engine = WeSortAddon.sorter();
@@ -2060,8 +2072,7 @@ public class StashManager extends Module {
     }
 
     com.porter.wesort.craft.CraftPlanner.Caps craftCaps() {
-        return new com.porter.wesort.craft.CraftPlanner.Caps(
-                craftMaxPerOrder.get(), craftMaxOpsPerTask.get(), craftMaxPerHour.get());
+        return new com.porter.wesort.craft.CraftPlanner.Caps(craftMaxOpsPerTask.get());
     }
 
     /** Starts or stops the sorter's loop for this module: when it takes orders, or containers wait to be read. */

@@ -17,17 +17,16 @@ final class NavigationGuard {
     static String denial(BlockPos feet) {
         if (feet == null || mc.level == null) return "no connected world";
         for (BlockPos cell : new BlockPos[] {feet, feet.above(), feet.below()}) {
-            if (!mc.level.isLoaded(cell)) return "unloaded cell at " + cell.toShortString();
+            if (!mc.level.isLoaded(cell)) return "unloaded cell";
             String block = WorldInteractionGuard.blockId(cell);
-            if (BlockSafety.blocksNavigation(block))
-                return "navigation hazard " + block + " at " + cell.toShortString();
+            if (BlockSafety.blocksNavigation(block)) return "navigation hazard " + block;
         }
         if (!mc.level.getFluidState(feet).isEmpty()
-                || !mc.level.getFluidState(feet.above()).isEmpty()) return "fluid at " + feet.toShortString();
+                || !mc.level.getFluidState(feet.above()).isEmpty()) return "fluid in walking space";
         for (int x = -1; x <= 1; x++) {
             for (int z = -1; z <= 1; z++) {
                 var neighbor = feet.offset(x, 0, z);
-                if (!mc.level.isLoaded(neighbor)) return "unloaded neighbor at " + neighbor.toShortString();
+                if (!mc.level.isLoaded(neighbor)) return "unloaded neighbor";
             }
         }
         return null;

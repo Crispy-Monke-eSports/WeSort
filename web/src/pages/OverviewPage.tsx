@@ -171,7 +171,7 @@ export function OverviewPage() {
   // /health 60s signals: stuck orders and a stale index are errors even when
   // every other source looks quiet (frozen-bot case).
   attention.push(...healthAttention(health.data ?? null));
-  // Silence watchdog: online transport, no progress on open work. Uses the
+  // Silence watchdog: online connection heartbeat (not TransportProfiles), no progress on open work. Uses the
   // server clock and the order table, never the agent-reported summary.
   const silent = canActivity ? silentBots(botList, openOrders, serverNow) : [];
   const silentIds = new Set(silent.map((s) => s.bot.botId));

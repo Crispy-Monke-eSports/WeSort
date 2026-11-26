@@ -295,6 +295,24 @@ class NavigationHarness(world.Harness):
         )
 
     def dedicated_guard_cases(self):
+        self.teleport(0.5, 0.5)
+        self.command("navigate-unloaded", x=1012, y=64, z=0)
+        stopped = self.wait_walk(5)
+        require(stopped["navigation"] == "PAUSED_NAVIGATION_UNSAFE_BLOCK"
+                and stopped["navigationPaused"] and not stopped["pathing"],
+                "Dedicated client failed to release an unloaded route")
+        # Load the destination by server teleport. Only a fresh route may move the client.
+        self.teleport(1009.5, 0.5)
+        deadline = time.monotonic() + 20
+        while self.state()["navigationPaused"] and time.monotonic() < deadline:
+            time.sleep(0.25)
+        resumed = self.state()
+        require(resumed["navigation"] == "IDLE" and not resumed["pathing"],
+                "Chunk availability did not recover autonomously with the old route released")
+        self.start_walk(1012)
+        require(self.wait_walk(15)["navigation"] == "ARRIVED", "Fresh guarded route did not arrive")
+        self.ok("unloaded chunk releases the route; after chunk load a fresh guarded route succeeds without manual resume")
+
         self.teleport(2.5, 7.5)
         for x, block in [
             (1, "oak_fence_gate[open=false]"),

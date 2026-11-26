@@ -170,12 +170,15 @@ def main():
             },
         )
         assert status == 200, f"scoped user: {scoped}"
+        # Strict Owner/Member (#26/#43): no viewer preset exists; the second
+        # seeded user is a plain member so the users-admin screenshots still show
+        # two accounts with distinct scope chips.
         status, viewer, _ = owner.request(
             "/api/v1/users",
-            {"name": "hall-viewer", "password": "viewer-pw-12345", "preset": "viewer"},
+            {"name": "hall-member-2", "password": "viewer-pw-12345", "preset": "member"},
         )
-        assert status == 200, f"viewer: {viewer}"
-        ok("2 seeded users (scoped member + viewer)")
+        assert status == 200, f"second member: {viewer}"
+        ok("2 seeded users (scoped member + member)")
         for name, dim, p1, p2 in [
             (
                 "main-hall",

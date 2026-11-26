@@ -5,7 +5,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * W-034: one schedulable unit of fleet work. Categories {@code SCAN → SORT → PACK → PICKUP → DELIVER} form an
+ * W-034: one schedulable unit of single-agent work. Categories {@code SCAN → SORT → PACK → PICKUP → DELIVER} form an
  * explicit prerequisite chain (each step needs its predecessor completed for the same work unit, the {@code chain}),
  * and {@code RECONCILE} is an override that requires no predecessor. A job moves {@code QUEUED → CLAIMED → (PAUSED)
  * → COMPLETED}, or to {@code NEEDS_RECONCILIATION} when its lease lapses mid-physical-work, and is only reassignable

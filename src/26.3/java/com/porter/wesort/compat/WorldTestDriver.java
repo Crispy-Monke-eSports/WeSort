@@ -192,14 +192,18 @@ public final class WorldTestDriver {
                                 InteractionHand.MAIN_HAND,
                                 true);
                 }
-                case "navigate" -> {
+                case "navigate", "navigate-unloaded" -> {
                     if (NavigationRuntime.paused() || !InventorySync.ready()) {
                         respond(false, "Navigation paused", state());
                         return;
                     }
                     BlockPos target = position(command);
-                    if (!mc.level.isLoaded(target)) {
-                        respond(false, "Unloaded navigation target", state());
+                    boolean expectLoaded = !command.get("action").getAsString().equals("navigate-unloaded");
+                    if (mc.level.isLoaded(target) != expectLoaded) {
+                        respond(
+                                false,
+                                expectLoaded ? "Unloaded navigation target" : "Fixture target already loaded",
+                                state());
                         return;
                     }
                     com.porter.wesort.utils.BaritoneHelper.protect(List.of(

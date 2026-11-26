@@ -69,7 +69,7 @@ const STATES: Record<string, OrderUiState> = {
     retryable: false,
     needsAttention: false,
   },
-  // PACKING/PICKUP fleet states surface as info; "packed" is the reported terminal.
+  // PACKING/PICKUP single-agent job states surface as info; "packed" is the reported terminal.
   packing: {
     severity: "info",
     open: true,

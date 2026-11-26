@@ -447,23 +447,15 @@ try:
             == 200
         )
         members = ["PortalBuilder", "PortalMiner"]
-        officer = "PortalOfficer"
-        for name, preset in [(member, "member") for member in members] + [
-            (officer, "officer")
+        # No officer role (#26/#43): the reviewer is a member with an
+        # Owner-granted activity permit, not a preset.
+        reviewer = "PortalReviewer"
+        for name, payload in [(member, {"preset": "member"}) for member in members] + [
+            (reviewer, {"perms": {"view": True, "order": True, "activity": True}})
         ]:
-            assert (
-                http(
-                    "/api/v1/users",
-                    {
-                        "name": name,
-                        "password": password,
-                        "preset": preset,
-                        "mustChange": False,
-                    },
-                    opener=browser,
-                )[0]
-                == 200
-            )
+            body = {"name": name, "password": password, "mustChange": False}
+            body.update(payload)
+            assert http("/api/v1/users", body, opener=browser)[0] == 200
         assert (
             http(
                 "/api/v1/users/owner/minecraft",
@@ -481,7 +473,7 @@ try:
                     "otherStash": fake.STASH,
                     "password": password,
                     "members": members,
-                    "officer": officer,
+                    "reviewer": reviewer,
                 }
             ),
             check=False,
@@ -498,7 +490,7 @@ try:
             "Chromium: two members log in, search shared stock, browse the stash, reserve stock and see private order histories"
         )
         ok(
-            "Chromium: officer audit denied; Owner searches by person and item and inspects the order audit"
+            "Chromium: member audit denied; Owner searches by person and item and inspects the order audit"
         )
         ok(
             "Chromium: Member checkout sends SELF; Owner checkout validates recipient names and confirms GUILD with the verified account"

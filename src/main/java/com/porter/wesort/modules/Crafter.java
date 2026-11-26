@@ -9,7 +9,6 @@ import com.porter.wesort.craft.Recipes;
 import com.porter.wesort.stash.Kits;
 import com.porter.wesort.stash.Stash;
 import com.porter.wesort.stash.Stash.Box;
-import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -105,7 +104,6 @@ final class Crafter {
             int count,
             String purpose,
             boolean reserve,
-            int doneOrder,
             Supplier<Map<String, Long>> pool,
             Supplier<Set<String>> reservedKeys,
             boolean gatherOnly,
@@ -115,21 +113,14 @@ final class Crafter {
                 int count,
                 String purpose,
                 boolean reserve,
-                int doneOrder,
                 Supplier<Map<String, Long>> pool,
                 Supplier<Set<String>> reservedKeys,
                 boolean gatherOnly) {
-            this(item, count, purpose, reserve, doneOrder, pool, reservedKeys, gatherOnly, false);
+            this(item, count, purpose, reserve, pool, reservedKeys, gatherOnly, false);
         }
 
-        Request(
-                String item,
-                int count,
-                String purpose,
-                boolean reserve,
-                int doneOrder,
-                Supplier<Map<String, Long>> pool) {
-            this(item, count, purpose, reserve, doneOrder, pool, Set::of, false, false);
+        Request(String item, int count, String purpose, boolean reserve, Supplier<Map<String, Long>> pool) {
+            this(item, count, purpose, reserve, pool, Set::of, false, false);
         }
     }
 
@@ -157,7 +148,6 @@ final class Crafter {
     private record Spot(Box box, int slot) {}
 
     private static final long TIME_CAP_MS = 10 * 60 * 1000L;
-    private static final long HOUR_MS = 60 * 60 * 1000L;
     private static final int RESULT_WAIT_TICKS = 60;
     private static final int MAX_TAKE_TRIES = 6;
 
@@ -183,10 +173,7 @@ final class Crafter {
 
     // Crafted shulker boxes waiting to be used, by inventory slot, over sessions
     private final Set<Integer> reserved = new LinkedHashSet<>();
-    private int craftedTarget, stamped;
-
-    // The crafts of the last hour (the time of each)
-    private final ArrayDeque<Long> stamps = new ArrayDeque<>();
+    private int craftedTarget;
 
     // The window
     private int stepIdx, craftIdx, fills, resultWait, takeTries, homeStuck, srcSlot = -1;
@@ -287,7 +274,6 @@ final class Crafter {
     void reset() {
         clearSession();
         reserved.clear();
-        stamps.clear();
     }
 
     private void clearSession() {
@@ -306,16 +292,9 @@ final class Crafter {
         layout = null;
         layoutStep = layoutCraft = -1;
         lastTake = crafting = false;
-        craftedTarget = stamped = 0;
+        craftedTarget = 0;
         replans = 0;
         failure = null;
-    }
-
-    /** How many were crafted in the last hour. */
-    int craftedLastHour() {
-        long now = System.currentTimeMillis();
-        while (!stamps.isEmpty() && now - stamps.peekFirst() > HOUR_MS) stamps.pollFirst();
-        return stamps.size();
     }
 
     // Planning
@@ -324,15 +303,11 @@ final class Crafter {
      * Works out a craft without starting it.
      * @return the plan, or a refusal with the reason
      */
-    CraftPlanner.Result preview(String item, int count, int doneOrder, Map<String, Long> pool, boolean ignoreOps) {
+    CraftPlanner.Result preview(String item, int count, Map<String, Long> pool, boolean ignoreOps) {
         Recipes recipes = recipes();
         if (recipes == null) return new CraftPlanner.Result(null, "no recipe table for this version");
-        CraftPlanner.Caps caps = owner.caps();
-        // The caps are for shulker boxes: chests for the delivery storage (and the anvil) only keep the grid fill limit
-        if (!item.equals("minecraft:shulker_box"))
-            caps = new CraftPlanner.Caps(Integer.MAX_VALUE, caps.opsPerTask(), Integer.MAX_VALUE);
-        if (ignoreOps) caps = new CraftPlanner.Caps(caps.perOrder(), Integer.MAX_VALUE, caps.perHour());
-        return CraftPlanner.plan(recipes, item, count, pool, owner.neverUse(), caps, doneOrder, craftedLastHour());
+        CraftPlanner.Caps caps = ignoreOps ? CraftPlanner.Caps.NONE : owner.caps();
+        return CraftPlanner.plan(recipes, item, count, pool, owner.neverUse(), caps);
     }
 
     /** @return null when the session started, else why not */
@@ -352,7 +327,7 @@ final class Crafter {
             snapshotBefore();
             return null;
         }
-        CraftPlanner.Result result = preview(r.item(), r.count(), r.doneOrder(), pool, false);
+        CraftPlanner.Result result = preview(r.item(), r.count(), pool, false);
         if (!result.ok()) return result.refusal();
         clearSession();
         req = r;
@@ -404,7 +379,7 @@ final class Crafter {
         replans++;
         Map<String, Long> pool = new HashMap<>(req.pool().get());
         if (!req.useCarry()) for (var e : carried().entrySet()) pool.merge(e.getKey(), (long) e.getValue(), Long::sum);
-        CraftPlanner.Result result = preview(req.item(), plan.count(), req.doneOrder(), pool, false);
+        CraftPlanner.Result result = preview(req.item(), plan.count(), pool, false);
         if (result.ok()) plan = result.plan();
         else failure = result.refusal();
     }
@@ -727,9 +702,6 @@ final class Crafter {
     /** The table job is over: it went through, or for this reason it did not. */
     void tableEnded(String why) {
         if (!active) return;
-        // Only shulker boxes count towards the hourly cap
-        for (; stamped < craftedTarget; stamped++)
-            if (req != null && req.item().equals("minecraft:shulker_box")) stamps.addLast(System.currentTimeMillis());
         adoptStrays();
         syncHeld();
         if (why != null) {

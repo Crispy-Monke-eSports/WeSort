@@ -842,7 +842,7 @@ final class OrderRunner {
         if (!owner.craftingOn()) return old;
         String blocked = owner.craftBlocker();
         if (blocked != null) return old + "; couldn't craft: " + blocked;
-        var result = owner.crafter().preview(SHULKER_BOX, shortfall, craftedTotal, craftPool(remaining), true);
+        var result = owner.crafter().preview(SHULKER_BOX, shortfall, craftPool(remaining), true);
         if (!result.ok()) return old + "; couldn't craft: " + result.refusal();
         if (result.plan().count() < shortfall)
             return old + "; couldn't craft enough: "
@@ -957,11 +957,6 @@ final class OrderRunner {
         // The try spent on the craft that waited for the table is given back
         if (index >= 0 && index < units.size() && units.get(index).craftTries > 0) units.get(index).craftTries--;
         epoch++;
-    }
-
-    /** Shulker boxes crafted for the order so far. */
-    int crafted() {
-        return craftedTotal;
     }
 
     /** The crafting the sorter ran for the order is over: this many boxes were made, and this is why not more. */

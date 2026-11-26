@@ -134,6 +134,17 @@ final class Users {
             return bots == null || bots.contains(botId);
         }
 
+        /**
+         * Owner-only grants (#26/#43 strict Owner/Member). A sub-user may hold
+         * view/order/activity plus stash/bot scope; ordersAll, guildOrders,
+         * settings, rescan, link and positions belong to the Owner alone.
+         * UserRoutes rejects them on create/update, so custom-perms JSON can
+         * never mint a third role.
+         */
+        boolean elevated() {
+            return ordersAll || guildOrders || settings || rescan || link || positions;
+        }
+
         JsonObject toJson() {
             JsonObject o = new JsonObject();
             o.addProperty("view", view);
@@ -229,15 +240,12 @@ final class Users {
     static final Map<String, Perms> PRESETS;
 
     static {
+        // PR1 (#26/#43): exactly one sub-user profile — Member. Owner is a special
+        // id, not in PRESETS. Elevated grants (ordersAll, guildOrders, settings,
+        // rescan, link, positions) are Owner-only; UserRoutes rejects them for
+        // sub-users, so no custom-perms JSON can mint a third role.
         Map<String, Perms> p = new LinkedHashMap<>();
-        p.put("viewer", Perms.of(true, false, false, false, false, false, false, null, null));
-        p.put("orderer", Perms.of(true, true, false, false, false, false, false, null, null));
-        p.put("member", p.get("orderer"));
-        p.put(
-                "officer",
-                Perms.of(true, true, true, true, false, false, false, null, null)
-                        .withGuildOrders(true));
-        p.put("operator", Perms.of(true, true, true, true, true, true, false, null, null));
+        p.put("member", Perms.of(true, true, false, false, false, false, false, null, null));
         PRESETS = java.util.Collections.unmodifiableMap(p);
     }
 
@@ -380,13 +388,31 @@ final class Users {
                         "positions")) requiredBoolean(persistedPerms, key);
                 if (!persistedPerms.has("stashes") || !persistedPerms.has("bots"))
                     throw new IllegalArgumentException("Missing permission scope");
+                var parsed = Perms.parse(persistedPerms);
+                // Fail-closed for registries written before strict Owner/Member
+                // (#26/#43): stored elevated grants are downgraded to member-level
+                // on load, keeping view/order/activity and scope. The Owner must
+                // explicitly re-decide anything beyond that (which the API refuses).
+                if (parsed.elevated()) {
+                    System.err.println("Downgrading stored elevated permissions to member-level for account " + name);
+                    parsed = Perms.of(
+                            parsed.view(),
+                            parsed.order(),
+                            false,
+                            parsed.activity(),
+                            false,
+                            false,
+                            false,
+                            parsed.stashes(),
+                            parsed.bots());
+                }
                 loaded.put(
                         id,
                         new User(
                                 id,
                                 name,
                                 hash,
-                                Perms.parse(persistedPerms),
+                                parsed,
                                 requiredBoolean(o, "disabled"),
                                 requiredBoolean(o, "mustChange"),
                                 longOf(o, "createdAt"),

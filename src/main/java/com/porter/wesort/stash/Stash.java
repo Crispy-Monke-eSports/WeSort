@@ -216,7 +216,7 @@ public class Stash {
         public int unnamed;
 
         public final List<String> unnamedReasons = new ArrayList<>();
-        /** Shulker boxes crafted for this order so far (the per-order cap and the end message count them). */
+        /** Shulker boxes crafted for this order so far for the completion message. */
         public int crafted;
         /** Manufacturing progress is journalled before any inventory clicks. */
         public int craftIndex, craftMade;

@@ -8,7 +8,7 @@ const fs = require("node:fs");
 const { chromium } = require("playwright");
 
 async function main() {
-  const { url, stash, otherStash, password, members, officer } = JSON.parse(
+  const { url, stash, otherStash, password, members, reviewer } = JSON.parse(
     fs.readFileSync(0, "utf8"),
   );
   void stash;
@@ -231,18 +231,18 @@ async function main() {
         .waitFor();
     }
 
-    // Officer: Operations is available, but guild-wide audit is Owner-only.
-    const reviewer = await login(officer);
-    await reviewer
+    // Member reviewer: Operations is available, but guild-wide audit is Owner-only.
+    const reviewerPage = await login(reviewer);
+    await reviewerPage
       .getByRole("navigation")
       .getByRole("link", { name: "Operations", exact: true })
       .click();
-    await expectHeading(reviewer, "Operations");
+    await expectHeading(reviewerPage, "Operations");
     await expect(
-      reviewer.getByRole("tab", { name: "Order audit" }),
+      reviewerPage.getByRole("tab", { name: "Order audit" }),
     ).toHaveCount(0);
-    await expect(reviewer.locator("#order-audit")).toHaveCount(0);
-    const denied = await reviewer.request.get(url + "/api/v1/audit/orders");
+    await expect(reviewerPage.locator("#order-audit")).toHaveCount(0);
+    const denied = await reviewerPage.request.get(url + "/api/v1/audit/orders");
     assert.equal(denied.status(), 403);
 
     // Owner can audit by person and item, then place a guild order.

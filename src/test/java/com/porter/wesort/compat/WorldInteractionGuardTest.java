@@ -30,6 +30,12 @@ class WorldInteractionGuardTest {
 
     @Test
     void unknownJobNeverAuthorizes() {
+        for (String fallback : new String[] {null, "", " ", "unknown"}) {
+            String job = WorldInteractionGuard.jobTag(null, null, fallback, 3, "lease");
+            assertEquals("unknown", job);
+            assertFalse(WorldInteractionGuard.useDecision(job, true, true, true, true));
+            assertFalse(WorldInteractionGuard.breakDecision(job, true, true));
+        }
         assertFalse(WorldInteractionGuard.useDecision("unknown", true, true, true, true));
         assertFalse(WorldInteractionGuard.useDecision("", true, true, true, true));
         assertFalse(WorldInteractionGuard.useDecision(null, true, true, true, true));
@@ -38,12 +44,27 @@ class WorldInteractionGuardTest {
 
     @Test
     void repackJobTagDoesNotChangeWhenManagerTransportStatusFlaps() {
-        String before = WorldInteractionGuard.jobTag(null, "physical-123", "online");
-        String after = WorldInteractionGuard.jobTag(null, "physical-123", "awaiting server inventory");
+        String before = WorldInteractionGuard.jobTag(null, "physical-123", "online", -1, null);
+        String after = WorldInteractionGuard.jobTag(null, "physical-123", "awaiting server inventory", -1, null);
         assertEquals("repack:physical-123", before);
         assertEquals(before, after);
-        assertNotEquals(after, WorldInteractionGuard.jobTag(null, "physical-456", "online"));
-        assertEquals("order-1", WorldInteractionGuard.jobTag("order-1", "physical-123", "online"));
+        assertNotEquals(after, WorldInteractionGuard.jobTag(null, "physical-456", "online", -1, null));
+        assertEquals("order-1", WorldInteractionGuard.jobTag("order-1", "physical-123", "online", -1, null));
+    }
+
+    @Test
+    void jobTagBindsDirectiveRevisionAndLease() {
+        // Same work, no rotation: stable identity (no flapping).
+        assertEquals("order-1@d3@labc", WorldInteractionGuard.jobTag("order-1", "physical-123", "online", 3, "abc"));
+        // A rotated directive or lease invalidates live permits.
+        assertNotEquals(
+                WorldInteractionGuard.jobTag("order-1", null, "online", 3, "abc"),
+                WorldInteractionGuard.jobTag("order-1", null, "online", 4, "abc"));
+        assertNotEquals(
+                WorldInteractionGuard.jobTag("order-1", null, "online", 3, "abc"),
+                WorldInteractionGuard.jobTag("order-1", null, "online", 3, "def"));
+        // Undirected / leaseless sessions keep the plain tag.
+        assertEquals("order-1", WorldInteractionGuard.jobTag("order-1", null, "online", -1, null));
     }
 
     @Test

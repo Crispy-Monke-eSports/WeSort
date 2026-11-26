@@ -1537,6 +1537,7 @@ final class OrderStore {
             step.addProperty("item", l.key());
             step.addProperty("count", l.count());
             step.addProperty("recipeVersion", CraftingCatalog.VERSION);
+            step.addProperty("recipeDigest", CraftingCatalog.RECIPES.digest());
             step.add("materials", Json.GSON.toJsonTree(preview.plan().take()));
             var recipeSteps = new JsonArray();
             for (var one : preview.plan().steps()) {

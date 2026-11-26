@@ -868,6 +868,10 @@ final class OrderRunner {
     }
 
     /** Only the server-reserved ingredient budget can be used for this recipe. */
+    CraftPlanner.Plan approvedCraftPlan() {
+        return order.craftJobs.get(craftIndex).plan();
+    }
+
     Map<String, Long> manufacturingPool() {
         if (!manufacturing()) return Map.of();
         Order.CraftJob job = order.craftJobs.get(craftIndex);

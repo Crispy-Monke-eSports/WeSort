@@ -5206,16 +5206,18 @@ public class StashSorter extends Module {
                     default -> {}
                 }
             }
-            String why = crafter.begin(new Crafter.Request(
-                    item,
-                    craft.count(),
-                    "order " + orderRunner.orderId(),
-                    !manufacturing,
-                    manufacturing ? 0 : orderRunner.crafted(),
-                    pool,
-                    orderRunner::lotKeys,
-                    false,
-                    manufacturing && orderRunner.manufacturingHasProgress()));
+            String why = crafter.begin(
+                    new Crafter.Request(
+                            item,
+                            craft.count(),
+                            "order " + orderRunner.orderId(),
+                            !manufacturing,
+                            manufacturing ? 0 : orderRunner.crafted(),
+                            pool,
+                            orderRunner::lotKeys,
+                            false,
+                            manufacturing && orderRunner.manufacturingHasProgress()),
+                    manufacturing ? orderRunner.approvedCraftPlan() : null);
             if (why != null) {
                 orderRunner.craftEnded(new Crafter.Outcome(item, 0, why));
                 return false;

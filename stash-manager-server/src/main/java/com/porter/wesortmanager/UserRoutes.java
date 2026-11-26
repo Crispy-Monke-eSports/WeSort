@@ -120,6 +120,9 @@ final class UserRoutes {
         try {
             perms = perms(o);
             if (perms == null) perms = Users.PRESETS.get("member");
+            if (perms.elevated())
+                throw new IllegalArgumentException(
+                        "sub-users are members: ordersAll, guildOrders, settings, rescan, link and positions are Owner-only");
             mustChange = optBool(o, "mustChange");
         } catch (IllegalArgumentException e) {
             Http.error(ex, 400, e.getMessage());
@@ -185,6 +188,16 @@ final class UserRoutes {
                 perms = perms.withPositions(before.perms().positions());
             if (!sent.has("stashes")) perms = perms.withStashes(before.perms().stashes());
             if (!sent.has("bots")) perms = perms.withBots(before.perms().bots());
+        }
+        // Strict Owner/Member (#26/#43): the merged result must also be
+        // member-level. A legacy elevated grant survives only until the Owner
+        // touches it — any update carrying it is refused, forcing a downgrade.
+        if (perms != null && perms.elevated()) {
+            Http.error(
+                    ex,
+                    400,
+                    "sub-users are members: ordersAll, guildOrders, settings, rescan, link and positions are Owner-only");
+            return;
         }
         Users.User u;
         int ended = 0;

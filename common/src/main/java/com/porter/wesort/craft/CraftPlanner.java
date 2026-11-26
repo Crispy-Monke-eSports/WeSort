@@ -139,7 +139,7 @@ public final class CraftPlanner {
         }
         if (ok) {
             int ops = 0;
-            for (Step s : run.steps) ops += s.ops();
+            for (Step s : run.steps) ops = Math.addExact(ops, s.ops());
             if (ops > caps.opsPerTask()) {
                 ok = false;
                 run.fail(CAP_REACHED + " (" + ops + " grid fills, at most " + caps.opsPerTask() + " a task)");
@@ -173,42 +173,34 @@ public final class CraftPlanner {
             stock.putAll(pool);
         }
 
-        /** A snapshot of what a try changes. */
-        record Mark(
-                Map<String, Long> stock,
-                Map<String, Long> spare,
-                Map<String, Integer> take,
-                List<Step> steps,
-                int nodes,
-                String reason) {}
+        final List<Runnable> changes = new ArrayList<>();
+
+        record Mark(int changeCount, int stepCount, Step lastStep, int nodes, String reason) {}
 
         Mark mark() {
-            return new Mark(
-                    new HashMap<>(stock),
-                    new HashMap<>(spare),
-                    new LinkedHashMap<>(take),
-                    new ArrayList<>(steps),
-                    nodes,
-                    reason);
+            return new Mark(changes.size(), steps.size(), steps.isEmpty() ? null : steps.getLast(), nodes, reason);
         }
 
-        /** Goes back to a snapshot but keeps what was learnt about why it failed. */
-        void undo(Mark m) {
+        private <T> void put(Map<String, T> map, String key, T value) {
+            T previous = map.put(key, value);
+            changes.add(() -> {
+                if (previous == null) map.remove(key);
+                else map.put(key, previous);
+            });
+        }
+
+        void undo(Mark mark) {
             String why = reason;
-            restore(m);
+            restore(mark);
             reason = why;
         }
 
-        void restore(Mark m) {
-            stock.clear();
-            stock.putAll(m.stock);
-            spare.clear();
-            spare.putAll(m.spare);
-            take.clear();
-            take.putAll(m.take);
-            steps = new ArrayList<>(m.steps);
-            nodes = m.nodes;
-            reason = m.reason;
+        void restore(Mark mark) {
+            while (changes.size() > mark.changeCount()) changes.removeLast().run();
+            steps.subList(mark.stepCount(), steps.size()).clear();
+            if (mark.lastStep() != null) steps.set(mark.stepCount() - 1, mark.lastStep());
+            nodes = mark.nodes();
+            reason = mark.reason();
         }
 
         /** Notes why it can't be done; a specific reason is kept over the general one. */
@@ -262,8 +254,9 @@ public final class CraftPlanner {
                 boolean ok = true;
                 // Added up over all cells and crafts, then rounded: every group of cells with the same alternatives is
                 // one need
-                for (Map.Entry<List<String>, Integer> g : r.groups().entrySet()) {
-                    if (!satisfy(g.getKey(), (long) g.getValue() * crafts, depth + 1)) {
+                var groups = r.groups();
+                for (var group : CraftIngredientPolicy.orderGroupsNarrowestFirst(List.copyOf(groups.keySet()))) {
+                    if (!satisfy(group, Math.multiplyExact((long) groups.get(group), crafts), depth + 1)) {
                         ok = false;
                         break;
                     }
@@ -273,7 +266,7 @@ public final class CraftPlanner {
                     nodes++;
                     addStep(r, crafts);
                     long made = (long) crafts * r.count() - left;
-                    if (made > 0) spare.merge(item, made, Math::addExact);
+                    if (made > 0) put(spare, item, Math.addExact(spare.getOrDefault(item, 0L), made));
                     return true;
                 }
                 undo(before);
@@ -284,14 +277,14 @@ public final class CraftPlanner {
         void addStep(Recipes.Recipe r, int crafts) {
             if (!steps.isEmpty() && steps.get(steps.size() - 1).recipe() == r) {
                 Step last = steps.remove(steps.size() - 1);
-                steps.add(new Step(r, last.crafts() + crafts));
+                steps.add(new Step(r, Math.addExact(last.crafts(), crafts)));
             } else steps.add(new Step(r, crafts));
         }
 
         long useSpare(String item, long want) {
             long have = spare.getOrDefault(item, 0L);
             long got = Math.min(have, want);
-            if (got > 0) spare.put(item, have - got);
+            if (got > 0) put(spare, item, have - got);
             return Math.max(0, got);
         }
 
@@ -299,10 +292,10 @@ public final class CraftPlanner {
             long have = stock.getOrDefault(item, 0L);
             long got = Math.min(have, want);
             if (got > 0) {
-                stock.put(item, have - got);
+                put(stock, item, have - got);
                 // PR9 (#232/#268): take stays int-keyed for the wire format; fail
                 // closed instead of silently truncating counts above int range.
-                take.merge(item, Math.toIntExact(got), Math::addExact);
+                put(take, item, Math.addExact(take.getOrDefault(item, 0), Math.toIntExact(got)));
             }
             return Math.max(0, got);
         }
@@ -310,7 +303,7 @@ public final class CraftPlanner {
         /** Any of the alternatives, {@code qty} in all: stock first (the most abundant first), then crafted. */
         boolean satisfy(List<String> alts, long qty, int depth) {
             List<String> ranked = new ArrayList<>();
-            for (String a : alts) if (!never.contains(a)) ranked.add(a);
+            for (String a : alts) if (!never.contains(a) && !CraftIngredientPolicy.isForbiddenId(a)) ranked.add(a);
             if (ranked.isEmpty()) {
                 fail(NOT_ENOUGH);
                 return false;

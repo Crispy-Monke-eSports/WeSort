@@ -216,10 +216,10 @@ public final class WeSortManager {
                                     System.err.println("Could not audit handoff sweep: " + auditFailure.getMessage());
                                 }
                             }
-                            for (String requeued : built.jobs().sweepStaleUncertain(System.currentTimeMillis())) {
-                                System.err.println(requeued);
+                            for (String quarantined : built.jobs().sweepStaleUncertain(System.currentTimeMillis())) {
+                                System.err.println(quarantined);
                                 try {
-                                    audit.add("system", "system", "job.auto-requeue", requeued, "scheduler");
+                                    audit.add("system", "system", "job.quarantined", quarantined, "scheduler");
                                 } catch (RuntimeException auditFailure) {
                                     System.err.println("Could not audit job sweep: " + auditFailure.getMessage());
                                 }

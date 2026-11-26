@@ -18,7 +18,8 @@ class BoxUuidRegistryTest {
     private static final String OTHER = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
 
     private static String namedComponents(String name) {
-        return "{\"type\":10,\"value\":{\"minecraft:custom_name\":{\"type\":8,\"value\":\"\\\"" + name + "\\\"\"}}}";
+        return "{\"minecraft:custom_name\":\"" + name
+                + "\",\"minecraft:container\":[{slot:26,item:{id:\"minecraft:diamond\",count:32}}]}";
     }
 
     private static PhysicalSlots.Snapshot frame(String boxName) {
@@ -54,7 +55,6 @@ class BoxUuidRegistryTest {
         root.addProperty("receivedAt", System.currentTimeMillis());
         root.addProperty("server", "s");
         root.addProperty("stash", "a");
-        var writer = new PhysicalSlots.Writer();
         var sources = new JsonArray();
         for (int i = 0; i < names.length; i++) {
             var frame = frame(names[i]);
@@ -80,7 +80,7 @@ class BoxUuidRegistryTest {
             source.addProperty("baseRevision", ledger.revision());
             source.addProperty("observedAt", System.currentTimeMillis());
             source.addProperty("fingerprint", frame.fingerprint());
-            source.add("slots", writer.slots(frame.slots()));
+            source.addProperty("snbt", frame.snbt());
             source.add("items", amounts(frame.totals()));
             source.add("shulkers", amounts(frame.shulkers()));
             sources.add(source);
@@ -88,8 +88,7 @@ class BoxUuidRegistryTest {
         root.add("items", new JsonArray());
         root.add("shulkers", new JsonArray());
         root.add("physicalSources", sources);
-        root.addProperty("physicalVersion", 2);
-        root.add("slotVariants", writer.variants());
+        root.addProperty("physicalVersion", 3);
         return root;
     }
 
@@ -154,18 +153,18 @@ class BoxUuidRegistryTest {
         assertTrue(blocked.available(Set.of(), null, true).isEmpty());
         ledger.accept(indexes(ledger, new String[] {"WeSort-" + V4, null, "Personal box"}, new int[] {0, 1, 2}));
         var resolved = PhysicalReservations.read(ledger, "s", "a");
-        assertEquals(64L, resolved.available(Set.of()).get("item:minecraft:diamond"));
+        assertEquals(32L, resolved.available(Set.of()).get("item:minecraft:diamond"));
     }
 
     @Test
-    void deregisteredUuidMovesToHistoryAndIsRegisteredAgainWhenSeen() throws Exception {
+    void deregisteredUuidStaysRetiredWhenSeenAgain() throws Exception {
         var ledger = new StockLedger(data);
         var index = indexes(ledger, new String[] {"WeSort-" + V4}, new int[] {0});
         ledger.accept(index);
         String id = sourceId(index);
         var repo = new OrderBookRepository(ledger);
         var book = JsonParser.parseString(
-                        "{\"server\":\"s\",\"stash\":\"a\",\"orders\":[{\"id\":\"o-1\",\"history\":[{\"action\":\"staged\"}]}]}")
+                        "{\"server\":\"s\",\"stash\":\"a\",\"orders\":[{\"id\":\"o-1\",\"history\":[{\"action\":\"staged\",\"at\":1,\"actor\":\"agent\"}]}]}")
                 .getAsJsonObject();
         var release = new StockLedger.BoxRelease(Set.of(new PhysicalReservations.Root(id, "0")), Set.of(V4));
         try (var c = ledger.open();
@@ -185,13 +184,11 @@ class BoxUuidRegistryTest {
         assertEquals(
                 "DEREGISTERED_FOR_ORDER",
                 ledger.boxUuidHistory().get(0).getAsJsonObject().get("reason").getAsString());
-        // The same box found again in a chest keeps its UUID: historical UUIDs are registered again.
         ledger.accept(indexes(ledger, new String[] {"WeSort-" + V4}, new int[] {0}));
-        assertEquals(1, ledger.boxUuids().size());
+        assertTrue(ledger.boxUuids().isEmpty());
+        assertTrue(PhysicalReservations.read(ledger, "s", "a").available(Set.of()).isEmpty());
         assertEquals(
-                id, ledger.boxUuids().get(0).getAsJsonObject().get("source").getAsString());
-        assertEquals(
-                "REGISTERED",
+                "DUPLICATE",
                 ledger.boxIdentities(id)
                         .get(0)
                         .getAsJsonObject()
@@ -298,15 +295,13 @@ class BoxUuidRegistryTest {
         source.addProperty("baseRevision", ledger.revision());
         source.addProperty("observedAt", System.currentTimeMillis());
         source.addProperty("fingerprint", snapshot.fingerprint());
-        var writer = new PhysicalSlots.Writer();
-        source.add("slots", writer.slots(snapshot.slots()));
+        source.addProperty("snbt", snapshot.snbt());
         source.add("items", amounts(snapshot.totals()));
         source.add("shulkers", amounts(snapshot.shulkers()));
         var sources = new JsonArray();
         sources.add(source);
         root.add("physicalSources", sources);
-        root.addProperty("physicalVersion", 2);
-        root.add("slotVariants", writer.variants());
+        root.addProperty("physicalVersion", 3);
         ledger.accept(root);
         var identities = new TreeMap<>(Map.of("0", "", "1", ""));
         for (var b : ledger.boxIdentities(identity.id()))

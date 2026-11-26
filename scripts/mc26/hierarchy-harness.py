@@ -32,12 +32,20 @@ class HierarchyHarness(stock.StockHarness):
         world.Harness.fixture(self)
         if self.remote_settings:
             self.rcon.command('setblock 6 64 -3 minecraft:chest')
-        box = 'minecraft:shulker_box[minecraft:custom_name={text:"Hierarchy box"},minecraft:container=[{slot:0,item:{id:"minecraft:diamond",count:32}},{slot:13,item:{id:"minecraft:bundle",count:1,components:{"minecraft:bundle_contents":[{id:"minecraft:iron_ingot",count:8}]}}},{slot:26,item:{id:"minecraft:diamond_sword",count:1,components:{"minecraft:damage":7,"minecraft:custom_name":{text:"Exact sword"},"minecraft:enchantments":{"minecraft:unbreaking":2}}}}]]'
-        for command in [
-            f'item replace block 0 64 -3 container.0 with {box} 1',
-            f'item replace block 0 64 -3 container.20 with {box} 1',
-            f'item replace block 6 64 -3 container.0 with {box} 1',
-        ]:
+        # #67/#276 mandatory UUID policy, no opt-out: every managed root box carries
+        # a physically verified WeSort-<UUID> name. The three fixture boxes share
+        # identical contents but distinct identities (the content group key stays
+        # shared; only the root fingerprint differs by UUID name).
+        uuids = ['WeSort-550e8400-e29b-41d4-a716-446655440011',
+                 'WeSort-550e8400-e29b-41d4-a716-446655440022',
+                 'WeSort-550e8400-e29b-41d4-a716-446655440033']
+        template = ('minecraft:shulker_box[minecraft:custom_name={text:"BOX_NAME"},minecraft:container=['
+            '{slot:0,item:{id:"minecraft:diamond",count:32}},'
+            '{slot:13,item:{id:"minecraft:bundle",count:1,components:{"minecraft:bundle_contents":[{id:"minecraft:iron_ingot",count:8}]}}},'
+            '{slot:26,item:{id:"minecraft:diamond_sword",count:1,components:{"minecraft:damage":7,"minecraft:custom_name":{text:"Exact sword"},"minecraft:enchantments":{"minecraft:unbreaking":2}}}}]]')
+        for box, (x, slot) in zip(
+                [template.replace('BOX_NAME', u) for u in uuids], [(0, 0), (0, 20), (6, 0)]):
+            command = f'item replace block {x} 64 -3 container.{slot} with {box} 1'
             reply = self.rcon.command(command)
             require('replaced' in reply.lower(), 'Native hierarchy fixture rejected: ' + reply)
         if self.reservations:
@@ -50,7 +58,7 @@ class HierarchyHarness(stock.StockHarness):
                 require('replaced' in reply.lower(), 'UUID quarantine fixture rejected: ' + reply)
         # Keep this hierarchy scenario bounded; the general world/scanning suite owns the ten-chest matrix.
         self.rcon.command('fill 0 64 3 29 64 3 minecraft:air')
-        self.ok('three identical named shulkers in distinct slots/containers with nested bundle and exact named enchanted damaged sword')
+        self.ok('three UUID-marked shulkers with identical contents in distinct slots/containers, nested bundle and exact named enchanted damaged sword')
 
     def read(self, x, item='minecraft:shulker_box', count=1):
         self.teleport(x + 0.5, -1.5)
@@ -100,6 +108,11 @@ class HierarchyHarness(stock.StockHarness):
         self.ok('same live 26.3 shulker roots cannot be reserved as both whole boxes and child stock; sorting lease refused and cancellation restored availability')
 
     def verify_guild(self):
+        # Strict Owner/Member (#26/#43 full implementation): exactly two identities.
+        # Owner administers; Members read shared stock and place/follow only their own
+        # SELF orders. No officer/viewer/operator presets and no guild-order or
+        # ordersAll grants for sub-users -- only the Owner places GUILD orders and
+        # cancels others. Rejected legacy presets prove fail-closed behavior.
         owner = self.browser
         password = secrets.token_urlsafe(32)
         users = {}
@@ -112,10 +125,10 @@ class HierarchyHarness(stock.StockHarness):
         })
         require(status == 200, 'Owner could not edit the guild profile')
         try:
-            for name, role in [('Builder', 'member'), ('Quartermaster', 'officer'), ('Observer', 'viewer')]:
+            for name in ['Builder', 'Miner']:
                 self.browser = owner
                 status, created = self.http('/api/v1/users', {
-                    'name': name, 'password': password, 'preset': role, 'mustChange': False,
+                    'name': name, 'password': password, 'preset': 'member', 'mustChange': False,
                 })
                 require(status == 200, 'Owner could not provision the test member')
                 identities[name] = created['user']['id']
@@ -124,42 +137,63 @@ class HierarchyHarness(stock.StockHarness):
                 require(status == 200, 'Test member could not log in')
                 users[name] = self.browser
                 require(self.http('/api/v1/guild') == (200, guild), 'Member read a different guild profile')
-            self.browser = users['Observer']
-            status, rows = self.http('/api/v1/stock')
-            require(status == 200 and self.amount(rows, 'minecraft:diamond', 'observed') == 96,
-                    'Viewer did not observe the actual shared Minecraft stock')
-            require(not rows['sources'], 'Viewer saw physical stock locations')
+            # Legacy presets must fail closed: no officer/viewer/operator roles exist.
+            self.browser = owner
+            for legacy in ['officer', 'viewer', 'operator']:
+                status, _ = self.http('/api/v1/users', {
+                    'name': 'Legacy' + legacy, 'password': password, 'preset': legacy, 'mustChange': False,
+                })
+                require(status == 400, 'Legacy preset ' + legacy + ' was not rejected')
+            for name in ['Builder', 'Miner']:
+                self.browser = users[name]
+                status, rows = self.http('/api/v1/stock')
+                require(status == 200 and self.amount(rows, 'minecraft:diamond', 'observed') == 96,
+                        'Member did not observe the actual shared Minecraft stock')
+                require(not rows['sources'], 'Member saw physical stock locations')
             draft = {'server': self.server_name, 'stash': 'e2e-fixture',
                      'lines': [{'type': 'item', 'key': 'minecraft:diamond', 'count': 1}]}
-            require(self.http('/api/v1/orders', draft)[0] == 403, 'Viewer could order stock')
             self.browser = users['Builder']
             status, self_order = self.http('/api/v1/orders', draft)
             require(status == 200 and self_order['order']['purpose'] == 'SELF'
                     and self_order['order']['requestedBy'] == identities['Builder'],
                     'Member order did not record its independent requester')
+            self.browser = users['Miner']
+            status, miner_order = self.http('/api/v1/orders', draft)
+            require(status == 200 and miner_order['order']['requestedBy'] == identities['Miner'],
+                    'Second member could not place its own SELF order')
             guild_draft = dict(draft, purpose='GUILD', comment='Projekt Å')
             require(self.http('/api/v1/orders', guild_draft)[0] == 403, 'Member bypassed the guild order permission')
-            self.browser = users['Quartermaster']
+            self.browser = users['Builder']
+            require(self.http('/api/v1/orders', guild_draft)[0] == 403, 'Member bypassed the guild order permission')
+            # Guild orders are Owner-only under the strict model.
+            self.browser = owner
             status, guild_order = self.http('/api/v1/orders', guild_draft)
-            require(status == 200 and guild_order['order']['organizationId'] == guild['id']
-                    and guild_order['order']['requestedBy'] == identities['Quartermaster'],
-                    'Guild order did not reserve stock under the common organisation')
+            require(status == 200 and guild_order['order']['organizationId'] == guild['id'],
+                    'Owner could not place the guild order under the common organisation')
             query = urllib.parse.urlencode({'server': self.server_name, 'stash': 'e2e-fixture'})
             self.browser = users['Builder']
             status, history = self.http('/api/v1/orders?' + query)
             require(status == 200 and [order['id'] for order in history['orders']] == [self_order['order']['id']],
                     'Member order history included another requester')
             require('allocations' not in history['orders'][0], 'Member read physical order allocations')
+            # Members cannot cancel each other's orders; only the Owner can.
+            require(self.http('/api/v1/orders/' + miner_order['order']['id'] + '/cancel', {})[0] == 403,
+                    'Member cancelled another member order')
             self.browser = owner
+            require(self.http('/api/v1/orders/' + miner_order['order']['id'] + '/cancel', {})[0] == 200,
+                    'Owner could not cancel a member order')
             require(self.http('/api/v1/users/' + identities['Builder'], {'disabled': True})[0] == 200,
                     'Owner could not revoke membership')
-            self.browser = users['Quartermaster']
+            self.browser = users['Miner']
+            status, history = self.http('/api/v1/orders?' + query)
+            require(status == 200, 'Remaining member lost access after an unrelated revocation')
             for order in [self_order, guild_order]:
+                self.browser = owner
                 require(self.http('/api/v1/orders/' + order['order']['id'] + '/cancel', {})[0] == 200,
-                        'Officer lost control of a member order')
+                        'Owner lost control of an order')
         finally:
             self.browser = owner
-        self.ok('one real Fabric agent feeds a shared Docker guild stock; member, officer and viewer roles and recipient-independent order identity verified')
+        self.ok('one real Fabric agent feeds a shared Docker guild stock; strict Owner/Member with independent SELF order identity verified')
 
     def verify_order_lifecycle(self, row):
         self.rcon.command('setblock 8 64 -3 minecraft:chest')
@@ -247,7 +281,7 @@ class HierarchyHarness(stock.StockHarness):
 
             self.wait(pause_visible, 'Warehouse pause did not reach Manager heartbeat')
             require(lookup(ident)['state'] == 'RESERVED', 'Paused agent took a new order')
-            require('Hierarchy box' not in self.rcon.command('data get block 8 64 -3 Items'),
+            require('WeSort-550e8400-e29b-41d4-a716-4466554400' not in self.rcon.command('data get block 8 64 -3 Items'),
                     'Paused agent moved a package')
             self.apply_remote_setting('order-intake-paused', False)
             self.ok('signed warehouse pause keeps a new physical order reserved until Manager resumes the same agent')
@@ -258,7 +292,7 @@ class HierarchyHarness(stock.StockHarness):
                       (self.evidence / 'client.log').read_text(), 'Packing agent did not receive its signed staging manifest')
             require(lookup(ident).get('manifestAcknowledgedAt', 0) > 0, 'Manager did not save the signed manifest acknowledgement')
         stored = self.rcon.command('data get block 8 64 -3 Items')
-        require(stored.count('Hierarchy box') == 1 and 'Exact sword' in stored, 'Pickup-ready package differs from the expected single shulker')
+        require(stored.count('WeSort-550e8400-e29b-41d4-a716-4466554400') == 1 and 'Exact sword' in stored, 'Pickup-ready package differs from the expected single shulker')
         status, audit = self.http('/api/v1/audit/orders?order=' + ident)
         require(status == 200 and len(audit['orders']) == 1, 'Owner could not find the staged order in the audit')
         traced = audit['orders'][0]
@@ -282,7 +316,7 @@ class HierarchyHarness(stock.StockHarness):
                           (self.evidence / 'client.log').read_text(), 'Agent did not receive the approved order manifest')
                 require(lookup(approved_order).get('manifestAcknowledgedAt', 0) > 0, 'Approved order has no durable manifest acknowledgement')
             stored = self.rcon.command('data get block 8 64 -3 Items')
-            require(stored.count('Hierarchy box') == 2 and stored.count('Exact sword') == 2,
+            require(stored.count('WeSort-550e8400-e29b-41d4-a716-4466554400') == 2 and stored.count('Exact sword') == 2,
                     'Expected exactly two independently staged shulkers')
             self.ok('one Minecraft 26.3 agent stages SELF directly and GUILD after auditable approval from shared physical stock')
 
@@ -470,7 +504,9 @@ class HierarchyHarness(stock.StockHarness):
             require('changed' in removed.lower(), 'Failed to clear the one-off menu fixture')
             before = {str(x): self.rcon.command(f'data get block {x} 64 -3 Items') for x in [0, 6]}
             initial = self.command('state')['state']['index']
-            require(initial['physicalVersion'] == 2 and initial['slotVariants'], 'Actual client omitted physical tree')
+            require(initial['physicalVersion'] == 3 and 'slotVariants' not in initial
+                    and all(isinstance(s.get('snbt'), str) for s in initial['physicalSources'] if s['state'] == 'FRESH'),
+                    'Actual client omitted canonical SNBT physical tree')
             self.server_name = initial['server']
             self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key)
             observed = self.wait(lambda s: all((row := self.source(s, x, -3)) is not None and row['state'] == 'FRESH' for x in [0, 6]), 'Native hierarchy did not reach Manager')
@@ -484,9 +520,20 @@ class HierarchyHarness(stock.StockHarness):
                 self.verify_reservations(a, before)
             if self.guild:
                 self.verify_guild()
+            for detail in (a, b):
+                frame = next(s for s in initial['physicalSources'] if s['id'] == detail['id'])
+                require(detail.get('snapshotSnbt') == frame['snbt'],
+                        'Manager readback differs from exact canonical SNBT sent by native client')
+            self.ok('Manager reads exact canonical SNBT from persisted snapshot after native signed sync')
             positions = {row['path']: row for row in a['snapshot']['positions']}
             other = {row['path']: row for row in b['snapshot']['positions']}
-            require(positions['0']['fingerprint'] == positions['20']['fingerprint'] == other['0']['fingerprint'], 'Identical box contents differ by physical location')
+            require(positions['0']['group'] == positions['20']['group'] == other['0']['group'],
+                    'Identical box contents do not share one content group key')
+            require(positions['0/0']['fingerprint'] == positions['20/0']['fingerprint'] == other['0/0']['fingerprint']
+                    and positions['0/13']['fingerprint'] == positions['20/13']['fingerprint'] == other['0/13']['fingerprint'],
+                    'Identical nested contents differ by physical location')
+            require(len({positions['0']['fingerprint'], positions['20']['fingerprint'], other['0']['fingerprint']}) == 3,
+                    'Distinct UUID boxes must keep distinct root fingerprints')
             require(a['id'] != b['id'] and positions['0']['path'] != positions['20']['path'], 'Identical box locations collided')
             require(positions['0/26']['slot'] == 26 and positions['0']['size'] == 27 and 'Exact sword' in positions['0/26']['components']
                 and 'minecraft:damage' in positions['0/26']['components'] and 'minecraft:enchantments' in positions['0/26']['components'], 'Sparse exact metadata was lost')

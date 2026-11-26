@@ -539,3 +539,5 @@ leases, stock reservations and order reconciliation must survive process
 failure. An unknown physical outcome must remain blocked as
 `NEEDS_RECONCILIATION` until server-observed state permits safe progress.
 The transactional persistence refactor is tracked in #140.
+
+For signed index uploads with physicalSources, physicalVersion must be 3. A fresh source contains its complete canonical SNBT in `snbt`. Unverified sources use JSON null. The Manager verifies the snapshot digest, capacity and derived quantities before committing. The version 2 slot dictionary is rejected.

@@ -2,7 +2,6 @@ package com.porter.wesort.compat;
 
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
-import com.google.gson.*;
 import com.porter.wesort.data.KitTemplate;
 import com.porter.wesort.stash.Kit;
 import java.util.Arrays;
@@ -29,10 +28,7 @@ public final class KitRuntime {
                 throw new IllegalArgumentException("Unknown Minecraft 26.3 item in template");
             var stack = new ItemStack(BuiltInRegistries.ITEM.getValue(id), slot.count());
             var patch = DataComponentPatch.CODEC
-                    .parse(
-                            ops,
-                            NbtFingerprint.decode(
-                                    JsonParser.parseString(slot.item().components())))
+                    .parse(ops, NbtFingerprint.decode(slot.item().components()))
                     .getOrThrow();
             stack.applyComponentsAndValidate(patch);
             layout[slot.slot()] = stack;

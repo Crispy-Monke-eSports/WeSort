@@ -212,6 +212,8 @@ final class StockLedger {
                     s.execute(
                             "CREATE INDEX IF NOT EXISTS stock_members_present ON stock_members(server,stash,present)");
                     s.execute("CREATE INDEX IF NOT EXISTS physical_slots_present ON physical_slots(source,present)");
+                    s.execute("CREATE INDEX IF NOT EXISTS stock_parts_source ON stock_parts(source)");
+                    s.execute("CREATE INDEX IF NOT EXISTS stock_members_source_present ON stock_members(source,present)");
                     s.execute("PRAGMA user_version=9");
                     var interruptedServers = new ArrayList<String>();
                     try (var leases = s.executeQuery("SELECT server FROM automation_leases WHERE state='ACTIVE'")) {
@@ -671,7 +673,10 @@ final class StockLedger {
                     p.setString(8, verifiedRun);
                     p.executeUpdate();
                 }
-                if (fresh) saveSlots(c, id, snapshot, sourceRevision);
+                boolean sameContent = snapshot != null && previous != null
+                        && source.get("slotFingerprint").equals(previous.get("slotFingerprint"))
+                        && source.get("slotSchema").equals(previous.get("slotSchema"));
+                if (fresh && !sameContent) saveSlots(c, id, snapshot, sourceRevision);
                 if (snapshot != null && fresh) collectObservedBoxUuids(snapshot, id, freshBoxes);
                 for (var item : source.getAsJsonArray("parts")) {
                     var pos = item.getAsJsonArray();
@@ -1341,18 +1346,12 @@ final class StockLedger {
         try (var c = open();
                 var s = c.createStatement();
                 var r = s.executeQuery(
-                        "SELECT s.server,m.stash,CASE WHEN m.present=1 THEN s.payload ELSE m.payload END,CASE WHEN m.present=1 THEN s.revision ELSE m.revision END,CASE WHEN m.present=1 THEN s.verified_at ELSE m.verified_at END,s.run,(SELECT count(*) FROM stock_members m2 WHERE m2.source=s.id AND m2.present=1),s.id,m.present FROM stock_sources s JOIN stock_members m ON m.source=s.id WHERE m.present=1 OR NOT EXISTS(SELECT 1 FROM stock_members active WHERE active.source=s.id AND active.present=1) ORDER BY s.id,m.present DESC,CASE WHEN m.present=1 THEN s.revision ELSE m.revision END DESC,m.stash")) {
+                        "SELECT s.server,m.stash,CASE WHEN m.present=1 THEN s.payload ELSE m.payload END,CASE WHEN m.present=1 THEN s.revision ELSE m.revision END,CASE WHEN m.present=1 THEN s.verified_at ELSE m.verified_at END,s.run,(SELECT count(*) FROM stock_members m2 WHERE m2.source=s.id AND m2.present=1),s.id,m.present,(SELECT count(*) FROM stock_parts p WHERE p.source=s.id) FROM stock_sources s JOIN stock_members m ON m.source=s.id WHERE m.present=1 OR NOT EXISTS(SELECT 1 FROM stock_members active WHERE active.source=s.id AND active.present=1) ORDER BY s.id,m.present DESC,CASE WHEN m.present=1 THEN s.revision ELSE m.revision END DESC,m.stash")) {
             while (r.next()) {
                 var value = JsonParser.parseString(r.getString(3)).getAsJsonObject();
                 String state = value.get("state").getAsString();
                 long at = effectiveNow(r.getString(1), now, r.getLong(5));
-                int activeParts = 0;
-                try (var p = c.prepareStatement("SELECT count(*) FROM stock_parts WHERE source=?")) {
-                    p.setString(1, r.getString(8));
-                    try (var n = p.executeQuery()) {
-                        if (n.next()) activeParts = n.getInt(1);
-                    }
-                }
+                int activeParts = r.getInt(10);
                 if (activeParts != value.getAsJsonArray("parts").size()) state = "SUPERSEDED";
                 else if (value.has("protected") && value.get("protected").getAsBoolean()) state = "PROTECTED";
                 else if (r.getInt(9) == 0) state = "WITHDRAWN";

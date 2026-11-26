@@ -205,21 +205,18 @@ public final class PhysicalSlots {
         }
 
         public Map<String, Long> totals() {
-            Map<String, Long> totals = new TreeMap<>();
+            var totals = new QuantityCounter();
             for (Located position : located)
-                totals.merge(
-                        position.stack.item.key(),
-                        Math.multiplyExact(position.copies, position.stack.count),
-                        Math::addExact);
-            return Map.copyOf(totals);
+                totals.add(position.stack.item.key(), QuantityCounter.multiplyChecked(position.copies, position.stack.count));
+            return totals.snapshot();
         }
 
         public Map<String, Long> shulkers() {
-            Map<String, Long> totals = new TreeMap<>();
+            var totals = new QuantityCounter();
             for (Slot slot : slots)
                 if (slot.item.kind == Kind.SHULKER && !slot.item.group.isEmpty())
-                    totals.merge(slot.item.group, (long) slot.count, Math::addExact);
-            return Map.copyOf(totals);
+                    totals.add(slot.item.group, slot.count);
+            return totals.snapshot();
         }
 
         public JsonObject json() {

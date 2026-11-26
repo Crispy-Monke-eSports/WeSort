@@ -2172,53 +2172,8 @@ public class StashSorter extends Module {
                     + (repackWork.reason().isEmpty() ? "physical work needs reconciliation" : repackWork.reason()));
             return;
         }
-        // 6b6t portal transit is navigation-only. Standalone sorter-only (no agent
-        // control) keeps its historical path, including fenced transit with a
-        // warning (no manager exists to order it; update the manager for leases).
-        // Agent-driven transit requires dedication; with a fenced journal it
-        // additionally requires an explicit manager ENTER_PORTAL lease, else park
-        // with FENCED_AWAITING_MANAGER_COMMAND. Physical mutation below stays fenced.
-        var portalManager =
-                meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
-        boolean standalone = portalManager == null || !portalManager.isActive();
-        // Transit is attempted whenever the lobby awaits it; dedication and the
-        // ENTER_PORTAL lease are enforced inside for the fenced agent-driven case.
         if (portalModeOn() && portalAwaiting()) {
             boolean fenced = PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror();
-            boolean authorized = portalManager != null && portalManager.enterPortalAuthorized();
-            if (!fenced || authorized) fencedParkSince = 0;
-            if (fenced && !standalone && !authorized && portalTarget == null && !portalEntering) {
-                // Agent-driven with a fenced journal and no ENTER_PORTAL lease:
-                // park with an explicit fact. Legacy fallback: a manager that never
-                // orders (old server without portal-command) must not park forever;
-                // after 5 min allow the historical navigation-only transit with a
-                // loud warning so the deadlock is bounded.
-                long nowParkMs = System.currentTimeMillis();
-                if (fencedParkSince == 0) fencedParkSince = nowParkMs;
-                if (nowParkMs - fencedParkSince > 5 * 60_000L) {
-                    fencedParkSince = nowParkMs;
-                    WeSortAddon.LOG.warn(
-                            "WeSort portal: no ENTER_PORTAL order in 5 min; legacy fallback transit (update the manager).");
-                } else {
-                    ledgeGuard(false);
-                    portalForward(false);
-                    releaseGoal();
-                    // A manual crossing while parked must still count: record contact
-                    // without driving, so the post-transfer arrival can complete.
-                    if (touchingPortal()) {
-                        portalSession.crossingAttempted();
-                        reportPortalBlocker("TRANSITING_WITH_FENCED_JOURNAL");
-                        gateLogThrottled("6b6t portal: TRANSITING_WITH_FENCED_JOURNAL (manual contact while parked)");
-                    } else {
-                        reportPortalBlocker("FENCED_AWAITING_MANAGER_COMMAND");
-                        gateLogThrottled(
-                                "6b6t portal: FENCED_AWAITING_MANAGER_COMMAND (order ENTER_PORTAL in the dashboard)");
-                    }
-                    return;
-                }
-            } else {
-                fencedParkSince = 0;
-            }
             // Screens are handled inside portalTick()'s movement blocker
             // (auto-dismiss when allowed, else SCREEN_OPEN); don't pre-empt it here.
             boolean cursorEmpty = mc.player != null
@@ -4105,6 +4060,7 @@ public class StashSorter extends Module {
     }
 
     public boolean sortingPermitted() {
+        if (StashManager.SURVEY_ONLY) return false;
         if (!repackConflict.isEmpty()) return false;
         if (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror()) return false;
         if (!requiresSortingPermit()) return true;
@@ -4229,7 +4185,6 @@ public class StashSorter extends Module {
     private long portalWaitWarnedAt = 0;
     private long lastFencedTransitWarnedAt = 0;
     private long cursorOccupiedSince = 0;
-    private long fencedParkSince = 0;
     // Retried portal approaches eventually give up with a blocker instead of looping forever.
     private int portalAttempts;
     private long portalGiveUpUntilMs;
@@ -4249,7 +4204,6 @@ public class StashSorter extends Module {
     /** The Manager can be disabled during a manual crossing; never leave a synthetic key held. */
     void stopPortalNavigation() {
         portalForward(false);
-        fencedParkSince = 0;
         cursorOccupiedSince = 0;
         if (portalTarget != null || portalEntering) {
             releaseGoal();
@@ -4419,7 +4373,6 @@ public class StashSorter extends Module {
             portalBlocker = null;
             portalAttempts = 0;
             portalGiveUpUntilMs = 0;
-            fencedParkSince = 0;
             cursorOccupiedSince = 0;
             if (stash != null) {
                 info(
@@ -4509,6 +4462,7 @@ public class StashSorter extends Module {
         String blocker = portalMovementBlocker();
         if (blocker != null) {
             portalForward(false);
+            releaseGoal();
             reportPortalBlocker(blocker);
             return true;
         }
@@ -4565,25 +4519,19 @@ public class StashSorter extends Module {
     }
 
     private String portalMovementBlocker() {
+        var manager = Modules.get().get(StashManager.class);
+        if (manager == null || !manager.dedicatedProfile()) return "AGENT_DISABLED";
+        if ((PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror())
+                && !manager.enterPortalAuthorized()) return "FENCED_AWAITING_MANAGER_COMMAND";
         if (com.porter.wesort.compat.NavigationRuntime.paused()) {
             return com.porter.wesort.compat.NavigationRuntime.status();
         }
         if (!BARITONE) return "BARITONE_UNAVAILABLE";
-        if (StashManager.ownsClient()) {
-            // Lobby navigation is allowed before inventory readback, so only dismiss
-            // non-container screens here. Never close an unverified server menu.
-            if (mc.player.containerMenu != null
-                    && mc.player.containerMenu == mc.player.inventoryMenu
-                    && mc.player.containerMenu.getCarried().isEmpty()
-                    && mc.screen != null) mc.setScreen(null);
-            if (mc.screen != null) return "SCREEN_OPEN";
-        } else {
-            if (mc.screen != null) return "SCREEN_OPEN";
-            if (Input.isPressed(mc.options.keyDown)
-                    || Input.isPressed(mc.options.keyLeft)
-                    || Input.isPressed(mc.options.keyRight)
-                    || Input.isPressed(mc.options.keyJump)) return "MANUAL_MOVEMENT";
-        }
+        // Lobby navigation may dismiss a local screen only with an empty inventory cursor.
+        if (mc.player.containerMenu == mc.player.inventoryMenu
+                && mc.player.inventoryMenu.getCarried().isEmpty()
+                && mc.screen != null) mc.setScreen(null);
+        if (mc.screen != null) return "SCREEN_OPEN";
         if (BaritoneHelper.controlledByOther(ourGoal == null ? null : (baritone.api.pathing.goals.Goal) ourGoal)) {
             return "BARITONE_BUSY";
         }
@@ -13455,30 +13403,6 @@ public class StashSorter extends Module {
                         && mc.player.containerMenu != null
                         && mc.player.containerMenu == mc.player.inventoryMenu
                         && mc.player.containerMenu.getCarried().isEmpty();
-                if (fenced && !manager.enterPortalAuthorized() && portalTarget == null && !portalEntering) {
-                    // Park with an explicit fact; legacy fallback after 5 min without
-                    // an order (old manager) so the deadlock from point-in-time
-                    // incompatibility is bounded. See driven path for the same rule.
-                    long nowParkMs = System.currentTimeMillis();
-                    if (fencedParkSince == 0) fencedParkSince = nowParkMs;
-                    if (nowParkMs - fencedParkSince <= 5 * 60_000L) {
-                        portalForward(false);
-                        releaseGoal();
-                        // A manual crossing while parked must still count.
-                        if (touchingPortal()) {
-                            portalSession.crossingAttempted();
-                            if (portalAwaiting()) reportPortalBlocker("TRANSITING_WITH_FENCED_JOURNAL");
-                        } else if (portalAwaiting()) {
-                            reportPortalBlocker("FENCED_AWAITING_MANAGER_COMMAND");
-                        }
-                        return;
-                    }
-                    WeSortAddon.LOG.warn(
-                            "WeSort portal: no ENTER_PORTAL order in 5 min; legacy fallback transit (update the manager).");
-                    fencedParkSince = nowParkMs;
-                } else {
-                    fencedParkSince = 0;
-                }
                 if (fenced && manager.enterPortalAuthorized()) {
                     long now = System.currentTimeMillis();
                     if (now - lastFencedTransitWarnedAt >= 60_000) {
@@ -13525,7 +13449,6 @@ public class StashSorter extends Module {
             // after a kick and resume in the proxy lobby on reconnect.
             releaseGoal();
             portalForward(false);
-            fencedParkSince = 0;
             cursorOccupiedSince = 0;
             driven = false;
             setUp = false;

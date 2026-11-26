@@ -39,12 +39,9 @@ class PhysicalOperationsSweepTest {
         var diamond = new PhysicalSlots.Item(
                 "minecraft:diamond", "minecraft:diamond", 64, "{}", PhysicalSlots.Kind.ITEM, 0, List.of(), "");
         var slot = new PhysicalSlots.Slot(0, 64, diamond);
-        var writer = new PhysicalSlots.Writer();
-        var slotRows = writer.slots(List.of(slot));
-        physical.addProperty("physicalVersion", 2);
-        physical.add("slotVariants", writer.variants());
+        physical.addProperty("physicalVersion", 3);
         var source = physical.getAsJsonArray("physicalSources").get(0).getAsJsonObject();
-        source.add("slots", slotRows);
+        source.addProperty("snbt", new PhysicalSlots.Snapshot(27, List.of(slot)).snbt());
         source.addProperty("fingerprint", new PhysicalSlots.Snapshot(27, List.of(slot)).fingerprint());
         index.putIndex(physical);
         orders = new OrderStore(data, index);

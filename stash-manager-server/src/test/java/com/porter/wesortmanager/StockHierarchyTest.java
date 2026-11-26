@@ -14,19 +14,23 @@ class StockHierarchyTest {
     Path data;
 
     private PhysicalSlots.Snapshot frame(int count) {
+        return new PhysicalSlots.Snapshot(27, List.of(
+                new PhysicalSlots.Slot(0, 1, managedBox(count, "550e8400-e29b-41d4-a716-446655440000")),
+                new PhysicalSlots.Slot(2, 1, managedBox(count, "7c9e6679-7425-40de-944b-e07fc1f90ae7"))));
+    }
+
+    private PhysicalSlots.Item managedBox(int count, String uuid) {
         var diamond = new PhysicalSlots.Item(
                 "minecraft:diamond", "minecraft:diamond", 64, "{}", PhysicalSlots.Kind.ITEM, 0, List.of(), "");
-        var box = new PhysicalSlots.Item(
+        return new PhysicalSlots.Item(
                 "minecraft:shulker_box",
                 "minecraft:shulker_box",
                 1,
-                "{}",
+                "{\"minecraft:custom_name\":\"WeSort-" + uuid + "\",\"minecraft:container\":[{slot:26,item:{id:\"minecraft:diamond\",count:" + count + "}}]}",
                 PhysicalSlots.Kind.SHULKER,
                 27,
                 List.of(new PhysicalSlots.Slot(26, count, diamond)),
                 "kit");
-        return new PhysicalSlots.Snapshot(
-                27, List.of(new PhysicalSlots.Slot(0, 1, box), new PhysicalSlots.Slot(2, 1, box)));
     }
 
     private JsonArray amounts(Map<String, Long> counts) {
@@ -51,11 +55,9 @@ class StockHierarchyTest {
         root.add("items", amounts(frame.totals()));
         root.add("shulkers", amounts(frame.shulkers()));
         root = StockFixtures.physical(root, ledger.epoch(), ledger.revision(), ledger.revision() + 1, 0);
-        var writer = new PhysicalSlots.Writer();
-        source(root).add("slots", writer.slots(frame.slots()));
+        source(root).addProperty("snbt", frame.snbt());
         source(root).addProperty("fingerprint", frame.fingerprint());
-        root.addProperty("physicalVersion", 2);
-        root.add("slotVariants", writer.variants());
+        root.addProperty("physicalVersion", 3);
         return root;
     }
 
@@ -125,6 +127,7 @@ class StockHierarchyTest {
         ledger.accept(original);
         var stale = index(ledger, 1);
         source(stale).addProperty("state", "UNREACHABLE");
+        source(stale).add("snbt", JsonNull.INSTANCE);
         ledger.accept(stale);
         var source = ledger.sources().getFirst();
         assertEquals("UNREACHABLE", source.status());

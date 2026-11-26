@@ -816,7 +816,9 @@ function KitEditor({
 
 function UsersSection() {
   const [users, setUsers] = useState<any[]>([]);
-  const [presets, setPresets] = useState<string[]>(["orderer", "member"]);
+  const [presets, setPresets] = useState<string[]>([
+    "member",
+  ]);
   const [presetDefs, setPresetDefs] = useState<Record<string, any>>({});
   const [msg, setMsg] = useState<{
     severity: "success" | "error" | "info";
@@ -897,16 +899,13 @@ function UsersSection() {
     }
   }
 
+  // Strict Owner/Member (#26/#43): the editor offers member-level flags only.
+  // ordersAll, guildOrders, positions, settings, rescan and link are Owner-only
+  // and rejected by the server (400) — they must never be grantable in the UI.
   const FLAG_FIELDS = [
     "view",
     "order",
-    "ordersAll",
-    "guildOrders",
-    "positions",
     "activity",
-    "settings",
-    "rescan",
-    "link",
   ] as const;
 
   function presetNameOf(perms: any): string {

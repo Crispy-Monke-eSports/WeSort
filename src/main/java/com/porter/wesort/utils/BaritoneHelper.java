@@ -43,7 +43,7 @@ public final class BaritoneHelper {
      */
     public static Goal moveNear(BlockPos pos, int range) {
         Goal goal = new GoalNear(pos, range);
-        com.porter.wesort.compat.NavigationRuntime.watch(goal);
+        com.porter.wesort.compat.NavigationRuntime.watch(goal, pos);
         baritone().getCustomGoalProcess().setGoalAndPath(goal);
         return goal;
     }
@@ -275,7 +275,7 @@ public final class BaritoneHelper {
      */
     public static Goal moveInReach(Collection<BlockPos> parts, double reach) {
         Goal goal = new GoalReach(List.copyOf(parts), reach);
-        com.porter.wesort.compat.NavigationRuntime.watch(goal);
+        com.porter.wesort.compat.NavigationRuntime.watch(goal, parts);
         baritone().getCustomGoalProcess().setGoalAndPath(goal);
         return goal;
     }
@@ -314,6 +314,10 @@ public final class BaritoneHelper {
 
     /**
      * Paths to anywhere in the column at x, z, whatever the height.
+     *
+     * <p>No single destination cell exists (any height counts), so no target pre-check
+     * is registered: the route is fenced by the per-tick path-position check in
+     * {@code NavigationRuntime.allowedRoute} instead, with the same backoff recovery.
      */
     public static Goal moveXZ(int x, int z) {
         Goal goal = new GoalXZ(x, z);

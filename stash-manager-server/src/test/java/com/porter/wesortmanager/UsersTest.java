@@ -270,17 +270,23 @@ class UsersTest {
 
     @Test
     void membersUseOneGuildStockAndMembersRetainOrdersAfterMemberRevocation() throws Exception {
+        // Strict Owner/Member (#26/#43): exactly two identities. Members place and
+        // follow only their own SELF orders; GUILD orders, foreign cancellations and
+        // revocation belong to the Owner. Elevated custom grants are refused.
         String owner = owner();
         defineOrderStashes(owner);
         String memberId = create(owner, "Maker", "member", false);
-        String officerId = create(
-                owner,
-                "Officer",
-                "{\"view\":true,\"order\":true,\"ordersAll\":true,\"activity\":true,\"guildOrders\":true}",
-                false);
+        assertEquals(
+                400,
+                post(
+                                owner,
+                                "/api/v1/users",
+                                "{\"name\":\"Officer\",\"password\":\"" + TEMP_PW
+                                        + "\",\"mustChange\":false,\"perms\":{\"view\":true,\"order\":true,\"ordersAll\":true,\"activity\":true,\"guildOrders\":true}}")
+                        .status,
+                "elevated custom grant must be refused");
         create(owner, "Reader", "{\"view\":true}", false);
         String member = login("Maker", TEMP_PW);
-        String officer = login("Officer", TEMP_PW);
         String viewer = login("Reader", TEMP_PW);
 
         var profile = get(member, "/api/v1/guild").obj();
@@ -310,12 +316,12 @@ class UsersTest {
         request.addProperty("recipient", "minecraftuser");
         request.addProperty("comment", "Projekt Å <test>");
         assertEquals(403, post(member, "/api/v1/orders", request.toString()).status);
-        assertEquals(400, post(officer, "/api/v1/orders", request.toString()).status);
         assertEquals(200, post(owner, "/api/v1/users/owner/minecraft", "{\"account\":\"MinecraftUser\"}").status);
-        var response = post(officer, "/api/v1/orders", request.toString());
+        // GUILD orders are Owner-only under the strict model.
+        var response = post(owner, "/api/v1/orders", request.toString());
         assertEquals(200, response.status);
         var guildOrder = response.obj().getAsJsonObject("order");
-        assertEquals(officerId, guildOrder.get("requestedBy").getAsString());
+        assertEquals(Users.OWNER_ID, guildOrder.get("requestedBy").getAsString());
         assertEquals("MinecraftUser", guildOrder.get("recipient").getAsString());
         assertEquals("Projekt Å <test>", guildOrder.get("comment").getAsString());
         assertEquals(profile.get("id"), guildOrder.get("organizationId"));
@@ -331,21 +337,9 @@ class UsersTest {
                 .obj()
                 .getAsJsonArray("orders")
                 .isEmpty());
-        assertEquals(
-                2,
-                get(officer, "/api/v1/orders?stash=a")
-                        .obj()
-                        .getAsJsonArray("orders")
-                        .size());
-        assertEquals(200, post(officer, "/api/v1/orders/" + other + "/cancel", "{}").status);
-        assertEquals(200, post(owner, "/api/v1/users/" + officerId, "{\"preset\":\"member\"}").status);
-        assertEquals(403, post(officer, "/api/v1/orders/" + other + "/retry", "{}").status);
-        assertEquals(
-                1,
-                get(officer, "/api/v1/orders?stash=a")
-                        .obj()
-                        .getAsJsonArray("orders")
-                        .size());
+        // A member cannot touch another requester's order; only the Owner can.
+        assertEquals(403, post(member, "/api/v1/orders/" + other + "/cancel", "{}").status);
+        assertEquals(200, post(owner, "/api/v1/orders/" + other + "/cancel", "{}").status);
         var balances = get(viewer, "/api/v1/stock").obj().get("items");
         assertEquals(200, post(owner, "/api/v1/users/" + memberId, "{\"disabled\":true}").status);
         assertEquals(401, get(member, "/api/v1/orders?stash=a").status);
@@ -422,23 +416,28 @@ class UsersTest {
 
     @Test
     void guildApprovalIsOptionalScopedAndKeepsStockReservedBeforeClaim() throws Exception {
+        // Strict Owner/Member (#26/#43): review of another requester's order is
+        // Owner-only; elevated delegate grants are refused at creation.
         String owner = owner();
         defineOrderStashes(owner);
-        create(
-                owner,
-                "Officer",
-                "{\"view\":true,\"order\":true,\"ordersAll\":true,\"activity\":true,\"guildOrders\":true}",
-                false);
+        assertEquals(
+                400,
+                post(
+                                owner,
+                                "/api/v1/users",
+                                "{\"name\":\"Officer\",\"password\":\"" + TEMP_PW
+                                        + "\",\"mustChange\":false,\"perms\":{\"view\":true,\"order\":true,\"ordersAll\":true,\"activity\":true,\"guildOrders\":true}}")
+                        .status,
+                "elevated delegate grant must be refused");
         create(owner, "Builder", "member", false);
         String member = login("Builder", TEMP_PW);
-        String officer = login("Officer", TEMP_PW);
         assertEquals(
                 "DIRECT",
-                get(officer, "/api/v1/guild").obj().get("approvalPolicy").getAsString());
+                get(member, "/api/v1/guild").obj().get("approvalPolicy").getAsString());
         var policy = """
             {"name":"Guild","description":"","expectedRevision":1,"approvalPolicy":"ALL"}
             """;
-        assertEquals(403, post(officer, "/api/v1/guild", policy).status);
+        assertEquals(403, post(member, "/api/v1/guild", policy).status);
         assertEquals(200, post(owner, "/api/v1/guild", policy).status);
         var draft = """
             {"stash":"a","lines":[{"type":"item","key":"minecraft:diamond","count":2}]}
@@ -453,19 +452,18 @@ class UsersTest {
         assertEquals(2L, orders.reservedFor("s", "a").get("item:minecraft:diamond"));
         String review = "/api/v1/orders/" + id + "/approval";
         assertEquals(403, post(member, review, "{\"decision\":\"approve\"}").status);
-        var approved = post(officer, review, "{\"decision\":\"approve\"}");
+        var approved = post(owner, review, "{\"decision\":\"approve\"}");
         assertEquals(200, approved.status);
         assertEquals(
                 "APPROVED",
                 approved.obj().getAsJsonObject("order").get("approvalState").getAsString());
         assertEquals(
                 approved.obj(),
-                post(officer, review, "{\"decision\":\"approve\"}").obj());
-        assertEquals(409, post(officer, review, "{\"decision\":\"reject\"}").status);
+                post(owner, review, "{\"decision\":\"approve\"}").obj());
+        assertEquals(409, post(owner, review, "{\"decision\":\"reject\"}").status);
         assertEquals(id, orders.claim("s", "a").id);
         var trail = "/api/v1/audit/orders?order=" + id + "&person=Builder";
         assertEquals(403, get(member, trail).status);
-        assertEquals(403, get(officer, trail).status);
         var auditOrder = get(owner, trail).obj().getAsJsonArray("orders").get(0).getAsJsonObject();
         assertEquals(3, auditOrder.getAsJsonArray("events").size());
         assertEquals(
@@ -476,14 +474,21 @@ class UsersTest {
                         .getAsJsonObject()
                         .get("action")
                         .getAsString());
-        create(owner, "OtherVaultAuditor", "{\"view\":true,\"ordersAll\":true,\"stashes\":[{\"stash\":\"b\"}]}", false);
+        create(owner, "OtherVaultAuditor", "{\"view\":true,\"stashes\":[{\"stash\":\"b\"}]}", false);
         assertEquals(403, get(login("OtherVaultAuditor", TEMP_PW), trail).status);
-        create(owner, "LegacyFullAccess", "{\"view\":true,\"ordersAll\":true,\"positions\":true}", false);
-        assertEquals(403, get(login("LegacyFullAccess", TEMP_PW), trail).status);
+        assertEquals(
+                400,
+                post(
+                                owner,
+                                "/api/v1/users",
+                                "{\"name\":\"LegacyFullAccess\",\"password\":\"" + TEMP_PW
+                                        + "\",\"mustChange\":false,\"perms\":{\"view\":true,\"ordersAll\":true,\"positions\":true}}")
+                        .status,
+                "legacy full-access grant must be refused");
         var second = post(member, "/api/v1/orders", draft).obj().getAsJsonObject("order");
         String rejected = second.get("id").getAsString();
         assertEquals(
-                200, post(officer, "/api/v1/orders/" + rejected + "/approval", "{\"decision\":\"reject\"}").status);
+                200, post(owner, "/api/v1/orders/" + rejected + "/approval", "{\"decision\":\"reject\"}").status);
         assertEquals(2L, orders.reservedFor("s", "a").get("item:minecraft:diamond"));
     }
 
@@ -603,11 +608,11 @@ class UsersTest {
     }
 
     @Test
-    void anOrdererChangesOnlyTheirOwnOrders() throws Exception {
+    void aMemberChangesOnlyTheirOwnOrders() throws Exception {
         String owner = owner();
         defineOrderStashes(owner);
         String ownerOrder = placeOrder(owner, "a", "minecraft:diamond", 10);
-        create(owner, "carol", "orderer", false);
+        create(owner, "carol", "member", false);
         String c = login("carol", TEMP_PW);
         String mine = placeOrder(c, "a", "minecraft:diamond", 5);
 
@@ -654,36 +659,48 @@ class UsersTest {
     }
 
     @Test
-    void anOwnerDelegateWithAllOrdersCanChangeOthersButNotManageUsers() throws Exception {
+    void elevatedDelegateGrantsAreRefused() throws Exception {
+        // Strict Owner/Member (#26/#43): ordersAll, settings and rescan cannot be
+        // granted to a sub-user at all — there is no delegate role. Each refused
+        // grant must fail closed with 400 and create no account.
         String owner = owner();
         defineOrderStashes(owner);
-        String ownerOrder = placeOrder(owner, "a", "minecraft:diamond", 10);
-        create(
-                owner,
-                "dave",
-                "{\"view\":true,\"order\":true,\"ordersAll\":true,\"activity\":true,\"settings\":true,\"rescan\":true}",
-                false);
-        String d = login("dave", TEMP_PW);
-        assertEquals(200, post(d, "/api/v1/orders/" + ownerOrder + "/cancel", null).status);
-        assertEquals(200, post(d, "/api/v1/orders/clear", "{\"stash\":\"a\"}").status);
-        assertEquals(200, get(d, "/api/v1/bots").status);
-        assertEquals(200, post(d, "/api/v1/rescan", "{\"stash\":\"a\"}").status);
-        assertEquals(403, get(d, "/api/v1/link").status);
-        assertEquals(403, get(d, "/api/v1/users").status);
-        // Console is "none" for a delegate: refused before the password check.
-        Res console = get(d, "/api/v1/bots/bot1/console");
-        assertEquals(404, console.status);
+        for (String perms : List.of(
+                "{\"view\":true,\"order\":true,\"ordersAll\":true}",
+                "{\"view\":true,\"order\":true,\"activity\":true,\"settings\":true,\"rescan\":true}",
+                "{\"view\":true,\"guildOrders\":true}",
+                "{\"view\":true,\"link\":true}",
+                "{\"view\":true,\"positions\":true}")) {
+            int before = users.list().size();
+            assertEquals(
+                    400,
+                    post(
+                                    owner,
+                                    "/api/v1/users",
+                                    "{\"name\":\"Delegate\",\"password\":\"" + TEMP_PW + "\",\"mustChange\":false,\"perms\":"
+                                            + perms + "}")
+                            .status,
+                    "elevated grant must be refused: " + perms);
+            assertEquals(before, users.list().size(), "refused grant must not create an account");
+        }
+        assertEquals(
+                401,
+                post(null, "/api/v1/auth/login", "{\"username\":\"Delegate\",\"password\":\"" + TEMP_PW + "\"}")
+                        .status);
     }
 
     @Test
     void aScopedUserSeesOnlyTheirStash() throws Exception {
+        // Strict Owner/Member (#26/#43): scope narrows a member, never widens one.
+        // Rescan is Owner-only; a scoped member reads its own stash and gets 404
+        // outside it, 403 for operations it may not perform.
         String owner = owner();
         defineOrderStashes(owner);
         String otherOrder = placeOrder(owner, "b", "minecraft:dirt", 10);
         create(
                 owner,
                 "erin",
-                "{\"view\":true,\"order\":true,\"ordersAll\":true,\"rescan\":true,\"stashes\":[{\"stash\":\"a\"}]}",
+                "{\"view\":true,\"order\":true,\"activity\":true,\"stashes\":[{\"stash\":\"a\"}]}",
                 false);
         String e = login("erin", TEMP_PW);
 
@@ -705,10 +722,11 @@ class UsersTest {
         assertEquals(
                 404,
                 post(e, "/api/v1/orders/" + otherOrder + "/cancel", null).status,
-                "even with ordersAll, out of scope");
-        assertEquals(404, post(e, "/api/v1/orders/clear", "{\"stash\":\"b\"}").status);
-        assertEquals(404, post(e, "/api/v1/rescan", "{\"stash\":\"b\"}").status);
-        assertEquals(200, post(e, "/api/v1/rescan", "{\"stash\":\"a\"}").status);
+                "out of scope even for a member's own cancel path");
+        assertEquals(403, post(e, "/api/v1/orders/clear", "{\"stash\":\"b\"}").status);
+        // No rescan grant: the permission gate (403) answers before stash scope.
+        assertEquals(403, post(e, "/api/v1/rescan", "{\"stash\":\"b\"}").status);
+        assertEquals(403, post(e, "/api/v1/rescan", "{\"stash\":\"a\"}").status, "rescan is Owner-only");
     }
 
     @Test
@@ -863,8 +881,9 @@ class UsersTest {
         JsonObject list = get(owner, "/api/v1/users").obj();
         assertEquals("boss", list.getAsJsonObject("owner").get("name").getAsString());
         assertEquals(1, list.getAsJsonArray("users").size());
+        // Strict Owner/Member (#26/#43): exactly one sub-user preset exists.
         assertTrue(list.getAsJsonObject("presets").has("member"));
-        assertTrue(list.getAsJsonObject("presets").has("orderer"));
+        assertFalse(list.getAsJsonObject("presets").has("orderer"));
         assertFalse(list.getAsJsonObject("presets").has("viewer"));
         assertFalse(list.getAsJsonObject("presets").has("officer"));
         assertFalse(list.getAsJsonObject("presets").has("operator"));
@@ -897,6 +916,28 @@ class UsersTest {
     }
 
     @Test
+    void storedElevatedGrantsAreDowngradedToMemberOnLoad() throws Exception {
+        // Registries written before strict Owner/Member (#26/#43) fail closed on
+        // load: the elevated grant becomes member-level instead of minting a role.
+        // The hash alphabet (pbkdf2-sha256$...) needs no JSON escaping.
+        String registry = "{\"version\":1,\"ownerName\":\"owner\",\"users\":[{"
+                + "\"id\":\"u-0123456789ab\",\"name\":\"relic\",\"hash\":\"" + Auth.hash(TEMP_PW) + "\","
+                + "\"perms\":{\"view\":true,\"order\":true,\"ordersAll\":true,\"activity\":true,"
+                + "\"settings\":true,\"rescan\":true,\"link\":true,\"guildOrders\":true,"
+                + "\"positions\":true,\"stashes\":null,\"bots\":null},"
+                + "\"disabled\":false,\"mustChange\":false,"
+                + "\"createdAt\":1,\"lastLoginAt\":0,\"passwordChangedAt\":1}]}";
+        Files.writeString(data.resolve("users.json"), registry);
+        Users reloaded = new Users(data);
+        reloaded.load();
+        Users.Principal p = reloaded.principal("u-0123456789ab");
+        assertNotNull(p);
+        assertFalse(p.perms().elevated(), "stored elevated grant must not survive a load");
+        assertTrue(p.perms().view() && p.perms().order());
+        assertTrue(p.perms().activity(), "member-level activity is preserved");
+    }
+
+    @Test
     void aBrokenUsersFileStopsTheServerInsteadOfDroppingUsers() throws Exception {
         Files.writeString(data.resolve("users.json"), "{not json");
         assertThrows(IOException.class, () -> new Users(data).load());
@@ -911,6 +952,7 @@ class UsersTest {
         assertEquals(400, post(owner, "/api/v1/users/" + id, "{\"preset\":\"viewer\"}").status);
         assertEquals(400, post(owner, "/api/v1/users/" + id, "{\"preset\":\"officer\"}").status);
         assertEquals(400, post(owner, "/api/v1/users/" + id, "{\"preset\":\"operator\"}").status);
+        assertEquals(400, post(owner, "/api/v1/users/" + id, "{\"preset\":\"orderer\"}").status);
         assertEquals(
                 400, post(owner, "/api/v1/users/" + id, "{\"preset\":\"member\",\"perms\":{\"view\":true}}").status);
         assertEquals(400, post(owner, "/api/v1/users/" + id, "{}").status);
@@ -922,11 +964,13 @@ class UsersTest {
                 400,
                 post(owner, "/api/v1/users", "{\"name\":\"m\",\"password\":\"" + TEMP_PW + "\",\"preset\":7}").status);
         // perms replaces the whole object, and the implications are applied again.
-        assertEquals(200, post(owner, "/api/v1/users/" + id, "{\"perms\":{\"order\":true,\"rescan\":true}}").status);
-        assertEquals(200, post(owner, "/api/v1/users/" + id, "{\"perms\":{\"ordersAll\":true}}").status);
+        // Elevated flags can never be granted: member-level edits succeed.
+        assertEquals(400, post(owner, "/api/v1/users/" + id, "{\"perms\":{\"order\":true,\"rescan\":true}}").status);
+        assertEquals(400, post(owner, "/api/v1/users/" + id, "{\"perms\":{\"ordersAll\":true}}").status);
+        assertEquals(200, post(owner, "/api/v1/users/" + id, "{\"perms\":{\"order\":true,\"activity\":true}}").status);
         Users.Perms p = users.byId(id).perms();
-        assertTrue(p.view() && p.ordersAll());
-        assertFalse(p.order() || p.rescan(), "not merged with the old permissions");
+        assertTrue(p.order() && p.activity());
+        assertFalse(p.ordersAll() || p.rescan(), "not merged with the old permissions");
     }
 
     @Test
@@ -940,22 +984,25 @@ class UsersTest {
     }
 
     @Test
-    void theLinkPanelListsOnlyStashesInScope() throws Exception {
+    void theLinkPanelIsOwnerOnly() throws Exception {
+        // Strict Owner/Member (#26/#43): the link grant (agent key management)
+        // cannot be given to a sub-user. The owner link panel never exposes the key.
         String owner = owner();
-        create(owner, "oz", "{\"link\":true,\"stashes\":[{\"stash\":\"a\"}]}", false);
-        String o = login("oz", TEMP_PW);
-        Res link = get(o, "/api/v1/link");
-        assertEquals(200, link.status);
-        assertFalse(link.obj().has("apiKey"), "the key is the owner's only, even Admin unlocked");
-        assertFalse(link.obj().get("canRotateKey").getAsBoolean());
-        assertEquals(403, post(o, "/api/v1/link/regenerate", null).status);
+        assertEquals(
+                400,
+                post(
+                                owner,
+                                "/api/v1/users",
+                                "{\"name\":\"oz\",\"password\":\"" + TEMP_PW
+                                        + "\",\"mustChange\":false,\"perms\":{\"link\":true,\"stashes\":[{\"stash\":\"a\"}]}}")
+                        .status,
+                "link grant must be refused");
         assertFalse(get(owner, "/api/v1/link").obj().has("apiKey"));
         assertFalse(post(owner, "/api/v1/link/regenerate", "{}").obj().has("apiKey"));
         assertEquals(
                 404,
-                post(o, "/api/v1/stashes/release", "{\"stash\":\"a\"}").status,
+                post(owner, "/api/v1/stashes/release", "{\"stash\":\"a\"}").status,
                 "release is removed: no bot owns a stash");
-        assertEquals(404, post(o, "/api/v1/stashes/release", "{\"stash\":\"b\"}").status);
     }
 
     @Test
@@ -1087,14 +1134,16 @@ class UsersTest {
                 "pos1", "pos2", "dropoff", "dropoffDimension", "delivery", "deliveryDimension", "anvil", "table"))
             assertFalse(ea.has(coord), "member without positions must not see " + coord);
 
-        // A member with the positions permission sees full coordinates, still only in scope.
-        create(owner, "ops", "{\"view\":true,\"positions\":true,\"stashes\":[{\"stash\":\"a\"}]}", false);
-        String o = login("ops", TEMP_PW);
-        Res withPos = get(o, "/api/v1/stash-defs");
-        assertEquals(200, withPos.status);
-        JsonArray scoped = withPos.obj().getAsJsonArray("defs");
-        assertEquals(1, scoped.size(), "stash b stays out of scope");
-        assertTrue(scoped.get(0).getAsJsonObject().has("pos1"), "positions permission reveals coordinates");
+        // Coordinates are Owner-only (#26/#43): the positions grant is refused.
+        assertEquals(
+                400,
+                post(
+                                owner,
+                                "/api/v1/users",
+                                "{\"name\":\"ops\",\"password\":\"" + TEMP_PW
+                                        + "\",\"mustChange\":false,\"perms\":{\"view\":true,\"positions\":true,\"stashes\":[{\"stash\":\"a\"}]}}")
+                        .status,
+                "positions grant must be refused");
 
         // An empty stash scope sees no definitions at all.
         create(owner, "vic", "{\"view\":true,\"stashes\":[]}", false);

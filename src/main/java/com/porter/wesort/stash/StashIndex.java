@@ -576,7 +576,13 @@ public final class StashIndex {
         if (slots.isEmpty()) return null;
 
         Info info = infoOf(ops, stack);
-        Shulker sh = new Shulker(info, "s:" + sha1(info.key() + "|" + canon).substring(0, 10));
+        ItemStack groupStack = stack;
+        if (com.porter.wesort.compat.ShulkerIdentityRuntime.uuid(stack) != null) {
+            groupStack = stack.copy();
+            groupStack.remove(net.minecraft.core.component.DataComponents.CUSTOM_NAME);
+        }
+        String group = infoOf(ops, groupStack).key() + "|" + canon;
+        Shulker sh = new Shulker(info, "s:" + com.porter.wesort.data.ContainerIdentity.hash(group));
         sh.slots.addAll(slots);
         sh.keys.addAll(keys);
         return sh;

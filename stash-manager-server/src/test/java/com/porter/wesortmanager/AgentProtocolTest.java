@@ -17,21 +17,50 @@ class AgentProtocolTest {
 
     @Test
     void batchEnvelopeRequiresExplicitMembership() {
-        var upsert = new BatchEnvelope.Op(
-                BatchEnvelope.OpKind.SOURCE_UPSERT, "c:abc", 7L, "0".repeat(64));
+        var upsert = new BatchEnvelope.Op(BatchEnvelope.OpKind.SOURCE_UPSERT, "c:abc", 7L, "0".repeat(64));
         var env = new BatchEnvelope(
-                1, "6b6t.org", "main", "minecraft:overworld", "agent-1", "session-1", 1L, 9L,
-                "batch-1", 0, 1, List.of(upsert));
+                1,
+                "6b6t.org",
+                "main",
+                "minecraft:overworld",
+                "agent-1",
+                "session-1",
+                1L,
+                9L,
+                "batch-1",
+                0,
+                1,
+                List.of(upsert));
         assertEquals(1, env.ops().size());
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new BatchEnvelope(
-                        1, "6b6t.org", "main", "minecraft:overworld", "agent-1", "session-1", 1L, 9L,
-                        "batch-1", 0, 1, List.of()));
+                        1,
+                        "6b6t.org",
+                        "main",
+                        "minecraft:overworld",
+                        "agent-1",
+                        "session-1",
+                        1L,
+                        9L,
+                        "batch-1",
+                        0,
+                        1,
+                        List.of()));
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new BatchEnvelope(
-                        2, "6b6t.org", "main", "minecraft:overworld", "agent-1", "session-1", 1L, 9L,
-                        "batch-1", 0, 1, List.of(upsert)));
+                        2,
+                        "6b6t.org",
+                        "main",
+                        "minecraft:overworld",
+                        "agent-1",
+                        "session-1",
+                        1L,
+                        9L,
+                        "batch-1",
+                        0,
+                        1,
+                        List.of(upsert)));
     }
 }

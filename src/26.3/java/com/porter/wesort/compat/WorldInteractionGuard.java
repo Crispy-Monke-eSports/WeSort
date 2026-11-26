@@ -90,7 +90,8 @@ public final class WorldInteractionGuard {
         String base;
         if (order != null && !order.isEmpty()) base = order;
         else if (repackId != null && !repackId.isEmpty()) base = "repack:" + repackId;
-        else base = fallback == null || fallback.isEmpty() ? "unknown" : fallback;
+        else if (fallback == null || fallback.isBlank() || fallback.equals("unknown")) return "unknown";
+        else base = fallback;
         if (directiveRev >= 0) base += "@d" + directiveRev;
         if (lease != null && !lease.isEmpty()) base += "@l" + lease;
         return base;

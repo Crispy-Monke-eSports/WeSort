@@ -164,7 +164,7 @@ class BoxUuidRegistryTest {
         String id = sourceId(index);
         var repo = new OrderBookRepository(ledger);
         var book = JsonParser.parseString(
-                        "{\"server\":\"s\",\"stash\":\"a\",\"orders\":[{\"id\":\"o-1\",\"history\":[{\"action\":\"staged\"}]}]}")
+                        "{\"server\":\"s\",\"stash\":\"a\",\"orders\":[{\"id\":\"o-1\",\"history\":[{\"action\":\"staged\",\"at\":1,\"actor\":\"agent\"}]}]}")
                 .getAsJsonObject();
         var release = new StockLedger.BoxRelease(Set.of(new PhysicalReservations.Root(id, "0")), Set.of(V4));
         try (var c = ledger.open();

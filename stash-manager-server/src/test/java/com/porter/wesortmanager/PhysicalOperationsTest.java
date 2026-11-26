@@ -39,7 +39,12 @@ class PhysicalOperationsTest {
 
     private JsonObject playerInventory() {
         var snapshot = new com.porter.wesort.data.PhysicalSlots.Snapshot(46, java.util.List.of());
-        return snapshot.envelope();
+        var inventory = new JsonObject();
+        inventory.addProperty("size", snapshot.size());
+        inventory.addProperty("fingerprint", snapshot.fingerprint());
+        inventory.add("slots", new JsonArray());
+        inventory.add("slotVariants", new JsonArray());
+        return inventory;
     }
 
     @Test

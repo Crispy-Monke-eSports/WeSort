@@ -470,7 +470,9 @@ class HierarchyHarness(stock.StockHarness):
             require('changed' in removed.lower(), 'Failed to clear the one-off menu fixture')
             before = {str(x): self.rcon.command(f'data get block {x} 64 -3 Items') for x in [0, 6]}
             initial = self.command('state')['state']['index']
-            require(initial['physicalVersion'] == 2 and initial['slotVariants'], 'Actual client omitted physical tree')
+            require(initial['physicalVersion'] == 3 and 'slotVariants' not in initial
+                    and all(isinstance(s.get('snbt'), str) for s in initial['physicalSources'] if s['state'] == 'FRESH'),
+                    'Actual client omitted canonical SNBT physical tree')
             self.server_name = initial['server']
             self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key)
             observed = self.wait(lambda s: all((row := self.source(s, x, -3)) is not None and row['state'] == 'FRESH' for x in [0, 6]), 'Native hierarchy did not reach Manager')
@@ -484,6 +486,11 @@ class HierarchyHarness(stock.StockHarness):
                 self.verify_reservations(a, before)
             if self.guild:
                 self.verify_guild()
+            for detail in (a, b):
+                frame = next(s for s in initial['physicalSources'] if s['id'] == detail['id'])
+                require(detail.get('snapshotSnbt') == frame['snbt'],
+                        'Manager readback differs from exact canonical SNBT sent by native client')
+            self.ok('Manager reads exact canonical SNBT from persisted snapshot after native signed sync')
             positions = {row['path']: row for row in a['snapshot']['positions']}
             other = {row['path']: row for row in b['snapshot']['positions']}
             require(positions['0']['fingerprint'] == positions['20']['fingerprint'] == other['0']['fingerprint'], 'Identical box contents differ by physical location')

@@ -967,9 +967,18 @@ public class StashSorter extends Module {
     private boolean waitTimeoutAlerted;
     // Unexpected toggle combos: sorter on while the Agent toggle is off. Throttled.
     private int lastToggleWarnClock = -100_000;
-
     public String shulkerPhase() {
         return handle == null ? "" : handle.name();
+    }
+
+    /**
+     * Signed Manager workzone revision authorizing this stash (#65). Permits are
+     * job-bound; binding the revision into the job tag means a rotated directive
+     * (new area/delivery/drop-off) invalidates live permits instead of letting an
+     * old authorization cover a new workzone. -1 when undirected.
+     */
+    public long directiveRevision() {
+        return stash == null ? -1 : stash.directiveRev;
     }
 
     public BlockPos repackPosition() {
@@ -2600,11 +2609,14 @@ public class StashSorter extends Module {
      */
     private void walkNear(BlockPos pos, int range) {
         if (!BARITONE) return;
-        // #197: never start a walk into an unloaded target (e.g. chunks still
-        // streaming at login). Park in the gate with a throttled reason instead
-        // of latching RELEASED and waiting for a manual resume.
-        if (mc.level == null || !mc.level.isLoaded(pos)) {
-            gateLogThrottled("waiting for chunks: unloaded target " + xyz(pos));
+        // #197 full fix (PR1 redo): no unloaded-target pre-gate here. Chunk arrival is
+        // owned by Baritone + NavigationRuntime: an unloaded route pauses as
+        // PAUSED_NAVIGATION_UNSAFE_BLOCK (detail "unloaded ...") or, if the engine
+        // drops the goal, PAUSED_NAVIGATION_RELEASED — both auto-retry with backoff
+        // in NavigationRuntime.pauseTick and never need a manual resume. A local
+        // pre-gate would hide the target from the watchdog and park silently.
+        if (pos == null) {
+            WeSortAddon.LOG.debug("[wesort-stash-sorter] walkNear called with null target; staying put.");
             return;
         }
         BaritoneHelper.protect(List.of());
@@ -2634,10 +2646,10 @@ public class StashSorter extends Module {
      */
     private void walkReach(Box box) {
         if (!BARITONE) return;
-        // #197: same chunk-await as walkNear; a high container is opened from
-        // below only once its parts are loaded.
-        if (box == null || mc.level == null || !mc.level.isLoaded(box.pos)) {
-            gateLogThrottled("waiting for chunks: unloaded target " + (box == null ? "null" : xyz(box.pos)));
+        // #197 full fix: same as walkNear — no pre-gate; NavigationRuntime fences
+        // unloaded high containers with backoff instead of parking silently.
+        if (box == null || box.pos == null) {
+            WeSortAddon.LOG.debug("[wesort-stash-sorter] walkReach called without a box target; staying put.");
             return;
         }
         BaritoneHelper.protect(List.of());
@@ -2651,16 +2663,11 @@ public class StashSorter extends Module {
         setGoal(BaritoneHelper.moveInReach(box.parts, reach.get()));
     }
 
-    /**
-     * The same walk to a column, at any height: for places whose chunk isn't loaded yet.
-     */
+    /** The same walk to a column, at any height. */
     private void walkXZ(int x, int z) {
         if (!BARITONE) return;
-        // #197: column walks also wait for a loaded cell instead of pathing blind.
-        if (mc.level == null || !mc.level.isLoaded(new BlockPos(x, mc.player == null ? 64 : mc.player.blockPosition().getY(), z))) {
-            gateLogThrottled("waiting for chunks: unloaded column " + x + ", " + z);
-            return;
-        }
+        // #197 full fix: same as walkNear — no column probe gate; the column goal is
+        // fenced by NavigationRuntime with backoff like every other route.
         BaritoneHelper.protect(List.of());
         usedBaritone = true;
         BaritoneHelper.confine(safeWalk.get());
@@ -4113,16 +4120,11 @@ public class StashSorter extends Module {
         return manager != null && manager.sortingAllowed();
     }
 
-    // An order run by this client from the Stash Window (LocalOrders), no server: orders are wanted like
-    // wesort-stash-manager's accept-orders
-    private boolean localOrders;
-
-    void localOrders(boolean on) {
-        localOrders = on;
-    }
-
+    // No local Fabric order path (#11/#26/#43): orders are wanted only via the signed
+    // Manager protocol (wesort-stash-manager accept-orders). The Stash Window
+    // LocalOrders driver is gone; a local setter would be an unauthorised backdoor
+    // around Manager authorisation and the physical inventory journal.
     private boolean ordersWanted() {
-        if (localOrders) return true;
         StashManager manager =
                 meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
         return manager != null && manager.takingOrders();
@@ -12482,9 +12484,16 @@ public class StashSorter extends Module {
 
         // A refused delivery spot leaves no box behind
         if (pick.get() == Pick.Delivery && !deliverySpotSettable(pos)) return true;
-        // The drop-off chest is Manager-owned on directed stashes: it is selected in
+        // The delivery container is Manager-owned on managed stashes: it arrives via
+        // signed stash-defs directive, never picked in the game (#65). Refuse before
+        // any box is made or markDelivery can overwrite the directed deliveryPos.
+        if (pick.get() == Pick.Delivery && managerOwnsWorkzone()) {
+            notice("The delivery container is set in the Manager (Settings > Stashes), not in the game.");
+            return true;
+        }
+        // The drop-off chest is Manager-owned on managed stashes: it is selected in
         // Settings > Stashes, never picked in the game. Refuse before any box is made.
-        if (pick.get() == Pick.Input && stash != null && stash.directiveRev >= 0) {
+        if (pick.get() == Pick.Input && managerOwnsWorkzone()) {
             notice("The drop-off chest is set in the Manager (Settings > Stashes), not in the game.");
             return true;
         }
@@ -12539,8 +12548,12 @@ public class StashSorter extends Module {
                     box.protectedStorage ? "%s is protected from automated moves." : "%s is no longer protected.",
                     box.pos.toShortString());
         } else if (pick.get() == Pick.Exclude) {
-            if (box.input && stash.directiveRev >= 0) {
+            if (box.input && managerOwnsWorkzone()) {
                 notice("The drop-off chest is owned by the Manager; clear it in Settings > Stashes.");
+                return true;
+            }
+            if (box.delivery && managerOwnsWorkzone()) {
+                notice("The delivery container is owned by the Manager; change it in Settings > Stashes.");
                 return true;
             }
             box.excluded = !box.excluded;
@@ -12552,9 +12565,10 @@ public class StashSorter extends Module {
             notice(box.excluded ? "%s won't be sorted." : "%s will be sorted again.", box.pos.toShortString());
         } else {
             // The drop-off pick on the input chest unmarks it (it already empties like one),
-            // unless the Manager owns it: directed drop-off chests are only cleared in the Manager.
+            // unless the Manager owns it: managed drop-off chests are only cleared in the Manager.
+            // A managed delivery container cannot be repurposed as a drop-off either.
             if (box.input) {
-                if (stash.directiveRev >= 0) {
+                if (managerOwnsWorkzone()) {
                     notice("The drop-off chest is owned by the Manager; clear it in Settings > Stashes.");
                     return true;
                 }
@@ -12562,6 +12576,10 @@ public class StashSorter extends Module {
                 notice("%s is no longer the input chest.", box.pos.toShortString());
                 stash.save();
                 version++;
+                return true;
+            }
+            if (box.delivery && managerOwnsWorkzone()) {
+                notice("The delivery container is owned by the Manager; change it in Settings > Stashes.");
                 return true;
             }
             box.dropOff = !box.dropOff;
@@ -12757,9 +12775,28 @@ public class StashSorter extends Module {
     // The stash perimeter
 
     /**
+     * Whether the workzone is Owner-owned right now (#65): a configured Manager
+     * owns placement through signed stash-defs directives — including before the
+     * first directive arrives — or a previously applied directive revision does.
+     * Local corner/delivery/drop-off picks are refused while this holds.
+     */
+    private boolean managerOwnsWorkzone() {
+        var manager = meteordevelopment.meteorclient.systems.modules.Modules.get()
+                .get(StashManager.class);
+        if (manager != null && manager.managesWorkzones()) return true;
+        return stash != null && stash.directiveRev >= 0;
+    }
+    /**
      * Makes the block the corner of the stash perimeter. The perimeter only applies once both corners are set.
      */
     private void setCorner(int which, BlockPos pos) {
+        // #65 full fix (PR1 redo): on Manager-directed stashes the workzone is
+        // Owner-approved via stash-defs directives only — including before the
+        // first directive arrives. Local corner picks must never override it.
+        if (managerOwnsWorkzone()) {
+            notice("The stash area is owned by the Manager (Settings > Stashes), not set in the game.");
+            return;
+        }
         if (ensureStash() == null) stash = new Stash(stashName(), Stash.currentServer());
         // Corners set in another dimension don't go with this one
         String dimension = Stash.currentDimension();
@@ -12798,6 +12835,11 @@ public class StashSorter extends Module {
     }
 
     private void clearArea() {
+        // #65 full fix: Manager-owned workzones are cleared in Settings > Stashes only.
+        if (managerOwnsWorkzone()) {
+            notice("The stash area is owned by the Manager (Settings > Stashes), not cleared in the game.");
+            return;
+        }
         if (ensureStash() == null || (stash.corner1 == null && stash.corner2 == null)) {
             notice("There is no stash area set.");
             return;
@@ -12823,18 +12865,8 @@ public class StashSorter extends Module {
      */
     boolean applyDirective(com.google.gson.JsonObject d, long revision) {
         if (ensureStash() == null || d == null) return false;
-        // Monotonic per-stash revisions, surviving restarts via the stash file: the same
-        // revision is a no-op (already applied), a lower one is rejected outright (stale or
-        // replayed), and only a higher one is applied. Unknown revisions (-1) are applied
-        // once, then pinned.
-        long seen = stash.directiveRev;
-        if (revision >= 0 && revision == seen) return false;
-        if (revision >= 0 && seen >= 0 && revision < seen) {
-            warning(
-                    "Ignoring stale Manager directive (revision %d < applied %d) for stash '%s'.",
-                    revision, seen, stash.name);
-            return false;
-        }
+        // Only a versioned directive can grant or change the physical workzone.
+        if (revision < 0 || revision <= stash.directiveRev) return false;
         boolean changed = false;
         net.minecraft.core.BlockPos p1 = vec(d.get("pos1"));
         net.minecraft.core.BlockPos p2 = vec(d.get("pos2"));

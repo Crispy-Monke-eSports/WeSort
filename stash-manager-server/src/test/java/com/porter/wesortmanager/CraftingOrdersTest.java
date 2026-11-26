@@ -36,11 +36,9 @@ class CraftingOrdersTest {
         var ix = StockFixtures.physical(
                 index(stash, nuggets), ledger.epoch(), ledger.revision(), ledger.revision() + 1, stash.hashCode());
         var source = ix.getAsJsonArray("physicalSources").get(0).getAsJsonObject();
-        var writer = new PhysicalSlots.Writer();
-        source.add("slots", writer.slots(frame.slots()));
+        source.addProperty("snbt", frame.snbt());
         source.addProperty("fingerprint", frame.fingerprint());
-        ix.add("slotVariants", writer.variants());
-        ix.addProperty("physicalVersion", 2);
+        ix.addProperty("physicalVersion", 3);
         store.putIndex(ix);
         store.heartbeat(
                 "s",

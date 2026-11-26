@@ -78,6 +78,10 @@ final class StockRoutes {
                     ? ledger.snapshot(id, source.value().get("slotFingerprint").getAsString())
                     : null;
             out.add("snapshot", snapshot == null ? JsonNull.INSTANCE : snapshot);
+            if (snapshot != null)
+                out.addProperty(
+                        "snapshotSnbt",
+                        ledger.snapshotSnbt(id, snapshot.get("fingerprint").getAsString()));
             // The history frame carries its original content; current slot revisions must never label an older frame.
             if (snapshot != null && source.status().equals("FRESH")) {
                 JsonArray slots = new JsonArray();

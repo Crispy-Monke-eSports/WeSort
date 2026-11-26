@@ -536,7 +536,7 @@ final class OrderStore {
         var restored = new LinkedHashMap<IndexStore.StashKey, Book>();
         var orderIds = new HashSet<String>();
         var receiptKeys = new HashSet<String>();
-        storage.load(dir, snapshot -> {
+        storage.load(snapshot -> {
             var root = snapshot.payload();
             var b = new Book(snapshot.server(), snapshot.stash());
             b.persistenceRevision = snapshot.revision();

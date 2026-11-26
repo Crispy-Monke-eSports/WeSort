@@ -19,7 +19,8 @@ class OrderStateMachineTest {
         assertFalse(OrderStateMachine.allows(OrderStateMachine.State.DRAFT, "pickup"));
         assertFalse(OrderStateMachine.allows(OrderStateMachine.State.DELIVERED, "cancel"));
         assertFalse(OrderStateMachine.allows(OrderStateMachine.State.RESERVED, "approve"));
-        assertTrue(OrderStateMachine.lookup(OrderStateMachine.State.DRAFT, "nope").isEmpty());
+        assertTrue(
+                OrderStateMachine.lookup(OrderStateMachine.State.DRAFT, "nope").isEmpty());
     }
 
     @Test
@@ -35,19 +36,14 @@ class OrderStateMachineTest {
         assertTrue(OrderStateMachine.allows(OrderStateMachine.State.PACKING, "fence"));
         assertTrue(OrderStateMachine.allows(OrderStateMachine.State.NEEDS_RECONCILIATION, "recover"));
         assertTrue(OrderStateMachine.allows(OrderStateMachine.State.RECOVERING, "reconcile-ok"));
-        var recover = OrderStateMachine.lookup(
-                OrderStateMachine.State.NEEDS_RECONCILIATION, "recover");
+        var recover = OrderStateMachine.lookup(OrderStateMachine.State.NEEDS_RECONCILIATION, "recover");
         assertTrue(recover.isPresent() && recover.get().needsOwner());
     }
 
     @Test
     void changesetRequiresNextRevision() {
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> new OrderChangeSet("o-1", 3L, 3L, null, null, null, null));
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> new OrderChangeSet("o-1", 3L, 4L, null, null, null, null));
+        assertThrows(IllegalArgumentException.class, () -> new OrderChangeSet("o-1", 3L, 3L, null, null, null, null));
+        assertThrows(IllegalArgumentException.class, () -> new OrderChangeSet("o-1", 3L, 4L, null, null, null, null));
         var ok = new OrderChangeSet(
                 "o-1", 3L, 4L, java.util.List.of(java.util.Map.of("row", "order")), null, null, null);
         assertEquals(4L, ok.nextRevision());

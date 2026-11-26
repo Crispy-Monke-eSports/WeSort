@@ -44,6 +44,9 @@ import net.minecraft.world.item.Item;
  * back to the client thread, so all state here is only touched on the client thread.
  */
 public class StashManager extends Module {
+    /** Live acceptance runs may survey and reconcile the existing journal, without taking new work. */
+    public static final boolean SURVEY_ONLY = Boolean.getBoolean("wesort.surveyOnly");
+
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
     // The sole visible Meteor setting opens the Manager connection screen. All remaining
@@ -654,7 +657,11 @@ public class StashManager extends Module {
     private volatile Boolean e2eFixtureVerified;
 
     public boolean sortingEnabled() {
-        return dedicatedProfile() && managerConfigured() && sortEnabled.get() && !e2ePhysicalSortingHold;
+        return !SURVEY_ONLY
+                && dedicatedProfile()
+                && managerConfigured()
+                && sortEnabled.get()
+                && !e2ePhysicalSortingHold;
     }
 
     /** Orders waiting to be claimed: the sorter names no UUIDs while any wait, so packed orders keep matching. */
@@ -740,7 +747,7 @@ public class StashManager extends Module {
                 || inFlight) return false;
         long now = System.nanoTime();
         var sorter = WeSortAddon.sorter();
-        boolean wants = isActive() && sorter != null && sorter.requiresSortingPermit();
+        boolean wants = !SURVEY_ONLY && isActive() && sorter != null && sorter.requiresSortingPermit();
         if (!wants && sortingToken == null) return false;
         if (!wants && (PhysicalJournalRuntime.awaitingMirror() || !InventorySync.ready() && !InventorySync.failed()))
             return false;
@@ -1702,6 +1709,7 @@ public class StashManager extends Module {
      * @return true when a request was sent
      */
     private boolean orderStep(URI base, String key, long now) {
+        if (SURVEY_ONLY) return false;
         StashSorter sorter = WeSortAddon.sorter();
         if (sorter == null) return false;
         OrderRunner runner = sorter.orders();
@@ -2011,6 +2019,7 @@ public class StashManager extends Module {
 
     /** Why the bot can't take orders right now, or null. */
     private String orderBlocker() {
+        if (SURVEY_ONLY) return "survey-only session";
         if (!acceptOrders.get()) return "accept-orders off";
         if (orderIntakePaused.get()) return "new warehouse orders paused by Manager";
         StashSorter sorter = WeSortAddon.sorter();
@@ -2034,7 +2043,7 @@ public class StashManager extends Module {
 
     /** The module is on and taking orders. */
     boolean takingOrders() {
-        return isActive() && acceptOrders.get();
+        return !SURVEY_ONLY && isActive() && acceptOrders.get();
     }
 
     int freshMinutes() {

@@ -52,7 +52,11 @@ class RepackHarness(world.Harness):
         # Deliberately omit the pickaxe in no-tool to prove hand-breaking works.
         if self.scenario!='no-tool':self.give(8,'diamond_pickaxe')
         if self.scenario in ['mixed','no-tool','full-stash','blocked','abort','lag','reserved','full-inventory','named']:
-            self.give(0,'shulker_box[minecraft:container=[{slot:0,item:{id:"minecraft:diamond",count:32}},{slot:13,item:{id:"minecraft:dirt",count:16}},{slot:26,item:{id:"minecraft:diamond_sword",count:1,components:{"minecraft:damage":4,"minecraft:custom_name":{text:"Keep exact"}}}}]]')
+            # #67/#276: the reserved scenario places a real Manager order, so its diamond
+            # source must be UUID-marked (unmarked roots are quarantined). Other scenarios
+            # exercise unmarked-box repack flows and keep the plain box.
+            name = ',minecraft:custom_name={text:"WeSort-550e8400-e29b-41d4-a716-446655440044"}' if self.scenario == 'reserved' else ''
+            self.give(0,'shulker_box[minecraft:container=[{slot:0,item:{id:"minecraft:diamond",count:32}},{slot:13,item:{id:"minecraft:dirt",count:16}},{slot:26,item:{id:"minecraft:diamond_sword",count:1,components:{"minecraft:damage":4,"minecraft:custom_name":{text:"Keep exact"}}}}]' + name + ']')
         elif self.scenario in ['partial','identical']:
             self.give(0,'shulker_box[minecraft:container=[{slot:0,item:{id:"minecraft:diamond",count:60}}]]');self.give(1,'diamond',10)
         elif self.scenario in ['bulk','no-empty']:

@@ -2,12 +2,11 @@ package com.porter.wesort.compat;
 
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
+import com.porter.wesort.snbt.SnbtCodec;
 import com.porter.wesort.data.PhysicalSlots;
-import com.porter.wesort.stash.Kits;
 import com.porter.wesort.stash.StashIndex;
 import java.util.*;
 import meteordevelopment.meteorclient.utils.Utils;
-import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.NbtOps;
@@ -34,9 +33,12 @@ public final class SlotRuntime {
 
     private static PhysicalSlots.Item item(ItemStack stack, int depth) {
         var ops = mc.level.registryAccess().createSerializationContext(NbtOps.INSTANCE);
-        String patch = NbtFingerprint.encode(DataComponentPatch.CODEC
-                .encodeStart(ops, stack.getComponentsPatch())
-                .getOrThrow());
+        var nativeStack = SnbtCodec.compound(
+                NbtFingerprint.encode(ItemStack.CODEC.encodeStart(ops, stack).getOrThrow()));
+        var componentPatch = nativeStack.get("components");
+        String patch = componentPatch == null ? "{}" : SnbtCodec.write(componentPatch);
+        if (componentPatch != null && !(componentPatch instanceof SnbtCodec.TCompound))
+            throw new IllegalArgumentException("Native item component patch is not a compound");
         var container = stack.get(DataComponents.CONTAINER);
         var bundle = stack.get(DataComponents.BUNDLE_CONTENTS);
         boolean shulker = Utils.isShulker(stack.getItem());
@@ -47,7 +49,11 @@ public final class SlotRuntime {
         int size = 0;
         if (shulker) {
             kind = PhysicalSlots.Kind.SHULKER;
-            contents = Arrays.asList(Kits.inside(stack));
+            if (container != null && container.size() > 27)
+                throw new IllegalArgumentException("Shulker contents exceed physical capacity");
+            if (bundle != null && !bundle.isEmpty())
+                throw new IllegalArgumentException("Shulker has ambiguous bundle contents");
+            contents = container == null ? List.of() : container.itemCopies().toList();
             size = 27;
         } else if (bundle != null) {
             kind = PhysicalSlots.Kind.BUNDLE;

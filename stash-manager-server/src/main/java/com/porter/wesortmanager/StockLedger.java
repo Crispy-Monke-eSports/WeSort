@@ -195,14 +195,25 @@ final class StockLedger {
                     // här i samma SQLite-tx som dispositionen, aldrig i audit.json.
                     s.execute(
                             "CREATE TABLE IF NOT EXISTS business_audit(seq INTEGER PRIMARY KEY AUTOINCREMENT,at INTEGER NOT NULL,actor_id TEXT NOT NULL,actor_name TEXT NOT NULL,action TEXT NOT NULL,order_id TEXT,job_id TEXT,package_id TEXT,correlation_id TEXT,detail TEXT NOT NULL,server TEXT,stash TEXT)");
+                    s.execute("""
+                            CREATE TRIGGER IF NOT EXISTS audit_new_order_event AFTER INSERT ON order_event_log
+                            BEGIN
+                              INSERT INTO business_audit(at,actor_id,actor_name,action,order_id,correlation_id,detail,server,stash)
+                              VALUES(json_extract(NEW.payload,'$.at'),json_extract(NEW.payload,'$.actor'),
+                                     json_extract(NEW.payload,'$.actor'),json_extract(NEW.payload,'$.action'),
+                                     NEW.order_id,NEW.order_id || '/' || NEW.seq,NEW.payload,NEW.server,NEW.stash);
+                            END
+                            """);
                     s.execute("CREATE INDEX IF NOT EXISTS business_audit_order ON business_audit(order_id)");
                     s.execute("CREATE INDEX IF NOT EXISTS business_audit_time ON business_audit(at)");
-                    s.execute("CREATE INDEX IF NOT EXISTS business_audit_correlation ON business_audit(correlation_id)");
+                    s.execute(
+                            "CREATE INDEX IF NOT EXISTS business_audit_correlation ON business_audit(correlation_id)");
                     // PR7 (#255, additivt): scoped membership/presence-lookups utan fullscan.
                     s.execute(
                             "CREATE INDEX IF NOT EXISTS stock_members_present ON stock_members(server,stash,present)");
-                    s.execute(
-                            "CREATE INDEX IF NOT EXISTS physical_slots_present ON physical_slots(source,present)");
+                    s.execute("CREATE INDEX IF NOT EXISTS physical_slots_present ON physical_slots(source,present)");
+                    s.execute("CREATE INDEX IF NOT EXISTS stock_parts_source ON stock_parts(source)");
+                    s.execute("CREATE INDEX IF NOT EXISTS stock_members_source_present ON stock_members(source,present)");
                     s.execute("PRAGMA user_version=9");
                     var interruptedServers = new ArrayList<String>();
                     try (var leases = s.executeQuery("SELECT server FROM automation_leases WHERE state='ACTIVE'")) {
@@ -424,9 +435,10 @@ final class StockLedger {
     static List<JsonObject> validate(JsonObject index) {
         if (!index.has("physicalSources")) return List.of();
         long version = number(index, "physicalVersion");
-        if (version != 1 && version != 2 && version != 3)
+        if (version != 1 && version != 3)
             throw new IllegalArgumentException("Unsupported physical observation version");
-        var slots = version == 2 ? new PhysicalSlots.Reader(index.getAsJsonArray("slotVariants")) : null;
+        if (version == 3 && index.has("slotVariants"))
+            throw new IllegalArgumentException("SNBT observations cannot contain a variant dictionary");
         String server = index.get("server").getAsString();
         var values = index.getAsJsonArray("physicalSources");
         if (values.size() > 2048) throw new IllegalArgumentException("Too many physical sources");
@@ -488,35 +500,32 @@ final class StockLedger {
                         throw new IllegalArgumentException("Invalid or duplicate physical quantity");
                 }
             }
-            if (version == 3 && state.equals("FRESH")) {
-                // PR4 (#227): v3 sources carry canonical SNBT instead of a variant
-                // dictionary. Parse strictly, require canonical round-trip, and
-                // bind the fingerprint to the snapshot digest (never JSON).
-                if (!source.has("snbt") || !source.get("snbt").isJsonPrimitive())
-                    throw new IllegalArgumentException("v3 source is missing canonical snbt");
-                String snbt = source.get("snbt").getAsString();
-                com.porter.wesort.snbt.SnbtCodec.Tag parsed;
-                try {
-                    parsed = com.porter.wesort.snbt.SnbtCodec.parse(snbt);
-                } catch (com.porter.wesort.snbt.SnbtCodec.SnbtException e) {
-                    throw new IllegalArgumentException("Invalid v3 source snbt: " + e.getMessage());
-                }
-                String canonical = com.porter.wesort.snbt.SnbtCodec.write(parsed);
-                if (!canonical.equals(snbt)) throw new IllegalArgumentException("v3 source snbt is not canonical");
-                String digest = com.porter.wesort.snbt.SnbtCodec.snapshotDigest(canonical);
-                if (!digest.equals(source.get("fingerprint").getAsString()))
-                    throw new IllegalArgumentException("v3 snapshot digest mismatch");
+            if (version == 3) {
+                if (source.has("slots") || !source.has("snbt"))
+                    throw new IllegalArgumentException("Expected SNBT-only physical observation");
+                if (!state.equals("FRESH") && !source.get("snbt").isJsonNull())
+                    throw new IllegalArgumentException("Unverified source cannot publish new SNBT");
+                if (state.equals("FRESH")
+                        && (!source.get("snbt").isJsonPrimitive()
+                                || !source.get("snbt").getAsJsonPrimitive().isString()))
+                    throw new IllegalArgumentException("Fresh source requires canonical SNBT");
             }
-            if (version == 2 && state.equals("FRESH")) {
-                var snapshot = slots.snapshot(Math.toIntExact(number(source, "size")), source.getAsJsonArray("slots"));
+            if (version == 3 && state.equals("FRESH")) {
+                var snapshot =
+                        PhysicalSlots.Snapshot.fromSnbt(source.get("snbt").getAsString());
+                if (snapshot.size() != number(source, "size"))
+                    throw new IllegalArgumentException("SNBT inventory capacity mismatch");
                 if (!snapshot.fingerprint().equals(source.get("fingerprint").getAsString()))
                     throw new IllegalArgumentException("Physical snapshot fingerprint mismatch");
                 if (!amounts(source.getAsJsonArray("items")).equals(snapshot.totals())
                         || !amounts(source.getAsJsonArray("shulkers")).equals(snapshot.shulkers()))
                     throw new IllegalArgumentException("Aggregated quantities do not match physical slots");
-                source.add("slotSnapshot", snapshot.json());
+                var view = snapshot.json();
+                view.addProperty("snbt", snapshot.snbt());
+                source.add("slotSnapshot", view);
             }
             source.remove("slots");
+            source.remove("snbt");
             result.add(source);
         }
         return result;
@@ -557,7 +566,7 @@ final class StockLedger {
                         ? source.remove("slotSnapshot").getAsJsonObject()
                         : null;
                 if (snapshot != null) {
-                    source.addProperty("slotSchema", 1);
+                    source.addProperty("slotSchema", 2);
                     source.addProperty(
                             "slotFingerprint", snapshot.get("fingerprint").getAsString());
                     source.addProperty(
@@ -664,7 +673,10 @@ final class StockLedger {
                     p.setString(8, verifiedRun);
                     p.executeUpdate();
                 }
-                if (fresh) saveSlots(c, id, snapshot, sourceRevision);
+                boolean sameContent = snapshot != null && previous != null
+                        && source.get("slotFingerprint").equals(previous.get("slotFingerprint"))
+                        && source.get("slotSchema").equals(previous.get("slotSchema"));
+                if (fresh && !sameContent) saveSlots(c, id, snapshot, sourceRevision);
                 if (snapshot != null && fresh) collectObservedBoxUuids(snapshot, id, freshBoxes);
                 for (var item : source.getAsJsonArray("parts")) {
                     var pos = item.getAsJsonArray();
@@ -768,10 +780,19 @@ final class StockLedger {
             try (var p = c.prepareStatement("INSERT OR IGNORE INTO physical_snapshots VALUES(?,?,?,?)")) {
                 p.setString(1, source);
                 p.setString(2, snapshot.get("fingerprint").getAsString());
-                p.setString(3, snapshot.toString());
+                String snbt = snapshot.get("snbt").getAsString();
+                var decoded = PhysicalSlots.Snapshot.fromSnbt(snbt);
+                if (!decoded.fingerprint().equals(snapshot.get("fingerprint").getAsString()))
+                    throw new IllegalArgumentException("SNBT snapshot fingerprint mismatch before persistence");
+                var expected = snapshot.deepCopy();
+                expected.remove("snbt");
+                if (!decoded.json().equals(expected))
+                    throw new IllegalArgumentException("Physical projection differs from SNBT");
+                p.setString(3, snbt);
                 p.setLong(4, revision);
                 p.executeUpdate();
             }
+            // physical_slots is a rebuildable index, never a second content authority.
             try (var p = c.prepareStatement(
                     "INSERT INTO physical_slots VALUES(?,?,?,?,?,?,?,?,?,?,1) ON CONFLICT(source,path) DO UPDATE SET parent=excluded.parent,payload=excluded.payload,item_fingerprint=excluded.item_fingerprint,count=excluded.count,copies=excluded.copies,revision=CASE WHEN physical_slots.present=1 AND physical_slots.fingerprint=excluded.fingerprint AND physical_slots.copies=excluded.copies THEN physical_slots.revision ELSE excluded.revision END,fingerprint=excluded.fingerprint,seen_revision=excluded.seen_revision,present=1")) {
                 for (var value : snapshot.getAsJsonArray("positions")) {
@@ -800,34 +821,86 @@ final class StockLedger {
         }
     }
 
-    synchronized JsonObject snapshot(String source, String fingerprint) throws IOException {
-        try (var c = open();
-                var p = c.prepareStatement("SELECT payload FROM physical_snapshots WHERE source=? AND fingerprint=?")) {
+    private static PhysicalSlots.Snapshot readSnbtSnapshot(Connection c, String source, String fingerprint)
+            throws SQLException, IOException {
+        try (var p = c.prepareStatement("SELECT payload FROM physical_snapshots WHERE source=? AND fingerprint=?")) {
             p.setString(1, source);
             p.setString(2, fingerprint);
             try (var r = p.executeQuery()) {
-                return r.next() ? JsonParser.parseString(r.getString(1)).getAsJsonObject() : null;
+                if (!r.next()) return null;
+                try {
+                    var snapshot = PhysicalSlots.Snapshot.fromSnbt(r.getString(1));
+                    if (!fingerprint.equals(snapshot.fingerprint()))
+                        throw new IllegalArgumentException("Persisted snapshot digest mismatch");
+                    return snapshot;
+                } catch (RuntimeException invalid) {
+                    throw new IOException(
+                            "Invalid or unsupported persisted physical SNBT; clean data or restore required", invalid);
+                }
             }
+        }
+    }
+
+    synchronized JsonObject snapshot(String source, String fingerprint) throws IOException {
+        try (var c = open()) {
+            var snapshot = readSnbtSnapshot(c, source, fingerprint);
+            return snapshot == null ? null : snapshot.json();
         } catch (SQLException e) {
             throw new IOException("Cannot read physical snapshot", e);
         }
     }
 
+    synchronized String snapshotSnbt(String source, String fingerprint) throws IOException {
+        try (var c = open()) {
+            var snapshot = readSnbtSnapshot(c, source, fingerprint);
+            return snapshot == null ? null : snapshot.snbt();
+        } catch (SQLException e) {
+            throw new IOException("Cannot read authoritative physical SNBT", e);
+        }
+    }
+
     synchronized List<JsonObject> physicalSlots(String source) throws IOException {
         List<JsonObject> result = new ArrayList<>();
-        try (var c = open();
-                var p = c.prepareStatement(
-                        "SELECT payload,revision,present FROM physical_slots WHERE source=? ORDER BY path")) {
-            p.setString(1, source);
-            try (var r = p.executeQuery()) {
-                while (r.next()) {
-                    var row = JsonParser.parseString(r.getString(1)).getAsJsonObject();
-                    row.addProperty("revision", r.getLong(2));
-                    row.addProperty("present", r.getBoolean(3));
-                    result.add(row);
+        Map<String, JsonObject> expected = new HashMap<>();
+        try (var c = open()) {
+            // A present slot is readable/allocatable only when it agrees with the authoritative snapshot.
+            String fingerprint = null;
+            try (var p = c.prepareStatement("SELECT payload FROM stock_sources WHERE id=?")) {
+                p.setString(1, source);
+                try (var r = p.executeQuery()) {
+                    if (r.next()) {
+                        var metadata = JsonParser.parseString(r.getString(1)).getAsJsonObject();
+                        if (metadata.has("slotFingerprint"))
+                            fingerprint = metadata.get("slotFingerprint").getAsString();
+                    }
                 }
             }
-        } catch (SQLException e) {
+            if (fingerprint != null) {
+                var snapshot = readSnbtSnapshot(c, source, fingerprint);
+                if (snapshot == null) throw new IOException("Missing authoritative physical SNBT");
+                for (var value : snapshot.json().getAsJsonArray("positions")) {
+                    var row = value.getAsJsonObject();
+                    expected.put(row.get("path").getAsString(), row);
+                }
+            }
+            try (var p = c.prepareStatement(
+                    "SELECT path,payload,revision,present FROM physical_slots WHERE source=? ORDER BY path")) {
+                p.setString(1, source);
+                try (var r = p.executeQuery()) {
+                    while (r.next()) {
+                        var cached = JsonParser.parseString(r.getString(2)).getAsJsonObject();
+                        boolean present = r.getBoolean(4);
+                        var row = present ? expected.remove(r.getString(1)) : cached;
+                        if (row == null || !row.equals(cached))
+                            throw new IOException("Physical slot projection differs from authoritative SNBT");
+                        row.addProperty("revision", r.getLong(3));
+                        row.addProperty("present", present);
+                        result.add(row);
+                    }
+                }
+            }
+            if (!expected.isEmpty()) throw new IOException("Physical slot projection is incomplete");
+        } catch (SQLException | RuntimeException e) {
             throw new IOException("Cannot read physical slots", e);
         }
         return result;
@@ -917,7 +990,7 @@ final class StockLedger {
             var row = value.getAsJsonObject();
             if (!"SHULKER".equals(row.get("kind").getAsString())) continue;
             String path = row.get("path").getAsString();
-            if (path.indexOf('/') >= 0) continue; // only root boxes, never shulkers nested inside other shulkers
+            if (row.get("count").getAsLong() != 1 || row.get("copies").getAsLong() != 1) continue;
             UUID uuid = ShulkerUuid.boxUuid(row.get("components").getAsString());
             if (uuid != null)
                 boxes.putIfAbsent(
@@ -953,6 +1026,14 @@ final class StockLedger {
                 ObservedBox at = seen.getValue();
                 String[] where = findBoxUuid(c, uuid);
                 if (where == null) {
+                    // Explicitly exported identities can never become active again.
+                    try (var retired = c.prepareStatement(
+                            "SELECT 1 FROM box_uuid_history WHERE uuid=? AND reason='DEREGISTERED_FOR_ORDER' LIMIT 1")) {
+                        retired.setString(1, uuid);
+                        try (var rows = retired.executeQuery()) {
+                            if (rows.next()) continue;
+                        }
+                    }
                     try (var insert = c.prepareStatement("INSERT INTO box_uuids VALUES(?,?,?,?,'IN_STOCK',?,?,?,?)")) {
                         insert.setString(1, uuid);
                         insert.setString(2, server);
@@ -1091,9 +1172,6 @@ final class StockLedger {
             try (var rows = slots.executeQuery()) {
                 while (rows.next()) {
                     String name = ShulkerUuid.customName(rows.getString(3));
-                    if (name == null
-                            || !name.strip().regionMatches(true, 0, ShulkerUuid.PREFIX, 0, ShulkerUuid.PREFIX.length()))
-                        continue;
                     var fullPath = rows.getString(2);
                     int nested = fullPath.indexOf('/');
                     // PR6 (#269/#67): nested UUID subtrees quarantine the root —
@@ -1111,7 +1189,7 @@ final class StockLedger {
                         unsafe.add(other);
                         unsafe.add(root);
                     }
-                    if (rows.getLong(4) != 1 || !root.equals(registered.get(key))) unsafe.add(root);
+                    if (rows.getLong(4) != 1 || !new PhysicalReservations.Root(rows.getString(1), fullPath).equals(registered.get(key))) unsafe.add(root);
                 }
             }
         } catch (SQLException failure) {
@@ -1268,18 +1346,12 @@ final class StockLedger {
         try (var c = open();
                 var s = c.createStatement();
                 var r = s.executeQuery(
-                        "SELECT s.server,m.stash,CASE WHEN m.present=1 THEN s.payload ELSE m.payload END,CASE WHEN m.present=1 THEN s.revision ELSE m.revision END,CASE WHEN m.present=1 THEN s.verified_at ELSE m.verified_at END,s.run,(SELECT count(*) FROM stock_members m2 WHERE m2.source=s.id AND m2.present=1),s.id,m.present FROM stock_sources s JOIN stock_members m ON m.source=s.id WHERE m.present=1 OR NOT EXISTS(SELECT 1 FROM stock_members active WHERE active.source=s.id AND active.present=1) ORDER BY s.id,m.present DESC,CASE WHEN m.present=1 THEN s.revision ELSE m.revision END DESC,m.stash")) {
+                        "SELECT s.server,m.stash,CASE WHEN m.present=1 THEN s.payload ELSE m.payload END,CASE WHEN m.present=1 THEN s.revision ELSE m.revision END,CASE WHEN m.present=1 THEN s.verified_at ELSE m.verified_at END,s.run,(SELECT count(*) FROM stock_members m2 WHERE m2.source=s.id AND m2.present=1),s.id,m.present,(SELECT count(*) FROM stock_parts p WHERE p.source=s.id) FROM stock_sources s JOIN stock_members m ON m.source=s.id WHERE m.present=1 OR NOT EXISTS(SELECT 1 FROM stock_members active WHERE active.source=s.id AND active.present=1) ORDER BY s.id,m.present DESC,CASE WHEN m.present=1 THEN s.revision ELSE m.revision END DESC,m.stash")) {
             while (r.next()) {
                 var value = JsonParser.parseString(r.getString(3)).getAsJsonObject();
                 String state = value.get("state").getAsString();
                 long at = effectiveNow(r.getString(1), now, r.getLong(5));
-                int activeParts = 0;
-                try (var p = c.prepareStatement("SELECT count(*) FROM stock_parts WHERE source=?")) {
-                    p.setString(1, r.getString(8));
-                    try (var n = p.executeQuery()) {
-                        if (n.next()) activeParts = n.getInt(1);
-                    }
-                }
+                int activeParts = r.getInt(10);
                 if (activeParts != value.getAsJsonArray("parts").size()) state = "SUPERSEDED";
                 else if (value.has("protected") && value.get("protected").getAsBoolean()) state = "PROTECTED";
                 else if (r.getInt(9) == 0) state = "WITHDRAWN";

@@ -72,12 +72,9 @@ class AutomationGateTest {
         var diamond = new PhysicalSlots.Item(
                 "minecraft:diamond", "minecraft:diamond", 64, "{}", PhysicalSlots.Kind.ITEM, 0, List.of(), "");
         var slots = List.of(new PhysicalSlots.Slot(0, 64, diamond));
-        var writer = new PhysicalSlots.Writer();
-        var slotRows = writer.slots(slots);
-        physical.addProperty("physicalVersion", 2);
-        physical.add("slotVariants", writer.variants());
+        physical.addProperty("physicalVersion", 3);
         var source = physical.getAsJsonArray("physicalSources").get(0).getAsJsonObject();
-        source.add("slots", slotRows);
+        source.addProperty("snbt", new PhysicalSlots.Snapshot(27, slots).snbt());
         source.addProperty("fingerprint", new PhysicalSlots.Snapshot(27, slots).fingerprint());
         store.putIndex(physical);
         return store;

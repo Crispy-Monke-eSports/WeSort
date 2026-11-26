@@ -447,9 +447,11 @@ try:
             == 200
         )
         members = ["PortalBuilder", "PortalMiner"]
-        officer = "PortalOfficer"
+        # No officer role (#26/#43): the reviewer is a member with an
+        # Owner-granted activity permit, not a preset.
+        reviewer = "PortalReviewer"
         for name, payload in [(member, {"preset": "member"}) for member in members] + [
-            (officer, {"perms": {"view": True, "order": True, "activity": True}})
+            (reviewer, {"perms": {"view": True, "order": True, "activity": True}})
         ]:
             body = {"name": name, "password": password, "mustChange": False}
             body.update(payload)
@@ -471,7 +473,7 @@ try:
                     "otherStash": fake.STASH,
                     "password": password,
                     "members": members,
-                    "officer": officer,
+                    "reviewer": reviewer,
                 }
             ),
             check=False,

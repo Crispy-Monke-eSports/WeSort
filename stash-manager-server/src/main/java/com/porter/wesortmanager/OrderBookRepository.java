@@ -4,8 +4,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.porter.wesort.data.CanonicalJson;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -23,10 +21,12 @@ final class OrderBookRepository {
     }
 
     /**
-     * Import old WeSort books once, in a single transaction. Validate every book before the marker
-     * is committed. Afterward the legacy files are never read or written, even if left on disk.
+     * Restore order books from SQLite, in a single transaction. Validate every book.
+     * There is no legacy file import (#11): {@code *.json} order files are never
+     * read — authoritative orders live in {@code order_books}. Stray files on disk
+     * are ignored (StockLedger warns loudly); only SQLite state is trusted.
      */
-    void load(Path legacy, Consumer<Snapshot> validate) throws IOException {
+    void load(Consumer<Snapshot> validate) throws IOException {
         try (var c = ledger.open();
                 var tx = new SqliteWriteTransaction(c)) {
             boolean initialized;
@@ -50,23 +50,6 @@ final class OrderBookRepository {
             }
             if (!initialized) {
                 if (!snapshots.isEmpty()) throw new IOException("Order books exist without their migration marker");
-                if (Files.isSymbolicLink(legacy)) throw new IOException("Invalid legacy order directory");
-                if (Files.exists(legacy)) {
-                    try (var files = Files.newDirectoryStream(legacy, "*.json")) {
-                        for (Path file : files) {
-                            if (Files.isSymbolicLink(file)) throw new IOException("Invalid legacy order file");
-                            var root = JsonParser.parseString(Files.readString(file))
-                                    .getAsJsonObject();
-                            var snapshot = new Snapshot(
-                                    root.get("server").getAsString(),
-                                    root.get("stash").getAsString(),
-                                    1,
-                                    root);
-                            validateScope(snapshot);
-                            snapshots.add(snapshot);
-                        }
-                    }
-                }
             }
             for (var snapshot : snapshots) {
                 validate.accept(snapshot);

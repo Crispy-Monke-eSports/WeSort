@@ -345,6 +345,17 @@ public class StashManager extends Module {
     }
 
     /**
+     * Whether the Owner defines this client's workzone through signed Manager
+     * stash-defs directives (#65). While managed, local corner/delivery/drop-off
+     * picks are refused — including before the first directive arrives
+     * ({@code directiveRev == -1}), so there is no initial window for a local
+     * override. Without a configured Manager the client is locally driven.
+     */
+    public boolean managesWorkzones() {
+        return managerConfigured();
+    }
+
+    /**
      * The Manager order the bot is currently working, or null (W-061: the job tag every world-interaction
      * permit is issued under; permits without a job are still exact-position, exact-block and expiring).
      */
@@ -655,6 +666,10 @@ public class StashManager extends Module {
 
     private String sortingToken, sortingScope = "";
     private long sortingUntil, sortingPoll;
+    // Cached E2E-fixture marker verdict (#43: the lease-free sorting path below must
+    // never open outside the verified isolated fixture). Checked once per process;
+    // the marker cannot appear mid-run on a production client.
+    private volatile Boolean e2eFixtureVerified;
 
     public boolean sortingEnabled() {
         return dedicatedProfile() && managerConfigured() && sortEnabled.get() && !e2ePhysicalSortingHold;
@@ -666,13 +681,36 @@ public class StashManager extends Module {
     }
 
     public boolean sortingAllowed() {
-        // Only the isolated, marker-protected Minecraft E2E harness can run the legacy local sorter.
-        if (Boolean.getBoolean("wesort.e2e") && serverUrl.get().isBlank()) return true;
+        // Test-fixture hook ONLY (#43: no lease-free physical sorting in production):
+        // the isolated, marker-protected Minecraft E2E harness (gradle -PworldTest
+        // sets -Dwesort.e2e with no Manager URL) may run the local sorter without a
+        // lease. The fixture marker is verified, not just the flag — a bare JVM flag
+        // on a production client grants nothing. Not an order backdoor: orders
+        // themselves are wanted only via the signed Manager protocol.
+        if (Boolean.getBoolean("wesort.e2e") && serverUrl.get().isBlank() && e2eFixtureVerified()) return true;
         return isActive()
                 && mc.player != null
                 && sortingToken != null
                 && sortingScope.equals(sortingScope())
                 && System.nanoTime() < sortingUntil;
+    }
+
+    /** Cached fixture-marker verdict for the lease-free E2E sorting path (see above). */
+    private boolean e2eFixtureVerified() {
+        Boolean cached = e2eFixtureVerified;
+        if (cached != null) return cached;
+        boolean ok = false;
+        try {
+            if (mc.gameDirectory != null) {
+                var marker = mc.gameDirectory.toPath().resolve("wesort-e2e/installation.txt");
+                ok = java.nio.file.Files.isRegularFile(marker)
+                        && java.nio.file.Files.readString(marker).trim().equals("wesort-mc26-e2e-v1");
+            }
+        } catch (RuntimeException | java.io.IOException unreadable) {
+            ok = false;
+        }
+        e2eFixtureVerified = ok;
+        return ok;
     }
 
     public String physicalLeaseFingerprint() {

@@ -15,28 +15,35 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** A malformed order book must never leave active reservations silently missing after restart. */
+/** Stray legacy files must never influence startup: SQLite is the only order truth. */
 class OrderStoreRecoveryTest {
     @TempDir
     Path dir;
 
     @Test
-    void corruptOrderBookPreventsStartup() throws Exception {
+    void corruptLegacyJsonIsIgnoredAndStartupSucceeds() throws Exception {
+        // No historic migration (#11): Data/orders/*.json are never read, so a
+        // corrupt stray file cannot prevent startup or hide reservations.
+        var index = stockedIndex();
         Path orders = Files.createDirectories(dir.resolve("orders"));
         Files.writeString(
                 orders.resolve("broken.json"), "{\"server\":\"s\",\"stash\":\"a\",\"orders\":[{\"id\":\"o-broken\"},");
-        var store = new OrderStore(dir, new IndexStore(dir));
-        assertThrows(IOException.class, store::load);
+        var store = new OrderStore(dir, index);
+        store.load();
+        assertTrue(store.listJson("s", "a").getAsJsonArray("orders").isEmpty());
+        assertTrue(Files.readString(orders.resolve("broken.json")).startsWith("{\"server\""));
     }
 
     @Test
-    void partiallyValidOrderBookAlsoPreventsStartup() throws Exception {
+    void partiallyValidLegacyJsonIsIgnored() throws Exception {
+        var index = stockedIndex();
         Path orders = Files.createDirectories(dir.resolve("orders"));
         Files.writeString(
                 orders.resolve("partial.json"),
                 "{\"server\":\"s\",\"stash\":\"a\",\"orders\":[{\"id\":\"o-1\"}, {\"missing\":true}]}");
-        var store = new OrderStore(dir, new IndexStore(dir));
-        assertThrows(IOException.class, store::load);
+        var store = new OrderStore(dir, index);
+        store.load();
+        assertTrue(store.listJson("s", "a").getAsJsonArray("orders").isEmpty());
     }
 
     private IndexStore stockedIndex() throws Exception {
@@ -86,7 +93,8 @@ class OrderStoreRecoveryTest {
     }
 
     @Test
-    void legacyBooksAreImportedOnceAndCannotOverwriteNewerSQLiteState() throws Exception {
+    void legacyJsonCannotOverwriteNewerSQLiteState() throws Exception {        // The SQLite books are authoritative: a stray legacy file on disk — even
+        // one describing the same stash — is never imported over live state.
         var index = stockedIndex();
         var orders = new OrderStore(dir, index);
         orders.load();
@@ -94,31 +102,29 @@ class OrderStoreRecoveryTest {
         var old = OrderBookFixtures.read(index, "s", "a");
         Path legacy = Files.createDirectories(dir.resolve("orders")).resolve(IndexStore.fileName("s", "a"));
         Files.writeString(legacy, old.toString());
-        // Recreate the pre-migration state, keeping the same physical observation.
-        try (var c = index.stock().open();
-                var sql = c.createStatement()) {
-            sql.executeUpdate("DELETE FROM order_books");
-            sql.executeUpdate("DELETE FROM order_storage_meta");
-            sql.executeUpdate("DELETE FROM order_event_log");
-        }
-        var imported = new OrderStore(dir, index);
-        imported.load();
-        assertEquals("pending", imported.statusOf(order.id));
-        imported.cancel(order.id);
+        var reloaded = new OrderStore(dir, index);
+        reloaded.load();
+        assertEquals("pending", reloaded.statusOf(order.id));
         Files.writeString(legacy, "{corrupt");
         var restarted = new OrderStore(dir, index);
         restarted.load();
-        assertEquals("cancelled", restarted.statusOf(order.id));
+        assertEquals("pending", restarted.statusOf(order.id));
         assertEquals("{corrupt", Files.readString(legacy));
+    }
 
-        // A partial restore must never import the original pending order again.
-        Files.writeString(legacy, old.toString());
+    @Test
+    void missingGuildDatabaseWithStrayJournalsPreventsStartup() throws Exception {
+        // SQLite-side startup fencing is independent of the removed JSON import: a
+        // missing guild.sqlite with stray WAL/SHM or init markers must refuse to
+        // start rather than boot an empty guild over real data.
+        var index = stockedIndex();
+        var orders = new OrderStore(dir, index);
+        orders.load();
         Files.deleteIfExists(dir.resolve("guild.sqlite-wal"));
         Files.deleteIfExists(dir.resolve("guild.sqlite-shm"));
         Files.delete(dir.resolve("guild.sqlite"));
         assertThrows(IOException.class, () -> new StockLedger(dir));
         assertFalse(Files.exists(dir.resolve("guild.sqlite")));
-        assertEquals(old.toString(), Files.readString(legacy));
     }
 
     @Test

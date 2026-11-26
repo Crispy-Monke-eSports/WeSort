@@ -59,6 +59,12 @@ public final class NavigationRuntime {
     private static long worldStartMs;
     private static long lastFencedTransitLogMs;
     private static final java.util.Map<String, Integer> denialCounts = new java.util.LinkedHashMap<>();
+    // Intended destination cells of the live goal, for the target pre-check in
+    // allowedRoute (#197): an unloaded (or otherwise denied) target pauses as
+    // UNSAFE_BLOCK before Baritone paths into it — never blind navigation, and
+    // the pause auto-retries with backoff like every other transient latch.
+    // Read-only classification; entering the cells still goes through the guard.
+    private static java.util.List<BlockPos> targetCells = java.util.List.of();
     /** Operator-taken routes expire after idle timeout instead of parking the headless bot forever. */
     static final long OPERATOR_IDLE_TIMEOUT_MS = NavigationRecovery.OPERATOR_IDLE_TIMEOUT_MS;
     /** Non-unloaded unsafe blocks degrade to replanning after bounded retries instead of eternal latch. */
@@ -71,11 +77,30 @@ public final class NavigationRuntime {
     }
 
     public static void watch(Object goal) {
+        watch(goal, java.util.List.of());
+    }
+
+    /** Same as {@link #watch(Object)}, plus destination cells for the target pre-check. */
+    public static void watch(Object goal, BlockPos target) {
+        watch(goal, target == null ? java.util.List.of() : java.util.List.of(target));
+    }
+
+    /** Same as {@link #watch(Object)}, plus destination cells for the target pre-check. */
+    public static void watch(Object goal, java.util.Collection<BlockPos> targets) {
         if (paused || mc.player == null || mc.level == null || !InventorySync.ready()) {
             BaritoneHelper.unconfine();
             throw new IllegalStateException("WeSort navigation requires an unpaused connected verified inventory");
         }
         register(goal, false);
+        if (targets == null || targets.isEmpty()) targetCells = java.util.List.of();
+        else {
+            java.util.List<BlockPos> copy = new java.util.ArrayList<>();
+            for (BlockPos t : targets) {
+                if (t != null) copy.add(t.immutable());
+                if (copy.size() >= 32) break;
+            }
+            targetCells = java.util.List.copyOf(copy);
+        }
     }
 
     /**
@@ -158,6 +183,7 @@ public final class NavigationRuntime {
         if (ours == goal) {
             ours = null;
             watchdog = null;
+            targetCells = java.util.List.of();
             portalApproachGoal = false;
             portalStartLevel = null;
             portalStartDimension = "";
@@ -179,6 +205,12 @@ public final class NavigationRuntime {
         if (ours != null) finish("PAUSED_NAVIGATION_CANCELLED", true);
     }
 
+    /**
+     * Release a latch programmatically. There is intentionally no interactive
+     * chat command for this (#197): the headless agent recovers through backoff,
+     * degrade and idle-timeout alone. Only the isolated E2E fixture driver calls
+     * this to script deterministic scenarios.
+     */
     public static boolean resume() {
         if (!resumeDenial().isEmpty()) return false;
         paused = false;
@@ -213,6 +245,7 @@ public final class NavigationRuntime {
         boolean wasPortal = portalApproachGoal;
         ours = null;
         watchdog = null;
+        targetCells = java.util.List.of();
         portalApproachGoal = false;
         portalStartLevel = null;
         portalStartDimension = "";
@@ -268,9 +301,13 @@ public final class NavigationRuntime {
     public static void clearWarehousePause() {
         if (paused && !pausedPortalRoute) {
             // Never discard a genuine safety latch to make way for lobby transit:
-            // unsafe-block and operator-taken routes require explicit resume.
+            // unsafe-block and operator-taken routes stay latched and recover through
+            // their bounded path (auto-retry with backoff, unsafe degrade, operator
+            // idle-timeout replanning). There is no manual resume command.
             if (status.contains("UNSAFE") || isOperatorLatch(status)) {
-                MeteorClient.LOG.warn("WeSort navigation: keeping {} for lobby transit; resume it explicitly.", status);
+                MeteorClient.LOG.warn(
+                        "WeSort navigation: keeping {} for lobby transit; it recovers through its bounded path.",
+                        status);
                 return;
             }
             paused = false;
@@ -316,12 +353,15 @@ public final class NavigationRuntime {
                         || (status.equals("PAUSED_NAVIGATION_UNSAFE_BLOCK") && pauseDetail.startsWith("unloaded "));
         // Operator-taken routes expire: a headless bot must not wait forever for a human
         // who may never return. Expiry only replans (goal stays released), never steals control.
+        // A fenced physical journal blocks expiry too: age never releases a physical fence (#210-216).
         if (isOperatorLatch(status)
                 && pausedAtMs > 0
                 && nowMs - pausedAtMs >= operatorTimeoutMs()
                 && mc.player != null
                 && mc.level != null
                 && InventorySync.ready()
+                && !PhysicalJournalRuntime.blocked()
+                && !PhysicalJournalRuntime.awaitingMirror()
                 && NavigationGuard.permits(mc.player.blockPosition())) {
             paused = false;
             pauseDetail = "";
@@ -349,6 +389,10 @@ public final class NavigationRuntime {
             return;
         }
         if (!transientPause || nowMs < retryAt || mc.player == null || mc.level == null) return;
+        // No verified inventory, no auto-resume — but also no parking: readiness is
+        // re-checked every 5 s, and the retry deadline is already in the past by the
+        // time a login finishes streaming chunks, so the first ready tick resumes
+        // immediately instead of waiting out another backoff.
         if (!InventorySync.ready() || PhysicalJournalRuntime.inspecting()) return;
         // Physical uncertainty fences auto-resume. Portal routes no longer latch this
         // status (removed); this guard only covers pre-existing warehouse latches.
@@ -501,6 +545,20 @@ public final class NavigationRuntime {
 
     private boolean allowedRoute() {
         pauseDetail = "";
+        // Target pre-check (#197): classify the destination before Baritone paths
+        // into it. An unloaded target pauses here as "unloaded target ..." and
+        // auto-retries with backoff — read-only classification, never blind entry.
+        // Only loadedness is checked (not the full denial: the destination is a
+        // container to open, not a cell to walk through).
+        if (mc.level != null) {
+            for (BlockPos target : targetCells) {
+                if (!mc.level.isLoaded(target)) {
+                    pauseDetail = "unloaded target at " + target.toShortString();
+                    MeteorClient.LOG.warn("WeSort blocked route target not yet loaded: {}", pauseDetail);
+                    return false;
+                }
+            }
+        }
         String blocked = NavigationGuard.denial(mc.player.blockPosition());
         if (blocked != null) {
             pauseDetail = blocked;

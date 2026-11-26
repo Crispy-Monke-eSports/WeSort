@@ -9,7 +9,7 @@ public final class NavigationCommand extends Command {
     public NavigationCommand() {
         super(
                 "wesort-navigation",
-                "Inspect, cancel or explicitly resume WeSort navigation (debug; the agent recovers automatically).");
+                "Inspect or cancel WeSort navigation (debug; the agent recovers automatically with backoff).");
     }
 
     @Override
@@ -21,13 +21,6 @@ public final class NavigationCommand extends Command {
         builder.then(literal("cancel").executes(context -> {
             NavigationRuntime.cancel();
             info(NavigationRuntime.status());
-            return SINGLE_SUCCESS;
-        }));
-        builder.then(literal("resume").executes(context -> {
-            info(
-                    NavigationRuntime.resume()
-                            ? "Navigation released for a new goal; no previous route is replayed."
-                            : "Cannot resume navigation: " + NavigationRuntime.resumeDenial() + ".");
             return SINGLE_SUCCESS;
         }));
     }

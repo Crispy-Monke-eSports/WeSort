@@ -4,6 +4,7 @@ import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 import com.google.gson.*;
 import com.porter.wesort.data.DataDirectory;
+import com.porter.wesort.data.MinecraftServerAddress;
 import com.porter.wesort.inventory.InventoryReadback;
 import com.porter.wesort.stash.Stash;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
@@ -229,7 +230,8 @@ public final class InventorySync {
         if (mc.player == null || mc.level == null)
             return "INSPECT_NOT_READY: player or world unavailable for a recorded-source inspection";
         var scope = evidence.getAsJsonObject("origin");
-        if (!scope.get("server").getAsString().equals(Stash.currentServer())
+        if (!MinecraftServerAddress.sameServer(
+                        Stash.currentServer(), scope.get("server").getAsString())
                 || !scope.get("dimension").getAsString().equals(dimension())
                 || !scope.get("player").getAsString().equals(mc.player.getUUID().toString()))
             return "INSPECT_SCOPE: recorded server, dimension, or agent differs from the live session";
@@ -987,7 +989,8 @@ public final class InventorySync {
             meteordevelopment.meteorclient.utils.player.InvUtils.swap(empty, false);
         }
         if (!mc.player.getOffhandItem().isEmpty()) return false;
-        if (!origin.get("server").getAsString().equals(Stash.currentServer())
+        if (!MinecraftServerAddress.sameServer(
+                        Stash.currentServer(), origin.get("server").getAsString())
                 || !origin.get("dimension").getAsString().equals(dimension())
                 || !origin.get("player")
                         .getAsString()
@@ -1056,7 +1059,8 @@ public final class InventorySync {
             return "INSPECT_ITEMS: waiting for the menu-0 server readback to match the recorded postcondition";
         }
         if (origin == null) return "INSPECT_SCOPE: recovery origin was lost";
-        if (!origin.get("server").getAsString().equals(Stash.currentServer())
+        if (!MinecraftServerAddress.sameServer(
+                        Stash.currentServer(), origin.get("server").getAsString())
                 || !origin.get("dimension").getAsString().equals(dimension())
                 || !origin.get("player")
                         .getAsString()
@@ -1096,7 +1100,8 @@ public final class InventorySync {
     private static boolean sourceMatches() {
         if (mc.player == null || mc.level == null || origin == null) return false;
         if (!worldMatches()) return false;
-        if (!origin.get("server").getAsString().equals(Stash.currentServer())
+        if (!MinecraftServerAddress.sameServer(
+                        Stash.currentServer(), origin.get("server").getAsString())
                 || !origin.get("dimension").getAsString().equals(dimension())
                 || !origin.get("player")
                         .getAsString()
@@ -1257,7 +1262,8 @@ public final class InventorySync {
     public static boolean inspectRecorded(JsonObject evidence) {
         if (mc.player == null || mc.level == null) return false;
         var scope = evidence.getAsJsonObject("origin");
-        if (!scope.get("server").getAsString().equals(Stash.currentServer())
+        if (!MinecraftServerAddress.sameServer(
+                        Stash.currentServer(), scope.get("server").getAsString())
                 || !scope.get("dimension").getAsString().equals(dimension())
                 || !scope.get("player").getAsString().equals(mc.player.getUUID().toString())) return false;
         if (scope.has("source")) {

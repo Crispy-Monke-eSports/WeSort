@@ -1,6 +1,7 @@
 package com.porter.wesortmanager;
 
 import com.google.gson.JsonObject;
+import com.porter.wesort.data.MinecraftServerAddress;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 
@@ -52,7 +53,7 @@ final class PhysicalRoutes {
             var record = body.getAsJsonObject("record");
             var context = record == null ? null : record.getAsJsonObject("context");
             String at = context == null ? null : AddonRoutes.string(context, "server");
-            if (at != null && !at.isEmpty() && !ServerRoutes.sameServer(want, at)) {
+            if (at != null && !at.isEmpty() && !MinecraftServerAddress.sameServer(want, at)) {
                 Http.error(ex, 409, "this Manager serves '" + want + "'");
                 return;
             }
@@ -137,7 +138,7 @@ final class PhysicalRoutes {
         }
         String configured = config.minecraftServer();
         if (configured != null && !configured.isEmpty()) {
-            if (!ServerRoutes.sameServer(configured, at)) {
+            if (!MinecraftServerAddress.sameServer(configured, at)) {
                 Http.error(ex, 409, "this Manager serves '" + configured + "'");
                 return;
             }

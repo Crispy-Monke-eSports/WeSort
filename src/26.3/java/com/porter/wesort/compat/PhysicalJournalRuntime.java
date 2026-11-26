@@ -4,6 +4,7 @@ import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 import com.google.gson.*;
 import com.porter.wesort.data.DataDirectory;
+import com.porter.wesort.data.MinecraftServerAddress;
 import com.porter.wesort.inventory.PhysicalJournal;
 import com.porter.wesort.modules.StashManager;
 import com.porter.wesort.stash.Stash;
@@ -22,6 +23,7 @@ public final class PhysicalJournalRuntime {
     private static long mirroredRevision;
     private static long nextUpload;
     private static String lastUpload = "";
+    private static String uploadBlocker = "";
     private static String managerScope = "";
     private static JsonObject inspection, inspectionResult, inspectedSource;
     private static boolean inspectInventoryPending;
@@ -89,7 +91,8 @@ public final class PhysicalJournalRuntime {
             return false;
         }
         var context = journal.context();
-        boolean waiting = Stash.currentServer().equals(context.get("server").getAsString())
+        boolean waiting = MinecraftServerAddress.sameServer(
+                        Stash.currentServer(), context.get("server").getAsString())
                 && mc.player.getUUID().toString().equals(context.get("agent").getAsString())
                 && (!managerScope.equals(scope) || !mirroredCurrent());
         if (waiting) {
@@ -131,6 +134,7 @@ public final class PhysicalJournalRuntime {
 
     public static String status() {
         if (!failure.isEmpty()) return failure;
+        if (!uploadBlocker.isEmpty()) return uploadBlocker;
         if (!escalation.isEmpty()) return escalation;
         // The gated reason stays available via workspaceDebt(), but the status token itself
         // must stay exact: harnesses and dashboards match on it, and a suffixed string reads
@@ -160,7 +164,10 @@ public final class PhysicalJournalRuntime {
             journal.start(context);
             return;
         }
-        for (String key : List.of("server", "dimension", "agent", "kind", "jobId", "orderId"))
+        if (!MinecraftServerAddress.sameServer(
+                previous.get("server").getAsString(), context.get("server").getAsString()))
+            throw new IllegalStateException("Physical operation belongs to another server");
+        for (String key : List.of("dimension", "agent", "kind", "jobId", "orderId"))
             if (!Objects.equals(previous.get(key), context.get(key)))
                 throw new IllegalStateException("Another physical operation is being recovered automatically");
     }
@@ -225,7 +232,8 @@ public final class PhysicalJournalRuntime {
         if (inspection != null || reconciled) {
             var scope = journal.context();
             if (mc.player == null
-                    || !Stash.currentServer().equals(scope.get("server").getAsString())
+                    || !MinecraftServerAddress.sameServer(
+                            Stash.currentServer(), scope.get("server").getAsString())
                     || !StashIndex.dimension().equals(scope.get("dimension").getAsString())
                     || !mc.player.getUUID().toString().equals(scope.get("agent").getAsString()))
                 throw new IllegalStateException(
@@ -365,8 +373,15 @@ public final class PhysicalJournalRuntime {
         if (checksum.isEmpty() || now < nextUpload && checksum.equals(lastUpload)) return null;
         if (journal.terminal() && mirroredCurrent() && !blocked() && inspectionResult == null) return null;
         var context = journal.context();
-        if (!server.equals(context.get("server").getAsString())
-                || !agent.equals(context.get("agent").getAsString())) return null;
+        String blocker = "";
+        if (!MinecraftServerAddress.sameServer(server, context.get("server").getAsString()))
+            blocker = "JOURNAL_SERVER_MISMATCH";
+        else if (!agent.equals(context.get("agent").getAsString())) blocker = "JOURNAL_AGENT_MISMATCH";
+        if (!blocker.equals(uploadBlocker)) {
+            uploadBlocker = blocker;
+            if (!blocker.isEmpty()) MeteorClient.LOG.warn("WeSort physical journal upload held: {}", blocker);
+        }
+        if (!blocker.isEmpty()) return null;
         lastUpload = checksum;
         nextUpload = now + (blocked() || mirroredCurrent() ? 2000 : 500);
         return journal.current();

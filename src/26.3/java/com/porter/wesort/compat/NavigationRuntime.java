@@ -54,8 +54,10 @@ public final class NavigationRuntime {
     // degrade threshold for this case (dead-counter fix, #197).
     private static int unsafeBlockRetries;
     private static long unsafeBlockRetryAt;
-    // Wall-clock start of the current world: an engine-dropped goal with zero progress
+    // Monotonic start of the current world: an engine-dropped goal with zero progress
     // right after login is chunks still streaming in, not a sealed start (#197).
+    private static final long CLOCK_ORIGIN = System.nanoTime();
+    private static Object observedLevel;
     private static long worldStartMs;
     private static long lastFencedTransitLogMs;
     private static final java.util.Map<String, Integer> denialCounts = new java.util.LinkedHashMap<>();
@@ -71,6 +73,11 @@ public final class NavigationRuntime {
     static final int UNSAFE_BLOCK_MAX_RETRIES = NavigationRecovery.UNSAFE_BLOCK_MAX_RETRIES;
 
     private NavigationRuntime() {}
+
+    // Reserve zero for an unset timestamp, even on the first tick.
+    private static long elapsedMs() {
+        return 1 + (System.nanoTime() - CLOCK_ORIGIN) / 1_000_000;
+    }
 
     public static void initialize() {
         if (FabricLoader.getInstance().isModLoaded("baritone-meteor")) MeteorClient.EVENT_BUS.subscribe(INSTANCE);
@@ -134,7 +141,7 @@ public final class NavigationRuntime {
         // Diagnostics: report (not fence) when transiting with a fenced journal
         // so the operator still sees why physical work is parked.
         if (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror()) {
-            long nowMs = System.currentTimeMillis();
+            long nowMs = elapsedMs();
             if (nowMs - lastFencedTransitLogMs >= 60_000) {
                 lastFencedTransitLogMs = nowMs;
                 MeteorClient.LOG.warn(
@@ -255,7 +262,7 @@ public final class NavigationRuntime {
         BaritoneHelper.unconfine();
         BaritoneHelper.unprotect();
         paused = pause;
-        if (pause) pausedAtMs = System.currentTimeMillis();
+        if (pause) pausedAtMs = elapsedMs();
         pausedPortalRoute = pause && wasPortal;
         if (!pause || !outcome.equals("PAUSED_NAVIGATION_UNSAFE_BLOCK")) pauseDetail = "";
         else if (pauseDetail.isEmpty() && mc.player != null && mc.level != null) {
@@ -263,13 +270,13 @@ public final class NavigationRuntime {
             pauseDetail = denial == null ? "" : denial;
         }
         if (pause && NavigationRecovery.retryable(outcome, pauseDetail)) {
-            long now = System.currentTimeMillis();
+            long now = elapsedMs();
             if (now - lastRetryAt > 120_000) transientFailures = 0;
             retryAt = now + NavigationRecovery.delayMs(++transientFailures);
             lastRetryAt = now;
         } else if (!pause) transientFailures = 0;
         if (pause && outcome.equals("PAUSED_NAVIGATION_UNSAFE_BLOCK") && !pauseDetail.startsWith("unloaded ")) {
-            long now = System.currentTimeMillis();
+            long now = elapsedMs();
             if (now - unsafeBlockRetryAt > 120_000) unsafeBlockRetries = 0;
             unsafeBlockRetryAt = now;
             unsafeBlockRetries++;
@@ -278,7 +285,7 @@ public final class NavigationRuntime {
         status = outcome;
         if (pause)
             MeteorClient.LOG.warn(
-                    "WeSort navigation stopped: {}.{} Auto-resuming with backoff; manual resume is debug-only.",
+                    "WeSort navigation stopped: {}.{} Route released; monitoring recovery conditions.",
                     outcome,
                     pauseDetail.isEmpty() ? baritoneState() : " detail=" + pauseDetail + "." + baritoneState());
     }
@@ -331,7 +338,7 @@ public final class NavigationRuntime {
      * forever (#197). Never replays the released goal or mines through the barrier.
      */
     private static void pauseTick() {
-        long nowMs = System.currentTimeMillis();
+        long nowMs = elapsedMs();
         if (nowMs - lastPauseLogMs >= 60_000) {
             lastPauseLogMs = nowMs;
             String extra = pauseDetail.isEmpty() ? "" : " detail=" + pauseDetail;
@@ -412,11 +419,14 @@ public final class NavigationRuntime {
     @EventHandler
     private void tick(TickEvent.Pre ignored) {
         boolean dedicated = WorldInteractionGuard.dedicated();
-        long tickMs = System.currentTimeMillis();
+        long tickMs = elapsedMs();
         // Fresh-world tracking: an engine-dropped goal with zero progress right after
         // login is chunks still streaming in, not a sealed start (#197).
-        if (mc.player == null || mc.level == null) worldStartMs = 0;
-        else if (worldStartMs == 0) worldStartMs = tickMs;
+        var level = mc.player == null ? null : mc.level;
+        if (level != observedLevel) {
+            observedLevel = level;
+            worldStartMs = level == null ? 0 : tickMs;
+        }
         boolean foreign = false;
         if (dedicated) {
             BaritoneHelper.enforceAgentProfile();
@@ -500,7 +510,7 @@ public final class NavigationRuntime {
                 dropRetries = 0;
                 finish("PAUSED_NAVIGATION_OTHER_PROCESS", true);
             } else {
-                long nowMs = System.currentTimeMillis();
+                long nowMs = elapsedMs();
                 if (nowMs - lastDropMs > 60_000) dropRetries = 0;
                 lastDropMs = nowMs;
                 boolean progressed =
@@ -553,7 +563,7 @@ public final class NavigationRuntime {
         if (mc.level != null) {
             for (BlockPos target : targetCells) {
                 if (!mc.level.isLoaded(target)) {
-                    pauseDetail = "unloaded target at " + target.toShortString();
+                    pauseDetail = "unloaded target";
                     MeteorClient.LOG.warn("WeSort blocked route target not yet loaded: {}", pauseDetail);
                     return false;
                 }
@@ -583,6 +593,7 @@ public final class NavigationRuntime {
     @EventHandler
     private void left(GameLeftEvent ignored) {
         if (ours != null) finish("PAUSED_NAVIGATION_DISCONNECTED", true);
+        observedLevel = null;
         worldStartMs = 0;
         // The failed, client-owned portal route no longer exists after logout. The
         // next login must pass fresh portal/approach/route guards. Warehouse pauses

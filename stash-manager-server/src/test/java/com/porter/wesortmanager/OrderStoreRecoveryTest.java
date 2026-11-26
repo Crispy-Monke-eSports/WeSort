@@ -93,7 +93,8 @@ class OrderStoreRecoveryTest {
     }
 
     @Test
-    void legacyJsonCannotOverwriteNewerSQLiteState() throws Exception {        // The SQLite books are authoritative: a stray legacy file on disk — even
+    void legacyJsonCannotOverwriteNewerSQLiteState()
+            throws Exception { // The SQLite books are authoritative: a stray legacy file on disk — even
         // one describing the same stash — is never imported over live state.
         var index = stockedIndex();
         var orders = new OrderStore(dir, index);

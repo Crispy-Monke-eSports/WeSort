@@ -423,11 +423,8 @@ public final class PhysicalJournal {
         if (!evidence.has("decisionId")) return;
         UUID.fromString(evidence.get("decisionId").getAsString());
         var inventory = evidence.getAsJsonObject("playerInventory");
-        int size = inventory.get("size").getAsBigDecimal().intValueExact();
-        var reader = new com.porter.wesort.data.PhysicalSlots.Reader(inventory.getAsJsonArray("slotVariants"));
-        var actual = reader.snapshot(size, inventory.getAsJsonArray("slots"));
-        if (size != 46
-                || !actual.fingerprint().equals(inventory.get("fingerprint").getAsString())) {
+        var actual = com.porter.wesort.data.PhysicalSlots.Snapshot.readEnvelope(inventory);
+        if (actual.size() != 46) {
             throw new IllegalArgumentException("Invalid full player inventory inspection");
         }
     }

@@ -195,6 +195,15 @@ final class StockLedger {
                     // här i samma SQLite-tx som dispositionen, aldrig i audit.json.
                     s.execute(
                             "CREATE TABLE IF NOT EXISTS business_audit(seq INTEGER PRIMARY KEY AUTOINCREMENT,at INTEGER NOT NULL,actor_id TEXT NOT NULL,actor_name TEXT NOT NULL,action TEXT NOT NULL,order_id TEXT,job_id TEXT,package_id TEXT,correlation_id TEXT,detail TEXT NOT NULL,server TEXT,stash TEXT)");
+                    s.execute("""
+                            CREATE TRIGGER IF NOT EXISTS audit_new_order_event AFTER INSERT ON order_event_log
+                            BEGIN
+                              INSERT INTO business_audit(at,actor_id,actor_name,action,order_id,correlation_id,detail,server,stash)
+                              VALUES(json_extract(NEW.payload,'$.at'),json_extract(NEW.payload,'$.actor'),
+                                     json_extract(NEW.payload,'$.actor'),json_extract(NEW.payload,'$.action'),
+                                     NEW.order_id,NEW.order_id || '/' || NEW.seq,NEW.payload,NEW.server,NEW.stash);
+                            END
+                            """);
                     s.execute("CREATE INDEX IF NOT EXISTS business_audit_order ON business_audit(order_id)");
                     s.execute("CREATE INDEX IF NOT EXISTS business_audit_time ON business_audit(at)");
                     s.execute(

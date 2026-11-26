@@ -343,10 +343,7 @@ class StockHierarchyTest {
              "expected":{"menu":1,"slots":[],"cursor":"empty"}}
             """).getAsJsonObject();
         evidence.getAsJsonObject("origin").addProperty("player", agent);
-        String stack = """
-            {"type":10,"value":{"count":{"type":3,"value":"1"},
-              "id":{"type":8,"value":"\\"minecraft:shulker_box\\""}}}
-            """;
+        String stack = "{\"count\":1,\"id\":\"minecraft:shulker_box\"}";
         for (int i = 0; i < 63; i++) {
             evidence.getAsJsonObject("before").getAsJsonArray("slots").add(i == 54 ? stack : "empty");
             evidence.getAsJsonObject("expected").getAsJsonArray("slots").add(i == 0 ? stack : "empty");

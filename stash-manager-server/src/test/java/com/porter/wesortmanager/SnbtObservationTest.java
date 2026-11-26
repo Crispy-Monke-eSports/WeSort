@@ -1,5 +1,6 @@
 package com.porter.wesortmanager;
 
+import com.porter.wesort.snbt.SnbtCodec;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.google.gson.*;
@@ -45,7 +46,7 @@ class SnbtObservationTest {
     }
 
     @Test
-    void acceptsCanonicalSnbtAndRejectsAlternativeAuthority() throws Exception {
+    void acceptsSnbtCodecAndRejectsAlternativeAuthority() throws Exception {
         var ledger = new StockLedger(data);
         var root = observation(ledger);
         var alternate = root.deepCopy();

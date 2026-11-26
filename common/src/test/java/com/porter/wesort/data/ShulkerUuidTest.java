@@ -1,5 +1,6 @@
 package com.porter.wesort.data;
 
+import com.porter.wesort.snbt.SnbtCodec;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.UUID;
@@ -70,7 +71,7 @@ class ShulkerUuidTest {
     }
 
     @Test
-    void extractsUuidFromCanonicalSnbt() {
+    void extractsUuidFromSnbtCodec() {
         String snbt = "{id:\"minecraft:shulker_box\",components:{\"minecraft:custom_name\":\"WeSort-" + V4 + "\"}}";
         assertEquals(UUID.fromString(V4), ShulkerUuid.boxUuidFromSnbt(snbt));
         assertNull(ShulkerUuid.boxUuidFromSnbt("{id:\"minecraft:stone\",components:{}}"));

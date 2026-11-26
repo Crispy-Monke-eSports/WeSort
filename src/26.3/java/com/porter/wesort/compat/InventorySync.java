@@ -1221,13 +1221,7 @@ public final class InventorySync {
             throw new IllegalStateException("Fresh full player inventory required");
         var snapshot = SlotRuntime.snapshot(
                 mc.player.inventoryMenu.slots.stream().map(s -> s.getItem()).toArray(ItemStack[]::new));
-        var writer = new com.porter.wesort.data.PhysicalSlots.Writer();
-        var out = new JsonObject();
-        out.addProperty("size", snapshot.size());
-        out.addProperty("fingerprint", snapshot.fingerprint());
-        out.add("slots", writer.slots(snapshot.slots()));
-        out.add("slotVariants", writer.variants());
-        return out;
+        return snapshot.envelope();
     }
 
     public static boolean inspectCurrentInventory() {

@@ -6,7 +6,7 @@ import java.util.Locale;
 
 /** A guild-shareable definition, never a claim that any physical box currently exists. */
 public record KitTemplate(String name, PhysicalSlots.Snapshot layout) {
-    public static final String FORMAT = "wesort-kit:2", MINECRAFT = "26.3";
+    public static final String FORMAT = "wesort-kit:3", MINECRAFT = "26.3";
 
     public KitTemplate {
         if (name == null
@@ -43,15 +43,12 @@ public record KitTemplate(String name, PhysicalSlots.Snapshot layout) {
     }
 
     public JsonObject json() {
-        var out = new JsonObject();
-        var writer = new PhysicalSlots.Writer();
+        var out = layout.envelope();
         out.addProperty("format", FORMAT);
         out.addProperty("minecraft", MINECRAFT);
         out.addProperty("name", name);
         out.addProperty("size", 27);
         out.addProperty("fingerprint", fingerprint());
-        out.add("slots", writer.slots(layout.slots()));
-        out.add("slotVariants", writer.variants());
         return out;
     }
 
@@ -60,8 +57,7 @@ public record KitTemplate(String name, PhysicalSlots.Snapshot layout) {
                 || !MINECRAFT.equals(value.get("minecraft").getAsString())
                 || value.get("size").getAsBigDecimal().intValueExact() != 27)
             throw new IllegalArgumentException("Only new WeSort Minecraft 26.3 kit definitions are accepted");
-        var layout = new PhysicalSlots.Reader(value.getAsJsonArray("slotVariants"))
-                .snapshot(27, value.getAsJsonArray("slots"));
+        var layout = PhysicalSlots.Snapshot.readEnvelope(value);
         if (!layout.fingerprint().equals(value.get("fingerprint").getAsString()))
             throw new IllegalArgumentException("Kit content fingerprint mismatch");
         return new KitTemplate(value.get("name").getAsString(), layout);

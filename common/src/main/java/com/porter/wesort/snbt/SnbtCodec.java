@@ -140,7 +140,9 @@ public final class SnbtCodec {
     }
 
     public record TList(List<Tag> value) implements Tag {
-        public TList { value = List.copyOf(value); }
+        public TList {
+            value = List.copyOf(value);
+        }
 
         public TagType type() {
             return TagType.LIST;
@@ -148,9 +150,13 @@ public final class SnbtCodec {
     }
 
     public record TCompound(Map<String, Tag> value) implements Tag {
-        public TCompound { value = Map.copyOf(value); }
+        public TCompound {
+            value = Map.copyOf(value);
+        }
 
-        public Tag get(String key) { return value.get(key); }
+        public Tag get(String key) {
+            return value.get(key);
+        }
 
         public TagType type() {
             return TagType.COMPOUND;

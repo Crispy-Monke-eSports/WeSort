@@ -96,8 +96,11 @@ final class AuditLog {
                 for (var e : list) {
                     if (!e.isJsonObject()) throw new IllegalArgumentException("Invalid audit entry");
                     var item = e.getAsJsonObject();
-                    if (!item.has("at") || !item.get("at").isJsonPrimitive() || !item.getAsJsonPrimitive("at").isNumber()
-                            || !item.has("action") || !item.get("action").isJsonPrimitive()
+                    if (!item.has("at")
+                            || !item.get("at").isJsonPrimitive()
+                            || !item.getAsJsonPrimitive("at").isNumber()
+                            || !item.has("action")
+                            || !item.get("action").isJsonPrimitive()
                             || !item.getAsJsonPrimitive("action").isString())
                         throw new IllegalArgumentException("Audit entry missing timestamp or action");
                     insert(
@@ -120,8 +123,7 @@ final class AuditLog {
             }
             Files.move(legacyFile, legacyFile.resolveSibling("audit.json.imported"));
         } catch (IOException | RuntimeException e) {
-            throw new IllegalStateException(
-                    "Cannot load audit.json; refusing to discard audit history", e);
+            throw new IllegalStateException("Cannot load audit.json; refusing to discard audit history", e);
         }
     }
 

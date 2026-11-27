@@ -72,8 +72,7 @@ class OrderBookChangesetTest {
         second.getAsJsonArray("history").add(extra);
         long rev2 = repo.commit("s", "a", 1, progressed, null);
         assertEquals(2, rev2);
-        assertEquals(
-                List.of(new Published("orders", 1), new Published("orders", 2)), publisher.published);
+        assertEquals(List.of(new Published("orders", 1), new Published("orders", 2)), publisher.published);
         var changesets = OrderChangeSet.forBook(
                 JsonParser.parseString("{\"orders\":[]}").getAsJsonObject(), book("pending", "created"), 0);
         assertEquals(1, changesets.size());
@@ -95,8 +94,7 @@ class OrderBookChangesetTest {
     void rewrittenHistoryFailsClosedBeforeWrite() throws Exception {
         var first = book("pending", "created");
         var tampered = book("pending", "forged");
-        assertThrows(
-                IllegalArgumentException.class, () -> OrderChangeSet.forBook(first, tampered, 0));
+        assertThrows(IllegalArgumentException.class, () -> OrderChangeSet.forBook(first, tampered, 0));
     }
 
     @Test
@@ -109,7 +107,9 @@ class OrderBookChangesetTest {
         batch.say("order.place", "o-9 SELF");
         repo.commit("s", "a", 0, book("pending", "created"), null, batch.entries());
         assertEquals(1, log.size());
-        assertEquals("order.place", log.newest(1).get(0).getAsJsonObject().get("action").getAsString());
+        assertEquals(
+                "order.place",
+                log.newest(1).get(0).getAsJsonObject().get("action").getAsString());
 
         var failed = log.batch();
         failed.actor("u-1", "Member", "127.0.0.1");
@@ -123,8 +123,8 @@ class OrderBookChangesetTest {
     @Test
     void terminalOrderCarriesResumeReceipt() throws Exception {
         var terminal = withAgent(book("delivered", "created"), "agent-1");
-        var changesets = OrderChangeSet.forBook(
-                JsonParser.parseString("{\"orders\":[]}").getAsJsonObject(), terminal, 0);
+        var changesets =
+                OrderChangeSet.forBook(JsonParser.parseString("{\"orders\":[]}").getAsJsonObject(), terminal, 0);
         assertEquals(1, changesets.size());
         assertNotNull(changesets.getFirst().terminalResumeReceipt());
     }

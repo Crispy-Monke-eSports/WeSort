@@ -27,8 +27,8 @@ final class OrderBookFixtures {
                 }
                 if (!array.isEmpty() || location.equals("orders")) root.add(location, array);
             }
-            try (var q = c.prepareStatement(
-                    "SELECT receipt_key,payload FROM order_receipts WHERE server=? AND stash=?")) {
+            try (var q =
+                    c.prepareStatement("SELECT receipt_key,payload FROM order_receipts WHERE server=? AND stash=?")) {
                 q.setString(1, server);
                 q.setString(2, stash);
                 try (var rows = q.executeQuery()) {

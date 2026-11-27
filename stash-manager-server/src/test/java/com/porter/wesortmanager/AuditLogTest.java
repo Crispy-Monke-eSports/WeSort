@@ -112,9 +112,11 @@ class AuditLogTest {
         audit.add("u", "U", "order.pack", "second", "127.0.0.1");
         assertEquals(2, audit.newest(10).size());
         assertEquals(
-                "order.pack", audit.newest(10).get(0).getAsJsonObject().get("action").getAsString());
+                "order.pack",
+                audit.newest(10).get(0).getAsJsonObject().get("action").getAsString());
         assertEquals(1, audit.newest(1).size());
         assertEquals(
-                "order.pack", audit.newest(1).get(0).getAsJsonObject().get("action").getAsString());
+                "order.pack",
+                audit.newest(1).get(0).getAsJsonObject().get("action").getAsString());
     }
 }

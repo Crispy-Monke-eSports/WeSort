@@ -42,11 +42,13 @@ final class OrderBookRepository implements OrderRepository {
             }
             var snapshots = new ArrayList<Snapshot>();
             try (var q = c.createStatement();
-                    var rows = q.executeQuery(
-                            "SELECT server,stash,revision FROM order_books ORDER BY server,stash")) {
+                    var rows = q.executeQuery("SELECT server,stash,revision FROM order_books ORDER BY server,stash")) {
                 while (rows.next()) {
                     var snapshot = new Snapshot(
-                            rows.getString(1), rows.getString(2), rows.getLong(3), readBook(c, rows.getString(1), rows.getString(2)));
+                            rows.getString(1),
+                            rows.getString(2),
+                            rows.getLong(3),
+                            readBook(c, rows.getString(1), rows.getString(2)));
                     validateScope(snapshot);
                     snapshots.add(snapshot);
                 }
@@ -261,7 +263,8 @@ final class OrderBookRepository implements OrderRepository {
                 q.setString(2, stash);
                 q.setString(3, location);
                 try (var rows = q.executeQuery()) {
-                    while (rows.next()) array.add(JsonParser.parseString(rows.getString(1)).getAsJsonObject());
+                    while (rows.next())
+                        array.add(JsonParser.parseString(rows.getString(1)).getAsJsonObject());
                 }
             }
             if (!array.isEmpty() || location.equals("orders")) root.add(location, array);

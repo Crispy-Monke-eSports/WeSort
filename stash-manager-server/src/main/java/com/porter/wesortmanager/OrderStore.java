@@ -634,8 +634,7 @@ final class OrderStore {
         update(book, previous, next, release, null);
     }
 
-    private void update(
-            Book book, Order previous, Order next, StockLedger.BoxRelease release, AuditLog.Batch batch)
+    private void update(Book book, Order previous, Order next, StockLedger.BoxRelease release, AuditLog.Batch batch)
             throws IOException {
         int position = book.orders.indexOf(previous);
         var before = book.orders.size() > KEEP ? List.copyOf(book.orders) : null;
@@ -1558,7 +1557,7 @@ final class OrderStore {
                         held,
                         true,
                         false,
-                    audit);
+                        audit);
             } catch (OrderException retryFailed) {
                 throw isShortage(retryFailed) ? shortfall : retryFailed;
             }
@@ -2142,8 +2141,7 @@ final class OrderStore {
         return clearFinishedWithObservationLock(server, stash, null);
     }
 
-    private int clearFinishedWithObservationLock(String server, String stash, AuditLog.Batch audit)
-            throws IOException {
+    private int clearFinishedWithObservationLock(String server, String stash, AuditLog.Batch audit) throws IOException {
         Book b = books.get(new IndexStore.StashKey(server, stash));
         if (b == null) return 0;
         synchronized (b) {

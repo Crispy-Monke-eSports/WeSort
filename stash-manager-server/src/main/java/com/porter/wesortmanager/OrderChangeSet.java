@@ -55,8 +55,7 @@ public record OrderChangeSet(
         for (var entry : nextOrders.entrySet()) {
             String id = entry.getKey();
             LocatedOrder next = entry.getValue();
-            String nextJson =
-                    com.porter.wesort.data.CanonicalJson.stringify(next.order());
+            String nextJson = com.porter.wesort.data.CanonicalJson.stringify(next.order());
             LocatedOrder prev = prevOrders.get(id);
             boolean changed = prev == null
                     || !prev.location().equals(next.location())
@@ -118,9 +117,7 @@ public record OrderChangeSet(
     record Upsert(String orderId, String location, String json, int seq) {}
 
     record SyncPlan(
-            java.util.List<Upsert> upserts,
-            java.util.Set<String> deletes,
-            java.util.Map<String, String> receipts) {
+            java.util.List<Upsert> upserts, java.util.Set<String> deletes, java.util.Map<String, String> receipts) {
         SyncPlan {
             upserts = upserts == null ? List.of() : List.copyOf(upserts);
             deletes = deletes == null ? Set.of() : Set.copyOf(deletes);
@@ -142,8 +139,7 @@ public record OrderChangeSet(
         for (var entry : nextOrders.entrySet()) {
             String id = entry.getKey();
             LocatedOrder next = entry.getValue();
-            String nextJson =
-                    com.porter.wesort.data.CanonicalJson.stringify(next.order());
+            String nextJson = com.porter.wesort.data.CanonicalJson.stringify(next.order());
             LocatedOrder prev = prevOrders.get(id);
             // History rewrites fail closed even when the row is otherwise identical.
             newOrderEvents(prev == null ? null : prev.order(), next.order());
@@ -196,9 +192,10 @@ public record OrderChangeSet(
 
     private static java.util.List<Map<String, String>> newOrderEvents(
             com.google.gson.JsonObject prev, com.google.gson.JsonObject next) {
-        var prevHistory = prev != null && prev.has("history") && prev.get("history").isJsonArray()
-                ? prev.getAsJsonArray("history")
-                : new com.google.gson.JsonArray();
+        var prevHistory =
+                prev != null && prev.has("history") && prev.get("history").isJsonArray()
+                        ? prev.getAsJsonArray("history")
+                        : new com.google.gson.JsonArray();
         if (!next.has("history") || !next.get("history").isJsonArray()) return List.of();
         var nextHistory = next.getAsJsonArray("history");
         for (int i = 0; i < prevHistory.size() && i < nextHistory.size(); i++) {

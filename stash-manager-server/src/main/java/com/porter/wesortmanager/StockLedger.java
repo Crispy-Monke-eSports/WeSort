@@ -194,8 +194,7 @@ final class StockLedger {
                             "CREATE TABLE IF NOT EXISTS variant_register(variant_id INTEGER PRIMARY KEY,codec_domain TEXT NOT NULL,registry_context TEXT NOT NULL,digest BLOB NOT NULL,canonical_variant_snbt TEXT NOT NULL,item_id TEXT NOT NULL,max_stack INTEGER NOT NULL,kind TEXT NOT NULL,metadata_version TEXT NOT NULL,UNIQUE(codec_domain,registry_context,digest))");
                     s.execute(
                             "CREATE TABLE IF NOT EXISTS slot_projection(source_id TEXT NOT NULL,snapshot_ref TEXT NOT NULL,logical_path TEXT NOT NULL,parent_path TEXT NOT NULL,variant_id INTEGER NOT NULL REFERENCES variant_register(variant_id),count INTEGER NOT NULL,copies INTEGER NOT NULL,slot_fingerprint TEXT NOT NULL,content_revision INTEGER NOT NULL,present INTEGER NOT NULL CHECK(present IN (0,1)),PRIMARY KEY(source_id,logical_path))");
-                    s.execute(
-                            "CREATE INDEX IF NOT EXISTS slot_projection_variant ON slot_projection(variant_id)");
+                    s.execute("CREATE INDEX IF NOT EXISTS slot_projection_variant ON slot_projection(variant_id)");
                     s.execute(
                             "CREATE TABLE IF NOT EXISTS shulker_identity(uuid TEXT PRIMARY KEY,status TEXT NOT NULL,source TEXT NOT NULL,slot_path TEXT NOT NULL,current_snapshot_ref TEXT,current_revision INTEGER NOT NULL,registration_proof TEXT NOT NULL,export_receipt TEXT)");
                     // PR3 (#140): transactional audit trail. Business entries join the
@@ -245,8 +244,7 @@ final class StockLedger {
      * (no order_books rows exist yet). History and receipts tables are
      * append-only and need no migration.
      */
-    private static void migrateOrderBooksToRows(Connection c, java.sql.Statement s)
-            throws SQLException, IOException {
+    private static void migrateOrderBooksToRows(Connection c, java.sql.Statement s) throws SQLException, IOException {
         boolean hasPayload = false;
         try (var cols = s.executeQuery("PRAGMA table_info(order_books)")) {
             while (cols.next()) {
@@ -262,7 +260,8 @@ final class StockLedger {
                 String server = books.getString(1);
                 String stash = books.getString(2);
                 long revision = books.getLong(3);
-                var root = com.google.gson.JsonParser.parseString(books.getString(4)).getAsJsonObject();
+                var root = com.google.gson.JsonParser.parseString(books.getString(4))
+                        .getAsJsonObject();
                 var plan = OrderChangeSet.plan(null, root);
                 try (var upsert = c.prepareStatement(
                         "INSERT INTO order_rows(order_id,server,stash,location,payload,seq,revision) VALUES(?,?,?,?,?,?,?) ON CONFLICT(order_id) DO NOTHING")) {

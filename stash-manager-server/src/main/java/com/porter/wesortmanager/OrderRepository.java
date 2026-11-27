@@ -17,11 +17,7 @@ interface OrderRepository {
     void load(Consumer<OrderBookRepository.Snapshot> validate) throws IOException;
 
     long commit(
-            String server,
-            String stash,
-            long expected,
-            com.google.gson.JsonObject root,
-            StockLedger.BoxRelease release)
+            String server, String stash, long expected, com.google.gson.JsonObject root, StockLedger.BoxRelease release)
             throws IOException;
 
     /**
@@ -39,6 +35,5 @@ interface OrderRepository {
         return commit(server, stash, expected, root, release);
     }
 
-    com.google.gson.JsonObject resumeReceipt(String server, String stash, String agent, String id)
-            throws IOException;
+    com.google.gson.JsonObject resumeReceipt(String server, String stash, String agent, String id) throws IOException;
 }

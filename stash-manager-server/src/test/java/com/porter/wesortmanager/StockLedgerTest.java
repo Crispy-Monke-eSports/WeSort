@@ -305,7 +305,7 @@ class StockLedgerTest {
 
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(
-            strings = {"order_books", "order_storage_meta", "order_event_log", "signed_request_nonces"})
+            strings = {"order_books", "order_storage_meta", "order_event_log", "signed_request_nonces", "order_rows", "order_receipts"})
     void missingTableFromCompletedV8MigrationStopsRecovery(String table) throws Exception {
         var first = ledger();
         try (var c = first.open();

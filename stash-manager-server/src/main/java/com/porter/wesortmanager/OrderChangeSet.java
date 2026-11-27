@@ -2,6 +2,7 @@ package com.porter.wesortmanager;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * PR3 (#265): typed order transition changeset (additive).
@@ -106,6 +107,66 @@ public record OrderChangeSet(
             }
         }
         return List.copyOf(out);
+    }
+
+    /**
+     * PR3 (#265 cutover): row-level sync plan for one book commit. Upserts carry
+     * each order's array location so moves between orders/archived are changes;
+     * deletes list ids that left the book (archive eviction); receipts carry
+     * every new idempotency receipt. Empty overall plan means nothing changed.
+     */
+    record Upsert(String orderId, String location, String json, int seq) {}
+
+    record SyncPlan(
+            java.util.List<Upsert> upserts,
+            java.util.Set<String> deletes,
+            java.util.Map<String, String> receipts) {
+        SyncPlan {
+            upserts = upserts == null ? List.of() : List.copyOf(upserts);
+            deletes = deletes == null ? Set.of() : Set.copyOf(deletes);
+            receipts = receipts == null ? Map.of() : Map.copyOf(receipts);
+        }
+
+        boolean isEmpty() {
+            return upserts.isEmpty() && deletes.isEmpty() && receipts.isEmpty();
+        }
+    }
+
+    static SyncPlan plan(com.google.gson.JsonObject prevRoot, com.google.gson.JsonObject nextRoot) {
+        java.util.Map<String, LocatedOrder> prevOrders = bookOrders(prevRoot);
+        java.util.Map<String, LocatedOrder> nextOrders = bookOrders(nextRoot);
+        java.util.Map<String, String> prevReceipts = bookReceipts(prevRoot);
+        java.util.Map<String, String> nextReceipts = bookReceipts(nextRoot);
+        var upserts = new java.util.ArrayList<Upsert>();
+        var seqByLocation = new java.util.HashMap<String, Integer>();
+        for (var entry : nextOrders.entrySet()) {
+            String id = entry.getKey();
+            LocatedOrder next = entry.getValue();
+            String nextJson =
+                    com.porter.wesort.data.CanonicalJson.stringify(next.order());
+            LocatedOrder prev = prevOrders.get(id);
+            // History rewrites fail closed even when the row is otherwise identical.
+            newOrderEvents(prev == null ? null : prev.order(), next.order());
+            if (prev == null
+                    || !prev.location().equals(next.location())
+                    || !nextJson.equals(com.porter.wesort.data.CanonicalJson.stringify(prev.order()))) {
+                int seq = seqByLocation.merge(next.location(), 0, (a, b) -> a + 1);
+                upserts.add(new Upsert(id, next.location(), nextJson, seq));
+            } else {
+                // Unchanged rows keep their stored sequence: still count the slot
+                // so later upserts in the same array keep stable positions.
+                seqByLocation.merge(next.location(), 0, (a, b) -> a + 1);
+            }
+        }
+        var deletes = new java.util.HashSet<String>();
+        for (String id : prevOrders.keySet()) {
+            if (!nextOrders.containsKey(id)) deletes.add(id);
+        }
+        var receipts = new java.util.LinkedHashMap<String, String>();
+        for (var r : nextReceipts.entrySet()) {
+            if (!r.getValue().equals(prevReceipts.get(r.getKey()))) receipts.put(r.getKey(), r.getValue());
+        }
+        return new SyncPlan(upserts, deletes, receipts);
     }
 
     /** An order plus which book array holds it: moves between arrays are changes. */

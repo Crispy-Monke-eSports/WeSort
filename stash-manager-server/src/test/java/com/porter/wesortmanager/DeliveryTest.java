@@ -89,7 +89,7 @@ class DeliveryTest {
                 List.of(),
                 sessions,
                 users,
-                new AuditLog(data),
+                new AuditLog(store.stock(), data),
                 new BotHub(),
                 new LoginLimiter());
         server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 16);

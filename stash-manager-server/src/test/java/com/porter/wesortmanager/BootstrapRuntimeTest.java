@@ -112,7 +112,7 @@ class BootstrapRuntimeTest {
         Users users = new Users(data);
         IconService icons = new IconService(
                 data, id -> null, v -> false, new GameIcons(data.resolve("icons"), false, false), false);
-        var audit = new AuditLog(data);
+        var audit = new AuditLog(index.stock(), data);
         var routes = WeSortManager.routes(
                 config,
                 index,

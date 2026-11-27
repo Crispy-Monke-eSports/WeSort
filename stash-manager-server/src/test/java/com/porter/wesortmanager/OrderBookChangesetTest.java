@@ -100,11 +100,59 @@ class OrderBookChangesetTest {
     }
 
     @Test
+    void auditEntriesCommitAndRollBackWithTheBook() throws Exception {
+        var ledger = new StockLedger(data);
+        var log = new AuditLog(ledger, data);
+        var repo = new OrderBookRepository(ledger, EventPublisher.noop());
+        var batch = log.batch();
+        batch.actor("u-1", "Member", "127.0.0.1");
+        batch.say("order.place", "o-9 SELF");
+        repo.commit("s", "a", 0, book("pending", "created"), null, batch.entries());
+        assertEquals(1, log.size());
+        assertEquals("order.place", log.newest(1).get(0).getAsJsonObject().get("action").getAsString());
+
+        var failed = log.batch();
+        failed.actor("u-1", "Member", "127.0.0.1");
+        failed.say("order.place", "o-10 SELF");
+        assertThrows(
+                java.io.IOException.class,
+                () -> repo.commit("s", "a", 0, book("pending", "other"), null, failed.entries()));
+        assertEquals(1, log.size(), "a rolled-back commit must not leave audit rows behind");
+    }
+
+    @Test
     void terminalOrderCarriesResumeReceipt() throws Exception {
         var terminal = withAgent(book("delivered", "created"), "agent-1");
         var changesets = OrderChangeSet.forBook(
                 JsonParser.parseString("{\"orders\":[]}").getAsJsonObject(), terminal, 0);
         assertEquals(1, changesets.size());
         assertNotNull(changesets.getFirst().terminalResumeReceipt());
+    }
+
+    @Test
+    void rowDiffAuthorityMirrorsCommittedPayload() throws Exception {
+        var ledger = new StockLedger(data);
+        var repo = new OrderBookRepository(ledger, EventPublisher.noop());
+        repo.commit("s", "a", 0, book("pending", "created"), null);
+        var progressed = book("pending", "created");
+        var second = progressed.getAsJsonArray("orders").get(0).getAsJsonObject();
+        var extra = new JsonObject();
+        extra.addProperty("t", "packed");
+        second.getAsJsonArray("history").add(extra);
+        repo.commit("s", "a", 1, progressed, null);
+        try (var c = ledger.open();
+                var q = c.prepareStatement(
+                        "SELECT order_id,location,payload,revision FROM order_rows WHERE server=? AND stash=?")) {
+            q.setString(1, "s");
+            q.setString(2, "a");
+            try (var rows = q.executeQuery()) {
+                assertTrue(rows.next(), "changed rows must be persisted alongside the payload");
+                assertEquals("o-1", rows.getString(1));
+                assertEquals("orders", rows.getString(2));
+                assertEquals(2, rows.getLong(4));
+                assertTrue(rows.getString(3).contains("\"packed\""));
+                assertFalse(rows.next(), "one row per order");
+            }
+        }
     }
 }

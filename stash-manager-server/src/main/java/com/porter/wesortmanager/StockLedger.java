@@ -117,7 +117,7 @@ final class StockLedger {
                 try (var r = s.executeQuery("PRAGMA user_version")) {
                     if (!r.next()) throw new IOException("Missing guild database schema");
                     schema = r.getInt(1);
-                    if (schema < 0 || schema > 9) throw new IOException("Unsupported guild database schema");
+                    if (schema < 0 || schema > 10) throw new IOException("Unsupported guild database schema");
                 }
                 s.execute("BEGIN IMMEDIATE");
                 try {
@@ -172,7 +172,14 @@ final class StockLedger {
                     }
                     s.execute("PRAGMA application_id=" + APPLICATION_ID);
                     s.execute(
-                            "CREATE TABLE IF NOT EXISTS order_books(server TEXT NOT NULL,stash TEXT NOT NULL,revision INTEGER NOT NULL CHECK(revision>0),payload TEXT NOT NULL,PRIMARY KEY(server,stash))");
+                            "CREATE TABLE IF NOT EXISTS order_books(server TEXT NOT NULL,stash TEXT NOT NULL,revision INTEGER NOT NULL CHECK(revision>0),PRIMARY KEY(server,stash))");
+                    // PR3 (#265): row-diff authority. Commits write only changed
+                    // order rows + new receipts; order_books keeps the revision
+                    // counter, order_rows/order_receipts carry the content.
+                    s.execute(
+                            "CREATE TABLE IF NOT EXISTS order_rows(order_id TEXT PRIMARY KEY,server TEXT NOT NULL,stash TEXT NOT NULL,location TEXT NOT NULL,payload TEXT NOT NULL,seq INTEGER NOT NULL,revision INTEGER NOT NULL)");
+                    s.execute(
+                            "CREATE TABLE IF NOT EXISTS order_receipts(receipt_key TEXT PRIMARY KEY,server TEXT NOT NULL,stash TEXT NOT NULL,payload TEXT NOT NULL)");
                     s.execute("CREATE TABLE IF NOT EXISTS order_storage_meta(id INTEGER PRIMARY KEY CHECK(id=1))");
                     s.execute(
                             "CREATE TABLE IF NOT EXISTS order_event_log(order_id TEXT NOT NULL,seq INTEGER NOT NULL CHECK(seq>0),server TEXT NOT NULL,stash TEXT NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(order_id,seq))");
@@ -191,7 +198,14 @@ final class StockLedger {
                             "CREATE INDEX IF NOT EXISTS slot_projection_variant ON slot_projection(variant_id)");
                     s.execute(
                             "CREATE TABLE IF NOT EXISTS shulker_identity(uuid TEXT PRIMARY KEY,status TEXT NOT NULL,source TEXT NOT NULL,slot_path TEXT NOT NULL,current_snapshot_ref TEXT,current_revision INTEGER NOT NULL,registration_proof TEXT NOT NULL,export_receipt TEXT)");
-                    s.execute("PRAGMA user_version=9");
+                    // PR3 (#140): transactional audit trail. Business entries join the
+                    // surrounding order/stock/custody transaction; login/security use
+                    // own-transaction writes through AuditLog.add.
+                    s.execute(
+                            "CREATE TABLE IF NOT EXISTS audit_log(seq INTEGER PRIMARY KEY AUTOINCREMENT,at INTEGER NOT NULL,user_id TEXT,user_name TEXT,action TEXT NOT NULL,detail TEXT,address TEXT)");
+                    s.execute("CREATE INDEX IF NOT EXISTS audit_log_action ON audit_log(action,seq)");
+                    migrateOrderBooksToRows(c, s);
+                    s.execute("PRAGMA user_version=10");
                     var interruptedServers = new ArrayList<String>();
                     try (var leases = s.executeQuery("SELECT server FROM automation_leases WHERE state='ACTIVE'")) {
                         while (leases.next()) interruptedServers.add(leases.getString(1));
@@ -225,6 +239,61 @@ final class StockLedger {
         }
     }
 
+    /**
+     * PR3 (#265) v10 migration: backfill the row-diff authority from cached
+     * full-book payloads, then drop the payload column. Clean volumes skip this
+     * (no order_books rows exist yet). History and receipts tables are
+     * append-only and need no migration.
+     */
+    private static void migrateOrderBooksToRows(Connection c, java.sql.Statement s)
+            throws SQLException, IOException {
+        boolean hasPayload = false;
+        try (var cols = s.executeQuery("PRAGMA table_info(order_books)")) {
+            while (cols.next()) {
+                if ("payload".equals(cols.getString(2))) {
+                    hasPayload = true;
+                    break;
+                }
+            }
+        }
+        if (!hasPayload) return;
+        try (var books = s.executeQuery("SELECT server,stash,revision,payload FROM order_books")) {
+            while (books.next()) {
+                String server = books.getString(1);
+                String stash = books.getString(2);
+                long revision = books.getLong(3);
+                var root = com.google.gson.JsonParser.parseString(books.getString(4)).getAsJsonObject();
+                var plan = OrderChangeSet.plan(null, root);
+                try (var upsert = c.prepareStatement(
+                        "INSERT INTO order_rows(order_id,server,stash,location,payload,seq,revision) VALUES(?,?,?,?,?,?,?) ON CONFLICT(order_id) DO NOTHING")) {
+                    for (var u : plan.upserts()) {
+                        upsert.setString(1, u.orderId());
+                        upsert.setString(2, server);
+                        upsert.setString(3, stash);
+                        upsert.setString(4, u.location());
+                        upsert.setString(5, u.json());
+                        upsert.setInt(6, u.seq());
+                        upsert.setLong(7, revision);
+                        upsert.executeUpdate();
+                    }
+                }
+                try (var receipt = c.prepareStatement(
+                        "INSERT INTO order_receipts(receipt_key,server,stash,payload) VALUES(?,?,?,?) ON CONFLICT(receipt_key) DO NOTHING")) {
+                    for (var r : plan.receipts().entrySet()) {
+                        receipt.setString(1, r.getKey());
+                        receipt.setString(2, server);
+                        receipt.setString(3, stash);
+                        receipt.setString(4, r.getValue());
+                        receipt.executeUpdate();
+                    }
+                }
+            }
+        } catch (RuntimeException failure) {
+            throw new IOException("Cannot migrate order books to row-diff authority", failure);
+        }
+        s.execute("ALTER TABLE order_books DROP COLUMN payload");
+    }
+
     private static void validateExistingDatabase(Connection c, int schema) throws SQLException, IOException {
         try (var s = c.createStatement();
                 var rows = s.executeQuery("PRAGMA quick_check")) {
@@ -238,6 +307,7 @@ final class StockLedger {
         if (schema >= 8)
             missing.addAll(Set.of("order_books", "order_storage_meta", "order_event_log", "signed_request_nonces"));
         if (schema >= 9) missing.add("order_resume_receipts");
+        if (schema >= 10) missing.addAll(Set.of("order_rows", "order_receipts", "audit_log"));
         try (var s = c.createStatement();
                 var rows = s.executeQuery("SELECT name FROM sqlite_schema WHERE type='table'")) {
             while (rows.next()) missing.remove(rows.getString(1));

@@ -97,7 +97,7 @@ class UsersTest {
         sessions.load();
         users = new Users(data);
         users.load();
-        audit = new AuditLog(data);
+        audit = new AuditLog(store.stock(), data);
         audit.load();
         hub = new BotHub();
         WeSortManager.Routes r = WeSortManager.routes(

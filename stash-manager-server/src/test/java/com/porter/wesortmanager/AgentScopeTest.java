@@ -94,7 +94,7 @@ class AgentScopeTest {
                 List.of(),
                 sessions,
                 users,
-                new AuditLog(data),
+                new AuditLog(store.stock(), data),
                 hub,
                 new LoginLimiter());
         credentials = r.agentCredentials();

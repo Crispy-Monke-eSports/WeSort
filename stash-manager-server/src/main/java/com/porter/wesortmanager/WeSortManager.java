@@ -136,7 +136,7 @@ public final class WeSortManager {
             }
             Users users = new Users(dataDir);
             users.loadForService();
-            AuditLog audit = new AuditLog(dataDir);
+            AuditLog audit = new AuditLog(store.stock(), dataDir);
             audit.load();
             AuthRoutes.trustProxies(config.trustedProxies);
             if (!config.trustedProxies.isEmpty())

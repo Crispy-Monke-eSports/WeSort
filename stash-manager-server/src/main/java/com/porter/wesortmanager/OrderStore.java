@@ -597,10 +597,14 @@ final class OrderStore {
     }
 
     private void save(Book b) throws IOException {
-        save(b, null);
+        save(b, null, null);
     }
 
     private void save(Book b, StockLedger.BoxRelease release) throws IOException {
+        save(b, release, null);
+    }
+
+    private void save(Book b, StockLedger.BoxRelease release, AuditLog.Batch batch) throws IOException {
         JsonObject root = new JsonObject();
         root.addProperty("server", b.server);
         root.addProperty("stash", b.stash);
@@ -618,21 +622,28 @@ final class OrderStore {
             root.add("receipts", receipts);
         }
         if (repository == null) throw new IOException("Order storage has not been loaded");
-        b.persistenceRevision = repository.commit(b.server, b.stash, b.persistenceRevision, root, release);
+        b.persistenceRevision = repository.commit(
+                b.server, b.stash, b.persistenceRevision, root, release, batch == null ? List.of() : batch.entries());
     }
 
     private void update(Book book, Order previous, Order next) throws IOException {
-        update(book, previous, next, null);
+        update(book, previous, next, null, null);
     }
 
     private void update(Book book, Order previous, Order next, StockLedger.BoxRelease release) throws IOException {
+        update(book, previous, next, release, null);
+    }
+
+    private void update(
+            Book book, Order previous, Order next, StockLedger.BoxRelease release, AuditLog.Batch batch)
+            throws IOException {
         int position = book.orders.indexOf(previous);
         var before = book.orders.size() > KEEP ? List.copyOf(book.orders) : null;
         var archiveBefore = before == null ? null : List.copyOf(book.archived);
         book.orders.set(position, next);
         var pruned = prune(book);
         try {
-            save(book, release);
+            save(book, release, batch);
         } catch (IOException failure) {
             if (before != null && !pruned.isEmpty()) {
                 book.orders.clear();
@@ -1270,6 +1281,39 @@ final class OrderStore {
             RecipientResolver recipient,
             boolean queueWhenStale)
             throws OrderException, IOException {
+        return submit(
+                server,
+                stash,
+                requested,
+                names,
+                packageLabel,
+                byId,
+                byName,
+                organizationId,
+                intent,
+                idempotencyKey,
+                needsApproval,
+                recipient,
+                queueWhenStale,
+                null);
+    }
+
+    Submission submit(
+            String server,
+            String stash,
+            List<Line> requested,
+            JsonObject names,
+            JsonObject packageLabel,
+            String byId,
+            String byName,
+            String organizationId,
+            OrderIntent intent,
+            String idempotencyKey,
+            boolean needsApproval,
+            RecipientResolver recipient,
+            boolean queueWhenStale,
+            AuditLog.Batch audit)
+            throws OrderException, IOException {
         synchronized (index) {
             String key = null, fingerprint = null;
             if (idempotencyKey != null) {
@@ -1302,7 +1346,8 @@ final class OrderStore {
                             null,
                             needsApproval,
                             recipient.resolve(intent),
-                            queueWhenStale),
+                            queueWhenStale,
+                            audit),
                     true);
         }
     }
@@ -1323,6 +1368,43 @@ final class OrderStore {
             boolean needsApproval,
             String recipient,
             boolean queueWhenStale)
+            throws OrderException, IOException {
+        return placeWithObservationLock(
+                server,
+                stash,
+                requested,
+                names,
+                packageLabel,
+                byId,
+                byName,
+                organizationId,
+                intent,
+                receiptKey,
+                fingerprint,
+                retryOf,
+                needsApproval,
+                recipient,
+                queueWhenStale,
+                null);
+    }
+
+    private Order placeWithObservationLock(
+            String server,
+            String stash,
+            List<Line> requested,
+            JsonObject names,
+            JsonObject packageLabel,
+            String byId,
+            String byName,
+            String organizationId,
+            OrderIntent intent,
+            String receiptKey,
+            String fingerprint,
+            Order retryOf,
+            boolean needsApproval,
+            String recipient,
+            boolean queueWhenStale,
+            AuditLog.Batch audit)
             throws OrderException, IOException {
         // A sorting lease cannot coexist with a new physical reservation.
         // Accept a transparently UNRESERVED request and let the sorter finish
@@ -1392,7 +1474,8 @@ final class OrderStore {
                     physical,
                     held,
                     false,
-                    true);
+                    true,
+                    audit);
         }
         if (!held.isEmpty()
                 && index.stock().sources().stream()
@@ -1440,7 +1523,8 @@ final class OrderStore {
                     physical,
                     held,
                     false,
-                    false);
+                    false,
+                    audit);
         } catch (OrderException shortfall) {
             // The offline queue is explicit, never silent: only a caller that opts in with
             // queueWhenStale may fall back to last-verified counts. An expired source on the
@@ -1473,7 +1557,8 @@ final class OrderStore {
                         physical,
                         held,
                         true,
-                        false);
+                        false,
+                    audit);
             } catch (OrderException retryFailed) {
                 throw isShortage(retryFailed) ? shortfall : retryFailed;
             }
@@ -1589,7 +1674,8 @@ final class OrderStore {
             PhysicalReservations physical,
             Set<PhysicalReservations.Root> held,
             boolean allowStale,
-            boolean deferReservation)
+            boolean deferReservation,
+            AuditLog.Batch audit)
             throws OrderException, IOException {
         var allocations = !deferReservation && physical.hasSnapshots()
                 ? physical.allocate(crafting.lines.values(), held, crafting.firstIndex, allowStale)
@@ -1659,8 +1745,12 @@ final class OrderStore {
             b.orders.add(o);
             if (retryOf != null) retryOf.retriedAs = o.id;
             if (receiptKey != null) b.receipts.put(receiptKey, new Receipt(fingerprint, o.toJson()));
+            if (audit != null) {
+                if (retryOf != null) audit.say("order.retry", retryOf.id + " as " + o.id);
+                else audit.say("order.place", o.id + " " + intent.purpose().name());
+            }
             try {
-                save(b);
+                save(b, null, audit);
             } catch (IOException failure) {
                 b.orders.remove(o);
                 if (retryOf != null) retryOf.retriedAs = null;
@@ -1693,6 +1783,19 @@ final class OrderStore {
             String organizationId,
             GuildProfile.ApprovalPolicy policy,
             RecipientResolver recipient)
+            throws OrderException, IOException {
+        return retry(id, byId, byName, mayOrderForGuild, organizationId, policy, recipient, null);
+    }
+
+    Order retry(
+            String id,
+            String byId,
+            String byName,
+            boolean mayOrderForGuild,
+            String organizationId,
+            GuildProfile.ApprovalPolicy policy,
+            RecipientResolver recipient,
+            AuditLog.Batch audit)
             throws OrderException, IOException {
         synchronized (index) {
             Book book = byOrderId.get(id);
@@ -1739,7 +1842,8 @@ final class OrderStore {
                         old,
                         policy.requiresApproval(old.intent),
                         recipient.resolve(old.intent),
-                        false);
+                        false,
+                        audit);
             }
         }
     }
@@ -2025,12 +2129,21 @@ final class OrderStore {
      * never touched: they hold reservations and the bot may be working on them.
      */
     int clearFinished(String server, String stash) throws IOException {
+        return clearFinished(server, stash, null);
+    }
+
+    int clearFinished(String server, String stash, AuditLog.Batch audit) throws IOException {
         synchronized (index) {
-            return clearFinishedWithObservationLock(server, stash);
+            return clearFinishedWithObservationLock(server, stash, audit);
         }
     }
 
     private int clearFinishedWithObservationLock(String server, String stash) throws IOException {
+        return clearFinishedWithObservationLock(server, stash, null);
+    }
+
+    private int clearFinishedWithObservationLock(String server, String stash, AuditLog.Batch audit)
+            throws IOException {
         Book b = books.get(new IndexStore.StashKey(server, stash));
         if (b == null) return 0;
         synchronized (b) {
@@ -2043,8 +2156,9 @@ final class OrderStore {
             b.orders.removeAll(removable);
             b.archived.addAll(removable);
             trimArchive(b);
+            if (audit != null) audit.say("orders.clear", stash + ": " + removable.size());
             try {
-                save(b);
+                save(b, null, audit);
             } catch (IOException failure) {
                 b.orders.clear();
                 b.orders.addAll(before);
@@ -2058,6 +2172,11 @@ final class OrderStore {
     }
 
     ApprovalDecision review(String id, boolean approve, String actor) throws OrderException, IOException {
+        return review(id, approve, actor, null);
+    }
+
+    ApprovalDecision review(String id, boolean approve, String actor, AuditLog.Batch audit)
+            throws OrderException, IOException {
         synchronized (index) {
             Book book = byOrderId.get(id);
             if (book == null) throw new OrderException(404, "no such order", -1);
@@ -2078,7 +2197,8 @@ final class OrderStore {
                     next.status = "cancelled";
                 }
                 next.record(approve ? "order.approve" : "order.reject", actor, next.updatedAt);
-                update(book, before, next);
+                if (audit != null) audit.say("order." + (approve ? "approve" : "reject"), id);
+                update(book, before, next, null, audit);
                 return new ApprovalDecision(next, true);
             }
         }
@@ -2090,12 +2210,21 @@ final class OrderStore {
     }
 
     Order cancel(String id, String actor) throws OrderException, IOException {
+        return cancel(id, actor, null);
+    }
+
+    Order cancel(String id, String actor, AuditLog.Batch audit) throws OrderException, IOException {
         synchronized (index) {
-            return cancelWithObservationLock(id, actor);
+            return cancelWithObservationLock(id, actor, audit);
         }
     }
 
     private Order cancelWithObservationLock(String id, String actor) throws OrderException, IOException {
+        return cancelWithObservationLock(id, actor, null);
+    }
+
+    private Order cancelWithObservationLock(String id, String actor, AuditLog.Batch audit)
+            throws OrderException, IOException {
         Book b = byOrderId.get(id);
         if (b == null) throw new OrderException(404, "no such order", -1);
         // Every touch heals: a legacy needs_reconciliation order migrates to the
@@ -2116,7 +2245,8 @@ final class OrderStore {
             } else return previous;
             o.updatedAt = clock.getAsLong();
             o.record(o.cancelRequested ? "order.cancel.request" : "order.cancel", actor, o.updatedAt);
-            update(b, previous, o);
+            if (audit != null) audit.say("order.cancel", o.id);
+            update(b, previous, o, null, audit);
             return o;
         }
     }
@@ -2131,12 +2261,21 @@ final class OrderStore {
     }
 
     Order forceCancel(String id, String actor) throws OrderException, IOException {
+        return forceCancel(id, actor, null);
+    }
+
+    Order forceCancel(String id, String actor, AuditLog.Batch audit) throws OrderException, IOException {
         synchronized (index) {
-            return forceCancelWithObservationLock(id, actor);
+            return forceCancelWithObservationLock(id, actor, audit);
         }
     }
 
     private Order forceCancelWithObservationLock(String id, String actor) throws OrderException, IOException {
+        return forceCancelWithObservationLock(id, actor, null);
+    }
+
+    private Order forceCancelWithObservationLock(String id, String actor, AuditLog.Batch audit)
+            throws OrderException, IOException {
         Book b = byOrderId.get(id);
         if (b == null) throw new OrderException(404, "no such order", -1);
         // Every touch heals, so a legacy needs_reconciliation order is already
@@ -2163,7 +2302,8 @@ final class OrderStore {
             o.message = "cancelled from the website (bot didn't confirm)";
             o.updatedAt = clock.getAsLong();
             o.record("order.force-cancel", actor, o.updatedAt);
-            update(b, previous, o);
+            if (audit != null) audit.say("order.force-cancel", o.id);
+            update(b, previous, o, null, audit);
             return o;
         }
     }
@@ -2175,6 +2315,10 @@ final class OrderStore {
      * Only exposed through the owner-only route; nothing else in the codebase calls this.
      */
     Order ownerForceCancel(String id, String actor) throws OrderException, IOException {
+        return ownerForceCancel(id, actor, null);
+    }
+
+    Order ownerForceCancel(String id, String actor, AuditLog.Batch audit) throws OrderException, IOException {
         synchronized (index) {
             Book b = byOrderId.get(id);
             if (b == null) throw new OrderException(404, "no such order", -1);
@@ -2191,7 +2335,8 @@ final class OrderStore {
                 o.releasedAt = o.updatedAt = clock.getAsLong();
                 o.message = "Released by the owner without bot confirmation; verify the stash by hand.";
                 o.record("order.owner-force", actor, o.updatedAt);
-                update(b, previous, o);
+                if (audit != null) audit.say("order.owner-force", o.id);
+                update(b, previous, o, null, audit);
                 return o;
             }
         }

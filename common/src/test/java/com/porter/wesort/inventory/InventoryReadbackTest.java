@@ -27,7 +27,8 @@ class InventoryReadbackTest {
         gate.observe(after);
         gate.predict(after);
         gate.fence(0);
-        gate.barrier();
+        assertTrue(gate.barrier().startsWith("INSPECT_NO_FRAME:"));
+        assertNull(gate.barrier());
         assertTrue(gate.failed());
     }
 
@@ -48,7 +49,8 @@ class InventoryReadbackTest {
         gate.predict(after);
         gate.fence(0);
         gate.observe(before);
-        gate.barrier();
+        assertTrue(gate.barrier().startsWith("INSPECT_ITEMS: differing slot count 2"));
+        assertNull(gate.barrier());
         assertTrue(gate.failed());
         assertEquals(after, gate.expected());
         assertThrows(IllegalStateException.class, () -> gate.predict(after));
@@ -60,7 +62,8 @@ class InventoryReadbackTest {
         gate.predict(after);
         gate.fence(0);
         gate.observe(new InventoryReadback.Expected(1, after.slots(), "diamond:64"));
-        gate.barrier();
+        assertTrue(gate.barrier().startsWith("INSPECT_CURSOR:"));
+        assertNull(gate.barrier());
         assertTrue(gate.failed());
     }
 
@@ -70,7 +73,8 @@ class InventoryReadbackTest {
         gate.predict(after);
         gate.fence(0);
         gate.observe(new InventoryReadback.Expected(2, after.slots(), after.cursor()));
-        gate.barrier();
+        assertTrue(gate.barrier().startsWith("INSPECT_MENU:"));
+        assertNull(gate.barrier());
         assertTrue(gate.failed());
     }
 

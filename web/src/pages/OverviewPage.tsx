@@ -171,7 +171,7 @@ export function OverviewPage() {
   // /health 60s signals: stuck orders and a stale index are errors even when
   // every other source looks quiet (frozen-bot case).
   attention.push(...healthAttention(health.data ?? null));
-  // Silence watchdog: online connection heartbeat (not TransportProfiles), no progress on open work. Uses the
+  // Silence watchdog: online connection heartbeat, no progress on open work. Uses the
   // server clock and the order table, never the agent-reported summary.
   const silent = canActivity ? silentBots(botList, openOrders, serverNow) : [];
   const silentIds = new Set(silent.map((s) => s.bot.botId));
@@ -325,16 +325,6 @@ export function OverviewPage() {
         Overview
       </Typography>
 
-      {server.isSuccess && !server.data?.configured && (
-        <Alert severity="warning">
-          No Minecraft server configured yet. Physical work is disabled until
-          the owner sets one in{" "}
-          <Link component={RouterLink} to="/settings">
-            Settings
-          </Link>
-          .
-        </Alert>
-      )}
       {failedStashes.length > 0 && (
         <Alert severity="error">
           Could not load orders for {failedStashes.join(", ")}. The list below

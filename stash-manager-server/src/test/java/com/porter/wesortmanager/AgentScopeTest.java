@@ -323,40 +323,13 @@ class AgentScopeTest {
     }
 
     @Test
-    void physicalWorkFailsClosedBeforeFirstSetup() throws Exception {
-        // No server configured: every server-carrying agent call is refused with 400, not 409.
-        assertEquals(400, botPost("/api/v1/heartbeat", heartbeat("s", "a")).status);
-        assertEquals(400, botPost("/api/v1/index", index("s", "a")).status);
-        assertEquals(
-                400,
-                botPost(
-                                "/api/v1/delivery",
-                                "{\"version\":1,\"server\":\"s\",\"stash\":\"a\",\"player\":\"Bot\"," + "\"hash\":\""
-                                        + "a".repeat(40) + "\",\"readAt\":0,\"chests\":[]}")
-                        .status);
-        assertEquals(
-                400,
-                botPost(
-                                "/api/v1/automation",
-                                "{\"server\":\"s\",\"agent\":\"" + UUID.randomUUID() + "\",\"action\":\"acquire\"}")
-                        .status);
-        assertEquals(400, botPost("/api/v1/orders/claim", claim("s", "a")).status);
-        assertEquals(
-                400,
-                botPost(
-                                "/api/v1/boxes/agent",
-                                "{\"action\":\"claim\",\"server\":\"s\",\"stash\":\"a\",\"agent\":\""
-                                        + UUID.randomUUID() + "\"}")
-                        .status);
-        assertEquals(
-                400,
-                botPost("/api/v1/jobs/agent", "{\"action\":\"claim\",\"agent\":\"" + UUID.randomUUID() + "\"}").status);
-        // Browser order placement is refused the same way.
+    void definedStashWorksWithoutAConfiguredMinecraftAddress() throws Exception {
         String owner = login(null, OWNER_PW);
-        assertEquals(400, post(owner, "/api/v1/orders", "{\"stash\":\"a\",\"lines\":[]}").status);
-        // After setup the gate opens (the stash is still undefined: 404, not 400).
-        setServer(owner, "s");
-        assertEquals(404, botPost("/api/v1/heartbeat", heartbeat("s", "a")).status);
+        assertEquals(404, botPost("/api/v1/heartbeat", heartbeat("proxy", "a")).status);
+        defineStash(owner, "a");
+        assertEquals(200, botPost("/api/v1/heartbeat", heartbeat("proxy", "a")).status);
+        assertEquals(200, botPost("/api/v1/index", index("proxy", "a")).status);
+        assertEquals(204, botPost("/api/v1/orders/claim", claim("another:25566", "a")).status);
     }
 
     @Test
@@ -392,32 +365,32 @@ class AgentScopeTest {
     }
 
     @Test
-    void forgedServerIsRefusedWith409() throws Exception {
+    void signedAgentRoutesUseTheWarehouseAcrossDifferentLoginAddresses() throws Exception {
         String owner = login(null, OWNER_PW);
         setServer(owner, "s");
         defineStash(owner, "a");
-        // A bot connecting from any other Minecraft server is refused with 409.
-        assertEquals(409, botPost("/api/v1/heartbeat", heartbeat("evil", "a")).status);
-        assertEquals(409, botPost("/api/v1/index", index("evil", "a")).status);
+        // The signed agent reaches the same warehouse through different login endpoints.
+        assertEquals(200, botPost("/api/v1/heartbeat", heartbeat("proxy", "a")).status);
+        assertEquals(200, botPost("/api/v1/index", index("proxy", "a")).status);
         assertEquals(
-                409,
+                200,
                 botPost(
                                 "/api/v1/delivery",
-                                "{\"version\":1,\"server\":\"evil\",\"stash\":\"a\",\"player\":\"Bot\"," + "\"hash\":\""
+                                "{\"version\":1,\"server\":\"proxy\",\"stash\":\"a\",\"player\":\"Bot\"," + "\"hash\":\""
                                         + "a".repeat(40) + "\",\"readAt\":0,\"chests\":[]}")
                         .status);
         assertEquals(
-                409,
+                200,
                 botPost(
                                 "/api/v1/automation",
-                                "{\"server\":\"evil\",\"agent\":\"" + UUID.randomUUID() + "\",\"action\":\"acquire\"}")
+                                "{\"server\":\"proxy\",\"agent\":\"" + UUID.randomUUID() + "\",\"action\":\"acquire\"}")
                         .status);
-        assertEquals(409, botPost("/api/v1/orders/claim", claim("evil", "a")).status);
+        assertEquals(204, botPost("/api/v1/orders/claim", claim("proxy", "a")).status);
         assertEquals(
-                409,
+                200,
                 botPost(
                                 "/api/v1/boxes/agent",
-                                "{\"action\":\"claim\",\"server\":\"evil\",\"stash\":\"a\",\"agent\":\""
+                                "{\"action\":\"claim\",\"server\":\"proxy\",\"stash\":\"a\",\"agent\":\""
                                         + UUID.randomUUID() + "\"}")
                         .status);
         // The right server but an undefined stash is 404, never silently accepted.
@@ -460,7 +433,7 @@ class AgentScopeTest {
         claim.addProperty("player", "OtherBot");
         claim.addProperty("agent", PLAYER_B);
         assertEquals(204, agentPost(agentA, agentKeyA, "/api/v1/orders/claim", claim.toString()).status);
-        assertEquals(409, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat("evil", "a")).status);
+        assertEquals(200, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat("evil", "a")).status);
         assertEquals(404, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat("s", "missing")).status);
         assertEquals(200, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat("s", "b")).status);
         JsonObject foreignSession = new JsonObject();
@@ -541,9 +514,9 @@ class AgentScopeTest {
         assertEquals(200, nameless.status, nameless.body);
         assertEquals(".Bedrock Gamer", credentials.find(agentA).binding().playerName());
 
-        // Physical server/stash verification remains enforced in proxy mode.
+        // Changing proxy does not change the assigned stash.
         heartbeat.addProperty("server", "another-proxy.example.net:25565");
-        assertEquals(409, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat.toString()).status);
+        assertEquals(200, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat.toString()).status);
         heartbeat.addProperty("server", serverId);
         heartbeat.addProperty("stash", "undefined");
         assertEquals(404, agentPost(agentA, agentKeyA, "/api/v1/heartbeat", heartbeat.toString()).status);
@@ -597,8 +570,8 @@ class AgentScopeTest {
         setServer(owner, "s");
         defineStash(owner, "a");
         String session = "1".repeat(64);
-        // Wrong server in the binding: 409.
-        assertEquals(409, botPost("/api/v1/bot/hello", helloFor(session, "evil", "a", agentA)).status);
+        // The signed bot can report a different Minecraft login address.
+        assertEquals(200, botPost("/api/v1/bot/hello", helloFor(session, "proxy.example:25599", "a", agentA)).status);
         // Undefined stash in the binding: 404.
         assertEquals(404, botPost("/api/v1/bot/hello", helloFor(session, "s", "nope", agentA)).status);
         // Presence without a binding still works (a bot that only reports presence).

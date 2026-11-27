@@ -62,7 +62,7 @@ export function BotsPage() {
   const list = (bots.data ?? []).filter((b) => perms.seesBot(b.botId));
   const sel = list.find((b) => b.botId === selected) ?? list[0] ?? null;
 
-  // Server-side silence watchdog (same rule as Overview): online connection heartbeat (not TransportProfiles) but
+  // Server-side silence watchdog (same rule as Overview): online connection heartbeat but
   // no progress on open work, judged by the server clock and the order table.
   const canView = perms.can("view");
   const stashes = useStashes(loggedIn && canView);

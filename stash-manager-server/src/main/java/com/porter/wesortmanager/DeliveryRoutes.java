@@ -44,18 +44,8 @@ final class DeliveryRoutes {
             Http.error(ex, 400, e.getMessage());
             return;
         }
-        String server = s.json().get("server").getAsString();
+        String server = config.warehouseKey();
         String stash = s.json().get("stash").getAsString();
-        // Fail closed: reports need a configured server, the right server and a defined stash.
-        int gate = ServerRoutes.agentServerStatus(config, server);
-        if (gate == 400) {
-            Http.error(ex, 400, "set the Minecraft server in Settings first");
-            return;
-        }
-        if (gate == 409) {
-            Http.error(ex, 409, "this Manager serves '" + config.minecraftServer() + "'");
-            return;
-        }
         if (ServerRoutes.unknownStash(defs, stash)) {
             Http.error(ex, 404, "unknown stash '" + stash + "': define it in Settings first");
             return;

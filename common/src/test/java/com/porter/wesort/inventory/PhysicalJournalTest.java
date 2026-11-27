@@ -39,6 +39,33 @@ class PhysicalJournalTest {
     }
 
     @Test
+    void pickupWithoutItsOwnIntentRetainsTheVerifiedBreakAcrossRestart() throws Exception {
+        var scope = context();
+        scope.addProperty("kind", "REPACK");
+        var journal = new PhysicalJournal(directory);
+        journal.start(scope);
+        journal.phase("BREAK", new JsonObject());
+        journal.intent(intent());
+        journal.verified(frame(5, "after"), false);
+        journal.phase("PICKUP", new JsonObject());
+        assertFalse(journal.awaitingPickupAfterVerifiedBreak());
+        var restarted = new PhysicalJournal(directory);
+        assertTrue(restarted.awaitingPickupAfterVerifiedBreak());
+        assertThrows(java.io.IOException.class, restarted::complete);
+        assertTrue(restarted.blocked());
+
+        var pending = new PhysicalJournal(directory.resolve("pending"));
+        pending.start(scope);
+        pending.phase("BREAK", new JsonObject());
+        pending.intent(intent());
+        pending.verified(frame(5, "after"), false);
+        pending.phase("PICKUP", new JsonObject());
+        pending.intent(intent());
+        pending.block("interrupted pickup");
+        assertFalse(pending.awaitingPickupAfterVerifiedBreak());
+    }
+
+    @Test
     void durableIntentExistsBeforeMutationAndOnlyExactReceiptCanCommit() throws Exception {
         var journal = new PhysicalJournal(directory);
         journal.start(context());

@@ -10,12 +10,10 @@ import java.util.List;
 final class DepositRoutes {
     private final Deposits deposits;
     private final AuditLog audit;
-    private final Config config;
 
-    DepositRoutes(Deposits deposits, AuditLog audit, Config config) {
+    DepositRoutes(Deposits deposits, AuditLog audit) {
         this.deposits = deposits;
         this.audit = audit;
-        this.config = config;
     }
 
     void register(Router router) {
@@ -39,11 +37,6 @@ final class DepositRoutes {
         String action = AddonRoutes.string(body, "action");
         String packageId = AddonRoutes.string(body, "packageId");
         String agent = AddonRoutes.string(body, "agent");
-        // Physical work stays fail-closed until the single server is configured.
-        if (config.minecraftServer() == null || config.minecraftServer().isEmpty()) {
-            Http.error(ex, 400, "set the Minecraft server in Settings first");
-            return;
-        }
         if (action == null
                 || packageId == null
                 || agent == null

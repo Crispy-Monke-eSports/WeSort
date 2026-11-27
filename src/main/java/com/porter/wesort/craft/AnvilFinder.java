@@ -101,7 +101,7 @@ public final class AnvilFinder {
     /** Whether the pool crafts an anvil (3 iron blocks, 4 iron ingots) by the game version's recipes. */
     public static boolean craftable(Recipes recipes, Map<String, Long> pool, Set<String> never) {
         if (recipes == null) return false;
-        CraftPlanner.Result r = CraftPlanner.plan(recipes, ANVIL_ID, 1, pool, never, CraftPlanner.Caps.NONE, 0, 0);
+        CraftPlanner.Result r = CraftPlanner.plan(recipes, ANVIL_ID, 1, pool, never, CraftPlanner.Caps.NONE);
         return r.ok() && r.plan().count() >= 1;
     }
 

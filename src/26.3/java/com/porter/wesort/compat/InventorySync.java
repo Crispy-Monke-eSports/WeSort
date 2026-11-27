@@ -892,11 +892,10 @@ public final class InventorySync {
 
     public static void stats() {
         if (awaitingWarehouseWorld()) return;
-        gate.barrier();
+        String mismatchAtBarrier = gate.barrier();
         if (gate.failed()) {
-            if (recoveringWorld)
-                PhysicalJournalRuntime.inspectionFailed(
-                        "INSPECT_ITEMS: the fresh server frame does not match the recorded postcondition");
+            if (recoveringWorld && mismatchAtBarrier != null)
+                PhysicalJournalRuntime.inspectionFailed(mismatchAtBarrier);
             reportFailure();
             return;
         }

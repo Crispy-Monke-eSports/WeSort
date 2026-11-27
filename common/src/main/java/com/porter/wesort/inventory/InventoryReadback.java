@@ -28,12 +28,19 @@ public final class InventoryReadback {
         }
 
         boolean matches(Expected observed) {
-            if (menu != observed.menu || !cursor.equals(observed.cursor) || slots.size() != observed.slots.size())
-                return false;
+            return mismatch(observed) == null;
+        }
+
+        private String mismatch(Expected observed) {
+            if (menu != observed.menu || slots.size() != observed.slots.size())
+                return "INSPECT_MENU: server menu or slot count differs from the recorded menu";
+            if (!cursor.equals(observed.cursor))
+                return "INSPECT_CURSOR: server cursor differs from the recorded cursor";
+            int differences = 0;
             for (int i = 0; i < slots.size(); i++)
                 if (!slots.get(i).equals(observed.slots.get(i))
-                        && !alternatives.getOrDefault(i, Set.of()).contains(observed.slots.get(i))) return false;
-            return true;
+                        && !alternatives.getOrDefault(i, Set.of()).contains(observed.slots.get(i))) differences++;
+            return differences == 0 ? null : "INSPECT_ITEMS: differing slot count " + differences;
         }
     }
 
@@ -92,14 +99,16 @@ public final class InventoryReadback {
         observed = new Observed(value, ++epoch);
     }
 
-    public void barrier() {
-        if (failed() || fences.isEmpty()) return;
+    /** Returns the reason only when this barrier newly fails a pending read. */
+    public String barrier() {
+        if (failed() || fences.isEmpty()) return null;
         Fence fence = fences.remove();
-        if (observed == null
-                || observed.epoch <= Math.max(fence.afterEpoch, acknowledgedEpoch)
-                || !fence.value.matches(observed.value)) {
-            fail("Server inventory differs from prediction or no fresh snapshot preceded the barrier");
-        } else acknowledgedEpoch = observed.epoch;
+        String mismatch = observed == null || observed.epoch <= Math.max(fence.afterEpoch, acknowledgedEpoch)
+                ? "INSPECT_NO_FRAME: no fresh server inventory preceded the barrier"
+                : fence.value.mismatch(observed.value);
+        if (mismatch != null) fail(mismatch);
+        else acknowledgedEpoch = observed.epoch;
+        return mismatch;
     }
 
     public void expire(long now) {

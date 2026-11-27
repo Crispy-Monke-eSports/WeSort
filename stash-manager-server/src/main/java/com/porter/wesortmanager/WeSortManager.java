@@ -354,8 +354,7 @@ public final class WeSortManager {
             RuntimeHealth health)
             throws IOException {
         return routes(
-                config, store, orders, icons, link, urls, sessions, users, audit, hub, limiter, health,
-                Clock.system());
+                config, store, orders, icons, link, urls, sessions, users, audit, hub, limiter, health, Clock.system());
     }
 
     static Routes routes(

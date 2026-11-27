@@ -66,7 +66,9 @@ class ClockTest {
         clock2.setWall(clock2.millis() + JobScheduler.TTL);
         assertEquals(
                 Job.State.COMPLETED,
-                scheduler2.complete(job2.id(), A1, claimed2.get("token").getAsString()).state(),
+                scheduler2
+                        .complete(job2.id(), A1, claimed2.get("token").getAsString())
+                        .state(),
                 "jumping the wall forward past the deadline must not fence a live lease");
     }
 }

@@ -199,7 +199,7 @@ class JobSchedulerTest {
         var claimed = s.claim(A1);
         s.pause(job.id(), A1);
 
-var reloaded = new JobScheduler(new StockLedger(data), wall());
+        var reloaded = new JobScheduler(new StockLedger(data), wall());
         assertEquals(Job.State.NEEDS_RECONCILIATION, reloaded.get(job.id()).state());
         assertThrows(JobScheduler.Conflict.class, () -> reloaded.resume(job.id(), A1, token(claimed)));
         assertThrows(JobScheduler.Conflict.class, () -> reloaded.claim(A2));

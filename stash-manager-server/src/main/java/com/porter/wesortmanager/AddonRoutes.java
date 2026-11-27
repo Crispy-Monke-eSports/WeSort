@@ -77,9 +77,7 @@ final class AddonRoutes {
             return;
         }
         var body = json.getAsJsonObject();
-        String agent = string(body, "agent"),
-                token = string(body, "token"),
-                action = string(body, "action");
+        String agent = string(body, "agent"), token = string(body, "token"), action = string(body, "action");
         if (agent == null
                 || !agent.matches("[0-9a-f-]{36}")
                 || !java.util.Set.of("acquire", "release", "uncertain").contains(action == null ? "" : action)) {

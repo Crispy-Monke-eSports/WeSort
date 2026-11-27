@@ -90,7 +90,7 @@ single transaction spanning physical stock/custody/audit is #140 scope
 - Evidence this round (no Docker/Minecraft, no 6b6t access; live verification
   explicitly not required): `./gradlew test --offline --rerun-tasks`
   (client) → 57 files, **330 tests, 0 failures**; `./gradlew
-  -p stash-manager-server test --offline --rerun-tasks` → 79 files,
+-p stash-manager-server test --offline --rerun-tasks` → 79 files,
   **533 tests, 0 failures**; `npm --prefix web test` → 15 files,
   **113 tests, 0 failures**; `compileJava --offline` clean.
 - Live 6b6t proof (#141) remains BLOCKED-by-environment and is not claimed;

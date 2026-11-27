@@ -30,7 +30,7 @@ class JobSchedulerSqliteTest {
     }
 
     private JobScheduler scheduler(StockLedger ledger) throws Exception {
-        return new JobScheduler(ledger, clock(), clock());
+        return new JobScheduler(ledger, clock());
     }
 
     private static JsonObject book(String server, String stash) {

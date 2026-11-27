@@ -116,6 +116,7 @@ final class RuntimeHealth {
 
     void register(Router router) {
         router.exact(Router.GET, "/health", Router.Guard.OPEN, ex -> {
+                    // WALL-CLOCK (justified, not domain time): point-in-time health snapshot stamp.
                     JsonObject body = detail(System.currentTimeMillis());
                     Http.json(ex, "ready".equals(body.get("status").getAsString()) ? 200 : 503, body);
                 })

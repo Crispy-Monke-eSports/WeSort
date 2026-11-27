@@ -23,7 +23,7 @@ class JobSchedulerTest {
     }
 
     private JobScheduler scheduler() throws Exception {
-        return new JobScheduler(new StockLedger(data), wall(), wall());
+        return new JobScheduler(new StockLedger(data), wall());
     }
 
     private static String id(JsonObject claim) {
@@ -149,12 +149,12 @@ class JobSchedulerTest {
 
     @Test
     void movingWallClockBackCannotExtendAPhysicalLease() throws Exception {
-        var elapsed = new FakeClock(1000);
-        var s = new JobScheduler(new StockLedger(data), wall(), elapsed);
+        var s = new JobScheduler(new StockLedger(data), wall());
         var job = s.submit(Job.Category.SCAN, "o-1", "", 0, "owner");
         var claimed = s.claim(A1);
-        clock.set(-100_000);
-        elapsed.advance(JobScheduler.TTL);
+        // The wall clock jumps back an hour, but monotonic lease time keeps running.
+        clock.setWall(clock.millis() - 3_600_000L);
+        clock.advance(JobScheduler.TTL);
         assertThrows(JobScheduler.Conflict.class, () -> s.renew(job.id(), A1, token(claimed)));
         assertEquals(Job.State.NEEDS_RECONCILIATION, s.get(job.id()).state());
     }
@@ -199,7 +199,7 @@ class JobSchedulerTest {
         var claimed = s.claim(A1);
         s.pause(job.id(), A1);
 
-        var reloaded = new JobScheduler(new StockLedger(data), wall(), wall());
+var reloaded = new JobScheduler(new StockLedger(data), wall());
         assertEquals(Job.State.NEEDS_RECONCILIATION, reloaded.get(job.id()).state());
         assertThrows(JobScheduler.Conflict.class, () -> reloaded.resume(job.id(), A1, token(claimed)));
         assertThrows(JobScheduler.Conflict.class, () -> reloaded.claim(A2));

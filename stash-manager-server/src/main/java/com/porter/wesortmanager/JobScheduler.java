@@ -11,7 +11,6 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 /**
  * W-034: the single-agent job scheduler. Jobs are submitted with a category (SCAN → SORT → PACK → PICKUP → DELIVER,
@@ -32,9 +31,9 @@ import java.util.concurrent.TimeUnit;
  * transaction; {@code Connection}-scoped overloads assume the caller already
  * holds the locks in that order and never commit on their own.
  *
- * <p>Lease time is measured on a monotonic clock while deadlines stay
- * comparable to epoch milliseconds (see {@link #monotonic}), so moving the wall
- * clock back can never extend a physical lease.
+ * <p>Lease time is measured on the clock's monotonic axis ({@link Clock#nano}) while
+ * deadlines stay comparable to epoch millis, so moving the wall clock back can
+ * never extend a physical lease.
  */
 final class JobScheduler {
     static final class Conflict extends IOException {
@@ -46,22 +45,21 @@ final class JobScheduler {
     static final long TTL = 60_000; // lease time-to-live, millis
     private final StockLedger ledger;
     private final Clock clock;
-    private final Clock leaseClock;
+    /** Anchor pairing wall millis with monotonic nanos, so leases stay monotonic when the wall jumps. */
+    private final long leaseBaseWall;
+    private final long leaseBaseNano;
 
     JobScheduler(StockLedger ledger) throws IOException {
-        this(ledger, Clock.system(), monotonic());
+        this(ledger, Clock.system());
     }
 
     JobScheduler(StockLedger ledger, Clock clock) throws IOException {
-        this(ledger, clock, clock);
-    }
-
-    JobScheduler(StockLedger ledger, Clock clock, Clock leaseClock) throws IOException {
         if (ledger == null) throw new IllegalArgumentException("JobScheduler requires the guild database");
-        if (clock == null || leaseClock == null) throw new IllegalArgumentException("JobScheduler requires clocks");
+        if (clock == null) throw new IllegalArgumentException("JobScheduler requires a clock");
         this.ledger = ledger;
         this.clock = clock;
-        this.leaseClock = leaseClock;
+        this.leaseBaseWall = clock.millis();
+        this.leaseBaseNano = clock.nano();
         // The old process can no longer vouch for any outstanding physical lease: fence
         // every held job like BoxJobs fences IN_PROGRESS/VERIFYING at startup, and
         // record the fence as an event so the automatic requeue timer restarts here.
@@ -74,36 +72,23 @@ final class JobScheduler {
         }
     }
 
-    /** Lease deadlines stay comparable to epoch millis while elapsed time is measured monotonically. */
-    private static Clock monotonic() {
-        long wall = System.currentTimeMillis();
-        long start = System.nanoTime();
-        return new Clock() {
-            @Override
-            public long millis() {
-                return wall + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
-            }
-
-            @Override
-            public long nano() {
-                return System.nanoTime();
-            }
-        };
+    /**
+     * Lease time on the monotonic axis, anchored to epoch millis at construction so
+     * persisted deadlines stay comparable to wall time while elapsed lease time
+     * only moves with {@link Clock#nano}.
+     */
+    private long leaseNow() {
+        return leaseBaseWall + (clock.nano() - leaseBaseNano) / 1_000_000L;
     }
 
     /** Legacy data-dir constructor: shares the same guild.sqlite; the JSON file itself is never read. */
     JobScheduler(Path data) throws IOException {
-        this(data, Clock.system(), Clock.system());
+        this(data, Clock.system());
     }
 
     /** Legacy data-dir constructor: shares the same guild.sqlite; the JSON file itself is never read. */
     JobScheduler(Path data, Clock clock) throws IOException {
-        this(data, clock, clock);
-    }
-
-    /** Legacy data-dir constructor: shares the same guild.sqlite; the JSON file itself is never read. */
-    JobScheduler(Path data, Clock clock, Clock leaseClock) throws IOException {
-        this(new StockLedger(data, clock), clock, leaseClock);
+        this(new StockLedger(data, clock), clock);
     }
 
     private record Row(Job job, long deadline, String token, JsonArray events) {}
@@ -191,7 +176,7 @@ final class JobScheduler {
         }
         var claimed = advance(candidate, Job.State.CLAIMED, agent);
         String token = UUID.randomUUID().toString();
-        long deadline = Math.addExact(leaseClock.millis(), TTL);
+        long deadline = Math.addExact(leaseNow(), TTL);
         var events = eventsOf(c, candidate.id());
         events.add(event("claimed", agent));
         update(c, candidate.id(), new Row(claimed, deadline, token, events), candidate.revision());
@@ -211,7 +196,7 @@ final class JobScheduler {
                 var tx = new SqliteWriteTransaction(c)) {
             Row entry = held(c, jobId, agent);
             if (!entry.token().equals(token)) throw new Conflict("Lease token mismatch");
-            long deadline = Math.addExact(leaseClock.millis(), TTL);
+            long deadline = Math.addExact(leaseNow(), TTL);
             var events = entry.events().deepCopy();
             events.add(event("renewed", agent));
             update(
@@ -506,7 +491,7 @@ final class JobScheduler {
 
     /** Lapses any held job whose lease has run out into NEEDS_RECONCILIATION (never a blind reassignment). */
     private void expire(Connection c) throws SQLException, IOException {
-        long now = leaseClock.millis();
+        long now = leaseNow();
         List<String> ids = new ArrayList<>();
         try (var p = c.prepareStatement(
                 "SELECT id FROM jobs WHERE state IN ('CLAIMED','PAUSED') AND deadline<=? ORDER BY id")) {

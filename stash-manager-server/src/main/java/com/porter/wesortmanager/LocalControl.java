@@ -153,6 +153,7 @@ final class LocalControl implements AutoCloseable {
     private static String line(SocketChannel channel) throws IOException {
         // A provisioning command can carry every registered stash, encoded as base64 JSON.
         ByteBuffer buffer = ByteBuffer.allocate(131072);
+        // WALL-CLOCK (justified, not domain time): local-socket read timeout, unrelated to domain leases.
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
         while (buffer.hasRemaining() && System.nanoTime() < deadline) {
             if (channel.read(buffer) < 0) break;
@@ -165,6 +166,7 @@ final class LocalControl implements AutoCloseable {
 
     private static void write(SocketChannel channel, String value) throws IOException {
         ByteBuffer buffer = StandardCharsets.US_ASCII.encode(value);
+        // WALL-CLOCK (justified, not domain time): local-socket write timeout, unrelated to domain leases.
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
         while (buffer.hasRemaining() && System.nanoTime() < deadline) {
             channel.write(buffer);

@@ -110,9 +110,12 @@ public final class WeSortManager {
                 throw new IOException("Official Minecraft 26.3 client download interrupted", e);
             }
 
-            IndexStore store = new IndexStore(dataDir);
+            // PR3 Step 7 (#142): one shared clock for the composition root; domain
+            // timestamps, sweeps and leases below all read this instance.
+            Clock clock = Clock.system();
+            IndexStore store = new IndexStore(dataDir, clock);
             store.load();
-            OrderStore orders = new OrderStore(dataDir, store);
+            OrderStore orders = new OrderStore(dataDir, store, clock);
             orders.load();
             GameIcons game = new GameIcons(dataDir.resolve("icons"), true, config.eulaAccepted);
             // Tab icons the page shows are allowed even when no index has them.
@@ -136,7 +139,7 @@ public final class WeSortManager {
             }
             Users users = new Users(dataDir);
             users.loadForService();
-            AuditLog audit = new AuditLog(store.stock(), dataDir);
+            AuditLog audit = new AuditLog(store.stock(), dataDir, clock);
             audit.load();
             AuthRoutes.trustProxies(config.trustedProxies);
             if (!config.trustedProxies.isEmpty())
@@ -146,7 +149,19 @@ public final class WeSortManager {
             BotHub hub = new BotHub();
             RuntimeHealth health = new RuntimeHealth(false);
             Routes built = routes(
-                    config, store, orders, icons, link, urls, sessions, users, audit, hub, new LoginLimiter(), health);
+                    config,
+                    store,
+                    orders,
+                    icons,
+                    link,
+                    urls,
+                    sessions,
+                    users,
+                    audit,
+                    hub,
+                    new LoginLimiter(),
+                    health,
+                    clock);
             Router router = built.router();
             AuthRoutes authRoutes = built.auth();
             if (!users.list().isEmpty())
@@ -193,12 +208,12 @@ public final class WeSortManager {
                                     config.warehouseKey(),
                                     store,
                                     orders,
-                                    System.currentTimeMillis(),
+                                    clock.millis(),
                                     store.stock().maxAge());
                             orders.selfHealAll();
                             // Dead bots never heartbeat, so the heartbeat path cannot expire
                             // their outstanding rescans: sweep here so no rescan id latchs forever.
-                            for (String expired : store.sweepStaleRescans(System.currentTimeMillis())) {
+                            for (String expired : store.sweepStaleRescans(clock.millis())) {
                                 System.err.println(expired);
                                 try {
                                     audit.add("system", "system", "rescan.auto-expire", expired, "scheduler");
@@ -208,7 +223,7 @@ public final class WeSortManager {
                             }
                             // No human can confirm a handoff or reconcile a job, so uncertain
                             // handoffs and jobs get a bounded automatic way out (#210, #213).
-                            for (String noShow : built.handoffs().sweepStaleAwaiting(System.currentTimeMillis())) {
+                            for (String noShow : built.handoffs().sweepStaleAwaiting(clock.millis())) {
                                 System.err.println(noShow);
                                 try {
                                     audit.add("system", "system", "handoff.auto-no-show", noShow, "scheduler");
@@ -216,7 +231,7 @@ public final class WeSortManager {
                                     System.err.println("Could not audit handoff sweep: " + auditFailure.getMessage());
                                 }
                             }
-                            for (String requeued : built.jobs().sweepStaleUncertain(System.currentTimeMillis())) {
+                            for (String requeued : built.jobs().sweepStaleUncertain(clock.millis())) {
                                 System.err.println(requeued);
                                 try {
                                     audit.add("system", "system", "job.auto-requeue", requeued, "scheduler");
@@ -338,6 +353,26 @@ public final class WeSortManager {
             LoginLimiter limiter,
             RuntimeHealth health)
             throws IOException {
+        return routes(
+                config, store, orders, icons, link, urls, sessions, users, audit, hub, limiter, health,
+                Clock.system());
+    }
+
+    static Routes routes(
+            Config config,
+            IndexStore store,
+            OrderStore orders,
+            IconService icons,
+            LinkState link,
+            List<String> urls,
+            SessionStore sessions,
+            Users users,
+            AuditLog audit,
+            BotHub hub,
+            LoginLimiter limiter,
+            RuntimeHealth health,
+            Clock clock)
+            throws IOException {
         var credentials = new AgentCredentials(config.dataDir());
         credentials.onRevocation(hub::retire);
         Router router = new Router(
@@ -367,14 +402,14 @@ public final class WeSortManager {
         new OperationsRoutes(store, orders, hub, credentials).register(router);
         new StockRoutes(store, orders, observation, returns, boxes).register(router, audit);
         new BoxRoutes(store, audit, orders, config, stashDefs).register(router);
-        new CustodyRoutes(new PackageCustody(store.stock(), Clock.system()), audit).register(router);
+        new CustodyRoutes(new PackageCustody(store.stock(), clock), audit).register(router);
         new DeliveryPointRoutes(new DeliveryPoints(config.dataDir()), audit).register(router);
         new ServerRoutes(config, audit).register(router);
         new StashDefRoutes(stashDefs, audit).register(router);
         new KitTemplateRoutes(kits, audit).register(router);
-        new DepositRoutes(new Deposits(store.stock(), Clock.system()), audit).register(router);
-        var jobs = new JobScheduler(store.stock(), Clock.system());
-        var handoffs = new Handoffs(store.stock(), Clock.system());
+        new DepositRoutes(new Deposits(store.stock(), clock), audit).register(router);
+        var jobs = new JobScheduler(store.stock(), clock);
+        var handoffs = new Handoffs(store.stock(), clock);
         new JobRoutes(jobs, audit).register(router);
         new HandoffRoutes(handoffs, audit).register(router);
         new PhysicalRoutes(store, audit, config).register(router);

@@ -390,6 +390,7 @@ final class StockRoutes {
         out.addProperty("stockEpoch", query.epoch());
         out.addProperty("stockRevision", query.revision());
         out.addProperty("maxAgeMillis", query.maxAge());
+        // WALL-CLOCK (justified, not domain time): response envelope stamp, not a domain event time.
         out.addProperty("asOf", System.currentTimeMillis());
         out.addProperty("reservationPrecision", exactAvailable.isEmpty() ? "aggregate" : "physical-root");
         var guildBalances = balances(items, reserved, true, who, blockedServers, exactAvailable);

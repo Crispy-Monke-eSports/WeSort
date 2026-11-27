@@ -378,6 +378,11 @@ public final class IndexStore {
         this(dataDir, CreativeTabs.bundled());
     }
 
+    /** Production entry point with an explicit clock (the scheduler owns the single shared instance). */
+    public IndexStore(Path dataDir, Clock clock) {
+        this(dataDir, CreativeTabs.bundled(), null, clock);
+    }
+
     IndexStore(Path dataDir, CreativeTabs tabs) {
         this(dataDir, tabs, null, Clock.system());
     }

@@ -45,8 +45,11 @@ landat** (codec + identitetstyper + snapshot-kuvert i `common`). Transport
 
 - `BaseItemId` (registry-id + schema-kontext): sök/display-gruppering.
 - `ExactVariantId` (id + full kanonisk komponent-SNBT, SHA-256): exakt likhet.
-  Ingen trunkering (`#sha1(..).substring(0,8)` är display-nyckel, aldrig identitet).
-  Ingen bare-id-fallback vid encode-fel — fail-closed/karantän.
+  Ingen trunkering (`#sha1(..).substring(0,8)`/`s:`-nycklar är display-nycklar,
+  aldrig identitet). Ingen bare-id-fallback vid encode-fel — fail-closed/
+  karantän (`id#encode-failed`, kolliderar aldrig med bare-id eller variantnyckel).
+  Används i produktion via `PhysicalSlots.Item.variantId` +
+  `SnapshotEnvelope.fromPhysicalSnapshot`.
 - `CatalogGroupId` (policy + värde, t.ex. `tier:`, `bulk:`, `s:`): sortering/sök.
 - Fysisk identitet: `ContainerIdentity` (var) + `ShulkerUuid` (vilken låda),
   oberoende av innehåll. UUID är aldrig en hash av identiska items.
@@ -64,6 +67,13 @@ observedAt/registryContext).
   vid fysisk hantering istället för att clampas.
 - Dubbelkista = en logisk 54-snapshot; cursor/equipment/ender är separata
   kuvert och dubbelräknas aldrig mot containerlager.
+- Konstruktionsväg: `SnapshotEnvelope.fromPhysicalSnapshot(...)` från den
+  auktoritativa `PhysicalSlots.Snapshot` — varje fångad slot måste vara en
+  `ExactVariantId` (fail-closed). `SlotEntry` normaliserar till kanoniska bytes
+  så digest/totals slår ihop ekvivalenta varianter; digest-hashar alltid
+  kanoniska bytes byggda via codec-modellen. Transport (#227) och persistens
+  (#228) adopterar konverteraren; produktionskod bygger aldrig kuvert från
+  råsträngar för hand.
 - Stale/UNREACHABLE behåller historik men allokerar aldrig.
 
 ## Shulker-UUID (#67/#68)

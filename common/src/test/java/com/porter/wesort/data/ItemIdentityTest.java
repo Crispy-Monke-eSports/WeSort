@@ -74,8 +74,7 @@ class ItemIdentityTest {
     }
 
     @Test
-    void snapshotEnvelopeRejectsAirAndRequiresDoubleChestMeta() {
-        SnapshotEnvelope.Provenance prov =
+    void snapshotEnvelopeRejectsAirAndRequiresDoubleChestMeta() {        SnapshotEnvelope.Provenance prov =
                 new SnapshotEnvelope.Provenance("6b6t.org", "minecraft:overworld", "s1", 7L, 123L, "26.3");
         String air = SnbtCodec.write(new SnbtCodec.TCompound(
                 Map.of("id", new SnbtCodec.TString("minecraft:air"), "components", new SnbtCodec.TCompound(Map.of()))));
@@ -98,5 +97,82 @@ class ItemIdentityTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new SnapshotEnvelope(SnapshotEnvelope.SourceKind.CHEST_DOUBLE, 27, List.of(), meta, prov));
+    }
+
+    private static SnapshotEnvelope.Provenance prov() {
+        return new SnapshotEnvelope.Provenance("6b6t.org", "minecraft:overworld", "s1", 7L, 123L, "26.3");
+    }
+
+    @Test
+    void slotEntryNormalizesToCanonicalSnbt() {
+        SnapshotEnvelope.SlotEntry e =
+                new SnapshotEnvelope.SlotEntry(3, "{id:\"minecraft:stone\",components:{a:1}}", 2);
+        assertEquals("{\"components\":{\"a\":1},\"id\":\"minecraft:stone\"}", e.itemSnbt());
+        // Same variant written differently merges in totals and digest.
+        SnapshotEnvelope env = new SnapshotEnvelope(
+                SnapshotEnvelope.SourceKind.CHEST_SINGLE,
+                27,
+                List.of(
+                        new SnapshotEnvelope.SlotEntry(
+                                1, " { \"id\" : \"minecraft:stone\" , \"components\" : {} } ", 1),
+                        new SnapshotEnvelope.SlotEntry(0, "{\"id\":\"minecraft:stone\",\"components\":{}}", 2)),
+                Map.of(),
+                prov());
+        assertEquals(1, env.derivedTotals().size());
+        assertEquals(3, env.derivedTotals().values().iterator().next());
+        assertEquals(env.canonicalSlotsSnbt(), SnbtCodec.canonicalize(env.canonicalSlotsSnbt()));
+        SnapshotEnvelope canonicalOnly = new SnapshotEnvelope(
+                SnapshotEnvelope.SourceKind.CHEST_SINGLE,
+                27,
+                List.of(
+                        new SnapshotEnvelope.SlotEntry(0, "{\"components\":{},\"id\":\"minecraft:stone\"}", 2),
+                        new SnapshotEnvelope.SlotEntry(1, "{\"components\":{},\"id\":\"minecraft:stone\"}", 1)),
+                Map.of(),
+                prov());
+        assertEquals(canonicalOnly.snapshotDigest(), env.snapshotDigest());
+    }
+
+    @Test
+    void fromPhysicalSnapshotBuildsCanonicalEnvelope() {
+        PhysicalSlots.Item item = new PhysicalSlots.Item(
+                "minecraft:diamond", "diamond", 64, "{Damage:7}", PhysicalSlots.Kind.ITEM, 0, List.of(), "");
+        PhysicalSlots.Snapshot snap =
+                new PhysicalSlots.Snapshot(27, List.of(new PhysicalSlots.Slot(4, 5, item)));
+        SnapshotEnvelope env = SnapshotEnvelope.fromPhysicalSnapshot(
+                SnapshotEnvelope.SourceKind.CHEST_SINGLE, snap, Map.of(), prov());
+        assertEquals(1, env.slots().size());
+        assertEquals(4, env.slots().get(0).slot());
+        assertEquals(5, env.slots().get(0).count());
+        assertEquals(
+                "{\"components\":{\"Damage\":7},\"id\":\"minecraft:diamond\"}",
+                env.slots().get(0).itemSnbt());
+        assertEquals(64, env.snapshotDigest().length());
+        assertEquals(Map.of(env.slots().get(0).itemSnbt(), 5), env.derivedTotals());
+    }
+
+    @Test
+    void fromPhysicalSnapshotEnforcesDoubleChestMeta() {
+        PhysicalSlots.Item item = new PhysicalSlots.Item(
+                "minecraft:diamond", "diamond", 64, "{}", PhysicalSlots.Kind.ITEM, 0, List.of(), "");
+        PhysicalSlots.Snapshot snap =
+                new PhysicalSlots.Snapshot(54, List.of(new PhysicalSlots.Slot(0, 1, item)));
+        Map<String, String> meta = Map.of("facing", "north", "type", "left", "posA", "1,2,3", "posB", "2,2,3");
+        assertDoesNotThrow(() -> SnapshotEnvelope.fromPhysicalSnapshot(
+                SnapshotEnvelope.SourceKind.CHEST_DOUBLE, snap, meta, prov()));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> SnapshotEnvelope.fromPhysicalSnapshot(
+                        SnapshotEnvelope.SourceKind.CHEST_DOUBLE, snap, Map.of("facing", "north"), prov()));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> SnapshotEnvelope.fromPhysicalSnapshot(null, snap, meta, prov()));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> SnapshotEnvelope.fromPhysicalSnapshot(
+                        SnapshotEnvelope.SourceKind.CHEST_SINGLE, null, Map.of(), prov()));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> SnapshotEnvelope.fromPhysicalSnapshot(
+                        SnapshotEnvelope.SourceKind.CHEST_SINGLE, snap, Map.of(), null));
     }
 }

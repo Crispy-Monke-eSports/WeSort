@@ -2,6 +2,7 @@ package com.porter.wesort.data;
 
 import com.porter.wesort.snbt.SnbtCodec;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -53,6 +54,9 @@ public final class SnapshotEnvelope {
                 if (id instanceof SnbtCodec.TString s && s.value().equals("minecraft:air"))
                     throw new IllegalArgumentException("empty slots must be absent, never air stacks");
             }
+            // Normalize to canonical bytes: non-canonical equivalents ({b:1} vs
+            // {"b":1}) are the same variant, so digests and totals merge them.
+            itemSnbt = SnbtCodec.write(tag);
         }
     }
 
@@ -126,25 +130,55 @@ public final class SnapshotEnvelope {
         return provenance;
     }
 
-    /** Canonical slot-list SNBT for digesting (slot order significant). */
+    /** Canonical slot-list SNBT for digesting (slot order significant). Built with
+     * the codec model so the hashed bytes are always canonical. */
     public String canonicalSlotsSnbt() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("{capacity:").append(capacity).append(",slots:[");
         List<SlotEntry> ordered = new ArrayList<>(slots);
         ordered.sort((a, b) -> Integer.compare(a.slot(), b.slot()));
-        for (int i = 0; i < ordered.size(); i++) {
-            if (i > 0) sb.append(',');
-            SlotEntry e = ordered.get(i);
-            sb.append("{slot:")
-                    .append(e.slot())
-                    .append(",count:")
-                    .append(e.count())
-                    .append(",item:")
-                    .append(e.itemSnbt())
-                    .append('}');
+        List<SnbtCodec.Tag> entries = new ArrayList<>();
+        for (SlotEntry e : ordered) {
+            Map<String, SnbtCodec.Tag> entry = new LinkedHashMap<>();
+            entry.put("slot", new SnbtCodec.TInt(e.slot()));
+            entry.put("count", new SnbtCodec.TInt(e.count()));
+            entry.put("item", SnbtCodec.parse(e.itemSnbt()));
+            entries.add(new SnbtCodec.TCompound(entry));
         }
-        sb.append("]}");
-        return sb.toString();
+        Map<String, SnbtCodec.Tag> root = new LinkedHashMap<>();
+        root.put("capacity", new SnbtCodec.TInt(capacity));
+        root.put("slots", new SnbtCodec.TList(entries));
+        return SnbtCodec.write(new SnbtCodec.TCompound(root));
+    }
+
+    /**
+     * Capture-side construction path (#226): the single way to build an
+     * envelope from an observed inventory. The source is the authoritative
+     * {@link PhysicalSlots.Snapshot}; every captured slot must resolve to an
+     * exact variant (#266, fail-closed), and double-chest meta is enforced by
+     * the constructor. Transport (#227) and persistence (#228) adopt this
+     * converter; production code never hand-builds envelopes from raw strings.
+     */
+    public static SnapshotEnvelope fromPhysicalSnapshot(
+            SourceKind kind,
+            PhysicalSlots.Snapshot snapshot,
+            Map<String, String> storageMeta,
+            Provenance provenance) {
+        if (kind == null) throw new IllegalArgumentException("kind required");
+        if (snapshot == null) throw new IllegalArgumentException("snapshot required");
+        if (provenance == null) throw new IllegalArgumentException("provenance required");
+        List<SlotEntry> entries = new ArrayList<>();
+        for (PhysicalSlots.Slot s : snapshot.slots()) {
+            ItemIdentity.BaseItemId base =
+                    new ItemIdentity.BaseItemId(s.item().id(), provenance.registryContext());
+            // Fail closed: a captured slot is always an exact variant, never a
+            // bare id or truncated display key.
+            ItemIdentity.ExactVariantId variant =
+                    ItemIdentity.ExactVariantId.of(base, SnbtCodec.parse(s.item().components()));
+            Map<String, SnbtCodec.Tag> item = new LinkedHashMap<>();
+            item.put("id", new SnbtCodec.TString(s.item().id()));
+            item.put("components", SnbtCodec.parse(variant.canonicalComponentsSnbt()));
+            entries.add(new SlotEntry(s.slot(), SnbtCodec.write(new SnbtCodec.TCompound(item)), s.count()));
+        }
+        return new SnapshotEnvelope(kind, snapshot.size(), entries, storageMeta, provenance);
     }
 
     public String snapshotDigest() {

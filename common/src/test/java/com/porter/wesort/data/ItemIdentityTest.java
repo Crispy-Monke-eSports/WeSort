@@ -74,7 +74,8 @@ class ItemIdentityTest {
     }
 
     @Test
-    void snapshotEnvelopeRejectsAirAndRequiresDoubleChestMeta() {        SnapshotEnvelope.Provenance prov =
+    void snapshotEnvelopeRejectsAirAndRequiresDoubleChestMeta() {
+        SnapshotEnvelope.Provenance prov =
                 new SnapshotEnvelope.Provenance("6b6t.org", "minecraft:overworld", "s1", 7L, 123L, "26.3");
         String air = SnbtCodec.write(new SnbtCodec.TCompound(
                 Map.of("id", new SnbtCodec.TString("minecraft:air"), "components", new SnbtCodec.TCompound(Map.of()))));
@@ -136,10 +137,9 @@ class ItemIdentityTest {
     void fromPhysicalSnapshotBuildsCanonicalEnvelope() {
         PhysicalSlots.Item item = new PhysicalSlots.Item(
                 "minecraft:diamond", "diamond", 64, "{Damage:7}", PhysicalSlots.Kind.ITEM, 0, List.of(), "");
-        PhysicalSlots.Snapshot snap =
-                new PhysicalSlots.Snapshot(27, List.of(new PhysicalSlots.Slot(4, 5, item)));
-        SnapshotEnvelope env = SnapshotEnvelope.fromPhysicalSnapshot(
-                SnapshotEnvelope.SourceKind.CHEST_SINGLE, snap, Map.of(), prov());
+        PhysicalSlots.Snapshot snap = new PhysicalSlots.Snapshot(27, List.of(new PhysicalSlots.Slot(4, 5, item)));
+        SnapshotEnvelope env =
+                SnapshotEnvelope.fromPhysicalSnapshot(SnapshotEnvelope.SourceKind.CHEST_SINGLE, snap, Map.of(), prov());
         assertEquals(1, env.slots().size());
         assertEquals(4, env.slots().get(0).slot());
         assertEquals(5, env.slots().get(0).count());
@@ -154,18 +154,16 @@ class ItemIdentityTest {
     void fromPhysicalSnapshotEnforcesDoubleChestMeta() {
         PhysicalSlots.Item item = new PhysicalSlots.Item(
                 "minecraft:diamond", "diamond", 64, "{}", PhysicalSlots.Kind.ITEM, 0, List.of(), "");
-        PhysicalSlots.Snapshot snap =
-                new PhysicalSlots.Snapshot(54, List.of(new PhysicalSlots.Slot(0, 1, item)));
+        PhysicalSlots.Snapshot snap = new PhysicalSlots.Snapshot(54, List.of(new PhysicalSlots.Slot(0, 1, item)));
         Map<String, String> meta = Map.of("facing", "north", "type", "left", "posA", "1,2,3", "posB", "2,2,3");
-        assertDoesNotThrow(() -> SnapshotEnvelope.fromPhysicalSnapshot(
-                SnapshotEnvelope.SourceKind.CHEST_DOUBLE, snap, meta, prov()));
+        assertDoesNotThrow(() ->
+                SnapshotEnvelope.fromPhysicalSnapshot(SnapshotEnvelope.SourceKind.CHEST_DOUBLE, snap, meta, prov()));
         assertThrows(
                 IllegalArgumentException.class,
                 () -> SnapshotEnvelope.fromPhysicalSnapshot(
                         SnapshotEnvelope.SourceKind.CHEST_DOUBLE, snap, Map.of("facing", "north"), prov()));
         assertThrows(
-                IllegalArgumentException.class,
-                () -> SnapshotEnvelope.fromPhysicalSnapshot(null, snap, meta, prov()));
+                IllegalArgumentException.class, () -> SnapshotEnvelope.fromPhysicalSnapshot(null, snap, meta, prov()));
         assertThrows(
                 IllegalArgumentException.class,
                 () -> SnapshotEnvelope.fromPhysicalSnapshot(

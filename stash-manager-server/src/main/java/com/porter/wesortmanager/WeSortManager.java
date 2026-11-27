@@ -350,14 +350,22 @@ public final class WeSortManager {
         ChestStates chests = new ChestStates(); // in memory only
         var stashDefs = new StashDefs(config.dataDir());
         var kits = orders.kits(); // the shared catalog: routes and reservations see the same templates
+        // PR3 Step 5: the service graph is wired explicitly from the single
+        // guild ledger and the order store. Routes keep calling the same
+        // service methods; only construction carries the services (Refs #142).
+        ObservationService observation = store.observationService();
+        BoxUuidRegistry boxes = store.boxUuidRegistry();
+        ReturnIntakeService returns = store.returnIntakeService();
+        OrderPlacementService placement = orders.placement();
+        OrderLifecycleService lifecycle = orders.lifecycle();
         new AddonRoutes(store, link, icons, orders, delivery, config, stashDefs, chests).register(router);
         new BrowserRoutes(store, config, link, urls, orders, sessions, audit, delivery, credentials).register(router);
         new DeliveryRoutes(delivery, config, stashDefs).register(router);
         var guild = new GuildRoutes(config.dataDir(), audit);
-        new OrderRoutes(orders, audit, guild, users, config, stashDefs).register(router);
+        new OrderRoutes(orders, placement, lifecycle, audit, guild, users, config, stashDefs).register(router);
         new OrderAuditRoutes(orders, store).register(router);
         new OperationsRoutes(store, orders, hub, credentials).register(router);
-        new StockRoutes(store, orders).register(router, audit);
+        new StockRoutes(store, orders, observation, returns, boxes).register(router, audit);
         new BoxRoutes(store, audit, orders, config, stashDefs).register(router);
         new CustodyRoutes(new PackageCustody(store.stock(), Clock.system()), audit).register(router);
         new DeliveryPointRoutes(new DeliveryPoints(config.dataDir()), audit).register(router);

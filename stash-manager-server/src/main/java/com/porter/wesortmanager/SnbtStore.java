@@ -60,7 +60,8 @@ final class SnbtStore {
             }
         }
         java.util.Map<String, String> fingerprints = new java.util.HashMap<>();
-        try (var p = c.prepareStatement("SELECT logical_path,slot_fingerprint FROM slot_projection WHERE source_id=?")) {
+        try (var p =
+                c.prepareStatement("SELECT logical_path,slot_fingerprint FROM slot_projection WHERE source_id=?")) {
             p.setString(1, sourceId);
             try (var rows = p.executeQuery()) {
                 while (rows.next()) fingerprints.put(rows.getString(1), rows.getString(2));
@@ -76,9 +77,8 @@ final class SnbtStore {
             long slotRevision = revision;
             String oldFingerprint = fingerprints.get(located.path());
             long[] old = keep.get(located.path());
-            if (old != null
-                    && located.stack().fingerprint().equals(oldFingerprint)
-                    && located.copies() == old[1]) slotRevision = old[0];
+            if (old != null && located.stack().fingerprint().equals(oldFingerprint) && located.copies() == old[1])
+                slotRevision = old[0];
             try (var p = c.prepareStatement(
                     "INSERT INTO slot_projection(source_id,snapshot_ref,logical_path,parent_path,variant_id,count,copies,slot_fingerprint,content_revision,present) VALUES(?,?,?,?,?,?,?,?,?,1)")) {
                 p.setString(1, sourceId);
@@ -107,8 +107,8 @@ final class SnbtStore {
             p.setString(1, sourceId);
             try (var rows = p.executeQuery()) {
                 if (!rows.next()) throw new java.io.IOException("Unknown physical source");
-                var metadata =
-                        com.google.gson.JsonParser.parseString(rows.getString(1)).getAsJsonObject();
+                var metadata = com.google.gson.JsonParser.parseString(rows.getString(1))
+                        .getAsJsonObject();
                 if (!metadata.has("slotFingerprint"))
                     throw new java.io.IOException("Source has no SNBT snapshot to rebuild from");
                 fingerprint = metadata.get("slotFingerprint").getAsString();
@@ -155,7 +155,12 @@ final class SnbtStore {
 
     static String variantCanonical(PhysicalSlots.Item item) {
         return variantCanonical(
-                item.id(), item.key(), item.maxStack(), item.kind().name(), item.size(), item.group(),
+                item.id(),
+                item.key(),
+                item.maxStack(),
+                item.kind().name(),
+                item.size(),
+                item.group(),
                 item.components());
     }
 

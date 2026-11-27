@@ -54,11 +54,19 @@ class ProjectionReaderTest {
     }
 
     private static String sourceId(JsonObject root) {
-        return root.getAsJsonArray("physicalSources").get(0).getAsJsonObject().get("id").getAsString();
+        return root.getAsJsonArray("physicalSources")
+                .get(0)
+                .getAsJsonObject()
+                .get("id")
+                .getAsString();
     }
 
     private static String fingerprint(JsonObject root) {
-        return root.getAsJsonArray("physicalSources").get(0).getAsJsonObject().get("fingerprint").getAsString();
+        return root.getAsJsonArray("physicalSources")
+                .get(0)
+                .getAsJsonObject()
+                .get("fingerprint")
+                .getAsString();
     }
 
     private long count(String sql) throws Exception {
@@ -78,7 +86,8 @@ class ProjectionReaderTest {
         String fingerprint = fingerprint(root);
 
         // Wire format freeze: both the JSON view and the raw SNBT stay served.
-        var expected = PhysicalSlots.Snapshot.fromSnbt(ledger.snapshotSnbt(id, fingerprint)).json();
+        var expected = PhysicalSlots.Snapshot.fromSnbt(ledger.snapshotSnbt(id, fingerprint))
+                .json();
         assertEquals(expected, ledger.snapshot(id, fingerprint));
         assertEquals(ledger.snapshotSnbt(id, fingerprint), ledger.snapshotSnbtByDigest(fingerprint));
 
@@ -124,7 +133,8 @@ class ProjectionReaderTest {
         var after = ledger.physicalSlots(id);
         assertEquals(before.toString(), after.toString(), "legacy evidence must not leak into reads");
         assertEquals(1, after.size());
-        assertEquals(fingerprint, ledger.snapshot(id, fingerprint).get("fingerprint").getAsString());
+        assertEquals(
+                fingerprint, ledger.snapshot(id, fingerprint).get("fingerprint").getAsString());
     }
 
     @Test
@@ -217,7 +227,8 @@ class ProjectionReaderTest {
         assertEquals(0, count("SELECT COUNT(*) FROM physical_slots"));
         assertEquals(1, count("SELECT COUNT(*) FROM snbt_snapshots"));
         assertEquals(1, ledger.physicalSlots(id).size());
-        assertEquals(fingerprint, ledger.snapshot(id, fingerprint).get("fingerprint").getAsString());
+        assertEquals(
+                fingerprint, ledger.snapshot(id, fingerprint).get("fingerprint").getAsString());
         assertEquals(
                 ledger.snapshotSnbt(id, fingerprint),
                 ledger.snapshotSnbtByDigest(fingerprint),
@@ -269,8 +280,7 @@ class ProjectionReaderTest {
         }
         // History is immutable log content, one row per event.
         try (var c = ledger.open();
-                var p = c.prepareStatement(
-                        "SELECT payload FROM order_event_log WHERE order_id=? ORDER BY seq")) {
+                var p = c.prepareStatement("SELECT payload FROM order_event_log WHERE order_id=? ORDER BY seq")) {
             p.setString(1, "o-a");
             try (var r = p.executeQuery()) {
                 assertTrue(r.next());

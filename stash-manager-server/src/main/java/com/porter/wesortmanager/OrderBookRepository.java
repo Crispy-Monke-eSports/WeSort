@@ -11,13 +11,19 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /** Durable order snapshots and immutable order events, on the same guild database as physical observations. */
-final class OrderBookRepository {
+final class OrderBookRepository implements OrderRepository {
     record Snapshot(String server, String stash, long revision, JsonObject payload) {}
 
     private final StockLedger ledger;
+    private final EventPublisher events;
 
     OrderBookRepository(StockLedger ledger) {
+        this(ledger, EventPublisher.live());
+    }
+
+    OrderBookRepository(StockLedger ledger, EventPublisher events) {
         this.ledger = ledger;
+        this.events = events;
     }
 
     /**
@@ -26,7 +32,7 @@ final class OrderBookRepository {
      * read — authoritative orders live in {@code order_books}. Stray files on disk
      * are ignored (StockLedger warns loudly); only SQLite state is trusted.
      */
-    void load(Consumer<Snapshot> validate) throws IOException {
+    public void load(Consumer<Snapshot> validate) throws IOException {
         try (var c = ledger.open();
                 var tx = new SqliteWriteTransaction(c)) {
             boolean initialized;
@@ -36,14 +42,13 @@ final class OrderBookRepository {
             }
             var snapshots = new ArrayList<Snapshot>();
             try (var q = c.createStatement();
-                    var rows = q.executeQuery(
-                            "SELECT server,stash,revision,payload FROM order_books ORDER BY server,stash")) {
+                    var rows = q.executeQuery("SELECT server,stash,revision FROM order_books ORDER BY server,stash")) {
                 while (rows.next()) {
                     var snapshot = new Snapshot(
                             rows.getString(1),
                             rows.getString(2),
                             rows.getLong(3),
-                            JsonParser.parseString(rows.getString(4)).getAsJsonObject());
+                            readBook(c, rows.getString(1), rows.getString(2)));
                     validateScope(snapshot);
                     snapshots.add(snapshot);
                 }
@@ -70,32 +75,138 @@ final class OrderBookRepository {
         }
     }
 
-    long commit(String server, String stash, long expected, JsonObject root, StockLedger.BoxRelease release)
+    public long commit(String server, String stash, long expected, JsonObject root, StockLedger.BoxRelease release)
+            throws IOException {
+        return commit(server, stash, expected, root, release, List.of());
+    }
+
+    @Override
+    public long commit(
+            String server,
+            String stash,
+            long expected,
+            JsonObject root,
+            StockLedger.BoxRelease release,
+            List<AuditLog.Entry> audit)
+            throws IOException {
+        return commitExtended(server, stash, expected, root, release, audit, List.of());
+    }
+
+    /**
+     * PR3 (#140): one transaction for the book, extra custody writes and audit.
+     * The extras run on the commit connection before the changeset proof, so a
+     * failing custody write rolls back the book and the audit trail as well.
+     */
+    public long commitExtended(
+            String server,
+            String stash,
+            long expected,
+            JsonObject root,
+            StockLedger.BoxRelease release,
+            List<AuditLog.Entry> audit,
+            List<OrderRepository.SqliteWrite> extra)
             throws IOException {
         var next = new Snapshot(server, stash, Math.addExact(expected, 1), root);
+        long revision;
         try (var c = ledger.open();
                 var tx = new SqliteWriteTransaction(c)) {
             validateScope(next);
+            JsonObject prevRoot = null;
             if (expected == 0) {
                 insert(c, next);
             } else {
+                try (var q = c.prepareStatement("SELECT revision FROM order_books WHERE server=? AND stash=?")) {
+                    q.setString(1, server);
+                    q.setString(2, stash);
+                    try (var rows = q.executeQuery()) {
+                        if (rows.next()) prevRoot = readBook(c, server, stash);
+                    }
+                }
                 try (var p = c.prepareStatement(
-                        "UPDATE order_books SET revision=?,payload=? WHERE server=? AND stash=? AND revision=?")) {
+                        "UPDATE order_books SET revision=? WHERE server=? AND stash=? AND revision=?")) {
                     p.setLong(1, next.revision());
-                    p.setString(2, root.toString());
-                    p.setString(3, server);
-                    p.setString(4, stash);
-                    p.setLong(5, expected);
+                    p.setString(2, server);
+                    p.setString(3, stash);
+                    p.setLong(4, expected);
                     if (p.executeUpdate() != 1) throw new IOException("Order book revision changed");
                 }
             }
             if (release != null) ledger.releaseOrderBoxes(c, server, release);
             appendEvents(c, next);
             saveResumeReceipts(c, next);
+            for (var write : extra) write.apply(c);
+            AuditLog.addAll(c, audit);
+            // PR3 (#265): every book commit proves a non-empty, revision-linked
+            // changeset. Storage still writes the full snapshot until the diff
+            // cutover lands; the contract is enforced now so the cutover is safe.
+            var changesets = OrderChangeSet.forBook(prevRoot, root, expected);
+            if (changesets.isEmpty() && expected > 0)
+                throw new IOException("Order book commit carries no order, event or receipt change");
+            // PR3 (#265 cutover, dual-write): sync the row-diff authority
+            // alongside the cached full-book payload, same transaction.
+            syncRows(c, server, stash, prevRoot, root, next.revision());
             tx.commit();
-            return next.revision();
+            revision = next.revision();
         } catch (SQLException | RuntimeException failure) {
             throw new IOException("Cannot commit order book and audit history", failure);
+        }
+        // Publish only after the single transaction commits (#140/#142):
+        // rollback publishes nothing.
+        events.afterCommit("orders", revision);
+        return revision;
+    }
+
+    /**
+     * PR3 (#265 cutover, dual-write): upserts changed order rows, deletes evicted
+     * ids and upserts new idempotency receipts from the sync plan. The full-book
+     * payload write above stays as the cached projection until readers cut over.
+     */
+    private static void syncRows(
+            Connection c, String server, String stash, JsonObject prevRoot, JsonObject root, long revision)
+            throws SQLException {
+        var plan = OrderChangeSet.plan(prevRoot, root);
+        if (prevRoot != null) {
+            // Backfill once: books that predate the row-diff authority get their
+            // full row set on the next commit (clean-install focus, no migration
+            // of historical data beyond what the live book already carries).
+            try (var q = c.prepareStatement("SELECT COUNT(*) FROM order_rows WHERE server=? AND stash=?")) {
+                q.setString(1, server);
+                q.setString(2, stash);
+                try (var rows = q.executeQuery()) {
+                    if (rows.next() && rows.getLong(1) == 0) plan = OrderChangeSet.plan(null, root);
+                }
+            }
+        }
+        try (var upsert = c.prepareStatement(
+                "INSERT INTO order_rows(order_id,server,stash,location,payload,seq,revision) VALUES(?,?,?,?,?,?,?) ON CONFLICT(order_id) DO UPDATE SET location=excluded.location,payload=excluded.payload,seq=excluded.seq,revision=excluded.revision WHERE server=excluded.server AND stash=excluded.stash")) {
+            for (var u : plan.upserts()) {
+                upsert.setString(1, u.orderId());
+                upsert.setString(2, server);
+                upsert.setString(3, stash);
+                upsert.setString(4, u.location());
+                upsert.setString(5, u.json());
+                upsert.setInt(6, u.seq());
+                upsert.setLong(7, revision);
+                if (upsert.executeUpdate() != 1) throw new SQLException("Order row scope changed");
+            }
+        }
+        try (var del = c.prepareStatement("DELETE FROM order_rows WHERE order_id=? AND server=? AND stash=?")) {
+            for (String id : plan.deletes()) {
+                del.setString(1, id);
+                del.setString(2, server);
+                del.setString(3, stash);
+                del.executeUpdate();
+            }
+        }
+        try (var receipt = c.prepareStatement(
+                "INSERT INTO order_receipts(receipt_key,server,stash,payload) VALUES(?,?,?,?) ON CONFLICT(receipt_key) DO UPDATE SET payload=excluded.payload WHERE server=excluded.server AND stash=excluded.stash")) {
+            for (var r : plan.receipts().entrySet()) {
+                receipt.setString(1, r.getKey());
+                receipt.setString(2, server);
+                receipt.setString(3, stash);
+                receipt.setString(4, r.getValue());
+                if (receipt.executeUpdate() != 1) throw new SQLException("Order receipt scope changed");
+            }
         }
     }
 
@@ -129,7 +240,7 @@ final class OrderBookRepository {
         }
     }
 
-    JsonObject resumeReceipt(String server, String stash, String agent, String id) throws IOException {
+    public JsonObject resumeReceipt(String server, String stash, String agent, String id) throws IOException {
         try (var c = ledger.open();
                 var p = c.prepareStatement(
                         "SELECT payload FROM order_resume_receipts WHERE order_id=? AND server=? AND stash=? AND agent=?")) {
@@ -152,12 +263,50 @@ final class OrderBookRepository {
             throw new IllegalArgumentException("Invalid order book scope");
     }
 
+    /**
+     * PR3 (#265): reconstructs the book payload from the row-diff authority.
+     * Orders and archived orders come from {@code order_rows} in stored sequence,
+     * receipts from {@code order_receipts}; the shape is identical to what the
+     * old full-payload writes carried, so domain loading is unchanged.
+     */
+    private static JsonObject readBook(Connection c, String server, String stash) throws SQLException {
+        var root = new JsonObject();
+        root.addProperty("server", server);
+        root.addProperty("stash", stash);
+        for (String location : List.of("orders", "archived")) {
+            var array = new com.google.gson.JsonArray();
+            try (var q = c.prepareStatement(
+                    "SELECT payload FROM order_rows WHERE server=? AND stash=? AND location=? ORDER BY seq")) {
+                q.setString(1, server);
+                q.setString(2, stash);
+                q.setString(3, location);
+                try (var rows = q.executeQuery()) {
+                    while (rows.next())
+                        array.add(JsonParser.parseString(rows.getString(1)).getAsJsonObject());
+                }
+            }
+            if (!array.isEmpty() || location.equals("orders")) root.add(location, array);
+        }
+        try (var q = c.prepareStatement("SELECT receipt_key,payload FROM order_receipts WHERE server=? AND stash=?")) {
+            q.setString(1, server);
+            q.setString(2, stash);
+            try (var rows = q.executeQuery()) {
+                com.google.gson.JsonObject receipts = null;
+                while (rows.next()) {
+                    if (receipts == null) receipts = new JsonObject();
+                    receipts.add(rows.getString(1), JsonParser.parseString(rows.getString(2)));
+                }
+                if (receipts != null) root.add("receipts", receipts);
+            }
+        }
+        return root;
+    }
+
     private static void insert(Connection c, Snapshot row) throws SQLException {
-        try (var p = c.prepareStatement("INSERT INTO order_books(server,stash,revision,payload) VALUES(?,?,?,?)")) {
+        try (var p = c.prepareStatement("INSERT INTO order_books(server,stash,revision) VALUES(?,?,?)")) {
             p.setString(1, row.server());
             p.setString(2, row.stash());
             p.setLong(3, row.revision());
-            p.setString(4, row.payload().toString());
             p.executeUpdate();
         }
     }

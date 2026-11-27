@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.google.gson.*;
 import java.nio.file.*;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -13,7 +12,7 @@ class StockAvailabilityTest {
     @TempDir
     Path data;
 
-    private final AtomicLong time = new AtomicLong(1000);
+    private final FakeClock time = new FakeClock(1000);
     private StockLedger ledger;
     private IndexStore store;
     private OrderStore orders;
@@ -21,7 +20,7 @@ class StockAvailabilityTest {
 
     @BeforeEach
     void initialize() throws Exception {
-        ledger = new StockLedger(data, time::get, 100);
+        ledger = new StockLedger(data, time, 100);
         store = new IndexStore(data, CreativeTabs.NONE, ledger);
         store.load();
         orders = new OrderStore(data, store);

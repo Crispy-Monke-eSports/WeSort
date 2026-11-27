@@ -9,10 +9,29 @@ import java.util.*;
 final class StockRoutes {
     private final IndexStore index;
     private final OrderStore orders;
+    private final ObservationService observation;
+    private final ReturnIntakeService returns;
+    private final BoxUuidRegistry boxes;
 
-    StockRoutes(IndexStore index, OrderStore orders) {
+    /**
+     * PR3 Step 5: the ledger services are wired explicitly; the legacy
+     * constructor resolves them from the single guild ledger (Refs #142).
+     */
+    StockRoutes(
+            IndexStore index,
+            OrderStore orders,
+            ObservationService observation,
+            ReturnIntakeService returns,
+            BoxUuidRegistry boxes) {
         this.index = index;
         this.orders = orders;
+        this.observation = observation;
+        this.returns = returns;
+        this.boxes = boxes;
+    }
+
+    StockRoutes(IndexStore index, OrderStore orders) throws IOException {
+        this(index, orders, index.observationService(), index.returnIntakeService(), index.boxUuidRegistry());
     }
 
     void register(Router router, AuditLog audit) {
@@ -36,8 +55,8 @@ final class StockRoutes {
     private void boxes(HttpExchange ex) throws IOException {
         synchronized (index) {
             var response = new JsonObject();
-            response.add("active", index.stock().boxUuids());
-            response.add("history", index.stock().boxUuidHistory());
+            response.add("active", boxes.boxUuids());
+            response.add("history", boxes.boxUuidHistory());
             Http.json(ex, 200, response);
         }
     }
@@ -78,14 +97,18 @@ final class StockRoutes {
                     ? ledger.snapshot(id, source.value().get("slotFingerprint").getAsString())
                     : null;
             out.add("snapshot", snapshot == null ? JsonNull.INSTANCE : snapshot);
+            if (snapshot != null)
+                out.addProperty(
+                        "snapshotSnbt",
+                        ledger.snapshotSnbt(id, snapshot.get("fingerprint").getAsString()));
             // The history frame carries its original content; current slot revisions must never label an older frame.
             if (snapshot != null && source.status().equals("FRESH")) {
                 JsonArray slots = new JsonArray();
                 ledger.physicalSlots(id).forEach(slots::add);
                 out.add("slots", slots);
-                if (who.owner() && returnContainer(source)) out.add("returnIntake", ledger.returnDecisions(id));
+                if (who.owner() && returnContainer(source)) out.add("returnIntake", returns.returnDecisions(id));
                 if (who.owner()) {
-                    var identities = ledger.boxIdentities(id);
+                    var identities = boxes.boxIdentities(id);
                     if (!identities.isEmpty()) out.add("boxIdentities", identities);
                 }
             }
@@ -139,7 +162,7 @@ final class StockRoutes {
                 Http.error(ex, 404, "No such source in this scope");
                 return;
             }
-            accepted = ledger.acceptLoss(id, who.id());
+            accepted = observation.acceptLoss(id, who.id());
         }
         if (!accepted) {
             Http.error(ex, 409, "Only a lost (MISSING/UNREACHABLE) source can be accepted as lost");
@@ -222,7 +245,7 @@ final class StockRoutes {
                 Http.error(ex, 409, "The selected slot no longer holds the verified shulker");
                 return;
             }
-            decision = ledger.recordReturn(
+            decision = returns.recordReturn(
                     id,
                     slot,
                     source.value().get("slotFingerprint").getAsString(),
@@ -367,6 +390,7 @@ final class StockRoutes {
         out.addProperty("stockEpoch", query.epoch());
         out.addProperty("stockRevision", query.revision());
         out.addProperty("maxAgeMillis", query.maxAge());
+        // WALL-CLOCK (justified, not domain time): response envelope stamp, not a domain event time.
         out.addProperty("asOf", System.currentTimeMillis());
         out.addProperty("reservationPrecision", exactAvailable.isEmpty() ? "aggregate" : "physical-root");
         var guildBalances = balances(items, reserved, true, who, blockedServers, exactAvailable);

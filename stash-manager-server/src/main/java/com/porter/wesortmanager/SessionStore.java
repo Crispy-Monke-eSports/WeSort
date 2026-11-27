@@ -15,7 +15,6 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.Map;
-import java.util.function.LongSupplier;
 
 /**
  * Website login sessions. The browser holds a random 32-byte token in the wesort_session cookie; sessions.json stores
@@ -54,15 +53,15 @@ final class SessionStore {
 
     private final long idleMs;
     private final Path file;
-    private final LongSupplier clock;
+    private final Clock clock;
     private final Map<String, Session> sessions = new HashMap<>(); // hex SHA-256(token) -> session
     private final Map<String, Long> elevatedUntil = new HashMap<>(); // in memory only: a restart asks again
 
     SessionStore(Path dataDir) {
-        this(dataDir, System::currentTimeMillis);
+        this(dataDir, Clock.system());
     }
 
-    SessionStore(Path dataDir, LongSupplier clock) {
+    SessionStore(Path dataDir, Clock clock) {
         this(dataDir, clock, idlePolicy(System.getenv().getOrDefault("WESORT_SESSION_IDLE_HOURS", "12")));
     }
 
@@ -72,7 +71,7 @@ final class SessionStore {
         return value * 3_600_000L;
     }
 
-    SessionStore(Path dataDir, LongSupplier clock, long idleMs) {
+    SessionStore(Path dataDir, Clock clock, long idleMs) {
         this.idleMs = idleMs;
         this.file = dataDir == null ? null : dataDir.resolve("sessions.json");
         this.clock = clock;
@@ -126,7 +125,7 @@ final class SessionStore {
 
     /** Starts a session for this user, made with the password whose {@link Auth#tag} is cred. */
     synchronized String create(String user, String cred) throws IOException {
-        long now = clock.getAsLong();
+        long now = clock.millis();
         var next = new HashMap<>(sessions);
         next.values().removeIf(session -> expired(session, now));
         // This user's own least recently used session goes first.
@@ -172,7 +171,7 @@ final class SessionStore {
         String h = hash(token);
         Session s = sessions.get(h);
         if (s == null) return false;
-        long now = clock.getAsLong();
+        long now = clock.millis();
         if (expired(s, now)) {
             // #140: persist the removal first — memory must not drop a session the
             // disk still holds (it would resurrect on restart).
@@ -250,7 +249,7 @@ final class SessionStore {
     /** The password was just typed in this session: dangerous actions are allowed for 15 minutes. */
     synchronized void elevate(String token) {
         if (token != null && sessions.containsKey(hash(token)))
-            elevatedUntil.put(hash(token), clock.getAsLong() + ELEVATED_MS);
+            elevatedUntil.put(hash(token), clock.millis() + ELEVATED_MS);
     }
 
     /** Ends sudo mode for this session at once ("Lock now"). */
@@ -268,7 +267,7 @@ final class SessionStore {
         if (token == null) return false;
         Long until = elevatedUntil.get(hash(token));
         Session session = sessions.get(hash(token));
-        long now = clock.getAsLong();
+        long now = clock.millis();
         return until != null && until > now && session != null && !expired(session, now);
     }
 
@@ -313,7 +312,7 @@ final class SessionStore {
     }
 
     private boolean prune() {
-        long now = clock.getAsLong();
+        long now = clock.millis();
         return sessions.values().removeIf(s -> expired(s, now));
     }
 

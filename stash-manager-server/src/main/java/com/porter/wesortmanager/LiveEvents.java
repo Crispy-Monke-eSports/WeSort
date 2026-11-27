@@ -66,6 +66,7 @@ final class LiveEvents {
      * revision, or -1 when suppressed.
      */
     static synchronized long bumpThrottled(String key, long minIntervalMillis, String... channels) {
+        // WALL-CLOCK (justified, not domain time): broadcast throttle marker, not a domain lease.
         long now = System.nanoTime();
         Long last = THROTTLED.get(key);
         if (last != null && now - last < java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(minIntervalMillis))

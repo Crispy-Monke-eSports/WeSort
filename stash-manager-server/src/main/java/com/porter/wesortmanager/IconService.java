@@ -346,6 +346,7 @@ public final class IconService implements AutoCloseable {
     }
 
     private void prefetchIds(Map<String, IndexStore.IconInfo> ids) {
+        // WALL-CLOCK (justified, not domain time): startup prefetch timing for a log line only.
         long start = System.nanoTime();
         int rendered = 0, alreadyRendered = 0, wikiCached = 0, queued = 0;
         for (Map.Entry<String, IndexStore.IconInfo> e : ids.entrySet()) {
@@ -376,6 +377,7 @@ public final class IconService implements AutoCloseable {
             if (enqueue(new Job(ns + ":" + path, ns, path, nsDir, e.getValue()), false)) queued++;
         }
         if (rendered > 0 || queued > 0) {
+            // WALL-CLOCK (justified, not domain time): elapsed time for the log line below.
             System.out.printf(
                     "Icons for %d item ids: %d rendered from the game now, %d already rendered, %d from the wiki cache, "
                             + "%d queued for the wiki (%.1f s).%n",
@@ -443,6 +445,8 @@ public final class IconService implements AutoCloseable {
 
     private static boolean freshMarker(Path marker, long ttl) throws IOException {
         if (!Files.isRegularFile(marker)) return false;
+        // WALL-CLOCK (justified, not domain time): compares a filesystem mtime against wall time;
+        // a domain clock cannot judge file freshness.
         if (System.currentTimeMillis() - Files.getLastModifiedTime(marker).toMillis() < ttl) return true;
         Files.deleteIfExists(marker);
         return false;
@@ -458,10 +462,12 @@ public final class IconService implements AutoCloseable {
                 batch.add(first);
                 int titles = first.titles().size();
                 // Gather whatever else is queued (briefly), up to the 50-title limit of one api.php call.
+                // WALL-CLOCK (justified, not domain time): batching window for wiki lookups, not a domain lease.
                 long until = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(150);
                 while (titles < TITLES_PER_CALL) {
                     Job next = queue.peek();
                     if (next == null) {
+                        // WALL-CLOCK (justified, not domain time): batching window remainder (see above).
                         long left = until - System.nanoTime();
                         if (left <= 0) break;
                         next = queue.poll(left, TimeUnit.NANOSECONDS);
@@ -862,6 +868,7 @@ public final class IconService implements AutoCloseable {
         private final double capacity;
         private final double perMs;
         private double tokens;
+        // WALL-CLOCK (justified, not domain time): token-bucket rate limiter for wiki fetches.
         private long last = System.nanoTime();
 
         RateLimiter(int burst, double perSecond) {
@@ -893,6 +900,7 @@ public final class IconService implements AutoCloseable {
         }
 
         private void refill() {
+            // WALL-CLOCK (justified, not domain time): token-bucket refill (see above).
             long now = System.nanoTime();
             tokens = Math.min(capacity, tokens + (now - last) / 1_000_000.0 * perMs);
             last = now;

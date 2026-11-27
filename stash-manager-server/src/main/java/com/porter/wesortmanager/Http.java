@@ -121,6 +121,7 @@ final class Http {
             // A response to a signed request is signed too, over the uncompressed body (empty for 204/304/HEAD).
             byte[] plain = Http.attr(ex, PLAIN_BODY) instanceof byte[] p ? p : body;
             boolean empty = "HEAD".equals(ex.getRequestMethod()) || status == 304 || status == 204 || body == null;
+            // WALL-CLOCK (justified, not domain time): response-signature wire timestamp, not domain time.
             long ts = System.currentTimeMillis();
             h.set(
                     Signer.RESPONSE_HEADER,

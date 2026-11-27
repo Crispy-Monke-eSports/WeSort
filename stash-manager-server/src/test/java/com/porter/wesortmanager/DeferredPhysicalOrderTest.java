@@ -8,7 +8,6 @@ import com.porter.wesort.data.PhysicalSlots;
 import com.porter.wesort.inventory.PhysicalJournal;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -36,12 +35,9 @@ class DeferredPhysicalOrderTest {
         var diamond = new PhysicalSlots.Item(
                 "minecraft:diamond", "minecraft:diamond", 64, "{}", PhysicalSlots.Kind.ITEM, 0, List.of(), "");
         var slot = new PhysicalSlots.Slot(0, 64, diamond);
-        var writer = new PhysicalSlots.Writer();
-        var slotRows = writer.slots(List.of(slot));
-        physical.addProperty("physicalVersion", 2);
-        physical.add("slotVariants", writer.variants());
+        physical.addProperty("physicalVersion", 3);
         var source = physical.getAsJsonArray("physicalSources").get(0).getAsJsonObject();
-        source.add("slots", slotRows);
+        source.addProperty("snbt", new PhysicalSlots.Snapshot(27, List.of(slot)).snbt());
         source.addProperty("fingerprint", new PhysicalSlots.Snapshot(27, List.of(slot)).fingerprint());
         index.putIndex(physical);
         orders = new OrderStore(data, index);
@@ -56,8 +52,8 @@ class DeferredPhysicalOrderTest {
     void pendingApprovalExpiresAutomaticallyWithoutAnyHuman() throws Exception {
         // #59: no human can ever approve. A PENDING approval must default-deny after
         // a bounded wait instead of gating shared stock and the queue forever.
-        var clock = new AtomicLong(System.currentTimeMillis());
-        var timed = new OrderStore(data, index, clock::get);
+        var clock = new FakeClock(System.currentTimeMillis());
+        var timed = new OrderStore(data, index, clock);
         timed.load();
         var placed = timed.submit(
                         "s",
@@ -78,7 +74,7 @@ class DeferredPhysicalOrderTest {
         // Still pending inside the deadline: no human, no decision, no expiry yet.
         var waiting = timed.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
         assertEquals("pending", waiting.get("status").getAsString());
-        clock.addAndGet(OrderStore.AUTO_CANCEL_AFTER_MS + 1);
+        clock.advance(OrderStore.AUTO_CANCEL_AFTER_MS + 1);
         assertNull(timed.claim("s", "a"));
         var cancelled = timed.listJson("s", "a").getAsJsonArray("orders").get(0).getAsJsonObject();
         assertEquals("cancelled", cancelled.get("status").getAsString());

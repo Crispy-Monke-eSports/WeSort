@@ -8,7 +8,6 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.LongSupplier;
 
 /**
  * Password rate limits (login, password change, password confirm):
@@ -42,7 +41,7 @@ final class LoginLimiter {
         long lastAttempt;
     }
 
-    private final LongSupplier clock;
+    private final Clock clock;
     private final Map<String, Entry> byAddress = new HashMap<>();
     private final Set<String> inFlight = new HashSet<>();
     private final ArrayDeque<Long> recentFailures = new ArrayDeque<>();
@@ -50,10 +49,10 @@ final class LoginLimiter {
     private long nextGlobalLockMs = GLOBAL_LOCK_MS;
 
     LoginLimiter() {
-        this(System::currentTimeMillis);
+        this(Clock.system());
     }
 
-    LoginLimiter(LongSupplier clock) {
+    LoginLimiter(Clock clock) {
         this.clock = clock;
     }
 
@@ -76,7 +75,7 @@ final class LoginLimiter {
      */
     synchronized long begin(String accountKey, String addressKey, boolean loopback) {
         if (loopback) return 0;
-        long now = clock.getAsLong();
+        long now = clock.millis();
         if (globalLockedUntil > now) return globalLockedUntil - now;
         long wait = Math.max(waitFor(accountKey, now), waitFor(addressKey, now));
         if (wait > 0) return wait;
@@ -100,7 +99,7 @@ final class LoginLimiter {
 
     synchronized void failure(String key, boolean loopback) {
         if (loopback) return;
-        long now = clock.getAsLong();
+        long now = clock.millis();
         Entry e = byAddress.computeIfAbsent(key, k -> new Entry());
         e.lastAttempt = now;
         if (++e.failures >= FAILURES_BEFORE_LOCK) {
@@ -128,7 +127,7 @@ final class LoginLimiter {
      */
     synchronized void addressFailure(String addressKey, boolean loopback) {
         if (loopback) return;
-        long now = clock.getAsLong();
+        long now = clock.millis();
         Entry e = byAddress.computeIfAbsent(addressKey, k -> new Entry());
         e.lastAttempt = now;
         if (++e.failures >= ADDRESS_FAILURES) {

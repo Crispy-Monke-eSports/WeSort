@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.LongSupplier;
 import java.util.regex.Pattern;
 
 final class DeliveryContents {
@@ -51,14 +50,14 @@ final class DeliveryContents {
         }
     }
 
-    private final LongSupplier clock;
+    private final Clock clock;
     private final LinkedHashMap<String, Snapshot> byStash = new LinkedHashMap<>(); // oldest report first
 
     DeliveryContents() {
-        this(System::currentTimeMillis);
+        this(Clock.system());
     }
 
-    DeliveryContents(LongSupplier clock) {
+    DeliveryContents(Clock clock) {
         this.clock = clock;
     }
 
@@ -157,7 +156,7 @@ final class DeliveryContents {
         clean.addProperty("player", player);
         clean.addProperty("hash", hash);
         clean.addProperty("readAt", readAt);
-        long now = clock.getAsLong();
+        long now = clock.millis();
         clean.addProperty("receivedAt", now);
         JsonArray arr = new JsonArray();
         chests.forEach(arr::add);

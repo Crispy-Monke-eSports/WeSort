@@ -42,6 +42,10 @@ final class JobRoutes {
             return;
         }
         try {
+            // The audit entries stage into the same transaction as the job
+            // write: a failed commit persists neither.
+            var trail = audit.batch();
+            trail.actor(Router.user(ex).id(), Router.user(ex).name(), AuthRoutes.address(ex));
             JsonElement result;
             switch (action) {
                 case "submit" -> {
@@ -63,22 +67,23 @@ final class JobRoutes {
                                     chain,
                                     AddonRoutes.string(body, "detail"),
                                     priority(body),
-                                    Router.user(ex).id())
+                                    Router.user(ex).id(),
+                                    trail)
                             .json();
                 }
                 case "revoke" ->
                     result = scheduler
-                            .revoke(requireId(body), Router.user(ex).id())
+                            .revoke(requireId(body), Router.user(ex).id(), trail)
                             .json();
                 default ->
                     result = scheduler
                             .reconcile(
                                     requireId(body),
                                     outcome(body),
-                                    Router.user(ex).id())
+                                    Router.user(ex).id(),
+                                    trail)
                             .json();
             }
-            audit.add(Router.user(ex), "job." + action, subject(result), AuthRoutes.address(ex));
             Http.json(ex, 200, result);
         } catch (JobScheduler.Conflict conflict) {
             Http.error(ex, 409, conflict.getMessage());
@@ -103,46 +108,34 @@ final class JobRoutes {
             return;
         }
         try {
+            // The audit entries stage into the same transaction as the job
+            // write: a failed commit persists neither.
+            var trail = audit.batch();
+            trail.actor("agent:" + agent, "Signed WeSort agent", AuthRoutes.address(ex));
             JsonElement result;
             switch (action) {
-                case "claim" -> result = scheduler.claim(agent);
+                case "claim" -> result = scheduler.claim(agent, trail);
                 case "renew" ->
                     result = scheduler
-                            .renew(requireId(body), agent, requireToken(body))
+                            .renew(requireId(body), agent, requireToken(body), trail)
                             .json();
                 case "complete" ->
                     result = scheduler
-                            .complete(requireId(body), agent, requireToken(body))
+                            .complete(requireId(body), agent, requireToken(body), trail)
                             .json();
-                case "pause" -> result = scheduler.pause(requireId(body), agent).json();
+                case "pause" ->
+                    result = scheduler.pause(requireId(body), agent, trail).json();
                 default ->
                     result = scheduler
-                            .resume(requireId(body), agent, requireToken(body))
+                            .resume(requireId(body), agent, requireToken(body), trail)
                             .json();
             }
-            String id = action.equals("claim")
-                            && result.isJsonObject()
-                            && result.getAsJsonObject().get("job").isJsonObject()
-                    ? result.getAsJsonObject().getAsJsonObject("job").get("id").getAsString()
-                    : AddonRoutes.string(body, "id");
-            audit.add(
-                    "agent:" + agent,
-                    "Signed WeSort agent",
-                    "job." + action,
-                    id == null ? "" : id,
-                    AuthRoutes.address(ex));
             Http.json(ex, 200, result);
         } catch (JobScheduler.Conflict conflict) {
             Http.error(ex, 409, conflict.getMessage());
         } catch (RuntimeException invalid) {
             Http.error(ex, 400, "Invalid job request");
         }
-    }
-
-    private static String subject(JsonElement result) {
-        return result.isJsonObject() && result.getAsJsonObject().has("id")
-                ? result.getAsJsonObject().get("id").getAsString()
-                : "";
     }
 
     private static String requireId(JsonObject body) {

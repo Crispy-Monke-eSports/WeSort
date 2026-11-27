@@ -39,12 +39,9 @@ class PhysicalOperationsSweepTest {
         var diamond = new PhysicalSlots.Item(
                 "minecraft:diamond", "minecraft:diamond", 64, "{}", PhysicalSlots.Kind.ITEM, 0, List.of(), "");
         var slot = new PhysicalSlots.Slot(0, 64, diamond);
-        var writer = new PhysicalSlots.Writer();
-        var slotRows = writer.slots(List.of(slot));
-        physical.addProperty("physicalVersion", 2);
-        physical.add("slotVariants", writer.variants());
+        physical.addProperty("physicalVersion", 3);
         var source = physical.getAsJsonArray("physicalSources").get(0).getAsJsonObject();
-        source.add("slots", slotRows);
+        source.addProperty("snbt", new PhysicalSlots.Snapshot(27, List.of(slot)).snbt());
         source.addProperty("fingerprint", new PhysicalSlots.Snapshot(27, List.of(slot)).fingerprint());
         index.putIndex(physical);
         orders = new OrderStore(data, index);
@@ -115,7 +112,7 @@ class PhysicalOperationsSweepTest {
             p.setString(5, "NEEDS_RECONCILIATION");
             p.executeUpdate();
         }
-        new PhysicalOperations(index.stock(), () -> now).sweepStale();
+        new PhysicalOperations(index.stock(), new FakeClock(now)).sweepStale();
         try (var c = DriverManager.getConnection("jdbc:sqlite:" + data.resolve("guild.sqlite"));
                 var q = c.createStatement();
                 var rows = q.executeQuery("SELECT state,fence_revision FROM physical_operations")) {

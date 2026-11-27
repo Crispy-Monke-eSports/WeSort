@@ -1,8 +1,11 @@
-# SNBT-kontrakt v1 (PR2: #224)
+# SNBT-kontrakt v1 (PR2: #224, PR3: #228/#229)
 
 Auktoritativt lagringskontrakt för WeSort-inventarier. Status: **capture-side
-landat** (codec + identitetstyper + snapshot-kuvert i `common`). Transport
-(#227), SQLite-persistens (#228), journaler/custody/mallar (#229) och CI/E2E-grind
+landat** (codec + identitetstyper + snapshot-kuvert i `common`),
+**SQLite-persistens landat** (#228: `snbt_snapshots` +
+`slot_projection ⨝ variant_register` som enda läsvåg, legacy som skrivskyddad
+evidens) och **journaler/custody landat** (#229: custody/deposits/handoffs/jobs
+i SQLite, same-tx med ordrar + audit). Transport (#227) och CI/E2E-grind
 (#230) återstår i senare led.
 
 ## Version
@@ -87,14 +90,16 @@ observedAt/registryContext).
 
 - Ingen migrering/konvertering/backfill. Clean install + färska observationer.
   Gammal data raderas aldrig automatiskt men accepteras aldrig som giltig SNBT.
-- Ingen transport-/persistens-adoption (det är #227/#228). `PhysicalSlots`-JSON,
-  `physicalVersion:1/2`, `payload`-JSON och `StashIndex`-katalognycklar lever kvar
-  som härledda/legacy tills adoptionen landar; de är inte auktoritativa.
+- Ingen transport-adoption (det är #227). Persistens-adoptionen (#228) har
+  landat: `PhysicalSlots`-JSON, `physicalVersion:1/2`, `payload`-JSON och
+  `StashIndex`-katalognycklar är skrivskyddad evidens/härledda vyer, aldrig
+  auktoritativa; enda läs- och skrivvägen är SNBT-auktoriteten.
 - Ingen mock-PASS: fysisk E2E kräver verklig 26.3 + separat 6b6t-live (#16/#141).
 
-## Nästa steg
+## Nästa steg (PR3-steg 4–7 landade; kvar: transport + E2E-grind)
 
 1. #227: versionerat klient→Manager-protokoll (`physicalVersion:3`, SNBT-kuvert).
-2. #228: SQLite SNBT-kolumner + härledda projektioner (rebuildbara vyer).
-3. #229: journaler/custody/mallar/recovery + UUID-livscykel på SNBT-bevis.
+2. ~~#228: SQLite SNBT-kolumner + härledda projektioner (rebuildbara vyer).~~ Landat i PR3.
+3. ~~#229: journaler/custody/mallar/recovery + UUID-livscykel på SNBT-bevis.~~ Landat i PR3
+   (custody/deposits/handoffs/jobs i SQLite + same-tx; mallar/recovery/UUID-livscykel följer).
 4. #230: CI + Minecraft-E2E på ren data (blockerande grind).

@@ -88,6 +88,8 @@ final class BrowserRoutes {
                 continue;
             }
             if (slot.binding() != null
+                    // WALL-CLOCK (justified, not domain time): display-only presence read for the
+                    // credentials page; authoritative timeouts live behind the BotHub/Clock seam.
                     && System.currentTimeMillis() - slot.binding().lastSeen() <= BotHub.ONLINE_MS) {
                 JsonObject binding = new JsonObject();
                 binding.addProperty("name", slot.binding().playerName());

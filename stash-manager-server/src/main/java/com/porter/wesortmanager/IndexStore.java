@@ -36,9 +36,11 @@ public final class IndexStore {
     private final Path dir;
     private StockLedger stock;
     private AutomationGate automation;
+    /** Injected clock (#142): heartbeats, rescan ids and online reads never read the wall clock directly. */
+    private final Clock clock;
 
     synchronized AutomationGate automation() throws IOException {
-        if (automation == null) automation = new AutomationGate(stock());
+        if (automation == null) automation = new AutomationGate(stock(), clock);
         return automation;
     }
 
@@ -46,8 +48,28 @@ public final class IndexStore {
     private final Map<StashKey, Long> freshnessRequests = new ConcurrentHashMap<>();
 
     synchronized StockLedger stock() throws IOException {
-        if (stock == null) stock = new StockLedger(dir.getParent());
+        if (stock == null) stock = new StockLedger(dir.getParent(), clock);
         return stock;
+    }
+
+    /**
+     * PR3 Step 5: the ledger services, built once with the single guild
+     * ledger. Every consumer shares these instances (Refs #142).
+     */
+    synchronized ObservationService observationService() throws IOException {
+        return stock().observation();
+    }
+
+    synchronized BoxUuidRegistry boxUuidRegistry() throws IOException {
+        return stock().boxRegistry();
+    }
+
+    synchronized ReturnIntakeService returnIntakeService() throws IOException {
+        return stock().returnIntake();
+    }
+
+    synchronized OperationJournal operationJournal() throws IOException {
+        return stock().journal();
     }
 
     private final CreativeTabs tabs;
@@ -356,14 +378,25 @@ public final class IndexStore {
         this(dataDir, CreativeTabs.bundled());
     }
 
+    /** Production entry point with an explicit clock (the scheduler owns the single shared instance). */
+    public IndexStore(Path dataDir, Clock clock) {
+        this(dataDir, CreativeTabs.bundled(), null, clock);
+    }
+
     IndexStore(Path dataDir, CreativeTabs tabs) {
-        this(dataDir, tabs, null);
+        this(dataDir, tabs, null, Clock.system());
     }
 
     IndexStore(Path dataDir, CreativeTabs tabs, StockLedger stock) {
+        this(dataDir, tabs, stock, Clock.system());
+    }
+
+    /** Test seam: domain timestamps (heartbeats, rescan ids, online reads) follow this clock. */
+    IndexStore(Path dataDir, CreativeTabs tabs, StockLedger stock, Clock clock) {
         this.stock = stock;
         this.dir = dataDir.resolve("indexes");
         this.tabs = tabs;
+        this.clock = clock;
     }
 
     // ---------- loading ----------
@@ -463,7 +496,7 @@ public final class IndexStore {
 
     /** Makes room by dropping an offline stash that never sent an index (heartbeat-only entries). */
     private void evictOne() {
-        long now = System.currentTimeMillis();
+        long now = clock.millis();
         for (Map.Entry<StashKey, Stash> e : stashes.entrySet()) {
             Stash s = e.getValue();
             synchronized (s) {
@@ -731,7 +764,7 @@ public final class IndexStore {
         String versionError = validate(index);
         if (versionError != null) throw new IllegalArgumentException(versionError);
         if (server == null) server = index.get("server").getAsString();
-        long now = System.currentTimeMillis();
+        long now = clock.millis();
         // Bound index count before committing the authoritative physical observation.
         String stash = index.get("stash").getAsString();
         getOrCreate(server, stash);
@@ -778,7 +811,7 @@ public final class IndexStore {
     public HeartbeatResult heartbeat(String server, String stash, String player, String indexHash, BotStatus status)
             throws FullException {
         Stash s = getOrCreate(server, stash);
-        long now = System.currentTimeMillis();
+        long now = clock.millis();
         long previousSeen;
         synchronized (s) {
             previousSeen = s.lastSeen;
@@ -869,7 +902,7 @@ public final class IndexStore {
         Stash s = stashes.get(new StashKey(server, stash));
         if (s == null) return -1;
         synchronized (s) {
-            long nowSec = System.currentTimeMillis() / 1000;
+            long nowSec = clock.millis() / 1000;
             Long outstanding = rescanPending(s);
             // #199: a new rescan while the previous one never landed re-poisons ordering
             // instead of healing it (freeze expires, raw STALE stays). Say so loudly so a
@@ -880,7 +913,7 @@ public final class IndexStore {
                         + (nowSec - outstanding) + "s with no acknowledgement; the bot may be parked.");
             long id = Math.max(Math.max(s.rescanRequested, s.rescanDone) + 1, nowSec);
             s.rescanRequested = id;
-            if (stock != null) stock.freezeAging(server, System.currentTimeMillis());
+            if (stock != null) stock.freezeAging(server, clock.millis());
             return id;
         }
     }
@@ -901,7 +934,7 @@ public final class IndexStore {
     }
 
     public JsonArray listJson() {
-        long now = System.currentTimeMillis();
+        long now = clock.millis();
         List<Stash> list = new ArrayList<>(stashes.values());
         list.sort(Comparator.comparing((Stash s) -> s.server).thenComparing(s -> s.stash));
         JsonArray out = new JsonArray();

@@ -8,7 +8,6 @@ import java.nio.file.*;
 import java.sql.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -16,10 +15,10 @@ class StockLedgerTest {
     @TempDir
     Path data;
 
-    private final AtomicLong time = new AtomicLong(1000);
+    private final FakeClock time = new FakeClock(1000);
 
     private StockLedger ledger() throws Exception {
-        return new StockLedger(data, time::get, 100);
+        return new StockLedger(data, time, 100);
     }
 
     private JsonObject index(String stash, long count) {
@@ -305,7 +304,14 @@ class StockLedgerTest {
 
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(
-            strings = {"order_books", "order_storage_meta", "order_event_log", "signed_request_nonces"})
+            strings = {
+                "order_books",
+                "order_storage_meta",
+                "order_event_log",
+                "signed_request_nonces",
+                "order_rows",
+                "order_receipts"
+            })
     void missingTableFromCompletedV8MigrationStopsRecovery(String table) throws Exception {
         var first = ledger();
         try (var c = first.open();

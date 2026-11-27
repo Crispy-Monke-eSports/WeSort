@@ -16,7 +16,6 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -26,8 +25,8 @@ class BootstrapRuntimeTest {
 
     @Test
     void capabilityExpiresRotatesAndCannotBeReused() {
-        AtomicLong clock = new AtomicLong(1000);
-        BootstrapToken tokens = new BootstrapToken(clock::get);
+        FakeClock clock = new FakeClock(1000);
+        BootstrapToken tokens = new BootstrapToken(clock);
         String first = tokens.issue();
         assertEquals(43, first.length());
         assertTrue(tokens.matches(first));
@@ -36,7 +35,7 @@ class BootstrapRuntimeTest {
         String next = tokens.issue();
         assertFalse(tokens.matches(first));
         assertTrue(tokens.matches(next));
-        clock.addAndGet(BootstrapToken.LIFETIME_MS);
+        clock.advance(BootstrapToken.LIFETIME_MS);
         assertFalse(tokens.matches(next));
         String last = tokens.issue();
         tokens.clear();
@@ -57,19 +56,19 @@ class BootstrapRuntimeTest {
 
     @Test
     void currentKeySlotsReportPresenceAndRotateIndependently() throws Exception {
-        var clock = new AtomicLong(1_000_000);
-        var issued = new AgentCredentials(data, clock::get);
+        var clock = new FakeClock(1_000_000);
+        var issued = new AgentCredentials(data, clock);
         String token = issued.issue(".Bedrock Gamer");
         String id = token.substring(0, token.indexOf('.'));
         issued.requireScoped();
-        var credentials = new AgentCredentials(data, clock::get);
+        var credentials = new AgentCredentials(data, clock);
         assertEquals(id, credentials.find(id).id());
         assertEquals(".Bedrock Gamer", credentials.find(id).label());
         assertNull(credentials.find(id).binding());
         // Any valid signed request may update display-only presence.
         credentials.notePlayer(id, "Agent0");
         assertEquals("Agent0", credentials.find(id).binding().playerName());
-        clock.addAndGet(500);
+        clock.advance(500);
         credentials.notePlayer(id, "Renamed");
         assertEquals("Renamed", credentials.find(id).binding().playerName());
         assertEquals(1_000_500, credentials.find(id).binding().lastSeen());
@@ -96,7 +95,7 @@ class BootstrapRuntimeTest {
         String replacementId = replacementKey.substring(0, replacementKey.indexOf('.'));
         assertNotNull(credentials.find(replacementId));
         // Only credentials persist across restarts, not transient player presence.
-        var reopened = new AgentCredentials(data, clock::get);
+        var reopened = new AgentCredentials(data, clock);
         assertNull(reopened.find(replacementId).binding());
         assertTrue(reopened.scopedOnly());
     }
@@ -112,7 +111,7 @@ class BootstrapRuntimeTest {
         Users users = new Users(data);
         IconService icons = new IconService(
                 data, id -> null, v -> false, new GameIcons(data.resolve("icons"), false, false), false);
-        var audit = new AuditLog(data);
+        var audit = new AuditLog(index.stock(), data);
         var routes = WeSortManager.routes(
                 config,
                 index,

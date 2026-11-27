@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.UUID;
-import java.util.function.LongSupplier;
 
 /**
  * Installation-local API key slots for Minecraft agents.
@@ -31,7 +30,7 @@ final class AgentCredentials {
     static final int MAX_REVOKED_SLOTS = 16;
 
     private final Path file;
-    private final LongSupplier clock;
+    private final Clock clock;
     private final Map<String, Slot> entries = new TreeMap<>();
     private boolean scopedOnly;
     private java.util.function.Consumer<String> revocationListener = id -> {};
@@ -88,11 +87,11 @@ final class AgentCredentials {
     }
 
     AgentCredentials(Path data) throws IOException {
-        this(data, System::currentTimeMillis);
+        this(data, Clock.system());
     }
 
     /** Test-only clock for display-only presence timestamps. */
-    AgentCredentials(Path data, LongSupplier clock) throws IOException {
+    AgentCredentials(Path data, Clock clock) throws IOException {
         file = data.resolve("agent-credentials.json");
         this.clock = clock;
         if (Files.isSymbolicLink(file)) throw new IOException("Invalid agent credential storage");
@@ -173,7 +172,7 @@ final class AgentCredentials {
         if (name == null) return;
         var slot = entries.get(id);
         if (slot == null || !slot.active()) return;
-        entries.put(id, slot.withBinding(new Binding(name, clock.getAsLong())));
+        entries.put(id, slot.withBinding(new Binding(name, clock.millis())));
     }
 
     /**
@@ -184,7 +183,7 @@ final class AgentCredentials {
     synchronized void noteAuthFailure(String id) {
         if (id == null) return;
         if (authFailures.size() >= 128) authFailures.clear();
-        authFailures.put(id, clock.getAsLong());
+        authFailures.put(id, clock.millis());
     }
 
     /** The last rejected signed-request time for one key id, or -1. */

@@ -3,7 +3,6 @@ package com.porter.wesortmanager;
 import java.io.IOException;
 import java.sql.*;
 import java.util.*;
-import java.util.function.LongSupplier;
 
 /** Conservative server-wide exclusion until W-024 can allocate individual physical resources. */
 final class AutomationGate {
@@ -31,13 +30,13 @@ final class AutomationGate {
     record Lease(String agent, String token, long deadline, String state) {}
 
     private final StockLedger stock;
-    private final LongSupplier clock;
+    private final Clock clock;
 
     AutomationGate(StockLedger stock) {
-        this(stock, System::currentTimeMillis);
+        this(stock, Clock.system());
     }
 
-    AutomationGate(StockLedger stock, LongSupplier clock) {
+    AutomationGate(StockLedger stock, Clock clock) {
         this.stock = stock;
         this.clock = clock;
     }
@@ -45,7 +44,7 @@ final class AutomationGate {
     synchronized Lease current(String server) throws IOException {
         try (var c = stock.open();
                 var tx = new SqliteWriteTransaction(c)) {
-            var lease = current(c, server, clock.getAsLong());
+            var lease = current(c, server, clock.millis());
             tx.commit();
             return lease;
         } catch (SQLException e) {
@@ -77,7 +76,7 @@ final class AutomationGate {
     synchronized Lease acquire(String server, String agent, String token) throws IOException {
         try (var c = stock.open();
                 var tx = new SqliteWriteTransaction(c)) {
-            long now = clock.getAsLong();
+            long now = clock.millis();
             var before = current(c, server, now);
             if (before != null
                     && before.state.equals("NEEDS_RECONCILIATION")
@@ -125,7 +124,7 @@ final class AutomationGate {
     synchronized boolean finish(String server, String agent, String token, boolean verified) throws IOException {
         try (var c = stock.open();
                 var tx = new SqliteWriteTransaction(c)) {
-            var before = current(c, server, clock.getAsLong());
+            var before = current(c, server, clock.millis());
             if (verified
                     && before != null
                     && before.state.equals("NEEDS_RECONCILIATION")
@@ -169,7 +168,7 @@ final class AutomationGate {
     synchronized boolean freeLease(String server) throws IOException {
         try (var c = stock.open();
                 var tx = new SqliteWriteTransaction(c)) {
-            var lease = current(c, server, clock.getAsLong());
+            var lease = current(c, server, clock.millis());
             if (lease == null || !lease.state.equals("NEEDS_RECONCILIATION") || unsettled(c, server)) {
                 tx.commit();
                 return false;
@@ -193,7 +192,7 @@ final class AutomationGate {
     synchronized String denyReason(String server, String agent, String token) throws IOException {
         try (var c = stock.open();
                 var tx = new SqliteWriteTransaction(c)) {
-            var lease = current(c, server, clock.getAsLong());
+            var lease = current(c, server, clock.millis());
             tx.commit();
             if (lease == null) return token == null ? REASON_NO_LEASE : REASON_UNKNOWN_TOKEN;
             if (!lease.agent.equals(agent)) return REASON_HELD_BY_OTHER;
@@ -212,7 +211,7 @@ final class AutomationGate {
     synchronized String releaseDenyReason(String server, String agent, String token) throws IOException {
         try (var c = stock.open();
                 var tx = new SqliteWriteTransaction(c)) {
-            var lease = current(c, server, clock.getAsLong());
+            var lease = current(c, server, clock.millis());
             tx.commit();
             if (lease == null) return REASON_NO_LEASE;
             if (!lease.agent.equals(agent)) return REASON_HELD_BY_OTHER;

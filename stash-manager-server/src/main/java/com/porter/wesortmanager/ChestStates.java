@@ -9,7 +9,6 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.LongSupplier;
 
 /**
  * Per-chest freshness reported by the agent, and the Manager's recheck decisions (inversion of
@@ -44,15 +43,15 @@ final class ChestStates {
 
     private record Entry(long readAt, long seenAt, long lastRequestedReadAt, long lastRequestedAt) {}
 
-    private final LongSupplier clock;
+    private final Clock clock;
     private final long maxAgeMillis;
     private final LinkedHashMap<String, Map<Pos, Entry>> byStash = new LinkedHashMap<>(); // oldest first
 
     ChestStates() {
-        this(System::currentTimeMillis, policy());
+        this(Clock.system(), policy());
     }
 
-    ChestStates(LongSupplier clock, long maxAgeMillis) {
+    ChestStates(Clock clock, long maxAgeMillis) {
         if (maxAgeMillis < 1) throw new IllegalArgumentException("Positive chest max age required");
         this.clock = clock;
         this.maxAgeMillis = maxAgeMillis;
@@ -118,7 +117,7 @@ final class ChestStates {
         String k = key(server, stash);
         Map<Pos, Entry> old = byStash.remove(k);
         Map<Pos, Entry> set = new LinkedHashMap<>();
-        long now = clock.getAsLong();
+        long now = clock.millis();
         for (Chest c : chests) {
             Pos p = new Pos(c.x(), c.y(), c.z());
             // A chest the agent still knows keeps its suppression, so one report never re-asks
@@ -154,7 +153,7 @@ final class ChestStates {
         JsonArray out = new JsonArray();
         Map<Pos, Entry> set = byStash.get(key(server, stash));
         if (set == null || set.isEmpty()) return out;
-        long now = clock.getAsLong();
+        long now = clock.millis();
         List<Map.Entry<Pos, Entry>> old = new ArrayList<>();
         for (var en : set.entrySet()) {
             Entry e = en.getValue();

@@ -93,6 +93,8 @@ public final class Config {
 
     /** The previous key while it is still accepted (10 minutes after a regenerate), else null. */
     public KeyState previousKey() {
+        // WALL-CLOCK (justified, not domain time): API-key rotation grace window must track real
+        // wall time (a monotonic clock would accept an expired key after a wall jump).
         return System.currentTimeMillis() < previousUntil ? previousKey : null;
     }
 
@@ -224,6 +226,7 @@ public final class Config {
         String next = generateKey();
         writeKeyLine(file, next);
         previousKey = key;
+        // WALL-CLOCK (justified, not domain time): rotation grace window (see previousKey).
         previousUntil = System.currentTimeMillis() + PREVIOUS_KEY_MS;
         key = new KeyState(next, key.generation() + 1);
         return next;

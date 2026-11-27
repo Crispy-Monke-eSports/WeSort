@@ -70,15 +70,13 @@ class BoxJobsTest {
         source.addProperty("baseRevision", ledger.revision());
         source.addProperty("observedAt", System.currentTimeMillis());
         source.addProperty("fingerprint", snapshot.fingerprint());
-        var writer = new PhysicalSlots.Writer();
-        source.add("slots", writer.slots(snapshot.slots()));
+        source.addProperty("snbt", snapshot.snbt());
         source.add("items", amounts(snapshot.totals()));
         source.add("shulkers", amounts(snapshot.shulkers()));
         var sources = new JsonArray();
         sources.add(source);
         root.add("physicalSources", sources);
-        root.addProperty("physicalVersion", 2);
-        root.add("slotVariants", writer.variants());
+        root.addProperty("physicalVersion", 3);
         return root;
     }
 

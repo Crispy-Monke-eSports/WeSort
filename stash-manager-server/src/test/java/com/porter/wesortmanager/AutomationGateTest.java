@@ -7,7 +7,6 @@ import com.porter.wesort.data.PhysicalSlots;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -49,13 +48,13 @@ class AutomationGateTest {
                 var sql = c.createStatement()) {
             try (var rows = sql.executeQuery("PRAGMA user_version")) {
                 assertTrue(rows.next());
-                assertEquals(9, rows.getInt(1));
+                assertEquals(11, rows.getInt(1));
             }
             try (var rows = sql.executeQuery("SELECT count(*) FROM automation_leases")) {
                 assertTrue(rows.next());
                 assertEquals(0, rows.getInt(1));
             }
-            sql.execute("PRAGMA user_version=10");
+            sql.execute("PRAGMA user_version=12");
         }
         assertThrows(java.io.IOException.class, () -> new StockLedger(data));
     }
@@ -72,12 +71,9 @@ class AutomationGateTest {
         var diamond = new PhysicalSlots.Item(
                 "minecraft:diamond", "minecraft:diamond", 64, "{}", PhysicalSlots.Kind.ITEM, 0, List.of(), "");
         var slots = List.of(new PhysicalSlots.Slot(0, 64, diamond));
-        var writer = new PhysicalSlots.Writer();
-        var slotRows = writer.slots(slots);
-        physical.addProperty("physicalVersion", 2);
-        physical.add("slotVariants", writer.variants());
+        physical.addProperty("physicalVersion", 3);
         var source = physical.getAsJsonArray("physicalSources").get(0).getAsJsonObject();
-        source.add("slots", slotRows);
+        source.addProperty("snbt", new PhysicalSlots.Snapshot(27, slots).snbt());
         source.addProperty("fingerprint", new PhysicalSlots.Snapshot(27, slots).fingerprint());
         store.putIndex(physical);
         return store;
@@ -150,8 +146,8 @@ class AutomationGateTest {
     @Test
     void expiredOrInterruptedSortingIsReleasedByAMatchingTokenWhenNoJournalExists() throws Exception {
         var store = store();
-        var clock = new AtomicLong(1000);
-        var gate = new AutomationGate(store.stock(), clock::get);
+        var clock = new FakeClock(1000);
+        var gate = new AutomationGate(store.stock(), clock);
         var lease = gate.acquire("s", "agent", null);
         assertNotNull(lease);
         clock.set(1000 + AutomationGate.TTL);
@@ -161,7 +157,7 @@ class AutomationGateTest {
         // the holder's own verified release frees the orphan instead of denying forever.
         assertTrue(gate.finish("s", "agent", lease.token(), true));
         assertNull(gate.current("s"));
-        var restarted = new AutomationGate(store.stock(), clock::get);
+        var restarted = new AutomationGate(store.stock(), clock);
         // ... but a foreign token still cannot revive or release the freed lease.
         var next = restarted.acquire("s", "other", null);
         assertNotNull(next);
@@ -173,13 +169,13 @@ class AutomationGateTest {
     @Test
     void orphanedUncertainLeaseWithoutAnyJournalIsDroppedAfterGrace() throws Exception {
         var store = store();
-        var clock = new AtomicLong(1_000_000);
-        var gate = new AutomationGate(store.stock(), clock::get);
+        var clock = new FakeClock(1_000_000);
+        var gate = new AutomationGate(store.stock(), clock);
         var lease = gate.acquire("s", "agent", null);
         assertNotNull(lease);
         // Simulate a restart: reopening the ledger fences the ACTIVE lease.
         var restartedLedger = new StockLedger(data);
-        var restarted = new AutomationGate(restartedLedger, clock::get);
+        var restarted = new AutomationGate(restartedLedger, clock);
         assertEquals("NEEDS_RECONCILIATION", restarted.current("s").state());
         // Still fenced inside the grace period: reads never hand the lease over ...
         clock.set(lease.deadline() + AutomationGate.ORPHAN_GRACE_MS - 1);
@@ -198,8 +194,8 @@ class AutomationGateTest {
     @Test
     void uncertainLeaseWithALiveJournalIsNeverAutoDropped() throws Exception {
         var store = store();
-        var clock = new AtomicLong(1_000_000);
-        var gate = new AutomationGate(store.stock(), clock::get);
+        var clock = new FakeClock(1_000_000);
+        var gate = new AutomationGate(store.stock(), clock);
         var lease = gate.acquire("s", "agent", null);
         assertNotNull(lease);
         var restartedLedger = new StockLedger(data);
@@ -220,7 +216,7 @@ class AutomationGateTest {
             p.executeUpdate();
             tx.commit();
         }
-        var restarted = new AutomationGate(restartedLedger, clock::get);
+        var restarted = new AutomationGate(restartedLedger, clock);
         // Far past the grace period, but a live journal demands inspection first.
         clock.set(lease.deadline() + AutomationGate.ORPHAN_GRACE_MS + 60_000);
         assertNotNull(restarted.current("s"));
@@ -310,8 +306,8 @@ class AutomationGateTest {
     @Test
     void takeoverAfterTwoTtlSilenceHandsTheLeaseToAWaitingAgent() throws Exception {
         var store = store();
-        var clock = new AtomicLong(1_000_000);
-        var gate = new AutomationGate(store.stock(), clock::get);
+        var clock = new FakeClock(1_000_000);
+        var gate = new AutomationGate(store.stock(), clock);
         var lease = gate.acquire("s", "agent", null);
         assertNotNull(lease);
         clock.set(lease.deadline() + AutomationGate.TAKEOVER_SILENCE_MS - 1);
@@ -327,8 +323,8 @@ class AutomationGateTest {
     @Test
     void takeoverNeverStealsALeaseWithLiveEvidence() throws Exception {
         var store = store();
-        var clock = new AtomicLong(1_000_000);
-        var gate = new AutomationGate(store.stock(), clock::get);
+        var clock = new FakeClock(1_000_000);
+        var gate = new AutomationGate(store.stock(), clock);
         var lease = gate.acquire("s", "agent", null);
         assertNotNull(lease);
         try (var c = store.stock().open();
@@ -356,8 +352,8 @@ class AutomationGateTest {
     @Test
     void denyReasonsDistinguishStaleTokensFromForeignHolders() throws Exception {
         var store = store();
-        var clock = new AtomicLong(1_000_000);
-        var gate = new AutomationGate(store.stock(), clock::get);
+        var clock = new FakeClock(1_000_000);
+        var gate = new AutomationGate(store.stock(), clock);
         // No row at all: a presented token is stale, an absent one just has no lease.
         assertEquals(AutomationGate.REASON_UNKNOWN_TOKEN, gate.denyReason("s", "agent", "dead-token"));
         assertEquals(AutomationGate.REASON_NO_LEASE, gate.denyReason("s", "agent", null));
@@ -378,8 +374,8 @@ class AutomationGateTest {
     @Test
     void ownerCanFreeAnOrphanedFenceButNeverALiveOne() throws Exception {
         var store = store();
-        var clock = new AtomicLong(1_000_000);
-        var gate = new AutomationGate(store.stock(), clock::get);
+        var clock = new FakeClock(1_000_000);
+        var gate = new AutomationGate(store.stock(), clock);
         assertFalse(gate.freeLease("s"));
         var active = gate.acquire("s", "agent", null);
         assertNotNull(active);

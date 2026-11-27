@@ -5,15 +5,12 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.porter.wesort.data.Job;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.List;
 import java.util.UUID;
-import java.util.function.LongSupplier;
 
 /**
  * W-034: the single-agent job scheduler. Jobs are submitted with a category (SCAN → SORT → PACK → PICKUP → DELIVER,
@@ -22,6 +19,21 @@ import java.util.function.LongSupplier;
  * agent owns a job, and an agent holds at most one physical transaction at a time. Each claim carries a lease with a
  * token; a lapsed lease moves the job to NEEDS_RECONCILIATION and it is only reassignable after an operator
  * reconciles it (a blind restart of an uncertain physical step is impossible). Priority orders the queue.
+ *
+ * <p>PR3 (#140): authoritative state lives in the shared guild SQLite database
+ * ({@code jobs}/{@code job_events}), so scheduler rows commit or roll back in
+ * the same transaction as the order book and the audit trail. Legacy
+ * {@code jobs.json} files are never read; {@link StockLedger} warns loudly
+ * when one is present.
+ *
+ * <p>Global lock order for nested same-transaction commits: ledger → index →
+ * book → store. Public methods take the store monitor and a fresh ledger
+ * transaction; {@code Connection}-scoped overloads assume the caller already
+ * holds the locks in that order and never commit on their own.
+ *
+ * <p>Lease time is measured on the clock's monotonic axis ({@link Clock#nano}) while
+ * deadlines stay comparable to epoch millis, so moving the wall clock back can
+ * never extend a physical lease.
  */
 final class JobScheduler {
     static final class Conflict extends IOException {
@@ -31,66 +43,82 @@ final class JobScheduler {
     }
 
     static final long TTL = 60_000; // lease time-to-live, millis
-    private static final int SCHEMA = 1;
-    private final Path file;
-    private final LongSupplier clock;
-    private final LongSupplier leaseClock;
-    private final Map<String, Entry> jobs = new LinkedHashMap<>();
+    private final StockLedger ledger;
+    private final Clock clock;
+    /** Anchor pairing wall millis with monotonic nanos, so leases stay monotonic when the wall jumps. */
+    private final long leaseBaseWall;
 
-    private record Entry(Job job, long deadline, String token, JsonArray events) {}
+    private final long leaseBaseNano;
 
-    JobScheduler(Path data) throws IOException {
-        this(data, System::currentTimeMillis, monotonicMillis());
+    JobScheduler(StockLedger ledger) throws IOException {
+        this(ledger, Clock.system());
     }
 
-    /** Keep lease deadlines comparable to epoch milliseconds while measuring elapsed time monotonically. */
-    private static LongSupplier monotonicMillis() {
-        long wall = System.currentTimeMillis();
-        long start = System.nanoTime();
-        return () -> wall + java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
-    }
-
-    JobScheduler(Path data, LongSupplier clock) throws IOException {
-        this(data, clock, clock);
-    }
-
-    JobScheduler(Path data, LongSupplier clock, LongSupplier leaseClock) throws IOException {
+    JobScheduler(StockLedger ledger, Clock clock) throws IOException {
+        if (ledger == null) throw new IllegalArgumentException("JobScheduler requires the guild database");
+        if (clock == null) throw new IllegalArgumentException("JobScheduler requires a clock");
+        this.ledger = ledger;
         this.clock = clock;
-        this.leaseClock = leaseClock;
-        this.file = data.resolve("jobs.json");
-        if (Files.isSymbolicLink(file)) throw new IOException("Invalid job scheduler location");
-        if (!Files.exists(file)) return;
-        try {
-            var root = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
-            if (root.get("schema").getAsBigDecimal().intValueExact() != SCHEMA) throw new IllegalArgumentException();
-            for (var entry : root.getAsJsonArray("jobs")) {
-                var o = entry.getAsJsonObject();
-                var job = Job.read(o);
-                jobs.put(
-                        job.id(),
-                        new Entry(
-                                job,
-                                o.get("deadline").getAsLong(),
-                                o.has("token") && !o.get("token").isJsonNull()
-                                        ? o.get("token").getAsString()
-                                        : null,
-                                o.getAsJsonArray("events").deepCopy()));
-            }
-        } catch (RuntimeException invalid) {
-            throw new IOException("Cannot read job scheduler", invalid);
+        this.leaseBaseWall = clock.millis();
+        this.leaseBaseNano = clock.nano();
+        // The old process can no longer vouch for any outstanding physical lease: fence
+        // every held job like BoxJobs fences IN_PROGRESS/VERIFYING at startup, and
+        // record the fence as an event so the automatic requeue timer restarts here.
+        try (var c = ledger.open();
+                var tx = new SqliteWriteTransaction(c)) {
+            fenceHeld(c, "manager_restart");
+            tx.commit();
+        } catch (SQLException failure) {
+            throw new IOException("Cannot fence interrupted job leases", failure);
         }
-        // The old process can no longer vouch for any outstanding physical lease.
-        fenceLeases(true);
     }
+
+    /**
+     * Lease time on the monotonic axis, anchored to epoch millis at construction so
+     * persisted deadlines stay comparable to wall time while elapsed lease time
+     * only moves with {@link Clock#nano}.
+     */
+    private long leaseNow() {
+        return leaseBaseWall + (clock.nano() - leaseBaseNano) / 1_000_000L;
+    }
+
+    /** Legacy data-dir constructor: shares the same guild.sqlite; the JSON file itself is never read. */
+    JobScheduler(Path data) throws IOException {
+        this(data, Clock.system());
+    }
+
+    /** Legacy data-dir constructor: shares the same guild.sqlite; the JSON file itself is never read. */
+    JobScheduler(Path data, Clock clock) throws IOException {
+        this(new StockLedger(data, clock), clock);
+    }
+
+    private record Row(Job job, long deadline, String token, JsonArray events) {}
 
     synchronized Job submit(Job.Category category, String chain, String detail, int priority, String by)
             throws IOException {
-        expire();
-        var job = new Job(null, category, chain, detail == null ? "" : detail, null, Job.State.QUEUED, priority, 1);
-        var events = new JsonArray();
-        events.add(event("submitted", by));
-        commit(job.id(), new Entry(job, 0, null, events));
-        return job;
+        return submit(category, chain, detail, priority, by, null);
+    }
+
+    /** Submits a job, writing staged audit entries in the same transaction when a trail is given. */
+    synchronized Job submit(
+            Job.Category category, String chain, String detail, int priority, String by, AuditLog.Batch trail)
+            throws IOException {
+        expireCommitted();
+        try (var c = ledger.open();
+                var tx = new SqliteWriteTransaction(c)) {
+            var job = new Job(null, category, chain, detail == null ? "" : detail, null, Job.State.QUEUED, priority, 1);
+            var events = new JsonArray();
+            events.add(event("submitted", by));
+            insert(c, new Row(job, 0, null, events));
+            if (trail != null) {
+                trail.say("job.submit", job.id());
+                AuditLog.addAll(c, trail.entries());
+            }
+            tx.commit();
+            return job;
+        } catch (SQLException failure) {
+            throw new IOException("Cannot submit job", failure);
+        }
     }
 
     /**
@@ -99,28 +127,60 @@ final class JobScheduler {
      * owners. Returns a lease token and deadline with the job, or a null job when the queue is empty.
      */
     synchronized JsonObject claim(String agent) throws IOException {
+        return claim(agent, null);
+    }
+
+    /** Claims a job, writing staged audit entries in the same transaction when a trail is given. */
+    synchronized JsonObject claim(String agent, AuditLog.Batch trail) throws IOException {
         UUID.fromString(agent);
-        expire();
-        if (busy()) throw new Conflict("An active or uncertain job already holds the single physical work slot");
+        expireCommitted();
+        try (var c = ledger.open();
+                var tx = new SqliteWriteTransaction(c)) {
+            var out = claim(c, agent);
+            if (trail != null) {
+                // Empty-queue claims are audited too, with an empty subject.
+                trail.say(
+                        "job.claim",
+                        out.get("job").isJsonObject()
+                                ? out.getAsJsonObject("job").get("id").getAsString()
+                                : "");
+                AuditLog.addAll(c, trail.entries());
+            }
+            tx.commit();
+            return out;
+        } catch (SQLException failure) {
+            throw new IOException("Cannot claim job", failure);
+        }
+    }
+
+    private JsonObject claim(Connection c, String agent) throws SQLException, IOException {
+        if (busy(c)) throw new Conflict("An active or uncertain job already holds the single physical work slot");
         Job candidate = null;
-        for (var entry : jobs.values()) {
-            var j = entry.job();
-            if (j.state() != Job.State.QUEUED || !prerequisitesMet(j)) continue;
-            if (candidate == null
-                    || j.priority() > candidate.priority()
-                    || (j.priority() == candidate.priority() && j.revision() < candidate.revision())) candidate = j;
+        try (var p = c.prepareStatement("SELECT payload,priority,revision FROM jobs WHERE state='QUEUED'")) {
+            try (var rows = p.executeQuery()) {
+                while (rows.next()) {
+                    var job = Job.read(JsonParser.parseString(rows.getString(1)).getAsJsonObject());
+                    if (!prerequisitesMet(c, job)) continue;
+                    if (candidate == null
+                            || job.priority() > candidate.priority()
+                            || (job.priority() == candidate.priority() && job.revision() < candidate.revision()))
+                        candidate = job;
+                }
+            }
+        } catch (RuntimeException invalid) {
+            throw new IOException("Cannot read job scheduler", invalid);
         }
         var out = new JsonObject();
         if (candidate == null) {
             out.add("job", com.google.gson.JsonNull.INSTANCE);
             return out;
         }
-        var claimed = candidate.advance(Job.State.CLAIMED, agent);
+        var claimed = advance(candidate, Job.State.CLAIMED, agent);
         String token = UUID.randomUUID().toString();
-        long deadline = leaseClock.getAsLong() + TTL;
-        var events = jobs.get(candidate.id()).events().deepCopy();
+        long deadline = Math.addExact(leaseNow(), TTL);
+        var events = eventsOf(c, candidate.id());
         events.add(event("claimed", agent));
-        commit(candidate.id(), new Entry(claimed, deadline, token, events));
+        update(c, candidate.id(), new Row(claimed, deadline, token, events), candidate.revision());
         out.add("job", claimed.json());
         out.addProperty("token", token);
         out.addProperty("deadline", deadline);
@@ -128,63 +188,164 @@ final class JobScheduler {
     }
 
     synchronized Job renew(String jobId, String agent, String token) throws IOException {
-        expire();
-        var entry = held(jobId, agent);
-        if (!entry.token().equals(token)) throw new Conflict("Lease token mismatch");
-        long deadline = leaseClock.getAsLong() + TTL;
-        var events = entry.events().deepCopy();
-        events.add(event("renewed", agent));
-        commit(jobId, new Entry(entry.job(), deadline, token, events));
-        return entry.job();
+        return renew(jobId, agent, token, null);
+    }
+
+    synchronized Job renew(String jobId, String agent, String token, AuditLog.Batch trail) throws IOException {
+        expireCommitted();
+        try (var c = ledger.open();
+                var tx = new SqliteWriteTransaction(c)) {
+            Row entry = held(c, jobId, agent);
+            if (!entry.token().equals(token)) throw new Conflict("Lease token mismatch");
+            long deadline = Math.addExact(leaseNow(), TTL);
+            var events = entry.events().deepCopy();
+            events.add(event("renewed", agent));
+            update(
+                    c,
+                    jobId,
+                    new Row(entry.job(), deadline, token, events),
+                    entry.job().revision());
+            if (trail != null) {
+                trail.say("job.renew", jobId);
+                AuditLog.addAll(c, trail.entries());
+            }
+            tx.commit();
+            return entry.job();
+        } catch (SQLException failure) {
+            throw new IOException("Cannot renew job", failure);
+        }
     }
 
     synchronized Job complete(String jobId, String agent, String token) throws IOException {
-        expire();
-        var entry = require(jobId);
-        if (entry.token() == null
-                || !entry.token().equals(token)
-                || !agent.equals(entry.job().agent())) throw new Conflict("Lease token or agent mismatch");
-        if (entry.job().state() == Job.State.COMPLETED) return entry.job();
-        entry = held(jobId, agent);
-        return advanceTo(jobId, entry, entry.job().advance(Job.State.COMPLETED, agent), "completed", agent);
+        return complete(jobId, agent, token, null);
+    }
+
+    synchronized Job complete(String jobId, String agent, String token, AuditLog.Batch trail) throws IOException {
+        expireCommitted();
+        try (var c = ledger.open();
+                var tx = new SqliteWriteTransaction(c)) {
+            Row entry = require(c, jobId);
+            if (entry.token() == null
+                    || !entry.token().equals(token)
+                    || !agent.equals(entry.job().agent())) throw new Conflict("Lease token or agent mismatch");
+            if (entry.job().state() == Job.State.COMPLETED) {
+                tx.commit();
+                return entry.job();
+            }
+            entry = held(c, jobId, agent);
+            Job next = advanceTo(c, jobId, entry, advance(entry.job(), Job.State.COMPLETED, agent), "completed", agent);
+            if (trail != null) {
+                trail.say("job.complete", jobId);
+                AuditLog.addAll(c, trail.entries());
+            }
+            tx.commit();
+            return next;
+        } catch (SQLException failure) {
+            throw new IOException("Cannot complete job", failure);
+        }
     }
 
     synchronized Job pause(String jobId, String agent) throws IOException {
-        expire();
-        var entry = held(jobId, agent);
-        return advanceTo(jobId, entry, entry.job().advance(Job.State.PAUSED, agent), "paused", agent);
+        return pause(jobId, agent, null);
+    }
+
+    synchronized Job pause(String jobId, String agent, AuditLog.Batch trail) throws IOException {
+        expireCommitted();
+        try (var c = ledger.open();
+                var tx = new SqliteWriteTransaction(c)) {
+            Row entry = held(c, jobId, agent);
+            Job next = advanceTo(c, jobId, entry, advance(entry.job(), Job.State.PAUSED, agent), "paused", agent);
+            if (trail != null) {
+                trail.say("job.pause", jobId);
+                AuditLog.addAll(c, trail.entries());
+            }
+            tx.commit();
+            return next;
+        } catch (SQLException failure) {
+            throw new IOException("Cannot pause job", failure);
+        }
     }
 
     synchronized Job resume(String jobId, String agent, String token) throws IOException {
-        expire();
-        var entry = require(jobId);
-        var j = entry.job();
-        if (j.state() != Job.State.PAUSED || !j.agent().equals(agent))
-            throw new Conflict("Job is not paused by this agent");
-        if (!entry.token().equals(token)) throw new Conflict("Lease token mismatch");
-        return advanceTo(jobId, entry, j.advance(Job.State.CLAIMED, agent), "resumed", agent);
+        return resume(jobId, agent, token, null);
+    }
+
+    synchronized Job resume(String jobId, String agent, String token, AuditLog.Batch trail) throws IOException {
+        expireCommitted();
+        try (var c = ledger.open();
+                var tx = new SqliteWriteTransaction(c)) {
+            Row entry = require(c, jobId);
+            var j = entry.job();
+            if (j.state() != Job.State.PAUSED || !j.agent().equals(agent))
+                throw new Conflict("Job is not paused by this agent");
+            if (!entry.token().equals(token)) throw new Conflict("Lease token mismatch");
+            Job next = advanceTo(c, jobId, entry, advance(j, Job.State.CLAIMED, agent), "resumed", agent);
+            if (trail != null) {
+                trail.say("job.resume", jobId);
+                AuditLog.addAll(c, trail.entries());
+            }
+            tx.commit();
+            return next;
+        } catch (SQLException failure) {
+            throw new IOException("Cannot resume job", failure);
+        }
     }
 
     synchronized Job revoke(String jobId, String by) throws IOException {
-        var entry = require(jobId);
-        if (entry.job().state() == Job.State.NEEDS_RECONCILIATION) return entry.job();
-        if (entry.job().terminal()) throw new Conflict("A terminal job cannot be revoked");
-        if (entry.job().held()) {
-            var uncertain = fenced(entry, "revoked_while_held", by);
-            commit(jobId, uncertain);
-            return uncertain.job();
+        return revoke(jobId, by, null);
+    }
+
+    synchronized Job revoke(String jobId, String by, AuditLog.Batch trail) throws IOException {
+        try (var c = ledger.open();
+                var tx = new SqliteWriteTransaction(c)) {
+            Row entry = require(c, jobId);
+            Job next;
+            if (entry.job().state() == Job.State.NEEDS_RECONCILIATION) {
+                next = entry.job();
+            } else if (entry.job().terminal()) {
+                throw new Conflict("A terminal job cannot be revoked");
+            } else if (entry.job().held()) {
+                Row uncertain = fenced(entry, "revoked_while_held", by);
+                update(c, jobId, uncertain, entry.job().revision());
+                next = uncertain.job();
+            } else {
+                next = advanceTo(c, jobId, entry, advance(entry.job(), Job.State.REVOKED, by), "revoked", by);
+            }
+            if (trail != null) {
+                trail.say("job.revoke", jobId);
+                AuditLog.addAll(c, trail.entries());
+            }
+            tx.commit();
+            return next;
+        } catch (SQLException failure) {
+            throw new IOException("Cannot revoke job", failure);
         }
-        return advanceTo(jobId, entry, entry.job().advance(Job.State.REVOKED, by), "revoked", by);
     }
 
     /** Resolves an uncertain job: back to QUEUED for reassignment, or COMPLETED. */
     synchronized Job reconcile(String jobId, Job.State outcome, String by) throws IOException {
-        var entry = require(jobId);
-        if (entry.job().state() != Job.State.NEEDS_RECONCILIATION)
-            throw new Conflict("Only an uncertain job may be reconciled");
-        if (outcome != Job.State.QUEUED && outcome != Job.State.COMPLETED)
-            throw new Conflict("Reconciliation must reassign or complete");
-        return advanceTo(jobId, entry, entry.job().advance(outcome, by), "reconciled", by);
+        return reconcile(jobId, outcome, by, null);
+    }
+
+    /** Reconciles a job, writing staged audit entries in the same transaction when a trail is given. */
+    synchronized Job reconcile(String jobId, Job.State outcome, String by, AuditLog.Batch trail) throws IOException {
+        try (var c = ledger.open();
+                var tx = new SqliteWriteTransaction(c)) {
+            Row entry = require(c, jobId);
+            if (entry.job().state() != Job.State.NEEDS_RECONCILIATION)
+                throw new Conflict("Only an uncertain job may be reconciled");
+            if (outcome != Job.State.QUEUED && outcome != Job.State.COMPLETED)
+                throw new Conflict("Reconciliation must reassign or complete");
+            Job next = advanceTo(c, jobId, entry, advance(entry.job(), outcome, by), "reconciled", by);
+            if (trail != null) {
+                trail.say("job.reconcile", jobId);
+                AuditLog.addAll(c, trail.entries());
+            }
+            tx.commit();
+            return next;
+        } catch (SQLException failure) {
+            throw new IOException("Cannot reconcile job", failure);
+        }
     }
 
     /**
@@ -203,18 +364,30 @@ final class JobScheduler {
      * Returns human-readable descriptions for logging/audit.
      */
     synchronized java.util.List<String> sweepStaleUncertain(long nowMs) throws IOException {
-        expire();
-        var swept = new java.util.ArrayList<String>();
-        for (var id : new java.util.ArrayList<>(jobs.keySet())) {
-            var entry = jobs.get(id);
-            if (entry == null || entry.job().state() != Job.State.NEEDS_RECONCILIATION) continue;
-            if (nowMs - lastEventAt(entry.events()) <= UNCERTAIN_AUTO_REQUEUE_AFTER_MS) continue;
-            var next = entry.job().advance(Job.State.QUEUED, "system");
-            advanceTo(id, entry, next, "auto_reconciled", "system");
-            swept.add("Job " + id + " (" + entry.job().category() + " "
-                    + entry.job().chain()
-                    + ") was uncertain for " + ((nowMs - lastEventAt(entry.events())) / 1000)
-                    + "s; requeued for claiming.");
+        var swept = new ArrayList<String>();
+        expireCommitted();
+        try (var c = ledger.open();
+                var tx = new SqliteWriteTransaction(c)) {
+            List<String> ids = new ArrayList<>();
+            try (var p = c.prepareStatement("SELECT id FROM jobs WHERE state='NEEDS_RECONCILIATION' ORDER BY id")) {
+                try (var rows = p.executeQuery()) {
+                    while (rows.next()) ids.add(rows.getString(1));
+                }
+            }
+            for (String id : ids) {
+                Row entry = read(c, id);
+                if (entry == null || entry.job().state() != Job.State.NEEDS_RECONCILIATION) continue;
+                if (nowMs - lastEventAt(entry.events()) <= UNCERTAIN_AUTO_REQUEUE_AFTER_MS) continue;
+                Job next = advance(entry.job(), Job.State.QUEUED, "system");
+                advanceTo(c, id, entry, next, "auto_reconciled", "system");
+                swept.add("Job " + id + " (" + entry.job().category() + " "
+                        + entry.job().chain()
+                        + ") was uncertain for " + ((nowMs - lastEventAt(entry.events())) / 1000)
+                        + "s; requeued for claiming.");
+            }
+            tx.commit();
+        } catch (SQLException failure) {
+            throw new IOException("Cannot sweep stale jobs", failure);
         }
         return swept;
     }
@@ -229,124 +402,263 @@ final class JobScheduler {
         return last;
     }
 
-    synchronized Job get(String jobId) {
-        var entry = jobs.get(jobId);
-        return entry == null ? null : entry.job();
+    synchronized Job get(String jobId) throws IOException {
+        try (var c = ledger.open()) {
+            Row entry = read(c, jobId);
+            return entry == null ? null : entry.job();
+        } catch (SQLException failure) {
+            throw new IOException("Cannot read job scheduler", failure);
+        }
     }
 
     /** Owner queue visibility, ordered by state (queued first) then priority then age. */
     synchronized JsonArray queue() throws IOException {
-        expire();
-        var list = new ArrayList<>(jobs.values());
-        list.sort(Comparator.comparingInt((Entry e) -> e.job().state() == Job.State.QUEUED ? 0 : 1)
-                .thenComparingInt((Entry e) -> -e.job().priority())
-                .thenComparingLong(e -> e.job().revision()));
-        var out = new JsonArray();
-        for (var entry : list) {
-            var o = entry.job().json();
-            o.addProperty("deadline", entry.deadline());
-            o.add("events", entry.events().deepCopy());
-            out.add(o);
+        expireCommitted();
+        try (var c = ledger.open();
+                var tx = new SqliteWriteTransaction(c)) {
+            var list = new ArrayList<Row>();
+            try (var p = c.prepareStatement(
+                    "SELECT id FROM jobs ORDER BY CASE WHEN state='QUEUED' THEN 0 ELSE 1 END,priority DESC,revision ASC")) {
+                try (var rows = p.executeQuery()) {
+                    while (rows.next()) {
+                        Row entry = read(c, rows.getString(1));
+                        if (entry != null) list.add(entry);
+                    }
+                }
+            }
+            tx.commit();
+            var out = new JsonArray();
+            for (var entry : list) {
+                var o = entry.job().json();
+                o.addProperty("deadline", entry.deadline());
+                o.add("events", entry.events().deepCopy());
+                out.add(o);
+            }
+            return out;
+        } catch (SQLException failure) {
+            throw new IOException("Cannot read job scheduler", failure);
         }
-        return out;
     }
 
-    private Entry held(String jobId, String agent) throws Conflict {
-        var entry = require(jobId);
+    private Row held(Connection c, String jobId, String agent) throws SQLException, IOException, Conflict {
+        Row entry = require(c, jobId);
         var j = entry.job();
         if (!j.held() || !j.agent().equals(agent)) throw new Conflict("Job is not held by this agent");
         return entry;
     }
 
-    private Entry require(String jobId) throws Conflict {
-        var entry = jobs.get(jobId);
+    private Row require(Connection c, String jobId) throws SQLException, IOException, Conflict {
+        Row entry = read(c, jobId);
         if (entry == null) throw new Conflict("Unknown job");
         return entry;
     }
 
-    private boolean busy() {
-        return jobs.values().stream()
-                .anyMatch(e -> e.job().held() || e.job().state() == Job.State.NEEDS_RECONCILIATION);
+    private boolean busy(Connection c) throws SQLException {
+        try (var p = c.prepareStatement(
+                "SELECT 1 FROM jobs WHERE state IN ('CLAIMED','PAUSED','NEEDS_RECONCILIATION') LIMIT 1")) {
+            try (var rows = p.executeQuery()) {
+                return rows.next();
+            }
+        }
     }
 
-    private boolean prerequisitesMet(Job job) {
-        for (var prereq : Job.prerequisites(job.category())) {
-            boolean done = jobs.values().stream()
-                    .anyMatch(e -> e.job().chain().equals(job.chain())
-                            && e.job().category() == prereq
-                            && e.job().state() == Job.State.COMPLETED);
-            if (!done) return false;
+    private boolean prerequisitesMet(Connection c, Job job) throws SQLException {
+        var done = new java.util.HashSet<Job.Category>();
+        try (var p = c.prepareStatement("SELECT category FROM jobs WHERE chain=? AND state='COMPLETED'")) {
+            p.setString(1, job.chain());
+            try (var rows = p.executeQuery()) {
+                while (rows.next()) done.add(Job.Category.valueOf(rows.getString(1)));
+            }
         }
-        return true;
+        return done.containsAll(Job.prerequisites(job.category()));
+    }
+
+    /**
+     * Expires lapsed leases in their own committed transaction before the
+     * operation runs: a fence must survive even when the operation itself then
+     * fails (a lapsed lease can never be completed). Folding the fence into
+     * the operation transaction would roll it back together with the
+     * rejection, reviving a dead lease.
+     */
+    private void expireCommitted() throws IOException {
+        try (var c = ledger.open();
+                var tx = new SqliteWriteTransaction(c)) {
+            expire(c);
+            tx.commit();
+        } catch (SQLException failure) {
+            throw new IOException("Cannot expire job leases", failure);
+        }
     }
 
     /** Lapses any held job whose lease has run out into NEEDS_RECONCILIATION (never a blind reassignment). */
-    private void expire() throws IOException {
-        fenceLeases(false);
-    }
-
-    private Entry fenced(Entry e, String reason, String by) {
-        var events = e.events().deepCopy();
-        events.add(event(reason, by));
-        return new Entry(e.job().advance(Job.State.NEEDS_RECONCILIATION, null), 0, null, events);
-    }
-
-    private void fenceLeases(boolean restart) throws IOException {
-        long now = leaseClock.getAsLong();
-        boolean changed = false;
-        var updated = new LinkedHashMap<>(jobs);
-        for (var entry : jobs.entrySet()) {
-            var e = entry.getValue();
-            var j = e.job();
-            if (j.held() && (restart || now >= e.deadline())) {
-                updated.put(entry.getKey(), fenced(e, restart ? "manager_restart" : "expired", j.agent()));
-                changed = true;
+    private void expire(Connection c) throws SQLException, IOException {
+        long now = leaseNow();
+        List<String> ids = new ArrayList<>();
+        try (var p = c.prepareStatement(
+                "SELECT id FROM jobs WHERE state IN ('CLAIMED','PAUSED') AND deadline<=? ORDER BY id")) {
+            p.setLong(1, now);
+            try (var rows = p.executeQuery()) {
+                while (rows.next()) ids.add(rows.getString(1));
             }
         }
-        if (changed) commit(updated);
+        for (String id : ids) {
+            Row entry = read(c, id);
+            if (entry == null || !entry.job().held()) continue;
+            update(
+                    c,
+                    id,
+                    fenced(entry, "expired", entry.job().agent()),
+                    entry.job().revision());
+        }
     }
 
-    private Job advanceTo(String jobId, Entry entry, Job next, String event, String by) throws IOException {
+    private Row fenced(Row e, String reason, String by) {
+        var events = e.events().deepCopy();
+        events.add(event(reason, by));
+        return new Row(advanceUnchecked(e.job(), Job.State.NEEDS_RECONCILIATION, null), 0, null, events);
+    }
+
+    /**
+     * Fences every held job, like BoxJobs fences IN_PROGRESS/VERIFYING at
+     * startup: a restarted Manager never silently resumes in-flight physical
+     * work. The fence is recorded as an event so the automatic requeue timer
+     * restarts from the fence, not from the stale claim.
+     */
+    private void fenceHeld(Connection c, String reason) throws SQLException, IOException {
+        List<String> ids = new ArrayList<>();
+        try (var p = c.prepareStatement("SELECT id FROM jobs WHERE state IN ('CLAIMED','PAUSED') ORDER BY id")) {
+            try (var rows = p.executeQuery()) {
+                while (rows.next()) ids.add(rows.getString(1));
+            }
+        }
+        for (String id : ids) {
+            Row entry = read(c, id);
+            if (entry == null || !entry.job().held()) continue;
+            update(
+                    c,
+                    id,
+                    fenced(entry, reason, entry.job().agent()),
+                    entry.job().revision());
+        }
+    }
+
+    private Job advance(Job job, Job.State next, String agent) throws Conflict {
+        try {
+            return job.advance(next, agent);
+        } catch (IllegalArgumentException e) {
+            throw new Conflict(e.getMessage());
+        }
+    }
+
+    private static Job advanceUnchecked(Job job, Job.State next, String agent) {
+        return job.advance(next, agent);
+    }
+
+    private Job advanceTo(Connection c, String jobId, Row entry, Job next, String event, String by)
+            throws SQLException, IOException {
         var events = entry.events().deepCopy();
         events.add(event(event, by));
-        commit(jobId, new Entry(next, entry.deadline(), entry.token(), events));
+        update(
+                c,
+                jobId,
+                new Row(next, entry.deadline(), entry.token(), events),
+                entry.job().revision());
         return next;
-    }
-
-    private JsonArray history(String event, String by) {
-        var out = new JsonArray();
-        out.add(event(event, by));
-        return out;
     }
 
     private JsonObject event(String event, String by) {
         var o = new JsonObject();
-        o.addProperty("at", clock.getAsLong());
+        o.addProperty("at", clock.millis());
         o.addProperty("event", event);
         o.addProperty("by", by);
         return o;
     }
 
-    private void commit(String id, Entry entry) throws IOException {
-        var updated = new LinkedHashMap<>(jobs);
-        updated.put(id, entry);
-        commit(updated);
+    /** Inserts a new job row plus its first event; fails closed on a duplicate id. */
+    private static void insert(Connection c, Row entry) throws SQLException {
+        var j = entry.job();
+        try (var row = c.prepareStatement(
+                "INSERT INTO jobs(id,chain,category,state,agent,priority,deadline,token,payload,revision) VALUES(?,?,?,?,?,?,?,?,?,?)")) {
+            row.setString(1, j.id());
+            row.setString(2, j.chain());
+            row.setString(3, j.category().name());
+            row.setString(4, j.state().name());
+            row.setString(5, j.agent());
+            row.setInt(6, j.priority());
+            row.setLong(7, entry.deadline());
+            row.setString(8, entry.token());
+            row.setString(9, j.json().toString());
+            row.setLong(10, j.revision());
+            row.executeUpdate();
+        }
+        insertEvents(c, j.id(), entry.events());
     }
 
-    private void commit(Map<String, Entry> updated) throws IOException {
-        var root = new JsonObject();
-        root.addProperty("schema", SCHEMA);
-        var list = new JsonArray();
-        for (var entry : updated.values()) {
-            var o = entry.job().json();
-            o.addProperty("deadline", entry.deadline());
-            o.addProperty("token", entry.token());
-            o.add("events", entry.events().deepCopy());
-            list.add(o);
+    /** Conditional update: a concurrent transition on another connection wins instead of silently overwriting. */
+    private static void update(Connection c, String jobId, Row entry, long expectedRevision)
+            throws SQLException, Conflict {
+        var j = entry.job();
+        try (var row = c.prepareStatement(
+                "UPDATE jobs SET chain=?,category=?,state=?,agent=?,priority=?,deadline=?,token=?,payload=?,revision=? WHERE id=? AND revision=?")) {
+            row.setString(1, j.chain());
+            row.setString(2, j.category().name());
+            row.setString(3, j.state().name());
+            row.setString(4, j.agent());
+            row.setInt(5, j.priority());
+            row.setLong(6, entry.deadline());
+            row.setString(7, entry.token());
+            row.setString(8, j.json().toString());
+            row.setLong(9, j.revision());
+            row.setString(10, jobId);
+            row.setLong(11, expectedRevision);
+            if (row.executeUpdate() != 1) throw new Conflict("Job changed concurrently; reread the queue");
         }
-        root.add("jobs", list);
-        AtomicFiles.write(file, root.toString().getBytes(StandardCharsets.UTF_8), true);
-        jobs.clear();
-        jobs.putAll(updated);
+        insertEvents(c, jobId, entry.events());
+    }
+
+    private static void insertEvents(Connection c, String jobId, JsonArray events) throws SQLException {
+        try (var event = c.prepareStatement(
+                "INSERT INTO job_events(id,seq,payload) VALUES(?,?,?) ON CONFLICT(id,seq) DO NOTHING")) {
+            long seq = 0;
+            for (var e : events) {
+                event.setString(1, jobId);
+                event.setLong(2, ++seq);
+                event.setString(3, e.toString());
+                event.executeUpdate();
+            }
+        }
+    }
+
+    private static JsonArray eventsOf(Connection c, String jobId) throws SQLException {
+        var events = new JsonArray();
+        try (var p = c.prepareStatement("SELECT payload FROM job_events WHERE id=? ORDER BY seq")) {
+            p.setString(1, jobId);
+            try (var rows = p.executeQuery()) {
+                while (rows.next()) events.add(JsonParser.parseString(rows.getString(1)));
+            }
+        }
+        return events;
+    }
+
+    private static Row read(Connection c, String jobId) throws SQLException, IOException {
+        JsonObject stored;
+        long deadline;
+        String token;
+        try (var p = c.prepareStatement("SELECT payload,deadline,token FROM jobs WHERE id=?")) {
+            p.setString(1, jobId);
+            try (var rows = p.executeQuery()) {
+                if (!rows.next()) return null;
+                stored = JsonParser.parseString(rows.getString(1)).getAsJsonObject();
+                deadline = rows.getLong(2);
+                token = rows.getString(3);
+            }
+        } catch (RuntimeException invalid) {
+            throw new IOException("Cannot read job scheduler", invalid);
+        }
+        try {
+            return new Row(Job.read(stored), deadline, token, eventsOf(c, jobId));
+        } catch (RuntimeException invalid) {
+            throw new IOException("Cannot read job scheduler", invalid);
+        }
     }
 }

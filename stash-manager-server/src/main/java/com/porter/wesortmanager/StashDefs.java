@@ -9,7 +9,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.function.LongSupplier;
 import java.util.regex.Pattern;
 
 /**
@@ -86,14 +85,14 @@ final class StashDefs {
     }
 
     private final Path file;
-    private final LongSupplier clock;
+    private final Clock clock;
     private final Map<String, Def> defs = new LinkedHashMap<>();
 
     StashDefs(Path dataDir) throws IOException {
-        this(dataDir, System::currentTimeMillis);
+        this(dataDir, Clock.system());
     }
 
-    StashDefs(Path dataDir, LongSupplier clock) throws IOException {
+    StashDefs(Path dataDir, Clock clock) throws IOException {
         this.clock = clock;
         this.file = dataDir.resolve("stash-defs.json");
         if (Files.isSymbolicLink(file)) throw new IOException("Invalid stash definitions location");
@@ -210,7 +209,7 @@ final class StashDefs {
                 anvil,
                 table,
                 rev,
-                clock.getAsLong());
+                clock.millis());
     }
 
     private static Vec vec(JsonObject o, String what) {

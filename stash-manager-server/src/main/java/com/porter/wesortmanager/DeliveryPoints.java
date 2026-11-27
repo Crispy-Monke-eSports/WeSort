@@ -10,7 +10,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.function.LongSupplier;
 
 /**
  * W-037: the registered delivery destinations of the guild network. A point is created PENDING by an operator,
@@ -28,16 +27,16 @@ final class DeliveryPoints {
 
     private static final int SCHEMA = 1;
     private final Path file;
-    private final LongSupplier clock;
+    private final Clock clock;
     private final Map<String, Entry> points = new LinkedHashMap<>();
 
     private record Entry(DeliveryPoint point, JsonArray history) {}
 
     DeliveryPoints(Path data) throws IOException {
-        this(data, System::currentTimeMillis);
+        this(data, Clock.system());
     }
 
-    DeliveryPoints(Path data, LongSupplier clock) throws IOException {
+    DeliveryPoints(Path data, Clock clock) throws IOException {
         this.clock = clock;
         this.file = data.resolve("delivery-points.json");
         if (Files.isSymbolicLink(file)) throw new IOException("Invalid delivery point location");
@@ -155,7 +154,7 @@ final class DeliveryPoints {
 
     private JsonObject event(String event, String by) {
         var o = new JsonObject();
-        o.addProperty("at", clock.getAsLong());
+        o.addProperty("at", clock.millis());
         o.addProperty("event", event);
         o.addProperty("by", by);
         return o;

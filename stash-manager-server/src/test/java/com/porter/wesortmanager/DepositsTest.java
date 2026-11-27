@@ -13,6 +13,16 @@ class DepositsTest {
     @TempDir
     Path data;
 
+    private final FakeClock time = new FakeClock(1_000_000L);
+
+    private FakeClock clock() {
+        return time;
+    }
+
+    private Deposits deposits() throws Exception {
+        return new Deposits(new StockLedger(data), clock());
+    }
+
     private static String id() {
         return UUID.randomUUID().toString();
     }
@@ -38,7 +48,7 @@ class DepositsTest {
 
     @Test
     void beginIsIdempotentAndConfirmRequiresASnapshot() throws Exception {
-        var deposits = new Deposits(data);
+        var deposits = deposits();
         String packageId = id();
         var first = deposits.begin(packageId, "o-1", Deposit.Kind.DELIVERY, "chest-a", "agent-1");
         assertEquals(
@@ -64,7 +74,7 @@ class DepositsTest {
 
     @Test
     void deliveredOnlyAfterConfirmedContentAndReplayCannotDoubleDeliver() throws Exception {
-        var deposits = new Deposits(data);
+        var deposits = deposits();
         String packageId = id();
         deposits.begin(packageId, "o-1", Deposit.Kind.DELIVERY, "chest-a", "agent-1");
         var delivered = deposits.confirm(packageId, "agent-1", snapshot());
@@ -85,7 +95,7 @@ class DepositsTest {
 
     @Test
     void aSecondAgentCannotConfirmAndUncertaintyReconciles() throws Exception {
-        var deposits = new Deposits(data);
+        var deposits = deposits();
         String packageId = id();
         deposits.begin(packageId, "o-1", Deposit.Kind.DELIVERY, "chest-a", "agent-1");
         assertThrows(Deposits.Conflict.class, () -> deposits.confirm(packageId, "agent-2", snapshot()));
@@ -100,7 +110,7 @@ class DepositsTest {
 
     @Test
     void deliveryAndTransferAreDistinguishedInTheLedger() throws Exception {
-        var deposits = new Deposits(data);
+        var deposits = deposits();
         String a = id(), b = id();
         deposits.begin(a, "o-1", Deposit.Kind.DELIVERY, "chest-a", "agent-1");
         deposits.begin(b, "o-1", Deposit.Kind.TRANSFER, "server/stash", "agent-1");
@@ -126,12 +136,12 @@ class DepositsTest {
 
     @Test
     void depositsPersistAcrossRestart() throws Exception {
-        var deposits = new Deposits(data);
+        var deposits = deposits();
         String packageId = id();
         deposits.begin(packageId, "o-1", Deposit.Kind.TRANSFER, "server/stash", "agent-1");
         deposits.confirm(packageId, "agent-1", snapshot("server/stash"));
 
-        var reloaded = new Deposits(data);
+        var reloaded = deposits();
         assertEquals(Deposit.State.DELIVERED, reloaded.get(packageId).state());
         assertEquals(
                 2,

@@ -27,6 +27,8 @@ final class OrderRoutes {
     private static final int MAX_RESULT_LINES = 400;
 
     private final OrderStore orders;
+    private final OrderPlacementService placement;
+    private final OrderLifecycleService lifecycle;
     private final AuditLog audit;
     private final Config config;
     private final StashDefs defs;
@@ -35,13 +37,31 @@ final class OrderRoutes {
     private final GuildRoutes guild;
     private final Users users;
 
-    OrderRoutes(OrderStore orders, AuditLog audit, GuildRoutes guild, Users users, Config config, StashDefs defs) {
+    /**
+     * PR3 Step 5: the order services are wired explicitly; the legacy
+     * constructor resolves them from the store (Refs #142).
+     */
+    OrderRoutes(
+            OrderStore orders,
+            OrderPlacementService placement,
+            OrderLifecycleService lifecycle,
+            AuditLog audit,
+            GuildRoutes guild,
+            Users users,
+            Config config,
+            StashDefs defs) {
         this.users = users;
         this.guild = guild;
         this.orders = orders;
+        this.placement = placement;
+        this.lifecycle = lifecycle;
         this.audit = audit;
         this.config = config;
         this.defs = defs;
+    }
+
+    OrderRoutes(OrderStore orders, AuditLog audit, GuildRoutes guild, Users users, Config config, StashDefs defs) {
+        this(orders, orders.placement(), orders.lifecycle(), audit, guild, users, config, defs);
     }
 
     /**
@@ -204,7 +224,9 @@ final class OrderRoutes {
         }
         try {
             var profile = guild.profile();
-            var submission = orders.submit(
+            var trail = audit.batch();
+            trail.actor(who.id(), who.name(), AuthRoutes.address(ex));
+            var submission = placement.submit(
                     server,
                     stash,
                     lines,
@@ -217,10 +239,9 @@ final class OrderRoutes {
                     idempotencyKey(ex),
                     profile.approvalPolicy().requiresApproval(intent),
                     draft -> resolveRecipient(who, draft),
-                    queueWhenStale);
+                    queueWhenStale,
+                    trail);
             OrderStore.Order order = submission.order();
-            if (submission.created())
-                audit.add(who, "order.place", order.id + " " + intent.purpose().name(), AuthRoutes.address(ex));
             JsonObject out = Http.ok();
             out.add("order", shown(ex, order.toJson()));
             Http.json(ex, 200, out);
@@ -237,9 +258,10 @@ final class OrderRoutes {
         String server = scoped(config, ex, stash);
         if (server == null) return;
         JsonObject out = Http.ok();
-        int removed = orders.clearFinished(server, stash);
+        var trail = audit.batch();
+        trail.actor(Router.user(ex).id(), Router.user(ex).name(), AuthRoutes.address(ex));
+        int removed = lifecycle.clearFinished(server, stash, trail);
         out.addProperty("removed", removed);
-        audit.add(Router.user(ex), "orders.clear", stash + ": " + removed, AuthRoutes.address(ex));
         Http.json(ex, 200, out);
     }
 
@@ -310,8 +332,9 @@ final class OrderRoutes {
         }
         try {
             var actor = Router.user(ex);
-            var review = orders.review(id, decision.equals("approve"), actor.id());
-            if (review.changed()) audit.add(actor, "order." + decision, id, AuthRoutes.address(ex));
+            var trail = audit.batch();
+            trail.actor(actor.id(), actor.name(), AuthRoutes.address(ex));
+            var review = lifecycle.review(id, decision.equals("approve"), actor.id(), trail);
             var reply = Http.ok();
             reply.add("order", shown(ex, review.order().toJson()));
             Http.json(ex, 200, reply);
@@ -328,8 +351,10 @@ final class OrderRoutes {
         }
         if (!mayChange(ex, m.group(1))) return;
         try {
-            OrderStore.Order order = orders.cancel(m.group(1), Router.user(ex).id());
-            audit.add(Router.user(ex), "order.cancel", order.id, AuthRoutes.address(ex));
+            var trail = audit.batch();
+            trail.actor(Router.user(ex).id(), Router.user(ex).name(), AuthRoutes.address(ex));
+            OrderStore.Order order =
+                    lifecycle.cancel(m.group(1), Router.user(ex).id(), trail);
             JsonObject out = Http.ok();
             out.add("order", shown(ex, order.toJson()));
             Http.json(ex, 200, out);
@@ -358,15 +383,17 @@ final class OrderRoutes {
                 return;
             }
             var profile = guild.profile();
-            OrderStore.Order order = orders.retry(
+            var trail = audit.batch();
+            trail.actor(who.id(), who.name(), AuthRoutes.address(ex));
+            OrderStore.Order order = lifecycle.retry(
                     m.group(1),
                     who.id(),
                     who.name(),
                     who.perms().guildOrders(),
                     profile.id().toString(),
                     profile.approvalPolicy(),
-                    draft -> resolveRecipient(who, draft));
-            audit.add(who, "order.retry", m.group(1) + " as " + order.id, AuthRoutes.address(ex));
+                    draft -> resolveRecipient(who, draft),
+                    trail);
             JsonObject out = Http.ok();
             out.add("order", shown(ex, order.toJson()));
             Http.json(ex, 200, out);
@@ -385,9 +412,10 @@ final class OrderRoutes {
         }
         if (!mayChange(ex, m.group(1))) return;
         try {
+            var trail = audit.batch();
+            trail.actor(Router.user(ex).id(), Router.user(ex).name(), AuthRoutes.address(ex));
             OrderStore.Order order =
-                    orders.forceCancel(m.group(1), Router.user(ex).id());
-            audit.add(Router.user(ex), "order.force-cancel", order.id, AuthRoutes.address(ex));
+                    lifecycle.forceCancel(m.group(1), Router.user(ex).id(), trail);
             JsonObject out = Http.ok();
             out.add("order", shown(ex, order.toJson()));
             Http.json(ex, 200, out);
@@ -413,9 +441,10 @@ final class OrderRoutes {
             return;
         }
         try {
+            var trail = audit.batch();
+            trail.actor(Router.user(ex).id(), Router.user(ex).name(), AuthRoutes.address(ex));
             OrderStore.Order order =
-                    orders.ownerForceCancel(m.group(1), Router.user(ex).id());
-            audit.add(Router.user(ex), "order.owner-force", order.id, AuthRoutes.address(ex));
+                    lifecycle.ownerForceCancel(m.group(1), Router.user(ex).id(), trail);
             JsonObject out = Http.ok();
             out.add("order", shown(ex, order.toJson()));
             Http.json(ex, 200, out);

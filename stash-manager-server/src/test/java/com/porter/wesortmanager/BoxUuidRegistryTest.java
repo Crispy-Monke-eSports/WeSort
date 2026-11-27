@@ -55,7 +55,6 @@ class BoxUuidRegistryTest {
         root.addProperty("receivedAt", System.currentTimeMillis());
         root.addProperty("server", "s");
         root.addProperty("stash", "a");
-        var writer = new PhysicalSlots.Writer();
         var sources = new JsonArray();
         for (int i = 0; i < names.length; i++) {
             var frame = frame(names[i]);
@@ -81,7 +80,7 @@ class BoxUuidRegistryTest {
             source.addProperty("baseRevision", ledger.revision());
             source.addProperty("observedAt", System.currentTimeMillis());
             source.addProperty("fingerprint", frame.fingerprint());
-            source.add("slots", writer.slots(frame.slots()));
+            source.addProperty("snbt", frame.snbt());
             source.add("items", amounts(frame.totals()));
             source.add("shulkers", amounts(frame.shulkers()));
             sources.add(source);
@@ -89,8 +88,7 @@ class BoxUuidRegistryTest {
         root.add("items", new JsonArray());
         root.add("shulkers", new JsonArray());
         root.add("physicalSources", sources);
-        root.addProperty("physicalVersion", 2);
-        root.add("slotVariants", writer.variants());
+        root.addProperty("physicalVersion", 3);
         return root;
     }
 
@@ -299,15 +297,13 @@ class BoxUuidRegistryTest {
         source.addProperty("baseRevision", ledger.revision());
         source.addProperty("observedAt", System.currentTimeMillis());
         source.addProperty("fingerprint", snapshot.fingerprint());
-        var writer = new PhysicalSlots.Writer();
-        source.add("slots", writer.slots(snapshot.slots()));
+        source.addProperty("snbt", snapshot.snbt());
         source.add("items", amounts(snapshot.totals()));
         source.add("shulkers", amounts(snapshot.shulkers()));
         var sources = new JsonArray();
         sources.add(source);
         root.add("physicalSources", sources);
-        root.addProperty("physicalVersion", 2);
-        root.add("slotVariants", writer.variants());
+        root.addProperty("physicalVersion", 3);
         ledger.accept(root);
         var identities = new TreeMap<>(Map.of("0", "", "1", ""));
         for (var b : ledger.boxIdentities(identity.id()))

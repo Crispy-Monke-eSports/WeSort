@@ -11,7 +11,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.LongSupplier;
 import java.util.regex.Pattern;
 
 /**
@@ -72,14 +71,14 @@ final class KitTemplates {
     }
 
     private final Path file;
-    private final LongSupplier clock;
+    private final Clock clock;
     private final Map<String, Template> templates = new LinkedHashMap<>();
 
     KitTemplates(Path dataDir) throws IOException {
-        this(dataDir, System::currentTimeMillis);
+        this(dataDir, Clock.system());
     }
 
-    KitTemplates(Path dataDir, LongSupplier clock) throws IOException {
+    KitTemplates(Path dataDir, Clock clock) throws IOException {
         this.clock = clock;
         this.file = dataDir.resolve("kit-templates.json");
         if (Files.isSymbolicLink(file)) throw new IOException("Invalid kit templates location");
@@ -163,7 +162,7 @@ final class KitTemplates {
         if (slots.isEmpty()) throw new IllegalArgumentException("a kit needs at least one filled slot");
         slots.sort((a, b) -> Integer.compare(a.slot(), b.slot()));
         long rev = revision > 0 ? revision + 1 : 1;
-        return new Template(name, rev, clock.getAsLong(), List.copyOf(slots));
+        return new Template(name, rev, clock.millis(), List.copyOf(slots));
     }
 
     private static Template read(JsonObject o) {

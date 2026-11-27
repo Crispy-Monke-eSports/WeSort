@@ -9,7 +9,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.net.InetAddress;
 import java.nio.file.Path;
-import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -25,8 +24,8 @@ class LoginSecurityTest {
 
     @Test
     void fiveFailuresLockAnAddressWithDoublingLockouts() {
-        AtomicLong now = new AtomicLong(0);
-        LoginLimiter limiter = new LoginLimiter(now::get);
+        FakeClock now = new FakeClock(0);
+        LoginLimiter limiter = new LoginLimiter(now);
         for (int i = 0; i < 5; i++) {
             assertEquals(0, sequentialAttempt(limiter, "10.0.0.5", false));
             limiter.failure("10.0.0.5", false);
@@ -34,7 +33,7 @@ class LoginSecurityTest {
         assertEquals(60_000, sequentialAttempt(limiter, "10.0.0.5", false));
         assertEquals(0, sequentialAttempt(limiter, "10.0.0.6", false), "other addresses are not affected");
 
-        now.addAndGet(60_000);
+        now.advance(60_000);
         for (int i = 0; i < 5; i++) {
             assertEquals(0, sequentialAttempt(limiter, "10.0.0.5", false));
             limiter.failure("10.0.0.5", false);
@@ -44,22 +43,22 @@ class LoginSecurityTest {
 
     @Test
     void perAddressLockoutStopsAt15Minutes() {
-        AtomicLong now = new AtomicLong(0);
-        LoginLimiter limiter = new LoginLimiter(now::get);
+        FakeClock now = new FakeClock(0);
+        LoginLimiter limiter = new LoginLimiter(now);
         for (int round = 0; round < 6; round++) {
             for (int i = 0; i < 5; i++) {
                 sequentialAttempt(limiter, "a", false);
                 limiter.failure("a", false);
             }
-            if (round < 5) now.addAndGet(LoginLimiter.GLOBAL_WINDOW_MS + LoginLimiter.MAX_LOCK_MS);
+            if (round < 5) now.advance(LoginLimiter.GLOBAL_WINDOW_MS + LoginLimiter.MAX_LOCK_MS);
         }
         assertEquals(LoginLimiter.MAX_LOCK_MS, sequentialAttempt(limiter, "a", false));
     }
 
     @Test
     void successResetsTheAddress() {
-        AtomicLong now = new AtomicLong(0);
-        LoginLimiter limiter = new LoginLimiter(now::get);
+        FakeClock now = new FakeClock(0);
+        LoginLimiter limiter = new LoginLimiter(now);
         for (int i = 0; i < 4; i++) {
             sequentialAttempt(limiter, "a", false);
             limiter.failure("a", false);
@@ -75,14 +74,14 @@ class LoginSecurityTest {
 
     @Test
     void globalPauseAfter20FailuresIn10MinutesEscalates() {
-        AtomicLong now = new AtomicLong(0);
-        LoginLimiter limiter = new LoginLimiter(now::get);
+        FakeClock now = new FakeClock(0);
+        LoginLimiter limiter = new LoginLimiter(now);
         // 20 failures over 5 addresses, 4 each, so no single address locks
         for (int i = 0; i < 20; i++) {
             String ip = "10.0.3." + (i / 4);
             assertEquals(0, sequentialAttempt(limiter, ip, false));
             limiter.failure(ip, false);
-            now.addAndGet(1000);
+            now.advance(1000);
         }
         long wait = sequentialAttempt(limiter, "10.9.9.9", false);
         assertTrue(
@@ -90,7 +89,7 @@ class LoginSecurityTest {
                 "everyone else is paused for 15 minutes: " + wait);
         assertEquals(0, sequentialAttempt(limiter, "127.0.0.1", true), "the server PC itself is exempt");
 
-        now.addAndGet(LoginLimiter.GLOBAL_LOCK_MS);
+        now.advance(LoginLimiter.GLOBAL_LOCK_MS);
         for (int i = 0; i < 20; i++) {
             String ip = "10.0.4." + (i / 4);
             sequentialAttempt(limiter, ip, false);
@@ -104,8 +103,8 @@ class LoginSecurityTest {
 
     @Test
     void successfulAttemptsDontCountTowardTheGlobalPause() {
-        AtomicLong now = new AtomicLong(0);
-        LoginLimiter limiter = new LoginLimiter(now::get);
+        FakeClock now = new FakeClock(0);
+        LoginLimiter limiter = new LoginLimiter(now);
         for (int i = 0; i < 100; i++) {
             assertEquals(0, sequentialAttempt(limiter, "10.0.6." + i, false), "attempt " + i);
             limiter.success("10.0.6." + i);
@@ -114,20 +113,20 @@ class LoginSecurityTest {
 
     @Test
     void failuresSpreadOver10MinutesDontPause() {
-        AtomicLong now = new AtomicLong(0);
-        LoginLimiter limiter = new LoginLimiter(now::get);
+        FakeClock now = new FakeClock(0);
+        LoginLimiter limiter = new LoginLimiter(now);
         for (int i = 0; i < 40; i++) {
             String ip = "10.0.5." + i;
             assertEquals(0, sequentialAttempt(limiter, ip, false), "attempt " + i);
             limiter.failure(ip, false);
-            now.addAndGet(LoginLimiter.GLOBAL_WINDOW_MS / 19 + 1);
+            now.advance(LoginLimiter.GLOBAL_WINDOW_MS / 19 + 1);
         }
     }
 
     @Test
     void loopbackIsNeverLimited() {
-        AtomicLong now = new AtomicLong(0);
-        LoginLimiter limiter = new LoginLimiter(now::get);
+        FakeClock now = new FakeClock(0);
+        LoginLimiter limiter = new LoginLimiter(now);
         for (int i = 0; i < 100; i++) {
             assertEquals(0, sequentialAttempt(limiter, "127.0.0.1", true));
             limiter.failure("127.0.0.1", true);
@@ -176,15 +175,15 @@ class LoginSecurityTest {
 
     @Test
     void sudoModeLasts15MinutesPerSession(@TempDir Path dir) throws Exception {
-        AtomicLong now = new AtomicLong(1000);
-        SessionStore store = new SessionStore(dir, now::get);
+        FakeClock now = new FakeClock(1000);
+        SessionStore store = new SessionStore(dir, now);
         String a = store.create();
         String b = store.create();
         assertFalse(store.elevated(a));
         store.elevate(a);
         assertTrue(store.elevated(a));
         assertFalse(store.elevated(b), "only the session that typed the password");
-        now.addAndGet(SessionStore.ELEVATED_MS);
+        now.advance(SessionStore.ELEVATED_MS);
         assertFalse(store.elevated(a));
         store.elevate(a);
         store.remove(a);

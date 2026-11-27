@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.HexFormat;
-import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -39,8 +38,8 @@ class SignerTest {
 
     @Test
     void verifyChecksTimeSignatureAndReplays() {
-        AtomicLong now = new AtomicLong(1700000000000L);
-        Signer s = new Signer(now::get);
+        FakeClock now = new FakeClock(1700000000000L);
+        Signer s = new Signer(now);
         byte[] k = Signer.deriveKey("test-key");
         byte[] wrong = Signer.deriveKey("other-key");
 
@@ -72,7 +71,7 @@ class SignerTest {
                 1,
                 s.verify(auth(wrong, now.get(), n2, BODY), "POST", "/api/v1/heartbeat", BODY, k, wrong),
                 "the previous key");
-        now.addAndGet(Signer.NONCE_TTL_MS + 1);
+        now.advance(Signer.NONCE_TTL_MS + 1);
         assertEquals(
                 0,
                 s.verify(auth(k, now.get(), NONCE, BODY), "POST", "/api/v1/heartbeat", BODY, k),
@@ -81,15 +80,15 @@ class SignerTest {
 
     @Test
     void productionNonceClaimSurvivesManagerRestart(@TempDir Path data) throws Exception {
-        AtomicLong now = new AtomicLong(1700000000000L);
+        FakeClock now = new FakeClock(1700000000000L);
         byte[] key = Signer.deriveKey("test-key");
         var signed = auth(key, now.get(), NONCE, BODY);
-        var first = new Signer(now::get, new StockLedger(data));
+        var first = new Signer(now, new StockLedger(data));
         assertEquals(0, first.verify(signed, "POST", "/api/v1/heartbeat", BODY, key));
 
-        var restarted = new Signer(now::get, new StockLedger(data));
+        var restarted = new Signer(now, new StockLedger(data));
         assertEquals(-1, restarted.verify(signed, "POST", "/api/v1/heartbeat", BODY, key));
-        now.addAndGet(Signer.NONCE_TTL_MS + 1);
+        now.advance(Signer.NONCE_TTL_MS + 1);
         assertEquals(0, restarted.verify(auth(key, now.get(), NONCE, BODY), "POST", "/api/v1/heartbeat", BODY, key));
     }
 

@@ -97,12 +97,14 @@ final class LiveRoutes {
     private void run(HttpExchange ex, String token, BlockingQueue<LiveEvents.Event> queue) {
         try {
             OutputStream out = ex.getResponseBody();
+            // WALL-CLOCK (justified, not domain time): SSE connection lifetime, not a domain lease.
             long start = System.currentTimeMillis();
             long lastWrite = start;
             long lastSweep = 0;
             Set<String> presence = fingerprint();
             send(out, "hello", "{\"rev\":" + LiveEvents.rev() + "}");
             while (true) {
+                // WALL-CLOCK (justified, not domain time): SSE heartbeat/presence sweep pacing (see above).
                 long now = System.currentTimeMillis();
                 if (now - start >= MAX_AGE_MS) break;
                 if (router == null || !router.stillAllowed(token, Router.Perm.VIEW)) break;
@@ -121,6 +123,7 @@ final class LiveRoutes {
                     Thread.currentThread().interrupt();
                     break;
                 }
+                // WALL-CLOCK (justified, not domain time): SSE loop pacing (see above).
                 now = System.currentTimeMillis();
                 if (event != null) {
                     JsonObject data = new JsonObject();

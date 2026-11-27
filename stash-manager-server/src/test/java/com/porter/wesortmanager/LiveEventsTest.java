@@ -212,7 +212,7 @@ class LiveEventsTest {
         sessions.load();
         Users users = new Users(data);
         users.load();
-        AuditLog audit = new AuditLog(data);
+        AuditLog audit = new AuditLog(store.stock(), data);
         audit.load();
         BotHub hub = new BotHub();
         WeSortManager.Routes routes = WeSortManager.routes(

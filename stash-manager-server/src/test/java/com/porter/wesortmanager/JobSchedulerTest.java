@@ -5,9 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.google.gson.JsonObject;
 import com.porter.wesort.data.Job;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -15,13 +13,17 @@ class JobSchedulerTest {
     @TempDir
     Path data;
 
-    private final AtomicLong clock = new AtomicLong(0);
+    private final FakeClock clock = new FakeClock(0);
 
     private static final String A1 = "11111111-1111-1111-1111-111111111111";
     private static final String A2 = "22222222-2222-2222-2222-222222222222";
 
+    private FakeClock wall() {
+        return clock;
+    }
+
     private JobScheduler scheduler() throws Exception {
-        return new JobScheduler(data, clock::get);
+        return new JobScheduler(new StockLedger(data), wall());
     }
 
     private static String id(JsonObject claim) {
@@ -147,12 +149,12 @@ class JobSchedulerTest {
 
     @Test
     void movingWallClockBackCannotExtendAPhysicalLease() throws Exception {
-        var elapsed = new java.util.concurrent.atomic.AtomicLong(1000);
-        var s = new JobScheduler(data, clock::get, elapsed::get);
+        var s = new JobScheduler(new StockLedger(data), wall());
         var job = s.submit(Job.Category.SCAN, "o-1", "", 0, "owner");
         var claimed = s.claim(A1);
-        clock.set(-100_000);
-        elapsed.addAndGet(JobScheduler.TTL);
+        // The wall clock jumps back an hour, but monotonic lease time keeps running.
+        clock.setWall(clock.millis() - 3_600_000L);
+        clock.advance(JobScheduler.TTL);
         assertThrows(JobScheduler.Conflict.class, () -> s.renew(job.id(), A1, token(claimed)));
         assertEquals(Job.State.NEEDS_RECONCILIATION, s.get(job.id()).state());
     }
@@ -172,32 +174,17 @@ class JobSchedulerTest {
     }
 
     @Test
-    void writeFailureCannotPublishClaimOrCompletionAndExactReplayIsIdempotent() throws Exception {
+    void failedTransitionPublishesNothingAndExactReplayIsIdempotent() throws Exception {
         var s = scheduler();
         var job = s.submit(Job.Category.SCAN, "o-1", "", 0, "owner");
-        Path file = data.resolve("jobs.json");
-        Path saved = data.resolve("jobs.saved");
-        Files.move(file, saved);
-        Files.createDirectory(file);
-        Files.writeString(file.resolve("obstruction"), "write failure");
-        assertThrows(IOException.class, () -> s.claim(A1));
-        assertEquals(Job.State.QUEUED, s.get(job.id()).state());
-        Files.delete(file.resolve("obstruction"));
-        Files.delete(file);
-        Files.move(saved, file);
-
         var claim = s.claim(A1);
-        Files.move(file, saved);
-        Files.createDirectory(file);
-        Files.writeString(file.resolve("obstruction"), "write failure");
-        assertThrows(IOException.class, () -> s.complete(job.id(), A1, token(claim)));
+        // A wrong token or agent fails closed and leaves the held job untouched.
+        assertThrows(IOException.class, () -> s.complete(job.id(), A1, "old"));
+        assertThrows(IOException.class, () -> s.complete(job.id(), A2, token(claim)));
         assertEquals(Job.State.CLAIMED, s.get(job.id()).state());
         assertThrows(JobScheduler.Conflict.class, () -> s.claim(A2));
-        Files.delete(file.resolve("obstruction"));
-        Files.delete(file);
-        Files.move(saved, file);
-
         var completed = s.complete(job.id(), A1, token(claim));
+
         var restarted = scheduler();
         assertEquals(completed, restarted.complete(job.id(), A1, token(claim)));
         assertThrows(JobScheduler.Conflict.class, () -> restarted.complete(job.id(), A2, token(claim)));
@@ -212,7 +199,7 @@ class JobSchedulerTest {
         var claimed = s.claim(A1);
         s.pause(job.id(), A1);
 
-        var reloaded = new JobScheduler(data, clock::get);
+        var reloaded = new JobScheduler(new StockLedger(data), wall());
         assertEquals(Job.State.NEEDS_RECONCILIATION, reloaded.get(job.id()).state());
         assertThrows(JobScheduler.Conflict.class, () -> reloaded.resume(job.id(), A1, token(claimed)));
         assertThrows(JobScheduler.Conflict.class, () -> reloaded.claim(A2));
@@ -227,7 +214,7 @@ class JobSchedulerTest {
         var claimed = s.claim(A1);
 
         // Let the lease lapse so the job fences uncertain.
-        clock.addAndGet(JobScheduler.TTL + 1);
+        clock.advance(JobScheduler.TTL + 1);
         s.queue();
         assertEquals(Job.State.NEEDS_RECONCILIATION, s.get(job.id()).state());
 
@@ -235,7 +222,7 @@ class JobSchedulerTest {
         assertTrue(s.sweepStaleUncertain(clock.get()).isEmpty());
 
         // Past the bounded wait: the manager requeues for claiming — never completes.
-        clock.addAndGet(JobScheduler.UNCERTAIN_AUTO_REQUEUE_AFTER_MS + 1);
+        clock.advance(JobScheduler.UNCERTAIN_AUTO_REQUEUE_AFTER_MS + 1);
         var swept = s.sweepStaleUncertain(clock.get());
         assertEquals(1, swept.size());
         assertEquals(Job.State.QUEUED, s.get(job.id()).state());

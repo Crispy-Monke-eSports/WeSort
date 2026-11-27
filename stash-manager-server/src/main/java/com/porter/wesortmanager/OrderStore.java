@@ -7,17 +7,14 @@ import com.google.gson.JsonObject;
 import com.porter.wesort.data.PackageLabel;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.LongSupplier;
 
 /**
  * Orders per (server, stash), persisted in the shared guild SQLite database.
@@ -40,7 +37,6 @@ final class OrderStore {
     static final Set<String> OPEN = Set.of("pending", "accepted", "in_progress");
     static final Set<String> FINISHED = Set.of("delivered", "packed", "failed", "cancelled");
     static final Set<String> REPORTED_TERMINAL = Set.of("delivered", "failed", "cancelled", "needs_reconciliation");
-    private static final SecureRandom RANDOM = new SecureRandom();
 
     record Line(String type, String key, long count) {
         String ref() {
@@ -48,69 +44,25 @@ final class OrderStore {
         }
     }
 
-    /**
-     * Kit lines exploded to their component item lines: one kit is exactly one
-     * box, so ordering N kits of a template reserves N times every slot.
-     * Errors point at the original kit line, naming the missing component.
-     */
-    static final class KitExplosion {
-        /** Component item lines merged with any real item lines (ref to line). */
-        final Map<String, Line> lines = new LinkedHashMap<>();
-        /** Every line ref (exploded or plain) to the request index for error reporting. */
-        final Map<String, Integer> firstIndex = new HashMap<>();
-        /** Template snapshots to pin on the order (name to template JSON). */
-        final Map<String, JsonObject> snapshots = new LinkedHashMap<>();
+    static OrderPlacementService.KitExplosion explodeKits(
+            Map<String, Line> merged, Map<String, Integer> firstIndex, KitTemplates kits) throws OrderException {
+        return OrderPlacementService.explodeKits(merged, firstIndex, kits);
     }
 
-    /**
-     * Explodes merged kit lines using the current templates. Unknown kits are
-     * 404 (like unknown stashes); shortages are reported against components.
-     */
-    static KitExplosion explodeKits(Map<String, Line> merged, Map<String, Integer> firstIndex, KitTemplates kits)
-            throws OrderException {
-        var out = new KitExplosion();
-        for (var l : merged.values()) {
-            if (!l.type.equals("kit")) {
-                var prev = out.lines.get(l.ref());
-                out.lines.put(l.ref(), prev == null ? l : new Line(l.type, l.key, prev.count + l.count));
-                out.firstIndex.putIfAbsent(l.ref(), firstIndex.get(l.ref()));
-                continue;
-            }
-            var template = kits.get(l.key);
-            if (template == null) throw new OrderException(404, "no such kit: " + l.key, firstIndex.get(l.ref()));
-            out.snapshots.put(l.key, template.json());
-            for (var entry : template.components().entrySet()) {
-                var need = new Line("item", entry.getKey(), entry.getValue() * l.count);
-                var prev = out.lines.get(need.ref());
-                out.lines.put(need.ref(), prev == null ? need : new Line("item", need.key, prev.count + need.count));
-                // A component shared with a real item line reports the earliest line.
-                out.firstIndex.merge(need.ref(), firstIndex.get(l.ref()), Math::min);
-            }
-            if (template.components().isEmpty())
-                throw new OrderException(400, "kit '" + l.key + "' is empty", firstIndex.get(l.ref()));
-        }
-        return out;
-    }
-
-    /** Explodes an order's kit lines from its pinned snapshots (no live templates needed). */
     static List<Line> explodeOrderLines(Order o) {
-        var out = new ArrayList<Line>();
-        for (Line l : o.lines) {
-            if (l.type.equals("craft")) continue;
-            if (!l.type.equals("kit") || o.kits == null || !o.kits.containsKey(l.key)) {
-                out.add(l);
-                continue;
-            }
-            var slots = o.kits.get(l.key).getAsJsonArray("slots");
-            var perKit = new LinkedHashMap<String, Long>();
-            for (var e : slots) {
-                var s = e.getAsJsonObject();
-                perKit.merge(s.get("key").getAsString(), s.get("count").getAsLong(), Long::sum);
-            }
-            for (var e : perKit.entrySet()) out.add(new Line("item", e.getKey(), e.getValue() * l.count));
-        }
-        if (o.craftMaterials != null) o.craftMaterials.forEach((key, count) -> out.add(new Line("item", key, count)));
-        return out;
+        return OrderPlacementService.explodeOrderLines(o);
+    }
+
+    static JsonObject normalizeNames(JsonElement e) throws OrderException {
+        return OrderPlacementService.normalizeNames(e);
+    }
+
+    static JsonObject normalizePackageLabel(JsonElement e) throws OrderException {
+        return OrderPlacementService.normalizePackageLabel(e);
+    }
+
+    static long shulkersNeeded(Iterable<Line> lines, IndexStore.OrderCounts counts) {
+        return OrderPlacementService.shulkersNeeded(lines, counts);
     }
 
     /** A rejected request: HTTP status, message, and the index of the offending line (or -1). */
@@ -445,7 +397,7 @@ final class OrderStore {
     }
 
     /** One stash's orders, oldest first. */
-    private static final class Book {
+    static final class Book {
         final String server;
         final String stash;
         final List<Order> orders = new ArrayList<>();
@@ -459,7 +411,7 @@ final class OrderStore {
         }
     }
 
-    private record Receipt(String fingerprint, JsonObject order) {
+    record Receipt(String fingerprint, JsonObject order) {
         JsonObject json() {
             var value = new JsonObject();
             value.addProperty("fingerprint", fingerprint);
@@ -474,65 +426,225 @@ final class OrderStore {
 
     record Submission(Order order, boolean created) {}
 
-    private static String receiptKey(String action, String actor, String requestId) {
-        var parts = new JsonArray();
-        parts.add(action);
-        parts.add(actor);
-        parts.add(requestId);
-        return hash(parts);
+    /** Validates (against the current index and open orders), merges duplicate lines, stores and returns the order. */
+    Order place(String server, String stash, List<Line> requested, JsonObject names)
+            throws OrderException, IOException {
+        return placement.place(server, stash, requested, names);
     }
 
-    private static String hash(JsonElement value) {
-        return com.porter.wesort.data.ContainerIdentity.hash(com.porter.wesort.data.CanonicalJson.stringify(value));
+    /** The same, recording who placed it (byId null: unknown, counted as the owner's). */
+    Order place(String server, String stash, List<Line> requested, JsonObject names, String byId, String byName)
+            throws OrderException, IOException {
+        return placement.place(server, stash, requested, names, byId, byName);
     }
 
-    private Receipt previouslyReceived(String key) {
-        for (Book book : books.values()) {
-            synchronized (book) {
-                var saved = book.receipts.get(key);
-                if (saved != null) return saved;
-            }
-        }
-        return null;
+    /**
+     * The same with an explicit offline-queue request: when verified counts fall short, the order
+     * may be queued as pending against last-verified counts instead of failing. Without the flag
+     * an expired source keeps its shortage (400/409, no order row).
+     */
+    Order place(String server, String stash, List<Line> requested, JsonObject names, boolean queueWhenStale)
+            throws OrderException, IOException {
+        return placement.place(server, stash, requested, names, queueWhenStale);
     }
 
-    private static Order replay(Receipt saved, String fingerprint) throws OrderException {
-        if (!saved.fingerprint().equals(fingerprint)) {
-            throw new OrderException(409, "This idempotency key has already been used for different content", -1);
-        }
-        return Order.fromJson(saved.order());
+    Order place(
+            String server,
+            String stash,
+            List<Line> requested,
+            JsonObject names,
+            String byId,
+            String byName,
+            String organizationId,
+            OrderIntent intent)
+            throws OrderException, IOException {
+        return placement.place(server, stash, requested, names, byId, byName, organizationId, intent);
     }
 
-    private final Path dir;
-    private final IndexStore index;
+    Submission submit(
+            String server,
+            String stash,
+            List<Line> requested,
+            JsonObject names,
+            String byId,
+            String byName,
+            String organizationId,
+            OrderIntent intent,
+            String idempotencyKey,
+            boolean needsApproval,
+            RecipientResolver recipient)
+            throws OrderException, IOException {
+        return placement.submit(
+                server,
+                stash,
+                requested,
+                names,
+                byId,
+                byName,
+                organizationId,
+                intent,
+                idempotencyKey,
+                needsApproval,
+                recipient);
+    }
+
+    Submission submit(
+            String server,
+            String stash,
+            List<Line> requested,
+            JsonObject names,
+            JsonObject packageLabel,
+            String byId,
+            String byName,
+            String organizationId,
+            OrderIntent intent,
+            String idempotencyKey,
+            boolean needsApproval,
+            RecipientResolver recipient)
+            throws OrderException, IOException {
+        return placement.submit(
+                server,
+                stash,
+                requested,
+                names,
+                packageLabel,
+                byId,
+                byName,
+                organizationId,
+                intent,
+                idempotencyKey,
+                needsApproval,
+                recipient);
+    }
+
+    Submission submit(
+            String server,
+            String stash,
+            List<Line> requested,
+            JsonObject names,
+            JsonObject packageLabel,
+            String byId,
+            String byName,
+            String organizationId,
+            OrderIntent intent,
+            String idempotencyKey,
+            boolean needsApproval,
+            RecipientResolver recipient,
+            boolean queueWhenStale)
+            throws OrderException, IOException {
+        return placement.submit(
+                server,
+                stash,
+                requested,
+                names,
+                packageLabel,
+                byId,
+                byName,
+                organizationId,
+                intent,
+                idempotencyKey,
+                needsApproval,
+                recipient,
+                queueWhenStale);
+    }
+
+    Submission submit(
+            String server,
+            String stash,
+            List<Line> requested,
+            JsonObject names,
+            JsonObject packageLabel,
+            String byId,
+            String byName,
+            String organizationId,
+            OrderIntent intent,
+            String idempotencyKey,
+            boolean needsApproval,
+            RecipientResolver recipient,
+            boolean queueWhenStale,
+            AuditLog.Batch audit)
+            throws OrderException, IOException {
+        return placement.submit(
+                server,
+                stash,
+                requested,
+                names,
+                packageLabel,
+                byId,
+                byName,
+                organizationId,
+                intent,
+                idempotencyKey,
+                needsApproval,
+                recipient,
+                queueWhenStale,
+                audit);
+    }
+
+    final Path dir;
+    final IndexStore index;
     /** Injected clock (#142): domain timestamps never read the wall clock directly, so
      * timeouts (auto-cancel, recovering, deferred retry) are deterministic in tests. */
-    private final LongSupplier clock;
+    final Clock clock;
+    /** Publishes order-book revisions only after the storage transaction commits (#142). */
+    final EventPublisher events;
 
-    private OrderBookRepository repository;
-    private final Map<IndexStore.StashKey, Book> books = new ConcurrentHashMap<>();
-    private final Map<String, Book> byOrderId = new ConcurrentHashMap<>();
+    final ReservationPolicy policy;
+    final OrderPlacementService placement;
+    final OrderLifecycleService lifecycle;
+
+    OrderRepository repository;
+    final Map<IndexStore.StashKey, Book> books = new ConcurrentHashMap<>();
+    final Map<String, Book> byOrderId = new ConcurrentHashMap<>();
 
     OrderStore(Path dataDir, IndexStore index) {
-        this(dataDir, index, System::currentTimeMillis);
+        this(dataDir, index, Clock.system());
     }
 
-    OrderStore(Path dataDir, IndexStore index, LongSupplier clock) {
+    OrderStore(Path dataDir, IndexStore index, Clock clock) {
+        this(dataDir, index, clock, EventPublisher.live());
+    }
+
+    OrderStore(Path dataDir, IndexStore index, Clock clock, EventPublisher events) {
+        this(dataDir, index, clock, events, null);
+    }
+
+    /**
+     * PR3 Step 5: the durable book storage is injected (test seam) instead of
+     * constructed inline, so the service split runs against an in-memory
+     * {@link OrderRepository} without touching SQLite (Refs #142).
+     */
+    OrderStore(Path dataDir, IndexStore index, Clock clock, EventPublisher events, OrderRepository repository) {
         this.dir = dataDir.resolve("orders");
         this.index = index;
         this.clock = clock;
+        this.events = events;
+        this.repository = repository;
+        this.policy = new ReservationPolicy(index);
+        this.placement = new OrderPlacementService(this, policy);
+        this.lifecycle = new OrderLifecycleService(this, placement, policy);
+    }
+
+    /** The order placement path (validation, submit, kit/craft expansion). */
+    OrderPlacementService placement() {
+        return placement;
+    }
+
+    /** The order lifecycle path (self-healing, clear/review/cancel/retry/force-cancel). */
+    OrderLifecycleService lifecycle() {
+        return lifecycle;
     }
 
     private volatile KitTemplates kits;
 
     /** The shared kit catalog (loaded once; the routes layer reuses this instance). */
     synchronized KitTemplates kits() throws IOException {
-        if (kits == null) kits = new KitTemplates(dir.getParent());
+        if (kits == null) kits = new KitTemplates(dir.getParent(), clock);
         return kits;
     }
 
     void load() throws IOException {
-        var storage = new OrderBookRepository(index.stock());
+        var storage = repository != null ? repository : new OrderBookRepository(index.stock(), events);
         var restored = new LinkedHashMap<IndexStore.StashKey, Book>();
         var orderIds = new HashSet<String>();
         var receiptKeys = new HashSet<String>();
@@ -556,7 +668,12 @@ final class OrderStore {
                 }
             }
             trimArchive(b);
-            b.orders.sort((x, y) -> Long.compare(x.createdAt, y.createdAt));
+            // PR3 (#228 Step 6): canonical array order is (createdAt, id). The
+            // stored seq reconstructs the commit's array order; sorting here by
+            // creation time with the order id as a tiebreak keeps restarts
+            // deterministic even when two orders share a timestamp.
+            b.orders.sort(java.util.Comparator.comparingLong((Order order) -> order.createdAt)
+                    .thenComparing(order -> order.id));
             if (restored.putIfAbsent(new IndexStore.StashKey(b.server, b.stash), b) != null)
                 throw new IllegalArgumentException("Duplicate persisted order book");
         });
@@ -574,26 +691,40 @@ final class OrderStore {
         synchronized (index) {
             for (Book b : books.values()) {
                 synchronized (b) {
-                    for (Order order : List.copyOf(b.orders)) finishPendingUuidDeregistrations(b, order);
+                    for (Order order : List.copyOf(b.orders)) lifecycle.finishPendingUuidDeregistrations(b, order);
                 }
             }
             // A Manager restart must not reset an already expired cancellation.
             for (String server : books.keySet().stream()
                     .map(IndexStore.StashKey::server)
                     .distinct()
-                    .toList()) autoHeal(server);
+                    .toList()) lifecycle.autoHeal(server);
         }
     }
 
-    private Book book(String server, String stash) {
+    Book book(String server, String stash) {
         return books.computeIfAbsent(new IndexStore.StashKey(server, stash), k -> new Book(server, stash));
     }
 
-    private void save(Book b) throws IOException {
-        save(b, null);
+    void save(Book b) throws IOException {
+        save(b, null, null);
     }
 
-    private void save(Book b, StockLedger.BoxRelease release) throws IOException {
+    void save(Book b, StockLedger.BoxRelease release) throws IOException {
+        save(b, release, null);
+    }
+
+    void save(Book b, StockLedger.BoxRelease release, AuditLog.Batch batch) throws IOException {
+        save(b, release, batch, List.of());
+    }
+
+    /**
+     * PR3 (#140): saves the book together with extra custody writes in the
+     * same repository transaction. A failed custody write rolls back the book
+     * and the staged audit entries as well.
+     */
+    void save(Book b, StockLedger.BoxRelease release, AuditLog.Batch batch, List<OrderRepository.SqliteWrite> extra)
+            throws IOException {
         JsonObject root = new JsonObject();
         root.addProperty("server", b.server);
         root.addProperty("stash", b.stash);
@@ -611,21 +742,49 @@ final class OrderStore {
             root.add("receipts", receipts);
         }
         if (repository == null) throw new IOException("Order storage has not been loaded");
-        b.persistenceRevision = repository.commit(b.server, b.stash, b.persistenceRevision, root, release);
+        b.persistenceRevision = repository.commitExtended(
+                b.server,
+                b.stash,
+                b.persistenceRevision,
+                root,
+                release,
+                batch == null ? List.of() : batch.entries(),
+                extra);
     }
 
-    private void update(Book book, Order previous, Order next) throws IOException {
-        update(book, previous, next, null);
+    void update(Book book, Order previous, Order next) throws IOException {
+        update(book, previous, next, null, null);
     }
 
-    private void update(Book book, Order previous, Order next, StockLedger.BoxRelease release) throws IOException {
+    void update(Book book, Order previous, Order next, StockLedger.BoxRelease release) throws IOException {
+        update(book, previous, next, release, null);
+    }
+
+    void update(Book book, Order previous, Order next, StockLedger.BoxRelease release, AuditLog.Batch batch)
+            throws IOException {
+        update(book, previous, next, release, batch, List.of());
+    }
+
+    /**
+     * PR3 (#140): updates the book together with extra custody writes in the
+     * same repository transaction (see {@link #save(Book, StockLedger.BoxRelease,
+     * AuditLog.Batch, List)}).
+     */
+    void update(
+            Book book,
+            Order previous,
+            Order next,
+            StockLedger.BoxRelease release,
+            AuditLog.Batch batch,
+            List<OrderRepository.SqliteWrite> extra)
+            throws IOException {
         int position = book.orders.indexOf(previous);
         var before = book.orders.size() > KEEP ? List.copyOf(book.orders) : null;
         var archiveBefore = before == null ? null : List.copyOf(book.archived);
         book.orders.set(position, next);
         var pruned = prune(book);
         try {
-            save(book, release);
+            save(book, release, batch, extra);
         } catch (IOException failure) {
             if (before != null && !pruned.isEmpty()) {
                 book.orders.clear();
@@ -658,7 +817,7 @@ final class OrderStore {
         return pruned;
     }
 
-    private static void trimArchive(Book book) {
+    static void trimArchive(Book book) {
         book.archived.sort(java.util.Comparator.comparingLong(order -> order.updatedAt));
         int excess = book.archived.size() - KEEP;
         if (excess > 0) book.archived.subList(0, excess).clear();
@@ -692,7 +851,7 @@ final class OrderStore {
                 for (Order order : book.orders) {
                     OrderStage stage = order.stage();
                     // A packed order waiting for its recipient is normal, not a stuck operation.
-                    if (stage == OrderStage.PICKUP_READY && !holdsPhysical(order)) continue;
+                    if (stage == OrderStage.PICKUP_READY && !policy.holdsPhysical(order)) continue;
                     // Recovery is expected right after a restart or fence: it only
                     // counts as stuck when nothing has moved it for a while.
                     if ((stage == OrderStage.RECOVERING || stage == OrderStage.NEEDS_RECONCILIATION)
@@ -737,7 +896,7 @@ final class OrderStore {
     /** Count actual order reservations separately from lifecycle/recovery health. */
     int reservationHoldingOrders(String server) {
         return (int) ordersOnServer(server).stream()
-                .filter(OrderStore::holdsPhysical)
+                .filter(order -> policy.holdsPhysical(order))
                 .count();
     }
 
@@ -755,17 +914,6 @@ final class OrderStore {
         return totals;
     }
 
-    private static Map<String, Long> reserved(Book b) {
-        Map<String, Long> out = new HashMap<>();
-        for (Order o : b.orders) {
-            // The waiting queue is intentionally *not* a physical or aggregate
-            // reservation. Availability must not advertise it as committed stock.
-            if (o.reservationDeferred || (!OPEN.contains(o.status) && !holdsPhysical(o))) continue;
-            for (Line l : explodeOrderLines(o)) out.merge(l.ref(), l.count, Long::sum);
-        }
-        return out;
-    }
-
     /**
      * What the stash's open orders reserve, by line ref ("item:&lt;key&gt;" / "shulker:&lt;key&gt;"): the same numbers
      * {@link #place} subtracts from the index. A copy; empty when the stash has no orders.
@@ -774,11 +922,11 @@ final class OrderStore {
         Book b = books.get(new IndexStore.StashKey(server, stash));
         if (b == null) return Map.of();
         synchronized (b) {
-            return Map.copyOf(reserved(b));
+            return Map.copyOf(policy.reserved(b));
         }
     }
 
-    private List<Order> ordersOnServer(String server) {
+    List<Order> ordersOnServer(String server) {
         var found = new ArrayList<Order>();
         for (var entry : books.entrySet()) {
             if (!entry.getKey().server().equals(server)) continue;
@@ -787,57 +935,6 @@ final class OrderStore {
             }
         }
         return found;
-    }
-
-    private static boolean holdsPhysical(Order order) {
-        return order.allocations != null
-                && order.releasedAt == 0
-                && (OPEN.contains(order.status) || order.claimedAt > 0);
-    }
-
-    /** UI-independent sweep; one indexed server is reconciled under its normal lock. */
-    void selfHealAll() throws IOException {
-        for (String server : books.keySet().stream()
-                .map(IndexStore.StashKey::server)
-                .distinct()
-                .toList()) releaseFromFreshObservation(server);
-    }
-
-    void releaseFromFreshObservation(String server) throws IOException {
-        synchronized (index) {
-            // Expire silent operations first: without this, only opening the operations view
-            // (or an agent heartbeat) ever flips them to NEEDS_RECONCILIATION, and the 15-second
-            // scheduler below would keep seeing a healthy IN_PROGRESS forever.
-            new PhysicalOperations(index.stock()).sweepStale();
-            PhysicalReservations observations = null;
-            for (var entry : books.entrySet()) {
-                if (!entry.getKey().server().equals(server)) continue;
-                var book = entry.getValue();
-                synchronized (book) {
-                    var released = new ArrayList<Order>();
-                    for (var order : book.orders) {
-                        if (!holdsPhysical(order)
-                                || !FINISHED.contains(order.status)
-                                || order.stage() == OrderStage.NEEDS_RECONCILIATION) continue;
-                        if (observations == null) observations = PhysicalReservations.read(index.stock(), server, null);
-                        if (observations.refreshedAfter(order.allocations, order.updatedAt)
-                                && !index.stock().unsettledPhysicalOrder(order.id)) {
-                            released.add(order);
-                            order.releasedAt = clock.getAsLong();
-                        }
-                    }
-                    if (!released.isEmpty()) {
-                        try {
-                            save(book);
-                        } catch (IOException failure) {
-                            released.forEach(order -> order.releasedAt = 0);
-                            throw failure;
-                        }
-                    }
-                }
-            }
-            autoHeal(server);
-        }
     }
 
     /** Timeout for unconfirmed cancellations and legacy, unallocated orders. */
@@ -866,179 +963,13 @@ final class OrderStore {
 
     static final long DEFERRED_RETRY_AFTER_MS = 5 * 60 * 1000;
 
-    /**
-     * Self-healing on fresh indexes and periodic sweeps, without operator actions. A
-     * matching original source slot is not proof that packing or staging succeeded.
-     * Uncertain orders terminate only after their physical journals settle and reserved
-     * sources are freshly observed; otherwise all holds remain protected.
-     */
-    private void autoHeal(String server) throws IOException {
-        long now = clock.getAsLong();
-        for (var entry : books.entrySet()) {
-            if (!entry.getKey().server().equals(server)) continue;
-            var book = entry.getValue();
-            synchronized (book) {
-                // Copy-on-write through update(): a failed save rolls back that order only,
-                // exactly like the release sweep above.
-                for (Order previous : List.copyOf(book.orders)) {
-                    Order next;
-                    try {
-                        next = healed(book, previous, now);
-                    } catch (OrderException conflict) {
-                        continue;
-                    }
-                    if (next != null) update(book, previous, next);
-                }
-            }
-        }
+    /** UI-independent sweep; one indexed server is reconciled under its normal lock. */
+    void selfHealAll() throws IOException {
+        lifecycle.selfHealAll();
     }
 
-    /** One order's automatic step, or null when it stays as it is. Copy-on-write: the caller saves. */
-    private Order healed(Book book, Order previous, long now) throws IOException, OrderException {
-        if (previous.stage() == OrderStage.NEEDS_RECONCILIATION) {
-            // Migrate a pre-upgrade order to the same automatic rollback
-            // protocol as new failures. Never expose the old operator state.
-            Order o = Order.fromJson(previous.snapshot());
-            o.advance(OrderStage.RECOVERING);
-            o.status = "in_progress";
-            o.cancelRequested = true;
-            if (o.cancelRequestedAt == 0) o.cancelRequestedAt = now;
-            o.phase = "returning items to stash";
-            o.message = "Automatic rollback requested after interrupted physical operation";
-            o.updatedAt = now;
-            o.record("order.auto-recovery.migrate", Users.OWNER_ID, now);
-            return o;
-        }
-        if (previous.stage() != OrderStage.RECOVERING
-                && (previous.status.equals("accepted") || previous.status.equals("in_progress"))
-                && index.stock().reconciliationRequiredPhysicalOrder(previous.id)) {
-            Order o = Order.fromJson(previous.snapshot());
-            o.advance(OrderStage.RECOVERING);
-            o.status = "in_progress";
-            o.cancelRequested = true;
-            o.cancelRequestedAt = now;
-            o.phase = "returning items to stash";
-            o.message = "Physical operation interrupted; automatic rollback requested";
-            o.updatedAt = now;
-            o.record("order.auto-recovery", Users.OWNER_ID, now);
-            return o;
-        }
-        if (previous.cancelRequested
-                && previous.allocations != null
-                && isExecuting(previous)
-                && previous.stage() != OrderStage.RECOVERING
-                && previous.cancelRequestedAt > 0
-                && now - previous.cancelRequestedAt > AUTO_CANCEL_AFTER_MS) {
-            // The deadline runs on the cancel request alone: repeated bot progress reports
-            // (which touch updatedAt) must not defer the rollback forever.
-            // Keep the allocation and original agent, rather than treating a
-            // missing bot acknowledgement as permission to abandon items.
-            Order o = Order.fromJson(previous.snapshot());
-            o.advance(OrderStage.RECOVERING);
-            o.status = "in_progress";
-            o.phase = "returning items to stash";
-            o.message = "Cancel timed out; automatic rollback requested";
-            o.updatedAt = now;
-            o.record("order.auto-rollback", Users.OWNER_ID, now);
-            return o;
-        }
-        if (previous.cancelRequested
-                && previous.allocations == null
-                && (previous.status.equals("accepted") || previous.status.equals("in_progress"))
-                && previous.cancelRequestedAt > 0
-                && now - previous.cancelRequestedAt > AUTO_CANCEL_AFTER_MS
-                && now - previous.updatedAt > AUTO_CANCEL_AFTER_MS) {
-            Order o = Order.fromJson(previous.snapshot());
-            o.advance(OrderStage.CANCELLED);
-            o.status = "cancelled";
-            o.message = "cancelled automatically: requested, bot silent, nothing held";
-            o.updatedAt = now;
-            o.record("order.auto-force-cancel", Users.OWNER_ID, now);
-            return o;
-        }
-        if (previous.stage() == OrderStage.RECOVERING && now - previous.updatedAt > RECOVERING_AFTER_MS) {
-            // The exit a silent bot never takes: fail the rollback so its holds release
-            // through the normal sweep. A reporting bot still finishes first via the
-            // cancelled/failed fast path, which this never pre-empts.
-            Order o = Order.fromJson(previous.snapshot());
-            o.advance(OrderStage.FAILED);
-            o.status = "failed";
-            o.phase = "automatic rollback timed out";
-            o.message = "Automatic rollback timed out waiting for the agent;"
-                    + " holds release on the next verified observation";
-            o.updatedAt = now;
-            o.record("order.auto-recovery.timeout", Users.OWNER_ID, now);
-            return o;
-        }
-        if (previous.stage() == OrderStage.PICKUP_READY
-                && previous.releasedAt == 0
-                && now - previous.updatedAt > pickupReadyReleaseAfterMs()) {
-            // A packed order whose bot went silent: the goods are staged and waiting,
-            // so the hold may lapse while the order itself stays collectible.
-            Order o = Order.fromJson(previous.snapshot());
-            o.releasedAt = now;
-            o.message = "Released automatically: packed, bot silent, goods await pickup";
-            o.updatedAt = now;
-            o.record("order.pickup-release", Users.OWNER_ID, now);
-            return o;
-        }
-        if (previous.status.equals("pending")
-                && previous.approval != Approval.PENDING
-                && previous.allocations != null
-                && previous.claimedAt == 0
-                && previous.stage().allows(OrderStage.CANCELLED)
-                && now - previous.updatedAt > AUTO_CANCEL_AFTER_MS) {
-            // A reservation the bot never picked up must not gate the sorting lease
-            // forever. Nothing was ever touched, so cancelling releases cleanly.
-            Order o = Order.fromJson(previous.snapshot());
-            o.advance(OrderStage.CANCELLED);
-            o.status = "cancelled";
-            o.message = "cancelled automatically: reserved but never claimed by a bot";
-            o.updatedAt = now;
-            o.record("order.auto-cancel-unclaimed", Users.OWNER_ID, now);
-            return o;
-        }
-        if (previous.status.equals("pending")
-                && previous.approval != Approval.PENDING
-                && previous.allocations == null
-                && previous.claimedAt == 0
-                && previous.deferredBlockedAt > 0
-                && previous.stage().allows(OrderStage.CANCELLED)
-                && now - previous.deferredBlockedAt > AUTO_CANCEL_AFTER_MS
-                && !index.stock().unsettledPhysicalOrder(previous.id)) {
-            // Scout runda 3: a drift-stamped aggregate reservation that could never
-            // be re-reserved. Nothing was ever touched, so cancelling releases
-            // cleanly instead of parking the queue forever with no human to intervene.
-            Order o = Order.fromJson(previous.snapshot());
-            o.advance(OrderStage.CANCELLED);
-            o.status = "cancelled";
-            o.message =
-                    "cancelled automatically: sources changed and stock could not be re-reserved; nothing was taken";
-            o.updatedAt = now;
-            o.record("order.auto-cancel-drift", Users.OWNER_ID, now);
-            return o;
-        }
-        if (previous.status.equals("pending")
-                && previous.approval == Approval.PENDING
-                && previous.claimedAt == 0
-                && previous.stage().allows(OrderStage.CANCELLED)
-                && now - previous.updatedAt > AUTO_CANCEL_AFTER_MS) {
-            // #59: no human can approve. A pending approval that waits forever gates
-            // the shared stock and the single agent's queue, so default-deny releases
-            // cleanly after a bounded wait. Claims always skip PENDING approvals, so
-            // the bot never touched anything; the order must simply be placed again.
-            Order o = Order.fromJson(previous.snapshot());
-            o.approval = Approval.REJECTED;
-            o.decidedBy = Users.OWNER_ID;
-            o.decidedAt = now;
-            o.advance(OrderStage.CANCELLED);
-            o.status = "cancelled";
-            o.message = "cancelled automatically: approval pending too long with no approver; nothing was taken";
-            o.updatedAt = now;
-            o.record("order.approval.auto-reject", Users.OWNER_ID, now);
-            return o;
-        }
-        return null;
+    void releaseFromFreshObservation(String server) throws IOException {
+        lifecycle.releaseFromFreshObservation(server);
     }
 
     record Reservation(String order, PhysicalReservations.Allocation allocation) {}
@@ -1074,7 +1005,7 @@ final class OrderStore {
     List<Reservation> physicalHolds(String server) {
         var holds = new ArrayList<Reservation>();
         for (var order : ordersOnServer(server))
-            if (holdsPhysical(order)) {
+            if (policy.holdsPhysical(order)) {
                 for (var allocation : order.allocations) holds.add(new Reservation(order.id, allocation));
             }
         return List.copyOf(holds);
@@ -1128,554 +1059,17 @@ final class OrderStore {
 
     // ---------- browser ----------
 
-    /** Validates (against the current index and open orders), merges duplicate lines, stores and returns the order. */
-    Order place(String server, String stash, List<Line> requested, JsonObject names)
-            throws OrderException, IOException {
-        return place(server, stash, requested, names, null, null);
-    }
-
-    /** The same, recording who placed it (byId null: unknown, counted as the owner's). */
-    Order place(String server, String stash, List<Line> requested, JsonObject names, String byId, String byName)
-            throws OrderException, IOException {
-        return place(server, stash, requested, names, byId, byName, null, OrderIntent.DEFAULT);
-    }
-
-    /**
-     * The same with an explicit offline-queue request: when verified counts fall short, the order
-     * may be queued as pending against last-verified counts instead of failing. Without the flag
-     * an expired source keeps its shortage (400/409, no order row).
-     */
-    Order place(String server, String stash, List<Line> requested, JsonObject names, boolean queueWhenStale)
-            throws OrderException, IOException {
-        return submit(
-                        server,
-                        stash,
-                        requested,
-                        names,
-                        null,
-                        null,
-                        null,
-                        null,
-                        OrderIntent.DEFAULT,
-                        null,
-                        false,
-                        ignored -> null,
-                        queueWhenStale)
-                .order();
-    }
-
-    Order place(
-            String server,
-            String stash,
-            List<Line> requested,
-            JsonObject names,
-            String byId,
-            String byName,
-            String organizationId,
-            OrderIntent intent)
-            throws OrderException, IOException {
-        return submit(
-                        server,
-                        stash,
-                        requested,
-                        names,
-                        null,
-                        byId,
-                        byName,
-                        organizationId,
-                        intent,
-                        null,
-                        false,
-                        ignored -> null)
-                .order();
-    }
-
-    Submission submit(
-            String server,
-            String stash,
-            List<Line> requested,
-            JsonObject names,
-            String byId,
-            String byName,
-            String organizationId,
-            OrderIntent intent,
-            String idempotencyKey,
-            boolean needsApproval,
-            RecipientResolver recipient)
-            throws OrderException, IOException {
-        return submit(
-                server,
-                stash,
-                requested,
-                names,
-                null,
-                byId,
-                byName,
-                organizationId,
-                intent,
-                idempotencyKey,
-                needsApproval,
-                recipient);
-    }
-
-    Submission submit(
-            String server,
-            String stash,
-            List<Line> requested,
-            JsonObject names,
-            JsonObject packageLabel,
-            String byId,
-            String byName,
-            String organizationId,
-            OrderIntent intent,
-            String idempotencyKey,
-            boolean needsApproval,
-            RecipientResolver recipient)
-            throws OrderException, IOException {
-        return submit(
-                server,
-                stash,
-                requested,
-                names,
-                packageLabel,
-                byId,
-                byName,
-                organizationId,
-                intent,
-                idempotencyKey,
-                needsApproval,
-                recipient,
-                false);
-    }
-
-    Submission submit(
-            String server,
-            String stash,
-            List<Line> requested,
-            JsonObject names,
-            JsonObject packageLabel,
-            String byId,
-            String byName,
-            String organizationId,
-            OrderIntent intent,
-            String idempotencyKey,
-            boolean needsApproval,
-            RecipientResolver recipient,
-            boolean queueWhenStale)
-            throws OrderException, IOException {
-        synchronized (index) {
-            String key = null, fingerprint = null;
-            if (idempotencyKey != null) {
-                key = receiptKey("create", byId, idempotencyKey);
-                var body = new JsonObject();
-                body.addProperty("server", server);
-                body.addProperty("stash", stash);
-                body.add("lines", Json.GSON.toJsonTree(requested));
-                body.add("names", names == null ? JsonNull.INSTANCE : names);
-                body.add("packageLabel", packageLabel == null ? JsonNull.INSTANCE : packageLabel);
-                body.add("intent", Json.GSON.toJsonTree(intent));
-                body.addProperty("queueWhenStale", queueWhenStale);
-                fingerprint = hash(body);
-                var saved = previouslyReceived(key);
-                if (saved != null) return new Submission(replay(saved, fingerprint), false);
-            }
-            return new Submission(
-                    placeWithObservationLock(
-                            server,
-                            stash,
-                            requested,
-                            names,
-                            packageLabel,
-                            byId,
-                            byName,
-                            organizationId,
-                            intent,
-                            key,
-                            fingerprint,
-                            null,
-                            needsApproval,
-                            recipient.resolve(intent),
-                            queueWhenStale),
-                    true);
-        }
-    }
-
-    private Order placeWithObservationLock(
-            String server,
-            String stash,
-            List<Line> requested,
-            JsonObject names,
-            JsonObject packageLabel,
-            String byId,
-            String byName,
-            String organizationId,
-            OrderIntent intent,
-            String receiptKey,
-            String fingerprint,
-            Order retryOf,
-            boolean needsApproval,
-            String recipient,
-            boolean queueWhenStale)
-            throws OrderException, IOException {
-        // A sorting lease cannot coexist with a new physical reservation.
-        // Accept a transparently UNRESERVED request and let the sorter finish
-        // or reconcile before any later claim. Never reject the customer's order
-        // just because an autonomous tier-optimization pass is in progress.
-        boolean sortingLeaseActive = index.automation().current(server) != null;
-        if (requested.isEmpty()) throw new OrderException(400, "an order needs at least one line", -1);
-        if (requested.size() > MAX_LINES) throw new OrderException(400, "at most " + MAX_LINES + " lines", -1);
-        IndexStore.OrderCounts fresh = index.orderCounts(server, stash);
-        if (fresh == null) throw new OrderException(400, "no index for that stash", -1);
-
-        // Merge lines with the same type and key, remembering where each first appeared (for error reporting).
-        Map<String, Line> merged = new LinkedHashMap<>();
-        Map<String, Integer> firstIndex = new HashMap<>();
-        for (int i = 0; i < requested.size(); i++) {
-            Line l = requested.get(i);
-            Line prev = merged.get(l.ref());
-            if (prev == null) {
-                merged.put(l.ref(), l);
-                firstIndex.put(l.ref(), i);
-            } else {
-                merged.put(l.ref(), new Line(l.type, l.key, prev.count + l.count));
-            }
-        }
-
-        for (var line : merged.values()) {
-            if (line.count < 1 || line.count > Integer.MAX_VALUE) {
-                throw new OrderException(400, "invalid item count", firstIndex.get(line.ref()));
-            }
-        }
-        var physical = PhysicalReservations.read(index.stock(), server, stash);
-        var existing = ordersOnServer(server);
-        var held = heldRoots(server);
-        boolean executingPhysical =
-                existing.stream().anyMatch(order -> order.allocations != null && isExecuting(order));
-        // Never extend an agent's already issued protected-root list mid-order.
-        // Persist the request instead, explicitly unreserved until the next
-        // claim revalidates the actual physical slots against fresh observations.
-        if (executingPhysical || sortingLeaseActive) {
-            KitExplosion pinned = explodeKits(merged, firstIndex, kits());
-            for (Line line : merged.values())
-                if (line.type().equals("craft")
-                        && (line.count() > CraftingCatalog.MAX_PREVIEW
-                                || CraftingCatalog.RECIPES == null
-                                || CraftingCatalog.RECIPES.producing(line.key()).isEmpty()))
-                    throw new OrderException(
-                            400, "No supported craft recipe or invalid craft quantity", firstIndex.get(line.ref()));
-            return commitOrder(
-                    server,
-                    stash,
-                    merged,
-                    firstIndex,
-                    pinned,
-                    new CraftExpansion(),
-                    names,
-                    packageLabel,
-                    byId,
-                    byName,
-                    organizationId,
-                    intent,
-                    receiptKey,
-                    fingerprint,
-                    retryOf,
-                    needsApproval,
-                    recipient,
-                    fresh,
-                    physical,
-                    held,
-                    false,
-                    true);
-        }
-        if (!held.isEmpty()
-                && index.stock().sources().stream()
-                        .anyMatch(source -> source.server().equals(server)
-                                && source.status().equals("SUPERSEDED")
-                                && held.stream()
-                                        .anyMatch(root -> root.source()
-                                                .equals(source.value().get("id").getAsString())))) {
-            throw new OrderException(
-                    409, "A reserved physical source changed topology and requires reconciliation", -1);
-        }
-        boolean legacyHold =
-                existing.stream().anyMatch(order -> order.allocations == null && OPEN.contains(order.status));
-        if (physical.hasSnapshots() && legacyHold
-                || !physical.hasSnapshots()
-                        && (!held.isEmpty()
-                                || merged.values().stream().anyMatch(line -> line.type.equals("shulker")))) {
-            throw new OrderException(409, "Resolve existing reservations before mixing source observation formats", -1);
-        }
-        // Kit lines reserve their components, never a "kit:" ref: explode against
-        // the current templates and pin the snapshots on the order, so the bot
-        // packs the exact layout even if the template changes later.
-        KitExplosion exploded = explodeKits(merged, firstIndex, kits());
-        CraftExpansion crafting = expandCrafts(server, stash, exploded, physical, held, firstIndex);
-        try {
-            return commitOrder(
-                    server,
-                    stash,
-                    merged,
-                    firstIndex,
-                    exploded,
-                    crafting,
-                    names,
-                    packageLabel,
-                    byId,
-                    byName,
-                    organizationId,
-                    intent,
-                    receiptKey,
-                    fingerprint,
-                    retryOf,
-                    needsApproval,
-                    recipient,
-                    fresh,
-                    physical,
-                    held,
-                    false,
-                    false);
-        } catch (OrderException shortfall) {
-            // The offline queue is explicit, never silent: only a caller that opts in with
-            // queueWhenStale may fall back to last-verified counts. An expired source on the
-            // default path keeps the original shortage (400/409, no order row), so stale stock
-            // is never reserved behind the requester's back. Claim still requires a fresh
-            // observation, so the bot re-verifies before it touches anything. Ported from PR #89.
-            if (!queueWhenStale || !isShortage(shortfall)) throw shortfall;
-            IndexStore.OrderCounts stale = index.orderCountsIncludingStale(server, stash);
-            if (stale == null) throw shortfall;
-            try {
-                return commitOrder(
-                        server,
-                        stash,
-                        merged,
-                        firstIndex,
-                        exploded,
-                        crafting,
-                        names,
-                        packageLabel,
-                        byId,
-                        byName,
-                        organizationId,
-                        intent,
-                        receiptKey,
-                        fingerprint,
-                        retryOf,
-                        needsApproval,
-                        recipient,
-                        stale,
-                        physical,
-                        held,
-                        true,
-                        false);
-            } catch (OrderException retryFailed) {
-                throw isShortage(retryFailed) ? shortfall : retryFailed;
-            }
-        }
-    }
-
-    /** A 400/409 against one order line: a real shortage, not a policy refusal. */
-    private static boolean isShortage(OrderException e) {
-        return e.line >= 0 && (e.status == 400 || e.status == 409);
-    }
-
-    /** Craft outputs remain order lines; only their reserved materials become physical lines. */
-    private static final class CraftExpansion {
-        final Map<String, Line> lines = new LinkedHashMap<>();
-        final Map<String, Integer> firstIndex = new HashMap<>();
-        final Map<String, Long> materials = new LinkedHashMap<>();
-        final JsonArray plans = new JsonArray();
-
-        void add(Line line, int at) {
-            var existing = lines.get(line.ref());
-            lines.put(
-                    line.ref(),
-                    existing == null
-                            ? line
-                            : new Line(line.type(), line.key(), Math.addExact(existing.count(), line.count())));
-            firstIndex.merge(line.ref(), at, Math::min);
-        }
-    }
-
-    /**
-     * Resolve recipe alternatives before reserving any stock. Direct lines and
-     * kits take precedence; multiple craft requests share one diminishing pool.
-     * Only fresh, physical, base-ID ingredient slots can back a craft.
-     */
-    private CraftExpansion expandCrafts(
-            String server,
-            String stash,
-            KitExplosion exploded,
-            PhysicalReservations physical,
-            Set<PhysicalReservations.Root> held,
-            Map<String, Integer> firstIndex)
-            throws IOException, OrderException {
-        CraftExpansion result = new CraftExpansion();
-        boolean wantsCraft =
-                exploded.lines.values().stream().anyMatch(l -> l.type().equals("craft"));
-        for (var l : exploded.lines.values())
-            if (!l.type().equals("craft")) result.add(l, exploded.firstIndex.get(l.ref()));
-        if (!wantsCraft) return result;
-        if (!physical.hasSnapshots() || !index.craftingReady(server, stash))
-            throw new OrderException(409, "Crafting requires a ready agent, table and fresh physical stock", -1);
-
-        Map<String, Long> pool = new HashMap<>(CraftingCatalog.eligiblePool(physical.available(held)));
-        // Already ordered direct components must not also be used as craft inputs.
-        for (Line l : result.lines.values())
-            if (l.type().equals("item") && pool.containsKey(l.key()))
-                pool.put(l.key(), Math.max(0, pool.get(l.key()) - l.count()));
-
-        for (var l : exploded.lines.values()) {
-            if (!l.type().equals("craft")) continue;
-            int at = firstIndex.get(l.ref());
-            if (l.count() > CraftingCatalog.MAX_PREVIEW)
-                throw new OrderException(400, "Too many craftable items in one order", at);
-            var preview = CraftingCatalog.plan(l.key(), (int) l.count(), pool);
-            if (!preview.ok() || preview.plan().count() < l.count())
-                throw new OrderException(409, "Not enough verified ingredients to craft " + l.key(), at);
-
-            var step = new JsonObject();
-            step.addProperty("item", l.key());
-            step.addProperty("count", l.count());
-            step.addProperty("recipeVersion", CraftingCatalog.VERSION);
-            step.add("materials", Json.GSON.toJsonTree(preview.plan().take()));
-            var recipeSteps = new JsonArray();
-            for (var one : preview.plan().steps()) {
-                var rs = new JsonObject();
-                rs.addProperty("recipe", one.recipe().id());
-                rs.addProperty("crafts", one.crafts());
-                recipeSteps.add(rs);
-            }
-            step.add("steps", recipeSteps);
-            result.plans.add(step);
-            try {
-                CraftingCatalog.consume(pool, preview.plan().take());
-            } catch (IllegalArgumentException invalid) {
-                throw new OrderException(409, "Crafting material reservation changed", at);
-            }
-            for (var need : preview.plan().take().entrySet()) {
-                result.materials.merge(need.getKey(), (long) need.getValue(), Math::addExact);
-                result.add(new Line("item", need.getKey(), need.getValue()), at);
-            }
-        }
-        return result;
-    }
-
-    private Order commitOrder(
-            String server,
-            String stash,
-            Map<String, Line> merged,
-            Map<String, Integer> firstIndex,
-            KitExplosion exploded,
-            CraftExpansion crafting,
-            JsonObject names,
-            JsonObject packageLabel,
-            String byId,
-            String byName,
-            String organizationId,
-            OrderIntent intent,
-            String receiptKey,
-            String fingerprint,
-            Order retryOf,
-            boolean needsApproval,
-            String recipient,
-            IndexStore.OrderCounts counts,
-            PhysicalReservations physical,
-            Set<PhysicalReservations.Root> held,
-            boolean allowStale,
-            boolean deferReservation)
-            throws OrderException, IOException {
-        var allocations = !deferReservation && physical.hasSnapshots()
-                ? physical.allocate(crafting.lines.values(), held, crafting.firstIndex, allowStale)
-                : null;
-        Book b = book(server, stash);
-        synchronized (b) {
-            long open = b.orders.stream().filter(o -> OPEN.contains(o.status)).count();
-            if (open >= MAX_OPEN)
-                throw new OrderException(400, "too many open orders for this stash (limit " + MAX_OPEN + ")", -1);
-            Map<String, Long> reserved = reserved(b);
-            for (Line l : crafting.lines.values()) {
-                int at = crafting.firstIndex.get(l.ref());
-                long total = counts.total(l.type, l.key);
-                if (deferReservation) continue;
-                if (total < 0 && allocations == null) throw new OrderException(400, "not in the stash: " + l.key, at);
-                long available = Math.max(0, total - reserved.getOrDefault(l.ref(), 0L));
-                if (allocations == null && l.count > available) {
-                    throw new OrderException(
-                            400, "only " + available + " available for " + l.key + " (asked for " + l.count + ")", at);
-                }
-            }
-            long shulkers = shulkersNeeded(merged.values(), counts);
-            if (shulkers > MAX_SHULKERS) {
-                throw new OrderException(
-                        400,
-                        "too big: this order needs " + shulkers + " shulkers, and one order can fill at most "
-                                + MAX_SHULKERS + " (one double chest)",
-                        -1);
-            }
-            long now = clock.getAsLong();
-            Order o = new Order();
-            o.id = newId();
-            o.server = server;
-            o.stash = stash;
-            o.organizationId = organizationId;
-            o.intent = intent;
-            o.approval = needsApproval ? Approval.PENDING : Approval.DIRECT;
-            o.verifiedRecipient = recipient;
-            o.lines = new ArrayList<>(merged.values());
-            o.craftPlans = crafting.plans.isEmpty() ? null : crafting.plans.deepCopy();
-            o.craftMaterials = crafting.materials.isEmpty() ? null : Map.copyOf(crafting.materials);
-            o.names = names == null ? null : names.deepCopy();
-            o.packageLabel = packageLabel == null ? null : packageLabel.deepCopy();
-            o.packageTotal = (int) shulkers;
-            o.allocations = allocations;
-            // Pinned kit layouts: the bot packs exactly these slots even if the
-            // template changes or is deleted after submit.
-            if (!exploded.snapshots.isEmpty()) o.kits = new LinkedHashMap<>(exploded.snapshots);
-            // A stale-backed reservation is an explicitly queued offline order, never a
-            // verified reservation: visibly marked in every API response, and unclaimable
-            // until a fresh observation re-verifies it (claim path stays fresh-only).
-            o.queuedOffline = allowStale;
-            o.reservationDeferred = deferReservation;
-            o.sourceGuards = deferReservation ? null : sourceGuards(server, stash);
-            o.createdAt = now;
-            o.updatedAt = now;
-            o.status = "pending";
-            o.stage = OrderStage.CREATED;
-            if (!deferReservation) o.advance(OrderStage.RESERVED);
-            else o.message = "Queued after an active physical order; stock is NOT reserved until verified at claim.";
-            o.placedById = byId;
-            o.placedByName = byId == null ? null : byName;
-            o.record(
-                    deferReservation ? "order.queue.wait" : retryOf == null ? "order.reserve" : "order.retry.reserve",
-                    byId == null ? Users.OWNER_ID : byId,
-                    now);
-            b.orders.add(o);
-            if (retryOf != null) retryOf.retriedAs = o.id;
-            if (receiptKey != null) b.receipts.put(receiptKey, new Receipt(fingerprint, o.toJson()));
-            try {
-                save(b);
-            } catch (IOException failure) {
-                b.orders.remove(o);
-                if (retryOf != null) retryOf.retriedAs = null;
-                if (receiptKey != null) b.receipts.remove(receiptKey);
-                throw failure;
-            }
-            byOrderId.put(o.id, b);
-            return o;
-        }
-    }
-
     /**
      * POST /api/v1/orders/{id}/retry: a new pending order with the old one's server, stash, lines and names, checked
      * like any new order. Only failed and cancelled orders (409 otherwise, 404 for an unknown id). The old one stays.
      */
     Order retry(String id) throws OrderException, IOException {
-        return retry(id, null, null);
+        return lifecycle.retry(id);
     }
 
     /** The same; the new order is recorded as placed by byId (who pressed Retry). */
     Order retry(String id, String byId, String byName) throws OrderException, IOException {
-        return retry(id, byId, byName, true, null, GuildProfile.ApprovalPolicy.DIRECT, ignored -> null);
+        return lifecycle.retry(id, byId, byName);
     }
 
     Order retry(
@@ -1687,192 +1081,20 @@ final class OrderStore {
             GuildProfile.ApprovalPolicy policy,
             RecipientResolver recipient)
             throws OrderException, IOException {
-        synchronized (index) {
-            Book book = byOrderId.get(id);
-            if (book == null) throw new OrderException(404, "no such order", -1);
-            synchronized (book) {
-                Order old = find(book, id);
-                if (old == null) throw new OrderException(404, "no such order", -1);
-                if (old.stage() != OrderStage.FAILED && old.stage() != OrderStage.CANCELLED) {
-                    throw new OrderException(409, "Only failed or cancelled orders can be retried", -1);
-                }
-                if (!mayOrderForGuild && old.intent.requiresGuildPermission()) {
-                    throw new OrderException(
-                            403, "Your role cannot retry an order for the guild or another recipient", -1);
-                }
-                if (old.retriedAs != null) {
-                    throw new OrderException(409, "This order was already placed again as " + old.retriedAs, -1);
-                }
-                if (holdsPhysical(old)) {
-                    var holders = ordersOnServer(book.server).stream()
-                            .filter(OrderStore::holdsPhysical)
-                            .map(order -> order.id)
-                            .sorted()
-                            .limit(6)
-                            .toList();
-                    throw new OrderException(
-                            409,
-                            "Wait for verified release of the previous reservation (still held by: "
-                                    + String.join(", ", holders)
-                                    + ")",
-                            -1);
-                }
-                return placeWithObservationLock(
-                        book.server,
-                        book.stash,
-                        old.lines,
-                        old.names,
-                        old.packageLabel,
-                        byId,
-                        byName,
-                        old.organizationId == null ? organizationId : old.organizationId,
-                        old.intent,
-                        null,
-                        null,
-                        old,
-                        policy.requiresApproval(old.intent),
-                        recipient.resolve(old.intent),
-                        false);
-            }
-        }
+        return lifecycle.retry(id, byId, byName, mayOrderForGuild, organizationId, policy, recipient);
     }
 
-    /**
-     * Validates and normalizes an order's names (PROTOCOL.md, "Additions: shulker names"). Returns null for no naming
-     * (absent, null, a blank "all" name, or an "each" list that is all blank), otherwise {mode: "all", name} or
-     * {mode: "each", names: [...]} with every name trimmed, blank entries as "", and trailing blank entries dropped.
-     * Throws 400 for a wrong type, an unknown mode, a name over 50 characters or with § or a control character, or
-     * an "each" list of more than 54 entries.
-     */
-    static JsonObject normalizeNames(JsonElement e) throws OrderException {
-        if (e == null || e.isJsonNull()) return null;
-        if (!e.isJsonObject()) throw new OrderException(400, "names must be an object or null", -1);
-        JsonObject o = e.getAsJsonObject();
-        JsonElement mode = o.get("mode");
-        String m = mode != null
-                        && mode.isJsonPrimitive()
-                        && mode.getAsJsonPrimitive().isString()
-                ? mode.getAsString()
-                : null;
-        if ("all".equals(m)) {
-            JsonElement n = o.get("name");
-            if (n == null || !n.isJsonPrimitive() || !n.getAsJsonPrimitive().isString()) {
-                throw new OrderException(400, "names.name must be a string", -1);
-            }
-            String name = checkName(n.getAsString(), "names.name");
-            if (name.isEmpty()) return null;
-            JsonObject out = new JsonObject();
-            out.addProperty("mode", "all");
-            out.addProperty("name", name);
-            return out;
-        }
-        if ("each".equals(m)) {
-            JsonElement list = o.get("names");
-            if (list == null || !list.isJsonArray()) throw new OrderException(400, "names.names must be an array", -1);
-            JsonArray a = list.getAsJsonArray();
-            if (a.size() > MAX_SHULKERS)
-                throw new OrderException(400, "names.names has more than " + MAX_SHULKERS + " entries", -1);
-            List<String> names = new ArrayList<>();
-            int last = -1;
-            for (int i = 0; i < a.size(); i++) {
-                JsonElement n = a.get(i);
-                String name;
-                if (n.isJsonNull()) {
-                    name = "";
-                } else if (n.isJsonPrimitive() && n.getAsJsonPrimitive().isString()) {
-                    name = checkName(n.getAsString(), "names.names[" + i + "]");
-                } else {
-                    throw new OrderException(400, "names.names[" + i + "] must be a string", -1);
-                }
-                names.add(name);
-                if (!name.isEmpty()) last = i;
-            }
-            if (last < 0) return null;
-            JsonArray outList = new JsonArray();
-            for (int i = 0; i <= last; i++) outList.add(names.get(i));
-            JsonObject out = new JsonObject();
-            out.addProperty("mode", "each");
-            out.add("names", outList);
-            return out;
-        }
-        throw new OrderException(400, "names.mode must be \"all\" or \"each\"", -1);
-    }
-
-    /**
-     * Validates and normalizes a W-064 package label: the user-chosen text part of the automatic
-     * {@code "WeSort (X/Y) - <text>"} name. Returns null for an absent label (the caller then uses the
-     * default "Beställning"), otherwise {@code {mode:"all", text}} or {@code {mode:"each", texts:[...]}}.
-     */
-    static JsonObject normalizePackageLabel(JsonElement e) throws OrderException {
-        if (e == null || e.isJsonNull()) return null;
-        if (!e.isJsonObject()) throw new OrderException(400, "packageLabel must be an object or null", -1);
-        try {
-            return PackageLabel.normalize(e.getAsJsonObject());
-        } catch (IllegalArgumentException invalid) {
-            throw new OrderException(400, invalid.getMessage(), -1);
-        }
-    }
-
-    /** The trimmed name ("" when blank), or 400 when it is too long or has § or a control character. */
-    private static String checkName(String raw, String field) throws OrderException {
-        String name = raw.strip();
-        if (name.length() > MAX_NAME)
-            throw new OrderException(400, field + " is longer than " + MAX_NAME + " characters", -1);
-        for (int i = 0; i < name.length(); i++) {
-            char c = name.charAt(i);
-            if (c == '§') throw new OrderException(400, field + " can't contain §", -1);
-            if (Character.isISOControl(c))
-                throw new OrderException(400, field + " can't contain control characters", -1);
-            // Invisible or direction-changing characters (bidi overrides, zero-width, line separators) and broken
-            // surrogates
-            int type = Character.getType(c);
-            if (type == Character.FORMAT
-                    || type == Character.LINE_SEPARATOR
-                    || type == Character.PARAGRAPH_SEPARATOR
-                    || (type == Character.SURROGATE
-                            && !(Character.isHighSurrogate(c)
-                                    && i + 1 < name.length()
-                                    && Character.isLowSurrogate(name.charAt(i + 1)))
-                            && !(Character.isLowSurrogate(c)
-                                    && i > 0
-                                    && Character.isHighSurrogate(name.charAt(i - 1))))) {
-                throw new OrderException(400, field + " can't contain invisible or direction-changing characters", -1);
-            }
-        }
-        return name;
-    }
-
-    /**
-     * How many shulkers the addon's packer (Order.pack) needs for these lines: every item line takes
-     * ceil(count / maxStack) slots, the slots of all lines fill 27-slot shulkers in sequence, and every shulker line
-     * and empty-shulker line (an item line for a shulker box) adds one shulker per unit.
-     */
-    static long shulkersNeeded(Iterable<Line> lines, IndexStore.OrderCounts counts) {
-        long slots = 0;
-        long units = 0;
-        for (Line l : lines) {
-            // One kit is exactly one box, however its slots are filled.
-            if (l.type.equals("kit")) {
-                units += l.count;
-            } else if (l.type.equals("shulker") || counts.isShulkerBoxKey(l.key)) {
-                units += l.count;
-            } else {
-                // Craft-only results can be absent from the index. Without a
-                // verified stack-size sample assume 1, never undercount boxes.
-                long max = l.type.equals("craft") ? 1 : counts.maxStack(l.key);
-                slots += (l.count + max - 1) / max;
-            }
-        }
-        return units + (slots + SHULKER_SLOTS - 1) / SHULKER_SLOTS;
-    }
-
-    private String newId() {
-        while (true) {
-            byte[] bytes = new byte[6];
-            RANDOM.nextBytes(bytes);
-            String id = "o-" + HexFormat.of().formatHex(bytes);
-            if (!byOrderId.containsKey(id)) return id;
-        }
+    Order retry(
+            String id,
+            String byId,
+            String byName,
+            boolean mayOrderForGuild,
+            String organizationId,
+            GuildProfile.ApprovalPolicy policy,
+            RecipientResolver recipient,
+            AuditLog.Batch audit)
+            throws OrderException, IOException {
+        return lifecycle.retry(id, byId, byName, mayOrderForGuild, organizationId, policy, recipient, audit);
     }
 
     /** No positive units: nothing verified (or nothing at all). Ported from PR #89. */
@@ -1888,7 +1110,7 @@ final class OrderStore {
         // startup. Physical holds are *not* released by this status transition.
         synchronized (index) {
             try {
-                autoHeal(server);
+                lifecycle.autoHeal(server);
             } catch (IOException ignored) {
                 // Keep the previous durable state when disk/source verification fails.
             }
@@ -1901,7 +1123,7 @@ final class OrderStore {
             synchronized (b) {
                 for (int i = b.orders.size() - 1; i >= 0; i--)
                     list.add(b.orders.get(i).toJson());
-                reserved = reserved(b);
+                reserved = policy.reserved(b);
             }
         }
         out.add("orders", list);
@@ -2013,105 +1235,39 @@ final class OrderStore {
         }
     }
 
+    /** Who placed an order: Users.OWNER_ID for old orders without a record; null for an unknown order. */
     /**
      * Removes every finished order (delivered, failed, cancelled) of a stash and returns how many. Open orders are
      * never touched: they hold reservations and the bot may be working on them.
      */
     int clearFinished(String server, String stash) throws IOException {
-        synchronized (index) {
-            return clearFinishedWithObservationLock(server, stash);
-        }
+        return lifecycle.clearFinished(server, stash);
     }
 
-    private int clearFinishedWithObservationLock(String server, String stash) throws IOException {
-        Book b = books.get(new IndexStore.StashKey(server, stash));
-        if (b == null) return 0;
-        synchronized (b) {
-            var removable = b.orders.stream()
-                    .filter(o -> o.stage().archiveable() && !holdsPhysical(o))
-                    .toList();
-            if (removable.isEmpty()) return 0;
-            var before = List.copyOf(b.orders);
-            var archiveBefore = List.copyOf(b.archived);
-            b.orders.removeAll(removable);
-            b.archived.addAll(removable);
-            trimArchive(b);
-            try {
-                save(b);
-            } catch (IOException failure) {
-                b.orders.clear();
-                b.orders.addAll(before);
-                b.archived.clear();
-                b.archived.addAll(archiveBefore);
-                throw failure;
-            }
-            removable.forEach(o -> byOrderId.remove(o.id, b));
-            return removable.size();
-        }
+    int clearFinished(String server, String stash, AuditLog.Batch audit) throws IOException {
+        return lifecycle.clearFinished(server, stash, audit);
     }
 
     ApprovalDecision review(String id, boolean approve, String actor) throws OrderException, IOException {
-        synchronized (index) {
-            Book book = byOrderId.get(id);
-            if (book == null) throw new OrderException(404, "no such order", -1);
-            synchronized (book) {
-                Order before = find(book, id);
-                if (before == null) throw new OrderException(404, "no such order", -1);
-                Approval decision = approve ? Approval.APPROVED : Approval.REJECTED;
-                if (before.approval == decision) return new ApprovalDecision(before, false);
-                if (!before.status.equals("pending") || before.approval != Approval.PENDING) {
-                    throw new OrderException(409, "This order is no longer awaiting approval", -1);
-                }
-                Order next = Order.fromJson(before.snapshot());
-                next.approval = decision;
-                next.decidedBy = actor;
-                next.decidedAt = next.updatedAt = clock.getAsLong();
-                if (!approve) {
-                    next.advance(OrderStage.CANCELLED);
-                    next.status = "cancelled";
-                }
-                next.record(approve ? "order.approve" : "order.reject", actor, next.updatedAt);
-                update(book, before, next);
-                return new ApprovalDecision(next, true);
-            }
-        }
+        return lifecycle.review(id, approve, actor);
+    }
+
+    ApprovalDecision review(String id, boolean approve, String actor, AuditLog.Batch audit)
+            throws OrderException, IOException {
+        return lifecycle.review(id, approve, actor, audit);
     }
 
     /** pending -> cancelled now; accepted/in_progress -> cancelRequested; finished -> 409. */
     Order cancel(String id) throws OrderException, IOException {
-        return cancel(id, Users.OWNER_ID);
+        return lifecycle.cancel(id);
     }
 
     Order cancel(String id, String actor) throws OrderException, IOException {
-        synchronized (index) {
-            return cancelWithObservationLock(id, actor);
-        }
+        return lifecycle.cancel(id, actor);
     }
 
-    private Order cancelWithObservationLock(String id, String actor) throws OrderException, IOException {
-        Book b = byOrderId.get(id);
-        if (b == null) throw new OrderException(404, "no such order", -1);
-        // Every touch heals: a legacy needs_reconciliation order migrates to the
-        // automatic rollback protocol here, not only on dashboard polls.
-        autoHeal(b.server);
-        synchronized (b) {
-            Order previous = find(b, id);
-            if (previous == null) throw new OrderException(404, "no such order", -1);
-            Order o = Order.fromJson(previous.snapshot());
-            if (FINISHED.contains(o.status)) throw new OrderException(409, "order is already " + o.status, -1);
-            if (o.status.equals("pending")) {
-                o.advance(OrderStage.CANCELLED);
-                o.status = "cancelled";
-                o.message = "Cancelled before the bot started.";
-            } else if (!o.cancelRequested) {
-                o.cancelRequested = true;
-                o.cancelRequestedAt = clock.getAsLong();
-            } else return previous;
-            o.updatedAt = clock.getAsLong();
-            o.record(o.cancelRequested ? "order.cancel.request" : "order.cancel", actor, o.updatedAt);
-            update(b, previous, o);
-            return o;
-        }
+    Order cancel(String id, String actor, AuditLog.Batch audit) throws OrderException, IOException {
+        return lifecycle.cancel(id, actor, audit);
     }
 
     /**
@@ -2120,45 +1276,15 @@ final class OrderStore {
      * 409 when no cancel was requested or the order isn't held by the bot.
      */
     Order forceCancel(String id) throws OrderException, IOException {
-        return forceCancel(id, Users.OWNER_ID);
+        return lifecycle.forceCancel(id);
     }
 
     Order forceCancel(String id, String actor) throws OrderException, IOException {
-        synchronized (index) {
-            return forceCancelWithObservationLock(id, actor);
-        }
+        return lifecycle.forceCancel(id, actor);
     }
 
-    private Order forceCancelWithObservationLock(String id, String actor) throws OrderException, IOException {
-        Book b = byOrderId.get(id);
-        if (b == null) throw new OrderException(404, "no such order", -1);
-        // Every touch heals, so a legacy needs_reconciliation order is already
-        // migrating to RECOVERING by the time the checks below run.
-        autoHeal(b.server);
-        synchronized (b) {
-            Order previous = find(b, id);
-            if (previous == null) throw new OrderException(404, "no such order", -1);
-            Order o = Order.fromJson(previous.snapshot());
-            if (FINISHED.contains(o.status)) throw new OrderException(409, "order is already " + o.status, -1);
-            if (o.allocations != null) {
-                throw new OrderException(
-                        409,
-                        "The agent must finish automatic physical rollback first;"
-                                + " the owner can release it unconditionally via owner-force",
-                        -1);
-            }
-            if (!o.cancelRequested || o.status.equals("pending")) {
-                throw new OrderException(
-                        409, "request a cancel first; force cancel is for orders the bot hasn't confirmed", -1);
-            }
-            o.advance(OrderStage.CANCELLED);
-            o.status = "cancelled";
-            o.message = "cancelled from the website (bot didn't confirm)";
-            o.updatedAt = clock.getAsLong();
-            o.record("order.force-cancel", actor, o.updatedAt);
-            update(b, previous, o);
-            return o;
-        }
+    Order forceCancel(String id, String actor, AuditLog.Batch audit) throws OrderException, IOException {
+        return lifecycle.forceCancel(id, actor, audit);
     }
 
     /**
@@ -2168,29 +1294,13 @@ final class OrderStore {
      * Only exposed through the owner-only route; nothing else in the codebase calls this.
      */
     Order ownerForceCancel(String id, String actor) throws OrderException, IOException {
-        synchronized (index) {
-            Book b = byOrderId.get(id);
-            if (b == null) throw new OrderException(404, "no such order", -1);
-            synchronized (b) {
-                Order previous = find(b, id);
-                if (previous == null) throw new OrderException(404, "no such order", -1);
-                if (previous.stage().archiveable())
-                    throw new OrderException(409, "order is already " + previous.status, -1);
-                Order o = Order.fromJson(previous.snapshot());
-                // Deliberately bypasses advance(): PICKUP_READY has no FAILED edge, and this
-                // path must terminate every non-terminal stage, allocations or not.
-                o.stage = OrderStage.FAILED;
-                o.status = "failed";
-                o.releasedAt = o.updatedAt = clock.getAsLong();
-                o.message = "Released by the owner without bot confirmation; verify the stash by hand.";
-                o.record("order.owner-force", actor, o.updatedAt);
-                update(b, previous, o);
-                return o;
-            }
-        }
+        return lifecycle.ownerForceCancel(id, actor);
     }
 
-    /** Who placed an order: Users.OWNER_ID for old orders without a record; null for an unknown order. */
+    Order ownerForceCancel(String id, String actor, AuditLog.Batch audit) throws OrderException, IOException {
+        return lifecycle.ownerForceCancel(id, actor, audit);
+    }
+
     String placedBy(String id) {
         Book b = byOrderId.get(id);
         if (b == null) return null;
@@ -2254,7 +1364,7 @@ final class OrderStore {
         return out;
     }
 
-    private static Order find(Book b, String id) {
+    static Order find(Book b, String id) {
         for (Order o : b.orders) if (o.id.equals(id)) return o;
         return null;
     }
@@ -2281,37 +1391,10 @@ final class OrderStore {
         return out;
     }
 
-    private JsonObject sourceGuards(String server, String stash) throws IOException {
-        var out = new JsonObject();
-        for (var source : index.stock().sources())
-            if (source.server().equals(server)
-                    && source.stash().equals(stash)
-                    && source.status().equals("FRESH")
-                    && source.value().has("slotFingerprint"))
-                out.add(source.value().get("id").getAsString(), source.value().get("slotFingerprint"));
-        return out.isEmpty() ? null : out;
-    }
-
-    private boolean matchesSources(Order order) throws IOException {
-        if (order.allocations != null) {
-            return PhysicalReservations.read(index.stock(), order.server, order.stash)
-                    .matches(order.allocations);
-        }
-        if (order.sourceGuards == null) return true; // Earlier protocol orders retain their existing aggregate checks.
-        var now = sourceGuards(order.server, order.stash);
-        if (now == null) return false;
-        for (var expected : order.sourceGuards.entrySet())
-            if (!expected.getValue().equals(now.get(expected.getKey()))) return false;
-        return true;
-    }
-
-    private static boolean isExecuting(Order order) {
-        return order.status.equals("accepted") || order.status.equals("in_progress");
-    }
-
     boolean hasActiveWork(String server, String agent) {
         return agent != null
-                && ordersOnServer(server).stream().anyMatch(order -> agent.equals(order.agent) && isExecuting(order));
+                && ordersOnServer(server).stream()
+                        .anyMatch(order -> agent.equals(order.agent) && policy.isExecuting(order));
     }
 
     Order claim(String server, String stash) throws IOException {
@@ -2349,7 +1432,7 @@ final class OrderStore {
                     result.addProperty("resumeComplete", true);
                     return result;
                 }
-                if (!isExecuting(order)) return null;
+                if (!policy.isExecuting(order)) return null;
                 if (order.stage() != OrderStage.RECOVERING) {
                     var updated = Order.fromJson(order.snapshot());
                     try {
@@ -2359,7 +1442,7 @@ final class OrderStore {
                     }
                     updated.status = "in_progress";
                     updated.cancelRequested = true;
-                    updated.cancelRequestedAt = updated.updatedAt = clock.getAsLong();
+                    updated.cancelRequestedAt = updated.updatedAt = clock.millis();
                     updated.phase = "returning items to stash";
                     updated.message = "Agent restarted; automatically returning interrupted order";
                     updated.record("order.resume.rollback", agent, updated.updatedAt);
@@ -2404,11 +1487,11 @@ final class OrderStore {
         try {
             PhysicalReservations physical = PhysicalReservations.read(index.stock(), book.server, book.stash);
             Set<PhysicalReservations.Root> held = heldRoots(book.server);
-            var exploded = new KitExplosion();
+            var exploded = new OrderPlacementService.KitExplosion();
             // Components come from the order's pinned kit templates, not today's
             // editable kit definitions. Craft output lines are re-planned from
             // newly verified ingredients only after the current work has ended.
-            for (Line line : explodeOrderLines(queued)) {
+            for (Line line : OrderPlacementService.explodeOrderLines(queued)) {
                 Line previous = exploded.lines.get(line.ref());
                 exploded.lines.put(
                         line.ref(),
@@ -2422,8 +1505,8 @@ final class OrderStore {
                 exploded.lines.put(line.ref(), line);
                 exploded.firstIndex.put(line.ref(), 0);
             }
-            CraftExpansion crafting =
-                    expandCrafts(book.server, book.stash, exploded, physical, held, exploded.firstIndex);
+            OrderPlacementService.CraftExpansion crafting =
+                    placement.expandCrafts(book.server, book.stash, exploded, physical, held, exploded.firstIndex);
             List<PhysicalReservations.Allocation> allocations = null;
             if (physical.hasSnapshots()) {
                 // Physical and old aggregate reservations may not be mixed.
@@ -2437,7 +1520,7 @@ final class OrderStore {
                 if (!held.isEmpty()
                         || crafting.lines.values().stream()
                                 .anyMatch(l -> l.type().equals("shulker"))) return null;
-                Map<String, Long> reserved = reserved(book);
+                Map<String, Long> reserved = policy.reserved(book);
                 for (Line line : crafting.lines.values()) {
                     long total = fresh.total(line.type(), line.key());
                     if (total < 0 || line.count() > Math.max(0, total - reserved.getOrDefault(line.ref(), 0L)))
@@ -2448,12 +1531,12 @@ final class OrderStore {
             ready.allocations = allocations;
             ready.craftPlans = crafting.plans.isEmpty() ? null : crafting.plans.deepCopy();
             ready.craftMaterials = crafting.materials.isEmpty() ? null : Map.copyOf(crafting.materials);
-            ready.sourceGuards = sourceGuards(book.server, book.stash);
+            ready.sourceGuards = policy.sourceGuards(book.server, book.stash);
             ready.reservationDeferred = false;
             ready.deferredBlockedAt = 0;
             ready.advance(OrderStage.RESERVED);
             ready.message = null;
-            ready.updatedAt = clock.getAsLong();
+            ready.updatedAt = clock.millis();
             ready.record("order.reserve.from-queue", Users.OWNER_ID, ready.updatedAt);
             update(book, queued, ready);
             return ready;
@@ -2475,7 +1558,7 @@ final class OrderStore {
                 || queued.agent != null
                 || queued.stage() != OrderStage.CREATED
                 || index.stock().unsettledPhysicalOrder(queued.id)) return;
-        long now = clock.getAsLong();
+        long now = clock.millis();
         if (queued.deferredBlockedAt > 0
                 && (queued.queuedOffline || now - queued.deferredBlockedAt < DEFERRED_RETRY_AFTER_MS)) return;
         Order next = Order.fromJson(queued.snapshot());
@@ -2499,11 +1582,11 @@ final class OrderStore {
     private Order claimWithObservationLock(String server, String stash, String agent) throws IOException {
         // Every touch heals: timed-out rollbacks, silent packed orders and never-claimed
         // reservations resolve here too, not only on dashboard polls.
-        autoHeal(server);
+        lifecycle.autoHeal(server);
         var counts = index.orderCounts(server, stash);
         if (counts == null || index.automation().current(server) != null) return null;
         for (var running : ordersOnServer(server)) {
-            if (!isExecuting(running)) continue;
+            if (!policy.isExecuting(running)) continue;
             boolean sameAgent = agent != null && agent.equals(running.agent);
             if ((running.allocations != null || sameAgent) && (!sameAgent || !stash.equals(running.stash))) return null;
         }
@@ -2511,7 +1594,7 @@ final class OrderStore {
         if (b == null) return null;
         synchronized (b) {
             for (Order order : b.orders) {
-                if (isExecuting(order)) return orderSourcesReady(order, counts, agent) ? order : null;
+                if (policy.isExecuting(order)) return policy.orderSourcesReady(order, counts, agent) ? order : null;
             }
             for (Order original : List.copyOf(b.orders)) {
                 if (!original.status.equals("pending") || original.approval == Approval.PENDING) continue;
@@ -2525,7 +1608,7 @@ final class OrderStore {
                         continue;
                     }
                 }
-                if (!orderSourcesReady(order, counts, agent)) {
+                if (!policy.orderSourcesReady(order, counts, agent)) {
                     // A RESERVED aggregate order whose source fingerprints drifted was
                     // skipped silently forever: no stamp, no re-reservation, no expiry.
                     // No human can intervene, so the server heals itself: fresh stock
@@ -2538,9 +1621,9 @@ final class OrderStore {
                             && order.sourceGuards != null
                             && order.lines.stream().allMatch(line -> counts.total(line.type, line.key) >= line.count)) {
                         JsonObject prev = order.sourceGuards;
-                        order.sourceGuards = sourceGuards(server, stash);
-                        if (orderSourcesReady(order, counts, agent)) {
-                            long now = clock.getAsLong();
+                        order.sourceGuards = policy.sourceGuards(server, stash);
+                        if (policy.orderSourcesReady(order, counts, agent)) {
+                            long now = clock.millis();
                             order.updatedAt = now;
                             order.message = "Re-reserved automatically: sources changed since reservation.";
                             order.record("order.reserve.refresh", agent, now);
@@ -2555,7 +1638,7 @@ final class OrderStore {
                                 && order.claimedAt == 0
                                 && order.deferredBlockedAt == 0
                                 && order.stage() != OrderStage.RECOVERING) {
-                            long now = clock.getAsLong();
+                            long now = clock.millis();
                             order.deferredBlockedAt = now;
                             order.updatedAt = now;
                             order.message = "Sources changed since reservation; awaiting automatic re-reservation.";
@@ -2569,7 +1652,7 @@ final class OrderStore {
                 if (!order.stage().allows(OrderStage.PACKING)) continue;
                 order.stage = OrderStage.PACKING;
                 order.status = "accepted";
-                order.claimedAt = order.updatedAt = clock.getAsLong();
+                order.claimedAt = order.updatedAt = clock.millis();
                 // Legacy aggregate claims may omit identity. An authenticated agent keeps one claim across its stashes.
                 order.agent = order.allocations == null && "local".equals(agent) ? null : agent;
                 order.record("order.claim", agent, order.claimedAt);
@@ -2588,18 +1671,6 @@ final class OrderStore {
             }
             return null;
         }
-    }
-
-    private boolean orderSourcesReady(Order order, IndexStore.OrderCounts counts, String agent) throws IOException {
-        if (order.agent != null && !order.agent.equals(agent)) return false;
-        // A recovering agent must be allowed to retrieve its existing items
-        // even after source fingerprints changed during the interruption.
-        if (order.stage() == OrderStage.RECOVERING) return order.agent != null && order.agent.equals(agent);
-        if (order.allocations == null) {
-            return matchesSources(order)
-                    && order.lines.stream().allMatch(line -> counts.total(line.type, line.key) >= line.count);
-        }
-        return agent != null && matchesSources(order);
     }
 
     /** A status report from the bot. Fields are validated by the route; the move is checked here. */
@@ -2653,11 +1724,11 @@ final class OrderStore {
             report.add("result", result == null ? JsonNull.INSTANCE : result);
             // These UUIDs are a physical side effect of the report and MUST be bound to its receipt.
             report.add("deliveredUuids", deliveredUuids == null ? new JsonArray() : deliveredUuids.deepCopy());
-            String fingerprint = hash(report);
-            String key =
-                    receiptKey("report:" + id, agent, reportId == null ? "content:" + fingerprint : "id:" + reportId);
-            var saved = previouslyReceived(key);
-            if (saved != null) return replay(saved, fingerprint);
+            String fingerprint = OrderPlacementService.hash(report);
+            String key = OrderPlacementService.receiptKey(
+                    "report:" + id, agent, reportId == null ? "content:" + fingerprint : "id:" + reportId);
+            var saved = placement.previouslyReceived(key);
+            if (saved != null) return OrderPlacementService.replay(saved, fingerprint);
             return statusWithObservationLock(
                     id, status, phase, progress, message, deliveredUuids, result, agent, key, fingerprint);
         }
@@ -2710,10 +1781,10 @@ final class OrderStore {
             if (next == OrderStage.RECOVERING) {
                 o.result = null;
                 o.cancelRequested = true;
-                if (o.cancelRequestedAt == 0) o.cancelRequestedAt = clock.getAsLong();
+                if (o.cancelRequestedAt == 0) o.cancelRequestedAt = clock.millis();
                 o.phase = "returning items to stash";
             } else if (result != null) o.result = result;
-            o.updatedAt = clock.getAsLong();
+            o.updatedAt = clock.millis();
             if (next != previous.stage()) o.record("order.transition", agent, o.updatedAt);
             StockLedger.BoxRelease release = next == OrderStage.PICKUP_READY ? boxRelease(o, deliveredUuids) : null;
             b.receipts.put(key, new Receipt(fingerprint, o.toJson()));
@@ -2744,14 +1815,6 @@ final class OrderStore {
             for (var allocation : order.allocations)
                 if (allocation.outer() && allocation.ref().startsWith("shulker:")) roots.add(allocation.root());
         return new StockLedger.BoxRelease(roots, uuids);
-    }
-
-    /** Crash-safe replay of registry removals committed to a saved order snapshot. */
-    private void finishPendingUuidDeregistrations(Book book, Order order) throws IOException {
-        if (order.pendingUuidDeregistrations == null || order.pendingUuidDeregistrations.isEmpty()) return;
-        Order cleared = Order.fromJson(order.snapshot());
-        cleared.pendingUuidDeregistrations = null;
-        update(book, order, cleared, boxRelease(order, order.pendingUuidDeregistrations));
     }
 
     private OrderStage reportedStage(Order order, String status, JsonObject result) throws IOException {
@@ -2827,7 +1890,7 @@ final class OrderStore {
                 throw new OrderException(409, "Manifest hash differs", -1);
             if (order.manifestAcknowledgedAt > 0) return new ManifestReceipt(order.manifestAcknowledgedAt, false);
             var updated = Order.fromJson(order.snapshot());
-            updated.manifestAcknowledgedAt = clock.getAsLong();
+            updated.manifestAcknowledgedAt = clock.millis();
             updated.record("order.manifest.confirm", scope.agent(), updated.manifestAcknowledgedAt);
             update(book, order, updated);
             return new ManifestReceipt(updated.manifestAcknowledgedAt, true);

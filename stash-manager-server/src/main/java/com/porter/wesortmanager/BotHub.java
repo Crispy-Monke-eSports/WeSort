@@ -15,7 +15,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.LongSupplier;
 
 final class BotHub {
     static final int MAX_BOTS = 64;
@@ -106,20 +105,20 @@ final class BotHub {
         }
     }
 
-    private final LongSupplier clock;
+    private final Clock clock;
     private final Map<String, Bot> bots = new LinkedHashMap<>();
     private int waiters;
 
     BotHub() {
-        this(System::currentTimeMillis);
+        this(Clock.system());
     }
 
-    BotHub(LongSupplier clock) {
+    BotHub(Clock clock) {
         this.clock = clock;
     }
 
     long now() {
-        return clock.getAsLong();
+        return clock.millis();
     }
 
     // ---------- bot side ----------

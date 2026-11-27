@@ -97,7 +97,7 @@ class UsersTest {
         sessions.load();
         users = new Users(data);
         users.load();
-        audit = new AuditLog(data);
+        audit = new AuditLog(store.stock(), data);
         audit.load();
         hub = new BotHub();
         WeSortManager.Routes r = WeSortManager.routes(
@@ -1054,8 +1054,8 @@ class UsersTest {
 
     @Test
     void addressFailuresAcrossAccountsLockTheAddressAndASuccessDoesntResetThem() {
-        java.util.concurrent.atomic.AtomicLong now = new java.util.concurrent.atomic.AtomicLong(0);
-        LoginLimiter l = new LoginLimiter(now::get);
+        FakeClock now = new FakeClock(0);
+        LoginLimiter l = new LoginLimiter(now);
         for (int i = 0; i < LoginLimiter.ADDRESS_FAILURES - 1; i++) {
             l.addressFailure("10.0.0.9", false);
             l.success("10.0.0.9|u-000000000001"); // a good login with another account in between

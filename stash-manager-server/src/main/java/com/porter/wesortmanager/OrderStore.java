@@ -7,11 +7,9 @@ import com.google.gson.JsonObject;
 import com.porter.wesort.data.PackageLabel;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,11 +45,8 @@ final class OrderStore {
         }
     }
 
-
-
     static OrderPlacementService.KitExplosion explodeKits(
-            Map<String, Line> merged, Map<String, Integer> firstIndex, KitTemplates kits)
-            throws OrderException {
+            Map<String, Line> merged, Map<String, Integer> firstIndex, KitTemplates kits) throws OrderException {
         return OrderPlacementService.explodeKits(merged, firstIndex, kits);
     }
 
@@ -432,7 +427,6 @@ final class OrderStore {
 
     record Submission(Order order, boolean created) {}
 
-
     /** Validates (against the current index and open orders), merges duplicate lines, stores and returns the order. */
     Order place(String server, String stash, List<Line> requested, JsonObject names)
             throws OrderException, IOException {
@@ -482,7 +476,16 @@ final class OrderStore {
             RecipientResolver recipient)
             throws OrderException, IOException {
         return placement.submit(
-                server, stash, requested, names, byId, byName, organizationId, intent, idempotencyKey, needsApproval,
+                server,
+                stash,
+                requested,
+                names,
+                byId,
+                byName,
+                organizationId,
+                intent,
+                idempotencyKey,
+                needsApproval,
                 recipient);
     }
 
@@ -612,8 +615,7 @@ final class OrderStore {
      * constructed inline, so the service split runs against an in-memory
      * {@link OrderRepository} without touching SQLite (Refs #142).
      */
-    OrderStore(
-            Path dataDir, IndexStore index, LongSupplier clock, EventPublisher events, OrderRepository repository) {
+    OrderStore(Path dataDir, IndexStore index, LongSupplier clock, EventPublisher events, OrderRepository repository) {
         this.dir = dataDir.resolve("orders");
         this.index = index;
         this.clock = clock;
@@ -717,11 +719,7 @@ final class OrderStore {
      * same repository transaction. A failed custody write rolls back the book
      * and the staged audit entries as well.
      */
-    void save(
-            Book b,
-            StockLedger.BoxRelease release,
-            AuditLog.Batch batch,
-            List<OrderRepository.SqliteWrite> extra)
+    void save(Book b, StockLedger.BoxRelease release, AuditLog.Batch batch, List<OrderRepository.SqliteWrite> extra)
             throws IOException {
         JsonObject root = new JsonObject();
         root.addProperty("server", b.server);
@@ -912,7 +910,6 @@ final class OrderStore {
         return totals;
     }
 
-
     /**
      * What the stash's open orders reserve, by line ref ("item:&lt;key&gt;" / "shulker:&lt;key&gt;"): the same numbers
      * {@link #place} subtracts from the index. A copy; empty when the stash has no orders.
@@ -935,9 +932,6 @@ final class OrderStore {
         }
         return found;
     }
-
-
-
 
     /** Timeout for unconfirmed cancellations and legacy, unallocated orders. */
     static final long AUTO_CANCEL_AFTER_MS = 10 * 60 * 1000;
@@ -964,8 +958,6 @@ final class OrderStore {
     }
 
     static final long DEFERRED_RETRY_AFTER_MS = 5 * 60 * 1000;
-
-
 
     /** UI-independent sweep; one indexed server is reconciled under its normal lock. */
     void selfHealAll() throws IOException {
@@ -1062,20 +1054,6 @@ final class OrderStore {
     }
 
     // ---------- browser ----------
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     /**
      * POST /api/v1/orders/{id}/retry: a new pending order with the old one's server, stash, lines and names, checked
@@ -1253,11 +1231,6 @@ final class OrderStore {
         }
     }
 
-
-
-
-
-
     /** Who placed an order: Users.OWNER_ID for old orders without a record; null for an unknown order. */
     /**
      * Removes every finished order (delivered, failed, cancelled) of a stash and returns how many. Open orders are
@@ -1414,12 +1387,10 @@ final class OrderStore {
         return out;
     }
 
-
-
-
     boolean hasActiveWork(String server, String agent) {
         return agent != null
-                && ordersOnServer(server).stream().anyMatch(order -> agent.equals(order.agent) && policy.isExecuting(order));
+                && ordersOnServer(server).stream()
+                        .anyMatch(order -> agent.equals(order.agent) && policy.isExecuting(order));
     }
 
     Order claim(String server, String stash) throws IOException {
@@ -1698,7 +1669,6 @@ final class OrderStore {
         }
     }
 
-
     /** A status report from the bot. Fields are validated by the route; the move is checked here. */
     Order status(String id, String status, String phase, JsonObject progress, String message, JsonObject result)
             throws OrderException, IOException {
@@ -1751,8 +1721,8 @@ final class OrderStore {
             // These UUIDs are a physical side effect of the report and MUST be bound to its receipt.
             report.add("deliveredUuids", deliveredUuids == null ? new JsonArray() : deliveredUuids.deepCopy());
             String fingerprint = OrderPlacementService.hash(report);
-            String key =
-                    OrderPlacementService.receiptKey("report:" + id, agent, reportId == null ? "content:" + fingerprint : "id:" + reportId);
+            String key = OrderPlacementService.receiptKey(
+                    "report:" + id, agent, reportId == null ? "content:" + fingerprint : "id:" + reportId);
             var saved = placement.previouslyReceived(key);
             if (saved != null) return OrderPlacementService.replay(saved, fingerprint);
             return statusWithObservationLock(
@@ -1842,7 +1812,6 @@ final class OrderStore {
                 if (allocation.outer() && allocation.ref().startsWith("shulker:")) roots.add(allocation.root());
         return new StockLedger.BoxRelease(roots, uuids);
     }
-
 
     private OrderStage reportedStage(Order order, String status, JsonObject result) throws IOException {
         if (status.equals("accepted") || status.equals("in_progress"))

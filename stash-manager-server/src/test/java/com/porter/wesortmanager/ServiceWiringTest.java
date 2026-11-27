@@ -38,12 +38,7 @@ class ServiceWiringTest {
             // No durable books yet; nothing to validate.
         }
 
-        public long commit(
-                String server,
-                String stash,
-                long expected,
-                JsonObject root,
-                StockLedger.BoxRelease release)
+        public long commit(String server, String stash, long expected, JsonObject root, StockLedger.BoxRelease release)
                 throws java.io.IOException {
             return commitExtended(server, stash, expected, root, release, List.of(), List.of());
         }
@@ -89,8 +84,8 @@ class ServiceWiringTest {
         var repo = new InMemoryOrderRepository();
         var orders = wiredOrders(store, time, repo);
 
-        var placed = orders.placement().place(
-                        "s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 2)), null);
+        var placed =
+                orders.placement().place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 2)), null);
         assertNotNull(placed.id);
         assertTrue(repo.commits.contains("s/a#0"));
         assertTrue(repo.books.containsKey("s\0a"));
@@ -124,8 +119,7 @@ class ServiceWiringTest {
         store.load();
         StockFixtures.put(store, index());
         var orders = wiredOrders(store, new AtomicLong(1_000L), new InMemoryOrderRepository());
-        orders.placement()
-                .place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 2)), null);
+        orders.placement().place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 2)), null);
 
         var icons = new IconService(
                 data, id -> null, v -> false, new GameIcons(data.resolve("icons"), false, false), false);

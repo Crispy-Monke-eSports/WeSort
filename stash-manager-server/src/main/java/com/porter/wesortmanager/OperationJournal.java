@@ -1,26 +1,25 @@
 package com.porter.wesortmanager;
-    
-    import com.google.gson.JsonArray;
-    import com.google.gson.JsonObject;
-    import com.google.gson.JsonParser;
-    import java.io.IOException;
-    import java.sql.Connection;
-    import java.sql.SQLException;
-    import java.util.ArrayList;
-    
-    /**
-     * PR3 Step 5: the physical-operation journal readers (staging proofs and
-     * settlement fences), moved verbatim out of StockLedger (no behavior change,
-     * Refs #142). Runs under the StockLedger lock.
-     */
-    final class OperationJournal {
-        private final StockLedger ledger;
-    
-        OperationJournal(StockLedger ledger) {
-            this.ledger = ledger;
-        }
-    
-        JsonObject stagingManifest(String server, String stash, String order, String agent, int packages)
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import java.io.IOException;
+import java.sql.SQLException;
+import java.util.ArrayList;
+
+/**
+ * PR3 Step 5: the physical-operation journal readers (staging proofs and
+ * settlement fences), moved verbatim out of StockLedger (no behavior change,
+ * Refs #142). Runs under the StockLedger lock.
+ */
+final class OperationJournal {
+    private final StockLedger ledger;
+
+    OperationJournal(StockLedger ledger) {
+        this.ledger = ledger;
+    }
+
+    JsonObject stagingManifest(String server, String stash, String order, String agent, int packages)
             throws IOException {
         var proofs = new ArrayList<JsonObject>(packages);
         try (var c = ledger.open();
@@ -89,6 +88,7 @@ package com.porter.wesortmanager;
             throw new IOException("Cannot verify physical reconciliation fence", failure);
         }
     }
+
     JsonArray orderOperationHistory(String order, String server, String stash) throws IOException {
         var history = new JsonArray();
         try (var connection = ledger.open();

@@ -1,24 +1,23 @@
 package com.porter.wesortmanager;
-    
-    import com.google.gson.JsonArray;
-    import com.google.gson.JsonObject;
-    import com.google.gson.JsonParser;
-    import java.io.IOException;
-    import java.sql.Connection;
-    import java.sql.SQLException;
-    
-    /**
-     * PR3 Step 5: return intake (slot decisions), moved verbatim out of
-     * StockLedger (no behavior change, Refs #142). Runs under the StockLedger lock.
-     */
-    final class ReturnIntakeService {
-        private final StockLedger ledger;
-    
-        ReturnIntakeService(StockLedger ledger) {
-            this.ledger = ledger;
-        }
-    
-        StockLedger.ReturnDecision recordReturn(
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import java.io.IOException;
+import java.sql.SQLException;
+
+/**
+ * PR3 Step 5: return intake (slot decisions), moved verbatim out of
+ * StockLedger (no behavior change, Refs #142). Runs under the StockLedger lock.
+ */
+final class ReturnIntakeService {
+    private final StockLedger ledger;
+
+    ReturnIntakeService(StockLedger ledger) {
+        this.ledger = ledger;
+    }
+
+    StockLedger.ReturnDecision recordReturn(
             String source, JsonObject slot, String snapshot, String actor, boolean markUuid, long expectedDecision)
             throws IOException {
         String path = slot.get("path").getAsString();
@@ -43,7 +42,8 @@ package com.porter.wesortmanager;
                 try (var rows = read.executeQuery()) {
                     if (rows.next()) {
                         var saved = JsonParser.parseString(rows.getString(1)).getAsJsonObject();
-                        if (saved.get("markUuid").getAsBoolean() == markUuid) return new StockLedger.ReturnDecision(saved, false);
+                        if (saved.get("markUuid").getAsBoolean() == markUuid)
+                            return new StockLedger.ReturnDecision(saved, false);
                         currentDecision = saved.has("decisionRevision")
                                 ? saved.get("decisionRevision").getAsLong()
                                 : 0;
@@ -67,6 +67,7 @@ package com.porter.wesortmanager;
             throw new IOException("Cannot save return intake", failure);
         }
     }
+
     JsonArray returnDecisions(String source) throws IOException {
         var decisions = new JsonArray();
         try (var c = ledger.open();

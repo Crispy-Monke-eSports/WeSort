@@ -353,7 +353,8 @@ final class OrderRoutes {
         try {
             var trail = audit.batch();
             trail.actor(Router.user(ex).id(), Router.user(ex).name(), AuthRoutes.address(ex));
-            OrderStore.Order order = lifecycle.cancel(m.group(1), Router.user(ex).id(), trail);
+            OrderStore.Order order =
+                    lifecycle.cancel(m.group(1), Router.user(ex).id(), trail);
             JsonObject out = Http.ok();
             out.add("order", shown(ex, order.toJson()));
             Http.json(ex, 200, out);

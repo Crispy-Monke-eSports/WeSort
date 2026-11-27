@@ -24,15 +24,18 @@ final class ReservationPolicy {
             // The waiting queue is intentionally *not* a physical or aggregate
             // reservation. Availability must not advertise it as committed stock.
             if (o.reservationDeferred || (!OrderStore.OPEN.contains(o.status) && !holdsPhysical(o))) continue;
-            for (OrderStore.Line l : OrderPlacementService.explodeOrderLines(o)) out.merge(l.ref(), l.count(), Long::sum);
+            for (OrderStore.Line l : OrderPlacementService.explodeOrderLines(o))
+                out.merge(l.ref(), l.count(), Long::sum);
         }
         return out;
     }
+
     boolean holdsPhysical(OrderStore.Order order) {
         return order.allocations != null
                 && order.releasedAt == 0
                 && (OrderStore.OPEN.contains(order.status) || order.claimedAt > 0);
     }
+
     JsonObject sourceGuards(String server, String stash) throws IOException {
         var out = new JsonObject();
         for (var source : index.stock().sources())
@@ -43,6 +46,7 @@ final class ReservationPolicy {
                 out.add(source.value().get("id").getAsString(), source.value().get("slotFingerprint"));
         return out.isEmpty() ? null : out;
     }
+
     boolean matchesSources(OrderStore.Order order) throws IOException {
         if (order.allocations != null) {
             return PhysicalReservations.read(index.stock(), order.server, order.stash)
@@ -55,9 +59,11 @@ final class ReservationPolicy {
             if (!expected.getValue().equals(now.get(expected.getKey()))) return false;
         return true;
     }
+
     boolean isExecuting(OrderStore.Order order) {
         return order.status.equals("accepted") || order.status.equals("in_progress");
     }
+
     boolean orderSourcesReady(OrderStore.Order order, IndexStore.OrderCounts counts, String agent) throws IOException {
         if (order.agent != null && !order.agent.equals(agent)) return false;
         // A recovering agent must be allowed to retrieve its existing items

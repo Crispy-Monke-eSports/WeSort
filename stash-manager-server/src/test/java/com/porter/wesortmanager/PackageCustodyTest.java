@@ -5,12 +5,33 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.google.gson.JsonObject;
 import java.nio.file.Path;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class PackageCustodyTest {
     @TempDir
     Path data;
+
+    private final AtomicLong time = new AtomicLong(1_000_000L);
+
+    private Clock clock() {
+        return new Clock() {
+            @Override
+            public long millis() {
+                return time.get();
+            }
+
+            @Override
+            public long nano() {
+                return time.get() * 1_000_000L;
+            }
+        };
+    }
+
+    private PackageCustody custody() throws Exception {
+        return new PackageCustody(new StockLedger(data), clock());
+    }
 
     private static String id() {
         return UUID.randomUUID().toString();
@@ -26,7 +47,7 @@ class PackageCustodyTest {
 
     @Test
     void stageIsIdempotentAndFollowsTheCustodyChain() throws Exception {
-        var custody = new PackageCustody(data);
+        var custody = custody();
         String packageId = id();
         var staged = custody.stage(packageId, "o-1", location("minecraft:overworld"));
         assertEquals(PackageCustody.State.STAGED, staged.state());
@@ -58,7 +79,7 @@ class PackageCustodyTest {
 
     @Test
     void secondAgentCannotClaimAnAlreadyPickedPackage() throws Exception {
-        var custody = new PackageCustody(data);
+        var custody = custody();
         String packageId = id();
         custody.stage(packageId, "o-1", location("minecraft:overworld"));
         String first = id();
@@ -91,7 +112,7 @@ class PackageCustodyTest {
 
     @Test
     void invalidTransitionsAreRejected() throws Exception {
-        var custody = new PackageCustody(data);
+        var custody = custody();
         String packageId = id();
         custody.stage(packageId, "o-1", location("minecraft:overworld"));
         // STAGED -> IN_TRANSIT is not allowed (must pick up first).
@@ -106,14 +127,14 @@ class PackageCustodyTest {
 
     @Test
     void custodyPersistsAcrossRestart() throws Exception {
-        var custody = new PackageCustody(data);
+        var custody = custody();
         String packageId = id();
         custody.stage(packageId, "o-1", location("minecraft:overworld"));
         String agent = id();
         custody.transition(
                 packageId, "o-1", agent, PackageCustody.State.PICKUP_VERIFIED, location("minecraft:overworld"), null);
 
-        var reloaded = new PackageCustody(data);
+        var reloaded = custody();
         var p = reloaded.get(packageId);
         assertEquals(PackageCustody.State.PICKUP_VERIFIED, p.state());
         assertEquals(agent, p.agent());
@@ -126,7 +147,7 @@ class PackageCustodyTest {
 
     @Test
     void bindingBindsManifestJobDestinationAndLabelAndEveryEventCarriesThePhysicalSource() throws Exception {
-        var custody = new PackageCustody(data);
+        var custody = custody();
         String packageId = id();
         var staged = custody.stage(
                 packageId,

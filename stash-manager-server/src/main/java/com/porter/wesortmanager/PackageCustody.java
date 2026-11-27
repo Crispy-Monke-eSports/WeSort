@@ -4,11 +4,9 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.UUID;
 import java.util.function.LongSupplier;
 
@@ -21,6 +19,17 @@ import java.util.function.LongSupplier;
  * evidence. Custody is mutually exclusive: after an agent picks a package up, only that agent (or an explicit
  * reconciliation) may advance it, so two couriers can never claim the same package. Every change is an append-only
  * event and a reboot or replayed receipt does not change custody.
+ *
+ * <p>PR3 (#140): authoritative state lives in the shared guild SQLite database
+ * ({@code custody_packages}/{@code custody_events}), so custody rows commit or
+ * roll back in the same transaction as the order book and the audit trail.
+ * Legacy {@code custody.json} files are never read; {@link StockLedger} warns
+ * loudly when one is present.
+ *
+ * <p>Global lock order for nested same-transaction commits: ledger → index →
+ * book → store. Public methods take the store monitor and a fresh ledger
+ * transaction; {@code Connection}-scoped overloads assume the caller already
+ * holds the locks in that order and never commit on their own.
  */
 final class PackageCustody {
     enum State {
@@ -49,10 +58,39 @@ final class PackageCustody {
         }
     }
 
-    private static final int SCHEMA = 1;
-    private final Path file;
-    private final LongSupplier clock;
-    private final Map<String, Package> packages = new LinkedHashMap<>();
+    private final StockLedger ledger;
+    private final Clock clock;
+
+    PackageCustody(StockLedger ledger, Clock clock) {
+        if (ledger == null) throw new IllegalArgumentException("PackageCustody requires the guild database");
+        if (clock == null) throw new IllegalArgumentException("PackageCustody requires a clock");
+        this.ledger = ledger;
+        this.clock = clock;
+    }
+
+    /** Legacy data-dir constructor: shares the same guild.sqlite; the JSON file itself is never read. */
+    PackageCustody(Path data) throws IOException {
+        this(data, System::currentTimeMillis);
+    }
+
+    /** Legacy data-dir constructor: shares the same guild.sqlite; the JSON file itself is never read. */
+    PackageCustody(Path data, LongSupplier clock) throws IOException {
+        this(new StockLedger(data), adapt(clock));
+    }
+
+    private static Clock adapt(LongSupplier clock) {
+        return new Clock() {
+            @Override
+            public long millis() {
+                return clock.getAsLong();
+            }
+
+            @Override
+            public long nano() {
+                return System.nanoTime();
+            }
+        };
+    }
 
     record Package(
             String packageId,
@@ -83,48 +121,9 @@ final class PackageCustody {
         }
     }
 
-    PackageCustody(Path data) throws IOException {
-        this(data, System::currentTimeMillis);
-    }
-
-    PackageCustody(Path data, LongSupplier clock) throws IOException {
-        this.clock = clock;
-        this.file = data.resolve("custody.json");
-        if (Files.isSymbolicLink(file)) throw new IOException("Invalid custody location");
-        if (!Files.exists(file)) return;
-        try {
-            var root = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
-            if (root.get("schema").getAsBigDecimal().intValueExact() != SCHEMA) throw new IllegalArgumentException();
-            for (var entry : root.getAsJsonArray("packages")) {
-                var p = entry.getAsJsonObject();
-                packages.put(
-                        p.get("packageId").getAsString(),
-                        new Package(
-                                p.get("packageId").getAsString(),
-                                p.get("orderId").getAsString(),
-                                str(p, "manifest"),
-                                str(p, "jobId"),
-                                str(p, "destination"),
-                                str(p, "label"),
-                                State.valueOf(p.get("state").getAsString()),
-                                str(p, "agent"),
-                                p.has("location") ? p.getAsJsonObject("location") : new JsonObject(),
-                                p.get("revision").getAsLong(),
-                                p.getAsJsonArray("events").deepCopy()));
-            }
-        } catch (RuntimeException invalid) {
-            throw new IOException("Cannot read package custody", invalid);
-        }
-    }
-
-    private static String str(JsonObject o, String field) {
-        var value = o.get(field);
-        return value == null || value.isJsonNull() ? null : value.getAsString();
-    }
-
     /** Stages a package at the warehouse; idempotent for the same package id and binding. */
     synchronized Package stage(String packageId, String orderId, JsonObject location) throws IOException {
-        return stage(packageId, orderId, null, null, null, null, location);
+        return stage(packageId, orderId, null, null, null, null, location, null);
     }
 
     synchronized Package stage(
@@ -136,8 +135,50 @@ final class PackageCustody {
             String label,
             JsonObject location)
             throws IOException {
+        return stage(packageId, orderId, manifest, jobId, destination, label, location, null);
+    }
+
+    /** Stages a package, writing staged audit entries in the same transaction when a trail is given. */
+    synchronized Package stage(
+            String packageId,
+            String orderId,
+            String manifest,
+            String jobId,
+            String destination,
+            String label,
+            JsonObject location,
+            AuditLog.Batch trail)
+            throws IOException {
+        try (var c = ledger.open();
+                var tx = new SqliteWriteTransaction(c)) {
+            Package staged = stage(c, packageId, orderId, manifest, jobId, destination, label, location);
+            if (trail != null) {
+                trail.say("custody.stage", packageId);
+                AuditLog.addAll(c, trail.entries());
+            }
+            tx.commit();
+            return staged;
+        } catch (SQLException failure) {
+            throw new IOException("Cannot stage package custody", failure);
+        }
+    }
+
+    /**
+     * Same-transaction stage: writes on the caller's connection without
+     * committing, so an order commit can carry custody and audit atomically.
+     */
+    Package stage(
+            Connection c,
+            String packageId,
+            String orderId,
+            String manifest,
+            String jobId,
+            String destination,
+            String label,
+            JsonObject location)
+            throws SQLException, IOException {
         UUID.fromString(packageId);
-        var existing = packages.get(packageId);
+        Package existing = read(c, packageId);
         if (existing != null) {
             if (!existing.orderId().equals(orderId)
                     || !eq(existing.manifest(), manifest)
@@ -147,7 +188,7 @@ final class PackageCustody {
             }
             return existing;
         }
-        var p = new Package(
+        var staged = new Package(
                 packageId,
                 orderId,
                 manifest,
@@ -159,9 +200,7 @@ final class PackageCustody {
                 location == null ? new JsonObject() : location,
                 0,
                 new JsonArray());
-        p = append(p, "STAGED", null, location, new JsonObject());
-        commit(packageId, p);
-        return p;
+        return insert(c, append(staged, "STAGED", null, location, new JsonObject()));
     }
 
     private static boolean eq(String a, String b) {
@@ -175,7 +214,42 @@ final class PackageCustody {
     synchronized Package transition(
             String packageId, String orderId, String agent, State next, JsonObject location, JsonObject evidence)
             throws IOException {
-        var p = packages.get(packageId);
+        return transition(packageId, orderId, agent, next, location, evidence, null);
+    }
+
+    /** Advances a package, writing staged audit entries in the same transaction when a trail is given. */
+    synchronized Package transition(
+            String packageId,
+            String orderId,
+            String agent,
+            State next,
+            JsonObject location,
+            JsonObject evidence,
+            AuditLog.Batch trail)
+            throws IOException {
+        try (var c = ledger.open();
+                var tx = new SqliteWriteTransaction(c)) {
+            Package moved = transition(c, packageId, orderId, agent, next, location, evidence);
+            if (trail != null) {
+                trail.say("custody." + next.name().toLowerCase(), packageId);
+                AuditLog.addAll(c, trail.entries());
+            }
+            tx.commit();
+            return moved;
+        } catch (SQLException failure) {
+            throw new IOException("Cannot advance package custody", failure);
+        }
+    }
+
+    /**
+     * Same-transaction transition: writes on the caller's connection without
+     * committing, so an order commit can carry custody and audit atomically.
+     */
+    Package transition(
+            Connection c, String packageId, String orderId, String agent, State next, JsonObject location,
+            JsonObject evidence)
+            throws SQLException, IOException {
+        Package p = read(c, packageId);
         if (p == null) throw new Conflict("Unknown package");
         if (!p.orderId().equals(orderId)) throw new Conflict("Package belongs to another order");
         if (next != State.NEEDS_RECONCILIATION) {
@@ -184,20 +258,34 @@ final class PackageCustody {
                 throw new Conflict("Another agent holds custody; physical reconciliation is required");
             }
         }
-        p = append(p, next.name(), agent, location, evidence == null ? new JsonObject() : evidence);
-        commit(packageId, p);
-        return p;
+        return update(c, append(p, next.name(), agent, location, evidence == null ? new JsonObject() : evidence));
     }
 
-    synchronized Package get(String packageId) {
-        return packages.get(packageId);
+    synchronized Package get(String packageId) throws IOException {
+        try (var c = ledger.open()) {
+            return read(c, packageId);
+        } catch (SQLException failure) {
+            throw new IOException("Cannot read package custody", failure);
+        }
     }
 
-    synchronized JsonArray list(String orderId) {
+    synchronized JsonArray list(String orderId) throws IOException {
         var out = new JsonArray();
-        packages.values().stream()
-                .filter(p -> orderId == null || p.orderId().equals(orderId))
-                .forEach(p -> out.add(p.json()));
+        try (var c = ledger.open();
+                var p = orderId == null
+                        ? c.prepareStatement("SELECT package_id FROM custody_packages ORDER BY package_id")
+                        : c.prepareStatement(
+                                "SELECT package_id FROM custody_packages WHERE order_id=? ORDER BY package_id")) {
+            if (orderId != null) p.setString(1, orderId);
+            try (var rows = p.executeQuery()) {
+                while (rows.next()) {
+                    Package pkg = read(c, rows.getString(1));
+                    if (pkg != null) out.add(pkg.json());
+                }
+            }
+        } catch (SQLException failure) {
+            throw new IOException("Cannot list package custody", failure);
+        }
         return out;
     }
 
@@ -205,7 +293,7 @@ final class PackageCustody {
         long revision = p.revision() + 1;
         var row = new JsonObject();
         row.addProperty("seq", revision);
-        row.addProperty("at", clock.getAsLong());
+        row.addProperty("at", clock.millis());
         row.addProperty("event", event);
         row.addProperty("agent", agent);
         row.add("location", location == null ? new JsonObject() : location.deepCopy());
@@ -226,21 +314,98 @@ final class PackageCustody {
                 events);
     }
 
-    /** Publish only a fully persisted state; a failed write must not advance custody or delivery. */
-    private void commit(String id, Package entry) throws IOException {
-        var updated = new LinkedHashMap<>(packages);
-        updated.put(id, entry);
-        save(updated);
-        packages.clear();
-        packages.putAll(updated);
+    /** Inserts a new package row plus its first event; fails closed on a concurrent insert. */
+    private static Package insert(Connection c, Package p) throws SQLException {
+        try (var row = c.prepareStatement(
+                "INSERT INTO custody_packages(package_id,order_id,state,agent,payload,revision) VALUES(?,?,?,?,?,?)")) {
+            row.setString(1, p.packageId());
+            row.setString(2, p.orderId());
+            row.setString(3, p.state().name());
+            row.setString(4, p.agent());
+            row.setString(5, payloadOf(p));
+            row.setLong(6, p.revision());
+            row.executeUpdate();
+        }
+        insertEvents(c, p);
+        return p;
     }
 
-    private void save(Map<String, Package> updated) throws IOException {
-        var root = new JsonObject();
-        root.addProperty("schema", SCHEMA);
-        var list = new JsonArray();
-        updated.values().forEach(p -> list.add(p.json()));
-        root.add("packages", list);
-        AtomicFiles.write(file, root.toString().getBytes(StandardCharsets.UTF_8), true);
+    /** Conditional update: a concurrent advance on another connection wins instead of silently overwriting. */
+    private static Package update(Connection c, Package p) throws SQLException, Conflict {
+        try (var row = c.prepareStatement(
+                "UPDATE custody_packages SET state=?,agent=?,payload=?,revision=? WHERE package_id=? AND revision=?")) {
+            row.setString(1, p.state().name());
+            row.setString(2, p.agent());
+            row.setString(3, payloadOf(p));
+            row.setLong(4, p.revision());
+            row.setString(5, p.packageId());
+            row.setLong(6, p.revision() - 1);
+            if (row.executeUpdate() != 1) throw new Conflict("Package custody changed concurrently; reread the package");
+        }
+        insertEvents(c, p);
+        return p;
+    }
+
+    private static void insertEvents(Connection c, Package p) throws SQLException {
+        try (var event = c.prepareStatement(
+                "INSERT INTO custody_events(package_id,seq,payload) VALUES(?,?,?) ON CONFLICT(package_id,seq) DO NOTHING")) {
+            for (var e : p.events()) {
+                var row = e.getAsJsonObject();
+                event.setString(1, p.packageId());
+                event.setLong(2, row.get("seq").getAsLong());
+                event.setString(3, row.toString());
+                event.executeUpdate();
+            }
+        }
+    }
+
+    /** Package payload without the event log; events are authoritative in custody_events. */
+    private static String payloadOf(Package p) {
+        var out = p.json();
+        out.remove("events");
+        return out.toString();
+    }
+
+    private static Package read(Connection c, String packageId) throws SQLException, IOException {
+        JsonObject stored;
+        try (var p = c.prepareStatement("SELECT payload FROM custody_packages WHERE package_id=?")) {
+            p.setString(1, packageId);
+            try (var rows = p.executeQuery()) {
+                if (!rows.next()) return null;
+                stored = JsonParser.parseString(rows.getString(1)).getAsJsonObject();
+            }
+        } catch (RuntimeException invalid) {
+            throw new IOException("Cannot read package custody", invalid);
+        }
+        var events = new JsonArray();
+        try (var p = c.prepareStatement("SELECT payload FROM custody_events WHERE package_id=? ORDER BY seq")) {
+            p.setString(1, packageId);
+            try (var rows = p.executeQuery()) {
+                while (rows.next()) events.add(JsonParser.parseString(rows.getString(1)));
+            }
+        } catch (RuntimeException invalid) {
+            throw new IOException("Cannot read package custody", invalid);
+        }
+        try {
+            return new Package(
+                    stored.get("packageId").getAsString(),
+                    stored.get("orderId").getAsString(),
+                    str(stored, "manifest"),
+                    str(stored, "jobId"),
+                    str(stored, "destination"),
+                    str(stored, "label"),
+                    State.valueOf(stored.get("state").getAsString()),
+                    str(stored, "agent"),
+                    stored.has("location") ? stored.getAsJsonObject("location") : new JsonObject(),
+                    stored.get("revision").getAsLong(),
+                    events);
+        } catch (RuntimeException invalid) {
+            throw new IOException("Cannot read package custody", invalid);
+        }
+    }
+
+    private static String str(JsonObject o, String field) {
+        var value = o.get(field);
+        return value == null || value.isJsonNull() ? null : value.getAsString();
     }
 }

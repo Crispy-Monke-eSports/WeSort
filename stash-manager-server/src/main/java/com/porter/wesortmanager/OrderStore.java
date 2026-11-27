@@ -605,6 +605,20 @@ final class OrderStore {
     }
 
     private void save(Book b, StockLedger.BoxRelease release, AuditLog.Batch batch) throws IOException {
+        save(b, release, batch, List.of());
+    }
+
+    /**
+     * PR3 (#140): saves the book together with extra custody writes in the
+     * same repository transaction. A failed custody write rolls back the book
+     * and the staged audit entries as well.
+     */
+    private void save(
+            Book b,
+            StockLedger.BoxRelease release,
+            AuditLog.Batch batch,
+            List<OrderRepository.SqliteWrite> extra)
+            throws IOException {
         JsonObject root = new JsonObject();
         root.addProperty("server", b.server);
         root.addProperty("stash", b.stash);
@@ -622,8 +636,14 @@ final class OrderStore {
             root.add("receipts", receipts);
         }
         if (repository == null) throw new IOException("Order storage has not been loaded");
-        b.persistenceRevision = repository.commit(
-                b.server, b.stash, b.persistenceRevision, root, release, batch == null ? List.of() : batch.entries());
+        b.persistenceRevision = repository.commitExtended(
+                b.server,
+                b.stash,
+                b.persistenceRevision,
+                root,
+                release,
+                batch == null ? List.of() : batch.entries(),
+                extra);
     }
 
     private void update(Book book, Order previous, Order next) throws IOException {
@@ -636,13 +656,29 @@ final class OrderStore {
 
     private void update(Book book, Order previous, Order next, StockLedger.BoxRelease release, AuditLog.Batch batch)
             throws IOException {
+        update(book, previous, next, release, batch, List.of());
+    }
+
+    /**
+     * PR3 (#140): updates the book together with extra custody writes in the
+     * same repository transaction (see {@link #save(Book, StockLedger.BoxRelease,
+     * AuditLog.Batch, List)}).
+     */
+    private void update(
+            Book book,
+            Order previous,
+            Order next,
+            StockLedger.BoxRelease release,
+            AuditLog.Batch batch,
+            List<OrderRepository.SqliteWrite> extra)
+            throws IOException {
         int position = book.orders.indexOf(previous);
         var before = book.orders.size() > KEEP ? List.copyOf(book.orders) : null;
         var archiveBefore = before == null ? null : List.copyOf(book.archived);
         book.orders.set(position, next);
         var pruned = prune(book);
         try {
-            save(book, release, batch);
+            save(book, release, batch, extra);
         } catch (IOException failure) {
             if (before != null && !pruned.isEmpty()) {
                 book.orders.clear();

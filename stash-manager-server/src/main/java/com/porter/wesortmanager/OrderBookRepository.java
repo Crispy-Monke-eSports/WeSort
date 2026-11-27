@@ -89,6 +89,23 @@ final class OrderBookRepository implements OrderRepository {
             StockLedger.BoxRelease release,
             List<AuditLog.Entry> audit)
             throws IOException {
+        return commitExtended(server, stash, expected, root, release, audit, List.of());
+    }
+
+    /**
+     * PR3 (#140): one transaction for the book, extra custody writes and audit.
+     * The extras run on the commit connection before the changeset proof, so a
+     * failing custody write rolls back the book and the audit trail as well.
+     */
+    public long commitExtended(
+            String server,
+            String stash,
+            long expected,
+            JsonObject root,
+            StockLedger.BoxRelease release,
+            List<AuditLog.Entry> audit,
+            List<OrderRepository.SqliteWrite> extra)
+            throws IOException {
         var next = new Snapshot(server, stash, Math.addExact(expected, 1), root);
         long revision;
         try (var c = ledger.open();
@@ -117,6 +134,7 @@ final class OrderBookRepository implements OrderRepository {
             if (release != null) ledger.releaseOrderBoxes(c, server, release);
             appendEvents(c, next);
             saveResumeReceipts(c, next);
+            for (var write : extra) write.apply(c);
             AuditLog.addAll(c, audit);
             // PR3 (#265): every book commit proves a non-empty, revision-linked
             // changeset. Storage still writes the full snapshot until the diff

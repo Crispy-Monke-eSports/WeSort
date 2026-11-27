@@ -35,5 +35,29 @@ interface OrderRepository {
         return commit(server, stash, expected, root, release);
     }
 
+    /**
+     * PR3 (#140): one transaction for the book, custody writes and audit.
+     * Extra writes (custody/deposits/handoffs/jobs on the same connection) run
+     * inside the commit transaction; any failure rolls back book, custody and
+     * audit together. Follows the global lock order ledger → index → book →
+     * store: callers must not hold a later lock when entering the commit.
+     */
+    @FunctionalInterface
+    interface SqliteWrite {
+        void apply(java.sql.Connection c) throws java.sql.SQLException, java.io.IOException;
+    }
+
+    default long commitExtended(
+            String server,
+            String stash,
+            long expected,
+            com.google.gson.JsonObject root,
+            StockLedger.BoxRelease release,
+            java.util.List<AuditLog.Entry> audit,
+            java.util.List<SqliteWrite> extra)
+            throws IOException {
+        return commit(server, stash, expected, root, release, audit);
+    }
+
     com.google.gson.JsonObject resumeReceipt(String server, String stash, String agent, String id) throws IOException;
 }

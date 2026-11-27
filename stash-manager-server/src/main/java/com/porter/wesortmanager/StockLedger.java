@@ -54,6 +54,21 @@ final class StockLedger {
             "stock_members",
             "stock_indexes");
 
+    /**
+     * PR3 (#140): custody/deposit/handoff/job authority tables. The ledger owns
+     * this DDL; each store owns its SQL (mirror the SnbtStore pattern) so order,
+     * custody and audit rows commit in one transaction.
+     */
+    private static final Set<String> REQUIRED_V11_TABLES = Set.of(
+            "custody_packages",
+            "custody_events",
+            "deposit_packages",
+            "deposit_events",
+            "handoffs",
+            "handoff_events",
+            "jobs",
+            "job_events");
+
     private final Path file;
     private final LongSupplier clock;
     private final long maxAge;
@@ -94,6 +109,17 @@ final class StockLedger {
                         "WARNING: Data/orders/*.json are legacy import inputs and are ignored — authoritative orders live in guild.sqlite order_books. See INCIDENT-RECOVERY.md.");
         } catch (java.nio.file.NoSuchFileException ignored) {
         }
+        // PR3 (#140): pre-SQLite custody/deposits/handoffs/jobs JSON files are
+        // legacy inputs, never read. Warn loudly so operators preserve or
+        // remove them by hand instead of expecting an automatic import.
+        for (String stale : List.of("custody.json", "deposits.json", "handoffs.json", "jobs.json")) {
+            Path staleFile = data.resolve(stale);
+            if (Files.isSymbolicLink(staleFile)) throw new IOException("Invalid guild database file: " + stale);
+            if (Files.exists(staleFile))
+                System.err.println("WARNING: Data/" + stale
+                        + " is a legacy pre-SQLite file and is ignored — authoritative state lives in guild.sqlite. "
+                        + "See INCIDENT-RECOVERY.md.");
+        }
         for (String suffix : List.of("", "-wal", "-shm"))
             if (Files.isSymbolicLink(Path.of(file + suffix))) throw new IOException("Symlink guild database");
         boolean existed = Files.exists(file);
@@ -117,7 +143,7 @@ final class StockLedger {
                 try (var r = s.executeQuery("PRAGMA user_version")) {
                     if (!r.next()) throw new IOException("Missing guild database schema");
                     schema = r.getInt(1);
-                    if (schema < 0 || schema > 10) throw new IOException("Unsupported guild database schema");
+                    if (schema < 0 || schema > 11) throw new IOException("Unsupported guild database schema");
                 }
                 s.execute("BEGIN IMMEDIATE");
                 try {
@@ -203,8 +229,32 @@ final class StockLedger {
                     s.execute(
                             "CREATE TABLE IF NOT EXISTS audit_log(seq INTEGER PRIMARY KEY AUTOINCREMENT,at INTEGER NOT NULL,user_id TEXT,user_name TEXT,action TEXT NOT NULL,detail TEXT,address TEXT)");
                     s.execute("CREATE INDEX IF NOT EXISTS audit_log_action ON audit_log(action,seq)");
+                    // PR3 (#140): custody/deposit/handoff/job authority. The
+                    // ledger owns this DDL; each store owns its SQL, so order,
+                    // custody and audit rows commit in one transaction.
+                    s.execute(
+                            "CREATE TABLE IF NOT EXISTS custody_packages(package_id TEXT PRIMARY KEY,order_id TEXT NOT NULL,state TEXT NOT NULL,agent TEXT,payload TEXT NOT NULL,revision INTEGER NOT NULL)");
+                    s.execute(
+                            "CREATE TABLE IF NOT EXISTS custody_events(package_id TEXT NOT NULL,seq INTEGER NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(package_id,seq))");
+                    s.execute("CREATE INDEX IF NOT EXISTS custody_packages_order ON custody_packages(order_id)");
+                    s.execute(
+                            "CREATE TABLE IF NOT EXISTS deposit_packages(package_id TEXT PRIMARY KEY,order_id TEXT NOT NULL,kind TEXT NOT NULL,state TEXT NOT NULL,agent TEXT,destination TEXT NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL)");
+                    s.execute(
+                            "CREATE TABLE IF NOT EXISTS deposit_events(package_id TEXT NOT NULL,seq INTEGER NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(package_id,seq))");
+                    s.execute("CREATE INDEX IF NOT EXISTS deposit_packages_order ON deposit_packages(order_id)");
+                    s.execute(
+                            "CREATE TABLE IF NOT EXISTS handoffs(id TEXT PRIMARY KEY,order_id TEXT NOT NULL,state TEXT NOT NULL,agent TEXT,payload TEXT NOT NULL,revision INTEGER NOT NULL)");
+                    s.execute(
+                            "CREATE TABLE IF NOT EXISTS handoff_events(id TEXT NOT NULL,seq INTEGER NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(id,seq))");
+                    s.execute("CREATE INDEX IF NOT EXISTS handoffs_order ON handoffs(order_id)");
+                    s.execute(
+                            "CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,chain TEXT NOT NULL,category TEXT NOT NULL,state TEXT NOT NULL,agent TEXT,priority INTEGER NOT NULL,deadline INTEGER NOT NULL,token TEXT,payload TEXT NOT NULL,revision INTEGER NOT NULL)");
+                    s.execute(
+                            "CREATE TABLE IF NOT EXISTS job_events(id TEXT NOT NULL,seq INTEGER NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(id,seq))");
+                    s.execute("CREATE INDEX IF NOT EXISTS jobs_state ON jobs(state)");
+                    s.execute("CREATE INDEX IF NOT EXISTS jobs_chain ON jobs(chain)");
                     migrateOrderBooksToRows(c, s);
-                    s.execute("PRAGMA user_version=10");
+                    s.execute("PRAGMA user_version=11");
                     var interruptedServers = new ArrayList<String>();
                     try (var leases = s.executeQuery("SELECT server FROM automation_leases WHERE state='ACTIVE'")) {
                         while (leases.next()) interruptedServers.add(leases.getString(1));
@@ -307,6 +357,7 @@ final class StockLedger {
             missing.addAll(Set.of("order_books", "order_storage_meta", "order_event_log", "signed_request_nonces"));
         if (schema >= 9) missing.add("order_resume_receipts");
         if (schema >= 10) missing.addAll(Set.of("order_rows", "order_receipts", "audit_log"));
+        if (schema >= 11) missing.addAll(REQUIRED_V11_TABLES);
         try (var s = c.createStatement();
                 var rows = s.executeQuery("SELECT name FROM sqlite_schema WHERE type='table'")) {
             while (rows.next()) missing.remove(rows.getString(1));

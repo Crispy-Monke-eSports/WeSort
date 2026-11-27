@@ -475,6 +475,16 @@ public final class PhysicalJournalRuntime {
         closeForeignScreenPending = false;
         try {
             var evidence = journal.lastIntentEvidence();
+            if (journal.awaitingPickupAfterVerifiedBreak() && InventorySync.ready()) {
+                var sorter = com.porter.wesort.WeSortAddon.sorter();
+                if (sorter != null && sorter.currentStash() != null && !sorter.pendingPhysicalRecovery()) {
+                    // Re-reading the already verified break can neither identify the dropped box nor
+                    // restore its missing workspace. Keep the operation fenced without turning its
+                    // historical pre-pickup inventory into a pending inventory mutation.
+                    finishInspection(false, "INSPECT_WORKSPACE: pickup lacks a saved shulker workspace");
+                    return;
+                }
+            }
             boolean menuZero = evidence == null
                     || evidence.getAsJsonObject("expected").get("menu").getAsInt() == 0;
             if (menuZero && mc.player != null && mc.player.containerMenu != mc.player.inventoryMenu) {

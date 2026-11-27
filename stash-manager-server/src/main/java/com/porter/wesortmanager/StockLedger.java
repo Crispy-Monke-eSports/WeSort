@@ -677,8 +677,7 @@ final class StockLedger {
                     while (r.next()) {
                         String path = r.getString(1);
                         var row = expected.remove(path);
-                        if (row == null)
-                            throw new IOException("Physical slot projection has no SNBT counterpart");
+                        if (row == null) throw new IOException("Physical slot projection has no SNBT counterpart");
                         // The descriptor covers the full item identity (id, key,
                         // max-stack, kind, size, group, components): two items
                         // sharing component bytes never alias.

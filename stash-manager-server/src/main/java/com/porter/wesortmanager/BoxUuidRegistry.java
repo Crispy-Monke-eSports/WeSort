@@ -194,12 +194,16 @@ package com.porter.wesortmanager;
         var seen = new HashMap<String, PhysicalReservations.Root>();
         try (var c = ledger.open();
                 var registry = c.prepareStatement("SELECT uuid,source,path FROM box_uuids WHERE server=?");
+                // PR3 (#228 Step 6): quarantine reads the projection authority
+                // (slot_projection ⨝ variant_register), never the read-only
+                // legacy physical_slots evidence.
                 var slots = c.prepareStatement("""
-                    SELECT p.source,p.path,json_extract(p.payload,'$.components'),p.count
-                    FROM physical_slots p JOIN stock_sources s ON s.id=p.source
-                    WHERE s.server=? AND p.present=1 AND instr(p.path,'/')=0
-                    AND json_extract(p.payload,'$.kind')='SHULKER'
-                    AND EXISTS (SELECT 1 FROM stock_members m WHERE m.source=p.source AND m.present=1)
+                    SELECT p.source_id,p.logical_path,v.canonical_variant_snbt,p.count
+                    FROM slot_projection p JOIN variant_register v ON v.variant_id=p.variant_id
+                    JOIN stock_sources s ON s.id=p.source_id
+                    WHERE s.server=? AND p.present=1 AND instr(p.logical_path,'/')=0
+                    AND v.kind='SHULKER'
+                    AND EXISTS (SELECT 1 FROM stock_members m WHERE m.source=p.source_id AND m.present=1)
                     """)) {
             registry.setString(1, server);
             try (var rows = registry.executeQuery()) {
@@ -210,7 +214,13 @@ package com.porter.wesortmanager;
             slots.setString(1, server);
             try (var rows = slots.executeQuery()) {
                 while (rows.next()) {
-                    String name = ShulkerUuid.customName(rows.getString(3));
+                    String components;
+                    try {
+                        components = SnbtStore.variantComponents(rows.getString(3));
+                    } catch (RuntimeException invalid) {
+                        throw new IOException("Invalid registered variant descriptor", invalid);
+                    }
+                    String name = ShulkerUuid.customName(components);
                     if (name == null
                             || !name.strip().regionMatches(true, 0, ShulkerUuid.PREFIX, 0, ShulkerUuid.PREFIX.length()))
                         continue;

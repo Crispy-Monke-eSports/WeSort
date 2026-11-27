@@ -545,11 +545,16 @@ final class StockLedger {
 
 
 
-    private static PhysicalSlots.Snapshot readSnbtSnapshot(Connection c, String source, String fingerprint)
+    /**
+     * PR3 (#228 Step 6): the normalized SNBT snapshot is the only content
+     * authority. Legacy {@code physical_snapshots} rows are read-only evidence
+     * and are never read here; clean installs and fresh observations only, no
+     * migration or backfill.
+     */
+    private static PhysicalSlots.Snapshot readSnbtSnapshot(Connection c, String fingerprint)
             throws SQLException, IOException {
-        try (var p = c.prepareStatement("SELECT payload FROM physical_snapshots WHERE source=? AND fingerprint=?")) {
-            p.setString(1, source);
-            p.setString(2, fingerprint);
+        try (var p = c.prepareStatement("SELECT content_snbt FROM snbt_snapshots WHERE sha256=?")) {
+            p.setString(1, fingerprint);
             try (var r = p.executeQuery()) {
                 if (!r.next()) return null;
                 try {
@@ -567,7 +572,7 @@ final class StockLedger {
 
     synchronized JsonObject snapshot(String source, String fingerprint) throws IOException {
         try (var c = open()) {
-            var snapshot = readSnbtSnapshot(c, source, fingerprint);
+            var snapshot = readSnbtSnapshot(c, fingerprint);
             return snapshot == null ? null : snapshot.json();
         } catch (SQLException e) {
             throw new IOException("Cannot read physical snapshot", e);
@@ -576,18 +581,76 @@ final class StockLedger {
 
     synchronized String snapshotSnbt(String source, String fingerprint) throws IOException {
         try (var c = open()) {
-            var snapshot = readSnbtSnapshot(c, source, fingerprint);
+            var snapshot = readSnbtSnapshot(c, fingerprint);
             return snapshot == null ? null : snapshot.snbt();
         } catch (SQLException e) {
             throw new IOException("Cannot read authoritative physical SNBT", e);
         }
     }
 
-    synchronized List<JsonObject> physicalSlots(String source) throws IOException {
-        List<JsonObject> result = new ArrayList<>();
-        Map<String, JsonObject> expected = new HashMap<>();
+    /**
+     * PR3 (#228 Step 6): content-addressed SNBT read for item search and
+     * rebuild flows. Resolves through the snapshot digest, never through
+     * SQL id/timestamp columns.
+     */
+    synchronized String snapshotSnbtByDigest(String digest) throws IOException {
         try (var c = open()) {
-            // A present slot is readable/allocatable only when it agrees with the authoritative snapshot.
+            var snapshot = readSnbtSnapshot(c, digest);
+            return snapshot == null ? null : snapshot.snbt();
+        } catch (SQLException e) {
+            throw new IOException("Cannot read authoritative physical SNBT", e);
+        }
+    }
+
+    /** One slot location carrying a registered variant; resolved through the variant index. */
+    record VariantSlot(String source, String path) {}
+
+    /**
+     * PR3 (#228 Step 6): variant-to-slot lookup for item search. The
+     * {@code WHERE variant_id=?} predicate resolves through the
+     * {@code slot_projection_variant} index, never a scan.
+     */
+    synchronized List<VariantSlot> slotsForVariant(long variantId) throws IOException {
+        var out = new ArrayList<VariantSlot>();
+        try (var c = open();
+                var p = c.prepareStatement(
+                        "SELECT source_id,logical_path FROM slot_projection WHERE variant_id=? AND present=1 ORDER BY source_id,logical_path")) {
+            p.setLong(1, variantId);
+            try (var r = p.executeQuery()) {
+                while (r.next()) out.add(new VariantSlot(r.getString(1), r.getString(2)));
+            }
+        } catch (SQLException e) {
+            throw new IOException("Cannot read variant slots", e);
+        }
+        return out;
+    }
+
+    /**
+     * PR3 (#228 Step 6): rebuilds a source's derived projection from the
+     * authoritative SNBT snapshots (e.g. after evidence handling removed the
+     * derived rows). Byte-identical when no observation intervened.
+     */
+    synchronized void rebuildProjectionFromSnbt(String source) throws IOException {
+        try (var c = open();
+                var tx = new SqliteWriteTransaction(c)) {
+            SnbtStore.rebuildProjection(c, source);
+            tx.commit();
+        } catch (SQLException e) {
+            throw new IOException("Cannot rebuild slot projection", e);
+        }
+    }
+
+    /**
+     * PR3 (#228 Step 6): slot reads are projection-primary
+     * ({@code slot_projection ⨝ variant_register}) with the authoritative
+     * SNBT snapshot as the fail-closed gate. Legacy {@code physical_slots}
+     * rows are read-only evidence and are never read here: their divergence
+     * cannot leak into reads, while any projection/SNBT divergence fails
+     * closed. Empty slots are absent rows (no air rows); only present slots
+     * are returned, ordered by path.
+     */
+    synchronized List<JsonObject> physicalSlots(String source) throws IOException {
+        try (var c = open()) {
             String fingerprint = null;
             try (var p = c.prepareStatement("SELECT payload FROM stock_sources WHERE id=?")) {
                 p.setString(1, source);
@@ -599,35 +662,66 @@ final class StockLedger {
                     }
                 }
             }
-            if (fingerprint != null) {
-                var snapshot = readSnbtSnapshot(c, source, fingerprint);
-                if (snapshot == null) throw new IOException("Missing authoritative physical SNBT");
-                for (var value : snapshot.json().getAsJsonArray("positions")) {
-                    var row = value.getAsJsonObject();
-                    expected.put(row.get("path").getAsString(), row);
-                }
+            if (fingerprint == null) return List.of();
+            var snapshot = readSnbtSnapshot(c, fingerprint);
+            if (snapshot == null) throw new IOException("Missing authoritative physical SNBT");
+            Map<String, JsonObject> expected = new HashMap<>();
+            for (var value : snapshot.json().getAsJsonArray("positions")) {
+                var row = value.getAsJsonObject();
+                expected.put(row.get("path").getAsString(), row);
             }
-            try (var p = c.prepareStatement(
-                    "SELECT path,payload,revision,present FROM physical_slots WHERE source=? ORDER BY path")) {
+            List<JsonObject> result = new ArrayList<>();
+            try (var p = c.prepareStatement("""
+                    SELECT p.logical_path,p.parent_path,p.count,p.copies,p.slot_fingerprint,
+                           p.content_revision,p.snapshot_ref,
+                           v.canonical_variant_snbt
+                    FROM slot_projection p JOIN variant_register v ON v.variant_id=p.variant_id
+                    WHERE p.source_id=? AND p.present=1 ORDER BY p.logical_path""")) {
                 p.setString(1, source);
                 try (var r = p.executeQuery()) {
                     while (r.next()) {
-                        var cached = JsonParser.parseString(r.getString(2)).getAsJsonObject();
-                        boolean present = r.getBoolean(4);
-                        var row = present ? expected.remove(r.getString(1)) : cached;
-                        if (row == null || !row.equals(cached))
-                            throw new IOException("Physical slot projection differs from authoritative SNBT");
-                        row.addProperty("revision", r.getLong(3));
-                        row.addProperty("present", present);
+                        String path = r.getString(1);
+                        var row = expected.remove(path);
+                        if (row == null)
+                            throw new IOException("Physical slot projection has no SNBT counterpart");
+                        // The descriptor covers the full item identity (id, key,
+                        // max-stack, kind, size, group, components): two items
+                        // sharing component bytes never alias.
+                        String descriptor;
+                        try {
+                            descriptor = SnbtStore.variantCanonical(
+                                    row.get("id").getAsString(),
+                                    row.get("key").getAsString(),
+                                    row.get("maxStack").getAsLong(),
+                                    row.get("kind").getAsString(),
+                                    row.get("size").getAsLong(),
+                                    row.get("group").getAsString(),
+                                    row.get("components").getAsString());
+                        } catch (RuntimeException invalid) {
+                            throw new IOException(
+                                    "Physical slot projection differs from authoritative SNBT at " + path, invalid);
+                        }
+                        if (!row.get("parent").getAsString().equals(r.getString(2))
+                                || row.get("count").getAsLong() != r.getLong(3)
+                                || row.get("copies").getAsLong() != r.getLong(4)
+                                || !row.get("fingerprint").getAsString().equals(r.getString(5))
+                                || !r.getString(7).equals(fingerprint)
+                                || !descriptor.equals(r.getString(8)))
+                            throw new IOException("Physical slot projection differs from authoritative SNBT at "
+                                    + path + ": row=" + row + " projection(parent=" + r.getString(2) + ",count="
+                                    + r.getLong(3) + ",copies=" + r.getLong(4) + ",fingerprint=" + r.getString(5)
+                                    + ",snapshotRef=" + r.getString(7) + ",variant=" + r.getString(8) + ")");
+                        row.addProperty("revision", r.getLong(6));
+                        row.addProperty("present", true);
                         result.add(row);
                     }
                 }
             }
             if (!expected.isEmpty()) throw new IOException("Physical slot projection is incomplete");
+            return result;
         } catch (SQLException | RuntimeException e) {
             throw new IOException("Cannot read physical slots", e);
         }
-        return result;
     }
 
     record ReturnDecision(JsonObject record, boolean changed) {}

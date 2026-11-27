@@ -69,11 +69,13 @@ package com.porter.wesortmanager;
     }
     JsonArray returnDecisions(String source) throws IOException {
         var decisions = new JsonArray();
+        // PR3 (#228 Step 6): return-intake joins the projection authority, never
+        // the read-only legacy physical_slots evidence.
         try (var c = ledger.open();
                 var p = c.prepareStatement("""
-                SELECT r.payload FROM return_intake r JOIN physical_slots s
-                  ON r.source=s.source AND r.path=s.path AND r.slot_revision=s.revision
-                WHERE r.source=? AND s.present=1 ORDER BY s.path
+                SELECT r.payload FROM return_intake r JOIN slot_projection s
+                  ON r.source=s.source_id AND r.path=s.logical_path AND r.slot_revision=s.content_revision
+                WHERE r.source=? AND s.present=1 ORDER BY s.logical_path
                 """)) {
             p.setString(1, source);
             try (var rows = p.executeQuery()) {

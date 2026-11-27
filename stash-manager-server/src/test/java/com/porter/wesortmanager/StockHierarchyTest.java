@@ -558,8 +558,13 @@ class StockHierarchyTest {
         ledger.accept(index(ledger, 32));
         try (var c = ledger.open();
                 var sql = c.createStatement()) {
+            // Simulate a version that never stored slot content: drop both the
+            // legacy payload evidence and the normalized SNBT authority.
             sql.execute("DROP TABLE physical_snapshots");
             sql.execute("DROP TABLE physical_slots");
+            sql.execute("DROP TABLE snbt_snapshots");
+            sql.execute("DROP TABLE slot_projection");
+            sql.execute("DROP TABLE variant_register");
             sql.execute("PRAGMA user_version=2");
         }
         var upgraded = new StockLedger(data);

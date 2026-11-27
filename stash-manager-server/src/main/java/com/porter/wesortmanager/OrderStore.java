@@ -667,7 +667,12 @@ final class OrderStore {
                 }
             }
             trimArchive(b);
-            b.orders.sort((x, y) -> Long.compare(x.createdAt, y.createdAt));
+            // PR3 (#228 Step 6): canonical array order is (createdAt, id). The
+            // stored seq reconstructs the commit's array order; sorting here by
+            // creation time with the order id as a tiebreak keeps restarts
+            // deterministic even when two orders share a timestamp.
+            b.orders.sort(java.util.Comparator.comparingLong((Order order) -> order.createdAt)
+                    .thenComparing(order -> order.id));
             if (restored.putIfAbsent(new IndexStore.StashKey(b.server, b.stash), b) != null)
                 throw new IllegalArgumentException("Duplicate persisted order book");
         });

@@ -385,51 +385,86 @@ import java.util.TreeMap;
             throw new IOException("Observation transaction failed", e);
         }
     }
+    /**
+     * PR3 (#228 Step 6): legacy {@code physical_snapshots}/{@code physical_slots}
+     * rows are read-only evidence. They stay readable for forensics but are
+     * never written and never read as content; the normalized SNBT authority
+     * ({@code snbt_snapshots}/{@code slot_projection}/{@code variant_register})
+     * is the only writer and reader. No migration or backfill: clean installs
+     * and fresh observations only, legacy JSON stays untouched.
+     */
+    static final boolean WRITE_LEGACY_SLOT_PAYLOADS = false;
+
     private void saveSlots(Connection c, String source, JsonObject snapshot, long revision) throws SQLException {
         if (snapshot != null) {
-            try (var p = c.prepareStatement("INSERT OR IGNORE INTO physical_snapshots VALUES(?,?,?,?)")) {
-                p.setString(1, source);
-                p.setString(2, snapshot.get("fingerprint").getAsString());
+            PhysicalSlots.Snapshot decoded;
+            try {
                 String snbt = snapshot.get("snbt").getAsString();
-                var decoded = PhysicalSlots.Snapshot.fromSnbt(snbt);
+                decoded = PhysicalSlots.Snapshot.fromSnbt(snbt);
                 if (!decoded.fingerprint().equals(snapshot.get("fingerprint").getAsString()))
                     throw new IllegalArgumentException("SNBT snapshot fingerprint mismatch before persistence");
                 var expected = snapshot.deepCopy();
                 expected.remove("snbt");
                 if (!decoded.json().equals(expected))
                     throw new IllegalArgumentException("Physical projection differs from SNBT");
-                p.setString(3, snbt);
-                p.setLong(4, revision);
-                p.executeUpdate();
-                // PR3 (#228/#267): normalized SNBT authority + variant register on the
-                // same connection, so legacy rows and normalized rows commit atomically.
-                SnbtStore.persistSnapshot(c, source, decoded, revision);
+            } catch (RuntimeException invalid) {
+                throw new SQLException("Invalid SNBT snapshot", invalid);
             }
-            // physical_slots is a rebuildable index, never a second content authority.
-            try (var p = c.prepareStatement(
-                    "INSERT INTO physical_slots VALUES(?,?,?,?,?,?,?,?,?,?,1) ON CONFLICT(source,path) DO UPDATE SET parent=excluded.parent,payload=excluded.payload,item_fingerprint=excluded.item_fingerprint,count=excluded.count,copies=excluded.copies,revision=CASE WHEN physical_slots.present=1 AND physical_slots.fingerprint=excluded.fingerprint AND physical_slots.copies=excluded.copies THEN physical_slots.revision ELSE excluded.revision END,fingerprint=excluded.fingerprint,seen_revision=excluded.seen_revision,present=1")) {
-                for (var value : snapshot.getAsJsonArray("positions")) {
-                    var row = value.getAsJsonObject();
+            if (WRITE_LEGACY_SLOT_PAYLOADS) {
+                try (var p = c.prepareStatement("INSERT OR IGNORE INTO physical_snapshots VALUES(?,?,?,?)")) {
                     p.setString(1, source);
-                    p.setString(2, row.get("path").getAsString());
-                    p.setString(3, row.get("parent").getAsString());
-                    p.setString(4, row.toString());
-                    p.setString(5, row.get("fingerprint").getAsString());
-                    p.setString(6, row.get("itemFingerprint").getAsString());
-                    p.setLong(7, StockLedger.number(row, "count"));
-                    p.setLong(8, StockLedger.number(row, "copies"));
-                    p.setLong(9, revision);
-                    p.setLong(10, revision);
-                    p.addBatch();
+                    p.setString(2, snapshot.get("fingerprint").getAsString());
+                    p.setString(3, snapshot.get("snbt").getAsString());
+                    p.setLong(4, revision);
+                    p.executeUpdate();
                 }
-                p.executeBatch();
+                // physical_slots is a rebuildable index, never a second content authority.
+                try (var p = c.prepareStatement(
+                        "INSERT INTO physical_slots VALUES(?,?,?,?,?,?,?,?,?,?,1) ON CONFLICT(source,path) DO UPDATE SET parent=excluded.parent,payload=excluded.payload,item_fingerprint=excluded.item_fingerprint,count=excluded.count,copies=excluded.copies,revision=CASE WHEN physical_slots.present=1 AND physical_slots.fingerprint=excluded.fingerprint AND physical_slots.copies=excluded.copies THEN physical_slots.revision ELSE excluded.revision END,fingerprint=excluded.fingerprint,seen_revision=excluded.seen_revision,present=1")) {
+                    for (var value : snapshot.getAsJsonArray("positions")) {
+                        var row = value.getAsJsonObject();
+                        p.setString(1, source);
+                        p.setString(2, row.get("path").getAsString());
+                        p.setString(3, row.get("parent").getAsString());
+                        p.setString(4, row.toString());
+                        p.setString(5, row.get("fingerprint").getAsString());
+                        p.setString(6, row.get("itemFingerprint").getAsString());
+                        p.setLong(7, StockLedger.number(row, "count"));
+                        p.setLong(8, StockLedger.number(row, "copies"));
+                        p.setLong(9, revision);
+                        p.setLong(10, revision);
+                        p.addBatch();
+                    }
+                    p.executeBatch();
+                }
+            }
+            // PR3 (#228/#267): normalized SNBT authority + variant register on the
+            // same connection, so legacy rows and normalized rows commit atomically.
+            SnbtStore.persistSnapshot(c, source, decoded, revision);
+            if (WRITE_LEGACY_SLOT_PAYLOADS) {
+                try (var p = c.prepareStatement(
+                        "UPDATE physical_slots SET present=0,revision=? WHERE source=? AND present=1 AND seen_revision<>?")) {
+                    p.setLong(1, revision);
+                    p.setString(2, source);
+                    p.setLong(3, revision);
+                    p.executeUpdate();
+                }
+            }
+            return;
+        }
+        // A fresh observation without SNBT (legacy v1 wire) supersedes the
+        // derived projection without publishing new content.
+        if (WRITE_LEGACY_SLOT_PAYLOADS) {
+            try (var p = c.prepareStatement(
+                    "UPDATE physical_slots SET present=0,revision=? WHERE source=? AND present=1 AND seen_revision<>?")) {
+                p.setLong(1, revision);
+                p.setString(2, source);
+                p.setLong(3, revision);
+                p.executeUpdate();
             }
         }
-        try (var p = c.prepareStatement(
-                "UPDATE physical_slots SET present=0,revision=? WHERE source=? AND present=1 AND seen_revision<>?")) {
-            p.setLong(1, revision);
-            p.setString(2, source);
-            p.setLong(3, revision);
+        try (var p = c.prepareStatement("DELETE FROM slot_projection WHERE source_id=?")) {
+            p.setString(1, source);
             p.executeUpdate();
         }
     }

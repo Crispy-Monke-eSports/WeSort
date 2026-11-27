@@ -75,20 +75,30 @@ class SnbtObservationTest {
         String fingerprint = physical.get("fingerprint").getAsString();
         String snbt = physical.get("snbt").getAsString();
         ledger.accept(root);
+        // PR3 (#228 Step 6): the normalized SNBT row is the persisted authority;
+        // legacy payload tables stay untouched evidence (no legacy writes).
         try (var c = java.sql.DriverManager.getConnection("jdbc:sqlite:" + data.resolve("guild.sqlite"));
-                var p = c.prepareStatement("SELECT payload,typeof(payload) FROM physical_snapshots WHERE source=?")) {
-            p.setString(1, id);
+                var p = c.prepareStatement(
+                        "SELECT content_snbt,typeof(content_snbt) FROM snbt_snapshots WHERE sha256=?")) {
+            p.setString(1, fingerprint);
             try (var r = p.executeQuery()) {
                 assertTrue(r.next());
                 assertEquals(snbt, r.getString(1));
                 assertEquals("text", r.getString(2));
             }
         }
+        try (var c = java.sql.DriverManager.getConnection("jdbc:sqlite:" + data.resolve("guild.sqlite"));
+                var q = c.createStatement();
+                var r = q.executeQuery("SELECT COUNT(*) FROM physical_slots")) {
+            assertTrue(r.next());
+            assertEquals(0, r.getLong(1), "legacy slot payloads are read-only evidence, never written");
+        }
         var restarted = new StockLedger(data);
         assertEquals(PhysicalSlots.Snapshot.fromSnbt(snbt).json(), restarted.snapshot(id, fingerprint));
         assertEquals(1, restarted.physicalSlots(id).size());
+        // Corrupting the projection (the primary reader) fails closed ...
         try (var c = java.sql.DriverManager.getConnection("jdbc:sqlite:" + data.resolve("guild.sqlite"));
-                var p = c.prepareStatement("UPDATE physical_slots SET payload='{}' WHERE source=?")) {
+                var p = c.prepareStatement("UPDATE slot_projection SET count=count+1 WHERE source_id=?")) {
             p.setString(1, id);
             assertEquals(1, p.executeUpdate());
         }

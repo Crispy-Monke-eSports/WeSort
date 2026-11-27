@@ -214,6 +214,62 @@ class ProjectionReaderTest {
     }
 
     @Test
+    void tamperedOrPhantomProjectionRowsFailClosed() throws Exception {
+        var ledger = new StockLedger(data);
+        var root = observation(ledger);
+        ledger.accept(root);
+        String id = sourceId(root);
+        String fingerprint = fingerprint(root);
+        assertEquals(1, ledger.physicalSlots(id).size());
+
+        // A tampered projected count disagrees with the SNBT gate: fail the read.
+        try (var c = ledger.open();
+                var u = c.prepareStatement("UPDATE slot_projection SET count = count + 1 WHERE source_id=?")) {
+            u.setString(1, id);
+            assertEquals(1, u.executeUpdate());
+        }
+        assertThrows(java.io.IOException.class, () -> ledger.physicalSlots(id));
+        try (var c = ledger.open();
+                var u = c.prepareStatement("UPDATE slot_projection SET count = count - 1 WHERE source_id=?")) {
+            u.setString(1, id);
+            u.executeUpdate();
+        }
+        assertEquals(1, ledger.physicalSlots(id).size(), "repaired projection reads again");
+
+        // A phantom row with no SNBT counterpart fails the read, not the stock.
+        long variant;
+        try (var c = ledger.open();
+                var q = c.prepareStatement("SELECT variant_id FROM slot_projection WHERE source_id=?")) {
+            q.setString(1, id);
+            try (var r = q.executeQuery()) {
+                assertTrue(r.next());
+                variant = r.getLong(1);
+            }
+        }
+        try (var c = ledger.open();
+                var ins = c.prepareStatement(
+                        "INSERT INTO slot_projection(source_id,snapshot_ref,logical_path,parent_path,variant_id,count,copies,slot_fingerprint,content_revision,present) VALUES(?,?,?,?,?,?,?,?,?,1)")) {
+            ins.setString(1, id);
+            ins.setString(2, fingerprint);
+            ins.setString(3, "phantom");
+            ins.setString(4, "");
+            ins.setLong(5, variant);
+            ins.setLong(6, 1);
+            ins.setLong(7, 1);
+            ins.setString(8, "phantom-fingerprint");
+            ins.setLong(9, 1);
+            ins.executeUpdate();
+        }
+        assertThrows(java.io.IOException.class, () -> ledger.physicalSlots(id));
+        try (var c = ledger.open();
+                var d = c.prepareStatement("DELETE FROM slot_projection WHERE source_id=? AND logical_path='phantom'")) {
+            d.setString(1, id);
+            assertEquals(1, d.executeUpdate());
+        }
+        assertEquals(1, ledger.physicalSlots(id).size(), "phantom removed, stock intact");
+    }
+
+    @Test
     void legacySlotPayloadsStayReadOnlyEvidence() throws Exception {
         var ledger = new StockLedger(data);
         var root = observation(ledger);

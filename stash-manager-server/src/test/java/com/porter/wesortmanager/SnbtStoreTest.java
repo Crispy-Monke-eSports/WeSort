@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.porter.wesort.data.PhysicalSlots;
 import java.nio.file.Path;
 import java.sql.DriverManager;
 import java.util.List;
@@ -98,5 +99,31 @@ class SnbtStoreTest {
         assertEquals(0, count("SELECT COUNT(*) FROM variant_register"));
         assertEquals(0, count("SELECT COUNT(*) FROM slot_projection"));
         assertEquals(0, ledger.revision(), "failed validation commits nothing");
+    }
+
+    @Test
+    void variantDigestCollisionWithDifferentBytesFailsClosed() throws Exception {
+        var ledger = new StockLedger(data);
+        ledger.accept(observation(ledger, 26, 0));
+        assertEquals(1, count("SELECT COUNT(*) FROM variant_register"));
+        // Plant hostile bytes under the registered digest: reuse must verify, not trust.
+        String hostile =
+                "{\"components\":{},\"group\":\"\",\"id\":\"minecraft:stone\",\"key\":\"minecraft:stone\",\"kind\":\"ITEM\",\"maxStack\":64,\"size\":0}";
+        try (var c = ledger.open();
+                var u = c.prepareStatement("UPDATE variant_register SET canonical_variant_snbt=?")) {
+            u.setString(1, hostile);
+            assertEquals(1, u.executeUpdate());
+            var item = new PhysicalSlots.Item(
+                    "minecraft:diamond",
+                    "minecraft:diamond",
+                    64,
+                    "{\"minecraft:custom_data\":{exact:9007199254740993L}}",
+                    PhysicalSlots.Kind.ITEM,
+                    0,
+                    List.of(),
+                    "");
+            assertThrows(IllegalArgumentException.class, () -> SnbtStore.variantId(c, item));
+        }
+        assertEquals(1, count("SELECT COUNT(*) FROM variant_register"), "failed reuse registers nothing");
     }
 }

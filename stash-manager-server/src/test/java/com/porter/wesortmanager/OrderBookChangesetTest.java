@@ -121,8 +121,17 @@ class OrderBookChangesetTest {
     }
 
     @Test
-    void terminalOrderCarriesResumeReceipt() throws Exception {
-        var terminal = withAgent(book("delivered", "created"), "agent-1");
+    void emptyChangesetCommitFailsClosed() throws Exception {
+        var ledger = new StockLedger(data);
+        var repo = new OrderBookRepository(ledger, EventPublisher.noop());
+        var root = book("pending", "created");
+        long rev = repo.commit("s", "a", 0, root, null);
+        // Identical recommit with a live expected revision proves nothing: reject, do not no-op.
+        assertThrows(java.io.IOException.class, () -> repo.commit("s", "a", rev, root, null));
+    }
+
+    @Test
+    void terminalOrderCarriesResumeReceipt() throws Exception {        var terminal = withAgent(book("delivered", "created"), "agent-1");
         var changesets =
                 OrderChangeSet.forBook(JsonParser.parseString("{\"orders\":[]}").getAsJsonObject(), terminal, 0);
         assertEquals(1, changesets.size());

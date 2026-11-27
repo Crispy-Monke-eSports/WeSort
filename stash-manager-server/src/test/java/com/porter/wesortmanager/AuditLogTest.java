@@ -83,6 +83,29 @@ class AuditLogTest {
     }
 
     @Test
+    void integrityCheckFailureFailsClosed() throws Exception {
+        var ledger = ledger();
+        AuditLog audit = new AuditLog(ledger, data);
+        audit.load();
+        audit.add("member-1", "Member", "order.created", "first", "127.0.0.1");
+        // Checkpoint WAL so the main file is authoritative, then corrupt a
+        // non-root page structurally: PRAGMA quick_check must report it.
+        try (var c = ledger.open();
+                var s = c.createStatement()) {
+            s.execute("PRAGMA wal_checkpoint(TRUNCATE)");
+        }
+        Path db = data.resolve("guild.sqlite");
+        assertTrue(Files.size(db) > 8192, "database must span several pages to corrupt structurally");
+        byte[] raw = Files.readAllBytes(db);
+        java.util.Arrays.fill(raw, 8192, 8192 + 64, (byte) 0xFF);
+        Files.write(db, raw);
+        var failure = assertThrows(IllegalStateException.class, audit::load);
+        assertTrue(
+                failure.getMessage().contains("failed integrity check"),
+                "must fail on quick_check, got: " + failure.getMessage());
+    }
+
+    @Test
     void sameTransactionWriteRollsBackWithItsTransaction() throws Exception {
         var ledger = ledger();
         AuditLog audit = new AuditLog(ledger, data);

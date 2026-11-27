@@ -87,7 +87,9 @@ class CustodySqliteTest {
         assertNotNull(custody.get(packageId));
         assertEquals("o-1", custody.get(packageId).orderId());
         assertEquals(1, audit.size());
-        assertEquals("order.place", audit.newest(1).get(0).getAsJsonObject().get("action").getAsString());
+        assertEquals(
+                "order.place",
+                audit.newest(1).get(0).getAsJsonObject().get("action").getAsString());
         // Restart keeps book, custody and audit together.
         var restarted = new PackageCustody(new StockLedger(data), clock());
         assertNotNull(restarted.get(packageId));
@@ -145,10 +147,7 @@ class CustodySqliteTest {
 
     @Test
     void staleJsonFileIsIgnoredAndNeverRead() throws Exception {
-        Files.writeString(
-                data.resolve("custody.json"),
-                "{\"schema\":1,\"packages\":[]}",
-                StandardCharsets.UTF_8);
+        Files.writeString(data.resolve("custody.json"), "{\"schema\":1,\"packages\":[]}", StandardCharsets.UTF_8);
         // The legacy Path constructor shares guild.sqlite and ignores the stale file.
         var custody = new PackageCustody(data, time::get);
         assertEquals(0, custody.list(null).size());

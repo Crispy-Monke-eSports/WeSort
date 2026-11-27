@@ -96,7 +96,8 @@ final class HandoffRoutes {
             switch (action) {
                 case "arrive" -> result = handoffs.arrive(requireId(body), agent, trail);
                 case "no-show" -> result = handoffs.noShow(requireId(body), agent, trail);
-                default -> result = handoffs.dropUnverified(requireId(body), agent, AddonRoutes.string(body, "reason"), trail);
+                default ->
+                    result = handoffs.dropUnverified(requireId(body), agent, AddonRoutes.string(body, "reason"), trail);
             }
             Http.json(ex, 200, result.json());
         } catch (Handoffs.Conflict conflict) {

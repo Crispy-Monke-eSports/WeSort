@@ -236,7 +236,11 @@ final class JobScheduler {
             long deadline = Math.addExact(leaseClock.millis(), TTL);
             var events = entry.events().deepCopy();
             events.add(event("renewed", agent));
-            update(c, jobId, new Row(entry.job(), deadline, token, events), entry.job().revision());
+            update(
+                    c,
+                    jobId,
+                    new Row(entry.job(), deadline, token, events),
+                    entry.job().revision());
             if (trail != null) {
                 trail.say("job.renew", jobId);
                 AuditLog.addAll(c, trail.entries());
@@ -536,7 +540,11 @@ final class JobScheduler {
         for (String id : ids) {
             Row entry = read(c, id);
             if (entry == null || !entry.job().held()) continue;
-            update(c, id, fenced(entry, "expired", entry.job().agent()), entry.job().revision());
+            update(
+                    c,
+                    id,
+                    fenced(entry, "expired", entry.job().agent()),
+                    entry.job().revision());
         }
     }
 
@@ -562,7 +570,11 @@ final class JobScheduler {
         for (String id : ids) {
             Row entry = read(c, id);
             if (entry == null || !entry.job().held()) continue;
-            update(c, id, fenced(entry, reason, entry.job().agent()), entry.job().revision());
+            update(
+                    c,
+                    id,
+                    fenced(entry, reason, entry.job().agent()),
+                    entry.job().revision());
         }
     }
 
@@ -582,7 +594,11 @@ final class JobScheduler {
             throws SQLException, IOException {
         var events = entry.events().deepCopy();
         events.add(event(event, by));
-        update(c, jobId, new Row(next, entry.deadline(), entry.token(), events), entry.job().revision());
+        update(
+                c,
+                jobId,
+                new Row(next, entry.deadline(), entry.token(), events),
+                entry.job().revision());
         return next;
     }
 

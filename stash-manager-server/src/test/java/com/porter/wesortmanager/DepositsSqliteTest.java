@@ -104,7 +104,13 @@ class DepositsSqliteTest {
 
         assertEquals(2, revisionOf(ledger, "s", "a"));
         assertEquals(Deposit.State.DELIVERED, deposits.get(packageId).state());
-        assertEquals(2, deposits.list("o-1").get(0).getAsJsonObject().getAsJsonArray("events").size());
+        assertEquals(
+                2,
+                deposits.list("o-1")
+                        .get(0)
+                        .getAsJsonObject()
+                        .getAsJsonArray("events")
+                        .size());
         assertEquals(1, audit.size());
         // Restart keeps book, deposits and audit together.
         var restarted = new Deposits(new StockLedger(data), clock());
@@ -165,10 +171,7 @@ class DepositsSqliteTest {
 
     @Test
     void staleJsonFileIsIgnoredAndNeverRead() throws Exception {
-        Files.writeString(
-                data.resolve("deposits.json"),
-                "{\"schema\":1,\"deposits\":[]}",
-                StandardCharsets.UTF_8);
+        Files.writeString(data.resolve("deposits.json"), "{\"schema\":1,\"deposits\":[]}", StandardCharsets.UTF_8);
         // The legacy Path constructor shares guild.sqlite and ignores the stale file.
         var deposits = new Deposits(data, time::get);
         assertEquals(0, deposits.list(null).size());

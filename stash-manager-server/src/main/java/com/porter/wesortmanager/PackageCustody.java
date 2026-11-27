@@ -246,7 +246,12 @@ final class PackageCustody {
      * committing, so an order commit can carry custody and audit atomically.
      */
     Package transition(
-            Connection c, String packageId, String orderId, String agent, State next, JsonObject location,
+            Connection c,
+            String packageId,
+            String orderId,
+            String agent,
+            State next,
+            JsonObject location,
             JsonObject evidence)
             throws SQLException, IOException {
         Package p = read(c, packageId);
@@ -340,7 +345,8 @@ final class PackageCustody {
             row.setLong(4, p.revision());
             row.setString(5, p.packageId());
             row.setLong(6, p.revision() - 1);
-            if (row.executeUpdate() != 1) throw new Conflict("Package custody changed concurrently; reread the package");
+            if (row.executeUpdate() != 1)
+                throw new Conflict("Package custody changed concurrently; reread the package");
         }
         insertEvents(c, p);
         return p;

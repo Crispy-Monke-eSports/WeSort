@@ -614,10 +614,7 @@ final class OrderStore {
      * and the staged audit entries as well.
      */
     private void save(
-            Book b,
-            StockLedger.BoxRelease release,
-            AuditLog.Batch batch,
-            List<OrderRepository.SqliteWrite> extra)
+            Book b, StockLedger.BoxRelease release, AuditLog.Batch batch, List<OrderRepository.SqliteWrite> extra)
             throws IOException {
         JsonObject root = new JsonObject();
         root.addProperty("server", b.server);

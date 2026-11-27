@@ -4669,35 +4669,6 @@ public class StashSorter extends Module {
         return s.craftingTableSource.isEmpty() ? "set" : s.craftingTableSource;
     }
 
-    /**
-     * For wesort-stash-manager: sets the crafting table, or clears it if it is this one.
-     * @return 1 when set, 0 when cleared, -1 when the block is no crafting table, -2 when no stash is loaded
-     */
-    int toggleCraftingTable(BlockPos pos) {
-        if (mc.level == null || ensureStash() == null) return -2;
-        if (stash.craftingTablePos != null && stash.craftingTablePos.equals(pos)) {
-            stash.craftingTablePos = null;
-            stash.craftingTableSource = "";
-            stash.save();
-            return 0;
-        }
-        if (!isTable(pos)) return -1;
-        stash.craftingTablePos = pos.immutable();
-        stash.craftingTableSource = "set";
-        tableChanged();
-        stash.save();
-        return 1;
-    }
-
-    /** For wesort-stash-manager: no crafting table any more. @return false when there was none or no stash */
-    boolean clearCraftingTable() {
-        if (ensureStash() == null || stash.craftingTablePos == null) return false;
-        stash.craftingTablePos = null;
-        stash.craftingTableSource = "";
-        stash.save();
-        return true;
-    }
-
     // Finding a crafting table to craft at (before a craft that needs one). In order: the one picked by hand, a
     // remembered one, a
     // placed table found in the stash area, one taken from the stash and placed, one crafted in the inventory's 2x2
@@ -5597,34 +5568,6 @@ public class StashSorter extends Module {
     BlockPos anvilPos() {
         Stash s = ensureStash();
         return s == null ? null : s.anvilPos;
-    }
-
-    /**
-     * For wesort-stash-manager: sets the anvil, or clears it if it is this one.
-     * @return 1 when set, 0 when cleared, -1 when the block is no anvil, -2 when no stash is loaded
-     */
-    int toggleAnvil(BlockPos pos) {
-        if (mc.level == null || ensureStash() == null) return -2;
-        if (stash.anvilPos != null && stash.anvilPos.equals(pos)) {
-            stash.anvilPos = null;
-            stash.anvilSource = "";
-            stash.save();
-            return 0;
-        }
-        if (!isAnvil(pos)) return -1;
-        stash.anvilPos = pos.immutable();
-        stash.anvilSource = "set";
-        stash.save();
-        return 1;
-    }
-
-    /** For wesort-stash-manager: no anvil any more. @return false when there was none or no stash */
-    boolean clearAnvil() {
-        if (ensureStash() == null || stash.anvilPos == null) return false;
-        stash.anvilPos = null;
-        stash.anvilSource = "";
-        stash.save();
-        return true;
     }
 
     // ------------------------------------------------------------------------------------------------------------------
@@ -12462,6 +12405,10 @@ public class StashSorter extends Module {
                             : "%s can be used for compacting again.",
                     box.pos.toShortString());
         } else if (pick.get() == Pick.Delivery) {
+            if (managerOwnsWorkzone()) {
+                notice("The delivery container is owned by the Manager; change it in Settings > Stashes.");
+                return true;
+            }
             if (box.deliveryExtra)
                 notice(
                         "%s is already one of the delivery chests (put up above the delivery container). Change the delivery container to forget them.",
@@ -12475,6 +12422,10 @@ public class StashSorter extends Module {
                         box.pos.toShortString());
             }
         } else if (pick.get() == Pick.Input) {
+            if (managerOwnsWorkzone()) {
+                notice("The drop-off chest is owned by the Manager; change it in Settings > Stashes.");
+                return true;
+            }
             if (box.delivery || box.deliveryExtra) {
                 notice("%s is a delivery container, it can't also be the input chest.", box.pos.toShortString());
             } else {
@@ -12613,29 +12564,6 @@ public class StashSorter extends Module {
         return set;
     }
 
-    /**
-     * For wesort-stash-manager: marks or unmarks the container at this block as the delivery container.
-     * @return 1 when it is now the delivery container, 0 when it was unmarked, -1 when it isn't a container, -2 when no
-     *         stash is loaded, -3 when the position is not loaded and more than 128 blocks from the player
-     */
-    int toggleDelivery(BlockPos pos) {
-        if (mc.level == null || ensureStash() == null) return -2;
-        if (!deliverySpotSettable(pos)) return -3;
-        if (!isContainer(pos)) return -1;
-
-        Box box = stash.boxAt(pos);
-        // A chest put up for the delivery storage is already a delivery chest
-        if (box != null && box.deliveryExtra) return 1;
-        if (box == null) {
-            box = makeBox(pos.immutable());
-            stash.boxes.add(box);
-        }
-        boolean set = markDelivery(box);
-        stash.save();
-        version++;
-        return set ? 1 : 0;
-    }
-
     /** A delivery spot is refused when it is not loaded and far from the player (a mistyped or stale position). */
     private boolean deliverySpotSettable(BlockPos pos) {
         if (mc.player == null) return false;
@@ -12648,18 +12576,6 @@ public class StashSorter extends Module {
                     "%s is not loaded and more than %d blocks from you, so it is not made the delivery container. Go there first.",
                     pos.toShortString(), StashSafety.FAR_LIMIT);
         return ok;
-    }
-
-    /** For wesort-stash-manager: no delivery container any more. @return false when there was none or no stash */
-    boolean clearDelivery() {
-        if (ensureStash() == null) return false;
-        Box was = null;
-        for (Box b : stash.boxes) if (b.delivery) was = b;
-        if (was == null) return false;
-        markDelivery(was);
-        stash.save();
-        version++;
-        return true;
     }
 
     /**
@@ -12701,31 +12617,17 @@ public class StashSorter extends Module {
         }
     }
 
-    /** For wesort-stash-manager: no input chest any more. @return false when there was none or no stash */
-    boolean clearInput() {
-        if (ensureStash() == null) return false;
-        Box was = null;
-        for (Box b : stash.boxes) if (b.input) was = b;
-        if (was == null && stash.inputPos == null) return false;
-        if (was != null) unmarkInput(was);
-        else {
-            stash.inputPos = null;
-            stash.inputSource = "";
-        }
-        stash.save();
-        version++;
-        return true;
-    }
-
     // The stash perimeter
 
     /**
      * Whether the workzone is Owner-owned right now (#65): a configured Manager
      * owns placement through signed stash-defs directives — including before the
      * first directive arrives — or a previously applied directive revision does.
-     * Local corner/delivery/drop-off picks are refused while this holds.
-     * Residual (next PR): an explicit Owner-approved workzone gate for every
-     * stash, so a local pick/perimeter can never widen Manager-owned area.
+     * Every local placement path is refused while this holds: stash corners and
+     * perimeter (setCorner/clearArea), delivery container and drop-off/input
+     * picks (box-targeted Delivery/Input/Exclude/drop-off picks), and the
+     * workstation toggles were removed as dead code — local picks can never
+     * widen Manager-owned area.
      */
     private boolean managerOwnsWorkzone() {
         var manager =

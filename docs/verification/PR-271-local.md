@@ -65,3 +65,36 @@ single transaction spanning physical stock/custody/audit is #140 scope
 - Lease-free sorting requires the verified fixture marker, not just the JVM flag.
 - `missingGuildDatabaseWithStrayJournalsPreventsStartup` restores SQLite-side
   startup fencing coverage independent of the removed JSON import.
+
+## Round 9 additions (same commands, same green)
+
+- W-010 stale-word sweep completed on the listed scope: `BotsPage.tsx`
+  ("Transport is online" → "The connection is online"),
+  `MC_26_3_JOBS.md` (fleet/failover wording + TRANSPORT.md reference removed;
+  `MC_26_3_TRANSPORT.md` itself stays as the boundary doc for the removed
+  subsystem), `MC_26_3_NAVIGATION.md` (långdistanstransport → global routing
+  under W-036). Zero remaining fleet/transport/sign-stale hits in the scope.
+- Workzone gate explicit everywhere a local pick can place physical work:
+  box-targeted Delivery/Input picks now refuse first like the Exclude/
+  drop-off/corner paths already did; the dead
+  toggle/clearDelivery/Input/Anvil/CraftingTable entry points were deleted
+  (no callers anywhere, incl. tests/harness) instead of gated. The
+  "Residual (next PR)" carve-out is removed: no ungated local placement path
+  remains.
+- #197 doc sync: `MC_26_3_NAVIGATION.md` describes the chunk-await gate as
+  implemented (waiting for chunks, no Baritone goal armed, watchdog ticking)
+  and documents the fenced-journal design (bounded escalation: re-upload +
+  60s repeat warnings after 5 min; unbounded fence by design — age never
+  releases physical custody, #210–216). `WorldInteractionGuard.jobTag`
+  fallback handling is unchanged vs main (fail-closed `"unknown"` preserved).
+- Evidence this round (no Docker/Minecraft, no 6b6t access; live verification
+  explicitly not required): `./gradlew test --offline --rerun-tasks`
+  (client) → 57 files, **330 tests, 0 failures**; `./gradlew
+-p stash-manager-server test --offline --rerun-tasks` → 79 files,
+  **533 tests, 0 failures**; `npm --prefix web test` → 15 files,
+  **113 tests, 0 failures**; `compileJava --offline` clean.
+- Live 6b6t proof (#141) remains BLOCKED-by-environment and is not claimed;
+  code paths (signed hello/heartbeat with control scope, lobby portal
+  transit, read-only SURVEY_ONLY survey, preflight gate) are implemented and
+  unit-tested. Soak ≥5400s and unified-transaction close-outs belong to
+  later work and are not faked here.

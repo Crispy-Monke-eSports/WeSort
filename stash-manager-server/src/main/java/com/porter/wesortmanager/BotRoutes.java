@@ -217,7 +217,8 @@ final class BotRoutes {
                 || !agent.matches("[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")) return null;
         // No Minecraft username/UUID equivalence requirement. The agent UUID above is
         // physical work context within this session, not the key's owner.
-        return new BotHub.ManifestScope(botId, config.warehouseKey(), stash, dimension, agent, player == null ? "" : player);
+        return new BotHub.ManifestScope(
+                botId, config.warehouseKey(), stash, dimension, agent, player == null ? "" : player);
     }
 
     private void manifest(HttpExchange ex) throws IOException {

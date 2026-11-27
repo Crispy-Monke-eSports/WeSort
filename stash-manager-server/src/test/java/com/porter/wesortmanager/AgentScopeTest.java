@@ -376,8 +376,8 @@ class AgentScopeTest {
                 200,
                 botPost(
                                 "/api/v1/delivery",
-                                "{\"version\":1,\"server\":\"proxy\",\"stash\":\"a\",\"player\":\"Bot\"," + "\"hash\":\""
-                                        + "a".repeat(40) + "\",\"readAt\":0,\"chests\":[]}")
+                                "{\"version\":1,\"server\":\"proxy\",\"stash\":\"a\",\"player\":\"Bot\","
+                                        + "\"hash\":\"" + "a".repeat(40) + "\",\"readAt\":0,\"chests\":[]}")
                         .status);
         assertEquals(
                 200,

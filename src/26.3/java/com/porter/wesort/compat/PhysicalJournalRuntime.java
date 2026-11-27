@@ -90,8 +90,9 @@ public final class PhysicalJournalRuntime {
             return false;
         }
         var context = journal.context();
-        boolean waiting = mc.player.getUUID().toString().equals(context.get("agent").getAsString())
-                && (!managerScope.equals(scope) || !mirroredCurrent());
+        boolean waiting =
+                mc.player.getUUID().toString().equals(context.get("agent").getAsString())
+                        && (!managerScope.equals(scope) || !mirroredCurrent());
         if (waiting) {
             if (mirrorWaitSince == 0) mirrorWaitSince = System.currentTimeMillis();
         } else mirrorWaitSince = 0;

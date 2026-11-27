@@ -44,6 +44,9 @@ import net.minecraft.world.item.Item;
  * back to the client thread, so all state here is only touched on the client thread.
  */
 public class StashManager extends Module {
+    /** Live acceptance runs may survey and reconcile the existing journal, without taking new work. */
+    public static final boolean SURVEY_ONLY = Boolean.getBoolean("wesort.surveyOnly");
+
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
     // The sole visible Meteor setting opens the Manager connection screen. All remaining
@@ -153,15 +156,6 @@ public class StashManager extends Module {
             .visible(() -> false)
             .build());
 
-    private final Setting<Integer> craftMaxPerOrder = sgCrafting.add(new IntSetting.Builder()
-            .name("craft-max-per-order")
-            .description("The most Shulker Boxes crafted for one order.")
-            .defaultValue(27)
-            .min(1)
-            .sliderRange(1, 54)
-            .visible(() -> false)
-            .build());
-
     private final Setting<Integer> craftMaxOpsPerTask = sgCrafting.add(new IntSetting.Builder()
             .name("craft-max-ops-per-task")
             .description(
@@ -169,15 +163,6 @@ public class StashManager extends Module {
             .defaultValue(128)
             .min(8)
             .sliderRange(8, 512)
-            .visible(() -> false)
-            .build());
-
-    private final Setting<Integer> craftMaxPerHour = sgCrafting.add(new IntSetting.Builder()
-            .name("craft-max-per-hour")
-            .description("The most Shulker Boxes crafted in an hour.")
-            .defaultValue(54)
-            .min(1)
-            .sliderRange(1, 216)
             .visible(() -> false)
             .build());
 
@@ -672,7 +657,11 @@ public class StashManager extends Module {
     private volatile Boolean e2eFixtureVerified;
 
     public boolean sortingEnabled() {
-        return dedicatedProfile() && managerConfigured() && sortEnabled.get() && !e2ePhysicalSortingHold;
+        return !SURVEY_ONLY
+                && dedicatedProfile()
+                && managerConfigured()
+                && sortEnabled.get()
+                && !e2ePhysicalSortingHold;
     }
 
     /** Orders waiting to be claimed: the sorter names no UUIDs while any wait, so packed orders keep matching. */
@@ -758,7 +747,7 @@ public class StashManager extends Module {
                 || inFlight) return false;
         long now = System.nanoTime();
         var sorter = WeSortAddon.sorter();
-        boolean wants = isActive() && sorter != null && sorter.requiresSortingPermit();
+        boolean wants = !SURVEY_ONLY && isActive() && sorter != null && sorter.requiresSortingPermit();
         if (!wants && sortingToken == null) return false;
         if (!wants && (PhysicalJournalRuntime.awaitingMirror() || !InventorySync.ready() && !InventorySync.failed()))
             return false;
@@ -1330,9 +1319,7 @@ public class StashManager extends Module {
         values.addProperty(useNamedShulkers.name, useNamedShulkers.get());
         values.addProperty(autoExpandDelivery.name, autoExpandDelivery.get());
         values.addProperty(enableCrafting.name, enableCrafting.get());
-        values.addProperty(craftMaxPerOrder.name, craftMaxPerOrder.get());
         values.addProperty(craftMaxOpsPerTask.name, craftMaxOpsPerTask.get());
-        values.addProperty(craftMaxPerHour.name, craftMaxPerHour.get());
         values.addProperty(freshMinutes.name, freshMinutes.get());
         values.addProperty(orderChat.name, orderChat.get());
         values.addProperty(orderIntakePaused.name, orderIntakePaused.get());
@@ -1349,9 +1336,7 @@ public class StashManager extends Module {
             schema.add(controlSetting(useNamedShulkers.name, "Allow named shulkers in orders", "bool", null, null));
             schema.add(controlSetting(autoExpandDelivery.name, "Expand delivery storage", "bool", null, null));
             schema.add(controlSetting(enableCrafting.name, "Enable crafting", "bool", null, null));
-            schema.add(controlSetting(craftMaxPerOrder.name, "Crafting boxes per order", "int", 1, 54));
             schema.add(controlSetting(craftMaxOpsPerTask.name, "Crafting operations per task", "int", 8, 512));
-            schema.add(controlSetting(craftMaxPerHour.name, "Crafting boxes per hour", "int", 1, 216));
             schema.add(controlSetting(freshMinutes.name, "Stock freshness (minutes)", "int", 0, 30));
             schema.add(controlSetting(orderChat.name, "Order chat messages", "bool", null, null));
             schema.add(controlSetting(orderIntakePaused.name, "Pause new warehouse orders", "bool", null, null));
@@ -1515,12 +1500,8 @@ public class StashManager extends Module {
         else if (path.equals(autoExpandDelivery.name))
             applied = changeBoolean(autoExpandDelivery, job.get("expect"), value);
         else if (path.equals(enableCrafting.name)) applied = changeBoolean(enableCrafting, job.get("expect"), value);
-        else if (path.equals(craftMaxPerOrder.name))
-            applied = changeInteger(craftMaxPerOrder, job.get("expect"), value, 1, 54);
         else if (path.equals(craftMaxOpsPerTask.name))
             applied = changeInteger(craftMaxOpsPerTask, job.get("expect"), value, 8, 512);
-        else if (path.equals(craftMaxPerHour.name))
-            applied = changeInteger(craftMaxPerHour, job.get("expect"), value, 1, 216);
         else if (path.equals(orderChat.name)) applied = changeBoolean(orderChat, job.get("expect"), value);
         else if (path.startsWith("sorter.")) {
             var engine = WeSortAddon.sorter();
@@ -1728,6 +1709,7 @@ public class StashManager extends Module {
      * @return true when a request was sent
      */
     private boolean orderStep(URI base, String key, long now) {
+        if (SURVEY_ONLY) return false;
         StashSorter sorter = WeSortAddon.sorter();
         if (sorter == null) return false;
         OrderRunner runner = sorter.orders();
@@ -2037,6 +2019,7 @@ public class StashManager extends Module {
 
     /** Why the bot can't take orders right now, or null. */
     private String orderBlocker() {
+        if (SURVEY_ONLY) return "survey-only session";
         if (!acceptOrders.get()) return "accept-orders off";
         if (orderIntakePaused.get()) return "new warehouse orders paused by Manager";
         StashSorter sorter = WeSortAddon.sorter();
@@ -2060,7 +2043,7 @@ public class StashManager extends Module {
 
     /** The module is on and taking orders. */
     boolean takingOrders() {
-        return isActive() && acceptOrders.get();
+        return !SURVEY_ONLY && isActive() && acceptOrders.get();
     }
 
     int freshMinutes() {
@@ -2098,8 +2081,7 @@ public class StashManager extends Module {
     }
 
     com.porter.wesort.craft.CraftPlanner.Caps craftCaps() {
-        return new com.porter.wesort.craft.CraftPlanner.Caps(
-                craftMaxPerOrder.get(), craftMaxOpsPerTask.get(), craftMaxPerHour.get());
+        return new com.porter.wesort.craft.CraftPlanner.Caps(craftMaxOpsPerTask.get());
     }
 
     /** Starts or stops the sorter's loop for this module: when it takes orders, or containers wait to be read. */

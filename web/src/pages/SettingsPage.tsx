@@ -154,18 +154,18 @@ function ServerSection() {
     setMsg("");
     confirm.ask({
       title: value.trim()
-        ? `Set the Minecraft server to "${value.trim()}"?`
-        : "Clear the Minecraft server?",
+        ? `Set the warehouse label to "${value.trim()}"?`
+        : "Clear the warehouse label?",
       intro: value.trim()
-        ? "Bots on other servers are refused; change or clear only when no physical work is running."
-        : "All physical work stops until a server is set again.",
-      confirmLabel: "Save server",
+        ? "The login address is informational; signed agent work reaches the same warehouse."
+        : "The warehouse falls back to the default namespace.",
+      confirmLabel: "Save",
       run: async () => {
         await api("/api/v1/server", {
           method: "POST",
           body: { server: value.trim() },
         });
-        setMsg("Server saved. Bots on other servers are refused with 409.");
+        setMsg("Warehouse label saved.");
         await server.refetch();
       },
     });
@@ -174,8 +174,8 @@ function ServerSection() {
   return (
     <Stack spacing={2}>
       <Typography color="text.secondary">
-        The single server this Manager serves. The bot only sends its stash
-        name; the server is fixed here.
+        Warehouse label for this Manager. The client login address is
+        informational; the signed agent reaches the same warehouse.
       </Typography>
       <Typography>
         Configured:{" "}
@@ -186,21 +186,21 @@ function ServerSection() {
       {perms.owner ? (
         <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
           <TextField
-            label="Minecraft server"
+            label="Warehouse label"
             value={value}
             onChange={(e) => setValue(e.target.value)}
             size="small"
             fullWidth
             sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }}
-            placeholder="e.g. play.example.com"
+            placeholder="e.g. main warehouse"
           />
           <Button variant="contained" onClick={save} sx={{ flexShrink: 0 }}>
-            Save server
+            Save
           </Button>
         </Stack>
       ) : (
         <Typography color="text.secondary">
-          Only the owner can set the server.
+          Only the owner can set the warehouse label.
         </Typography>
       )}
       {msg && (
@@ -816,7 +816,7 @@ function KitEditor({
 
 function UsersSection() {
   const [users, setUsers] = useState<any[]>([]);
-  const [presets, setPresets] = useState<string[]>(["member"]);
+  const [presets, setPresets] = useState<string[]>(["member", "orderer"]);
   const [presetDefs, setPresetDefs] = useState<Record<string, any>>({});
   const [msg, setMsg] = useState<{
     severity: "success" | "error" | "info";

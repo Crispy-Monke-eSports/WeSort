@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 
 class CraftPlannerTest {
     private static final String BOX = "minecraft:shulker_box";
-    private static final CraftPlanner.Caps CAPS = new CraftPlanner.Caps(27, 128, 54);
+    private static final CraftPlanner.Caps CAPS = new CraftPlanner.Caps(128);
 
     private static Recipes recipes(String version) {
         Recipes r = Recipes.load(version);
@@ -29,7 +29,7 @@ class CraftPlannerTest {
     }
 
     private static CraftPlanner.Result plan(Recipes r, int want, Map<String, Long> pool) {
-        return CraftPlanner.plan(r, BOX, want, pool, Set.of(), CAPS, 0, 0);
+        return CraftPlanner.plan(r, BOX, want, pool, Set.of(), CAPS);
     }
 
     @Test
@@ -134,7 +134,7 @@ class CraftPlannerTest {
                 CraftPlanner.NOT_ENOUGH, plan(r, 1, pool("shulker_shell", 2)).refusal());
         // Stone is smelted, not crafted
         CraftPlanner.Result bricks =
-                CraftPlanner.plan(r, "minecraft:stone_bricks", 1, pool("cobblestone", 4), Set.of(), CAPS, 0, 0);
+                CraftPlanner.plan(r, "minecraft:stone_bricks", 1, pool("cobblestone", 4), Set.of(), CAPS);
         assertEquals("stone needs a furnace", bricks.refusal());
     }
 
@@ -143,7 +143,7 @@ class CraftPlannerTest {
         Recipes r = recipes("26.3");
         // A crafting table is made of planks (made of logs)
         CraftPlanner.Result res =
-                CraftPlanner.plan(r, "minecraft:crafting_table", 1, pool("oak_log", 1), Set.of(), CAPS, 0, 0);
+                CraftPlanner.plan(r, "minecraft:crafting_table", 1, pool("oak_log", 1), Set.of(), CAPS);
         assertTrue(res.ok());
         // With nothing to make planks from, a box is refused
         assertFalse(plan(r, 1, pool("shulker_shell", 2)).ok());
@@ -154,35 +154,26 @@ class CraftPlannerTest {
         Recipes r = recipes("26.3");
         Map<String, Long> p = pool("shulker_shell", 2, "oak_planks", 8, "spruce_planks", 8);
         CraftPlanner.Result res =
-                CraftPlanner.plan(r, BOX, 1, p, Set.of("minecraft:oak_planks", "minecraft:spruce_planks"), CAPS, 0, 0);
+                CraftPlanner.plan(r, BOX, 1, p, Set.of("minecraft:oak_planks", "minecraft:spruce_planks"), CAPS);
         assertFalse(res.ok());
-        CraftPlanner.Result ok = CraftPlanner.plan(r, BOX, 1, p, Set.of("minecraft:oak_planks"), CAPS, 0, 0);
+        CraftPlanner.Result ok = CraftPlanner.plan(r, BOX, 1, p, Set.of("minecraft:oak_planks"), CAPS);
         assertTrue(ok.ok());
         assertEquals(8, ok.plan().take().get("minecraft:spruce_planks"));
         assertFalse(ok.plan().take().containsKey("minecraft:oak_planks"));
     }
 
     @Test
-    void capsLimitAndSayWhy() {
+    void onlyGridFillsLimitAnExecutionBatch() {
         Recipes r = recipes("26.3");
-        Map<String, Long> big = pool("shulker_shell", 200, "chest", 100);
-        CraftPlanner.Result perOrder = CraftPlanner.plan(r, BOX, 40, big, Set.of(), CAPS, 0, 0);
-        assertEquals(27, perOrder.plan().count());
-        assertEquals("cap reached (27 more this order)", perOrder.plan().limited());
-        assertEquals(
-                "cap reached (0 more this order)",
-                CraftPlanner.plan(r, BOX, 1, big, Set.of(), CAPS, 27, 0).refusal());
-        assertEquals(
-                "cap reached (0 more this hour)",
-                CraftPlanner.plan(r, BOX, 1, big, Set.of(), CAPS, 0, 54).refusal());
-        // Only 4 more this hour
-        assertEquals(
-                4,
-                CraftPlanner.plan(r, BOX, 10, big, Set.of(), CAPS, 0, 50).plan().count());
-        // 3 grid fills a box: 128 allows 42, but the order cap decides; with 10 ops only 3 boxes
-        CraftPlanner.Result ops = CraftPlanner.plan(r, BOX, 10, big, Set.of(), new CraftPlanner.Caps(27, 10, 54), 0, 0);
-        assertEquals(3, ops.plan().count());
-        assertTrue(CraftPlanner.plan(r, BOX, 1, big, Set.of(), new CraftPlanner.Caps(27, 2, 54), 0, 0)
+        Map<String, Long> stock = pool("shulker_shell", 4_500_000_000L, "chest", Integer.MAX_VALUE);
+        var batch = CraftPlanner.plan(r, BOX, Integer.MAX_VALUE, stock, Set.of(), CAPS);
+        assertEquals(42, batch.plan().count());
+        assertEquals(126, batch.plan().ops());
+        assertTrue(batch.plan().limited().contains("6442450941 grid fills"));
+        var complete = CraftPlanner.plan(r, BOX, 100, stock, Set.of(), CraftPlanner.Caps.NONE);
+        assertEquals(100, complete.plan().count());
+        assertNull(complete.plan().limited());
+        assertTrue(CraftPlanner.plan(r, BOX, 1, stock, Set.of(), new CraftPlanner.Caps(2))
                 .refusal()
                 .startsWith("cap reached (3 grid fills, at most 2 a task"));
     }

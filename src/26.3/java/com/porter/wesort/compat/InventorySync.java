@@ -134,7 +134,13 @@ public final class InventorySync {
         return gate.ready() && blocks.isEmpty();
     }
 
+    static boolean awaitingWarehouseWorld() {
+        var sorter = com.porter.wesort.WeSortAddon.sorter();
+        return sorter != null && sorter.portalAwaiting();
+    }
+
     public static boolean allowInput() {
+        if (awaitingWarehouseWorld()) return false;
         if (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror()) return false;
         var sorter = com.porter.wesort.WeSortAddon.sorter();
         if (sorter != null && !sorter.sortingPermitted()) return false;
@@ -229,10 +235,9 @@ public final class InventorySync {
         if (mc.player == null || mc.level == null)
             return "INSPECT_NOT_READY: player or world unavailable for a recorded-source inspection";
         var scope = evidence.getAsJsonObject("origin");
-        if (!scope.get("server").getAsString().equals(Stash.currentServer())
-                || !scope.get("dimension").getAsString().equals(dimension())
+        if (!scope.get("dimension").getAsString().equals(dimension())
                 || !scope.get("player").getAsString().equals(mc.player.getUUID().toString()))
-            return "INSPECT_SCOPE: recorded server, dimension, or agent differs from the live session";
+            return "INSPECT_SCOPE: recorded dimension or agent differs from the live session";
         if (scope.has("source")) {
             var p = scope.getAsJsonArray("source");
             var at = new BlockPos(
@@ -737,6 +742,7 @@ public final class InventorySync {
 
     @EventHandler(priority = EventPriority.LOWEST)
     private void tick(TickEvent.Post event) {
+        if (awaitingWarehouseWorld()) return;
         PhysicalJournalRuntime.tickInspection();
         if (reconciling) {
             if (autoCloseForeignScreen()) {
@@ -874,7 +880,7 @@ public final class InventorySync {
     }
 
     public static void contents(ClientboundContainerSetContentPacket packet) {
-        if (mc.level == null) return;
+        if (mc.level == null || awaitingWarehouseWorld()) return;
         contentsReceivedAt = System.currentTimeMillis();
         serverContents = new InventoryReadback.Expected(
                 packet.containerId(), fingerprints(packet.items()), fingerprint(packet.carriedItem()));
@@ -882,11 +888,11 @@ public final class InventorySync {
     }
 
     public static void stats() {
-        gate.barrier();
+        if (awaitingWarehouseWorld()) return;
+        String mismatchAtBarrier = gate.barrier();
         if (gate.failed()) {
-            if (recoveringWorld)
-                PhysicalJournalRuntime.inspectionFailed(
-                        "INSPECT_ITEMS: the fresh server frame does not match the recorded postcondition");
+            if (recoveringWorld && mismatchAtBarrier != null)
+                PhysicalJournalRuntime.inspectionFailed(mismatchAtBarrier);
             reportFailure();
             return;
         }
@@ -927,6 +933,7 @@ public final class InventorySync {
     }
 
     public static void blockAck(int sequence) {
+        if (awaitingWarehouseWorld()) return;
         lastBlockAck = Math.max(lastBlockAck, sequence);
         if (readOpen != null && sequence >= readOpen.sequence) {
             var pending = readOpen;
@@ -960,6 +967,7 @@ public final class InventorySync {
 
     /** Explicitly requested by the player, then waits for the affected source to be reopened. No click is retried. */
     public static boolean requestReconciliation() {
+        if (awaitingWarehouseWorld()) return false;
         if (!gate.failed() || gate.expected() == null || origin == null) return false;
         reconciling = true;
         lastRecoveryReopenAt = 0;
@@ -987,8 +995,7 @@ public final class InventorySync {
             meteordevelopment.meteorclient.utils.player.InvUtils.swap(empty, false);
         }
         if (!mc.player.getOffhandItem().isEmpty()) return false;
-        if (!origin.get("server").getAsString().equals(Stash.currentServer())
-                || !origin.get("dimension").getAsString().equals(dimension())
+        if (!origin.get("dimension").getAsString().equals(dimension())
                 || !origin.get("player")
                         .getAsString()
                         .equals(mc.player.getUUID().toString())) return false;
@@ -1056,12 +1063,11 @@ public final class InventorySync {
             return "INSPECT_ITEMS: waiting for the menu-0 server readback to match the recorded postcondition";
         }
         if (origin == null) return "INSPECT_SCOPE: recovery origin was lost";
-        if (!origin.get("server").getAsString().equals(Stash.currentServer())
-                || !origin.get("dimension").getAsString().equals(dimension())
+        if (!origin.get("dimension").getAsString().equals(dimension())
                 || !origin.get("player")
                         .getAsString()
                         .equals(mc.player.getUUID().toString()))
-            return "INSPECT_SCOPE: recorded server, dimension, or agent differs from the live session";
+            return "INSPECT_SCOPE: recorded dimension or agent differs from the live session";
         String world = worldMismatch();
         if (world != null) return world;
         if (origin.has("source")) {
@@ -1096,8 +1102,7 @@ public final class InventorySync {
     private static boolean sourceMatches() {
         if (mc.player == null || mc.level == null || origin == null) return false;
         if (!worldMatches()) return false;
-        if (!origin.get("server").getAsString().equals(Stash.currentServer())
-                || !origin.get("dimension").getAsString().equals(dimension())
+        if (!origin.get("dimension").getAsString().equals(dimension())
                 || !origin.get("player")
                         .getAsString()
                         .equals(mc.player.getUUID().toString())) return false;
@@ -1257,8 +1262,7 @@ public final class InventorySync {
     public static boolean inspectRecorded(JsonObject evidence) {
         if (mc.player == null || mc.level == null) return false;
         var scope = evidence.getAsJsonObject("origin");
-        if (!scope.get("server").getAsString().equals(Stash.currentServer())
-                || !scope.get("dimension").getAsString().equals(dimension())
+        if (!scope.get("dimension").getAsString().equals(dimension())
                 || !scope.get("player").getAsString().equals(mc.player.getUUID().toString())) return false;
         if (scope.has("source")) {
             var p = scope.getAsJsonArray("source");

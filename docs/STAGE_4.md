@@ -9,12 +9,12 @@ revisionen och audit anger vilken medlem som gjorde ändringen.
 
 Guildens lagerkatalog omfattar alla verifierade källor. Rollens
 stashscope styr positioner, stashnamn och källdetaljer. Endast två kontoroller
-finns som produkt: Owner och Member (övriga presets är borttagna). Owner
+finns som produkt: Owner och Member (orderer är alias för member; övriga presets är borttagna). Owner
 administrerar konton och guildprofil.
 
 En order bär guildens ID, medlemmens ID, ändamål och frivillig kommentar.
 SELF är förvalt. Endast Owner får begära GUILD och ange en separat
-mottagare (Member-preset har guildOrders=false; explicit beviljande via custom perms är möjligt men ingen produktroll). Mottagaren är en deklaration som följer ordern. Leverans till
+mottagare (Member/orderer-preset har guildOrders=false; explicit beviljande via custom perms är möjligt men ingen produktroll). Mottagaren är en deklaration som följer ordern. Leverans till
 en verifierad Minecraft-identitet hör till W-058 och W-027. Orderns
 aktör och ID finns i audit. Kommentarer visas för beställaren och
 orderansvariga med åtkomst till stashen.

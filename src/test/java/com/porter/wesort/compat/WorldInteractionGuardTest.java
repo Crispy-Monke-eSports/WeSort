@@ -30,6 +30,12 @@ class WorldInteractionGuardTest {
 
     @Test
     void unknownJobNeverAuthorizes() {
+        for (String fallback : new String[] {null, "", " ", "unknown"}) {
+            String job = WorldInteractionGuard.jobTag(null, null, fallback, 3, "lease");
+            assertEquals("unknown", job);
+            assertFalse(WorldInteractionGuard.useDecision(job, true, true, true, true));
+            assertFalse(WorldInteractionGuard.breakDecision(job, true, true));
+        }
         assertFalse(WorldInteractionGuard.useDecision("unknown", true, true, true, true));
         assertFalse(WorldInteractionGuard.useDecision("", true, true, true, true));
         assertFalse(WorldInteractionGuard.useDecision(null, true, true, true, true));

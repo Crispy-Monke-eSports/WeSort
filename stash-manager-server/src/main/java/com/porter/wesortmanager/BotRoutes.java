@@ -145,29 +145,10 @@ final class BotRoutes {
                 Http.error(ex, 400, "Invalid manifest scope");
                 return;
             }
-            // The binding names the Minecraft server and stash the bot works in: both are verified.
-            // A bot from another server is refused; an undefined stash cannot take work.
-            String configured = config.minecraftServer();
-            int gate = ServerRoutes.serverStatus(configured, manifestScope.server());
-            if (gate == 400) {
-                Http.error(ex, 400, "set the Minecraft server in Settings first");
-                return;
-            }
-            if (gate == 409) {
-                Http.error(ex, 409, "this Manager serves '" + config.minecraftServer() + "'");
-                return;
-            }
             if (ServerRoutes.unknownStash(defs, manifestScope.stash())) {
                 Http.error(ex, 404, "unknown stash '" + manifestScope.stash() + "': define it in Settings first");
                 return;
             }
-            manifestScope = new BotHub.ManifestScope(
-                    manifestScope.botId(),
-                    configured,
-                    manifestScope.stash(),
-                    manifestScope.dimension(),
-                    manifestScope.agent(),
-                    manifestScope.player());
         }
         int status = hub.register(botId, player, plugin, runtime, caps, scopes, controlSession, manifestScope);
         if (status != 200) {
@@ -220,17 +201,13 @@ final class BotRoutes {
         Http.json(ex, 200, pong);
     }
 
-    private static BotHub.ManifestScope manifestScope(JsonElement input, String player, String botId) {
+    private BotHub.ManifestScope manifestScope(JsonElement input, String player, String botId) {
         if (!input.isJsonObject()) return null;
         var scope = input.getAsJsonObject();
-        String server = AddonRoutes.string(scope, "server");
         String stash = AddonRoutes.string(scope, "stash");
         String dimension = AddonRoutes.string(scope, "dimension");
         String agent = AddonRoutes.string(scope, "agent");
-        if (server == null
-                || server.isBlank()
-                || server.length() > 256
-                || stash == null
+        if (stash == null
                 || stash.isBlank()
                 || stash.length() > 128
                 || dimension == null
@@ -240,7 +217,8 @@ final class BotRoutes {
                 || !agent.matches("[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")) return null;
         // No Minecraft username/UUID equivalence requirement. The agent UUID above is
         // physical work context within this session, not the key's owner.
-        return new BotHub.ManifestScope(botId, server, stash, dimension, agent, player == null ? "" : player);
+        return new BotHub.ManifestScope(
+                botId, config.warehouseKey(), stash, dimension, agent, player == null ? "" : player);
     }
 
     private void manifest(HttpExchange ex) throws IOException {

@@ -48,7 +48,8 @@ class ItemIdentityTest {
     }
 
     @Test
-    void snapshotEnvelopeSeparatesSources() {        ItemIdentity.BaseItemId base = new ItemIdentity.BaseItemId("minecraft:diamond", "26.3");
+    void snapshotEnvelopeSeparatesSources() {
+        ItemIdentity.BaseItemId base = new ItemIdentity.BaseItemId("minecraft:diamond", "26.3");
         SnbtCodec.Tag empty = new SnbtCodec.TCompound(Map.of());
         String item = SnbtCodec.write(
                 new SnbtCodec.TCompound(Map.of("id", new SnbtCodec.TString(base.id()), "components", empty)));
@@ -80,8 +81,8 @@ class ItemIdentityTest {
                 Map.of("id", new SnbtCodec.TString("minecraft:air"), "components", new SnbtCodec.TCompound(Map.of()))));
         // Empty slots are absent entries, never fake air stacks.
         assertThrows(IllegalArgumentException.class, () -> new SnapshotEnvelope.SlotEntry(0, air, 1));
-        String item = SnbtCodec.write(new SnbtCodec.TCompound(
-                Map.of("id", new SnbtCodec.TString("minecraft:diamond"), "components", new SnbtCodec.TCompound(Map.of()))));
+        String item = SnbtCodec.write(new SnbtCodec.TCompound(Map.of(
+                "id", new SnbtCodec.TString("minecraft:diamond"), "components", new SnbtCodec.TCompound(Map.of()))));
         Map<String, String> meta = Map.of("facing", "north", "type", "left", "posA", "1,2,3", "posB", "2,2,3");
         // Double chests are one logical 54-slot envelope with facing/type/both positions.
         assertDoesNotThrow(() -> new SnapshotEnvelope(
@@ -96,11 +97,6 @@ class ItemIdentityTest {
                         SnapshotEnvelope.SourceKind.CHEST_DOUBLE, 54, List.of(), Map.of("facing", "north"), prov));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> new SnapshotEnvelope(
-                        SnapshotEnvelope.SourceKind.CHEST_DOUBLE,
-                        27,
-                        List.of(),
-                        meta,
-                        prov));
+                () -> new SnapshotEnvelope(SnapshotEnvelope.SourceKind.CHEST_DOUBLE, 27, List.of(), meta, prov));
     }
 }

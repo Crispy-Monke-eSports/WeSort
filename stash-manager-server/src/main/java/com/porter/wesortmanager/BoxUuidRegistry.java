@@ -1,34 +1,31 @@
 package com.porter.wesortmanager;
-    
-    import com.google.gson.JsonArray;
-    import com.google.gson.JsonObject;
-    import com.google.gson.JsonParser;
-    import com.porter.wesort.data.ShulkerUuid;
-    import java.io.IOException;
-    import java.sql.Connection;
-    import java.sql.SQLException;
-    import java.util.ArrayList;
-    import java.util.HashMap;
-    import java.util.HashSet;
-    import java.util.LinkedHashMap;
-    import java.util.List;
-    import java.util.Map;
-    import java.util.Set;
-    import java.util.UUID;
-    
-    /**
-     * PR3 Step 5: the box-UUID registry (observation reconciliation, sweeps,
-     * identities and order releases), moved verbatim out of StockLedger (no
-     * behavior change, Refs #142). Runs under the StockLedger lock.
-     */
-    final class BoxUuidRegistry {
-        private final StockLedger ledger;
-    
-        BoxUuidRegistry(StockLedger ledger) {
-            this.ledger = ledger;
-        }
-    
-        /** One observed root-level shulker box UUID in a fresh snapshot. */
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.porter.wesort.data.ShulkerUuid;
+import java.io.IOException;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+
+/**
+ * PR3 Step 5: the box-UUID registry (observation reconciliation, sweeps,
+ * identities and order releases), moved verbatim out of StockLedger (no
+ * behavior change, Refs #142). Runs under the StockLedger lock.
+ */
+final class BoxUuidRegistry {
+    private final StockLedger ledger;
+
+    BoxUuidRegistry(StockLedger ledger) {
+        this.ledger = ledger;
+    }
+
+    /** One observed root-level shulker box UUID in a fresh snapshot. */
     record ObservedBox(String path, String fingerprint) {}
 
     /**
@@ -291,7 +288,8 @@ package com.porter.wesortmanager;
         return "UNREGISTERED";
     }
     /** Check the current location and move the UUID to history inside the order receipt's write transaction. */
-    void releaseOrderBoxes(Connection c, String server, StockLedger.BoxRelease release) throws SQLException, IOException {
+    void releaseOrderBoxes(Connection c, String server, StockLedger.BoxRelease release)
+            throws SQLException, IOException {
         try (var read = c.prepareStatement("SELECT server,source,path,status FROM box_uuids WHERE uuid=?")) {
             for (String uuid : release.reported()) {
                 read.setString(1, uuid);
@@ -315,6 +313,7 @@ package com.porter.wesortmanager;
             }
         }
     }
+
     JsonArray boxUuids() throws IOException {
         var out = new JsonArray();
         try (var c = ledger.open();
@@ -339,6 +338,7 @@ package com.porter.wesortmanager;
         }
         return out;
     }
+
     JsonArray boxUuidHistory() throws IOException {
         var out = new JsonArray();
         try (var c = ledger.open();

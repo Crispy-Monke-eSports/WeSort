@@ -50,23 +50,28 @@ final class OrderPlacementService {
      * Explodes merged kit lines using the current templates. Unknown kits are
      * 404 (like unknown stashes); shortages are reported against components.
      */
-    static KitExplosion explodeKits(Map<String, OrderStore.Line> merged, Map<String, Integer> firstIndex, KitTemplates kits)
+    static KitExplosion explodeKits(
+            Map<String, OrderStore.Line> merged, Map<String, Integer> firstIndex, KitTemplates kits)
             throws OrderStore.OrderException {
         var out = new KitExplosion();
         for (var l : merged.values()) {
             if (!l.type().equals("kit")) {
                 var prev = out.lines.get(l.ref());
-                out.lines.put(l.ref(), prev == null ? l : new OrderStore.Line(l.type(), l.key(), prev.count() + l.count()));
+                out.lines.put(
+                        l.ref(), prev == null ? l : new OrderStore.Line(l.type(), l.key(), prev.count() + l.count()));
                 out.firstIndex.putIfAbsent(l.ref(), firstIndex.get(l.ref()));
                 continue;
             }
             var template = kits.get(l.key());
-            if (template == null) throw new OrderStore.OrderException(404, "no such kit: " + l.key(), firstIndex.get(l.ref()));
+            if (template == null)
+                throw new OrderStore.OrderException(404, "no such kit: " + l.key(), firstIndex.get(l.ref()));
             out.snapshots.put(l.key(), template.json());
             for (var entry : template.components().entrySet()) {
                 var need = new OrderStore.Line("item", entry.getKey(), entry.getValue() * l.count());
                 var prev = out.lines.get(need.ref());
-                out.lines.put(need.ref(), prev == null ? need : new OrderStore.Line("item", need.key(), prev.count() + need.count()));
+                out.lines.put(
+                        need.ref(),
+                        prev == null ? need : new OrderStore.Line("item", need.key(), prev.count() + need.count()));
                 // A component shared with a real item line reports the earliest line.
                 out.firstIndex.merge(need.ref(), firstIndex.get(l.ref()), Math::min);
             }
@@ -92,9 +97,11 @@ final class OrderPlacementService {
             }
             for (var e : perKit.entrySet()) out.add(new OrderStore.Line("item", e.getKey(), e.getValue() * l.count()));
         }
-        if (o.craftMaterials != null) o.craftMaterials.forEach((key, count) -> out.add(new OrderStore.Line("item", key, count)));
+        if (o.craftMaterials != null)
+            o.craftMaterials.forEach((key, count) -> out.add(new OrderStore.Line("item", key, count)));
         return out;
     }
+
     static String receiptKey(String action, String actor, String requestId) {
         var parts = new JsonArray();
         parts.add(action);
@@ -119,7 +126,8 @@ final class OrderPlacementService {
 
     static OrderStore.Order replay(OrderStore.Receipt saved, String fingerprint) throws OrderStore.OrderException {
         if (!saved.fingerprint().equals(fingerprint)) {
-            throw new OrderStore.OrderException(409, "This idempotency key has already been used for different content", -1);
+            throw new OrderStore.OrderException(
+                    409, "This idempotency key has already been used for different content", -1);
         }
         return OrderStore.Order.fromJson(saved.order());
     }
@@ -130,7 +138,8 @@ final class OrderPlacementService {
     }
 
     /** The same, recording who placed it (byId null: unknown, counted as the owner's). */
-    OrderStore.Order place(String server, String stash, List<OrderStore.Line> requested, JsonObject names, String byId, String byName)
+    OrderStore.Order place(
+            String server, String stash, List<OrderStore.Line> requested, JsonObject names, String byId, String byName)
             throws OrderStore.OrderException, IOException {
         return place(server, stash, requested, names, byId, byName, null, OrderIntent.DEFAULT);
     }
@@ -140,7 +149,8 @@ final class OrderPlacementService {
      * may be queued as pending against last-verified counts instead of failing. Without the flag
      * an expired source keeps its shortage (400/409, no order row).
      */
-    OrderStore.Order place(String server, String stash, List<OrderStore.Line> requested, JsonObject names, boolean queueWhenStale)
+    OrderStore.Order place(
+            String server, String stash, List<OrderStore.Line> requested, JsonObject names, boolean queueWhenStale)
             throws OrderStore.OrderException, IOException {
         return submit(
                         server,
@@ -184,6 +194,7 @@ final class OrderPlacementService {
                         ignored -> null)
                 .order();
     }
+
     OrderStore.Submission submit(
             String server,
             String stash,
@@ -327,6 +338,7 @@ final class OrderPlacementService {
                     true);
         }
     }
+
     OrderStore.Order placeWithObservationLock(
             String server,
             String stash,
@@ -362,6 +374,7 @@ final class OrderPlacementService {
                 queueWhenStale,
                 null);
     }
+
     OrderStore.Order placeWithObservationLock(
             String server,
             String stash,
@@ -386,7 +399,8 @@ final class OrderPlacementService {
         // just because an autonomous tier-optimization pass is in progress.
         boolean sortingLeaseActive = host.index.automation().current(server) != null;
         if (requested.isEmpty()) throw new OrderStore.OrderException(400, "an order needs at least one line", -1);
-        if (requested.size() > OrderStore.MAX_LINES) throw new OrderStore.OrderException(400, "at most " + OrderStore.MAX_LINES + " lines", -1);
+        if (requested.size() > OrderStore.MAX_LINES)
+            throw new OrderStore.OrderException(400, "at most " + OrderStore.MAX_LINES + " lines", -1);
         IndexStore.OrderCounts fresh = host.index.orderCounts(server, stash);
         if (fresh == null) throw new OrderStore.OrderException(400, "no index for that stash", -1);
 
@@ -461,13 +475,15 @@ final class OrderPlacementService {
             throw new OrderStore.OrderException(
                     409, "A reserved physical source changed topology and requires reconciliation", -1);
         }
-        boolean legacyHold =
-                existing.stream().anyMatch(order -> order.allocations == null && OrderStore.OPEN.contains(order.status));
+        boolean legacyHold = existing.stream()
+                .anyMatch(order -> order.allocations == null && OrderStore.OPEN.contains(order.status));
         if (physical.hasSnapshots() && legacyHold
                 || !physical.hasSnapshots()
                         && (!held.isEmpty()
-                                || merged.values().stream().anyMatch(line -> line.type().equals("shulker")))) {
-            throw new OrderStore.OrderException(409, "Resolve existing reservations before mixing source observation formats", -1);
+                                || merged.values().stream()
+                                        .anyMatch(line -> line.type().equals("shulker")))) {
+            throw new OrderStore.OrderException(
+                    409, "Resolve existing reservations before mixing source observation formats", -1);
         }
         // Kit lines reserve their components, never a "kit:" ref: explode against
         // the current templates and pin the snapshots on the order, so the bot
@@ -555,7 +571,8 @@ final class OrderPlacementService {
                     line.ref(),
                     existing == null
                             ? line
-                            : new OrderStore.Line(line.type(), line.key(), Math.addExact(existing.count(), line.count())));
+                            : new OrderStore.Line(
+                                    line.type(), line.key(), Math.addExact(existing.count(), line.count())));
             firstIndex.merge(line.ref(), at, Math::min);
         }
     }
@@ -579,7 +596,8 @@ final class OrderPlacementService {
             if (!l.type().equals("craft")) result.add(l, exploded.firstIndex.get(l.ref()));
         if (!wantsCraft) return result;
         if (!physical.hasSnapshots() || !host.index.craftingReady(server, stash))
-            throw new OrderStore.OrderException(409, "Crafting requires a ready agent, table and fresh physical stock", -1);
+            throw new OrderStore.OrderException(
+                    409, "Crafting requires a ready agent, table and fresh physical stock", -1);
 
         Map<String, Long> pool = new HashMap<>(CraftingCatalog.eligiblePool(physical.available(held)));
         // Already ordered direct components must not also be used as craft inputs.
@@ -622,6 +640,7 @@ final class OrderPlacementService {
         }
         return result;
     }
+
     private OrderStore.Order commitOrder(
             String server,
             String stash,
@@ -652,19 +671,25 @@ final class OrderPlacementService {
                 : null;
         OrderStore.Book b = host.book(server, stash);
         synchronized (b) {
-            long open = b.orders.stream().filter(o -> OrderStore.OPEN.contains(o.status)).count();
+            long open = b.orders.stream()
+                    .filter(o -> OrderStore.OPEN.contains(o.status))
+                    .count();
             if (open >= OrderStore.MAX_OPEN)
-                throw new OrderStore.OrderException(400, "too many open orders for this stash (limit " + OrderStore.MAX_OPEN + ")", -1);
+                throw new OrderStore.OrderException(
+                        400, "too many open orders for this stash (limit " + OrderStore.MAX_OPEN + ")", -1);
             Map<String, Long> reserved = policy.reserved(b);
             for (OrderStore.Line l : crafting.lines.values()) {
                 int at = crafting.firstIndex.get(l.ref());
                 long total = counts.total(l.type(), l.key());
                 if (deferReservation) continue;
-                if (total < 0 && allocations == null) throw new OrderStore.OrderException(400, "not in the stash: " + l.key(), at);
+                if (total < 0 && allocations == null)
+                    throw new OrderStore.OrderException(400, "not in the stash: " + l.key(), at);
                 long available = Math.max(0, total - reserved.getOrDefault(l.ref(), 0L));
                 if (allocations == null && l.count() > available) {
                     throw new OrderStore.OrderException(
-                            400, "only " + available + " available for " + l.key() + " (asked for " + l.count() + ")", at);
+                            400,
+                            "only " + available + " available for " + l.key() + " (asked for " + l.count() + ")",
+                            at);
                 }
             }
             long shulkers = shulkersNeeded(merged.values(), counts);
@@ -762,10 +787,12 @@ final class OrderPlacementService {
         }
         if ("each".equals(m)) {
             JsonElement list = o.get("names");
-            if (list == null || !list.isJsonArray()) throw new OrderStore.OrderException(400, "names.names must be an array", -1);
+            if (list == null || !list.isJsonArray())
+                throw new OrderStore.OrderException(400, "names.names must be an array", -1);
             JsonArray a = list.getAsJsonArray();
             if (a.size() > OrderStore.MAX_SHULKERS)
-                throw new OrderStore.OrderException(400, "names.names has more than " + OrderStore.MAX_SHULKERS + " entries", -1);
+                throw new OrderStore.OrderException(
+                        400, "names.names has more than " + OrderStore.MAX_SHULKERS + " entries", -1);
             List<String> names = new ArrayList<>();
             int last = -1;
             for (int i = 0; i < a.size(); i++) {
@@ -809,7 +836,8 @@ final class OrderPlacementService {
     private static String checkName(String raw, String field) throws OrderStore.OrderException {
         String name = raw.strip();
         if (name.length() > OrderStore.MAX_NAME)
-            throw new OrderStore.OrderException(400, field + " is longer than " + OrderStore.MAX_NAME + " characters", -1);
+            throw new OrderStore.OrderException(
+                    400, field + " is longer than " + OrderStore.MAX_NAME + " characters", -1);
         for (int i = 0; i < name.length(); i++) {
             char c = name.charAt(i);
             if (c == '§') throw new OrderStore.OrderException(400, field + " can't contain §", -1);
@@ -828,7 +856,8 @@ final class OrderPlacementService {
                             && !(Character.isLowSurrogate(c)
                                     && i > 0
                                     && Character.isHighSurrogate(name.charAt(i - 1))))) {
-                throw new OrderStore.OrderException(400, field + " can't contain invisible or direction-changing characters", -1);
+                throw new OrderStore.OrderException(
+                        400, field + " can't contain invisible or direction-changing characters", -1);
             }
         }
         return name;
@@ -856,6 +885,7 @@ final class OrderPlacementService {
         }
         return units + (slots + OrderStore.SHULKER_SLOTS - 1) / OrderStore.SHULKER_SLOTS;
     }
+
     private String newId() {
         while (true) {
             byte[] bytes = new byte[6];

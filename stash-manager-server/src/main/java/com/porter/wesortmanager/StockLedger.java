@@ -1,9 +1,7 @@
 package com.porter.wesortmanager;
 
 import com.google.gson.*;
-import com.porter.wesort.data.ContainerIdentity;
 import com.porter.wesort.data.PhysicalSlots;
-import com.porter.wesort.data.ShulkerUuid;
 import java.io.IOException;
 import java.nio.file.*;
 import java.sql.*;
@@ -76,6 +74,7 @@ final class StockLedger {
     final long maxAge;
     /** Read by the ledger services under the StockLedger lock (PR3 Step 5, Refs #142). */
     final String run = UUID.randomUUID().toString();
+
     String epoch;
     /**
      * Servers with a rescan outstanding: stock stops aging at the freeze plus one
@@ -93,6 +92,7 @@ final class StockLedger {
 
     /** PR3 Step 5 services: built once with the ledger, called under its lock (Refs #142). */
     private final ObservationService observation;
+
     private final BoxUuidRegistry boxRegistry;
     private final ReturnIntakeService returnIntake;
     private final OperationJournal journal;
@@ -474,7 +474,6 @@ final class StockLedger {
         }
     }
 
-
     synchronized long revision() throws IOException {
         try (var c = open()) {
             return revision(c);
@@ -483,45 +482,44 @@ final class StockLedger {
         }
     }
 
-
     /** A pending rescan may provide one bounded grace period, not renew stock forever. */
-        synchronized void freezeAging(String server, long at) {
-            observation.freezeAging(server, at);
-        }
-    
-        synchronized void unfreezeAging(String server) {
-            observation.unfreezeAging(server);
-        }
-    
-        static List<JsonObject> validate(JsonObject index) {
-            return ObservationService.validate(index);
-        }
-    
-        /** One transaction assigns revisions, invalidates old topology, records provenance and persists the index. */
-        synchronized void accept(JsonObject index) throws IOException {
-            observation.accept(index);
-        }
-    
-        synchronized void accept(JsonObject index, String server) throws IOException {
-            observation.accept(index, server);
-        }
-    
-        /** Called inside the same transaction that releases/expires an automation lease. */
-        void invalidateServer(Connection c, String server) throws SQLException {
-            observation.invalidateServer(c, server);
-        }
-    
-        /**
-         * Owner-approved "accept loss": a MISSING, UNREACHABLE or already WITHDRAWN
-         * source becomes a WITHDRAWN tombstone with zero quantities and an audit
-         * marker ({@code lossAccepted: {by, at}}), so one griefed container stops
-         * poisoning the row forever. Idempotent: accepting twice still succeeds.
-         * Returns false when the source is not lost.
-         */
-        synchronized boolean acceptLoss(String id, String by) throws IOException {
-            return observation.acceptLoss(id, by);
-        }
-    
+    synchronized void freezeAging(String server, long at) {
+        observation.freezeAging(server, at);
+    }
+
+    synchronized void unfreezeAging(String server) {
+        observation.unfreezeAging(server);
+    }
+
+    static List<JsonObject> validate(JsonObject index) {
+        return ObservationService.validate(index);
+    }
+
+    /** One transaction assigns revisions, invalidates old topology, records provenance and persists the index. */
+    synchronized void accept(JsonObject index) throws IOException {
+        observation.accept(index);
+    }
+
+    synchronized void accept(JsonObject index, String server) throws IOException {
+        observation.accept(index, server);
+    }
+
+    /** Called inside the same transaction that releases/expires an automation lease. */
+    void invalidateServer(Connection c, String server) throws SQLException {
+        observation.invalidateServer(c, server);
+    }
+
+    /**
+     * Owner-approved "accept loss": a MISSING, UNREACHABLE or already WITHDRAWN
+     * source becomes a WITHDRAWN tombstone with zero quantities and an audit
+     * marker ({@code lossAccepted: {by, at}}), so one griefed container stops
+     * poisoning the row forever. Idempotent: accepting twice still succeeds.
+     * Returns false when the source is not lost.
+     */
+    synchronized boolean acceptLoss(String id, String by) throws IOException {
+        return observation.acceptLoss(id, by);
+    }
+
     long revision(Connection c) throws SQLException {
         try (var s = c.createStatement();
                 var r = s.executeQuery("SELECT revision FROM stock_meta WHERE id=1")) {
@@ -541,9 +539,6 @@ final class StockLedger {
     static long number(JsonObject o, String key) {
         return o.get(key).getAsBigDecimal().longValueExact();
     }
-
-
-
 
     /**
      * PR3 (#228 Step 6): the normalized SNBT snapshot is the only content
@@ -726,79 +721,67 @@ final class StockLedger {
 
     record ReturnDecision(JsonObject record, boolean changed) {}
 
-
-
-
-
-
-
-
-
-
     /** UUIDs are installation-wide; evidence in another stash can invalidate both apparent copies. */
-        synchronized Set<PhysicalReservations.Root> quarantinedBoxes(String server) throws IOException {
-            return boxRegistry.quarantinedBoxes(server);
-        }
-    
-        /** The identity of each root-level shulker box in a source, derived from its server-observed name and the registry. */
-        synchronized JsonArray boxIdentities(String source) throws IOException {
-            return boxRegistry.boxIdentities(source);
-        }
-    
-        /** Check the current location and move the UUID to history inside the order receipt's write transaction. */
-        void releaseOrderBoxes(Connection c, String server, BoxRelease release) throws SQLException, IOException {
-            boxRegistry.releaseOrderBoxes(c, server, release);
-        }
-    
-        synchronized JsonArray boxUuids() throws IOException {
-            return boxRegistry.boxUuids();
-        }
-    
-        synchronized JsonArray boxUuidHistory() throws IOException {
-            return boxRegistry.boxUuidHistory();
-        }
-    
-        static final class BoxReleaseConflict extends IOException {
+    synchronized Set<PhysicalReservations.Root> quarantinedBoxes(String server) throws IOException {
+        return boxRegistry.quarantinedBoxes(server);
+    }
+
+    /** The identity of each root-level shulker box in a source, derived from its server-observed name and the registry. */
+    synchronized JsonArray boxIdentities(String source) throws IOException {
+        return boxRegistry.boxIdentities(source);
+    }
+
+    /** Check the current location and move the UUID to history inside the order receipt's write transaction. */
+    void releaseOrderBoxes(Connection c, String server, BoxRelease release) throws SQLException, IOException {
+        boxRegistry.releaseOrderBoxes(c, server, release);
+    }
+
+    synchronized JsonArray boxUuids() throws IOException {
+        return boxRegistry.boxUuids();
+    }
+
+    synchronized JsonArray boxUuidHistory() throws IOException {
+        return boxRegistry.boxUuidHistory();
+    }
+
+    static final class BoxReleaseConflict extends IOException {
         BoxReleaseConflict() {
             super("Delivered box UUID is not reserved for this order");
         }
     }
 
     synchronized ReturnDecision recordReturn(
-                String source, JsonObject slot, String snapshot, String actor, boolean markUuid, long expectedDecision)
-                throws IOException {
-            return returnIntake.recordReturn(source, slot, snapshot, actor, markUuid, expectedDecision);
-        }
-    
-        synchronized JsonArray returnDecisions(String source) throws IOException {
-            return returnIntake.returnDecisions(source);
-        }
-    
-        record BoxRelease(Set<PhysicalReservations.Root> reserved, Set<String> reported) {}
+            String source, JsonObject slot, String snapshot, String actor, boolean markUuid, long expectedDecision)
+            throws IOException {
+        return returnIntake.recordReturn(source, slot, snapshot, actor, markUuid, expectedDecision);
+    }
 
+    synchronized JsonArray returnDecisions(String source) throws IOException {
+        return returnIntake.returnDecisions(source);
+    }
 
-
+    record BoxRelease(Set<PhysicalReservations.Root> reserved, Set<String> reported) {}
 
     JsonObject stagingManifest(String server, String stash, String order, String agent, int packages)
-                throws IOException {
-            return journal.stagingManifest(server, stash, order, agent, packages);
-        }
-    
-        boolean unsettledPhysicalOrder(String order) throws IOException {
-            return journal.unsettledPhysicalOrder(order);
-        }
-    
-        /** Only a Manager-fenced physical operation is grounds for failing an active order.
-         * A live PLANNED, IN_PROGRESS or VERIFYING operation is expected during packing. */
-        boolean reconciliationRequiredPhysicalOrder(String order) throws IOException {
-            return journal.reconciliationRequiredPhysicalOrder(order);
-        }
-    
-        JsonArray orderOperationHistory(String order, String server, String stash) throws IOException {
-            return journal.orderOperationHistory(order, server, stash);
-        }
-    
-        synchronized List<JsonObject> indexes() throws IOException {
+            throws IOException {
+        return journal.stagingManifest(server, stash, order, agent, packages);
+    }
+
+    boolean unsettledPhysicalOrder(String order) throws IOException {
+        return journal.unsettledPhysicalOrder(order);
+    }
+
+    /** Only a Manager-fenced physical operation is grounds for failing an active order.
+     * A live PLANNED, IN_PROGRESS or VERIFYING operation is expected during packing. */
+    boolean reconciliationRequiredPhysicalOrder(String order) throws IOException {
+        return journal.reconciliationRequiredPhysicalOrder(order);
+    }
+
+    JsonArray orderOperationHistory(String order, String server, String stash) throws IOException {
+        return journal.orderOperationHistory(order, server, stash);
+    }
+
+    synchronized List<JsonObject> indexes() throws IOException {
         List<JsonObject> out = new ArrayList<>();
         try (var c = open();
                 var s = c.createStatement();
@@ -844,11 +827,6 @@ final class StockLedger {
         }
         return out;
     }
-
-
-
-
-
 
     long maxAge() {
         return maxAge;

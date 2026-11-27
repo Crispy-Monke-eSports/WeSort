@@ -1,11 +1,8 @@
 package com.porter.wesortmanager;
 
-import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 /**
  * PR3 Step 5: the order lifecycle (self-healing, clear/review/cancel/retry
@@ -31,6 +28,7 @@ final class OrderLifecycleService {
                 .distinct()
                 .toList()) releaseFromFreshObservation(server);
     }
+
     void releaseFromFreshObservation(String server) throws IOException {
         synchronized (host.index) {
             // Expire silent operations first: without this, only opening the operations view
@@ -47,7 +45,8 @@ final class OrderLifecycleService {
                         if (!policy.holdsPhysical(order)
                                 || !OrderStore.FINISHED.contains(order.status)
                                 || order.stage() == OrderStage.NEEDS_RECONCILIATION) continue;
-                        if (observations == null) observations = PhysicalReservations.read(host.index.stock(), server, null);
+                        if (observations == null)
+                            observations = PhysicalReservations.read(host.index.stock(), server, null);
                         if (observations.refreshedAfter(order.allocations, order.updatedAt)
                                 && !host.index.stock().unsettledPhysicalOrder(order.id)) {
                             released.add(order);
@@ -94,7 +93,8 @@ final class OrderLifecycleService {
         }
     }
     /** One order's automatic step, or null when it stays as it is. Copy-on-write: the caller saves. */
-    private OrderStore.Order healed(OrderStore.Book book, OrderStore.Order previous, long now) throws IOException, OrderStore.OrderException {
+    private OrderStore.Order healed(OrderStore.Book book, OrderStore.Order previous, long now)
+            throws IOException, OrderStore.OrderException {
         if (previous.stage() == OrderStage.NEEDS_RECONCILIATION) {
             // Migrate a pre-upgrade order to the same automatic rollback
             // protocol as new failures. Never expose the old operator state.
@@ -289,7 +289,8 @@ final class OrderLifecycleService {
                             403, "Your role cannot retry an order for the guild or another recipient", -1);
                 }
                 if (old.retriedAs != null) {
-                    throw new OrderStore.OrderException(409, "This order was already placed again as " + old.retriedAs, -1);
+                    throw new OrderStore.OrderException(
+                            409, "This order was already placed again as " + old.retriedAs, -1);
                 }
                 if (this.policy.holdsPhysical(old)) {
                     var holders = host.ordersOnServer(book.server).stream()
@@ -370,7 +371,9 @@ final class OrderLifecycleService {
             return removable.size();
         }
     }
-    OrderStore.ApprovalDecision review(String id, boolean approve, String actor) throws OrderStore.OrderException, IOException {
+
+    OrderStore.ApprovalDecision review(String id, boolean approve, String actor)
+            throws OrderStore.OrderException, IOException {
         return review(id, approve, actor, null);
     }
 
@@ -411,13 +414,15 @@ final class OrderLifecycleService {
         return cancel(id, actor, null);
     }
 
-    OrderStore.Order cancel(String id, String actor, AuditLog.Batch audit) throws OrderStore.OrderException, IOException {
+    OrderStore.Order cancel(String id, String actor, AuditLog.Batch audit)
+            throws OrderStore.OrderException, IOException {
         synchronized (host.index) {
             return cancelWithObservationLock(id, actor, audit);
         }
     }
 
-    private OrderStore.Order cancelWithObservationLock(String id, String actor) throws OrderStore.OrderException, IOException {
+    private OrderStore.Order cancelWithObservationLock(String id, String actor)
+            throws OrderStore.OrderException, IOException {
         return cancelWithObservationLock(id, actor, null);
     }
 
@@ -432,7 +437,8 @@ final class OrderLifecycleService {
             OrderStore.Order previous = OrderStore.find(b, id);
             if (previous == null) throw new OrderStore.OrderException(404, "no such order", -1);
             OrderStore.Order o = OrderStore.Order.fromJson(previous.snapshot());
-            if (OrderStore.FINISHED.contains(o.status)) throw new OrderStore.OrderException(409, "order is already " + o.status, -1);
+            if (OrderStore.FINISHED.contains(o.status))
+                throw new OrderStore.OrderException(409, "order is already " + o.status, -1);
             if (o.status.equals("pending")) {
                 o.advance(OrderStage.CANCELLED);
                 o.status = "cancelled";
@@ -461,13 +467,15 @@ final class OrderLifecycleService {
         return forceCancel(id, actor, null);
     }
 
-    OrderStore.Order forceCancel(String id, String actor, AuditLog.Batch audit) throws OrderStore.OrderException, IOException {
+    OrderStore.Order forceCancel(String id, String actor, AuditLog.Batch audit)
+            throws OrderStore.OrderException, IOException {
         synchronized (host.index) {
             return forceCancelWithObservationLock(id, actor, audit);
         }
     }
 
-    private OrderStore.Order forceCancelWithObservationLock(String id, String actor) throws OrderStore.OrderException, IOException {
+    private OrderStore.Order forceCancelWithObservationLock(String id, String actor)
+            throws OrderStore.OrderException, IOException {
         return forceCancelWithObservationLock(id, actor, null);
     }
 
@@ -482,7 +490,8 @@ final class OrderLifecycleService {
             OrderStore.Order previous = OrderStore.find(b, id);
             if (previous == null) throw new OrderStore.OrderException(404, "no such order", -1);
             OrderStore.Order o = OrderStore.Order.fromJson(previous.snapshot());
-            if (OrderStore.FINISHED.contains(o.status)) throw new OrderStore.OrderException(409, "order is already " + o.status, -1);
+            if (OrderStore.FINISHED.contains(o.status))
+                throw new OrderStore.OrderException(409, "order is already " + o.status, -1);
             if (o.allocations != null) {
                 throw new OrderStore.OrderException(
                         409,
@@ -514,7 +523,8 @@ final class OrderLifecycleService {
         return ownerForceCancel(id, actor, null);
     }
 
-    OrderStore.Order ownerForceCancel(String id, String actor, AuditLog.Batch audit) throws OrderStore.OrderException, IOException {
+    OrderStore.Order ownerForceCancel(String id, String actor, AuditLog.Batch audit)
+            throws OrderStore.OrderException, IOException {
         synchronized (host.index) {
             OrderStore.Book b = host.byOrderId.get(id);
             if (b == null) throw new OrderStore.OrderException(404, "no such order", -1);

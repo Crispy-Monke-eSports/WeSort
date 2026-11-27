@@ -1,38 +1,37 @@
 package com.porter.wesortmanager;
-    
-    import com.google.gson.JsonArray;
-    import com.google.gson.JsonObject;
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-    import com.porter.wesort.data.ContainerIdentity;
-    import com.porter.wesort.data.PhysicalSlots;
-    import java.io.IOException;
-    import java.sql.Connection;
-    import java.sql.SQLException;
-    import java.util.ArrayList;
-    import java.util.HashMap;
-    import java.util.HashSet;
-    import java.util.LinkedHashMap;
-    import java.util.List;
-    import java.util.Map;
-    import java.util.Set;
+import com.porter.wesort.data.ContainerIdentity;
+import com.porter.wesort.data.PhysicalSlots;
+import java.io.IOException;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
-    import java.util.UUID;
-    
-    /**
-     * PR3 Step 5: physical observations (validation, the accept transaction, loss
-     * acceptance and lease-expiry invalidation), moved verbatim out of StockLedger
-     * (no behavior change, Refs #142). Runs under the StockLedger lock.
-     */
-    final class ObservationService {
-        private final StockLedger ledger;
-        private final BoxUuidRegistry boxes;
-    
-        ObservationService(StockLedger ledger, BoxUuidRegistry boxes) {
-            this.ledger = ledger;
-            this.boxes = boxes;
-        }
-    
-        /** A pending rescan may provide one bounded grace period, not renew stock forever. */
+
+/**
+ * PR3 Step 5: physical observations (validation, the accept transaction, loss
+ * acceptance and lease-expiry invalidation), moved verbatim out of StockLedger
+ * (no behavior change, Refs #142). Runs under the StockLedger lock.
+ */
+final class ObservationService {
+    private final StockLedger ledger;
+    private final BoxUuidRegistry boxes;
+
+    ObservationService(StockLedger ledger, BoxUuidRegistry boxes) {
+        this.ledger = ledger;
+        this.boxes = boxes;
+    }
+
+    /** A pending rescan may provide one bounded grace period, not renew stock forever. */
     void freezeAging(String server, long at) {
         ledger.agingFreeze.putIfAbsent(server, at);
     }
@@ -47,6 +46,7 @@ import java.util.TreeMap;
         // A source read after the freeze is not a future-dated observation.
         return Math.max(frozen, Math.min(now, observedAt));
     }
+
     static List<JsonObject> validate(JsonObject index) {
         if (!index.has("physicalSources")) return List.of();
         long version = StockLedger.number(index, "physicalVersion");
@@ -111,7 +111,8 @@ import java.util.TreeMap;
                 Set<String> keys = new HashSet<>();
                 for (var entry : source.getAsJsonArray(field)) {
                     var row = entry.getAsJsonObject();
-                    if (StockLedger.number(row, "count") < 0 || !keys.add(row.get("key").getAsString()))
+                    if (StockLedger.number(row, "count") < 0
+                            || !keys.add(row.get("key").getAsString()))
                         throw new IllegalArgumentException("Invalid or duplicate physical quantity");
                 }
             }
@@ -145,6 +146,7 @@ import java.util.TreeMap;
         }
         return result;
     }
+
     private static Map<String, Long> amounts(JsonArray rows) {
         Map<String, Long> result = new TreeMap<>();
         for (var value : rows) {
@@ -227,7 +229,8 @@ import java.util.TreeMap;
                             || !previous.get("kind").equals(source.get("kind"))
                             || !previous.get("items").equals(source.get("items"))
                             || !previous.get("shulkers").equals(source.get("shulkers"))
-                            || !previous.get("state").getAsString().equals("FRESH")) throw new StockLedger.Conflict(before, ledger.epoch);
+                            || !previous.get("state").getAsString().equals("FRESH"))
+                        throw new StockLedger.Conflict(before, ledger.epoch);
                     boolean protectedBefore = previous.has("protected")
                             && previous.get("protected").getAsBoolean();
                     boolean protectedNow =
@@ -248,9 +251,11 @@ import java.util.TreeMap;
                 if (fresh
                         && (overlappingRevision > base
                                 || !source.get("epoch").getAsString().isEmpty()
-                                        && !ledger.epoch.equals(source.get("epoch").getAsString())
+                                        && !ledger.epoch.equals(
+                                                source.get("epoch").getAsString())
                                 || overlappingRevision > 0
-                                        && !ledger.epoch.equals(source.get("epoch").getAsString())))
+                                        && !ledger.epoch.equals(
+                                                source.get("epoch").getAsString())))
                     throw new StockLedger.Conflict(before, ledger.epoch);
                 if (fresh) {
                     verified = Math.min(now, StockLedger.number(source, "observedAt"));

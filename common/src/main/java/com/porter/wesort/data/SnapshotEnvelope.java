@@ -46,7 +46,13 @@ public final class SnapshotEnvelope {
             if (slot < 0) throw new IllegalArgumentException("slot must be >= 0");
             if (itemSnbt == null || itemSnbt.isEmpty()) throw new IllegalArgumentException("item SNBT required");
             if (count <= 0) throw new IllegalArgumentException("count must be > 0");
-            SnbtCodec.parse(itemSnbt);
+            // Empty slots are absent entries: a fake air stack is never a slot entry.
+            SnbtCodec.Tag tag = SnbtCodec.parse(itemSnbt);
+            if (tag instanceof SnbtCodec.TCompound c) {
+                SnbtCodec.Tag id = c.value().get("id");
+                if (id instanceof SnbtCodec.TString s && s.value().equals("minecraft:air"))
+                    throw new IllegalArgumentException("empty slots must be absent, never air stacks");
+            }
         }
     }
 
@@ -76,10 +82,23 @@ public final class SnapshotEnvelope {
         if (capacity <= 0 || capacity > 256) throw new IllegalArgumentException("capacity 1..256");
         if (slots == null) throw new IllegalArgumentException("slots required");
         if (provenance == null) throw new IllegalArgumentException("provenance required");
+        Map<String, String> meta = storageMeta == null ? Map.of() : Map.copyOf(storageMeta);
+        // Double chests are one logical 54-slot snapshot: facing, type and both
+        // block positions are required so the two halves can never be recorded
+        // as independent snapshots.
+        if (kind == SourceKind.CHEST_DOUBLE) {
+            if (capacity != 54)
+                throw new IllegalArgumentException("double chest snapshots are one logical 54-slot envelope");
+            for (String key : List.of("facing", "type", "posA", "posB")) {
+                String value = meta.get(key);
+                if (value == null || value.isEmpty())
+                    throw new IllegalArgumentException("double chest storageMeta requires '" + key + "'");
+            }
+        }
         this.kind = kind;
         this.capacity = capacity;
         this.slots = List.copyOf(slots);
-        this.storageMeta = storageMeta == null ? Map.of() : Map.copyOf(storageMeta);
+        this.storageMeta = meta;
         this.provenance = provenance;
         for (SlotEntry e : this.slots) {
             if (e.slot() >= capacity)

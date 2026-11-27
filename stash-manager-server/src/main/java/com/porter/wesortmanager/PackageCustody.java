@@ -231,7 +231,7 @@ final class PackageCustody {
                 var tx = new SqliteWriteTransaction(c)) {
             Package moved = transition(c, packageId, orderId, agent, next, location, evidence);
             if (trail != null) {
-                trail.say("custody." + next.name().toLowerCase(), packageId);
+                trail.say("custody." + next.name(), packageId);
                 AuditLog.addAll(c, trail.entries());
             }
             tx.commit();

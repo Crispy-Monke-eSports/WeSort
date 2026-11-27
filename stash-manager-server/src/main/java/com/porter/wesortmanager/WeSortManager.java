@@ -359,14 +359,14 @@ public final class WeSortManager {
         new OperationsRoutes(store, orders, hub, credentials).register(router);
         new StockRoutes(store, orders).register(router, audit);
         new BoxRoutes(store, audit, orders, config, stashDefs).register(router);
-        new CustodyRoutes(new PackageCustody(config.dataDir()), audit).register(router);
+        new CustodyRoutes(new PackageCustody(store.stock(), Clock.system()), audit).register(router);
         new DeliveryPointRoutes(new DeliveryPoints(config.dataDir()), audit).register(router);
         new ServerRoutes(config, audit).register(router);
         new StashDefRoutes(stashDefs, audit).register(router);
         new KitTemplateRoutes(kits, audit).register(router);
-        new DepositRoutes(new Deposits(config.dataDir()), audit).register(router);
-        var jobs = new JobScheduler(config.dataDir());
-        var handoffs = new Handoffs(config.dataDir());
+        new DepositRoutes(new Deposits(store.stock(), Clock.system()), audit).register(router);
+        var jobs = new JobScheduler(store.stock(), Clock.system());
+        var handoffs = new Handoffs(store.stock(), Clock.system());
         new JobRoutes(jobs, audit).register(router);
         new HandoffRoutes(handoffs, audit).register(router);
         new PhysicalRoutes(store, audit, config).register(router);

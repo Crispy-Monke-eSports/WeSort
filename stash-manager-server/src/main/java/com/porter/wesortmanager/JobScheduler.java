@@ -173,8 +173,13 @@ final class JobScheduler {
         try (var c = ledger.open();
                 var tx = new SqliteWriteTransaction(c)) {
             var out = claim(c, agent);
-            if (trail != null && out.get("job").isJsonObject()) {
-                trail.say("job.claim", out.getAsJsonObject("job").get("id").getAsString());
+            if (trail != null) {
+                // Empty-queue claims are audited too, with an empty subject.
+                trail.say(
+                        "job.claim",
+                        out.get("job").isJsonObject()
+                                ? out.getAsJsonObject("job").get("id").getAsString()
+                                : "");
                 AuditLog.addAll(c, trail.entries());
             }
             tx.commit();

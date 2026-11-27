@@ -45,6 +45,10 @@ final class DepositRoutes {
             return;
         }
         try {
+            // The audit entries stage into the same transaction as the deposit
+            // write: a failed commit persists neither.
+            var trail = audit.batch();
+            trail.actor("agent:" + agent, "Signed WeSort agent", AuthRoutes.address(ex));
             Deposit result;
             switch (action) {
                 case "begin" -> {
@@ -61,17 +65,16 @@ final class DepositRoutes {
                         Http.error(ex, 400, "orderId and destination are required");
                         return;
                     }
-                    result = deposits.begin(packageId, orderId, kind, destination, agent);
+                    result = deposits.begin(packageId, orderId, kind, destination, agent, trail);
                 }
                 case "confirm" -> {
                     var snapshot = body.has("snapshot") && body.get("snapshot").isJsonObject()
                             ? body.getAsJsonObject("snapshot")
                             : null;
-                    result = deposits.confirm(packageId, agent, snapshot);
+                    result = deposits.confirm(packageId, agent, snapshot, trail);
                 }
-                default -> result = deposits.reconcile(packageId, agent, AddonRoutes.string(body, "reason"));
+                default -> result = deposits.reconcile(packageId, agent, AddonRoutes.string(body, "reason"), trail);
             }
-            audit.add("agent:" + agent, "Signed WeSort agent", "deposit." + action, packageId, AuthRoutes.address(ex));
             Http.json(ex, 200, result.json());
         } catch (Deposits.Conflict conflict) {
             Http.error(ex, 409, conflict.getMessage());

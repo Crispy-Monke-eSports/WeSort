@@ -47,6 +47,10 @@ final class CustodyRoutes {
             var evidence = body.has("evidence") && body.get("evidence").isJsonObject()
                     ? body.getAsJsonObject("evidence")
                     : null;
+            // The audit entries stage into the same transaction as the custody
+            // write: a failed commit persists neither.
+            var trail = audit.batch();
+            trail.actor("agent:" + agent, "Signed WeSort agent", AuthRoutes.address(ex));
             PackageCustody.Package result;
             if ("stage".equals(action)) {
                 result = custody.stage(
@@ -56,12 +60,12 @@ final class CustodyRoutes {
                         AddonRoutes.string(body, "jobId"),
                         AddonRoutes.string(body, "destination"),
                         AddonRoutes.string(body, "label"),
-                        location);
+                        location,
+                        trail);
             } else {
                 result = custody.transition(
-                        packageId, orderId, agent, PackageCustody.State.valueOf(action), location, evidence);
+                        packageId, orderId, agent, PackageCustody.State.valueOf(action), location, evidence, trail);
             }
-            audit.add("agent:" + agent, "Signed WeSort agent", "custody." + action, packageId, AuthRoutes.address(ex));
             Http.json(ex, 200, json(result));
         } catch (PackageCustody.Conflict conflict) {
             Http.error(ex, 409, conflict.getMessage());

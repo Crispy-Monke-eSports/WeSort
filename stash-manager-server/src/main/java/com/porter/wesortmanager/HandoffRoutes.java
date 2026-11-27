@@ -41,6 +41,10 @@ final class HandoffRoutes {
             return;
         }
         try {
+            // The audit entries stage into the same transaction as the handoff
+            // write: a failed commit persists neither.
+            var trail = audit.batch();
+            trail.actor(Router.user(ex).id(), Router.user(ex).name(), AuthRoutes.address(ex));
             Handoff result;
             switch (action) {
                 case "schedule" -> {
@@ -51,15 +55,15 @@ final class HandoffRoutes {
                         Http.error(ex, 400, "orderId, recipient and meetingPoint are required");
                         return;
                     }
-                    result = handoffs.schedule(orderId, recipient, meetingPoint, AddonRoutes.string(body, "agent"));
+                    result = handoffs.schedule(
+                            orderId, recipient, meetingPoint, AddonRoutes.string(body, "agent"), trail);
                 }
                 case "confirm" ->
-                    result = handoffs.confirm(requireId(body), Router.user(ex).id());
+                    result = handoffs.confirm(requireId(body), Router.user(ex).id(), trail);
                 default ->
                     result = handoffs.resolve(
-                            requireId(body), outcome(body), Router.user(ex).id());
+                            requireId(body), outcome(body), Router.user(ex).id(), trail);
             }
-            audit.add(Router.user(ex), "handoff." + action, result.id(), AuthRoutes.address(ex));
             Http.json(ex, 200, result.json());
         } catch (Handoffs.Conflict conflict) {
             Http.error(ex, 409, conflict.getMessage());
@@ -84,14 +88,16 @@ final class HandoffRoutes {
             return;
         }
         try {
+            // The audit entries stage into the same transaction as the handoff
+            // write: a failed commit persists neither.
+            var trail = audit.batch();
+            trail.actor("agent:" + agent, "Signed WeSort agent", AuthRoutes.address(ex));
             Handoff result;
             switch (action) {
-                case "arrive" -> result = handoffs.arrive(requireId(body), agent);
-                case "no-show" -> result = handoffs.noShow(requireId(body), agent);
-                default -> result = handoffs.dropUnverified(requireId(body), agent, AddonRoutes.string(body, "reason"));
+                case "arrive" -> result = handoffs.arrive(requireId(body), agent, trail);
+                case "no-show" -> result = handoffs.noShow(requireId(body), agent, trail);
+                default -> result = handoffs.dropUnverified(requireId(body), agent, AddonRoutes.string(body, "reason"), trail);
             }
-            audit.add(
-                    "agent:" + agent, "Signed WeSort agent", "handoff." + action, result.id(), AuthRoutes.address(ex));
             Http.json(ex, 200, result.json());
         } catch (Handoffs.Conflict conflict) {
             Http.error(ex, 409, conflict.getMessage());

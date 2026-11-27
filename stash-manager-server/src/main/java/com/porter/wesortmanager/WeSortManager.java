@@ -190,7 +190,7 @@ public final class WeSortManager {
                     () -> {
                         try {
                             health.sample(
-                                    config.minecraftServer(),
+                                    config.warehouseKey(),
                                     store,
                                     orders,
                                     System.currentTimeMillis(),
@@ -359,16 +359,16 @@ public final class WeSortManager {
         new OperationsRoutes(store, orders, hub, credentials).register(router);
         new StockRoutes(store, orders).register(router, audit);
         new BoxRoutes(store, audit, orders, config, stashDefs).register(router);
-        new CustodyRoutes(new PackageCustody(config.dataDir()), audit, config).register(router);
+        new CustodyRoutes(new PackageCustody(config.dataDir()), audit).register(router);
         new DeliveryPointRoutes(new DeliveryPoints(config.dataDir()), audit).register(router);
         new ServerRoutes(config, audit).register(router);
         new StashDefRoutes(stashDefs, audit).register(router);
         new KitTemplateRoutes(kits, audit).register(router);
-        new DepositRoutes(new Deposits(config.dataDir()), audit, config).register(router);
+        new DepositRoutes(new Deposits(config.dataDir()), audit).register(router);
         var jobs = new JobScheduler(config.dataDir());
         var handoffs = new Handoffs(config.dataDir());
-        new JobRoutes(jobs, audit, config).register(router);
-        new HandoffRoutes(handoffs, audit, config).register(router);
+        new JobRoutes(jobs, audit).register(router);
+        new HandoffRoutes(handoffs, audit).register(router);
         new PhysicalRoutes(store, audit, config).register(router);
         new BotRoutes(hub, audit, orders, config, stashDefs).register(router);
         new DashboardRoutes(hub, store, sessions, audit, credentials).register(router);

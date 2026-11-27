@@ -1,6 +1,7 @@
 package com.porter.wesort.data;
 
 import com.google.gson.*;
+import com.porter.wesort.snbt.SnbtCodec;
 import java.util.*;
 
 /** Versioned physical snapshots. A fingerprint describes content; only source + slot path identifies its location. */
@@ -24,7 +25,7 @@ public final class PhysicalSlots {
         }
 
         public String fingerprint() {
-            return hash("stack-1", item.fingerprint(), new JsonPrimitive(count));
+            return hash("stack", item.fingerprint(), integerTag(count));
         }
     }
 
@@ -53,12 +54,13 @@ public final class PhysicalSlots {
                     || size > 256
                     || components == null
                     || components.length() > 1_000_000) throw new IllegalArgumentException("Invalid physical item");
-            JsonElement patch = JsonParser.parseString(components);
-            if (!patch.isJsonObject()) throw new IllegalArgumentException("Expected structured component patch");
+            var patch = SnbtCodec.compound(components);
+            if (patch.value().containsKey("type") && patch.value().containsKey("value"))
+                throw new IllegalArgumentException("Legacy typed JSON component patches are not supported");
             this.id = id;
             this.key = key;
             this.maxStack = maxStack;
-            this.components = CanonicalJson.stringify(patch);
+            this.components = SnbtCodec.write(patch);
             this.kind = Objects.requireNonNull(kind);
             this.size = size;
             this.group = group == null ? "" : group;
@@ -67,19 +69,32 @@ public final class PhysicalSlots {
                     || kind == Kind.SHULKER && size != 27)
                 throw new IllegalArgumentException("Invalid physical container shape");
             this.contents = ordered(contents, size);
-            JsonArray identity = new JsonArray();
-            identity.add("physical-item-1");
-            identity.add(id);
-            identity.add(maxStack);
-            identity.add(patch);
-            identity.add(kind.name());
-            identity.add(size);
-            identity.add(slotIdentities(this.contents));
-            fingerprint = ContainerIdentity.hash(CanonicalJson.stringify(identity));
+            fingerprint = SnbtCodec.fingerprint(
+                    "physical-item",
+                    new SnbtCodec.TList(List.of(
+                            text(id),
+                            text(key),
+                            text(this.group),
+                            integerTag(maxStack),
+                            patch,
+                            text(kind.name()),
+                            integerTag(size),
+                            slotIdentities(this.contents))));
         }
 
         public String id() {
             return id;
+        }
+
+        /**
+         * Exact variant identity for this item (#266, production use): the
+         * registry id plus the full count-independent canonical component SNBT
+         * with a full SHA-256 digest. Never truncated, never a bare-id
+         * fallback — encode failure already throws at construction.
+         */
+        public ItemIdentity.ExactVariantId variantId(String schemaContext) {
+            ItemIdentity.BaseItemId base = new ItemIdentity.BaseItemId(id, schemaContext);
+            return ItemIdentity.ExactVariantId.of(base, SnbtCodec.parse(components));
         }
 
         public String key() {
@@ -125,7 +140,7 @@ public final class PhysicalSlots {
         private final int size;
         private final List<Slot> slots;
         private final List<Located> located;
-        private final String fingerprint;
+        private final String fingerprint, snbt;
 
         public Snapshot(int size, List<Slot> slots) {
             if (size < 1 || size > 256) throw new IllegalArgumentException("Invalid physical inventory size");
@@ -140,7 +155,12 @@ public final class PhysicalSlots {
                     throw new IllegalArgumentException("Physical component snapshot too large");
             }
             this.located = List.copyOf(positions);
-            fingerprint = hash("physical-inventory-1", String.valueOf(size), slotIdentities(this.slots));
+            var tree = new SnbtCodec.TCompound(Map.of(
+                    "schema", integerTag(2),
+                    "size", integerTag(size),
+                    "slots", encodeSlots(this.slots)));
+            snbt = SnbtCodec.write(tree);
+            fingerprint = SnbtCodec.fingerprint("physical-inventory", tree);
         }
 
         public int size() {
@@ -157,6 +177,42 @@ public final class PhysicalSlots {
 
         public String fingerprint() {
             return fingerprint;
+        }
+
+        /** The complete versioned, authoritative snapshot; JSON is a derived view only. */
+        public String snbt() {
+            return snbt;
+        }
+
+        public static Snapshot fromSnbt(String snbt) {
+            var root = SnbtCodec.compound(snbt);
+            requireKeys(root, "schema", "size", "slots");
+            if (intValue(root.get("schema")) != 2)
+                throw new IllegalArgumentException("Unsupported SNBT snapshot version");
+            var result = new Snapshot(intValue(root.get("size")), decodeSlots(root.get("slots"), 0, new int[1]));
+            if (!snbt.equals(result.snbt()))
+                throw new IllegalArgumentException("Noncanonical or inconsistent physical SNBT");
+            return result;
+        }
+
+        /** JSON transport envelope; the SNBT field is the only inventory content. */
+        public JsonObject envelope() {
+            var out = new JsonObject();
+            out.addProperty("schema", 2);
+            out.addProperty("size", size);
+            out.addProperty("fingerprint", fingerprint);
+            out.addProperty("snbt", snbt);
+            return out;
+        }
+
+        public static Snapshot readEnvelope(JsonObject envelope) {
+            if (integer(envelope.get("schema")) != 2 || envelope.has("slots") || envelope.has("slotVariants"))
+                throw new IllegalArgumentException("Expected SNBT-only snapshot envelope");
+            var result = fromSnbt(envelope.get("snbt").getAsString());
+            if (result.size != integer(envelope.get("size"))
+                    || !result.fingerprint.equals(envelope.get("fingerprint").getAsString()))
+                throw new IllegalArgumentException("SNBT snapshot metadata mismatch");
+            return result;
         }
 
         public Map<String, Long> totals() {
@@ -179,7 +235,7 @@ public final class PhysicalSlots {
 
         public JsonObject json() {
             JsonObject out = new JsonObject();
-            out.addProperty("schema", 1);
+            out.addProperty("schema", 2);
             out.addProperty("size", size);
             out.addProperty("fingerprint", fingerprint);
             JsonArray positions = new JsonArray();
@@ -331,22 +387,130 @@ public final class PhysicalSlots {
         }
     }
 
-    private static JsonArray slotIdentities(List<Slot> slots) {
-        JsonArray out = new JsonArray();
+    private static SnbtCodec.TList encodeSlots(List<Slot> slots) {
+        List<SnbtCodec.Tag> values = new ArrayList<>();
         for (Slot slot : slots) {
-            JsonArray row = new JsonArray();
-            row.add(slot.slot);
-            row.add(slot.fingerprint());
-            out.add(row);
+            Item item = slot.item();
+            // Native stack fields are typed SNBT, not a JSON string or an item hash.
+            var stack = new SnbtCodec.TCompound(Map.of(
+                    "id", text(item.id()),
+                    "count", integerTag(slot.count()),
+                    "components", SnbtCodec.compound(item.components())));
+            values.add(new SnbtCodec.TCompound(Map.of(
+                    "slot", integerTag(slot.slot()),
+                    "stack", stack,
+                    "key", text(item.key()),
+                    "maxStack", integerTag(item.maxStack()),
+                    "kind", text(item.kind().name()),
+                    "capacity", integerTag(item.size()),
+                    "group", text(item.group()),
+                    "children", encodeSlots(item.contents()))));
         }
-        return out;
+        return new SnbtCodec.TList(values);
     }
 
-    private static String hash(String domain, String value, JsonElement details) {
-        JsonArray out = new JsonArray();
-        out.add(domain);
-        out.add(value);
-        out.add(details);
-        return ContainerIdentity.hash(CanonicalJson.stringify(out));
+    private static List<Slot> decodeSlots(SnbtCodec.Tag value, int depth, int[] nodes) {
+        if (!(value instanceof SnbtCodec.TList list)
+                || list.value().size() > 256
+                || (depth > MAX_DEPTH && !list.value().isEmpty()))
+            throw new IllegalArgumentException("Invalid SNBT slot sequence");
+        List<Slot> slots = new ArrayList<>();
+        for (var entry : list.value()) {
+            if (++nodes[0] > MAX_NODES) throw new IllegalArgumentException("SNBT physical hierarchy too large");
+            var row = requireCompound(entry);
+            requireKeys(row, "slot", "stack", "key", "maxStack", "kind", "capacity", "group", "children");
+            var stack = requireCompound(row.get("stack"));
+            requireKeys(stack, "id", "count", "components");
+            var item = new Item(
+                    textValue(stack.get("id")),
+                    textValue(row.get("key")),
+                    intValue(row.get("maxStack")),
+                    SnbtCodec.write(requireCompound(stack.get("components"))),
+                    Kind.valueOf(textValue(row.get("kind"))),
+                    intValue(row.get("capacity")),
+                    decodeSlots(row.get("children"), depth + 1, nodes),
+                    textValue(row.get("group")));
+            validateNativeChildren(item, requireCompound(stack.get("components")));
+            slots.add(new Slot(intValue(row.get("slot")), intValue(stack.get("count")), item));
+        }
+        return slots;
+    }
+
+    /** Verify every derived child against the authoritative native component before indexing it. */
+    private static void validateNativeChildren(Item item, SnbtCodec.TCompound patch) {
+        var nativeChildren = new TreeMap<Integer, SnbtCodec.TCompound>();
+        var container = patch.get("minecraft:container");
+        if (container != null) {
+            if (!(container instanceof SnbtCodec.TList list))
+                throw new IllegalArgumentException("Invalid native container");
+            for (var value : list.value()) {
+                var entry = requireCompound(value);
+                int slot = intValue(entry.get("slot"));
+                if (item.kind == Kind.ITEM
+                        || item.kind == Kind.BUNDLE
+                        || nativeChildren.put(slot, requireCompound(entry.get("item"))) != null)
+                    throw new IllegalArgumentException("Conflicting native container slots");
+            }
+        }
+        var bundle = patch.get("minecraft:bundle_contents");
+        if (bundle != null) {
+            if (!(bundle instanceof SnbtCodec.TList list)) throw new IllegalArgumentException("Invalid native bundle");
+            if (!list.value().isEmpty() && (item.kind != Kind.BUNDLE || !nativeChildren.isEmpty()))
+                throw new IllegalArgumentException("Conflicting native bundle contents");
+            for (var value : list.value()) nativeChildren.put(nativeChildren.size(), requireCompound(value));
+        }
+        if (nativeChildren.size() != item.contents.size()
+                || (item.kind == Kind.BUNDLE && item.size != nativeChildren.size()))
+            throw new IllegalArgumentException("Native child count mismatch");
+        for (Slot child : item.contents) {
+            var original = nativeChildren.get(child.slot());
+            if (original == null || !child.item.id.equals(textValue(original.get("id"))))
+                throw new IllegalArgumentException("Native child identity mismatch");
+            int count = original.get("count") == null ? 1 : intValue(original.get("count"));
+            String components = original.get("components") == null
+                    ? "{}"
+                    : SnbtCodec.write(requireCompound(original.get("components")));
+            if (count != child.count || !components.equals(child.item.components))
+                throw new IllegalArgumentException("Native child content mismatch");
+        }
+    }
+
+    private static SnbtCodec.TCompound requireCompound(SnbtCodec.Tag value) {
+        if (!(value instanceof SnbtCodec.TCompound c)) throw new IllegalArgumentException("Expected compound");
+        return c;
+    }
+
+    private static void requireKeys(SnbtCodec.TCompound value, String... keys) {
+        if (!value.value().keySet().equals(Set.of(keys)))
+            throw new IllegalArgumentException("Unexpected SNBT snapshot fields");
+    }
+
+    private static int intValue(SnbtCodec.Tag value) {
+        if (!(value instanceof SnbtCodec.TInt n)) throw new IllegalArgumentException("Expected int tag");
+        return Math.toIntExact(n.value());
+    }
+
+    private static String textValue(SnbtCodec.Tag value) {
+        if (!(value instanceof SnbtCodec.TString text)) throw new IllegalArgumentException("Expected string tag");
+        return text.value();
+    }
+
+    private static SnbtCodec.TString text(String value) {
+        return new SnbtCodec.TString(value);
+    }
+
+    private static SnbtCodec.TInt integerTag(int value) {
+        return new SnbtCodec.TInt(value);
+    }
+
+    private static SnbtCodec.TList slotIdentities(List<Slot> slots) {
+        List<SnbtCodec.Tag> out = new ArrayList<>();
+        for (Slot slot : slots)
+            out.add(new SnbtCodec.TList(List.of(integerTag(slot.slot()), text(slot.fingerprint()))));
+        return new SnbtCodec.TList(out);
+    }
+
+    private static String hash(String domain, String value, SnbtCodec.Tag details) {
+        return SnbtCodec.fingerprint(domain, new SnbtCodec.TList(List.of(text(value), details)));
     }
 }

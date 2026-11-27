@@ -240,12 +240,16 @@ final class Users {
     static final Map<String, Perms> PRESETS;
 
     static {
-        // PR1 (#26/#43): exactly one sub-user profile — Member. Owner is a special
-        // id, not in PRESETS. Elevated grants (ordersAll, guildOrders, settings,
-        // rescan, link, positions) are Owner-only; UserRoutes rejects them for
-        // sub-users, so no custom-perms JSON can mint a third role.
+        // PR1 (#26/#43): exactly one sub-user profile — Member, with "orderer"
+        // as an alias. Owner is a special id, not in PRESETS. Elevated grants
+        // (ordersAll, guildOrders, settings, rescan, link, positions) are
+        // Owner-only; UserRoutes rejects them for sub-users, so no custom-perms
+        // JSON can mint a third role. Member has guildOrders=false; explicit
+        // custom grants remain possible for read-only/delegate cases.
         Map<String, Perms> p = new LinkedHashMap<>();
-        p.put("member", Perms.of(true, true, false, false, false, false, false, null, null));
+        Perms member = Perms.of(true, true, false, false, false, false, false, null, null);
+        p.put("member", member);
+        p.put("orderer", member);
         PRESETS = java.util.Collections.unmodifiableMap(p);
     }
 

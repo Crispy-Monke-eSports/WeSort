@@ -545,8 +545,7 @@ public class Stash {
     }
 
     private static Path file(String name, String server) {
-        String safe = (server + "_" + name).toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9._-]", "_");
-        return folder().resolve(safe + ".nbt");
+        return com.porter.wesort.data.StashFiles.resolve(folder(), name, server);
     }
 
     public static String currentServer() {

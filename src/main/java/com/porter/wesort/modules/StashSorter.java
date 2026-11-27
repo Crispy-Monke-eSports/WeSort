@@ -2172,53 +2172,8 @@ public class StashSorter extends Module {
                     + (repackWork.reason().isEmpty() ? "physical work needs reconciliation" : repackWork.reason()));
             return;
         }
-        // 6b6t portal transit is navigation-only. Standalone sorter-only (no agent
-        // control) keeps its historical path, including fenced transit with a
-        // warning (no manager exists to order it; update the manager for leases).
-        // Agent-driven transit requires dedication; with a fenced journal it
-        // additionally requires an explicit manager ENTER_PORTAL lease, else park
-        // with FENCED_AWAITING_MANAGER_COMMAND. Physical mutation below stays fenced.
-        var portalManager =
-                meteordevelopment.meteorclient.systems.modules.Modules.get().get(StashManager.class);
-        boolean standalone = portalManager == null || !portalManager.isActive();
-        // Transit is attempted whenever the lobby awaits it; dedication and the
-        // ENTER_PORTAL lease are enforced inside for the fenced agent-driven case.
         if (portalModeOn() && portalAwaiting()) {
             boolean fenced = PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror();
-            boolean authorized = portalManager != null && portalManager.enterPortalAuthorized();
-            if (!fenced || authorized) fencedParkSince = 0;
-            if (fenced && !standalone && !authorized && portalTarget == null && !portalEntering) {
-                // Agent-driven with a fenced journal and no ENTER_PORTAL lease:
-                // park with an explicit fact. Legacy fallback: a manager that never
-                // orders (old server without portal-command) must not park forever;
-                // after 5 min allow the historical navigation-only transit with a
-                // loud warning so the deadlock is bounded.
-                long nowParkMs = System.currentTimeMillis();
-                if (fencedParkSince == 0) fencedParkSince = nowParkMs;
-                if (nowParkMs - fencedParkSince > 5 * 60_000L) {
-                    fencedParkSince = nowParkMs;
-                    WeSortAddon.LOG.warn(
-                            "WeSort portal: no ENTER_PORTAL order in 5 min; legacy fallback transit (update the manager).");
-                } else {
-                    ledgeGuard(false);
-                    portalForward(false);
-                    releaseGoal();
-                    // A manual crossing while parked must still count: record contact
-                    // without driving, so the post-transfer arrival can complete.
-                    if (touchingPortal()) {
-                        portalSession.crossingAttempted();
-                        reportPortalBlocker("TRANSITING_WITH_FENCED_JOURNAL");
-                        gateLogThrottled("6b6t portal: TRANSITING_WITH_FENCED_JOURNAL (manual contact while parked)");
-                    } else {
-                        reportPortalBlocker("FENCED_AWAITING_MANAGER_COMMAND");
-                        gateLogThrottled(
-                                "6b6t portal: FENCED_AWAITING_MANAGER_COMMAND (order ENTER_PORTAL in the dashboard)");
-                    }
-                    return;
-                }
-            } else {
-                fencedParkSince = 0;
-            }
             // Screens are handled inside portalTick()'s movement blocker
             // (auto-dismiss when allowed, else SCREEN_OPEN); don't pre-empt it here.
             boolean cursorEmpty = mc.player != null
@@ -2610,14 +2565,16 @@ public class StashSorter extends Module {
      */
     private void walkNear(BlockPos pos, int range) {
         if (!BARITONE) return;
-        // #197 full fix (PR1 redo): no unloaded-target pre-gate here. Chunk arrival is
-        // owned by Baritone + NavigationRuntime: an unloaded route pauses as
-        // PAUSED_NAVIGATION_UNSAFE_BLOCK (detail "unloaded ...") or, if the engine
-        // drops the goal, PAUSED_NAVIGATION_RELEASED — both auto-retry with backoff
-        // in NavigationRuntime.pauseTick and never need a manual resume. A local
-        // pre-gate would hide the target from the watchdog and park silently.
+        // #197 (PR1): chunk-await in the gate. An unloaded target waits for
+        // chunks here instead of arming a Baritone goal that the engine drops
+        // into PAUSED_NAVIGATION_RELEASED. No latch: the watchdog keeps ticking
+        // and NavigationRuntime auto-retries with backoff.
         if (pos == null) {
             WeSortAddon.LOG.debug("[wesort-stash-sorter] walkNear called with null target; staying put.");
+            return;
+        }
+        if (mc.level == null || !mc.level.isLoaded(pos)) {
+            WeSortAddon.LOG.debug("[wesort-stash-sorter] walkNear waiting for chunks at {}; staying put.", pos);
             return;
         }
         BaritoneHelper.protect(List.of());
@@ -2647,10 +2604,15 @@ public class StashSorter extends Module {
      */
     private void walkReach(Box box) {
         if (!BARITONE) return;
-        // #197 full fix: same as walkNear — no pre-gate; NavigationRuntime fences
-        // unloaded high containers with backoff instead of parking silently.
+        // #197 (PR1): chunk-await like walkNear — an unloaded container waits
+        // for chunks instead of latching RELEASED. NavigationRuntime backoff
+        // owns the retry; no manual resume.
         if (box == null || box.pos == null) {
             WeSortAddon.LOG.debug("[wesort-stash-sorter] walkReach called without a box target; staying put.");
+            return;
+        }
+        if (mc.level == null || !mc.level.isLoaded(box.pos)) {
+            WeSortAddon.LOG.debug("[wesort-stash-sorter] walkReach waiting for chunks at {}; staying put.", box.pos);
             return;
         }
         BaritoneHelper.protect(List.of());
@@ -2667,8 +2629,14 @@ public class StashSorter extends Module {
     /** The same walk to a column, at any height. */
     private void walkXZ(int x, int z) {
         if (!BARITONE) return;
-        // #197 full fix: same as walkNear — no column probe gate; the column goal is
-        // fenced by NavigationRuntime with backoff like every other route.
+        // #197 (PR1): chunk-await for the column at the player's height. An
+        // unloaded column waits for chunks instead of latching RELEASED.
+        if (mc.level == null || mc.player == null) return;
+        BlockPos column = new BlockPos(x, mc.player.blockPosition().getY(), z);
+        if (!mc.level.isLoaded(column)) {
+            WeSortAddon.LOG.debug("[wesort-stash-sorter] walkXZ waiting for chunks at {},{}; staying put.", x, z);
+            return;
+        }
         BaritoneHelper.protect(List.of());
         usedBaritone = true;
         BaritoneHelper.confine(safeWalk.get());
@@ -4105,6 +4073,7 @@ public class StashSorter extends Module {
     }
 
     public boolean sortingPermitted() {
+        if (StashManager.SURVEY_ONLY) return false;
         if (!repackConflict.isEmpty()) return false;
         if (PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror()) return false;
         if (!requiresSortingPermit()) return true;
@@ -4229,7 +4198,6 @@ public class StashSorter extends Module {
     private long portalWaitWarnedAt = 0;
     private long lastFencedTransitWarnedAt = 0;
     private long cursorOccupiedSince = 0;
-    private long fencedParkSince = 0;
     // Retried portal approaches eventually give up with a blocker instead of looping forever.
     private int portalAttempts;
     private long portalGiveUpUntilMs;
@@ -4249,7 +4217,6 @@ public class StashSorter extends Module {
     /** The Manager can be disabled during a manual crossing; never leave a synthetic key held. */
     void stopPortalNavigation() {
         portalForward(false);
-        fencedParkSince = 0;
         cursorOccupiedSince = 0;
         if (portalTarget != null || portalEntering) {
             releaseGoal();
@@ -4419,7 +4386,6 @@ public class StashSorter extends Module {
             portalBlocker = null;
             portalAttempts = 0;
             portalGiveUpUntilMs = 0;
-            fencedParkSince = 0;
             cursorOccupiedSince = 0;
             if (stash != null) {
                 info(
@@ -4509,6 +4475,7 @@ public class StashSorter extends Module {
         String blocker = portalMovementBlocker();
         if (blocker != null) {
             portalForward(false);
+            releaseGoal();
             reportPortalBlocker(blocker);
             return true;
         }
@@ -4565,25 +4532,19 @@ public class StashSorter extends Module {
     }
 
     private String portalMovementBlocker() {
+        var manager = Modules.get().get(StashManager.class);
+        if (manager == null || !manager.dedicatedProfile()) return "AGENT_DISABLED";
+        if ((PhysicalJournalRuntime.blocked() || PhysicalJournalRuntime.awaitingMirror())
+                && !manager.enterPortalAuthorized()) return "FENCED_AWAITING_MANAGER_COMMAND";
         if (com.porter.wesort.compat.NavigationRuntime.paused()) {
             return com.porter.wesort.compat.NavigationRuntime.status();
         }
         if (!BARITONE) return "BARITONE_UNAVAILABLE";
-        if (StashManager.ownsClient()) {
-            // Lobby navigation is allowed before inventory readback, so only dismiss
-            // non-container screens here. Never close an unverified server menu.
-            if (mc.player.containerMenu != null
-                    && mc.player.containerMenu == mc.player.inventoryMenu
-                    && mc.player.containerMenu.getCarried().isEmpty()
-                    && mc.screen != null) mc.setScreen(null);
-            if (mc.screen != null) return "SCREEN_OPEN";
-        } else {
-            if (mc.screen != null) return "SCREEN_OPEN";
-            if (Input.isPressed(mc.options.keyDown)
-                    || Input.isPressed(mc.options.keyLeft)
-                    || Input.isPressed(mc.options.keyRight)
-                    || Input.isPressed(mc.options.keyJump)) return "MANUAL_MOVEMENT";
-        }
+        // Lobby navigation may dismiss a local screen only with an empty inventory cursor.
+        if (mc.player.containerMenu == mc.player.inventoryMenu
+                && mc.player.inventoryMenu.getCarried().isEmpty()
+                && mc.screen != null) mc.setScreen(null);
+        if (mc.screen != null) return "SCREEN_OPEN";
         if (BaritoneHelper.controlledByOther(ourGoal == null ? null : (baritone.api.pathing.goals.Goal) ourGoal)) {
             return "BARITONE_BUSY";
         }
@@ -4706,35 +4667,6 @@ public class StashSorter extends Module {
         Stash s = ensureStash();
         if (s == null || s.craftingTablePos == null) return "none";
         return s.craftingTableSource.isEmpty() ? "set" : s.craftingTableSource;
-    }
-
-    /**
-     * For wesort-stash-manager: sets the crafting table, or clears it if it is this one.
-     * @return 1 when set, 0 when cleared, -1 when the block is no crafting table, -2 when no stash is loaded
-     */
-    int toggleCraftingTable(BlockPos pos) {
-        if (mc.level == null || ensureStash() == null) return -2;
-        if (stash.craftingTablePos != null && stash.craftingTablePos.equals(pos)) {
-            stash.craftingTablePos = null;
-            stash.craftingTableSource = "";
-            stash.save();
-            return 0;
-        }
-        if (!isTable(pos)) return -1;
-        stash.craftingTablePos = pos.immutable();
-        stash.craftingTableSource = "set";
-        tableChanged();
-        stash.save();
-        return 1;
-    }
-
-    /** For wesort-stash-manager: no crafting table any more. @return false when there was none or no stash */
-    boolean clearCraftingTable() {
-        if (ensureStash() == null || stash.craftingTablePos == null) return false;
-        stash.craftingTablePos = null;
-        stash.craftingTableSource = "";
-        stash.save();
-        return true;
     }
 
     // Finding a crafting table to craft at (before a craft that needs one). In order: the one picked by hand, a
@@ -5636,34 +5568,6 @@ public class StashSorter extends Module {
     BlockPos anvilPos() {
         Stash s = ensureStash();
         return s == null ? null : s.anvilPos;
-    }
-
-    /**
-     * For wesort-stash-manager: sets the anvil, or clears it if it is this one.
-     * @return 1 when set, 0 when cleared, -1 when the block is no anvil, -2 when no stash is loaded
-     */
-    int toggleAnvil(BlockPos pos) {
-        if (mc.level == null || ensureStash() == null) return -2;
-        if (stash.anvilPos != null && stash.anvilPos.equals(pos)) {
-            stash.anvilPos = null;
-            stash.anvilSource = "";
-            stash.save();
-            return 0;
-        }
-        if (!isAnvil(pos)) return -1;
-        stash.anvilPos = pos.immutable();
-        stash.anvilSource = "set";
-        stash.save();
-        return 1;
-    }
-
-    /** For wesort-stash-manager: no anvil any more. @return false when there was none or no stash */
-    boolean clearAnvil() {
-        if (ensureStash() == null || stash.anvilPos == null) return false;
-        stash.anvilPos = null;
-        stash.anvilSource = "";
-        stash.save();
-        return true;
     }
 
     // ------------------------------------------------------------------------------------------------------------------
@@ -12501,6 +12405,10 @@ public class StashSorter extends Module {
                             : "%s can be used for compacting again.",
                     box.pos.toShortString());
         } else if (pick.get() == Pick.Delivery) {
+            if (managerOwnsWorkzone()) {
+                notice("The delivery container is owned by the Manager; change it in Settings > Stashes.");
+                return true;
+            }
             if (box.deliveryExtra)
                 notice(
                         "%s is already one of the delivery chests (put up above the delivery container). Change the delivery container to forget them.",
@@ -12514,6 +12422,10 @@ public class StashSorter extends Module {
                         box.pos.toShortString());
             }
         } else if (pick.get() == Pick.Input) {
+            if (managerOwnsWorkzone()) {
+                notice("The drop-off chest is owned by the Manager; change it in Settings > Stashes.");
+                return true;
+            }
             if (box.delivery || box.deliveryExtra) {
                 notice("%s is a delivery container, it can't also be the input chest.", box.pos.toShortString());
             } else {
@@ -12652,29 +12564,6 @@ public class StashSorter extends Module {
         return set;
     }
 
-    /**
-     * For wesort-stash-manager: marks or unmarks the container at this block as the delivery container.
-     * @return 1 when it is now the delivery container, 0 when it was unmarked, -1 when it isn't a container, -2 when no
-     *         stash is loaded, -3 when the position is not loaded and more than 128 blocks from the player
-     */
-    int toggleDelivery(BlockPos pos) {
-        if (mc.level == null || ensureStash() == null) return -2;
-        if (!deliverySpotSettable(pos)) return -3;
-        if (!isContainer(pos)) return -1;
-
-        Box box = stash.boxAt(pos);
-        // A chest put up for the delivery storage is already a delivery chest
-        if (box != null && box.deliveryExtra) return 1;
-        if (box == null) {
-            box = makeBox(pos.immutable());
-            stash.boxes.add(box);
-        }
-        boolean set = markDelivery(box);
-        stash.save();
-        version++;
-        return set ? 1 : 0;
-    }
-
     /** A delivery spot is refused when it is not loaded and far from the player (a mistyped or stale position). */
     private boolean deliverySpotSettable(BlockPos pos) {
         if (mc.player == null) return false;
@@ -12687,18 +12576,6 @@ public class StashSorter extends Module {
                     "%s is not loaded and more than %d blocks from you, so it is not made the delivery container. Go there first.",
                     pos.toShortString(), StashSafety.FAR_LIMIT);
         return ok;
-    }
-
-    /** For wesort-stash-manager: no delivery container any more. @return false when there was none or no stash */
-    boolean clearDelivery() {
-        if (ensureStash() == null) return false;
-        Box was = null;
-        for (Box b : stash.boxes) if (b.delivery) was = b;
-        if (was == null) return false;
-        markDelivery(was);
-        stash.save();
-        version++;
-        return true;
     }
 
     /**
@@ -12740,29 +12617,17 @@ public class StashSorter extends Module {
         }
     }
 
-    /** For wesort-stash-manager: no input chest any more. @return false when there was none or no stash */
-    boolean clearInput() {
-        if (ensureStash() == null) return false;
-        Box was = null;
-        for (Box b : stash.boxes) if (b.input) was = b;
-        if (was == null && stash.inputPos == null) return false;
-        if (was != null) unmarkInput(was);
-        else {
-            stash.inputPos = null;
-            stash.inputSource = "";
-        }
-        stash.save();
-        version++;
-        return true;
-    }
-
     // The stash perimeter
 
     /**
      * Whether the workzone is Owner-owned right now (#65): a configured Manager
      * owns placement through signed stash-defs directives — including before the
      * first directive arrives — or a previously applied directive revision does.
-     * Local corner/delivery/drop-off picks are refused while this holds.
+     * Every local placement path is refused while this holds: stash corners and
+     * perimeter (setCorner/clearArea), delivery container and drop-off/input
+     * picks (box-targeted Delivery/Input/Exclude/drop-off picks), and the
+     * workstation toggles were removed as dead code — local picks can never
+     * widen Manager-owned area.
      */
     private boolean managerOwnsWorkzone() {
         var manager =
@@ -13455,30 +13320,6 @@ public class StashSorter extends Module {
                         && mc.player.containerMenu != null
                         && mc.player.containerMenu == mc.player.inventoryMenu
                         && mc.player.containerMenu.getCarried().isEmpty();
-                if (fenced && !manager.enterPortalAuthorized() && portalTarget == null && !portalEntering) {
-                    // Park with an explicit fact; legacy fallback after 5 min without
-                    // an order (old manager) so the deadlock from point-in-time
-                    // incompatibility is bounded. See driven path for the same rule.
-                    long nowParkMs = System.currentTimeMillis();
-                    if (fencedParkSince == 0) fencedParkSince = nowParkMs;
-                    if (nowParkMs - fencedParkSince <= 5 * 60_000L) {
-                        portalForward(false);
-                        releaseGoal();
-                        // A manual crossing while parked must still count.
-                        if (touchingPortal()) {
-                            portalSession.crossingAttempted();
-                            if (portalAwaiting()) reportPortalBlocker("TRANSITING_WITH_FENCED_JOURNAL");
-                        } else if (portalAwaiting()) {
-                            reportPortalBlocker("FENCED_AWAITING_MANAGER_COMMAND");
-                        }
-                        return;
-                    }
-                    WeSortAddon.LOG.warn(
-                            "WeSort portal: no ENTER_PORTAL order in 5 min; legacy fallback transit (update the manager).");
-                    fencedParkSince = nowParkMs;
-                } else {
-                    fencedParkSince = 0;
-                }
                 if (fenced && manager.enterPortalAuthorized()) {
                     long now = System.currentTimeMillis();
                     if (now - lastFencedTransitWarnedAt >= 60_000) {
@@ -13525,7 +13366,6 @@ public class StashSorter extends Module {
             // after a kick and resume in the proxy lobby on reconnect.
             releaseGoal();
             portalForward(false);
-            fencedParkSince = 0;
             cursorOccupiedSince = 0;
             driven = false;
             setUp = false;

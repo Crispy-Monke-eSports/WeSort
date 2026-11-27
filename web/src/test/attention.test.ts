@@ -195,7 +195,7 @@ describe("health signals", () => {
   });
 });
 
-// Online connection heartbeat (not TransportProfiles) is not progress: silent bots hold open work with no report.
+// Online connection heartbeat is not progress: silent bots hold open work with no report.
 describe("silent-bot watchdog", () => {
   it("flags an online bot with aged open work and no recent report", () => {
     const b = bot({

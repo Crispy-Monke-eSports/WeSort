@@ -3,6 +3,7 @@ package com.porter.wesort.data;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.google.gson.*;
+import com.porter.wesort.snbt.SnbtCodec;
 import java.util.*;
 import org.junit.jupiter.api.Test;
 
@@ -144,5 +145,20 @@ class PhysicalSlotsTest {
         var wire = writer.slots(List.of(new PhysicalSlots.Slot(0, 1, diamond()), new PhysicalSlots.Slot(1, 1, deep)));
         assertThrows(
                 IllegalArgumentException.class, () -> new PhysicalSlots.Reader(writer.variants()).snapshot(27, wire));
+    }
+
+    @Test
+    void variantIdIsFullSha256OverCanonicalComponents() {
+        var plain = diamond();
+        var variant = plain.variantId("26.3");
+        assertEquals("minecraft:diamond", variant.base().id());
+        assertEquals("26.3", variant.base().schemaContext());
+        assertEquals("{}", variant.canonicalComponentsSnbt());
+        assertEquals(64, variant.digest().length());
+        assertEquals(SnbtCodec.contentDigest("minecraft:diamond\n{}"), variant.digest());
+        var damaged = new PhysicalSlots.Item(
+                "minecraft:diamond", "diamond", 64, "{Damage:7}", PhysicalSlots.Kind.ITEM, 0, List.of(), "");
+        assertNotEquals(variant.digest(), damaged.variantId("26.3").digest());
+        assertEquals(variant, plain.variantId("26.3"));
     }
 }

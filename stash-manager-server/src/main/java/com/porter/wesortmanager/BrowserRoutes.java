@@ -188,7 +188,7 @@ final class BrowserRoutes {
                 o.add(
                         "orders",
                         orders.summaryJson(
-                                config.minecraftServer(), stash, who.perms().ordersAll() ? null : who.id()));
+                                config.warehouseKey(), stash, who.perms().ordersAll() ? null : who.id()));
             } else {
                 o.add("orders", orders.summaryJson(server, stash, who.perms().ordersAll() ? null : who.id()));
             }

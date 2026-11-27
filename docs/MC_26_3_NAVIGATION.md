@@ -50,7 +50,7 @@ och tomma utrymmen, så en oavsiktlig placering upptäcks.
 
 Enhetstester prövar fastkörning trots pågående beräkning, små positionsskak,
 äkta framsteg, absolut timeout trots rörelse och dimensionsbyte. Detta är
-lokal lagernavigation. Portaler, långdistanstransport och global routing
+lokal lagernavigation. Portaler och global routing
 ingår i W-036. Ett nekat oladdat mål i testdrivern innebär inte att generisk
 Baritone förbjuder all chunkstreaming. Endast 26.3-targetet är aktivt per #11/#139; äldre 1.21.x-targets är historik.
 
@@ -66,24 +66,26 @@ på riktig 6b6t-server) är BLOCKED i denna miljö och redovisas aldrig som PASS
 här. Lokala 26.3-harnessar, mockade paket eller CI ensamt kan inte stänga #141.
 Se docs/P0-ACCEPTANCE.md: kör `scripts/ci/solo-agent-preflight.sh` (med `--live`
 på 6b6t-värden) som grind före varje liveförsök; allt som inte kan bevisas
-statiskt rapporteras BLOCKED. #197: ingen lokal pre-gate i walkNear/walkReach/
-walkXZ — chunk-väntan ägs av Baritone + NavigationRuntime (UNSAFE_BLOCK
-"unloaded ..."/RELEASED auto-retry med backoff, aldrig manuell resume). Det är
-en förutsättning för liveprovet, inte själva beviset.
+statiskt rapporteras BLOCKED. #197: chunk-await i walkNear/walkReach/
+walkXZ — oladdat mål väntar på chunks i gaten (ingen Baritone-goal armeras,
+alltså ingen RELEASED-latch); chunk-ankomst och retry ägs av Baritone +
+NavigationRuntime (UNSAFE_BLOCK "unloaded ..."/RELEASED auto-retry med backoff,
+aldrig manuell resume). Det är en förutsättning för liveprovet, inte själva beviset.
 
 ## Pausmatris #197: varje latch har en bounded väg ut (aldrig manuell resume)
 
 Ingen navigationspaus parkerar för evigt. Källa: `src/26.3/java/com/porter/wesort/compat/NavigationRuntime.java`
 (`pauseTick`), `common/.../inventory/NavigationRecovery.java` (klassificering).
 
-| Latch                                                                     | Bounded väg ut                                                                                                                                                                                                                                                |
-| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PAUSED_NAVIGATION_RELEASED/STUCK/TIMEOUT/INVENTORY/PHYSICAL_UNCERTAINTY` | Transient: auto-resume med backoff (`retryable` → `retryAt`, `delayMs` 5s→60s cap) när `InventorySync` är redo och journalen inte är fenced                                                                                                                   |
-| `PAUSED_NAVIGATION_UNSAFE_BLOCK` med `unloaded ...`                       | Transient: samma auto-resume när cellen är laddad och `NavigationGuard.permits` gäller. Målcellen förklassas i `allowedRoute` före pathing (read-only): oladdat mål pausar direkt som `unloaded target ...` och återhämtar med backoff — aldrig blind pathing |
-| `PAUSED_NAVIGATION_UNSAFE_BLOCK` utan `unloaded`                          | Degraderas till omplanering efter 3 bounded retries (`UNSAFE_BLOCK_MAX_RETRIES`); gräver aldrig genom barriären                                                                                                                                               |
-| `OTHER_PROCESS/CANCELLED/FOREIGN/ DISCONNECTED/WRONG_DIMENSION`           | Operator-latch: expires efter idle-timeout (10 min bevakad, 5 min headless `dedicated`) och omplanerar; stal aldrig goalen                                                                                                                                    |
-| Fenced journal (`blocked/awaitingMirror`)                                 | Håller pausen medan osäkerheten består (ålder frigör aldrig en fysisk fence, #210–216); auto-resume när readback är verifierad                                                                                                                                |
+| Latch                                                                     | Bounded väg ut                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `PAUSED_NAVIGATION_RELEASED/STUCK/TIMEOUT/INVENTORY/PHYSICAL_UNCERTAINTY` | Transient: auto-resume med backoff (`retryable` → `retryAt`, `delayMs` 5s→60s cap) när `InventorySync` är redo och journalen inte är fenced                                                                                                                                                                        |
+| `PAUSED_NAVIGATION_UNSAFE_BLOCK` med `unloaded ...`                       | Transient: samma auto-resume när cellen är laddad och `NavigationGuard.permits` gäller. Målcellen förklassas i `allowedRoute` före pathing (read-only): oladdat mål pausar direkt som `unloaded target ...` och återhämtar med backoff — aldrig blind pathing                                                      |
+| `PAUSED_NAVIGATION_UNSAFE_BLOCK` utan `unloaded`                          | Degraderas till omplanering efter 3 bounded retries (`UNSAFE_BLOCK_MAX_RETRIES`); gräver aldrig genom barriären                                                                                                                                                                                                    |
+| `OTHER_PROCESS/CANCELLED/FOREIGN/ DISCONNECTED/WRONG_DIMENSION`           | Operator-latch: expires efter idle-timeout (10 min bevakad, 5 min headless `dedicated`) och omplanerar; stal aldrig goalen                                                                                                                                                                                         |
+| Fenced journal (`blocked/awaitingMirror`)                                 | Håller pausen medan osäkerheten består (ålder frigör aldrig en fysisk fence, #210–216 — att släppa på tid vore en duplicerad fysisk handling); ingen tyst parkering: färdigt kvitto laddas upp på nytt, varning upprepas varje minut efter 5 min, auto-resume när readback är verifierad eller managern nåbar igen |
 
-`walkNear/walkReach/walkXZ` har avsiktligt ingen lokal oladdad-pre-gate: målet ska
-synas av watchdoggen så pausen klassificeras och återhämtningen ovan gäller.
-En lokal pre-gate skulle dölja målet och parkera tyst utanför varje rad ovan.
+`walkNear/walkReach/walkXZ` väntar på chunks i gaten: ett oladdat mål armerar
+aldrig en Baritone-goal (ingen RELEASED-latch), utan stannar med "waiting for
+chunks" medan watchdoggen tickar och NavigationRuntime äger retry med backoff.
+Målet döljs inte — klassificeringen ovan gäller oförändrat.

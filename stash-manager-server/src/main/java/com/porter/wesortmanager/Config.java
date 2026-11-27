@@ -1,5 +1,6 @@
 package com.porter.wesortmanager;
 
+import com.porter.wesort.data.MinecraftServerAddress;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
@@ -105,9 +106,15 @@ public final class Config {
         return minecraftServer;
     }
 
+    /** The local storage namespace for this Manager's warehouse, independent of the login address. */
+    String warehouseKey() {
+        String configured = minecraftServer;
+        return configured == null || configured.isEmpty() ? "default" : configured;
+    }
+
     /** Saves the single Minecraft server address (owner-only, from the web UI). Empty clears it. */
     public synchronized void setMinecraftServer(String server) throws IOException {
-        String v = ServerRoutes.canonicalServer(server == null ? "" : server);
+        String v = MinecraftServerAddress.canonicalServer(server == null ? "" : server);
         if (v.length() > 256) throw new IllegalArgumentException("server address too long");
         writeLine(file, Pattern.compile("^\\s*minecraftServer\\s*[=:].*$"), "minecraftServer", v);
         minecraftServer = v.isEmpty() ? null : v;

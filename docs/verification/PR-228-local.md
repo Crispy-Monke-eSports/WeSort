@@ -1,12 +1,14 @@
 # PR3 (#228/#229 + #140/#142) — local verification
 
 ## Scope
+
 SQLite transactional domain for wesort-stash-manager: steg-1 (normalized SNBT
 authority, changesets, repository split), audit-tx (same-tx order audit),
 Step 4 (custody/deposits/handoffs/jobs SQLite + same-tx), Step 5 (service
 split), Step 6 (projection readers), Step 7 (Clock migration).
 
 ## What landed
+
 - `snbt_snapshots` + `slot_projection ⨝ variant_register` is the only
   slot/item read and write path; legacy `physical_slots`/`physical_snapshots`
   payloads are read-only evidence (gated writes, divergence fails closed,
@@ -28,6 +30,7 @@ split), Step 6 (projection readers), Step 7 (Clock migration).
   BLOCKED-by-environment, never claimed.
 
 ## Evidence (no Docker/Minecraft, no 6b6t access)
+
 - `./gradlew -p stash-manager-server test --offline --rerun-tasks` → 93 files,
   **615 tests, 0 failures**.
 - `./gradlew test --offline --rerun-tasks` (client+common) → 62 files,

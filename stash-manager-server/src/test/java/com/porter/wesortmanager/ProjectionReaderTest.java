@@ -262,7 +262,8 @@ class ProjectionReaderTest {
         }
         assertThrows(java.io.IOException.class, () -> ledger.physicalSlots(id));
         try (var c = ledger.open();
-                var d = c.prepareStatement("DELETE FROM slot_projection WHERE source_id=? AND logical_path='phantom'")) {
+                var d = c.prepareStatement(
+                        "DELETE FROM slot_projection WHERE source_id=? AND logical_path='phantom'")) {
             d.setString(1, id);
             assertEquals(1, d.executeUpdate());
         }

@@ -131,7 +131,8 @@ class OrderBookChangesetTest {
     }
 
     @Test
-    void terminalOrderCarriesResumeReceipt() throws Exception {        var terminal = withAgent(book("delivered", "created"), "agent-1");
+    void terminalOrderCarriesResumeReceipt() throws Exception {
+        var terminal = withAgent(book("delivered", "created"), "agent-1");
         var changesets =
                 OrderChangeSet.forBook(JsonParser.parseString("{\"orders\":[]}").getAsJsonObject(), terminal, 0);
         assertEquals(1, changesets.size());

@@ -42,22 +42,8 @@ final class PhysicalRoutes {
         try {
             var body = raw.getAsJsonObject();
             var agent = body.get("agent").getAsString();
-            // Physical work stays fail-closed until the single server is configured,
-            // and the record's server must be the configured one.
-            String want = config.minecraftServer();
-            if (want == null || want.isEmpty()) {
-                Http.error(ex, 400, "set the Minecraft server in Settings first");
-                return;
-            }
-            var record = body.getAsJsonObject("record");
-            var context = record == null ? null : record.getAsJsonObject("context");
-            String at = context == null ? null : AddonRoutes.string(context, "server");
-            if (at != null && !at.isEmpty() && !ServerRoutes.sameServer(want, at)) {
-                Http.error(ex, 409, "this Manager serves '" + want + "'");
-                return;
-            }
-            // The record checksum covers its context. Keep the agent's record intact and
-            // use the configured server only as the Manager's storage key.
+            // Preserve the checksum-covered wire context. Storage belongs to this Manager.
+            String want = config.warehouseKey();
             var store = operations();
             JsonObject receipt;
             JsonObject decision;
@@ -130,19 +116,7 @@ final class PhysicalRoutes {
             Http.error(ex, 400, "Expected a lease request");
             return;
         }
-        String at = AddonRoutes.string(raw.getAsJsonObject(), "server");
-        if (at == null || at.isBlank()) {
-            Http.error(ex, 400, "server is required");
-            return;
-        }
-        String configured = config.minecraftServer();
-        if (configured != null && !configured.isEmpty()) {
-            if (!ServerRoutes.sameServer(configured, at)) {
-                Http.error(ex, 409, "this Manager serves '" + configured + "'");
-                return;
-            }
-            at = configured;
-        }
+        String at = config.warehouseKey();
         boolean freed = index.automation().freeLease(at);
         audit.add(Router.user(ex), "automation.free_lease", at, AuthRoutes.address(ex));
         if (!freed) {

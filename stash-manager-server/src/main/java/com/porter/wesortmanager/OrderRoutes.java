@@ -53,11 +53,7 @@ final class OrderRoutes {
      * user's scope, else null after 404. Single-server: the request names only the stash.
      */
     static String scoped(Config config, HttpExchange ex, String stash) throws IOException {
-        String server = config.minecraftServer();
-        if (server == null || server.isEmpty()) {
-            Http.error(ex, 400, "set the Minecraft server in Settings first");
-            return null;
-        }
+        String server = config.warehouseKey();
         if (stash == null || stash.isEmpty()) {
             Http.error(ex, 400, "stash is required");
             return null;
@@ -438,16 +434,7 @@ final class OrderRoutes {
             Http.error(ex, 400, "stash is required");
             return;
         }
-        String sent = o == null ? null : AddonRoutes.string(o, "server");
-        String server = config.minecraftServer();
-        if (server == null || server.isEmpty()) {
-            Http.error(ex, 400, "set the Minecraft server in Settings first");
-            return;
-        }
-        if (sent != null && !sent.isEmpty() && !ServerRoutes.accepts(config, sent)) {
-            Http.error(ex, 409, "this Manager serves '" + server + "'");
-            return;
-        }
+        String server = config.warehouseKey();
         if (ServerRoutes.unknownStash(defs, stash)) {
             Http.error(ex, 404, "unknown stash '" + stash + "': define it in Settings first");
             return;

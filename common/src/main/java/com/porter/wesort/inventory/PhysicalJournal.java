@@ -75,6 +75,21 @@ public final class PhysicalJournal {
         return value != null && lastIntent() > value.get("verifiedThrough").getAsLong();
     }
 
+    /** A verified break describes the inventory before pickup. It cannot establish custody of the drop. */
+    public synchronized boolean awaitingPickupAfterVerifiedBreak() {
+        if (!blocked()
+                || !"REPACK".equals(value.getAsJsonObject("context").get("kind").getAsString())
+                || !"PICKUP".equals(value.get("phase").getAsString())) return false;
+        long intent = lastIntent();
+        if (intent == 0 || value.get("verifiedThrough").getAsLong() != intent) return false;
+        return "BREAK"
+                .equals(value.getAsJsonArray("events")
+                        .get(Math.toIntExact(intent - 1))
+                        .getAsJsonObject()
+                        .get("phase")
+                        .getAsString());
+    }
+
     public synchronized void start(JsonObject context) throws IOException {
         if (value != null && !terminal()) throw new IOException("Unresolved physical operation");
         for (String key : List.of("server", "dimension", "agent", "kind")) {

@@ -18,14 +18,14 @@ The credential write fix is not the unified transaction migration. Verify order 
 
 Use an authorized dedicated Minecraft 26.3 client with the production mod and Manager version under test. Never use account credentials in diagnostics.
 
-1. Start Manager with a dedicated agent credential and a disposable, authorized test stash.
+1. Start Manager with a dedicated agent credential and an authorized test stash. Launch the client with `-Dwesort.surveyOnly=true` for this run. It can read containers and reconcile an existing physical journal. It cannot claim a new order or acquire a sorting lease.
 2. Log in to 6b6t, record version and UTC timestamps, verify lobby recognition and guarded portal transition.
 3. Confirm signed agent presence and server identity in Manager. Record non-sensitive operation IDs and state transitions.
 4. Perform a nondestructive inventory read against the authorized source. Compare the confirmed source fingerprint, revision and actual item counts in Manager.
 5. Repeat after reconnect, transient navigation failure and a fenced recovery. Confirm no unintended inventory mutation or physical replay.
 6. Preserve redacted client/Manager logs and relevant API responses; remove credentials, private coordinates and identifiers unrelated to the test.
 
-If any prerequisite is unavailable, record BLOCKED with the exact missing prerequisite. Do not mark #141 PASS from a local vanilla harness, mocked packets, or CI alone. Run `scripts/ci/solo-agent-preflight.sh` (add `--live` on the 6b6t host) as the gate before any live attempt: it checks the one-time IP/port/API configuration, the 6b6t scope pin and the portal/link-scope unit tests, and reports BLOCKED — never PASS — for everything it cannot prove statically. No human can interact with the agent instance after that configuration, so every step above must complete with no manual resume, rescan or restart.
+If any prerequisite is unavailable, record BLOCKED with the exact missing prerequisite. Do not mark #141 PASS from a local vanilla harness, mocked packets, or CI alone. Run `scripts/ci/solo-agent-preflight.sh` (add `--live` on the 6b6t host) as the gate before any live attempt: it checks the one-time IP/port/API configuration, the portal/link-scope test files and, with `--live`, Manager readiness, and reports BLOCKED — never PASS — for everything it cannot prove statically. Since the warehouse refactor the login address is informational on purpose (preflight no longer checks a 6b6t hostname; the harness expects 200 across login addresses); the BLOCKED rule is unchanged. No human can interact with the agent instance after that configuration, so every step above must complete with no manual resume, rescan or restart.
 
 ## Status
 

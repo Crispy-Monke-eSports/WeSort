@@ -1,8 +1,8 @@
 # W-034: jobbscheduler med claim, leases, prioritet och återkallning
 
 Manager allokerar atomiskt jobb och lease till den enda aktiva agenten utan
-dubbla actions (single-agent lease; ingen fleet/failover). Agenten kedjar alla steg utan överlämning. Fleet/failover
-för 1–5 agenter är borttaget per bindande scope #139.
+dubbla actions (single-agent lease). Agenten kedjar alla steg utan överlämning;
+inga andra agentroller finns per bindande scope #139.
 
 ## Manager-sidan (denna commit)
 
@@ -36,6 +36,6 @@ för 1–5 agenter är borttaget per bindande scope #139.
 
 Återstår: koppling till faktisk agentförmåga/position/last heartbeat och
 `AutomationGate`/`BotHub`/`KitJobs`/`BoxJobs` (envy över befintliga
-leases för den enda agenten). Generell teleportstrategi finns inte (se
-MC_26_3_TRANSPORT.md). Återstår verklig 26.3-E2E med en agent (claim,
+leases för den enda agenten). Generell teleportstrategi finns inte.
+Återstår verklig 26.3-E2E med en agent (claim,
 stop/cancel, lease-timeout efter fysisk pickup).

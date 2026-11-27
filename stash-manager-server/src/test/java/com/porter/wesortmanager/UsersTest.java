@@ -880,9 +880,12 @@ class UsersTest {
         JsonObject list = get(owner, "/api/v1/users").obj();
         assertEquals("boss", list.getAsJsonObject("owner").get("name").getAsString());
         assertEquals(1, list.getAsJsonArray("users").size());
-        // Strict Owner/Member (#26/#43): exactly one sub-user preset exists.
+        // Strict Owner/Member (#26/#43): member + orderer alias are the only presets.
         assertTrue(list.getAsJsonObject("presets").has("member"));
-        assertFalse(list.getAsJsonObject("presets").has("orderer"));
+        assertTrue(list.getAsJsonObject("presets").has("orderer"));
+        assertEquals(
+                list.getAsJsonObject("presets").getAsJsonObject("member").toString(),
+                list.getAsJsonObject("presets").getAsJsonObject("orderer").toString());
         assertFalse(list.getAsJsonObject("presets").has("viewer"));
         assertFalse(list.getAsJsonObject("presets").has("officer"));
         assertFalse(list.getAsJsonObject("presets").has("operator"));
@@ -951,7 +954,8 @@ class UsersTest {
         assertEquals(400, post(owner, "/api/v1/users/" + id, "{\"preset\":\"viewer\"}").status);
         assertEquals(400, post(owner, "/api/v1/users/" + id, "{\"preset\":\"officer\"}").status);
         assertEquals(400, post(owner, "/api/v1/users/" + id, "{\"preset\":\"operator\"}").status);
-        assertEquals(400, post(owner, "/api/v1/users/" + id, "{\"preset\":\"orderer\"}").status);
+        assertEquals(200, post(owner, "/api/v1/users/" + id, "{\"preset\":\"orderer\"}").status);
+        assertEquals(200, post(owner, "/api/v1/users/" + id, "{\"preset\":\"member\"}").status);
         assertEquals(
                 400, post(owner, "/api/v1/users/" + id, "{\"preset\":\"member\",\"perms\":{\"view\":true}}").status);
         assertEquals(400, post(owner, "/api/v1/users/" + id, "{}").status);

@@ -231,7 +231,7 @@ async function main() {
         .waitFor();
     }
 
-    // Member reviewer: Operations is available, but guild-wide audit is Owner-only.
+    // PortalOfficer (custom activity permit, not a preset): Operations is available, but guild-wide audit is Owner-only.
     const reviewerPage = await login(reviewer);
     await reviewerPage
       .getByRole("navigation")

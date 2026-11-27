@@ -22,6 +22,7 @@ public final class PhysicalJournalRuntime {
     private static long mirroredRevision;
     private static long nextUpload;
     private static String lastUpload = "";
+    private static String uploadBlocker = "";
     private static String managerScope = "";
     private static JsonObject inspection, inspectionResult, inspectedSource;
     private static boolean inspectInventoryPending;
@@ -89,9 +90,9 @@ public final class PhysicalJournalRuntime {
             return false;
         }
         var context = journal.context();
-        boolean waiting = Stash.currentServer().equals(context.get("server").getAsString())
-                && mc.player.getUUID().toString().equals(context.get("agent").getAsString())
-                && (!managerScope.equals(scope) || !mirroredCurrent());
+        boolean waiting =
+                mc.player.getUUID().toString().equals(context.get("agent").getAsString())
+                        && (!managerScope.equals(scope) || !mirroredCurrent());
         if (waiting) {
             if (mirrorWaitSince == 0) mirrorWaitSince = System.currentTimeMillis();
         } else mirrorWaitSince = 0;
@@ -131,6 +132,7 @@ public final class PhysicalJournalRuntime {
 
     public static String status() {
         if (!failure.isEmpty()) return failure;
+        if (!uploadBlocker.isEmpty()) return uploadBlocker;
         if (!escalation.isEmpty()) return escalation;
         // The gated reason stays available via workspaceDebt(), but the status token itself
         // must stay exact: harnesses and dashboards match on it, and a suffixed string reads
@@ -160,7 +162,7 @@ public final class PhysicalJournalRuntime {
             journal.start(context);
             return;
         }
-        for (String key : List.of("server", "dimension", "agent", "kind", "jobId", "orderId"))
+        for (String key : List.of("dimension", "agent", "kind", "jobId", "orderId"))
             if (!Objects.equals(previous.get(key), context.get(key)))
                 throw new IllegalStateException("Another physical operation is being recovered automatically");
     }
@@ -225,11 +227,10 @@ public final class PhysicalJournalRuntime {
         if (inspection != null || reconciled) {
             var scope = journal.context();
             if (mc.player == null
-                    || !Stash.currentServer().equals(scope.get("server").getAsString())
                     || !StashIndex.dimension().equals(scope.get("dimension").getAsString())
                     || !mc.player.getUUID().toString().equals(scope.get("agent").getAsString()))
                 throw new IllegalStateException(
-                        "INSPECT_SCOPE: server, dimension, or agent changed since the recorded operation");
+                        "INSPECT_SCOPE: dimension or agent changed since the recorded operation");
             if (inspection != null && frame.get("menu").getAsInt() != 0) {
                 if (!mc.player.containerMenu.getCarried().isEmpty()) {
                     finishInspection(
@@ -365,8 +366,14 @@ public final class PhysicalJournalRuntime {
         if (checksum.isEmpty() || now < nextUpload && checksum.equals(lastUpload)) return null;
         if (journal.terminal() && mirroredCurrent() && !blocked() && inspectionResult == null) return null;
         var context = journal.context();
-        if (!server.equals(context.get("server").getAsString())
-                || !agent.equals(context.get("agent").getAsString())) return null;
+        String blocker = "";
+        // The login address is informational; the journal stays pinned to its agent.
+        if (!agent.equals(context.get("agent").getAsString())) blocker = "JOURNAL_AGENT_MISMATCH";
+        if (!blocker.equals(uploadBlocker)) {
+            uploadBlocker = blocker;
+            if (!blocker.isEmpty()) MeteorClient.LOG.warn("WeSort physical journal upload held: {}", blocker);
+        }
+        if (!blocker.isEmpty()) return null;
         lastUpload = checksum;
         nextUpload = now + (blocked() || mirroredCurrent() ? 2000 : 500);
         return journal.current();
@@ -416,6 +423,9 @@ public final class PhysicalJournalRuntime {
     }
 
     public static void inspect(JsonObject decision) {
+        // The Manager redelivers an outstanding decision. A lobby inventory can never
+        // prove the warehouse postcondition, even on a proxy with the same dimension.
+        if (InventorySync.awaitingWarehouseWorld()) return;
         // Manager direction: report the inspection order as facts, including dropped
         // duplicates while one is in flight. No behavior change.
         MeteorClient.LOG.info(
@@ -457,6 +467,16 @@ public final class PhysicalJournalRuntime {
         closeForeignScreenPending = false;
         try {
             var evidence = journal.lastIntentEvidence();
+            if (journal.awaitingPickupAfterVerifiedBreak() && InventorySync.ready()) {
+                var sorter = com.porter.wesort.WeSortAddon.sorter();
+                if (sorter != null && sorter.currentStash() != null && !sorter.pendingPhysicalRecovery()) {
+                    // Re-reading the already verified break can neither identify the dropped box nor
+                    // restore its missing workspace. Keep the operation fenced without turning its
+                    // historical pre-pickup inventory into a pending inventory mutation.
+                    finishInspection(false, "INSPECT_WORKSPACE: pickup lacks a saved shulker workspace");
+                    return;
+                }
+            }
             boolean menuZero = evidence == null
                     || evidence.getAsJsonObject("expected").get("menu").getAsInt() == 0;
             if (menuZero && mc.player != null && mc.player.containerMenu != mc.player.inventoryMenu) {

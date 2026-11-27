@@ -244,7 +244,7 @@ function BotDetails({
         <Alert severity="error">
           Silent with open work: no progress on {heldOrders.length} order
           {heldOrders.length === 1 ? "" : "s"} for {ageText(silentMs)} by the
-          server clock. Transport is online — the bot looks frozen.
+          server clock. The connection is online — the bot looks frozen.
         </Alert>
       )}
       {silentMs == null && mismatch && (

@@ -576,6 +576,8 @@ public final class StashIndex {
         if (slots.isEmpty()) return null;
 
         Info info = infoOf(ops, stack);
+        // Display/grouping key only (truncated hash) — never an authoritative
+        // variant identity (see docs/SNBT_CONTRACT.md, #266: ExactVariantId).
         Shulker sh = new Shulker(info, "s:" + sha1(info.key() + "|" + canon).substring(0, 10));
         sh.slots.addAll(slots);
         sh.keys.addAll(keys);
@@ -654,17 +656,30 @@ public final class StashIndex {
         return maxDamage > 0 && damage > 0 ? new int[] {damage, maxDamage} : new int[] {0, 0};
     }
 
-    private static String key(RegistryOps<Tag> ops, String id, DataComponentPatch stripped) {
+    /**
+     * Quarantine key when components cannot be encoded (#266): never the bare
+     * id (which would collide with genuinely component-less items) and never a
+     * valid variant key ({@code id#} + 8 hex). Package-visible for testing.
+     */
+    static String quarantineKey(String id) {
+        return id + "#encode-failed";
+    }
+
+    static String key(RegistryOps<Tag> ops, String id, DataComponentPatch stripped) {
         if (stripped.isEmpty()) return id;
         var encoded = com.porter.wesort.compat.IndexComponents.encode(ops, stripped);
         if (encoded.isEmpty()) {
             if (!encodeWarned) {
                 encodeWarned = true;
                 WeSortAddon.LOG.warn(
-                        "wesort-stash-manager: couldn't encode the components of {}, using the bare id as its key", id);
+                        "wesort-stash-manager: couldn't encode the components of {}, quarantining its key", id);
             }
-            return id;
+            // Fail closed: a bare id here would merge an unidentifiable variant
+            // with every component-less stack of the same item.
+            return quarantineKey(id);
         }
+        // Display/grouping key only (truncated hash) — never an authoritative
+        // variant identity (see docs/SNBT_CONTRACT.md, #266: ExactVariantId).
         return id + "#" + sha1(encoded.get()).substring(0, 8);
     }
 

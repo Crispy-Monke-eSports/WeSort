@@ -86,6 +86,17 @@ public final class PhysicalSlots {
             return id;
         }
 
+        /**
+         * Exact variant identity for this item (#266, production use): the
+         * registry id plus the full count-independent canonical component SNBT
+         * with a full SHA-256 digest. Never truncated, never a bare-id
+         * fallback — encode failure already throws at construction.
+         */
+        public ItemIdentity.ExactVariantId variantId(String schemaContext) {
+            ItemIdentity.BaseItemId base = new ItemIdentity.BaseItemId(id, schemaContext);
+            return ItemIdentity.ExactVariantId.of(base, SnbtCodec.parse(components));
+        }
+
         public String key() {
             return key;
         }

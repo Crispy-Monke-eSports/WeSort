@@ -180,6 +180,68 @@ class ProjectionReaderTest {
     }
 
     @Test
+    void projectionRebuildFromSnbtIsIdentical() throws Exception {
+        var ledger = new StockLedger(data);
+        var root = observation(ledger);
+        ledger.accept(root);
+        String id = sourceId(root);
+
+        var before = dumpProjection(id);
+        assertFalse(before.isEmpty());
+        var slotsBefore = ledger.physicalSlots(id).toString();
+
+        try (var c = DriverManager.getConnection("jdbc:sqlite:" + data.resolve("guild.sqlite"));
+                var p = c.prepareStatement("DELETE FROM slot_projection WHERE source_id=?")) {
+            p.setString(1, id);
+            assertEquals(before.size(), p.executeUpdate());
+        }
+        // Without the derived rows the gate fails closed: no silent empty stock.
+        assertThrows(java.io.IOException.class, () -> ledger.physicalSlots(id));
+
+        ledger.rebuildProjectionFromSnbt(id);
+        assertEquals(before, dumpProjection(id), "rebuild from snbt_snapshots must be byte-identical");
+        assertEquals(slotsBefore, ledger.physicalSlots(id).toString());
+    }
+
+    @Test
+    void legacySlotPayloadsStayReadOnlyEvidence() throws Exception {
+        var ledger = new StockLedger(data);
+        var root = observation(ledger);
+        ledger.accept(root);
+        String id = sourceId(root);
+        String fingerprint = fingerprint(root);
+
+        // Fresh observations write only the SNBT authority; the legacy tables
+        // stay empty evidence, yet reads keep serving SNBT truth.
+        assertEquals(0, count("SELECT COUNT(*) FROM physical_snapshots"));
+        assertEquals(0, count("SELECT COUNT(*) FROM physical_slots"));
+        assertEquals(1, count("SELECT COUNT(*) FROM snbt_snapshots"));
+        assertEquals(1, ledger.physicalSlots(id).size());
+        assertEquals(fingerprint, ledger.snapshot(id, fingerprint).get("fingerprint").getAsString());
+        assertEquals(
+                ledger.snapshotSnbt(id, fingerprint),
+                ledger.snapshotSnbtByDigest(fingerprint),
+                "digest-addressed and source-addressed SNBT reads must agree");
+    }
+
+    private List<String> dumpProjection(String source) throws Exception {
+        var rows = new java.util.ArrayList<String>();
+        try (var c = DriverManager.getConnection("jdbc:sqlite:" + data.resolve("guild.sqlite"));
+                var p = c.prepareStatement(
+                        "SELECT source_id,snapshot_ref,logical_path,parent_path,variant_id,count,copies,slot_fingerprint,content_revision,present FROM slot_projection WHERE source_id=? ORDER BY logical_path")) {
+            p.setString(1, source);
+            try (var r = p.executeQuery()) {
+                while (r.next()) {
+                    var row = new StringBuilder();
+                    for (int i = 1; i <= 10; i++) row.append(r.getString(i)).append('|');
+                    rows.add(row.toString());
+                }
+            }
+        }
+        return List.copyOf(rows);
+    }
+
+    @Test
     void orderBooksHaveNoPayloadColumnAndRowsCarryContent() throws Exception {
         var ledger = new StockLedger(data);
         try (var c = ledger.open();

@@ -112,7 +112,8 @@ class DeliveryLedgerPersistenceTest {
                 IOException.class, () -> repo.commitExtended("s", "a", 1, root, null, List.of(), List.of(failing)));
 
         assertEquals(
-                Deposit.State.DELIVERED, store.confirm(pkg, "agent-1", snapshot()).state());
+                Deposit.State.DELIVERED,
+                store.confirm(pkg, "agent-1", snapshot()).state());
         assertEquals(store.list("o-1"), new Deposits(new StockLedger(data), clock()).list("o-1"));
     }
 

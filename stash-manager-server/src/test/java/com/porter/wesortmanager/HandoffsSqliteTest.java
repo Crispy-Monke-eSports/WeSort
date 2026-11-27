@@ -140,10 +140,7 @@ class HandoffsSqliteTest {
 
     @Test
     void staleJsonFileIsIgnoredAndNeverRead() throws Exception {
-        Files.writeString(
-                data.resolve("handoffs.json"),
-                "{\"schema\":1,\"handoffs\":[]}",
-                StandardCharsets.UTF_8);
+        Files.writeString(data.resolve("handoffs.json"), "{\"schema\":1,\"handoffs\":[]}", StandardCharsets.UTF_8);
         // The legacy Path constructor shares guild.sqlite and ignores the stale file.
         var handoffs = new Handoffs(data, time::get);
         assertEquals(0, handoffs.list(null).size());

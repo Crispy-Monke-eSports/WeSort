@@ -123,7 +123,8 @@ final class JobRoutes {
                     result = scheduler
                             .complete(requireId(body), agent, requireToken(body), trail)
                             .json();
-                case "pause" -> result = scheduler.pause(requireId(body), agent, trail).json();
+                case "pause" ->
+                    result = scheduler.pause(requireId(body), agent, trail).json();
                 default ->
                     result = scheduler
                             .resume(requireId(body), agent, requireToken(body), trail)

@@ -119,7 +119,8 @@ final class Handoffs {
         try (var c = ledger.open();
                 var tx = new SqliteWriteTransaction(c)) {
             Entry entry = byAgent(c, id, agent);
-            Handoff next = advanceTo(c, id, entry, next(entry, Handoff.State.AWAITING_RECIPIENT, agent), "AWAITING_RECIPIENT", agent);
+            Handoff next = advanceTo(
+                    c, id, entry, next(entry, Handoff.State.AWAITING_RECIPIENT, agent), "AWAITING_RECIPIENT", agent);
             if (trail != null) {
                 trail.say("handoff.arrive", id);
                 AuditLog.addAll(c, trail.entries());
@@ -227,8 +228,7 @@ final class Handoffs {
      * Same-transaction resolve: writes on the caller's connection without
      * committing, so an order commit can carry handoffs and audit atomically.
      */
-    Handoff resolve(Connection c, String id, Handoff.State outcome, String actor)
-            throws SQLException, IOException {
+    Handoff resolve(Connection c, String id, Handoff.State outcome, String actor) throws SQLException, IOException {
         Entry entry = require(c, id);
         // A legacy unassigned booking cannot be advanced by any agent. The owner
         // may explicitly confirm its return, but never mark it delivered here.
@@ -240,7 +240,12 @@ final class Handoffs {
         if (outcome != Handoff.State.DELIVERED && outcome != Handoff.State.RETURNED)
             throw new Conflict("Resolution must be delivered or returned");
         return advanceTo(
-                c, id, entry, next(entry, outcome, actor), outcome == Handoff.State.DELIVERED ? "DELIVERED" : "RETURNED", actor);
+                c,
+                id,
+                entry,
+                next(entry, outcome, actor),
+                outcome == Handoff.State.DELIVERED ? "DELIVERED" : "RETURNED",
+                actor);
     }
 
     /** A no-show customer may be retried (back to awaiting) or returned to stock. */
@@ -261,8 +266,7 @@ final class Handoffs {
         try (var c = ledger.open();
                 var tx = new SqliteWriteTransaction(c)) {
             Entry entry = byAgent(c, id, agent);
-            Handoff next =
-                    advanceTo(c, id, entry, next(entry, Handoff.State.RETURNED, agent), "RETURNED", agent);
+            Handoff next = advanceTo(c, id, entry, next(entry, Handoff.State.RETURNED, agent), "RETURNED", agent);
             tx.commit();
             return next;
         } catch (SQLException failure) {

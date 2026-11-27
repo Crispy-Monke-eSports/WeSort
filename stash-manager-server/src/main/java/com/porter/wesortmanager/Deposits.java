@@ -80,12 +80,7 @@ final class Deposits {
 
     /** Begins a deposit, writing staged audit entries in the same transaction when a trail is given. */
     synchronized Deposit begin(
-            String packageId,
-            String orderId,
-            Deposit.Kind kind,
-            String destination,
-            String agent,
-            AuditLog.Batch trail)
+            String packageId, String orderId, Deposit.Kind kind, String destination, String agent, AuditLog.Batch trail)
             throws IOException {
         try (var c = ledger.open();
                 var tx = new SqliteWriteTransaction(c)) {
@@ -198,8 +193,7 @@ final class Deposits {
      * Same-transaction reconcile: writes on the caller's connection without
      * committing, so an order commit can carry deposits and audit atomically.
      */
-    Deposit reconcile(Connection c, String packageId, String agent, String reason)
-            throws SQLException, IOException {
+    Deposit reconcile(Connection c, String packageId, String agent, String reason) throws SQLException, IOException {
         Entry entry = require(c, packageId);
         var d = entry.deposit();
         if (d.state() == Deposit.State.NEEDS_RECONCILIATION) return d;
@@ -296,8 +290,7 @@ final class Deposits {
             row.setLong(4, d.revision());
             row.setString(5, d.packageId());
             row.setLong(6, d.revision() - 1);
-            if (row.executeUpdate() != 1)
-                throw new Conflict("Deposit changed concurrently; reread the package");
+            if (row.executeUpdate() != 1) throw new Conflict("Deposit changed concurrently; reread the package");
         }
         insertEvents(c, d.packageId(), entry.events());
     }

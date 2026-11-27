@@ -188,6 +188,8 @@ final class StockLedger {
                     s.execute(
                             "CREATE TABLE IF NOT EXISTS slot_projection(source_id TEXT NOT NULL,snapshot_ref TEXT NOT NULL,logical_path TEXT NOT NULL,parent_path TEXT NOT NULL,variant_id INTEGER NOT NULL REFERENCES variant_register(variant_id),count INTEGER NOT NULL,copies INTEGER NOT NULL,slot_fingerprint TEXT NOT NULL,content_revision INTEGER NOT NULL,present INTEGER NOT NULL CHECK(present IN (0,1)),PRIMARY KEY(source_id,logical_path))");
                     s.execute(
+                            "CREATE INDEX IF NOT EXISTS slot_projection_variant ON slot_projection(variant_id)");
+                    s.execute(
                             "CREATE TABLE IF NOT EXISTS shulker_identity(uuid TEXT PRIMARY KEY,status TEXT NOT NULL,source TEXT NOT NULL,slot_path TEXT NOT NULL,current_snapshot_ref TEXT,current_revision INTEGER NOT NULL,registration_proof TEXT NOT NULL,export_receipt TEXT)");
                     s.execute("PRAGMA user_version=9");
                     var interruptedServers = new ArrayList<String>();
@@ -763,6 +765,9 @@ final class StockLedger {
                 p.setString(3, snbt);
                 p.setLong(4, revision);
                 p.executeUpdate();
+                // PR3 (#228/#267): normalized SNBT authority + variant register on the
+                // same connection, so legacy rows and normalized rows commit atomically.
+                SnbtStore.persistSnapshot(c, source, decoded, revision);
             }
             // physical_slots is a rebuildable index, never a second content authority.
             try (var p = c.prepareStatement(

@@ -11,13 +11,19 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /** Durable order snapshots and immutable order events, on the same guild database as physical observations. */
-final class OrderBookRepository {
+final class OrderBookRepository implements OrderRepository {
     record Snapshot(String server, String stash, long revision, JsonObject payload) {}
 
     private final StockLedger ledger;
+    private final EventPublisher events;
 
     OrderBookRepository(StockLedger ledger) {
+        this(ledger, EventPublisher.live());
+    }
+
+    OrderBookRepository(StockLedger ledger, EventPublisher events) {
         this.ledger = ledger;
+        this.events = events;
     }
 
     /**
@@ -26,7 +32,7 @@ final class OrderBookRepository {
      * read — authoritative orders live in {@code order_books}. Stray files on disk
      * are ignored (StockLedger warns loudly); only SQLite state is trusted.
      */
-    void load(Consumer<Snapshot> validate) throws IOException {
+    public void load(Consumer<Snapshot> validate) throws IOException {
         try (var c = ledger.open();
                 var tx = new SqliteWriteTransaction(c)) {
             boolean initialized;
@@ -70,15 +76,24 @@ final class OrderBookRepository {
         }
     }
 
-    long commit(String server, String stash, long expected, JsonObject root, StockLedger.BoxRelease release)
+    public long commit(String server, String stash, long expected, JsonObject root, StockLedger.BoxRelease release)
             throws IOException {
         var next = new Snapshot(server, stash, Math.addExact(expected, 1), root);
+        long revision;
         try (var c = ledger.open();
                 var tx = new SqliteWriteTransaction(c)) {
             validateScope(next);
+            JsonObject prevRoot = null;
             if (expected == 0) {
                 insert(c, next);
             } else {
+                try (var q = c.prepareStatement("SELECT payload FROM order_books WHERE server=? AND stash=?")) {
+                    q.setString(1, server);
+                    q.setString(2, stash);
+                    try (var rows = q.executeQuery()) {
+                        if (rows.next()) prevRoot = JsonParser.parseString(rows.getString(1)).getAsJsonObject();
+                    }
+                }
                 try (var p = c.prepareStatement(
                         "UPDATE order_books SET revision=?,payload=? WHERE server=? AND stash=? AND revision=?")) {
                     p.setLong(1, next.revision());
@@ -92,11 +107,21 @@ final class OrderBookRepository {
             if (release != null) ledger.releaseOrderBoxes(c, server, release);
             appendEvents(c, next);
             saveResumeReceipts(c, next);
+            // PR3 (#265): every book commit proves a non-empty, revision-linked
+            // changeset. Storage still writes the full snapshot until the diff
+            // cutover lands; the contract is enforced now so the cutover is safe.
+            var changesets = OrderChangeSet.forBook(prevRoot, root, expected);
+            if (changesets.isEmpty() && expected > 0)
+                throw new IOException("Order book commit carries no order, event or receipt change");
             tx.commit();
-            return next.revision();
+            revision = next.revision();
         } catch (SQLException | RuntimeException failure) {
             throw new IOException("Cannot commit order book and audit history", failure);
         }
+        // Publish only after the single transaction commits (#140/#142):
+        // rollback publishes nothing.
+        events.afterCommit("orders", revision);
+        return revision;
     }
 
     /** Terminal checkpoint dispositions have a different lifetime from the bounded UI archive. */
@@ -129,7 +154,7 @@ final class OrderBookRepository {
         }
     }
 
-    JsonObject resumeReceipt(String server, String stash, String agent, String id) throws IOException {
+    public JsonObject resumeReceipt(String server, String stash, String agent, String id) throws IOException {
         try (var c = ledger.open();
                 var p = c.prepareStatement(
                         "SELECT payload FROM order_resume_receipts WHERE order_id=? AND server=? AND stash=? AND agent=?")) {

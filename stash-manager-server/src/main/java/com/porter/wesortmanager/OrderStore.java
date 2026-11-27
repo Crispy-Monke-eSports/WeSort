@@ -508,8 +508,10 @@ final class OrderStore {
     /** Injected clock (#142): domain timestamps never read the wall clock directly, so
      * timeouts (auto-cancel, recovering, deferred retry) are deterministic in tests. */
     private final LongSupplier clock;
+    /** Publishes order-book revisions only after the storage transaction commits (#142). */
+    private final EventPublisher events;
 
-    private OrderBookRepository repository;
+    private OrderRepository repository;
     private final Map<IndexStore.StashKey, Book> books = new ConcurrentHashMap<>();
     private final Map<String, Book> byOrderId = new ConcurrentHashMap<>();
 
@@ -518,9 +520,14 @@ final class OrderStore {
     }
 
     OrderStore(Path dataDir, IndexStore index, LongSupplier clock) {
+        this(dataDir, index, clock, EventPublisher.live());
+    }
+
+    OrderStore(Path dataDir, IndexStore index, LongSupplier clock, EventPublisher events) {
         this.dir = dataDir.resolve("orders");
         this.index = index;
         this.clock = clock;
+        this.events = events;
     }
 
     private volatile KitTemplates kits;
@@ -532,7 +539,7 @@ final class OrderStore {
     }
 
     void load() throws IOException {
-        var storage = new OrderBookRepository(index.stock());
+        var storage = new OrderBookRepository(index.stock(), events);
         var restored = new LinkedHashMap<IndexStore.StashKey, Book>();
         var orderIds = new HashSet<String>();
         var receiptKeys = new HashSet<String>();

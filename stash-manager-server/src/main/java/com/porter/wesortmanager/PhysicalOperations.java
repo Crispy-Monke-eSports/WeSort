@@ -46,7 +46,7 @@ final class PhysicalOperations {
         return accept(agent, record, null);
     }
 
-    synchronized JsonObject accept(String agent, JsonObject record, String serverKey) throws IOException {
+    synchronized JsonObject accept(String agent, JsonObject record, String warehouseKey) throws IOException {
         UUID.fromString(agent);
         record = PhysicalJournal.validate(record);
         var context = record.getAsJsonObject("context");
@@ -55,7 +55,7 @@ final class PhysicalOperations {
         if (record.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length > PhysicalJournal.MAX_BYTES)
             throw new IllegalArgumentException("Physical journal too large");
         String id = record.get("id").getAsString(),
-                server = serverKey == null ? context.get("server").getAsString() : serverKey,
+                server = warehouseKey == null ? context.get("server").getAsString() : warehouseKey,
                 checksum = record.get("checksum").getAsString();
         long revision = record.get("revision").getAsLong();
         String state = record.get("state").getAsString();

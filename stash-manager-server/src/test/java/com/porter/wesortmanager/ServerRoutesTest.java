@@ -48,17 +48,6 @@ class ServerRoutesTest {
     }
 
     @Test
-    void configuredBaseDomainMatchesResolvedAgentAddress(@TempDir Path data) throws Exception {
-        Config.load(data);
-        Files.writeString(data.resolve("config.properties"), "port=8765\neula=true\nminecraftServer=6b6t.org\n");
-        Config config = Config.load(data);
-        assertEquals(-1, ServerRoutes.agentServerStatus(config, "alt.6b6t.org:25565"));
-        assertEquals(-1, ServerRoutes.agentServerStatus(config, "6B6T.ORG."));
-        assertEquals(409, ServerRoutes.agentServerStatus(config, "other.org"));
-        assertEquals(400, ServerRoutes.agentServerStatus(config, ""));
-    }
-
-    @Test
     void settingServerStoresNormalizedHost(@TempDir Path data) throws Exception {
         Config.load(data);
         Files.writeString(data.resolve("config.properties"), "port=8765\neula=true\n");
@@ -68,8 +57,6 @@ class ServerRoutesTest {
         assertTrue(MinecraftServerAddress.sameServer("6b6t.org", config.minecraftServer()));
         config.setMinecraftServer("127.0.0.1:54321");
         assertEquals("127.0.0.1:54321", Config.load(data).minecraftServer());
-        assertEquals(-1, ServerRoutes.agentServerStatus(config, "127.0.0.1:54321"));
-        assertEquals(409, ServerRoutes.agentServerStatus(config, "127.0.0.1:54322"));
     }
 
     @Test

@@ -4,7 +4,6 @@ import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 import com.google.gson.*;
 import com.porter.wesort.data.DataDirectory;
-import com.porter.wesort.data.MinecraftServerAddress;
 import com.porter.wesort.inventory.PhysicalJournal;
 import com.porter.wesort.modules.StashManager;
 import com.porter.wesort.stash.Stash;
@@ -91,9 +90,7 @@ public final class PhysicalJournalRuntime {
             return false;
         }
         var context = journal.context();
-        boolean waiting = MinecraftServerAddress.sameServer(
-                        Stash.currentServer(), context.get("server").getAsString())
-                && mc.player.getUUID().toString().equals(context.get("agent").getAsString())
+        boolean waiting = mc.player.getUUID().toString().equals(context.get("agent").getAsString())
                 && (!managerScope.equals(scope) || !mirroredCurrent());
         if (waiting) {
             if (mirrorWaitSince == 0) mirrorWaitSince = System.currentTimeMillis();
@@ -164,9 +161,6 @@ public final class PhysicalJournalRuntime {
             journal.start(context);
             return;
         }
-        if (!MinecraftServerAddress.sameServer(
-                previous.get("server").getAsString(), context.get("server").getAsString()))
-            throw new IllegalStateException("Physical operation belongs to another server");
         for (String key : List.of("dimension", "agent", "kind", "jobId", "orderId"))
             if (!Objects.equals(previous.get(key), context.get(key)))
                 throw new IllegalStateException("Another physical operation is being recovered automatically");
@@ -232,12 +226,10 @@ public final class PhysicalJournalRuntime {
         if (inspection != null || reconciled) {
             var scope = journal.context();
             if (mc.player == null
-                    || !MinecraftServerAddress.sameServer(
-                            Stash.currentServer(), scope.get("server").getAsString())
                     || !StashIndex.dimension().equals(scope.get("dimension").getAsString())
                     || !mc.player.getUUID().toString().equals(scope.get("agent").getAsString()))
                 throw new IllegalStateException(
-                        "INSPECT_SCOPE: server, dimension, or agent changed since the recorded operation");
+                        "INSPECT_SCOPE: dimension or agent changed since the recorded operation");
             if (inspection != null && frame.get("menu").getAsInt() != 0) {
                 if (!mc.player.containerMenu.getCarried().isEmpty()) {
                     finishInspection(
@@ -374,9 +366,8 @@ public final class PhysicalJournalRuntime {
         if (journal.terminal() && mirroredCurrent() && !blocked() && inspectionResult == null) return null;
         var context = journal.context();
         String blocker = "";
-        if (!MinecraftServerAddress.sameServer(server, context.get("server").getAsString()))
-            blocker = "JOURNAL_SERVER_MISMATCH";
-        else if (!agent.equals(context.get("agent").getAsString())) blocker = "JOURNAL_AGENT_MISMATCH";
+        // The login address is informational; the journal stays pinned to its agent.
+        if (!agent.equals(context.get("agent").getAsString())) blocker = "JOURNAL_AGENT_MISMATCH";
         if (!blocker.equals(uploadBlocker)) {
             uploadBlocker = blocker;
             if (!blocker.isEmpty()) MeteorClient.LOG.warn("WeSort physical journal upload held: {}", blocker);

@@ -427,9 +427,9 @@ class HierarchyHarness(stock.StockHarness):
                 dict(heartbeat, stash='unassigned-fixture'))[0] == 404,
                 'Undefined stash was not refused with 404')
         require(current.post('/api/v1/heartbeat',
-                dict(heartbeat, server='evil-server'))[0] == 409,
-                'Heartbeat from a foreign server was not refused with 409')
-        self.ok('one active named agent key, durable revoke-then-rotate, legacy-key denial and signed server/stash guards')
+                dict(heartbeat, server='evil-server'))[0] == 200,
+                'Login address is informational; signed agent reaches the same warehouse')
+        self.ok('one active named agent key, durable revoke-then-rotate, legacy-key denial and signed stash guards')
 
     def verify_single_agent_sessions(self):
         """Single active agent: session fencing for one bot ID (renamed per #11/#26)."""

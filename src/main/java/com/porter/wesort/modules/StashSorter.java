@@ -2565,14 +2565,16 @@ public class StashSorter extends Module {
      */
     private void walkNear(BlockPos pos, int range) {
         if (!BARITONE) return;
-        // #197 full fix (PR1 redo): no unloaded-target pre-gate here. Chunk arrival is
-        // owned by Baritone + NavigationRuntime: an unloaded route pauses as
-        // PAUSED_NAVIGATION_UNSAFE_BLOCK (detail "unloaded ...") or, if the engine
-        // drops the goal, PAUSED_NAVIGATION_RELEASED — both auto-retry with backoff
-        // in NavigationRuntime.pauseTick and never need a manual resume. A local
-        // pre-gate would hide the target from the watchdog and park silently.
+        // #197 (PR1): chunk-await in the gate. An unloaded target waits for
+        // chunks here instead of arming a Baritone goal that the engine drops
+        // into PAUSED_NAVIGATION_RELEASED. No latch: the watchdog keeps ticking
+        // and NavigationRuntime auto-retries with backoff.
         if (pos == null) {
             WeSortAddon.LOG.debug("[wesort-stash-sorter] walkNear called with null target; staying put.");
+            return;
+        }
+        if (mc.level == null || !mc.level.isLoaded(pos)) {
+            WeSortAddon.LOG.debug("[wesort-stash-sorter] walkNear waiting for chunks at {}; staying put.", pos);
             return;
         }
         BaritoneHelper.protect(List.of());
@@ -2602,10 +2604,15 @@ public class StashSorter extends Module {
      */
     private void walkReach(Box box) {
         if (!BARITONE) return;
-        // #197 full fix: same as walkNear — no pre-gate; NavigationRuntime fences
-        // unloaded high containers with backoff instead of parking silently.
+        // #197 (PR1): chunk-await like walkNear — an unloaded container waits
+        // for chunks instead of latching RELEASED. NavigationRuntime backoff
+        // owns the retry; no manual resume.
         if (box == null || box.pos == null) {
             WeSortAddon.LOG.debug("[wesort-stash-sorter] walkReach called without a box target; staying put.");
+            return;
+        }
+        if (mc.level == null || !mc.level.isLoaded(box.pos)) {
+            WeSortAddon.LOG.debug("[wesort-stash-sorter] walkReach waiting for chunks at {}; staying put.", box.pos);
             return;
         }
         BaritoneHelper.protect(List.of());
@@ -2622,8 +2629,14 @@ public class StashSorter extends Module {
     /** The same walk to a column, at any height. */
     private void walkXZ(int x, int z) {
         if (!BARITONE) return;
-        // #197 full fix: same as walkNear — no column probe gate; the column goal is
-        // fenced by NavigationRuntime with backoff like every other route.
+        // #197 (PR1): chunk-await for the column at the player's height. An
+        // unloaded column waits for chunks instead of latching RELEASED.
+        if (mc.level == null || mc.player == null) return;
+        BlockPos column = new BlockPos(x, mc.player.blockPosition().getY(), z);
+        if (!mc.level.isLoaded(column)) {
+            WeSortAddon.LOG.debug("[wesort-stash-sorter] walkXZ waiting for chunks at {},{}; staying put.", x, z);
+            return;
+        }
         BaritoneHelper.protect(List.of());
         usedBaritone = true;
         BaritoneHelper.confine(safeWalk.get());
@@ -12711,6 +12724,8 @@ public class StashSorter extends Module {
      * owns placement through signed stash-defs directives — including before the
      * first directive arrives — or a previously applied directive revision does.
      * Local corner/delivery/drop-off picks are refused while this holds.
+     * Residual (next PR): an explicit Owner-approved workzone gate for every
+     * stash, so a local pick/perimeter can never widen Manager-owned area.
      */
     private boolean managerOwnsWorkzone() {
         var manager =

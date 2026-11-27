@@ -447,9 +447,9 @@ try:
             == 200
         )
         members = ["PortalBuilder", "PortalMiner"]
-        # No officer role (#26/#43): the reviewer is a member with an
+        # No officer role (#26/#43): PortalOfficer is a member with an
         # Owner-granted activity permit, not a preset.
-        reviewer = "PortalReviewer"
+        reviewer = "PortalOfficer"
         for name, payload in [(member, {"preset": "member"}) for member in members] + [
             (reviewer, {"perms": {"view": True, "order": True, "activity": True}})
         ]:

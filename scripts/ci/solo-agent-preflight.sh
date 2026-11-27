@@ -12,20 +12,8 @@ skip() { echo "SKIP: $1"; }
 # 1. One-time configuration present (the only human step that may ever exist).
 if [[ -n "${WESORT_MANAGER_URL:-}" ]]; then pass "manager URL configured"; else blocked "WESORT_MANAGER_URL not set (IP/port of the Manager)"; fi
 if [[ -n "${WESORT_API_KEY:-}" ]]; then pass "API credential configured"; else blocked "WESORT_API_KEY not set"; fi
-server="${WESORT_MC_SERVER:-}"
-if [[ "${server,,}" =~ ^([a-z0-9-]+\.)*6b6t\.org\.?(:[0-9]+)?$ ]]; then
-  pass "6b6t server configured"
-else
-  blocked "WESORT_MC_SERVER must identify 6b6t.org"
-fi
-
-# 2. Static contract checks: 6b6t scope, lobby portal geometry, signed link scope.
+# The client login address is informational. Presence is verified by the signed Manager reply.
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-if grep -q "6b6t" "$ROOT/src/main/java/com/porter/wesort/stash/Stash.java"; then
-  pass "6b6t server scope pinned in Stash.is6b6tServer"
-else
-  blocked "Stash.is6b6tServer has no 6b6t scope"
-fi
 if [[ -f "$ROOT/src/test/java/com/porter/wesort/utils/PortalEntryTest.java" \
    && -f "$ROOT/src/test/java/com/porter/wesort/commands/ManagerLinkScopeTest.java" ]]; then
   pass "portal geometry + signed link-scope unit tests present"

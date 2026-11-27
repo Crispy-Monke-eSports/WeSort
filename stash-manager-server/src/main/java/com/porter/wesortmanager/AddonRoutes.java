@@ -77,33 +77,16 @@ final class AddonRoutes {
             return;
         }
         var body = json.getAsJsonObject();
-        String server = string(body, "server"),
-                agent = string(body, "agent"),
+        String agent = string(body, "agent"),
                 token = string(body, "token"),
                 action = string(body, "action");
-        if (server == null
-                || server.isBlank()
-                || server.length() > 256
-                || agent == null
+        if (agent == null
                 || !agent.matches("[0-9a-f-]{36}")
                 || !java.util.Set.of("acquire", "release", "uncertain").contains(action == null ? "" : action)) {
             Http.error(ex, 400, "Invalid automation request");
             return;
         }
-        // A sorting lease is physical work: fail closed before setup and on the wrong server.
-        String configured = config.minecraftServer();
-        int serverGate = ServerRoutes.serverStatus(configured, server);
-        if (serverGate == 400) {
-            Http.error(ex, 400, "set the Minecraft server in Settings first");
-            return;
-        }
-        if (serverGate == 409) {
-            Http.error(ex, 409, "this Manager serves '" + config.minecraftServer() + "'");
-            return;
-        }
-        // Canonicalize once: leases below are keyed by the same form as order
-        // books and stock, so admission and storage can never disagree.
-        server = configured;
+        String server = config.warehouseKey();
         synchronized (store) {
             var gate = store.automation();
             if (!action.equals("acquire")) {
@@ -197,25 +180,13 @@ final class AddonRoutes {
             return;
         }
         JsonObject index = json.getAsJsonObject();
-        String server = index.get("server").getAsString();
         String stash = index.get("stash").getAsString();
-        // Fail closed: observations need a configured server, the right server and a defined stash.
-        String configured = config.minecraftServer();
-        int gate = ServerRoutes.serverStatus(configured, server);
-        if (gate == 400) {
-            Http.error(ex, 400, "set the Minecraft server in Settings first");
-            return;
-        }
-        if (gate == 409) {
-            Http.error(ex, 409, "this Manager serves '" + config.minecraftServer() + "'");
-            return;
-        }
         if (ServerRoutes.unknownStash(defs, stash)) {
             Http.error(ex, 404, "unknown stash '" + stash + "': define it in Settings first");
             return;
         }
         // Use the configured storage key without changing the agent's physical proof.
-        server = configured;
+        String server = config.warehouseKey();
         String player = string(index, "player");
         try {
             synchronized (store) {
@@ -254,30 +225,16 @@ final class AddonRoutes {
             return;
         }
         JsonObject o = json.getAsJsonObject();
-        String server = string(o, "server");
         String stash = string(o, "stash");
-        if (server == null || server.isEmpty() || stash == null || stash.isEmpty()) {
-            Http.error(ex, 400, "server and stash must be non-empty strings");
-            return;
-        }
-        // Fail closed: heartbeats need a configured server, the right server and a defined stash.
-        String configured = config.minecraftServer();
-        int gate = ServerRoutes.serverStatus(configured, server);
-        if (gate == 400) {
-            Http.error(ex, 400, "set the Minecraft server in Settings first");
-            return;
-        }
-        if (gate == 409) {
-            Http.error(ex, 409, "this Manager serves '" + config.minecraftServer() + "'");
+        if (stash == null || stash.isEmpty()) {
+            Http.error(ex, 400, "stash must be a non-empty string");
             return;
         }
         if (ServerRoutes.unknownStash(defs, stash)) {
             Http.error(ex, 404, "unknown stash '" + stash + "': define it in Settings first");
             return;
         }
-        // Canonicalize once: heartbeats below are keyed by the same form as
-        // order books and stock, so admission and storage can never disagree.
-        server = configured;
+        String server = config.warehouseKey();
         if (badOptionalString(o, "player") || badOptionalString(o, "indexHash")) {
             Http.error(ex, 400, "player and indexHash must be strings");
             return;

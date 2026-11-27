@@ -36,7 +36,7 @@ final class BoxRoutes {
     private void jobList(HttpExchange ex) throws IOException {
         var out = new JsonObject();
         String server = Http.query(ex).get("server");
-        if (server == null || server.isBlank()) server = config.minecraftServer();
+        if (server == null || server.isBlank()) server = config.warehouseKey();
         out.add("jobs", jobs().list(server == null ? "" : server));
         Http.json(ex, 200, out);
     }
@@ -74,27 +74,12 @@ final class BoxRoutes {
             String agentId = AddonRoutes.string(body, "agent");
             JsonObject job;
             if ("claim".equals(action)) {
-                String server = AddonRoutes.string(body, "server");
                 String stash = AddonRoutes.string(body, "stash");
-                // A box job is physical work: fail closed before setup, on the wrong server,
-                // and for stashes the Manager never defined.
-                String configured = config.minecraftServer();
-                int gate = ServerRoutes.serverStatus(configured, server);
-                if (gate == 400) {
-                    Http.error(ex, 400, "set the Minecraft server in Settings first");
-                    return;
-                }
-                if (gate == 409) {
-                    Http.error(ex, 409, "this Manager serves '" + config.minecraftServer() + "'");
-                    return;
-                }
                 if (ServerRoutes.unknownStash(defs, stash)) {
                     Http.error(ex, 404, "unknown stash '" + stash + "': define it in Settings first");
                     return;
                 }
-                // Canonicalize once: box jobs below are keyed by the same form as
-                // order books and stock, so admission and storage can never disagree.
-                server = configured;
+                String server = config.warehouseKey();
                 synchronized (index) {
                     job = jobs().claim(server, stash, agentId);
                 }

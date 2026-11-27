@@ -6,7 +6,7 @@ import java.io.IOException;
 
 /**
  * The single Minecraft server this Manager serves. Set once by the owner in the web UI
- * (manual input). Bottles reconciling: heartbeats from any other server are refused.
+ * (manual input). The configured name is a storage key for existing warehouse data.
  */
 final class ServerRoutes {
     private final Config config;
@@ -51,29 +51,6 @@ final class ServerRoutes {
         }
         audit.add(Router.user(ex), "server.set", server.isEmpty() ? "(cleared)" : server, AuthRoutes.address(ex));
         get(ex);
-    }
-
-    /** True when this bot request's server matches the configured single server (or none is set yet). */
-    static boolean accepts(Config config, String server) {
-        String want = config.minecraftServer();
-        return want == null || want.isEmpty() || MinecraftServerAddress.sameServer(want, server);
-    }
-
-    /**
-     * Fail-closed gate for signed agent calls carrying a server string: 400 when no server is
-     * configured yet or the caller sent none, 409 on mismatch, -1 when the call may proceed.
-     * Physical work must never run before first setup or against the wrong Minecraft server.
-     */
-    static int agentServerStatus(Config config, String server) {
-        return serverStatus(config == null ? null : config.minecraftServer(), server);
-    }
-
-    static int serverStatus(String want, String server) {
-        if (want == null || want.isEmpty() || server == null || server.isEmpty()) return 400;
-        if (MinecraftServerAddress.sameServer(want, server)) return -1;
-        System.err.println("WeSort Manager: refusing agent server '" + MinecraftServerAddress.normalizeServer(server)
-                + "' (serves '" + MinecraftServerAddress.normalizeServer(want) + "')");
-        return 409;
     }
 
     /** True when stash definitions exist and none of them has this name. */

@@ -47,6 +47,7 @@ final class JobScheduler {
     private final Clock clock;
     /** Anchor pairing wall millis with monotonic nanos, so leases stay monotonic when the wall jumps. */
     private final long leaseBaseWall;
+
     private final long leaseBaseNano;
 
     JobScheduler(StockLedger ledger) throws IOException {

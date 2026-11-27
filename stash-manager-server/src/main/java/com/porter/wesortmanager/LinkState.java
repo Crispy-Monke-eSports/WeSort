@@ -36,7 +36,8 @@ final class LinkState {
         String key = server + "\u0000" + stash;
         Linked prev = bots.remove(key);
         if (player == null && prev != null) player = prev.player();
-        // WALL-CLOCK (justified, not domain time): display-only link moment for the bot list, never a lease or sweep input.
+        // WALL-CLOCK (justified, not domain time): display-only link moment for the bot list, never a lease or sweep
+        // input.
         linked = new Linked(player, server, stash, System.currentTimeMillis());
         bots.put(key, linked);
         if (bots.size() > MAX_BOTS) bots.remove(bots.keySet().iterator().next());

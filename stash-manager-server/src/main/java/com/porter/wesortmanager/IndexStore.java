@@ -50,6 +50,26 @@ public final class IndexStore {
         return stock;
     }
 
+    /**
+     * PR3 Step 5: the ledger services, built once with the single guild
+     * ledger. Every consumer shares these instances (Refs #142).
+     */
+    synchronized ObservationService observationService() throws IOException {
+        return stock().observation();
+    }
+
+    synchronized BoxUuidRegistry boxUuidRegistry() throws IOException {
+        return stock().boxRegistry();
+    }
+
+    synchronized ReturnIntakeService returnIntakeService() throws IOException {
+        return stock().returnIntake();
+    }
+
+    synchronized OperationJournal operationJournal() throws IOException {
+        return stock().journal();
+    }
+
     private final CreativeTabs tabs;
     private final Map<StashKey, Stash> stashes = new ConcurrentHashMap<>();
     private final Object createLock = new Object();

@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.google.gson.*;
 import com.porter.wesort.inventory.PhysicalJournal;
 import java.nio.file.Path;
-import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -242,8 +241,8 @@ class PhysicalOperationsTest {
     @Test
     void staleReviewAndUninspectedOfflineResumeAreRejected() throws Exception {
         var ledger = new StockLedger(data);
-        var clock = new AtomicLong(1000);
-        var store = new PhysicalOperations(ledger, clock::get);
+        var clock = new FakeClock(1000);
+        var store = new PhysicalOperations(ledger, clock);
         var journal = journal();
         intent(journal);
         store.accept(agent, journal.current());
@@ -252,7 +251,7 @@ class PhysicalOperationsTest {
         assertThrows(
                 PhysicalOperations.Conflict.class,
                 () -> store.inspect(id, 1, record.get("checksum").getAsString(), "owner"));
-        clock.addAndGet(15_000);
+        clock.advance(15_000);
         assertEquals(
                 "RECOVERING",
                 store.list().get(0).getAsJsonObject().get("managerState").getAsString());
@@ -330,8 +329,8 @@ class PhysicalOperationsTest {
 
     @Test
     void completionWithoutAcceptedProofDoesNotPermanentlyBlockRecovery() throws Exception {
-        var clock = new AtomicLong(10_000);
-        var operations = new PhysicalOperations(new StockLedger(data), clock::get);
+        var clock = new FakeClock(10_000);
+        var operations = new PhysicalOperations(new StockLedger(data), clock);
         var local = journal();
         intent(local);
         local.block("Inspect original slot");
@@ -341,7 +340,7 @@ class PhysicalOperationsTest {
         operations.decisionResult(agent, first.get("id").getAsString(), "COMPLETED", "No journal proof");
         assertNull(operations.inspectAutomatically(agent, receipt));
 
-        clock.addAndGet(60_001);
+        clock.advance(60_001);
         var next = operations.inspectAutomatically(agent, receipt);
         assertNotNull(next);
         assertNotEquals(first.get("id"), next.get("id"));
@@ -352,8 +351,8 @@ class PhysicalOperationsTest {
 
     @Test
     void failedAutomaticInspectionRetriesWithBackoff() throws Exception {
-        var clock = new AtomicLong(10_000);
-        var operations = new PhysicalOperations(new StockLedger(data), clock::get);
+        var clock = new FakeClock(10_000);
+        var operations = new PhysicalOperations(new StockLedger(data), clock);
         var local = journal();
         intent(local);
         local.block("Inspect original slot");
@@ -363,7 +362,7 @@ class PhysicalOperationsTest {
         assertNotNull(first);
         operations.decisionResult(agent, first.get("id").getAsString(), "FAILED", "Bot is away from the stash");
         assertNull(operations.inspectAutomatically(agent, receipt));
-        clock.addAndGet(60_001);
+        clock.advance(60_001);
         var again = operations.inspectAutomatically(agent, receipt);
         assertNotNull(again);
         assertNotEquals(first.get("id").getAsString(), again.get("id").getAsString());
@@ -398,8 +397,8 @@ class PhysicalOperationsTest {
 
     @Test
     void automaticInspectionGivesUpAfterMaxAttemptsAndEscalates() throws Exception {
-        var clock = new AtomicLong(10_000);
-        var operations = new PhysicalOperations(new StockLedger(data), clock::get);
+        var clock = new FakeClock(10_000);
+        var operations = new PhysicalOperations(new StockLedger(data), clock);
         var local = journal();
         intent(local);
         local.block("Inspect original slot");
@@ -408,12 +407,12 @@ class PhysicalOperationsTest {
             var decision = operations.inspectAutomatically(agent, receipt);
             assertNotNull(decision, "attempt " + i);
             assertTrue(operations.decisionResult(agent, decision.get("id").getAsString(), "FAILED", "away"));
-            clock.addAndGet(60_001);
+            clock.advance(60_001);
         }
         // The loop stops minting rapid REQUESTED decisions and backs off instead:
         // no human can run the manual inspect, so the manager retries every 10 min.
         assertNull(operations.inspectAutomatically(agent, receipt));
-        clock.addAndGet(10 * 60_000 + 1);
+        clock.advance(10 * 60_000 + 1);
         var retried = operations.inspectAutomatically(agent, receipt);
         assertNotNull(retried, "backoff elapsed");
         assertTrue(operations.decisionResult(agent, retried.get("id").getAsString(), "FAILED", "away"));
@@ -431,8 +430,8 @@ class PhysicalOperationsTest {
 
     @Test
     void journalSlightlyInTheFutureIsClockSkewNotDeath() throws Exception {
-        var clock = new AtomicLong(100_000);
-        var operations = new PhysicalOperations(new StockLedger(data), clock::get);
+        var clock = new FakeClock(100_000);
+        var operations = new PhysicalOperations(new StockLedger(data), clock);
         var local = journal();
         intent(local);
         operations.accept(agent, local.current());

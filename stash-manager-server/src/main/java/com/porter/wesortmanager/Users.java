@@ -17,7 +17,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.function.LongSupplier;
 import java.util.regex.Pattern;
 
 /**
@@ -308,17 +307,17 @@ final class Users {
     }
 
     private final Path file;
-    private final LongSupplier clock;
+    private final Clock clock;
     private final Map<String, User> users = new LinkedHashMap<>(); // id -> user, in creation order
     private String ownerName = DEFAULT_OWNER_NAME;
     private boolean registryUnavailable;
     private final Map<String, String> minecraftAccounts = new LinkedHashMap<>();
 
     Users(Path dataDir) {
-        this(dataDir, System::currentTimeMillis);
+        this(dataDir, Clock.system());
     }
 
-    Users(Path dataDir, LongSupplier clock) {
+    Users(Path dataDir, Clock clock) {
         this.file = dataDir == null ? null : dataDir.resolve("users.json");
         this.clock = clock;
     }
@@ -611,7 +610,7 @@ final class Users {
             RANDOM.nextBytes(b);
             id = "u-" + HexFormat.of().formatHex(b);
         } while (users.containsKey(id));
-        long now = clock.getAsLong();
+        long now = clock.millis();
         User u = new User(id, n, hash, perms, false, mustChange, now, 0, now);
         users.put(id, u);
         saveOrUndo(() -> users.remove(u.id));
@@ -650,7 +649,7 @@ final class Users {
                         mustChange,
                         u.createdAt,
                         u.lastLoginAt,
-                        clock.getAsLong()));
+                        clock.millis()));
         saveOrUndo(() -> users.put(id, u));
     }
 
@@ -692,7 +691,7 @@ final class Users {
                         u.disabled,
                         u.mustChange,
                         u.createdAt,
-                        clock.getAsLong(),
+                        clock.millis(),
                         u.passwordChangedAt));
         try {
             save();

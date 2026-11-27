@@ -10,7 +10,6 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.LongSupplier;
 
 /**
  * W-039: player handoff at a registered meeting place. A handoff reaches {@code DELIVERED} only with an explicit
@@ -49,26 +48,12 @@ final class Handoffs {
 
     /** Legacy data-dir constructor: shares the same guild.sqlite; the JSON file itself is never read. */
     Handoffs(Path data) throws IOException {
-        this(data, System::currentTimeMillis);
+        this(data, Clock.system());
     }
 
     /** Legacy data-dir constructor: shares the same guild.sqlite; the JSON file itself is never read. */
-    Handoffs(Path data, LongSupplier clock) throws IOException {
-        this(new StockLedger(data), adapt(clock));
-    }
-
-    private static Clock adapt(LongSupplier clock) {
-        return new Clock() {
-            @Override
-            public long millis() {
-                return clock.getAsLong();
-            }
-
-            @Override
-            public long nano() {
-                return System.nanoTime();
-            }
-        };
+    Handoffs(Path data, Clock clock) throws IOException {
+        this(new StockLedger(data, clock), clock);
     }
 
     private record Entry(Handoff handoff, JsonArray events) {}

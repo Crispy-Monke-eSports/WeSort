@@ -63,7 +63,7 @@ final class OperationJournal {
                   AND last_seen > ? LIMIT 1
                 """)) {
             p.setString(1, order);
-            p.setLong(2, ledger.clock.getAsLong() - OPERATION_FENCE_MS);
+            p.setLong(2, ledger.clock.millis() - OPERATION_FENCE_MS);
             try (var rows = p.executeQuery()) {
                 return rows.next();
             }

@@ -7,15 +7,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonParser;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
 /** The Manager's recheck decisions from the agent's chest reports: aging, once-per-read, caps. */
 class ChestStatesTest {
     static final long HOUR = 3600_000;
 
-    ChestStates states(AtomicLong clock) {
-        return new ChestStates(clock::get, HOUR);
+    ChestStates states(FakeClock clock) {
+        return new ChestStates(clock, HOUR);
     }
 
     static String chest(int x, int y, int z, long readAt) {
@@ -24,7 +23,7 @@ class ChestStatesTest {
 
     @Test
     void freshChestsAreNeverRequested() {
-        AtomicLong clock = new AtomicLong(1_000_000);
+        FakeClock clock = new FakeClock(1_000_000);
         ChestStates s = states(clock);
         s.report(
                 "s",
@@ -38,7 +37,7 @@ class ChestStatesTest {
 
     @Test
     void oldChestsAreRequestedOldestFirstAndOncePerRead() {
-        AtomicLong clock = new AtomicLong(10_000_000);
+        FakeClock clock = new FakeClock(10_000_000);
         ChestStates s = states(clock);
         s.report(
                 "s",
@@ -68,7 +67,7 @@ class ChestStatesTest {
     void failedReadsAreReRequestedAfterTheMaxAge() {
         // Anarchy TPS: reads keep failing, so readAt never advances. The Manager must not
         // give up forever — once the last request itself is older than the max age, ask again.
-        AtomicLong clock = new AtomicLong(10_000_000);
+        FakeClock clock = new FakeClock(10_000_000);
         ChestStates s = states(clock);
         s.report(
                 "s",
@@ -88,7 +87,7 @@ class ChestStatesTest {
 
     @Test
     void neverReadChestsAreLeftToTheAgent() {
-        AtomicLong clock = new AtomicLong(10_000_000);
+        FakeClock clock = new FakeClock(10_000_000);
         ChestStates s = states(clock);
         s.report(
                 "s",
@@ -100,7 +99,7 @@ class ChestStatesTest {
 
     @Test
     void reportsReplaceTheStoredSet() {
-        AtomicLong clock = new AtomicLong(10_000_000);
+        FakeClock clock = new FakeClock(10_000_000);
         ChestStates s = states(clock);
         s.report(
                 "s",
@@ -119,7 +118,7 @@ class ChestStatesTest {
 
     @Test
     void repliesAreCappedOldestFirst() {
-        AtomicLong clock = new AtomicLong(100_000_000);
+        FakeClock clock = new FakeClock(100_000_000);
         ChestStates s = states(clock);
         StringBuilder body = new StringBuilder("[");
         for (int i = 0; i < ChestStates.MAX_RECHECK + 10; i++) {

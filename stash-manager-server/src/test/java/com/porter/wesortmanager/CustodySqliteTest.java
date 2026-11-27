@@ -10,7 +10,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -22,20 +21,10 @@ class CustodySqliteTest {
     @TempDir
     Path data;
 
-    private final AtomicLong time = new AtomicLong(1_000_000L);
+    private final FakeClock time = new FakeClock(1_000_000L);
 
-    private Clock clock() {
-        return new Clock() {
-            @Override
-            public long millis() {
-                return time.get();
-            }
-
-            @Override
-            public long nano() {
-                return time.get() * 1_000_000L;
-            }
-        };
+    private FakeClock clock() {
+        return time;
     }
 
     private static JsonObject book(String server, String stash) {
@@ -149,7 +138,7 @@ class CustodySqliteTest {
     void staleJsonFileIsIgnoredAndNeverRead() throws Exception {
         Files.writeString(data.resolve("custody.json"), "{\"schema\":1,\"packages\":[]}", StandardCharsets.UTF_8);
         // The legacy Path constructor shares guild.sqlite and ignores the stale file.
-        var custody = new PackageCustody(data, time::get);
+        var custody = new PackageCustody(data, time);
         assertEquals(0, custody.list(null).size());
         String packageId = UUID.randomUUID().toString();
         custody.stage(packageId, "o-1", new JsonObject());

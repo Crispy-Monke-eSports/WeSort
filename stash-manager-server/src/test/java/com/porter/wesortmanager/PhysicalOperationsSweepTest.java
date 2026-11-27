@@ -112,7 +112,7 @@ class PhysicalOperationsSweepTest {
             p.setString(5, "NEEDS_RECONCILIATION");
             p.executeUpdate();
         }
-        new PhysicalOperations(index.stock(), () -> now).sweepStale();
+        new PhysicalOperations(index.stock(), new FakeClock(now)).sweepStale();
         try (var c = DriverManager.getConnection("jdbc:sqlite:" + data.resolve("guild.sqlite"));
                 var q = c.createStatement();
                 var rows = q.executeQuery("SELECT state,fence_revision FROM physical_operations")) {

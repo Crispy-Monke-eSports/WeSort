@@ -700,7 +700,7 @@ final class OrderPlacementService {
                                 + OrderStore.MAX_SHULKERS + " (one double chest)",
                         -1);
             }
-            long now = host.clock.getAsLong();
+            long now = host.clock.millis();
             OrderStore.Order o = new OrderStore.Order();
             o.id = newId();
             o.server = server;

@@ -5,7 +5,6 @@ import com.porter.wesort.inventory.PhysicalJournal;
 import java.io.IOException;
 import java.sql.*;
 import java.util.*;
-import java.util.function.LongSupplier;
 
 /** Append-only agent evidence, with separate Manager fences and autonomous read-only inspection. */
 final class PhysicalOperations {
@@ -31,13 +30,13 @@ final class PhysicalOperations {
     static final long FUTURE_SKEW_MS = 5_000;
 
     private final StockLedger ledger;
-    private final LongSupplier clock;
+    private final Clock clock;
 
     PhysicalOperations(StockLedger ledger) {
-        this(ledger, System::currentTimeMillis);
+        this(ledger, Clock.system());
     }
 
-    PhysicalOperations(StockLedger ledger, LongSupplier clock) {
+    PhysicalOperations(StockLedger ledger, Clock clock) {
         this.ledger = ledger;
         this.clock = clock;
     }
@@ -121,7 +120,7 @@ final class PhysicalOperations {
                     p.setString(6, checksum);
                     p.setString(7, record.toString());
                     p.setString(8, state);
-                    p.setLong(9, clock.getAsLong());
+                    p.setLong(9, clock.millis());
                     p.setLong(10, fence);
                     p.executeUpdate();
                 }
@@ -222,7 +221,7 @@ final class PhysicalOperations {
                 "SELECT 1 FROM automation_leases WHERE server=? AND agent=? AND (state='NEEDS_RECONCILIATION' OR deadline<=?)")) {
             p.setString(1, server);
             p.setString(2, agent);
-            p.setLong(3, clock.getAsLong());
+            p.setLong(3, clock.millis());
             try (var rows = p.executeQuery()) {
                 return rows.next();
             }
@@ -266,7 +265,7 @@ final class PhysicalOperations {
                 var q = c.prepareStatement(
                         "SELECT 1 FROM physical_operations WHERE state IN "
                                 + "('PLANNED','IN_PROGRESS','VERIFYING') AND (last_seen<=? OR last_seen>? OR EXISTS (SELECT 1 FROM automation_leases l WHERE l.server=physical_operations.server AND l.agent=physical_operations.agent AND (l.state='NEEDS_RECONCILIATION' OR l.deadline<=?))) LIMIT 1")) {
-            long now = clock.getAsLong();
+            long now = clock.millis();
             q.setLong(1, now - 15_000);
             q.setLong(2, now + FUTURE_SKEW_MS);
             q.setLong(3, now);
@@ -290,11 +289,11 @@ final class PhysicalOperations {
         try (var p = c.prepareStatement(
                 "UPDATE physical_operations SET state='NEEDS_RECONCILIATION',fence_revision=revision WHERE state IN "
                         + "('PLANNED','IN_PROGRESS','VERIFYING') AND (last_seen<=? OR last_seen>? OR EXISTS (SELECT 1 FROM automation_leases l WHERE l.server=physical_operations.server AND l.agent=physical_operations.agent AND (l.state='NEEDS_RECONCILIATION' OR l.deadline<=?)))")) {
-            p.setLong(1, clock.getAsLong() - 15_000);
+            p.setLong(1, clock.millis() - 15_000);
             // A journal slightly in the future is clock skew, not evidence of life: only a
             // timestamp beyond the skew budget fences the operation.
-            p.setLong(2, clock.getAsLong() + FUTURE_SKEW_MS);
-            p.setLong(3, clock.getAsLong());
+            p.setLong(2, clock.millis() + FUTURE_SKEW_MS);
+            p.setLong(3, clock.millis());
             p.executeUpdate();
         }
     }
@@ -416,7 +415,7 @@ final class PhysicalOperations {
                         p.setLong(3, revision);
                         p.setString(4, checksum);
                         p.setString(5, actor);
-                        p.setLong(6, clock.getAsLong());
+                        p.setLong(6, clock.millis());
                         p.setString(7, ledger.boot());
                         p.executeUpdate();
                     }
@@ -493,7 +492,7 @@ final class PhysicalOperations {
                 if ("REQUESTED".equals(prior)) return null;
                 // A claimed completion is not proof of the physical postcondition.
                 // If the operation remains fenced, a fresh inspection is still needed.
-                if (prior != null && clock.getAsLong() - rows.getLong(2) < 60_000) return null;
+                if (prior != null && clock.millis() - rows.getLong(2) < 60_000) return null;
             }
         } catch (SQLException failure) {
             throw new IOException("Cannot schedule automatic physical inspection", failure);
@@ -525,7 +524,7 @@ final class PhysicalOperations {
             try (var rows = p.executeQuery()) {
                 if (!rows.next()) return true;
                 long last = rows.getLong(1);
-                return rows.wasNull() || clock.getAsLong() - last >= AUTO_INSPECT_BACKOFF_MS;
+                return rows.wasNull() || clock.millis() - last >= AUTO_INSPECT_BACKOFF_MS;
             }
         } catch (SQLException failure) {
             throw new IOException("Cannot schedule automatic physical inspection", failure);

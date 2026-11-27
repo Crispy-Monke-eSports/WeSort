@@ -8,7 +8,6 @@ import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.UUID;
-import java.util.function.LongSupplier;
 
 /**
  * W-029: custody tracking for a physical order package, from warehouse staging through pickup, transport and a
@@ -70,26 +69,12 @@ final class PackageCustody {
 
     /** Legacy data-dir constructor: shares the same guild.sqlite; the JSON file itself is never read. */
     PackageCustody(Path data) throws IOException {
-        this(data, System::currentTimeMillis);
+        this(data, Clock.system());
     }
 
     /** Legacy data-dir constructor: shares the same guild.sqlite; the JSON file itself is never read. */
-    PackageCustody(Path data, LongSupplier clock) throws IOException {
-        this(new StockLedger(data), adapt(clock));
-    }
-
-    private static Clock adapt(LongSupplier clock) {
-        return new Clock() {
-            @Override
-            public long millis() {
-                return clock.getAsLong();
-            }
-
-            @Override
-            public long nano() {
-                return System.nanoTime();
-            }
-        };
+    PackageCustody(Path data, Clock clock) throws IOException {
+        this(new StockLedger(data, clock), clock);
     }
 
     record Package(

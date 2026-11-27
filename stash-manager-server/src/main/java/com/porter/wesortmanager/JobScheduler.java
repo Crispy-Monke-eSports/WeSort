@@ -12,7 +12,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import java.util.function.LongSupplier;
 
 /**
  * W-034: the single-agent job scheduler. Jobs are submitted with a category (SCAN → SORT → PACK → PICKUP → DELIVER,
@@ -94,38 +93,17 @@ final class JobScheduler {
 
     /** Legacy data-dir constructor: shares the same guild.sqlite; the JSON file itself is never read. */
     JobScheduler(Path data) throws IOException {
-        this(data, System::currentTimeMillis, monotonicMillis());
-    }
-
-    /** Keep lease deadlines comparable to epoch milliseconds while measuring elapsed time monotonically. */
-    private static LongSupplier monotonicMillis() {
-        long wall = System.currentTimeMillis();
-        long start = System.nanoTime();
-        return () -> wall + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+        this(data, Clock.system(), Clock.system());
     }
 
     /** Legacy data-dir constructor: shares the same guild.sqlite; the JSON file itself is never read. */
-    JobScheduler(Path data, LongSupplier clock) throws IOException {
+    JobScheduler(Path data, Clock clock) throws IOException {
         this(data, clock, clock);
     }
 
     /** Legacy data-dir constructor: shares the same guild.sqlite; the JSON file itself is never read. */
-    JobScheduler(Path data, LongSupplier clock, LongSupplier leaseClock) throws IOException {
-        this(new StockLedger(data), adapt(clock), adapt(leaseClock));
-    }
-
-    private static Clock adapt(LongSupplier clock) {
-        return new Clock() {
-            @Override
-            public long millis() {
-                return clock.getAsLong();
-            }
-
-            @Override
-            public long nano() {
-                return System.nanoTime();
-            }
-        };
+    JobScheduler(Path data, Clock clock, Clock leaseClock) throws IOException {
+        this(new StockLedger(data, clock), clock, leaseClock);
     }
 
     private record Row(Job job, long deadline, String token, JsonArray events) {}

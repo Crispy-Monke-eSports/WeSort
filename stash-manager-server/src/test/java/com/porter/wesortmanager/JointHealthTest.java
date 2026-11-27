@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.google.gson.*;
 import java.nio.file.*;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -17,14 +16,14 @@ class JointHealthTest {
     @TempDir
     Path data;
 
-    private final AtomicLong time = new AtomicLong(1_000_000);
+    private final FakeClock time = new FakeClock(1_000_000);
     private StockLedger ledger;
     private IndexStore store;
     private OrderStore orders;
 
     @BeforeEach
     void initialize() throws Exception {
-        ledger = new StockLedger(data, time::get, 60_000);
+        ledger = new StockLedger(data, time, 60_000);
         store = new IndexStore(data, CreativeTabs.NONE, ledger);
         store.load();
         orders = new OrderStore(data, store);
@@ -35,7 +34,7 @@ class JointHealthTest {
 
     @Test
     void inFlightPollAloneIsNotPresence() {
-        var hub = new BotHub(time::get);
+        var hub = new BotHub(time);
         var bot = new BotHub.Bot("ghost");
         bot.waiting = 1;
         assertFalse(BotHub.online(bot, time.get()));
@@ -44,7 +43,7 @@ class JointHealthTest {
 
     @Test
     void presenceCauseDistinguishesHeartbeatPollAndSilence() {
-        var hub = new BotHub(time::get);
+        var hub = new BotHub(time);
         var silent = new BotHub.Bot("never");
         assertEquals("silent", BotHub.presenceCause(silent, time.get()));
 
@@ -58,20 +57,20 @@ class JointHealthTest {
         assertEquals("poll", BotHub.presenceCause(modern, time.get()));
         assertTrue(hub.heartbeat("modern", "session-1", modern.controlEpoch));
         assertEquals("heartbeat", BotHub.presenceCause(modern, time.get()));
-        time.addAndGet(BotHub.ONLINE_MS + 1);
+        time.advance(BotHub.ONLINE_MS + 1);
         assertFalse(BotHub.online(modern, time.get()));
         assertEquals("silent", BotHub.presenceCause(modern, time.get()));
     }
 
     @Test
     void authenticatedHelloPreemptsAStaleControlSession() {
-        var hub = new BotHub(time::get);
+        var hub = new BotHub(time);
         assertEquals(
                 200, hub.register("b", "B", new JsonObject(), new JsonObject(), List.of(), List.of(), "old-session"));
         // A fresh session answers 409: something is still alive on the old one.
         assertEquals(
                 409, hub.register("b", "B", new JsonObject(), new JsonObject(), List.of(), List.of(), "new-session"));
-        time.addAndGet(BotHub.TAKEOVER_GRACE_MS + 1);
+        time.advance(BotHub.TAKEOVER_GRACE_MS + 1);
         String epoch = hub.bot("b").controlEpoch;
         assertEquals(
                 200, hub.register("b", "B", new JsonObject(), new JsonObject(), List.of(), List.of(), "new-session"));
@@ -80,7 +79,7 @@ class JointHealthTest {
 
     @Test
     void sessionlessHelloNeverTakesOverALiveControlSession() {
-        var hub = new BotHub(time::get);
+        var hub = new BotHub(time);
         assertEquals(200, hub.register("b", "B", new JsonObject(), new JsonObject(), List.of(), List.of(), "session"));
         assertEquals(409, hub.register("b", "B", new JsonObject(), new JsonObject(), List.of(), List.of(), null));
     }
@@ -89,14 +88,14 @@ class JointHealthTest {
 
     @Test
     void revokedSlotsStayAsTombstonesAndAuthFailuresExpire() throws Exception {
-        var clock = new AtomicLong(5_000_000);
-        var credentials = new AgentCredentials(data, clock::get);
+        var clock = new FakeClock(5_000_000);
+        var credentials = new AgentCredentials(data, clock);
         String token = credentials.issue("bot");
         String id = token.substring(0, token.indexOf('.'));
         credentials.noteAuthFailure(id);
         assertTrue(credentials.recentAuthFailure(id, clock.get()));
         assertTrue(credentials.lastAuthFailure(id) > 0);
-        clock.addAndGet(AgentCredentials.AUTH_FAILURE_WINDOW_MS + 1);
+        clock.advance(AgentCredentials.AUTH_FAILURE_WINDOW_MS + 1);
         assertFalse(credentials.recentAuthFailure(id, clock.get()));
 
         assertTrue(credentials.revoke(id));
@@ -152,7 +151,7 @@ class JointHealthTest {
         assertTrue(first > 0);
         assertEquals(first, store.rescanPending("s", "a").longValue());
         // Age the stock so the auto-rescan path would fire without the debounce.
-        time.addAndGet(120_000);
+        time.advance(120_000);
         assertEquals(
                 "STALE_AGE",
                 ledger.sources().stream()
@@ -233,11 +232,11 @@ class JointHealthTest {
     void agingFreezeHoldsWhileTheRescanIsOutstanding() throws Exception {
         var l = ledger(100);
         l.accept(observation(l, "a", 64, 0, 1, 0));
-        time.addAndGet(90);
+        time.advance(90);
         assertEquals("FRESH", l.sources().getFirst().status());
         l.freezeAging("s", time.get());
         // Past the normal TTL but inside the bounded 25 ms grace period.
-        time.addAndGet(15);
+        time.advance(15);
         assertEquals("FRESH", l.sources().getFirst().status(), "frozen stock does not age");
         l.unfreezeAging("s");
         assertEquals("STALE_AGE", l.sources().getFirst().status());
@@ -247,11 +246,11 @@ class JointHealthTest {
     void agingFreezeExpiresWhenTheBotGoesQuiet() throws Exception {
         var l = ledger(100);
         l.accept(observation(l, "a", 64, 0, 1, 0));
-        time.addAndGet(90);
+        time.advance(90);
         l.freezeAging("s", time.get());
-        time.addAndGet(24);
+        time.advance(24);
         assertEquals("FRESH", l.sources().getFirst().status());
-        time.addAndGet(1);
+        time.advance(1);
         assertEquals("STALE_AGE", l.sources().getFirst().status());
     }
 
@@ -259,12 +258,12 @@ class JointHealthTest {
     void repeatedFreezeDoesNotExtendTheGracePeriod() throws Exception {
         var l = ledger(100);
         l.accept(observation(l, "a", 64, 0, 1, 0));
-        time.addAndGet(90);
+        time.advance(90);
         l.freezeAging("s", time.get());
-        time.addAndGet(20);
+        time.advance(20);
         l.freezeAging("s", time.get());
         assertEquals("FRESH", l.sources().getFirst().status());
-        time.addAndGet(5);
+        time.advance(5);
         assertEquals("STALE_AGE", l.sources().getFirst().status());
         l.freezeAging("s", time.get());
         assertEquals("STALE_AGE", l.sources().getFirst().status());
@@ -281,7 +280,7 @@ class JointHealthTest {
         store.putIndex(frame);
         health.sample("s", store, orders, now, 60_000);
         assertEquals("ready", health.detail(now).get("status").getAsString());
-        time.addAndGet(120_000);
+        time.advance(120_000);
         health.sample("s", store, orders, time.get(), 60_000);
         var detail = health.detail(time.get());
         assertEquals("ready", detail.get("status").getAsString());
@@ -292,7 +291,7 @@ class JointHealthTest {
     // ---------- fixtures ----------
 
     private StockLedger ledger(long maxAge) throws Exception {
-        return new StockLedger(data.resolve("t" + System.nanoTime()), time::get, maxAge);
+        return new StockLedger(data.resolve("t" + System.nanoTime()), time, maxAge);
     }
 
     private JsonObject index(String stash, int count) throws Exception {

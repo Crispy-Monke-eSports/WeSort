@@ -23,7 +23,7 @@ class AuditLogTest {
     @Test
     void persistsAcrossRestart() throws Exception {
         var ledger = ledger();
-        AuditLog original = new AuditLog(ledger, data, () -> 1234L);
+        AuditLog original = new AuditLog(ledger, data, new FakeClock(1234L));
         original.load();
         original.add("member-1", "Member", "order.created", "first", "127.0.0.1");
 
@@ -106,7 +106,7 @@ class AuditLogTest {
     @Test
     void newestReturnsNewestFirstWithLimitAndTrimsToMax() throws Exception {
         var ledger = ledger();
-        AuditLog audit = new AuditLog(ledger, data, () -> 5L);
+        AuditLog audit = new AuditLog(ledger, data, new FakeClock(5L));
         audit.load();
         audit.add("u", "U", "order.place", "first", "127.0.0.1");
         audit.add("u", "U", "order.pack", "second", "127.0.0.1");

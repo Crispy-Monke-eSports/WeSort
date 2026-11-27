@@ -11,7 +11,6 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.LongSupplier;
 
 /**
  * PR3 (#140): transactional audit trail in SQLite.
@@ -35,17 +34,17 @@ final class AuditLog {
 
     private final StockLedger ledger;
     private final Path legacyFile;
-    private final LongSupplier clock;
+    private final Clock clock;
 
     AuditLog(StockLedger ledger, Path dataDir) {
-        this(ledger, dataDir, System::currentTimeMillis);
+        this(ledger, dataDir, Clock.system());
     }
 
-    AuditLog(StockLedger ledger, LongSupplier clock) {
+    AuditLog(StockLedger ledger, Clock clock) {
         this(ledger, null, clock);
     }
 
-    AuditLog(StockLedger ledger, Path dataDir, LongSupplier clock) {
+    AuditLog(StockLedger ledger, Path dataDir, Clock clock) {
         if (ledger == null) throw new IllegalArgumentException("AuditLog requires the guild database");
         this.ledger = ledger;
         this.legacyFile = dataDir == null ? null : dataDir.resolve("audit.json");
@@ -135,7 +134,7 @@ final class AuditLog {
     synchronized void add(String userId, String userName, String action, String detail, String address) {
         try (var c = ledger.open();
                 var tx = new SqliteWriteTransaction(c)) {
-            insert(c, clock.getAsLong(), userId, userName, action, detail, address);
+            insert(c, clock.millis(), userId, userName, action, detail, address);
             tx.commit();
         } catch (SQLException | RuntimeException e) {
             throw new UncheckedIOException("Cannot persist audit entry", new IOException(e));
@@ -145,10 +144,12 @@ final class AuditLog {
     /** Same-transaction write: commits or rolls back with the surrounding business transaction. */
     static void add(Connection c, long at, String userId, String userName, String action, String detail, String address)
             throws SQLException {
+        // WALL-CLOCK (justified, not domain time): this static helper owns no Clock; Batch-stamped
+        // entries always carry at != 0, so this only stamps a caller bug rather than failing the commit.
         insert(c, at == 0L ? System.currentTimeMillis() : at, userId, userName, action, detail, address);
     }
 
-    /** Writes staged batch entries; zero or negative stamps fall back to the wall clock. */
+    /** Writes staged batch entries; zero or negative stamps fall back to the wall clock (see above). */
     static void addAll(Connection c, List<Entry> entries) throws SQLException {
         for (Entry e : entries) add(c, e.at(), e.userId(), e.userName(), e.action(), e.detail(), e.address());
     }
@@ -222,9 +223,9 @@ final class AuditLog {
         private String userId;
         private String userName;
         private String address;
-        private final LongSupplier clock;
+        private final Clock clock;
 
-        Batch(LongSupplier clock) {
+        Batch(Clock clock) {
             this.clock = clock;
         }
 
@@ -237,7 +238,7 @@ final class AuditLog {
 
         /** Stages an entry, stamped now; persisted only if the surrounding commit succeeds. */
         void say(String action, String detail) {
-            entries.add(new Entry(userId, userName, action, detail, address, clock.getAsLong()));
+            entries.add(new Entry(userId, userName, action, detail, address, clock.millis()));
         }
 
         List<Entry> entries() {

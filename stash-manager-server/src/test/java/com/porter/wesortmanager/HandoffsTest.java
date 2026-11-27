@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.porter.wesort.data.Handoff;
 import java.nio.file.Path;
-import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -12,20 +11,10 @@ class HandoffsTest {
     @TempDir
     Path data;
 
-    private final AtomicLong time = new AtomicLong(1_000_000L);
+    private final FakeClock time = new FakeClock(1_000_000L);
 
-    private Clock clock() {
-        return new Clock() {
-            @Override
-            public long millis() {
-                return time.get();
-            }
-
-            @Override
-            public long nano() {
-                return time.get() * 1_000_000L;
-            }
-        };
+    private FakeClock clock() {
+        return time;
     }
 
     private Handoffs handoffs() throws Exception {
@@ -125,7 +114,7 @@ class HandoffsTest {
 
         // Past the bounded wait with no recipient and no agent report: system
         // records NO_SHOW (retryable, returnable) — never DELIVERED.
-        time.addAndGet(Handoffs.AWAITING_NOSHOW_AFTER_MS + 1);
+        time.advance(Handoffs.AWAITING_NOSHOW_AFTER_MS + 1);
         var swept = handoffs.sweepStaleAwaiting(time.get());
         assertEquals(1, swept.size());
         assertEquals(Handoff.State.NO_SHOW, handoffs.get(h.id()).state());

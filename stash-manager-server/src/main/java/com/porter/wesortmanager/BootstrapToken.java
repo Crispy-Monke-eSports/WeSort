@@ -5,20 +5,19 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.Base64;
-import java.util.function.LongSupplier;
 
 /** A local administrator issues a 256-bit capability; only its digest lives in memory, for at most ten minutes. */
 final class BootstrapToken {
     static final long LIFETIME_MS = 10 * 60_000;
-    private final LongSupplier clock;
+    private final Clock clock;
     private byte[] digest;
     private long expires;
 
     BootstrapToken() {
-        this(System::currentTimeMillis);
+        this(Clock.system());
     }
 
-    BootstrapToken(LongSupplier clock) {
+    BootstrapToken(Clock clock) {
         this.clock = clock;
     }
 
@@ -27,7 +26,7 @@ final class BootstrapToken {
         new SecureRandom().nextBytes(bytes);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
         digest = hash(token);
-        expires = clock.getAsLong() + LIFETIME_MS;
+        expires = clock.millis() + LIFETIME_MS;
         return token;
     }
 
@@ -35,7 +34,7 @@ final class BootstrapToken {
         return token != null
                 && token.matches("[A-Za-z0-9_-]{43}")
                 && digest != null
-                && clock.getAsLong() < expires
+                && clock.millis() < expires
                 && MessageDigest.isEqual(digest, hash(token));
     }
 

@@ -10,7 +10,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -55,38 +54,38 @@ class AuthTest {
 
     @Test
     void activeSessionsExpireAtTheAbsoluteDeadline(@TempDir Path dir) throws Exception {
-        AtomicLong now = new AtomicLong(1_000_000);
-        SessionStore store = new SessionStore(dir, now::get);
+        FakeClock now = new FakeClock(1_000_000);
+        SessionStore store = new SessionStore(dir, now);
         String token = store.create();
         assertTrue(store.valid(token));
         assertFalse(store.valid(token + "x"));
         long end = now.get() + SessionStore.LIFETIME_MS;
         while (now.get() + 1_800_000 < end) {
-            now.addAndGet(1_800_000);
+            now.advance(1_800_000);
             assertTrue(store.valid(token));
         }
         now.set(end - 1);
         assertTrue(store.valid(token));
-        now.addAndGet(1);
+        now.advance(1);
         assertFalse(store.valid(token));
         assertEquals(0, store.size());
     }
 
     @Test
     void idleExpirySurvivesRestartAndActivityRefreshesOnlyItsOwnSession(@TempDir Path dir) throws Exception {
-        AtomicLong now = new AtomicLong(1_000_000);
+        FakeClock now = new FakeClock(1_000_000);
         long hour = SessionStore.idlePolicy("1");
-        SessionStore store = new SessionStore(dir, now::get, hour);
+        SessionStore store = new SessionStore(dir, now, hour);
         String idle = store.create();
         String active = store.create();
-        now.addAndGet(hour - 1);
+        now.advance(hour - 1);
         assertTrue(store.valid(active));
-        now.incrementAndGet();
-        var restarted = new SessionStore(dir, now::get, hour);
+        now.advance(1);
+        var restarted = new SessionStore(dir, now, hour);
         restarted.load();
         assertFalse(restarted.valid(idle));
         assertTrue(restarted.valid(active));
-        now.addAndGet(hour);
+        now.advance(hour);
         assertFalse(restarted.valid(active));
         assertThrows(IllegalArgumentException.class, () -> SessionStore.idlePolicy("0"));
         assertThrows(IllegalArgumentException.class, () -> SessionStore.idlePolicy("169"));
@@ -95,14 +94,14 @@ class AuthTest {
 
     @Test
     void previouslyIssuedLongSessionCannotOutliveNewPolicy(@TempDir Path dir) throws Exception {
-        AtomicLong now = new AtomicLong(1_000_000);
-        SessionStore store = new SessionStore(dir, now::get);
+        FakeClock now = new FakeClock(1_000_000);
+        SessionStore store = new SessionStore(dir, now);
         String token = store.create();
         var path = dir.resolve("sessions.json");
         var rows =
                 com.google.gson.JsonParser.parseString(Files.readString(path)).getAsJsonArray();
         var row = rows.get(0).getAsJsonObject();
-        now.addAndGet(SessionStore.LIFETIME_MS);
+        now.advance(SessionStore.LIFETIME_MS);
         row.addProperty("expires", now.get() + SessionStore.LIFETIME_MS);
         row.addProperty("lastSeen", now.get() - 1);
         Files.writeString(path, rows.toString());
@@ -112,31 +111,31 @@ class AuthTest {
 
     @Test
     void sessionsSurviveARestartAndOnlyHashesAreStored(@TempDir Path dir) throws Exception {
-        AtomicLong now = new AtomicLong(5_000);
-        SessionStore store = new SessionStore(dir, now::get);
+        FakeClock now = new FakeClock(5_000);
+        SessionStore store = new SessionStore(dir, now);
         String token = store.create();
         String file = Files.readString(dir.resolve("sessions.json"));
         assertFalse(file.contains(token), "the token itself must not be written");
         assertTrue(file.contains(SessionStore.hash(token)));
 
-        SessionStore reloaded = new SessionStore(dir, now::get);
+        SessionStore reloaded = new SessionStore(dir, now);
         reloaded.load();
         assertTrue(reloaded.valid(token));
 
-        now.addAndGet(SessionStore.LIFETIME_MS);
-        SessionStore later = new SessionStore(dir, now::get);
+        now.advance(SessionStore.LIFETIME_MS);
+        SessionStore later = new SessionStore(dir, now);
         later.load();
         assertEquals(0, later.size(), "expired sessions are pruned on load");
     }
 
     @Test
     void failedSessionWritePreservesTheOldSessionAndItsElevation(@TempDir Path dir) throws Exception {
-        var clock = new AtomicLong(1);
-        var store = new SessionStore(dir, clock::get);
+        var clock = new FakeClock(1);
+        var store = new SessionStore(dir, clock);
         String oldest = store.create();
         store.elevate(oldest);
         for (int i = 1; i < SessionStore.MAX_PER_USER; i++) {
-            clock.incrementAndGet();
+            clock.advance(1);
             store.create();
         }
         Path sessionsFile = dir.resolve("sessions.json");
@@ -148,14 +147,14 @@ class AuthTest {
         assertTrue(store.elevated(oldest));
         Files.delete(sessionsFile);
         Files.move(saved, sessionsFile);
-        var restarted = new SessionStore(dir, clock::get);
+        var restarted = new SessionStore(dir, clock);
         restarted.load();
         assertTrue(restarted.valid(oldest));
     }
 
     @Test
     void logoutAndLogoutEverywhere(@TempDir Path dir) throws Exception {
-        SessionStore store = new SessionStore(dir, () -> 1);
+        SessionStore store = new SessionStore(dir, new FakeClock(1));
         String a = store.create();
         String b = store.create();
         String c = store.create();
@@ -171,7 +170,7 @@ class AuthTest {
 
     @Test
     void corruptSessionRegistryNeverAuthenticatesAPartiallyLoadedPrefix(@TempDir Path dir) throws Exception {
-        var store = new SessionStore(dir, () -> 1);
+        var store = new SessionStore(dir, new FakeClock(1));
         String token = store.create();
         Path file = dir.resolve("sessions.json");
         var rows =
@@ -179,7 +178,7 @@ class AuthTest {
         rows.add(new com.google.gson.JsonObject());
         Files.writeString(file, rows.toString());
 
-        var restarted = new SessionStore(dir, () -> 1);
+        var restarted = new SessionStore(dir, new FakeClock(1));
         restarted.load();
         assertEquals(0, restarted.size());
         assertFalse(restarted.valid(token));
@@ -187,7 +186,7 @@ class AuthTest {
 
     @Test
     void failedRevocationIsNotReportedAsADurableLogout(@TempDir Path dir) throws Exception {
-        var store = new SessionStore(dir, () -> 1);
+        var store = new SessionStore(dir, new FakeClock(1));
         String owner = store.create();
         String member = store.create("u-123456789abc");
         store.elevate(owner);
@@ -208,7 +207,7 @@ class AuthTest {
         Files.move(saved, file);
         store.remove(owner);
         assertEquals(1, store.removeUser("u-123456789abc", null));
-        var restarted = new SessionStore(dir, () -> 1);
+        var restarted = new SessionStore(dir, new FakeClock(1));
         restarted.load();
         assertFalse(restarted.valid(owner));
         assertFalse(restarted.valid(member));

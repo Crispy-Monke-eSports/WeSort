@@ -170,7 +170,7 @@ final class ObservationService {
         try (var c = ledger.open();
                 var tx = new SqliteWriteTransaction(c)) {
             long before = ledger.revision(c), next = Math.addExact(before, 1);
-            long now = ledger.clock.getAsLong();
+            long now = ledger.clock.millis();
             Map<String, Long> memberTimes = new HashMap<>();
             // Root-level box UUIDs seen in fresh snapshots this batch: source -> uuid -> box.
             Map<String, Map<String, BoxUuidRegistry.ObservedBox>> freshBoxes = new LinkedHashMap<>();
@@ -520,7 +520,7 @@ final class ObservationService {
      * Returns false when the source is not lost.
      */
     boolean acceptLoss(String id, String by) throws IOException {
-        long now = ledger.clock.getAsLong();
+        long now = ledger.clock.millis();
         try (var c = ledger.open();
                 var tx = new SqliteWriteTransaction(c)) {
             JsonObject value;

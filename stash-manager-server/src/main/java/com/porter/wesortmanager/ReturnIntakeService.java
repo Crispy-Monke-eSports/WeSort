@@ -31,7 +31,7 @@ final class ReturnIntakeService {
         result.addProperty("markUuid", markUuid);
         result.addProperty("state", markUuid ? "UUID_REQUESTED" : "VERIFIED_KEEP_NAME");
         result.addProperty("actor", actor);
-        result.addProperty("recordedAt", ledger.clock.getAsLong());
+        result.addProperty("recordedAt", ledger.clock.millis());
         try (var c = ledger.open()) {
             long currentDecision = 0;
             try (var read = c.prepareStatement(

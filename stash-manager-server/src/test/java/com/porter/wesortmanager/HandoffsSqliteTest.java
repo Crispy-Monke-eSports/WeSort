@@ -10,7 +10,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -24,20 +23,10 @@ class HandoffsSqliteTest {
 
     private static final String A1 = "11111111-1111-1111-1111-111111111111";
 
-    private final AtomicLong time = new AtomicLong(1_000_000L);
+    private final FakeClock time = new FakeClock(1_000_000L);
 
-    private Clock clock() {
-        return new Clock() {
-            @Override
-            public long millis() {
-                return time.get();
-            }
-
-            @Override
-            public long nano() {
-                return time.get() * 1_000_000L;
-            }
-        };
+    private FakeClock clock() {
+        return time;
     }
 
     private static JsonObject book(String server, String stash) {
@@ -142,7 +131,7 @@ class HandoffsSqliteTest {
     void staleJsonFileIsIgnoredAndNeverRead() throws Exception {
         Files.writeString(data.resolve("handoffs.json"), "{\"schema\":1,\"handoffs\":[]}", StandardCharsets.UTF_8);
         // The legacy Path constructor shares guild.sqlite and ignores the stale file.
-        var handoffs = new Handoffs(data, time::get);
+        var handoffs = new Handoffs(data, time);
         assertEquals(0, handoffs.list(null).size());
         var h = handoffs.schedule("o-1", "alice", "meet-1", A1);
         assertEquals(Handoff.State.SCHEDULED, handoffs.get(h.id()).state());

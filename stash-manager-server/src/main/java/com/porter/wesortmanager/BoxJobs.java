@@ -5,7 +5,6 @@ import com.porter.wesort.data.ShulkerUuid;
 import java.io.IOException;
 import java.sql.*;
 import java.util.*;
-import java.util.function.LongSupplier;
 
 /**
  * Manager-authorized box UUID registration jobs (W-063). The Owner asks the Manager to mark a verified,
@@ -16,13 +15,13 @@ final class BoxJobs {
     static final long TTL = 15_000;
     private static final Set<String> KINDS = Set.of("REGISTER_BOX", "RETURN_INTAKE");
     private final StockLedger ledger;
-    private final LongSupplier clock;
+    private final Clock clock;
 
     BoxJobs(StockLedger ledger) throws IOException {
-        this(ledger, System::currentTimeMillis);
+        this(ledger, Clock.system());
     }
 
-    BoxJobs(StockLedger ledger, LongSupplier clock) throws IOException {
+    BoxJobs(StockLedger ledger, Clock clock) throws IOException {
         this.ledger = ledger;
         this.clock = clock;
         // A new Manager process cannot prove what an agent did while disconnected; never reassign automatically.
@@ -83,7 +82,7 @@ final class BoxJobs {
         job.addProperty("uuid", uuid.toString());
         job.addProperty("name", ShulkerUuid.label(uuid));
         job.addProperty("createdBy", actor);
-        job.addProperty("createdAt", clock.getAsLong());
+        job.addProperty("createdAt", clock.millis());
         job.addProperty(
                 "baselineFingerprint",
                 destination.value().get("slotFingerprint").getAsString());
@@ -123,7 +122,7 @@ final class BoxJobs {
     private void expire(Connection c) throws SQLException {
         try (var p = c.prepareStatement(
                 "UPDATE box_jobs SET state='NEEDS_RECONCILIATION',payload=json_set(payload,'$.message','Execution lease expired; inspect the physical box before recovery') WHERE state IN ('IN_PROGRESS','VERIFYING') AND deadline<=?")) {
-            p.setLong(1, clock.getAsLong());
+            p.setLong(1, clock.millis());
             p.executeUpdate();
         }
     }
@@ -165,12 +164,12 @@ final class BoxJobs {
                     return null;
                 }
                 String token = UUID.randomUUID().toString() + UUID.randomUUID();
-                job.addProperty("executionDeadline", Math.addExact(clock.getAsLong(), 300_000));
+                job.addProperty("executionDeadline", Math.addExact(clock.millis(), 300_000));
                 try (var p = c.prepareStatement(
                         "UPDATE box_jobs SET state='IN_PROGRESS',agent=?,token=?,deadline=?,payload=? WHERE id=? AND state='PLANNED'")) {
                     p.setString(1, agent);
                     p.setString(2, token);
-                    p.setLong(3, clock.getAsLong() + TTL);
+                    p.setLong(3, clock.millis() + TTL);
                     p.setString(4, job.toString());
                     p.setString(5, id);
                     if (p.executeUpdate() != 1) throw new IllegalArgumentException("Box job claim conflict");
@@ -225,7 +224,7 @@ final class BoxJobs {
                         if (registered(c, job)) {
                             state = "COMPLETED";
                             job.remove("message");
-                            job.addProperty("completedAt", clock.getAsLong());
+                            job.addProperty("completedAt", clock.millis());
                         } else
                             job.addProperty(
                                     "message",
@@ -236,7 +235,7 @@ final class BoxJobs {
                         p.setLong(
                                 2,
                                 Math.min(
-                                        clock.getAsLong() + TTL,
+                                        clock.millis() + TTL,
                                         job.get("executionDeadline").getAsLong()));
                         p.setString(3, job.toString());
                         p.setString(4, id);

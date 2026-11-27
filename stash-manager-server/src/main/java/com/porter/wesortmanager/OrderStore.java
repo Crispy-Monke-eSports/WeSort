@@ -15,7 +15,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.LongSupplier;
 
 /**
  * Orders per (server, stash), persisted in the shared guild SQLite database.
@@ -586,7 +585,7 @@ final class OrderStore {
     final IndexStore index;
     /** Injected clock (#142): domain timestamps never read the wall clock directly, so
      * timeouts (auto-cancel, recovering, deferred retry) are deterministic in tests. */
-    final LongSupplier clock;
+    final Clock clock;
     /** Publishes order-book revisions only after the storage transaction commits (#142). */
     final EventPublisher events;
 
@@ -599,14 +598,14 @@ final class OrderStore {
     final Map<String, Book> byOrderId = new ConcurrentHashMap<>();
 
     OrderStore(Path dataDir, IndexStore index) {
-        this(dataDir, index, System::currentTimeMillis);
+        this(dataDir, index, Clock.system());
     }
 
-    OrderStore(Path dataDir, IndexStore index, LongSupplier clock) {
+    OrderStore(Path dataDir, IndexStore index, Clock clock) {
         this(dataDir, index, clock, EventPublisher.live());
     }
 
-    OrderStore(Path dataDir, IndexStore index, LongSupplier clock, EventPublisher events) {
+    OrderStore(Path dataDir, IndexStore index, Clock clock, EventPublisher events) {
         this(dataDir, index, clock, events, null);
     }
 
@@ -615,7 +614,7 @@ final class OrderStore {
      * constructed inline, so the service split runs against an in-memory
      * {@link OrderRepository} without touching SQLite (Refs #142).
      */
-    OrderStore(Path dataDir, IndexStore index, LongSupplier clock, EventPublisher events, OrderRepository repository) {
+    OrderStore(Path dataDir, IndexStore index, Clock clock, EventPublisher events, OrderRepository repository) {
         this.dir = dataDir.resolve("orders");
         this.index = index;
         this.clock = clock;
@@ -640,7 +639,7 @@ final class OrderStore {
 
     /** The shared kit catalog (loaded once; the routes layer reuses this instance). */
     synchronized KitTemplates kits() throws IOException {
-        if (kits == null) kits = new KitTemplates(dir.getParent());
+        if (kits == null) kits = new KitTemplates(dir.getParent(), clock);
         return kits;
     }
 
@@ -1443,7 +1442,7 @@ final class OrderStore {
                     }
                     updated.status = "in_progress";
                     updated.cancelRequested = true;
-                    updated.cancelRequestedAt = updated.updatedAt = clock.getAsLong();
+                    updated.cancelRequestedAt = updated.updatedAt = clock.millis();
                     updated.phase = "returning items to stash";
                     updated.message = "Agent restarted; automatically returning interrupted order";
                     updated.record("order.resume.rollback", agent, updated.updatedAt);
@@ -1537,7 +1536,7 @@ final class OrderStore {
             ready.deferredBlockedAt = 0;
             ready.advance(OrderStage.RESERVED);
             ready.message = null;
-            ready.updatedAt = clock.getAsLong();
+            ready.updatedAt = clock.millis();
             ready.record("order.reserve.from-queue", Users.OWNER_ID, ready.updatedAt);
             update(book, queued, ready);
             return ready;
@@ -1559,7 +1558,7 @@ final class OrderStore {
                 || queued.agent != null
                 || queued.stage() != OrderStage.CREATED
                 || index.stock().unsettledPhysicalOrder(queued.id)) return;
-        long now = clock.getAsLong();
+        long now = clock.millis();
         if (queued.deferredBlockedAt > 0
                 && (queued.queuedOffline || now - queued.deferredBlockedAt < DEFERRED_RETRY_AFTER_MS)) return;
         Order next = Order.fromJson(queued.snapshot());
@@ -1624,7 +1623,7 @@ final class OrderStore {
                         JsonObject prev = order.sourceGuards;
                         order.sourceGuards = policy.sourceGuards(server, stash);
                         if (policy.orderSourcesReady(order, counts, agent)) {
-                            long now = clock.getAsLong();
+                            long now = clock.millis();
                             order.updatedAt = now;
                             order.message = "Re-reserved automatically: sources changed since reservation.";
                             order.record("order.reserve.refresh", agent, now);
@@ -1639,7 +1638,7 @@ final class OrderStore {
                                 && order.claimedAt == 0
                                 && order.deferredBlockedAt == 0
                                 && order.stage() != OrderStage.RECOVERING) {
-                            long now = clock.getAsLong();
+                            long now = clock.millis();
                             order.deferredBlockedAt = now;
                             order.updatedAt = now;
                             order.message = "Sources changed since reservation; awaiting automatic re-reservation.";
@@ -1653,7 +1652,7 @@ final class OrderStore {
                 if (!order.stage().allows(OrderStage.PACKING)) continue;
                 order.stage = OrderStage.PACKING;
                 order.status = "accepted";
-                order.claimedAt = order.updatedAt = clock.getAsLong();
+                order.claimedAt = order.updatedAt = clock.millis();
                 // Legacy aggregate claims may omit identity. An authenticated agent keeps one claim across its stashes.
                 order.agent = order.allocations == null && "local".equals(agent) ? null : agent;
                 order.record("order.claim", agent, order.claimedAt);
@@ -1782,10 +1781,10 @@ final class OrderStore {
             if (next == OrderStage.RECOVERING) {
                 o.result = null;
                 o.cancelRequested = true;
-                if (o.cancelRequestedAt == 0) o.cancelRequestedAt = clock.getAsLong();
+                if (o.cancelRequestedAt == 0) o.cancelRequestedAt = clock.millis();
                 o.phase = "returning items to stash";
             } else if (result != null) o.result = result;
-            o.updatedAt = clock.getAsLong();
+            o.updatedAt = clock.millis();
             if (next != previous.stage()) o.record("order.transition", agent, o.updatedAt);
             StockLedger.BoxRelease release = next == OrderStage.PICKUP_READY ? boxRelease(o, deliveredUuids) : null;
             b.receipts.put(key, new Receipt(fingerprint, o.toJson()));
@@ -1891,7 +1890,7 @@ final class OrderStore {
                 throw new OrderException(409, "Manifest hash differs", -1);
             if (order.manifestAcknowledgedAt > 0) return new ManifestReceipt(order.manifestAcknowledgedAt, false);
             var updated = Order.fromJson(order.snapshot());
-            updated.manifestAcknowledgedAt = clock.getAsLong();
+            updated.manifestAcknowledgedAt = clock.millis();
             updated.record("order.manifest.confirm", scope.agent(), updated.manifestAcknowledgedAt);
             update(book, order, updated);
             return new ManifestReceipt(updated.manifestAcknowledgedAt, true);

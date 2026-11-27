@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.google.gson.JsonObject;
 import java.nio.file.Path;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -13,20 +12,10 @@ class PackageCustodyTest {
     @TempDir
     Path data;
 
-    private final AtomicLong time = new AtomicLong(1_000_000L);
+    private final FakeClock time = new FakeClock(1_000_000L);
 
-    private Clock clock() {
-        return new Clock() {
-            @Override
-            public long millis() {
-                return time.get();
-            }
-
-            @Override
-            public long nano() {
-                return time.get() * 1_000_000L;
-            }
-        };
+    private FakeClock clock() {
+        return time;
     }
 
     private PackageCustody custody() throws Exception {

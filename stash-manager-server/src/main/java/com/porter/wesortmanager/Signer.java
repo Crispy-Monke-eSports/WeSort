@@ -7,7 +7,6 @@ import java.util.HexFormat;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.function.LongSupplier;
 import java.util.regex.Pattern;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -27,30 +26,30 @@ final class Signer {
     private static final Pattern SIG = Pattern.compile("^[0-9a-f]{64}$");
     private static final Pattern BOT = Pattern.compile("^(-|[A-Za-z0-9_-]{1,64})$");
 
-    private final LongSupplier clock;
+    private final Clock clock;
     private final StockLedger durableNonces;
     /** In-memory cache for isolated tests; production uses the durable nonce table. */
     private final LinkedHashMap<String, Long> nonces = new LinkedHashMap<>();
 
     Signer() {
-        this(System::currentTimeMillis);
+        this(Clock.system());
     }
 
-    Signer(LongSupplier clock) {
+    Signer(Clock clock) {
         this(clock, null);
     }
 
     Signer(StockLedger ledger) {
-        this(System::currentTimeMillis, ledger);
+        this(Clock.system(), ledger);
     }
 
-    Signer(LongSupplier clock, StockLedger ledger) {
+    Signer(Clock clock, StockLedger ledger) {
         this.clock = clock;
         this.durableNonces = ledger;
     }
 
     long now() {
-        return clock.getAsLong();
+        return clock.millis();
     }
 
     /** K = HMAC-SHA256(key = UTF-8(apiKey), msg = "stash-manager v1"). */

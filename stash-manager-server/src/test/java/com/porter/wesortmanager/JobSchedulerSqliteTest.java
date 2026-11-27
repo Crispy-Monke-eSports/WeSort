@@ -10,7 +10,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -24,20 +23,10 @@ class JobSchedulerSqliteTest {
 
     private static final String A1 = "11111111-1111-1111-1111-111111111111";
 
-    private final AtomicLong time = new AtomicLong(0);
+    private final FakeClock time = new FakeClock(0);
 
-    private Clock clock() {
-        return new Clock() {
-            @Override
-            public long millis() {
-                return time.get();
-            }
-
-            @Override
-            public long nano() {
-                return System.nanoTime();
-            }
-        };
+    private FakeClock clock() {
+        return time;
     }
 
     private JobScheduler scheduler(StockLedger ledger) throws Exception {
@@ -167,7 +156,7 @@ class JobSchedulerSqliteTest {
     void staleJsonFileIsIgnoredAndNeverRead() throws Exception {
         Files.writeString(data.resolve("jobs.json"), "{\"schema\":1,\"jobs\":[]}", StandardCharsets.UTF_8);
         // The legacy Path constructor shares guild.sqlite and ignores the stale file.
-        var scheduler = new JobScheduler(data, time::get);
+        var scheduler = new JobScheduler(data, time);
         assertEquals(0, scheduler.queue().size());
         var job = scheduler.submit(Job.Category.SCAN, "o-1", "", 0, "owner");
         assertEquals(Job.State.QUEUED, scheduler.get(job.id()).state());

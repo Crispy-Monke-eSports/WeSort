@@ -8,7 +8,6 @@ import java.nio.file.*;
 import java.sql.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -16,10 +15,10 @@ class StockLedgerTest {
     @TempDir
     Path data;
 
-    private final AtomicLong time = new AtomicLong(1000);
+    private final FakeClock time = new FakeClock(1000);
 
     private StockLedger ledger() throws Exception {
-        return new StockLedger(data, time::get, 100);
+        return new StockLedger(data, time, 100);
     }
 
     private JsonObject index(String stash, long count) {

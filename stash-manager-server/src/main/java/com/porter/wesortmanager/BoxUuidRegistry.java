@@ -308,7 +308,7 @@ final class BoxUuidRegistry {
                             path,
                             "DEREGISTERED_FOR_ORDER",
                             ledger.revision(c),
-                            ledger.clock.getAsLong());
+                            ledger.clock.millis());
                 }
             }
         }

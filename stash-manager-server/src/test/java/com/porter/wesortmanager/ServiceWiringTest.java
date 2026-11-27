@@ -14,7 +14,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -69,15 +68,15 @@ class ServiceWiringTest {
                 .getAsJsonObject();
     }
 
-    private OrderStore wiredOrders(IndexStore store, AtomicLong time, InMemoryOrderRepository repo) throws Exception {
-        var orders = new OrderStore(data, store, time::get, EventPublisher.noop(), repo);
+    private OrderStore wiredOrders(IndexStore store, FakeClock time, InMemoryOrderRepository repo) throws Exception {
+        var orders = new OrderStore(data, store, time, EventPublisher.noop(), repo);
         orders.load();
         return orders;
     }
 
     @Test
     void orderStorePersistsAgainstInMemoryRepository() throws Exception {
-        var time = new AtomicLong(1_000L);
+        var time = new FakeClock(1_000L);
         var store = new IndexStore(data, CreativeTabs.NONE);
         store.load();
         StockFixtures.put(store, index());
@@ -118,7 +117,7 @@ class ServiceWiringTest {
         var store = new IndexStore(data, CreativeTabs.NONE);
         store.load();
         StockFixtures.put(store, index());
-        var orders = wiredOrders(store, new AtomicLong(1_000L), new InMemoryOrderRepository());
+        var orders = wiredOrders(store, new FakeClock(1_000L), new InMemoryOrderRepository());
         orders.placement().place("s", "a", List.of(new OrderStore.Line("item", "minecraft:diamond", 2)), null);
 
         var icons = new IconService(

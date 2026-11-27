@@ -261,8 +261,8 @@ class StockHierarchyTest {
 
     @Test
     void failedClaimRetainsRootsUntilFreshReadFromThePhysicalSource() throws Exception {
-        var now = new java.util.concurrent.atomic.AtomicLong(System.currentTimeMillis());
-        var ledger = new StockLedger(data, now::get, 600_000);
+        var now = new FakeClock(System.currentTimeMillis());
+        var ledger = new StockLedger(data, now, 600_000);
         var store = new IndexStore(data, CreativeTabs.NONE, ledger);
         store.load();
         store.putIndex(index(ledger, 32));

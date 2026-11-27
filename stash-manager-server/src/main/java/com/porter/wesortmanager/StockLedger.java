@@ -6,7 +6,6 @@ import java.io.IOException;
 import java.nio.file.*;
 import java.sql.*;
 import java.util.*;
-import java.util.function.LongSupplier;
 
 /** Authoritative observations in one local SQLite transaction. Legacy aggregate indexes are not physical proof. */
 final class StockLedger {
@@ -69,7 +68,7 @@ final class StockLedger {
 
     private final Path file;
     /** Read by the ledger services under the StockLedger lock (PR3 Step 5, Refs #142). */
-    final LongSupplier clock;
+    final Clock clock;
     /** Read by the ledger services under the StockLedger lock (PR3 Step 5, Refs #142). */
     final long maxAge;
     /** Read by the ledger services under the StockLedger lock (PR3 Step 5, Refs #142). */
@@ -114,10 +113,14 @@ final class StockLedger {
     }
 
     StockLedger(Path data) throws IOException {
-        this(data, System::currentTimeMillis, policy());
+        this(data, Clock.system(), policy());
     }
 
-    StockLedger(Path data, LongSupplier clock, long maxAge) throws IOException {
+    StockLedger(Path data, Clock clock) throws IOException {
+        this(data, clock, policy());
+    }
+
+    StockLedger(Path data, Clock clock, long maxAge) throws IOException {
         if (maxAge < 1) throw new IllegalArgumentException("Positive observation TTL required");
         this.clock = clock;
         this.maxAge = maxAge;
@@ -795,7 +798,7 @@ final class StockLedger {
 
     synchronized List<Source> sources() throws IOException {
         List<Source> out = new ArrayList<>();
-        long now = clock.getAsLong();
+        long now = clock.millis();
         try (var c = open();
                 var s = c.createStatement();
                 var r = s.executeQuery(

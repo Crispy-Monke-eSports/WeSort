@@ -3,8 +3,8 @@ package com.porter.wesortmanager;
 /**
  * PR3 (#142): injectable clock (wall + monotonic) for deterministic tests.
  *
- * <p>Replaces the ad-hoc {@code LongSupplier} pairs and raw
- * {@code System.currentTimeMillis/nanoTime} calls. Production default is the
+ * <p>Replaces the ad-hoc wall-clock supplier pairs and raw system time
+ * calls. Production default is the
  * system clock; tests inject a simulated clock controlling both axes.
  */
 public interface Clock {

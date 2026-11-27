@@ -11,7 +11,6 @@ import com.google.gson.JsonParser;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
 /** Settings checks against the schema, the job lifecycle and the console history. */
@@ -90,13 +89,13 @@ class DashboardTest {
 
     @Test
     void jobsExpireUnpickedAndBecomeUnknownUnanswered() throws Exception {
-        AtomicLong now = new AtomicLong(1_000_000);
-        BotHub hub = new BotHub(now::get);
+        FakeClock now = new FakeClock(1_000_000);
+        BotHub hub = new BotHub(now);
         assertTrue(hub.hello("bot-1", "Bob", new JsonObject(), new JsonObject(), List.of("settings", "console")));
         BotHub.Bot b = hub.bot("bot-1");
         String expired = hub.queueSets(b, "plugin", List.of(node("{\"path\":\"x\",\"value\":true}")))
                 .get(0);
-        now.addAndGet(BotHub.EXPIRE_QUEUED_MS);
+        now.advance(BotHub.EXPIRE_QUEUED_MS);
         assertEquals(
                 "expired",
                 hub.jobs(b, List.of(expired))
@@ -124,7 +123,7 @@ class DashboardTest {
                         .getAsJsonObject()
                         .get("status")
                         .getAsString());
-        now.addAndGet(BotHub.UNKNOWN_SENT_MS);
+        now.advance(BotHub.UNKNOWN_SENT_MS);
         assertEquals(
                 "unknown",
                 hub.jobs(b, List.of(sent))
@@ -136,8 +135,8 @@ class DashboardTest {
 
     @Test
     void controlJobsUseOneScopedLeaseAndImmutableReceipts() throws Exception {
-        AtomicLong now = new AtomicLong(1_000_000);
-        BotHub hub = new BotHub(now::get);
+        FakeClock now = new FakeClock(1_000_000);
+        BotHub hub = new BotHub(now);
         String session = "agent-session";
         assertEquals(
                 200,
@@ -188,7 +187,7 @@ class DashboardTest {
                 hub.next(bot, 0, session).body().getAsJsonArray("jobs").get(0).getAsJsonObject();
         assertEquals(ids.get(1), next.get("id").getAsString());
         for (String key : List.of("id", "lease", "sequence", "value")) receipt.add(key, next.get(key));
-        now.addAndGet(BotHub.UNKNOWN_SENT_MS);
+        now.advance(BotHub.UNKNOWN_SENT_MS);
         assertEquals(BotHub.Acknowledgement.REFUSED, hub.acknowledge(bot, session, receipt));
         assertEquals(
                 "unknown",
@@ -201,8 +200,8 @@ class DashboardTest {
 
     @Test
     void dedicatedHeartbeatIsIndependentOfPollingAndFencedBySession() throws Exception {
-        AtomicLong now = new AtomicLong(1_000_000);
-        BotHub hub = new BotHub(now::get);
+        FakeClock now = new FakeClock(1_000_000);
+        BotHub hub = new BotHub(now);
         String session = "agent-session";
         assertEquals(
                 200,
@@ -220,11 +219,11 @@ class DashboardTest {
         assertFalse(hub.heartbeat("b", "wrong", epoch));
         assertFalse(hub.heartbeat("b", session, "old-epoch"));
         for (int i = 0; i < 12; i++) {
-            now.addAndGet(5_000);
+            now.advance(5_000);
             assertTrue(hub.heartbeat("b", session, epoch));
             assertTrue(hub.online(bot));
         }
-        now.addAndGet(BotHub.ONLINE_MS);
+        now.advance(BotHub.ONLINE_MS);
         assertFalse(hub.online(bot));
         assertFalse(hub.heartbeat("b", session, epoch), "expired session must hello again");
         assertEquals(
@@ -245,8 +244,8 @@ class DashboardTest {
 
     @Test
     void idlePollIsSuccessfulAndKeepsSessionAliveAcrossManyPolls() throws Exception {
-        AtomicLong now = new AtomicLong(1_000_000);
-        BotHub hub = new BotHub(now::get);
+        FakeClock now = new FakeClock(1_000_000);
+        BotHub hub = new BotHub(now);
         String session = "agent-session";
         assertEquals(
                 200,
@@ -262,13 +261,13 @@ class DashboardTest {
         String epoch = bot.controlEpoch;
         assertEquals(200, hub.next(bot, 0, session).status()); // initial watch state
         for (int i = 0; i < 30; i++) {
-            now.addAndGet(2_000);
+            now.advance(2_000);
             assertTrue(hub.currentControlSession(bot, session, epoch));
             assertEquals(204, hub.next(bot, 0, session).status());
         }
         // A Manager restart drops the registry, but hello with the same session
         // immediately registers again and issues a new epoch.
-        var restarted = new BotHub(now::get);
+        var restarted = new BotHub(now);
         assertNull(restarted.bot("b"));
         assertEquals(
                 200,
@@ -287,8 +286,8 @@ class DashboardTest {
 
     @Test
     void acceptedStateRefreshesControlPresenceEvenWithoutPolls() {
-        AtomicLong now = new AtomicLong(1_000_000);
-        var hub = new BotHub(now::get);
+        FakeClock now = new FakeClock(1_000_000);
+        var hub = new BotHub(now);
         String session = "agent-session";
         assertEquals(
                 200,
@@ -301,9 +300,9 @@ class DashboardTest {
                         List.of("plugin"),
                         session));
         var bot = hub.bot("b");
-        now.addAndGet(30_000);
+        now.advance(30_000);
         hub.state(bot, "plugin", "schema", "values", new JsonArray(), new HashMap<>(), new JsonObject());
-        now.addAndGet(30_000);
+        now.advance(30_000);
         assertTrue(hub.currentControlSession(bot, session, bot.controlEpoch));
     }
 

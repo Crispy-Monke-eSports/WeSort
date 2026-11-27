@@ -8,7 +8,6 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.util.function.LongSupplier;
 
 /**
  * W-038: the physical deposition ledger. A package is deposited either as a {@code DELIVERY} to a recipient outside
@@ -48,26 +47,12 @@ final class Deposits {
 
     /** Legacy data-dir constructor: shares the same guild.sqlite; the JSON file itself is never read. */
     Deposits(Path data) throws IOException {
-        this(data, System::currentTimeMillis);
+        this(data, Clock.system());
     }
 
     /** Legacy data-dir constructor: shares the same guild.sqlite; the JSON file itself is never read. */
-    Deposits(Path data, LongSupplier clock) throws IOException {
-        this(new StockLedger(data), adapt(clock));
-    }
-
-    private static Clock adapt(LongSupplier clock) {
-        return new Clock() {
-            @Override
-            public long millis() {
-                return clock.getAsLong();
-            }
-
-            @Override
-            public long nano() {
-                return System.nanoTime();
-            }
-        };
+    Deposits(Path data, Clock clock) throws IOException {
+        this(new StockLedger(data, clock), clock);
     }
 
     private record Entry(Deposit deposit, JsonArray events) {}

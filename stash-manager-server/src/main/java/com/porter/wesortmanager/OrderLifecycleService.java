@@ -50,7 +50,7 @@ final class OrderLifecycleService {
                         if (observations.refreshedAfter(order.allocations, order.updatedAt)
                                 && !host.index.stock().unsettledPhysicalOrder(order.id)) {
                             released.add(order);
-                            order.releasedAt = host.clock.getAsLong();
+                            order.releasedAt = host.clock.millis();
                         }
                     }
                     if (!released.isEmpty()) {
@@ -73,7 +73,7 @@ final class OrderLifecycleService {
      * sources are freshly observed; otherwise all holds remain protected.
      */
     void autoHeal(String server) throws IOException {
-        long now = host.clock.getAsLong();
+        long now = host.clock.millis();
         for (var entry : host.books.entrySet()) {
             if (!entry.getKey().server().equals(server)) continue;
             var book = entry.getValue();
@@ -393,7 +393,7 @@ final class OrderLifecycleService {
                 OrderStore.Order next = OrderStore.Order.fromJson(before.snapshot());
                 next.approval = decision;
                 next.decidedBy = actor;
-                next.decidedAt = next.updatedAt = host.clock.getAsLong();
+                next.decidedAt = next.updatedAt = host.clock.millis();
                 if (!approve) {
                     next.advance(OrderStage.CANCELLED);
                     next.status = "cancelled";
@@ -445,9 +445,9 @@ final class OrderLifecycleService {
                 o.message = "Cancelled before the bot started.";
             } else if (!o.cancelRequested) {
                 o.cancelRequested = true;
-                o.cancelRequestedAt = host.clock.getAsLong();
+                o.cancelRequestedAt = host.clock.millis();
             } else return previous;
-            o.updatedAt = host.clock.getAsLong();
+            o.updatedAt = host.clock.millis();
             o.record(o.cancelRequested ? "order.cancel.request" : "order.cancel", actor, o.updatedAt);
             if (audit != null) audit.say("order.cancel", o.id);
             host.update(b, previous, o, null, audit);
@@ -506,7 +506,7 @@ final class OrderLifecycleService {
             o.advance(OrderStage.CANCELLED);
             o.status = "cancelled";
             o.message = "cancelled from the website (bot didn't confirm)";
-            o.updatedAt = host.clock.getAsLong();
+            o.updatedAt = host.clock.millis();
             o.record("order.force-cancel", actor, o.updatedAt);
             if (audit != null) audit.say("order.force-cancel", o.id);
             host.update(b, previous, o, null, audit);
@@ -538,7 +538,7 @@ final class OrderLifecycleService {
                 // path must terminate every non-terminal stage, allocations or not.
                 o.stage = OrderStage.FAILED;
                 o.status = "failed";
-                o.releasedAt = o.updatedAt = host.clock.getAsLong();
+                o.releasedAt = o.updatedAt = host.clock.millis();
                 o.message = "Released by the owner without bot confirmation; verify the stash by hand.";
                 o.record("order.owner-force", actor, o.updatedAt);
                 if (audit != null) audit.say("order.owner-force", o.id);

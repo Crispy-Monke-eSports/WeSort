@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.porter.wesort.data.Handoff;
 import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -11,12 +12,32 @@ class HandoffsTest {
     @TempDir
     Path data;
 
+    private final AtomicLong time = new AtomicLong(1_000_000L);
+
+    private Clock clock() {
+        return new Clock() {
+            @Override
+            public long millis() {
+                return time.get();
+            }
+
+            @Override
+            public long nano() {
+                return time.get() * 1_000_000L;
+            }
+        };
+    }
+
+    private Handoffs handoffs() throws Exception {
+        return new Handoffs(new StockLedger(data), clock());
+    }
+
     private static final String A1 = "11111111-1111-1111-1111-111111111111";
     private static final String A2 = "22222222-2222-2222-2222-222222222222";
 
     @Test
     void confirmationIsTheOnlyPathToDeliveredAndReplayIsIdempotent() throws Exception {
-        var handoffs = new Handoffs(data);
+        var handoffs = handoffs();
         var h = handoffs.schedule("o-1", "alice", "meet-1", A1);
         handoffs.arrive(h.id(), A1);
 
@@ -33,7 +54,7 @@ class HandoffsTest {
 
     @Test
     void aSecondAgentCannotTakeOverTheCargo() throws Exception {
-        var handoffs = new Handoffs(data);
+        var handoffs = handoffs();
         var h = handoffs.schedule("o-1", "alice", "meet-1", A1);
         handoffs.arrive(h.id(), A1);
         assertThrows(
@@ -43,7 +64,7 @@ class HandoffsTest {
 
     @Test
     void noShowDoesNotReturnStockUntilExplicit() throws Exception {
-        var handoffs = new Handoffs(data);
+        var handoffs = handoffs();
         var h = handoffs.schedule("o-1", "alice", "meet-1", A1);
         handoffs.arrive(h.id(), A1);
         assertEquals(Handoff.State.NO_SHOW, handoffs.noShow(h.id(), A1).state());
@@ -53,56 +74,59 @@ class HandoffsTest {
 
     @Test
     void handoffsPersistAcrossRestart() throws Exception {
-        var handoffs = new Handoffs(data);
+        var handoffs = handoffs();
         var h = handoffs.schedule("o-1", "alice", "meet-1", A1);
         handoffs.arrive(h.id(), A1);
         handoffs.confirm(h.id(), "owner");
 
-        var reloaded = new Handoffs(data);
+        var reloaded = handoffs();
         assertEquals(Handoff.State.DELIVERED, reloaded.get(h.id()).state());
         assertEquals("owner", reloaded.get(h.id()).confirmedBy());
     }
 
     @Test
     void rejectsUnassignedBookingsAndAllowsExplicitReturnOfLegacyBooking() throws Exception {
-        var handoffs = new Handoffs(data);
+        var handoffs = handoffs();
         assertThrows(IllegalArgumentException.class, () -> handoffs.schedule("o-1", "alice", "meet-1", null));
         assertThrows(IllegalArgumentException.class, () -> handoffs.schedule("o-1", "alice", "meet-1", " "));
         assertTrue(handoffs.list(null).isEmpty());
         // Simulate a booking persisted by a previous Manager that allowed null agents.
         var legacy = Handoff.schedule("o-1", "alice", "meet-1", null);
-        var root = new com.google.gson.JsonObject();
-        root.addProperty("schema", 1);
-        var entries = new com.google.gson.JsonArray();
-        var entry = legacy.json();
-        entry.add("events", new com.google.gson.JsonArray());
-        entries.add(entry);
-        root.add("handoffs", entries);
-        java.nio.file.Files.writeString(data.resolve("handoffs.json"), root.toString());
-        var restarted = new Handoffs(data);
+        try (var c = new StockLedger(data).open()) {
+            try (var p = c.prepareStatement(
+                    "INSERT INTO handoffs(id,order_id,state,agent,payload,revision) VALUES(?,?,?,?,?,?)")) {
+                p.setString(1, legacy.id());
+                p.setString(2, legacy.orderId());
+                p.setString(3, legacy.state().name());
+                p.setString(4, null);
+                p.setString(5, legacy.json().toString());
+                p.setLong(6, legacy.revision());
+                p.executeUpdate();
+            }
+        }
+        var restarted = handoffs();
         assertThrows(Handoffs.Conflict.class, () -> restarted.arrive(legacy.id(), A1));
         assertThrows(Handoffs.Conflict.class, () -> restarted.resolve(legacy.id(), Handoff.State.DELIVERED, "owner"));
         assertEquals(
                 Handoff.State.RETURNED,
                 restarted.resolve(legacy.id(), Handoff.State.RETURNED, "owner").state());
-        assertEquals(Handoff.State.RETURNED, new Handoffs(data).get(legacy.id()).state());
+        assertEquals(Handoff.State.RETURNED, handoffs().get(legacy.id()).state());
     }
 
     @Test
     void staleAwaitingRecipientIsRecordedNoShowWithoutFabricatingDelivery() throws Exception {
-        var clock = new java.util.concurrent.atomic.AtomicLong(1_000_000L);
-        var handoffs = new Handoffs(data, clock::get);
+        var handoffs = handoffs();
         var h = handoffs.schedule("o-1", "alice", "meet-1", A1);
         handoffs.arrive(h.id(), A1);
 
         // A fresh arrival is left alone.
-        assertTrue(handoffs.sweepStaleAwaiting(clock.get()).isEmpty());
+        assertTrue(handoffs.sweepStaleAwaiting(time.get()).isEmpty());
         assertEquals(Handoff.State.AWAITING_RECIPIENT, handoffs.get(h.id()).state());
 
         // Past the bounded wait with no recipient and no agent report: system
         // records NO_SHOW (retryable, returnable) — never DELIVERED.
-        clock.addAndGet(Handoffs.AWAITING_NOSHOW_AFTER_MS + 1);
-        var swept = handoffs.sweepStaleAwaiting(clock.get());
+        time.addAndGet(Handoffs.AWAITING_NOSHOW_AFTER_MS + 1);
+        var swept = handoffs.sweepStaleAwaiting(time.get());
         assertEquals(1, swept.size());
         assertEquals(Handoff.State.NO_SHOW, handoffs.get(h.id()).state());
         assertFalse(handoffs.get(h.id()).terminal(), "no-show keeps the cargo held");

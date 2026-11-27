@@ -158,21 +158,17 @@ public final class SnapshotEnvelope {
      * converter; production code never hand-builds envelopes from raw strings.
      */
     public static SnapshotEnvelope fromPhysicalSnapshot(
-            SourceKind kind,
-            PhysicalSlots.Snapshot snapshot,
-            Map<String, String> storageMeta,
-            Provenance provenance) {
+            SourceKind kind, PhysicalSlots.Snapshot snapshot, Map<String, String> storageMeta, Provenance provenance) {
         if (kind == null) throw new IllegalArgumentException("kind required");
         if (snapshot == null) throw new IllegalArgumentException("snapshot required");
         if (provenance == null) throw new IllegalArgumentException("provenance required");
         List<SlotEntry> entries = new ArrayList<>();
         for (PhysicalSlots.Slot s : snapshot.slots()) {
-            ItemIdentity.BaseItemId base =
-                    new ItemIdentity.BaseItemId(s.item().id(), provenance.registryContext());
+            ItemIdentity.BaseItemId base = new ItemIdentity.BaseItemId(s.item().id(), provenance.registryContext());
             // Fail closed: a captured slot is always an exact variant, never a
             // bare id or truncated display key.
-            ItemIdentity.ExactVariantId variant =
-                    ItemIdentity.ExactVariantId.of(base, SnbtCodec.parse(s.item().components()));
+            ItemIdentity.ExactVariantId variant = ItemIdentity.ExactVariantId.of(
+                    base, SnbtCodec.parse(s.item().components()));
             Map<String, SnbtCodec.Tag> item = new LinkedHashMap<>();
             item.put("id", new SnbtCodec.TString(s.item().id()));
             item.put("components", SnbtCodec.parse(variant.canonicalComponentsSnbt()));

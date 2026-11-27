@@ -1,10 +1,12 @@
 # PR2 (#224/#225/#226/#266) — local verification
 
 ## Scope
+
 Canonical SNBT identity: `SnbtCodec` + `ItemIdentity` + `SnapshotEnvelope` in
 `common`, `StashIndex` quarantine on the client, `SNBT_CONTRACT.md` in sync.
 
 ## Full-bar fixes (this round, on `fix/pr2-kanonisk-snbt-identitet`)
+
 - #225: reject/framing/limit/compat tests in `SnbtCodecTest` — trailing content,
   WS framing, MAX_DEPTH (70 nested), MAX_NODES (70k list), MAX_BYTES (>4MiB),
   unknown/truncated/invalid escapes incl. `\N{}`, unterminated compound/list/
@@ -30,6 +32,7 @@ Canonical SNBT identity: `SnbtCodec` + `ItemIdentity` + `SnapshotEnvelope` in
   `derivedTotals` merges by canonical item SNBT.
 
 ## Evidence (no Docker/Minecraft, no 6b6t access)
+
 - `./gradlew test --offline --rerun-tasks` (client+common) → 62 files,
   **367 tests, 0 failures**.
 - `./gradlew -p stash-manager-server test --offline --rerun-tasks` →

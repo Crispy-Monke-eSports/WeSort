@@ -96,6 +96,7 @@ public final class PhysicalSlots {
             ItemIdentity.BaseItemId base = new ItemIdentity.BaseItemId(id, schemaContext);
             return ItemIdentity.ExactVariantId.of(base, SnbtCodec.parse(components));
         }
+
         public String key() {
             return key;
         }

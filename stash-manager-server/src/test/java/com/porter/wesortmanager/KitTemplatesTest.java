@@ -93,6 +93,29 @@ class KitTemplatesTest {
     }
 
     @Test
+    void slotKeysAreValidatedThroughTheIdentityMachinery() throws Exception {
+        // Bare registry ids, client display variant keys and catalog group keys pass.
+        kits.create(json(
+                "{\"name\":\"ok\",\"slots\":[{\"slot\":0,\"key\":\"minecraft:diamond\",\"count\":1},{\"slot\":1,\"key\":\"minecraft:diamond_sword#1a2b3c4d\",\"count\":1},{\"slot\":2,\"key\":\"s:0123456789\",\"count\":1}]}"));
+        // No colon at all, empty variant base, bad hex, uppercase hex, bad group: all fail closed.
+        for (String key : new String[] {
+            "diamond",
+            "#1a2b3c4d",
+            "minecraft:diamond#xyz",
+            "minecraft:diamond#ABCDEF12",
+            "minecraft:diamond#1a2b3c",
+            "minecraft:diamond#1a2b3c4d5e",
+            "s:xyz",
+            "not an id!!"
+        })
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> kits.create(json(
+                            "{\"name\":\"x\",\"slots\":[{\"slot\":0,\"key\":\"" + key + "\",\"count\":1}]}")),
+                    "key must fail closed: " + key);
+    }
+
+    @Test
     void revisionsCarryContentFingerprints() throws Exception {
         var first = kits.create(template("starter"));
         assertEquals(64, first.fingerprint().length());

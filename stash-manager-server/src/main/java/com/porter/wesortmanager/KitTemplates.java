@@ -3,6 +3,8 @@ package com.porter.wesortmanager;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.porter.wesort.data.ItemIdentity;
+import com.porter.wesort.snbt.SnbtCodec;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -295,6 +297,34 @@ final class KitTemplates {
     /** Parsed request without revision metadata; the store assigns revision + fingerprint. */
     private record Parsed(String name, List<Slot> slots) {}
 
+    /**
+     * Slot keys are validated through the SNBT identity machinery (#229), not
+     * just length-checked: bare registry ids via {@link ItemIdentity.BaseItemId},
+     * client display variant keys ({@code id} + '#' + 8 lowercase hex) by base
+     * + suffix shape, catalog group keys ({@code s:} + 10 lowercase hex) via
+     * {@link ItemIdentity.CatalogGroupId}. Group/aggregate keys stay valid
+     * definitions — they resolve (or shortfall fail-closed) at order time
+     * against the live projection. Anything else fails closed: unknown keys
+     * can never become allocation lines.
+     */
+    static void validateSlotKey(String key) {
+        int hash = key.indexOf('#');
+        if (hash >= 0) {
+            new ItemIdentity.BaseItemId(key.substring(0, hash), SnbtCodec.MINECRAFT_DATA);
+            String suffix = key.substring(hash + 1);
+            if (!suffix.matches("[0-9a-f]{8}"))
+                throw new IllegalArgumentException("variant key suffix must be 8 lowercase hex chars");
+            return;
+        }
+        if (key.startsWith("s:")) {
+            if (!key.substring(2).matches("[0-9a-f]{10}"))
+                throw new IllegalArgumentException("catalog group key must be 's:' + 10 lowercase hex chars");
+            new ItemIdentity.CatalogGroupId("s", key.substring(2));
+            return;
+        }
+        new ItemIdentity.BaseItemId(key, SnbtCodec.MINECRAFT_DATA);
+    }
+
     private Parsed parse(JsonObject req) {
         var name = str(req, "name");
         if (name == null || !NAME.matcher(name).matches())
@@ -313,6 +343,7 @@ final class KitTemplates {
             if (seen[slot]) throw new IllegalArgumentException("slot " + slot + " twice");
             if (key == null || key.isEmpty() || key.length() > MAX_KEY)
                 throw new IllegalArgumentException("key must be a non-empty string");
+            validateSlotKey(key);
             if (count == null || count < 1 || count > MAX_COUNT)
                 throw new IllegalArgumentException("count must be 1-" + MAX_COUNT);
             seen[slot] = true;

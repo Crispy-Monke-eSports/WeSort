@@ -4,6 +4,9 @@ import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 import com.google.gson.*;
 import com.porter.wesort.data.ContainerIdentity;
+import com.porter.wesort.data.PhysicalSlots;
+import com.porter.wesort.data.SnapshotEnvelope;
+import com.porter.wesort.snbt.SnbtCodec;
 import com.porter.wesort.stash.Stash;
 import com.porter.wesort.stash.StashIndex;
 import java.util.*;
@@ -227,7 +230,11 @@ public final class ObservationRuntime {
                 if (!snapshot.fingerprint().equals(box.observationFingerprint))
                     throw new IllegalStateException("Physical inventory changed after its verified observation");
                 source.addProperty("snbt", snapshot.snbt());
-            } else source.add("snbt", JsonNull.INSTANCE);
+                source.add("envelope", envelopeFor(box, snapshot, dim, identity));
+            } else {
+                source.add("snbt", JsonNull.INSTANCE);
+                source.add("envelope", JsonNull.INSTANCE);
+            }
             if (box.known()) {
                 JsonObject aggregate = StashIndex.aggregate(Arrays.asList(box.contents));
                 source.add("items", aggregate.get("items"));
@@ -238,8 +245,53 @@ public final class ObservationRuntime {
             }
             sources.add(source);
         }
-        root.addProperty("physicalVersion", 3);
+        root.addProperty("physicalVersion", 4);
         root.add("physicalSources", sources);
+    }
+
+    /**
+     * Builds the dual-carry envelope (#227) for one verified container frame.
+     * The source kind follows the observed block (chest with two parts is one
+     * logical double chest, never two snapshots); the capacity is the part
+     * count times 27; double-chest storage meta records the facing/type of the
+     * observed half plus both block positions. Provenance mirrors the source
+     * proof fields (server, dimension, session, sequence, observedAt) with the
+     * pinned registry context. Cursor, equipment and ender sources are separate
+     * envelopes and are never merged into container stock.
+     */
+    private static JsonObject envelopeFor(
+            Stash.Box box, PhysicalSlots.Snapshot snapshot, String dimension, ContainerIdentity identity) {
+        SnapshotEnvelope.SourceKind kind =
+                SnapshotEnvelope.kindForBlock(box.observationBlock, box.parts.size());
+        Map<String, String> meta = new LinkedHashMap<>();
+        if (kind == SnapshotEnvelope.SourceKind.CHEST_DOUBLE) {
+            var state = mc.level.getBlockState(box.pos);
+            meta.put(
+                    "facing",
+                    state.getValue(net.minecraft.world.level.block.ChestBlock.FACING)
+                            .name()
+                            .toLowerCase(java.util.Locale.ROOT));
+            meta.put(
+                    "type",
+                    state.getValue(net.minecraft.world.level.block.ChestBlock.TYPE)
+                            .name()
+                            .toLowerCase(java.util.Locale.ROOT));
+            var parts = identity.parts();
+            meta.put("posA", xyz(parts.get(0)));
+            meta.put("posB", xyz(parts.get(1)));
+        }
+        var provenance = new SnapshotEnvelope.Provenance(
+                Stash.currentServer(),
+                dimension,
+                box.observationSession,
+                box.observationSequence,
+                box.observationAt,
+                SnbtCodec.MINECRAFT_DATA);
+        return SlotRuntime.envelope(kind, snapshot, meta, provenance).toJson();
+    }
+
+    private static String xyz(ContainerIdentity.Position pos) {
+        return pos.x() + "," + pos.y() + "," + pos.z();
     }
 
     public static void invalidate(net.minecraft.core.BlockPos position) {

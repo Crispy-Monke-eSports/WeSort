@@ -3,6 +3,7 @@ package com.porter.wesort.compat;
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 import com.porter.wesort.data.PhysicalSlots;
+import com.porter.wesort.data.SnapshotEnvelope;
 import com.porter.wesort.snbt.SnbtCodec;
 import com.porter.wesort.stash.StashIndex;
 import java.util.*;
@@ -18,6 +19,21 @@ public final class SlotRuntime {
 
     public static PhysicalSlots.Snapshot snapshot(ItemStack[] contents) {
         return new PhysicalSlots.Snapshot(contents.length, slots(Arrays.asList(contents), 0));
+    }
+
+    /**
+     * Capture-side envelope path (#227): the only way to wrap an observed
+     * snapshot for the wire. Delegates to
+     * {@link SnapshotEnvelope#fromPhysicalSnapshot} so every captured slot
+     * resolves to an exact variant (fail-closed {@code ExactVariantId}), never
+     * a bare-id fallback.
+     */
+    public static SnapshotEnvelope envelope(
+            SnapshotEnvelope.SourceKind kind,
+            PhysicalSlots.Snapshot snapshot,
+            java.util.Map<String, String> storageMeta,
+            SnapshotEnvelope.Provenance provenance) {
+        return SnapshotEnvelope.fromPhysicalSnapshot(kind, snapshot, storageMeta, provenance);
     }
 
     private static List<PhysicalSlots.Slot> slots(List<ItemStack> stacks, int depth) {

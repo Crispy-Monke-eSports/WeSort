@@ -628,8 +628,17 @@ public final class IndexStore {
      * serializes, and derives the fields the server needs. index must already pass {@link #validate}.
      * The disk bytes are the index as the bot sent it; the served bytes also have the creative-tab fallback
      * filled in (PROTOCOL.md, "creative tabs for bots that don't send them"), so a newer table fixes stored indexes.
+     * The dual-carry envelope (#227) is wire-only and never reaches the
+     * disk or served bytes: it is stripped here, after the physical
+     * observation was accepted. v3 `snbt` behavior is frozen and keeps
+     * flowing through as before.
      */
     private static Built prepare(JsonObject index, long receivedAt, CreativeTabs tabs) {
+        if (index.has("physicalSources") && index.get("physicalSources").isJsonArray()) {
+            for (JsonElement e : index.getAsJsonArray("physicalSources")) {
+                if (e.isJsonObject()) e.getAsJsonObject().remove("envelope");
+            }
+        }
         JsonArray items = index.getAsJsonArray("items");
         Map<String, JsonObject> byKey = new LinkedHashMap<>();
         Map<String, Long> counts = new HashMap<>();

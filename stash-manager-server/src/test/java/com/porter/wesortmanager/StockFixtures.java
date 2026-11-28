@@ -2,6 +2,9 @@ package com.porter.wesortmanager;
 
 import com.google.gson.*;
 import com.porter.wesort.data.ContainerIdentity;
+import com.porter.wesort.data.PhysicalSlots;
+import com.porter.wesort.data.SnapshotEnvelope;
+import com.porter.wesort.snbt.SnbtCodec;
 import java.util.*;
 
 /** Synthetic protocol witnesses for auth/order unit tests; not evidence of physical Minecraft operations. */
@@ -36,6 +39,37 @@ final class StockFixtures {
         sources.add(source);
         copy.add("physicalSources", sources);
         copy.addProperty("physicalVersion", 1);
+        return copy;
+    }
+
+    /**
+     * Dual-carry v4 observation (#227): every v1 field plus a canonical
+     * {@code snbt} snapshot and its agreeing {@code envelope}. The
+     * {@link #physical} default above stays v1 untouched.
+     */
+    static JsonObject physicalV4(
+            JsonObject index,
+            String epoch,
+            long base,
+            long sequence,
+            int x,
+            PhysicalSlots.Snapshot frame,
+            SnapshotEnvelope.SourceKind kind) {
+        JsonObject copy = physical(index, epoch, base, sequence, x);
+        copy.addProperty("physicalVersion", 4);
+        var source = copy.getAsJsonArray("physicalSources").get(0).getAsJsonObject();
+        source.addProperty("fingerprint", frame.fingerprint());
+        source.addProperty("snbt", frame.snbt());
+        var provenance = new SnapshotEnvelope.Provenance(
+                copy.get("server").getAsString(),
+                source.get("dimension").getAsString(),
+                source.get("session").getAsString(),
+                StockLedger.number(source, "sequence"),
+                StockLedger.number(source, "observedAt"),
+                SnbtCodec.MINECRAFT_DATA);
+        source.add(
+                "envelope",
+                SnapshotEnvelope.fromPhysicalSnapshot(kind, frame, Map.of(), provenance).toJson());
         return copy;
     }
 

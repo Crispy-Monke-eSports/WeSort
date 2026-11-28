@@ -5,6 +5,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.porter.wesort.data.ContainerIdentity;
 import com.porter.wesort.data.PhysicalSlots;
+import com.porter.wesort.data.SnapshotEnvelope;
+import com.porter.wesort.snbt.SnbtCodec;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -50,9 +52,9 @@ final class ObservationService {
     static List<JsonObject> validate(JsonObject index) {
         if (!index.has("physicalSources")) return List.of();
         long version = StockLedger.number(index, "physicalVersion");
-        if (version != 1 && version != 3)
+        if (version != 1 && version != 3 && version != 4)
             throw new IllegalArgumentException("Unsupported physical observation version");
-        if (version == 3 && index.has("slotVariants"))
+        if ((version == 3 || version == 4) && index.has("slotVariants"))
             throw new IllegalArgumentException("SNBT observations cannot contain a variant dictionary");
         String server = index.get("server").getAsString();
         var values = index.getAsJsonArray("physicalSources");
@@ -116,7 +118,7 @@ final class ObservationService {
                         throw new IllegalArgumentException("Invalid or duplicate physical quantity");
                 }
             }
-            if (version == 3) {
+            if (version == 3 || version == 4) {
                 if (source.has("slots") || !source.has("snbt"))
                     throw new IllegalArgumentException("Expected SNBT-only physical observation");
                 if (!state.equals("FRESH") && !source.get("snbt").isJsonNull())
@@ -126,7 +128,16 @@ final class ObservationService {
                                 || !source.get("snbt").getAsJsonPrimitive().isString()))
                     throw new IllegalArgumentException("Fresh source requires canonical SNBT");
             }
-            if (version == 3 && state.equals("FRESH")) {
+            if (version == 4) {
+                if (!source.has("envelope"))
+                    throw new IllegalArgumentException("Expected dual-carry envelope on physical version 4");
+                boolean envelopeNull = source.get("envelope").isJsonNull();
+                if (state.equals("FRESH") && envelopeNull)
+                    throw new IllegalArgumentException("Fresh source requires a dual-carry envelope");
+                if (!state.equals("FRESH") && !envelopeNull)
+                    throw new IllegalArgumentException("Unverified source cannot publish a new envelope");
+            }
+            if ((version == 3 || version == 4) && state.equals("FRESH")) {
                 var snapshot =
                         PhysicalSlots.Snapshot.fromSnbt(source.get("snbt").getAsString());
                 if (snapshot.size() != StockLedger.number(source, "size"))
@@ -139,12 +150,72 @@ final class ObservationService {
                 var view = snapshot.json();
                 view.addProperty("snbt", snapshot.snbt());
                 source.add("slotSnapshot", view);
+                if (version == 4) validateEnvelope(source, server, parts, snapshot);
             }
             source.remove("slots");
             source.remove("snbt");
+            source.remove("envelope");
             result.add(source);
         }
         return result;
+    }
+
+    /**
+     * Dual-carry cross-check (#227): the v4 envelope must describe exactly the
+     * same observation as the v3 SNBT fields it travels with. Every mismatch
+     * fails closed before anything is persisted. The envelope is wire-only and
+     * is stripped by the caller like {@code slots} and {@code snbt}.
+     */
+    private static void validateEnvelope(
+            JsonObject source, String server, List<ContainerIdentity.Position> parts, PhysicalSlots.Snapshot snapshot) {
+        SnapshotEnvelope envelope;
+        try {
+            envelope = SnapshotEnvelope.fromJson(source.getAsJsonObject("envelope"));
+        } catch (IllegalArgumentException invalid) {
+            throw new IllegalArgumentException("Invalid dual-carry envelope: " + invalid.getMessage(), invalid);
+        }
+        String dimension = source.get("dimension").getAsString();
+        String blockKind = source.get("kind").getAsString();
+        SnapshotEnvelope.SourceKind expectedKind;
+        try {
+            expectedKind = SnapshotEnvelope.kindForBlock(blockKind, parts.size());
+        } catch (IllegalArgumentException invalid) {
+            throw new IllegalArgumentException("Source kind does not match envelope kind", invalid);
+        }
+        if (!envelope.kind().equals(expectedKind))
+            throw new IllegalArgumentException("Source kind does not match envelope kind");
+        if (envelope.capacity() != snapshot.size()
+                || envelope.capacity() != StockLedger.number(source, "size"))
+            throw new IllegalArgumentException("Envelope capacity does not match physical source");
+        if (envelope.kind() == SnapshotEnvelope.SourceKind.CHEST_DOUBLE) {
+            Set<String> observed = new HashSet<>();
+            for (ContainerIdentity.Position part : parts) observed.add(part.x() + "," + part.y() + "," + part.z());
+            Set<String> declared = Set.of(
+                    envelope.storageMeta().getOrDefault("posA", ""), envelope.storageMeta().getOrDefault("posB", ""));
+            if (!observed.equals(declared))
+                throw new IllegalArgumentException(
+                        "Double-chest envelope positions do not match observed parts");
+        }
+        SnapshotEnvelope.Provenance provenance = envelope.provenance();
+        if (!provenance.server().equals(server) || !provenance.dimension().equals(dimension))
+            throw new IllegalArgumentException("Envelope provenance does not match observed source");
+        if (!provenance.session().equals(source.get("session").getAsString())
+                || provenance.sequence() != StockLedger.number(source, "sequence")
+                || provenance.observedAtMs() != StockLedger.number(source, "observedAt"))
+            throw new IllegalArgumentException("Envelope provenance does not match observation proof");
+        if (!provenance.registryContext().equals(SnbtCodec.MINECRAFT_DATA))
+            throw new IllegalArgumentException(
+                    "Unsupported envelope registry context: " + provenance.registryContext());
+        // SlotEntry construction above already rejected air entries, out-of-range
+        // counts and non-canonical item bytes; the digest was recomputed there.
+        // Rebuild the envelope from the SNBT authority: slot set, counts, item
+        // bytes, digests and totals must agree exactly.
+        SnapshotEnvelope expected = SnapshotEnvelope.fromPhysicalSnapshot(
+                envelope.kind(), snapshot, envelope.storageMeta(), envelope.provenance());
+        if (!expected.canonicalSlotsSnbt().equals(envelope.canonicalSlotsSnbt())
+                || !expected.snapshotDigest().equals(envelope.snapshotDigest())
+                || !expected.derivedTotals().equals(envelope.derivedTotals()))
+            throw new IllegalArgumentException("Envelope does not match SNBT snapshot");
     }
 
     private static Map<String, Long> amounts(JsonArray rows) {
@@ -377,6 +448,13 @@ final class ObservationService {
                 p.setString(2, stash);
                 var projection = index.deepCopy();
                 projection.addProperty("server", server);
+                // Wire-only dual-carry envelopes never reach stored reads; the
+                // SNBT authority in stock_sources stays the persisted content.
+                if (projection.has("physicalSources") && projection.get("physicalSources").isJsonArray()) {
+                    for (var value : projection.getAsJsonArray("physicalSources")) {
+                        if (value.isJsonObject()) value.getAsJsonObject().remove("envelope");
+                    }
+                }
                 p.setString(3, projection.toString());
                 p.setLong(4, next);
                 p.executeUpdate();

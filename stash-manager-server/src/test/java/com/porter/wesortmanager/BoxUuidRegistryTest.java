@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.google.gson.*;
 import com.porter.wesort.data.ContainerIdentity;
 import com.porter.wesort.data.PhysicalSlots;
+import com.porter.wesort.data.SnapshotEnvelope;
 import java.nio.file.Path;
 import java.util.*;
 import org.junit.jupiter.api.Test;
@@ -119,6 +120,42 @@ class BoxUuidRegistryTest {
                 identities.get(0).getAsJsonObject().get("identityStatus").getAsString());
         assertEquals(V4, identities.get(0).getAsJsonObject().get("boxUUID").getAsString());
         assertTrue(identities.get(0).getAsJsonObject().get("hasUUID").getAsBoolean());
+    }
+
+    @Test
+    void v4DualCarryObservationRegistersBoxUuid() throws Exception {
+        var ledger = new StockLedger(data);
+        var index = indexes(ledger, new String[] {"WeSort-" + V4}, new int[] {0});
+        index.addProperty("physicalVersion", 4);
+        for (var value : index.getAsJsonArray("physicalSources")) {
+            var src = value.getAsJsonObject();
+            var snapshot = PhysicalSlots.Snapshot.fromSnbt(src.get("snbt").getAsString());
+            var provenance = new SnapshotEnvelope.Provenance(
+                    "s",
+                    src.get("dimension").getAsString(),
+                    src.get("session").getAsString(),
+                    src.get("sequence").getAsLong(),
+                    src.get("observedAt").getAsLong(),
+                    "26.3");
+            src.add(
+                    "envelope",
+                    SnapshotEnvelope.fromPhysicalSnapshot(
+                                    SnapshotEnvelope.SourceKind.BARREL, snapshot, Map.of(), provenance)
+                            .toJson());
+        }
+        ledger.accept(index);
+        String id = sourceId(index);
+        assertEquals(1, ledger.revision());
+        assertEquals(1, ledger.boxUuids().size());
+        var row = ledger.boxUuids().get(0).getAsJsonObject();
+        assertEquals(V4, row.get("uuid").getAsString());
+        assertEquals("IN_STOCK", row.get("status").getAsString());
+        assertEquals(id, row.get("source").getAsString());
+        var identities = ledger.boxIdentities(id);
+        assertEquals(1, identities.size());
+        assertEquals(
+                "REGISTERED",
+                identities.get(0).getAsJsonObject().get("identityStatus").getAsString());
     }
 
     @Test

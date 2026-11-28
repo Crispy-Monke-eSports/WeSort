@@ -73,10 +73,17 @@ jobb till `NEEDS_RECONCILIATION`; det tilldelas aldrig om automatiskt.
 
 ## Gränser och återstår
 
-Identitetslagret och det Manager-auktoriserade box-jobbet är klara. Återstår
-den agent-sidiga utförandekedjan (claim → hämta box → anvil-omdöpning via
-`StashSorter.Job.Name` → återinventera → `renamed`/`complete`) som en
-verifierad fysisk operation under W-061:s guard, webb-UI för att starta/
-pausa/avstämma registrering, samt verklig 26.3-E2E med 1–5 agenter.
+Identitetslagret, det Manager-auktoriserade box-jobbet och den verifierade
+export-strip-motsvarigheten på Manager-sidan är klara. **Avgränsning: den
+agent-sidiga utförandekedjan (claim → hämta box → fysisk anvil-omdöpning/
+namn-strip → återinventera → `renamed`/`complete`) ligger uttryckligen
+utanför detta scope och implementeras inte här** — Manager-sidan verifierar
+enbart mot färska serverobservationer (registrering kräver att det utfärdade
+UUID:t återobserveras på exakt source/path; export-strip kräver en färsk
+observation som visar att namnet är borta) och skriver register, identitets-
+ankare, historik och audit i en transaktion. Kvarstår: själva agent-
+utförandet som en verifierad fysisk operation under W-061:s guard, webb-UI
+för att starta/pausa/avstämma registrering, samt verklig 26.3-E2E med 1–5
+agenter.
 `PICKUP_READY` är en verifierad staging-status, aldrig kundens slutliga
 `DELIVERED`.

@@ -4,10 +4,13 @@ Auktoritativt lagringskontrakt för WeSort-inventarier. Status: **capture-side
 landat** (codec + identitetstyper + snapshot-kuvert i `common`),
 **SQLite-persistens landat** (#228: `snbt_snapshots` +
 `slot_projection ⨝ variant_register` som enda läsvåg, legacy som skrivskyddad
-evidens) och **journaler/custody landat** (#229: custody/deposits/handoffs/jobs
-i SQLite, same-tx med ordrar + audit). Transport (#227) landar som
-`physicalVersion:4` dual-carry med korskontroll; CI/E2E-grind (#230) återstår
-i senare led.
+evidens), **journaler/custody/mallar/recovery/UUID-livscykel landat** (#229:
+custody/deposits/handoffs/jobs i SQLite + same-tx; kit-mallar i SQLite med
+revisions- och fingerprint-pin; single-tx loss-tombstones + materialiserad
+7-dagars MISSING-eskalering; UUID-livscykel med v4-mint-grind,
+registrerings-/export-ankare och verifierad export-strip) och transport
+(#227) landar som `physicalVersion:4` dual-carry med korskontroll; CI/E2E-grind
+(#230) återstår i senare led.
 
 ## Version
 
@@ -123,5 +126,10 @@ observedAt/registryContext).
    oförändrade v3-fält + `SnapshotEnvelope`-kuvert med korskontroll).
 2. ~~#228: SQLite SNBT-kolumner + härledda projektioner (rebuildbara vyer).~~ Landat i PR3.
 3. ~~#229: journaler/custody/mallar/recovery + UUID-livscykel på SNBT-bevis.~~ Landat i PR3
-   (custody/deposits/handoffs/jobs i SQLite + same-tx; mallar/recovery/UUID-livscykel följer).
+   (custody/deposits/handoffs/jobs i SQLite + same-tx) och PR5 (kit-mallar i
+   `kit_templates`/`kit_template_versions` med revision + fingerprint-pin;
+   single-tx accept-loss/WITHDRAWN-tombstones + materialiserad 7-dagars
+   MISSING→WITHDRAWN-eskalering; UUID-livscykel: v4-mint-grind,
+   `shulker_identity` som registrerings-/export-ankare, verifierad
+   export-strip; läs-vyn MISSING→WITHDRAWN kvar som backstop).
 4. #230: CI + Minecraft-E2E på ren data (blockerande grind).

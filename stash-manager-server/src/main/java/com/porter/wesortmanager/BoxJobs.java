@@ -72,6 +72,13 @@ final class BoxJobs {
         if (ShulkerUuid.boxUuid(slot.get("components").getAsString()) != null)
             throw new IllegalArgumentException("The selected box already carries a WeSort UUID");
         UUID uuid = UUID.randomUUID();
+        // Fail closed on the mint itself: only canonical v4 may enter the registry,
+        // and the anvil label must round-trip exactly (ShulkerUuid.label/parse agree).
+        if (uuid.version() != 4 || uuid.variant() != 2)
+            throw new IOException("Minted box UUID is not a canonical v4");
+        String label = ShulkerUuid.label(uuid);
+        if (!uuid.equals(ShulkerUuid.parse(label)))
+            throw new IOException("Minted box label does not round-trip to its UUID");
         var job = new JsonObject();
         job.addProperty("id", UUID.randomUUID().toString());
         job.addProperty("server", server);
@@ -80,7 +87,7 @@ final class BoxJobs {
         job.addProperty("source", source);
         job.addProperty("path", path);
         job.addProperty("uuid", uuid.toString());
-        job.addProperty("name", ShulkerUuid.label(uuid));
+        job.addProperty("name", label);
         job.addProperty("createdBy", actor);
         job.addProperty("createdAt", clock.millis());
         job.addProperty(

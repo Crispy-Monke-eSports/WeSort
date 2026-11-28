@@ -2,6 +2,7 @@ package com.porter.wesortmanager;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.porter.wesort.data.ShulkerUuid;
 import java.io.IOException;
 import java.sql.Connection;
@@ -9,6 +10,7 @@ import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -85,6 +87,9 @@ final class BoxUuidRegistry {
                         insert.setLong(8, revision);
                         insert.executeUpdate();
                     }
+                    // Adopted: shulker_identity anchors the registration proof
+                    // (the verified slot proof that first registered this UUID).
+                    noteRegistration(c, uuid, source, at.path(), at.fingerprint(), revision);
                     continue;
                 }
                 if (where[0].equals(source) && where[1].equals(at.path())) {
@@ -96,6 +101,7 @@ final class BoxUuidRegistry {
                         refresh.setString(4, uuid);
                         refresh.executeUpdate();
                     }
+                    noteRegistration(c, uuid, source, at.path(), at.fingerprint(), revision);
                     continue;
                 }
                 // Registered elsewhere: a box that moved chests follows its UUID, but one seen in two
@@ -114,6 +120,8 @@ final class BoxUuidRegistry {
                         move.setString(6, uuid);
                         move.executeUpdate();
                     }
+                    // An internally moved box keeps its identity; the proof follows the box.
+                    noteRegistration(c, uuid, source, at.path(), at.fingerprint(), revision);
                 }
             }
         }
@@ -156,8 +164,29 @@ final class BoxUuidRegistry {
             }
         }
     }
-    /** Appends the active UUID row to history and removes it, inside the caller's transaction. */
-    private static void deregisterInTx(
+    /**
+     * Adopted export-receipt anchor: shulker_identity keeps the registration
+     * proof (the verified slot proof that registered this UUID) and, once an
+     * export is verified, the export receipt. The row is an anchor, not a
+     * lifecycle mirror: other deregistrations leave it untouched.
+     */
+    private static void noteRegistration(
+            Connection c, String uuid, String source, String path, String fingerprint, long revision)
+            throws SQLException {
+        String proof = "slot-proof:" + source + ":" + path + ":" + fingerprint + ":rev" + revision;
+        try (var p = c.prepareStatement(
+                "INSERT INTO shulker_identity(uuid,status,source,slot_path,current_snapshot_ref,current_revision,registration_proof,export_receipt) VALUES(?,'IN_STOCK',?,?,NULL,?,?,NULL)"
+                        + " ON CONFLICT(uuid) DO UPDATE SET status='IN_STOCK',source=excluded.source,slot_path=excluded.slot_path,current_revision=excluded.current_revision,registration_proof=excluded.registration_proof,export_receipt=NULL")) {
+            p.setString(1, uuid);
+            p.setString(2, source);
+            p.setString(3, path);
+            p.setLong(4, revision);
+            p.setString(5, proof);
+            p.executeUpdate();
+        }
+    }
+
+    /** Appends the active UUID row to history and removes it, inside the caller's transaction. */    private static void deregisterInTx(
             Connection c,
             String server,
             String uuid,
@@ -336,6 +365,123 @@ final class BoxUuidRegistry {
                 }
             }
         }
+    }
+
+    /**
+     * Verified export-strip: the physical name-strip is confirmed by a fresh
+     * observation, then the registry mutation, the identity export receipt
+     * and the audit entries commit in the caller's transaction.
+     *
+     * <p>Fail-closed gates, all read inside the same transaction: the source
+     * must hold a fresh observation (state FRESH within the observation TTL),
+     * and the projected slot at {@code (source, path)} must no longer carry
+     * this UUID (name stripped, slot emptied, or box moved away). When the
+     * row is still registered at that slot it is deregistered here with
+     * reason {@code EXPORT_STRIPPED}; when the strip observation already
+     * swept it (the usual case — the accept sweep owns that deregistration
+     * in the observation's own transaction) the {@code VANISHED} history row
+     * at the same slot anchors the receipt instead. Anything else — a still
+     * applied name, a stale observation, an unknown UUID, or a second export
+     * of the same box — fails without writing.
+     */
+    void exportStrip(
+            Connection c,
+            String server,
+            String source,
+            String path,
+            String uuid,
+            long revision,
+            long now,
+            String actorId,
+            String actorName,
+            String address,
+            List<AuditLog.Entry> audit)
+            throws SQLException, IOException {
+        long verifiedAt;
+        try (var p = c.prepareStatement("SELECT payload,verified_at FROM stock_sources WHERE id=?")) {
+            p.setString(1, source);
+            try (var rows = p.executeQuery()) {
+                if (!rows.next()) throw new IOException("Unknown physical source");
+                var payload = JsonParser.parseString(rows.getString(1)).getAsJsonObject();
+                verifiedAt = rows.getLong(2);
+                if (!payload.has("state") || !payload.get("state").getAsString().equals("FRESH"))
+                    throw new IOException("Export requires a fresh observation of the source");
+            }
+        }
+        if (now - verifiedAt > ledger.maxAge)
+            throw new IOException("Export requires a fresh observation of the source");
+        String observedName = null;
+        boolean slotSeen = false;
+        try (var p = c.prepareStatement("""
+                SELECT v.canonical_variant_snbt FROM slot_projection p
+                JOIN variant_register v ON v.variant_id=p.variant_id
+                WHERE p.source_id=? AND p.logical_path=? AND p.present=1""")) {
+            p.setString(1, source);
+            p.setString(2, path);
+            try (var rows = p.executeQuery()) {
+                if (rows.next()) {
+                    slotSeen = true;
+                    try {
+                        observedName = ShulkerUuid.customName(SnbtStore.variantComponents(rows.getString(1)));
+                    } catch (RuntimeException invalid) {
+                        throw new IOException("Invalid registered variant descriptor", invalid);
+                    }
+                }
+            }
+        }
+        UUID still = observedName == null ? null : ShulkerUuid.parse(observedName);
+        if (still != null && still.toString().equals(uuid))
+            throw new IOException("Export box name is still applied; re-read after stripping");
+        String status = null;
+        try (var p = c.prepareStatement("SELECT server,source,path,status FROM box_uuids WHERE uuid=?")) {
+            p.setString(1, uuid);
+            try (var rows = p.executeQuery()) {
+                if (rows.next()) {
+                    if (!server.equals(rows.getString(1))
+                            || !source.equals(rows.getString(2))
+                            || !path.equals(rows.getString(3)))
+                        throw new StockLedger.BoxReleaseConflict();
+                    status = rows.getString(4);
+                }
+            }
+        }
+        if (status != null) {
+            deregisterInTx(c, server, uuid, status, source, path, "EXPORT_STRIPPED", revision, now);
+        } else {
+            // The strip observation already swept the row in its own accept
+            // transaction; the VANISHED history row at the same slot is the
+            // anchor. Anything else means this export was never registered
+            // here (or was already exported: export_receipt is set).
+            try (var p = c.prepareStatement(
+                    "SELECT reason FROM box_uuid_history WHERE uuid=? AND source=? AND path=? ORDER BY recorded_at DESC LIMIT 1")) {
+                p.setString(1, uuid);
+                p.setString(2, source);
+                p.setString(3, path);
+                try (var rows = p.executeQuery()) {
+                    if (!rows.next() || !rows.getString(1).equals("VANISHED"))
+                        throw new StockLedger.BoxReleaseConflict();
+                }
+            }
+            try (var p = c.prepareStatement("SELECT export_receipt FROM shulker_identity WHERE uuid=?")) {
+                p.setString(1, uuid);
+                try (var rows = p.executeQuery()) {
+                    if (rows.next() && rows.getString(1) != null)
+                        throw new StockLedger.BoxReleaseConflict();
+                }
+            }
+        }
+        String receipt = "export:" + source + ":" + path + ":rev" + revision;
+        try (var p = c.prepareStatement(
+                "INSERT INTO shulker_identity(uuid,status,source,slot_path,current_snapshot_ref,current_revision,registration_proof,export_receipt) VALUES(?,'EXPORT_STRIPPED',?,?,NULL,?,'',?)"
+                        + " ON CONFLICT(uuid) DO UPDATE SET status='EXPORT_STRIPPED',source=excluded.source,slot_path=excluded.slot_path,current_revision=excluded.current_revision,export_receipt=excluded.export_receipt")) {
+            p.setString(1, uuid);
+            p.setString(2, source);
+            p.setString(3, path);
+            p.setLong(4, revision);
+            p.setString(5, receipt);
+            p.executeUpdate();
+        }
+        audit.add(new AuditLog.Entry(actorId, actorName, "box.export-stripped", uuid + " " + source + "/" + path, address, now));
     }
 
     JsonArray boxUuids() throws IOException {

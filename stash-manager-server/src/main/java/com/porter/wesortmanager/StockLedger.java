@@ -775,6 +775,31 @@ final class StockLedger {
         return boxRegistry.boxUuids();
     }
 
+    /**
+     * Verified export-strip in one transaction: the fresh-observation gate,
+     * the deregistration (or history-anchored receipt), the identity receipt
+     * and the audit entry commit or roll back together.
+     */
+    synchronized void exportStripped(
+            String server, String source, String path, String uuid, String actorId, String actorName, String address)
+            throws IOException {
+        try (var c = open();
+                var tx = new SqliteWriteTransaction(c)) {
+            long now = clock.millis();
+            long next = Math.addExact(revision(c), 1);
+            var audit = new ArrayList<AuditLog.Entry>();
+            boxRegistry.exportStrip(c, server, source, path, uuid, next, now, actorId, actorName, address, audit);
+            AuditLog.addAll(c, audit);
+            try (var p = c.prepareStatement("UPDATE stock_meta SET revision=? WHERE id=1")) {
+                p.setLong(1, next);
+                p.executeUpdate();
+            }
+            tx.commit();
+        } catch (SQLException e) {
+            throw new IOException("Cannot record verified export strip", e);
+        }
+    }
+
     synchronized JsonArray boxUuidHistory() throws IOException {
         return boxRegistry.boxUuidHistory();
     }

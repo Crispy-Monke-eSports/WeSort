@@ -297,7 +297,7 @@ public final class SnapshotEnvelope {
                 json, Set.of("wireVersion", "kind", "capacity", "slots", "storageMeta", "provenance", "snapshotDigest"));
         if (!json.get("wireVersion").isJsonPrimitive()
                 || !json.getAsJsonPrimitive("wireVersion").isNumber()
-                || json.getAsJsonPrimitive("wireVersion").getAsInt() != WIRE_VERSION)
+                || !isWireVersion(json.getAsJsonPrimitive("wireVersion")))
             throw new IllegalArgumentException("unsupported envelope wire version");
         SourceKind kind;
         String kindName = stringField(json, "kind");
@@ -387,6 +387,14 @@ public final class SnapshotEnvelope {
         if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString())
             throw new IllegalArgumentException("envelope field '" + field + "' must be a string");
         return value.getAsString();
+    }
+
+    private static boolean isWireVersion(com.google.gson.JsonPrimitive value) {
+        try {
+            return value.getAsBigDecimal().intValueExact() == WIRE_VERSION;
+        } catch (ArithmeticException e) {
+            return false;
+        }
     }
 
     private static int intField(JsonObject json, String field) {

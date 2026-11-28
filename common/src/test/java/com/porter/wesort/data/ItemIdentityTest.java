@@ -197,6 +197,13 @@ class ItemIdentityTest {
         var forged = env.toJson();
         forged.addProperty("snapshotDigest", "0".repeat(64));
         assertThrows(IllegalArgumentException.class, () -> SnapshotEnvelope.fromJson(forged.toString()));
+        // A fractional wire version must fail closed, never truncate to 1.
+        var fractional = env.toJson();
+        fractional.addProperty("wireVersion", 1.5);
+        assertThrows(IllegalArgumentException.class, () -> SnapshotEnvelope.fromJson(fractional.toString()));
+        var wrongVersion = env.toJson();
+        wrongVersion.addProperty("wireVersion", 2);
+        assertThrows(IllegalArgumentException.class, () -> SnapshotEnvelope.fromJson(wrongVersion.toString()));
     }
 
     @Test

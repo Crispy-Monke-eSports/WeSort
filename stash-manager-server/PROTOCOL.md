@@ -89,13 +89,37 @@ senare roadmapsteg. Det finns ingen Qwerte-datamigrering.
 
 ## W-018 physical stock observations
 
-The signed index endpoint accepts optional `physicalVersion:1` and
+The signed index endpoint accepts optional `physicalVersion` and
 `physicalSources`. See [physical observation semantics](../docs/MC_26_3_STOCK.md).
 Each source supplies canonical id/dimension/parts, block kind, state, size,
 items/shulkers, session/sequence, packet observedAt, full fingerprint and
 epoch/baseRevision. A successful physical index returns stockEpoch/stockRevision.
 A causal conflict returns signed HTTP 409 with the current epoch/revision; reread
 physical containers before retrying. Cached witness retries cannot renew age.
+
+Wire versions (`physicalVersion`); anything else is rejected fail-closed with
+`Unsupported physical observation version`, commits nothing and refreshes no
+freshness:
+
+| physicalVersion | wire content | authority |
+| --------------- | ------------ | --------- |
+| 1 | aggregate `items`/`shulkers` only | accepted but not authoritative; cannot prove orderable stock |
+| 3 | v1 aggregates + canonical `snbt` + `fingerprint` (SNBT-only, no `slots`/`slotVariants`) | authoritative SNBT path |
+| 4 | every v3 field unchanged + `envelope` object per FRESH source (`SnapshotEnvelope` JSON, `wireVersion: 1`); `envelope: null` exactly when `snbt: null` | authoritative only when the envelope and the SNBT snapshot fully agree (dual-carry cross-check); disagreement is rejected |
+
+The envelope carries `kind`, `capacity`, `slots` (`{slot, itemSnbt, count}` with
+canonical-only item SNBT), `storageMeta`, `provenance`
+(`server`/`dimension`/`session`/`sequence`/`observedAt`/`registryContext`) and
+`snapshotDigest`. Canonical form is pinned to `wesort-snbt:1`
+(`SnbtCodec.CONTRACT_VERSION`) against Minecraft `26.3`
+(`SnbtCodec.MINECRAFT_DATA`); unknown envelope wire versions, unknown fields,
+duplicate keys, non-canonical item bytes, air entries, out-of-range counts and
+digest mismatches are all rejected before any revision, fingerprint or balance
+is touched.
+
+Frozen for #227: `/api/v1/*` browser response shapes, `stockEpoch`/`stockRevision`
+plus the signed-409 conflict shape, `IndexStore.validate` aggregate rules, and
+`WRITE_LEGACY_SLOT_PAYLOADS=false` (legacy slot payloads stay read-only evidence).
 
 Authenticated VIEW `GET /api/v1/stock` returns permission-filtered guild item
 balances (observed, reserved, available, unknown), sources and freshness policy.

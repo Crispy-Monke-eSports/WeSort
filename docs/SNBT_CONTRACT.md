@@ -1,18 +1,39 @@
-# SNBT-kontrakt v1 (PR2: #224, PR3: #228/#229)
+# SNBT-kontrakt v1 (PR2: #224, PR3: #228/#229, #227 pågår)
 
 Auktoritativt lagringskontrakt för WeSort-inventarier. Status: **capture-side
 landat** (codec + identitetstyper + snapshot-kuvert i `common`),
 **SQLite-persistens landat** (#228: `snbt_snapshots` +
 `slot_projection ⨝ variant_register` som enda läsvåg, legacy som skrivskyddad
 evidens) och **journaler/custody landat** (#229: custody/deposits/handoffs/jobs
-i SQLite, same-tx med ordrar + audit). Transport (#227) och CI/E2E-grind
-(#230) återstår i senare led.
+i SQLite, same-tx med ordrar + audit). Transport (#227) landar som
+`physicalVersion:4` dual-carry med korskontroll; CI/E2E-grind (#230) återstår
+i senare led.
 
 ## Version
 
-- `wesort-snbt:1` (`SnbtCodec.CONTRACT_VERSION`), pinnad mot Minecraft `26.3`.
+- `wesort-snbt:1` (`SnbtCodec.CONTRACT_VERSION`), pinnad mot Minecraft `26.3`
+  (`SnbtCodec.MINECRAFT_DATA`).
 - Bump vid varje kanoniseringsändring. Gamla writers accepteras aldrig som nya
   writes; okänd version = fail-closed + fresh observation.
+
+## Wire-versioner (#227)
+
+| `physicalVersion` | innehåll | auktoritet |
+| ----------------- | -------- | ---------- |
+| 1 | aggregerade `items`/`shulkers` | accepteras men aldrig auktoritativ |
+| 3 | v1-aggregat + kanonisk `snbt` + `fingerprint` | auktoritativ SNBT-väg |
+| 4 | alla v3-fält oförändrade + `envelope` per FRESH-källa (`SnapshotEnvelope`, `WIRE_VERSION=1`); `envelope: null` exakt när `snbt: null` | auktoritativ endast vid full kuvert↔SNBT-överensstämmelse |
+
+Allt annat (0, 2, 5, …) avvisas med `Unsupported physical observation
+version` utan partiella writes. Kuvertet accepteras endast kanoniskt:
+okända fält, dubblettnycklar, icke-kanonisk item-SNBT, `air`-entries,
+count utanför 1..99 och digest-miss avvisas före persistens. `slotVariants`
+på v4 avvisas (SNBT är enda auktoriteten). Kuvertet strippas före persistens
+och syns aldrig i lagrade index eller webbläsarläsningar.
+
+Fruset för #227: `/api/v1/*`-webbläsarformer, `stockEpoch`/`stockRevision` +
+signerad 409-konfliktform, `IndexStore.validate`s aggregatregler,
+`WRITE_LEGACY_SLOT_PAYLOADS=false`.
 
 ## Auktoritet
 
@@ -98,7 +119,8 @@ observedAt/registryContext).
 
 ## Nästa steg (PR3-steg 4–7 landade; kvar: transport + E2E-grind)
 
-1. #227: versionerat klient→Manager-protokoll (`physicalVersion:3`, SNBT-kuvert).
+1. #227: versionerat klient→Manager-protokoll (`physicalVersion:4` dual-carry:
+   oförändrade v3-fält + `SnapshotEnvelope`-kuvert med korskontroll).
 2. ~~#228: SQLite SNBT-kolumner + härledda projektioner (rebuildbara vyer).~~ Landat i PR3.
 3. ~~#229: journaler/custody/mallar/recovery + UUID-livscykel på SNBT-bevis.~~ Landat i PR3
    (custody/deposits/handoffs/jobs i SQLite + same-tx; mallar/recovery/UUID-livscykel följer).

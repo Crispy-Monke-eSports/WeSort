@@ -3,6 +3,28 @@
 Steg 3 börjar med versionssatt observation och läsbar osäkerhet. Detta inför
 inte W-024:s fysiska reservationshierarki eller W-040:s cross-stash-allokering.
 
+## Wire-versioner (#227)
+
+| `physicalVersion` | innehåll | auktoritet |
+| ----------------- | -------- | ---------- |
+| 1 | aggregerade `items`/`shulkers` | accepteras men bevisar aldrig orderbart lager |
+| 3 | v1-aggregat + kanonisk `snbt` + `fingerprint` (endast SNBT, inga `slots`/`slotVariants`) | auktoritativ SNBT-väg |
+| 4 | alla v3-fält oförändrade + `envelope`-objekt per FRESH-källa (`SnapshotEnvelope`-JSON, `wireVersion: 1`); `envelope: null` exakt när `snbt: null` | auktoritativ endast när kuvert och SNBT-snapshot stämmer helt överens (dual-carry med korskontroll); oenighet avvisas |
+
+Allt annat (0, 2, 5, …) avvisas fail-closed med `Unsupported physical
+observation version` utan partiella writes: ingen revision, fingerprint eller
+saldo rörs och ingen färskhet förnyas. Kuvertet bär `kind`, `capacity`,
+`slots` (`{slot, itemSnbt, count}` med endast kanonisk item-SNBT),
+`storageMeta`, `provenance`
+(`server`/`dimension`/`session`/`sequence`/`observedAt`/`registryContext`) och
+`snapshotDigest`. Kanonisk form är pin-nad till `wesort-snbt:1`
+(`SnbtCodec.CONTRACT_VERSION`) mot Minecraft `26.3`
+(`SnbtCodec.MINECRAFT_DATA`).
+
+Fruset för #227: `/api/v1/*`-webbläsarformer, `stockEpoch`/`stockRevision` +
+signerad 409-konfliktform, `IndexStore.validate`s aggregatregler och
+`WRITE_LEGACY_SLOT_PAYLOADS=false`.
+
 ## Identitet och bevis
 
 `c:<sha256>` beräknas från en kanonisk JSON-tupel med server, dimension och

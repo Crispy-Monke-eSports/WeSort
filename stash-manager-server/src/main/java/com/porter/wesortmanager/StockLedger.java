@@ -524,6 +524,38 @@ final class StockLedger {
         return observation.acceptLoss(id, by);
     }
 
+    /**
+     * The same with audit entries that commit or roll back in the tombstone
+     * transaction (PR3 custody pattern): the route stages its entry up front,
+     * and a failed tombstone writes no audit trail either.
+     */
+    synchronized boolean acceptLoss(String id, String by, List<AuditLog.Entry> audit) throws IOException {
+        return observation.acceptLoss(id, by, audit);
+    }
+
+    /**
+     * Materialized 7-day MISSING-to-WITHDRAWN escalation in its own
+     * transaction (same-tx, idempotent, audit-logged). The observation path
+     * also runs it inside every accept transaction.
+     */
+    synchronized int sweepWithdrawnEscalations() throws IOException {
+        try (var c = open();
+                var tx = new SqliteWriteTransaction(c)) {
+            long next = Math.addExact(revision(c), 1);
+            int escalated = observation.sweepWithdrawnEscalations(c, next, clock.millis(), Set.of());
+            if (escalated > 0) {
+                try (var p = c.prepareStatement("UPDATE stock_meta SET revision=? WHERE id=1")) {
+                    p.setLong(1, next);
+                    p.executeUpdate();
+                }
+            }
+            tx.commit();
+            return escalated;
+        } catch (SQLException e) {
+            throw new IOException("Cannot escalate withdrawn sources", e);
+        }
+    }
+
     long revision(Connection c) throws SQLException {
         try (var s = c.createStatement();
                 var r = s.executeQuery("SELECT revision FROM stock_meta WHERE id=1")) {

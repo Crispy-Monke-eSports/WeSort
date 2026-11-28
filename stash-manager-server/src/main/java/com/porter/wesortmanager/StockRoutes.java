@@ -149,6 +149,11 @@ final class StockRoutes {
             return;
         }
         var who = Router.user(ex);
+        // The entry is staged up front and joins the tombstone transaction:
+        // a failed loss acceptance writes no audit trail either.
+        var batch = audit.batch();
+        batch.actor(who.id(), who.name(), AuthRoutes.address(ex));
+        batch.say("stock.loss.accepted", id);
         boolean accepted;
         synchronized (index) {
             var ledger = index.stock();
@@ -162,13 +167,12 @@ final class StockRoutes {
                 Http.error(ex, 404, "No such source in this scope");
                 return;
             }
-            accepted = observation.acceptLoss(id, who.id());
+            accepted = observation.acceptLoss(id, who.id(), batch.entries());
         }
         if (!accepted) {
             Http.error(ex, 409, "Only a lost (MISSING/UNREACHABLE) source can be accepted as lost");
             return;
         }
-        audit.add(who, "stock.loss.accepted", id, AuthRoutes.address(ex));
         Http.json(ex, 200, Http.ok());
     }
 

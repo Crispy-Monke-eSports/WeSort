@@ -409,6 +409,11 @@ final class ObservationService {
                 p.setString(2, stash);
                 p.executeUpdate();
             }
+            // Materialized 7-day escalation in the same transaction: sources
+            // the batch heals are excluded so a fresh read revives them.
+            var batchIds = new HashSet<String>();
+            for (JsonObject source : sources) batchIds.add(source.get("id").getAsString());
+            sweepWithdrawnEscalations(c, next, now, batchIds);
             boxes.reconcileObservedBoxUuids(c, server, freshBoxes, next, now);
             boxes.sweepMissingBoxUuids(c, server, freshBoxes, next, now);
             for (var source : sources)
@@ -596,13 +601,20 @@ final class ObservationService {
      * marker ({@code lossAccepted: {by, at}}), so one griefed container stops
      * poisoning the row forever. Idempotent: accepting twice still succeeds.
      * Returns false when the source is not lost.
+     *
+     * <p>One transaction tombstones the source payload, clears its slot
+     * projection, syncs its stock membership, sweeps its box UUIDs and writes
+     * the audit entries — or rolls all of it back (PR3 custody pattern).
      */
     boolean acceptLoss(String id, String by) throws IOException {
+        return acceptLoss(id, by, List.of());
+    }
+
+    boolean acceptLoss(String id, String by, List<AuditLog.Entry> audit) throws IOException {
         long now = ledger.clock.millis();
         try (var c = ledger.open();
                 var tx = new SqliteWriteTransaction(c)) {
             JsonObject value;
-            long next;
             try (var p = c.prepareStatement("SELECT payload FROM stock_sources WHERE id=?")) {
                 p.setString(1, id);
                 try (var rows = p.executeQuery()) {
@@ -612,20 +624,9 @@ final class ObservationService {
             }
             String state = value.has("state") ? value.get("state").getAsString() : "";
             if (!state.equals("MISSING") && !state.equals("UNREACHABLE") && !state.equals("WITHDRAWN")) return false;
-            value.addProperty("state", "WITHDRAWN");
-            value.add("items", new JsonArray());
-            value.add("shulkers", new JsonArray());
-            var accepted = new JsonObject();
-            accepted.addProperty("by", by);
-            accepted.addProperty("at", now);
-            value.add("lossAccepted", accepted);
-            next = Math.addExact(ledger.revision(c), 1);
-            try (var p = c.prepareStatement("UPDATE stock_sources SET payload=?,revision=? WHERE id=?")) {
-                p.setString(1, value.toString());
-                p.setLong(2, next);
-                p.setString(3, id);
-                p.executeUpdate();
-            }
+            long next = Math.addExact(ledger.revision(c), 1);
+            tombstoneSource(c, id, value, next, now, by, null);
+            AuditLog.addAll(c, audit);
             try (var p = c.prepareStatement("UPDATE stock_meta SET revision=? WHERE id=1")) {
                 p.setLong(1, next);
                 p.executeUpdate();
@@ -635,5 +636,78 @@ final class ObservationService {
         } catch (SQLException e) {
             throw new IOException("Cannot record accepted loss", e);
         }
+    }
+
+    /**
+     * Writes a WITHDRAWN tombstone for one lost source on the caller's
+     * connection: zeroed quantities with an owner/system marker on the source
+     * payload, {@code present=0} on its slot projection and stock membership,
+     * and a WITHDRAWN sweep of its box UUIDs. The caller's audit entries join
+     * the same transaction.
+     */
+    private void tombstoneSource(
+            Connection c, String id, JsonObject value, long next, long now, String by, String reason)
+            throws SQLException {
+        value.addProperty("state", "WITHDRAWN");
+        value.add("items", new JsonArray());
+        value.add("shulkers", new JsonArray());
+        var accepted = new JsonObject();
+        accepted.addProperty("by", by);
+        accepted.addProperty("at", now);
+        if (reason != null) accepted.addProperty("reason", reason);
+        value.add("lossAccepted", accepted);
+        try (var p = c.prepareStatement("UPDATE stock_sources SET payload=?,revision=? WHERE id=?")) {
+            p.setString(1, value.toString());
+            p.setLong(2, next);
+            p.setString(3, id);
+            p.executeUpdate();
+        }
+        try (var p = c.prepareStatement("UPDATE slot_projection SET present=0 WHERE source_id=?")) {
+            p.setString(1, id);
+            p.executeUpdate();
+        }
+        try (var p = c.prepareStatement(
+                "UPDATE stock_members SET present=0,payload=?,revision=?,verified_at=? WHERE source=?")) {
+            p.setString(1, value.toString());
+            p.setLong(2, next);
+            p.setLong(3, now);
+            p.setString(4, id);
+            p.executeUpdate();
+        }
+        boxes.sweepSourceBoxUuids(c, id, next, now);
+    }
+
+    /**
+     * Materialized 7-day MISSING-to-WITHDRAWN escalation on the caller's
+     * connection and revision: every MISSING source nobody has reached for
+     * {@link StockLedger#MISSING_WITHDRAWN_AFTER_MS} becomes a system-marked
+     * WITHDRAWN tombstone (same single-transaction shape as owner loss
+     * acceptance) with an audit entry. Idempotent: a second run finds nothing
+     * to escalate. Sources in {@code exclude} (the surrounding batch) are
+     * left for the batch logic: a healing fresh read in the same transaction
+     * revives them instead.
+     *
+     * <p>The read-time view mapping in {@link StockLedger#sources} stays as
+     * the backstop: the dashboard stops paging even before a sweep runs, and
+     * stale-projected slots never allocate regardless of the mapped state.
+     */
+    int sweepWithdrawnEscalations(Connection c, long next, long now, Set<String> exclude) throws SQLException {
+        int escalated = 0;
+        try (var p = c.prepareStatement("SELECT id,payload,verified_at FROM stock_sources")) {
+            try (var rows = p.executeQuery()) {
+                while (rows.next()) {
+                    String id = rows.getString(1);
+                    if (exclude != null && exclude.contains(id)) continue;
+                    var value = JsonParser.parseString(rows.getString(2)).getAsJsonObject();
+                    if (!value.has("state")
+                            || !value.get("state").getAsString().equals("MISSING")) continue;
+                    if (now - rows.getLong(3) < StockLedger.MISSING_WITHDRAWN_AFTER_MS) continue;
+                    tombstoneSource(c, id, value, next, now, "system", "escalated");
+                    AuditLog.add(c, now, "system", "system", "stock.loss.escalated", id, null);
+                    escalated++;
+                }
+            }
+        }
+        return escalated;
     }
 }

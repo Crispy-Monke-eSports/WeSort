@@ -184,6 +184,30 @@ final class BoxUuidRegistry {
             del.executeUpdate();
         }
     }
+    /**
+     * Deregisters every registry row rooted at a withdrawn source inside the
+     * caller's transaction (loss acceptance and escalation sweep). Vanished
+     * boxes never linger as allocatable after their source is tombstoned.
+     */
+    void sweepSourceBoxUuids(Connection c, String source, long revision, long now) throws SQLException {
+        try (var read = c.prepareStatement("SELECT uuid,server,source,path,status FROM box_uuids WHERE source=?")) {
+            read.setString(1, source);
+            try (var rows = read.executeQuery()) {
+                while (rows.next()) {
+                    deregisterInTx(
+                            c,
+                            rows.getString(2),
+                            rows.getString(1),
+                            rows.getString(5),
+                            rows.getString(3),
+                            rows.getString(4),
+                            "WITHDRAWN",
+                            revision,
+                            now);
+                }
+            }
+        }
+    }
     /** UUIDs are installation-wide; evidence in another stash can invalidate both apparent copies. */
     Set<PhysicalReservations.Root> quarantinedBoxes(String server) throws IOException {
         var unsafe = new HashSet<PhysicalReservations.Root>();

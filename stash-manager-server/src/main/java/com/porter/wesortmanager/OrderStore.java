@@ -45,7 +45,8 @@ final class OrderStore {
     }
 
     static OrderPlacementService.KitExplosion explodeKits(
-            Map<String, Line> merged, Map<String, Integer> firstIndex, KitTemplates kits) throws OrderException {
+            Map<String, Line> merged, Map<String, Integer> firstIndex, KitTemplates kits)
+            throws OrderException, IOException {
         return OrderPlacementService.explodeKits(merged, firstIndex, kits);
     }
 
@@ -639,7 +640,7 @@ final class OrderStore {
 
     /** The shared kit catalog (loaded once; the routes layer reuses this instance). */
     synchronized KitTemplates kits() throws IOException {
-        if (kits == null) kits = new KitTemplates(dir.getParent(), clock);
+        if (kits == null) kits = new KitTemplates(index.stock(), clock);
         return kits;
     }
 

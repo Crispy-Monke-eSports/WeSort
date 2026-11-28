@@ -7,7 +7,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,9 +23,17 @@ import java.util.regex.Pattern;
  * boxes and the bot packs each box on demand with this exact placement.
  * Templates are definitions and never stock; finished boxes are never stored.
  *
- * <p>Stored as JSON in the data directory ({@code kit-templates.json}), with
- * revision-guarded writes like the stash definitions: an order pins the
- * template snapshot at submit, so later edits never change a placed order.
+ * <p>Stored in the guild SQLite database ({@code kit_templates} plus the
+ * append-only {@code kit_template_versions}), revision-guarded like the stash
+ * definitions: an order pins the template snapshot (revision + fingerprint)
+ * at submit, so later edits never change a placed order. The pre-SQLite
+ * {@code kit-templates.json} file is a legacy input and is never read
+ * (warn-and-ignore, custody.json pattern); there is no migration or backfill.
+ *
+ * <p>Slot topology is validated against the physical snapshot capacity rules
+ * (27 slots, unique 0-26 positions, counts 1-99 preserved as evidence like
+ * observed slot counts); variant-identity resolution happens at order time
+ * against the live slot projection, where unknown keys fail closed.
  */
 final class KitTemplates {
     static final class Conflict extends IOException {
@@ -33,11 +45,18 @@ final class KitTemplates {
     private static final int SCHEMA = 1;
     /** One box holds 27 slots. */
     static final int SLOTS = 27;
+    /** Manager-local templates live under this server key. */
+    static final String LOCAL_SERVER = "";
 
     private static final Pattern NAME = Pattern.compile("[A-Za-z0-9_.-]{1,64}");
     private static final int MAX_KEY = 256;
-    /** A slot holds at most one stack; the bot verifies the real max stack at pack time. */
-    private static final int MAX_COUNT = 64;
+    /**
+     * A slot holds at most one observed stack count. Observed slot counts are
+     * preserved as evidence in the 1-99 range (SNBT contract); anything above
+     * the real max stack is quarantined at physical handling, never clamped
+     * at the definition. The bot verifies the real max stack at pack time.
+     */
+    private static final int MAX_COUNT = 99;
 
     /** One filled slot: 0-based box slot, the exact observed item key, and how many. */
     record Slot(int slot, String key, long count) {
@@ -50,12 +69,13 @@ final class KitTemplates {
         }
     }
 
-    record Template(String name, long revision, long updatedAt, List<Slot> slots) {
+    record Template(String name, long revision, long updatedAt, String fingerprint, List<Slot> slots) {
         JsonObject json() {
             var o = new JsonObject();
             o.addProperty("name", name);
             o.addProperty("revision", revision);
             o.addProperty("updatedAt", updatedAt);
+            o.addProperty("fingerprint", fingerprint);
             var arr = new JsonArray();
             for (var s : slots) arr.add(s.json());
             o.add("slots", arr);
@@ -70,73 +90,212 @@ final class KitTemplates {
         }
     }
 
-    private final Path file;
-    private final Clock clock;
-    private final Map<String, Template> templates = new LinkedHashMap<>();
+    /** Canonical content digest of the sorted slot list; pinned on orders at submit. */
+    static String fingerprint(List<Slot> slots) {
+        var canonical = new StringBuilder();
+        for (var s : slots)
+            canonical.append(s.slot()).append(':').append(s.key()).append(':').append(s.count()).append(';');
+        try {
+            return HexFormat.of()
+                    .formatHex(MessageDigest.getInstance("SHA-256")
+                            .digest(canonical.toString().getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new AssertionError(impossible);
+        }
+    }
 
+    private final StockLedger ledger;
+    private final Clock clock;
+
+    KitTemplates(StockLedger ledger, Clock clock) {
+        if (ledger == null) throw new IllegalArgumentException("Kit templates require the guild database");
+        this.ledger = ledger;
+        this.clock = clock == null ? Clock.system() : clock;
+    }
+
+    /**
+     * Legacy file-store constructor: the {@code kit-templates.json} file is a
+     * pre-SQLite input and is never read. Warn loudly so operators preserve or
+     * remove it by hand instead of expecting an automatic import.
+     */
     KitTemplates(Path dataDir) throws IOException {
         this(dataDir, Clock.system());
     }
 
+    /** Legacy file-store constructor (see {@link #KitTemplates(Path)}). */
     KitTemplates(Path dataDir, Clock clock) throws IOException {
-        this.clock = clock;
-        this.file = dataDir.resolve("kit-templates.json");
-        if (Files.isSymbolicLink(file)) throw new IOException("Invalid kit templates location");
-        if (!Files.exists(file)) return;
+        this(new StockLedger(dataDir, clock), clock);
+        Path file = dataDir.resolve("kit-templates.json");
         try {
-            var root = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8))
-                    .getAsJsonObject();
-            if (root.get("schema").getAsBigDecimal().intValueExact() != SCHEMA) throw new IllegalArgumentException();
-            for (var e : root.getAsJsonArray("templates")) {
-                var t = read(e.getAsJsonObject());
-                templates.put(t.name(), t);
-            }
-        } catch (RuntimeException ex) {
-            throw new IOException("Cannot read kit templates", ex);
+            if (Files.isSymbolicLink(file)) throw new IOException("Invalid kit templates location");
+            if (Files.exists(file))
+                System.err.println("WARNING: Data/kit-templates.json"
+                        + " is a legacy pre-SQLite file and is ignored — authoritative templates live in guild.sqlite. "
+                        + "See INCIDENT-RECOVERY.md.");
+        } catch (IOException warn) {
+            if (warn.getMessage() != null && warn.getMessage().startsWith("Invalid")) throw warn;
+            throw new IOException("Cannot inspect legacy kit templates", warn);
         }
     }
 
-    synchronized JsonArray list() {
+    synchronized JsonArray list() throws IOException {
         var out = new JsonArray();
-        for (var t : templates.values()) out.add(t.json());
+        for (var t : all()) out.add(t.json());
         return out;
     }
 
-    synchronized List<Template> all() {
-        return List.copyOf(templates.values());
+    synchronized List<Template> all() throws IOException {
+        try (var c = ledger.open();
+                var p = c.prepareStatement(
+                        "SELECT payload FROM kit_templates WHERE server=? ORDER BY name_key")) {
+            p.setString(1, LOCAL_SERVER);
+            var out = new ArrayList<Template>();
+            try (var r = p.executeQuery()) {
+                while (r.next()) out.add(read(JsonParser.parseString(r.getString(1)).getAsJsonObject()));
+            }
+            return List.copyOf(out);
+        } catch (SQLException e) {
+            throw new IOException("Cannot read kit templates", e);
+        }
     }
 
-    synchronized Template get(String name) {
-        return name == null ? null : templates.get(name);
+    synchronized Template get(String name) throws IOException {
+        if (name == null) return null;
+        try (var c = ledger.open();
+                var p = c.prepareStatement("SELECT payload FROM kit_templates WHERE server=? AND name_key=?")) {
+            p.setString(1, LOCAL_SERVER);
+            p.setString(2, name);
+            try (var r = p.executeQuery()) {
+                return r.next() ? read(JsonParser.parseString(r.getString(1)).getAsJsonObject()) : null;
+            }
+        } catch (SQLException e) {
+            throw new IOException("Cannot read kit templates", e);
+        }
     }
 
     synchronized Template create(JsonObject req) throws IOException {
-        var t = parse(req, 0);
-        if (templates.containsKey(t.name())) throw new IllegalArgumentException("kit '" + t.name() + "' exists");
-        templates.put(t.name(), t);
-        save();
-        return t;
+        return create(req, "");
+    }
+
+    synchronized Template create(JsonObject req, String actor) throws IOException {
+        var parsed = parse(req);
+        var slots = parsed.slots();
+        long now = clock.millis();
+        var t = new Template(parsed.name(), 1, now, fingerprint(slots), slots);
+        try (var c = ledger.open();
+                var tx = new SqliteWriteTransaction(c)) {
+            try (var p = c.prepareStatement("SELECT 1 FROM kit_templates WHERE server=? AND name_key=?")) {
+                p.setString(1, LOCAL_SERVER);
+                p.setString(2, t.name());
+                try (var r = p.executeQuery()) {
+                    if (r.next()) throw new IllegalArgumentException("kit '" + t.name() + "' exists");
+                }
+            }
+            writeVersion(c, t, actor);
+            try (var p = c.prepareStatement(
+                    "INSERT INTO kit_templates(server,name_key,payload,fingerprint,revision,created_by) VALUES(?,?,?,?,?,?)")) {
+                p.setString(1, LOCAL_SERVER);
+                p.setString(2, t.name());
+                p.setString(3, t.json().toString());
+                p.setString(4, t.fingerprint());
+                p.setLong(5, t.revision());
+                p.setString(6, actor == null ? "" : actor);
+                p.executeUpdate();
+            }
+            tx.commit();
+            return t;
+        } catch (SQLException e) {
+            throw new IOException("Cannot store the kit template", e);
+        }
     }
 
     synchronized Template update(JsonObject req, long expectedRevision) throws IOException {
-        var t = parse(req, expectedRevision);
-        var before = templates.get(t.name());
-        if (before == null) throw new IllegalArgumentException("no such kit '" + t.name() + "'");
-        if (before.revision() != expectedRevision) throw new Conflict();
-        templates.put(t.name(), t);
-        save();
-        return t;
+        return update(req, expectedRevision, "");
+    }
+
+    synchronized Template update(JsonObject req, long expectedRevision, String actor) throws IOException {
+        var parsed = parse(req);
+        long now = clock.millis();
+        try (var c = ledger.open();
+                var tx = new SqliteWriteTransaction(c)) {
+            String stored;
+            try (var p = c.prepareStatement("SELECT payload FROM kit_templates WHERE server=? AND name_key=?")) {
+                p.setString(1, LOCAL_SERVER);
+                p.setString(2, parsed.name());
+                try (var r = p.executeQuery()) {
+                    if (!r.next()) throw new IllegalArgumentException("no such kit '" + parsed.name() + "'");
+                    stored = r.getString(1);
+                }
+            }
+            var before = read(JsonParser.parseString(stored).getAsJsonObject());
+            if (before.revision() != expectedRevision) throw new Conflict();
+            var t = new Template(parsed.name(), expectedRevision + 1, now, fingerprint(parsed.slots()), parsed.slots());
+            writeVersion(c, t, actor);
+            try (var p = c.prepareStatement(
+                    "UPDATE kit_templates SET payload=?,fingerprint=?,revision=?,created_by=? WHERE server=? AND name_key=?")) {
+                p.setString(1, t.json().toString());
+                p.setString(2, t.fingerprint());
+                p.setLong(3, t.revision());
+                p.setString(4, actor == null ? "" : actor);
+                p.setString(5, LOCAL_SERVER);
+                p.setString(6, t.name());
+                if (p.executeUpdate() != 1) throw new Conflict();
+            }
+            tx.commit();
+            return t;
+        } catch (SQLException e) {
+            throw new IOException("Cannot store the kit template", e);
+        }
     }
 
     synchronized void delete(String name, long expectedRevision) throws IOException {
-        var before = templates.get(name);
-        if (before == null) throw new IllegalArgumentException("no such kit '" + name + "'");
-        if (before.revision() != expectedRevision) throw new Conflict();
-        templates.remove(name);
-        save();
+        delete(name, expectedRevision, "");
     }
 
-    private Template parse(JsonObject req, long revision) {
+    synchronized void delete(String name, long expectedRevision, String actor) throws IOException {
+        if (name == null || name.isEmpty()) throw new IllegalArgumentException("name is required");
+        try (var c = ledger.open();
+                var tx = new SqliteWriteTransaction(c)) {
+            String stored;
+            try (var p = c.prepareStatement("SELECT payload FROM kit_templates WHERE server=? AND name_key=?")) {
+                p.setString(1, LOCAL_SERVER);
+                p.setString(2, name);
+                try (var r = p.executeQuery()) {
+                    if (!r.next()) throw new IllegalArgumentException("no such kit '" + name + "'");
+                    stored = r.getString(1);
+                }
+            }
+            var before = read(JsonParser.parseString(stored).getAsJsonObject());
+            if (before.revision() != expectedRevision) throw new Conflict();
+            // Versions stay: deleting the active template never erases history.
+            try (var p = c.prepareStatement("DELETE FROM kit_templates WHERE server=? AND name_key=?")) {
+                p.setString(1, LOCAL_SERVER);
+                p.setString(2, name);
+                if (p.executeUpdate() != 1) throw new Conflict();
+            }
+            tx.commit();
+        } catch (SQLException e) {
+            throw new IOException("Cannot store the kit template", e);
+        }
+    }
+
+    private static void writeVersion(java.sql.Connection c, Template t, String actor) throws SQLException {
+        try (var p = c.prepareStatement(
+                "INSERT INTO kit_template_versions(server,name_key,revision,payload,fingerprint,created_by) VALUES(?,?,?,?,?,?) ON CONFLICT(server,name_key,revision) DO NOTHING")) {
+            p.setString(1, LOCAL_SERVER);
+            p.setString(2, t.name());
+            p.setLong(3, t.revision());
+            p.setString(4, t.json().toString());
+            p.setString(5, t.fingerprint());
+            p.setString(6, actor == null ? "" : actor);
+            p.executeUpdate();
+        }
+    }
+
+    /** Parsed request without revision metadata; the store assigns revision + fingerprint. */
+    private record Parsed(String name, List<Slot> slots) {}
+
+    private Parsed parse(JsonObject req) {
         var name = str(req, "name");
         if (name == null || !NAME.matcher(name).matches())
             throw new IllegalArgumentException("name must be 1-64 chars: letters, digits, _ . -");
@@ -155,14 +314,13 @@ final class KitTemplates {
             if (key == null || key.isEmpty() || key.length() > MAX_KEY)
                 throw new IllegalArgumentException("key must be a non-empty string");
             if (count == null || count < 1 || count > MAX_COUNT)
-                throw new IllegalArgumentException("count must be 1-64");
+                throw new IllegalArgumentException("count must be 1-" + MAX_COUNT);
             seen[slot] = true;
             slots.add(new Slot(slot, key, count));
         }
         if (slots.isEmpty()) throw new IllegalArgumentException("a kit needs at least one filled slot");
         slots.sort((a, b) -> Integer.compare(a.slot(), b.slot()));
-        long rev = revision > 0 ? revision + 1 : 1;
-        return new Template(name, rev, clock.millis(), List.copyOf(slots));
+        return new Parsed(name, List.copyOf(slots));
     }
 
     private static Template read(JsonObject o) {
@@ -174,10 +332,14 @@ final class KitTemplates {
                     s.get("key").getAsString(),
                     s.get("count").getAsLong()));
         }
+        String fingerprint = o.has("fingerprint") && o.get("fingerprint").isJsonPrimitive()
+                ? o.get("fingerprint").getAsString()
+                : fingerprint(List.copyOf(slots));
         return new Template(
                 o.get("name").getAsString(),
                 o.get("revision").getAsLong(),
                 o.has("updatedAt") ? o.get("updatedAt").getAsLong() : 0,
+                fingerprint,
                 List.copyOf(slots));
     }
 
@@ -194,14 +356,5 @@ final class KitTemplates {
     private static String str(JsonObject o, String key) {
         var e = o.get(key);
         return e != null && e.isJsonPrimitive() && e.getAsJsonPrimitive().isString() ? e.getAsString() : null;
-    }
-
-    private void save() throws IOException {
-        var root = new JsonObject();
-        root.addProperty("schema", SCHEMA);
-        var arr = new JsonArray();
-        for (var t : templates.values()) arr.add(t.json());
-        root.add("templates", arr);
-        AtomicFiles.write(file, Json.GSON.toJson(root).getBytes(StandardCharsets.UTF_8), true);
     }
 }

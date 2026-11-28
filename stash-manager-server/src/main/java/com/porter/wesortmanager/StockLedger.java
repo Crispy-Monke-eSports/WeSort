@@ -34,7 +34,6 @@ final class StockLedger {
     private static final Set<String> REQUIRED_V7_TABLES = Set.of(
             "physical_operations",
             "physical_decisions",
-            "kit_jobs",
             "kit_meta",
             "kit_template_versions",
             "kit_templates",
@@ -186,8 +185,10 @@ final class StockLedger {
                             "CREATE TABLE IF NOT EXISTS physical_operations(id TEXT PRIMARY KEY,server TEXT NOT NULL,agent TEXT NOT NULL,stash TEXT NOT NULL,revision INTEGER NOT NULL,checksum TEXT NOT NULL,payload TEXT NOT NULL,state TEXT NOT NULL,last_seen INTEGER NOT NULL,fence_revision INTEGER NOT NULL)");
                     s.execute(
                             "CREATE TABLE IF NOT EXISTS physical_decisions(id TEXT PRIMARY KEY,operation TEXT NOT NULL,revision INTEGER NOT NULL,checksum TEXT NOT NULL,actor TEXT NOT NULL,action TEXT NOT NULL,state TEXT NOT NULL,issued_at INTEGER NOT NULL,detail TEXT NOT NULL,manager_run TEXT NOT NULL)");
-                    s.execute(
-                            "CREATE TABLE IF NOT EXISTS kit_jobs(id TEXT PRIMARY KEY,server TEXT NOT NULL,name_key TEXT NOT NULL,state TEXT NOT NULL,agent TEXT NOT NULL,token TEXT,deadline INTEGER NOT NULL,payload TEXT NOT NULL)");
+                    // kit_jobs was dead schema (DDL without any writer or
+                    // reader): dropped, never recreated. Kit packing jobs
+                    // are tracked through the order pipeline, not this table.
+                    s.execute("DROP TABLE IF EXISTS kit_jobs");
                     s.execute(
                             "CREATE TABLE IF NOT EXISTS kit_meta(id INTEGER PRIMARY KEY CHECK(id=1),revision INTEGER NOT NULL)");
                     s.execute("INSERT OR IGNORE INTO kit_meta VALUES(1,0)");

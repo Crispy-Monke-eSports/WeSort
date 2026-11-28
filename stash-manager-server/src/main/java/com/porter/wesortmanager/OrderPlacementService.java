@@ -52,7 +52,7 @@ final class OrderPlacementService {
      */
     static KitExplosion explodeKits(
             Map<String, OrderStore.Line> merged, Map<String, Integer> firstIndex, KitTemplates kits)
-            throws OrderStore.OrderException {
+            throws OrderStore.OrderException, IOException {
         var out = new KitExplosion();
         for (var l : merged.values()) {
             if (!l.type().equals("kit")) {

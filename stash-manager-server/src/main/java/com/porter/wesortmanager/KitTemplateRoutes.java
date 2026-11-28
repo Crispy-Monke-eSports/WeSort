@@ -42,7 +42,7 @@ final class KitTemplateRoutes {
         try {
             switch (action) {
                 case "create" -> {
-                    var t = kits.create(body);
+                    var t = kits.create(body, Router.user(ex).id());
                     audit.add(Router.user(ex), "kit.create", t.name(), AuthRoutes.address(ex));
                     var o = Http.ok();
                     o.add("kit", t.json());
@@ -50,7 +50,7 @@ final class KitTemplateRoutes {
                 }
                 case "update" -> {
                     long rev = expected(body);
-                    var t = kits.update(body, rev);
+                    var t = kits.update(body, rev, Router.user(ex).id());
                     audit.add(Router.user(ex), "kit.update", t.name(), AuthRoutes.address(ex));
                     var o = Http.ok();
                     o.add("kit", t.json());
@@ -62,7 +62,7 @@ final class KitTemplateRoutes {
                         Http.error(ex, 400, "name is required");
                         return;
                     }
-                    kits.delete(name, expected(body));
+                    kits.delete(name, expected(body), Router.user(ex).id());
                     audit.add(Router.user(ex), "kit.delete", name, AuthRoutes.address(ex));
                     Http.json(ex, 200, Http.ok());
                 }

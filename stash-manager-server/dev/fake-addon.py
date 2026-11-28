@@ -439,6 +439,7 @@ def main():
     run.add_argument("--fail", action="store_true")
     run.add_argument("--steps", type=int, default=3)
     run.add_argument("--delay", type=float, default=0.5)
+    sub.add_parser("negotiate", help="exercise physical wire negotiation: v4 accepted, v2 rejected, v1 accepted")
     args = p.parse_args()
 
     SERVER, STASH, PLAYER = args.server, args.stash, args.player
@@ -479,6 +480,10 @@ def main():
         serve(c, args)
     elif args.cmd == "claim":
         show("claim", *c.post("/api/v1/orders/claim", {"server": SERVER, "stash": STASH}))
+    elif args.cmd == "negotiate":
+        failures = negotiate(c)
+        if failures:
+            raise SystemExit("negotiation failed: " + "; ".join(failures))
     elif args.cmd == "status":
         body = {"status": args.status}
         if args.phase is not None:
@@ -523,13 +528,33 @@ def main():
 
 
 
-def protocol_observation(index):
-    """Synthetic physical-format witness ONLY for isolated protocol smoke tests, never Minecraft evidence."""
+def protocol_observation(index, physical_version=1):
+    """Synthetic physical-format witness ONLY for isolated protocol smoke tests, never Minecraft evidence.
+    physical_version 1 is the aggregate-only witness (accepted but not authoritative).
+    physical_version 2 is the legacy compact tree (rejected: unsupported version).
+    physical_version 4 is a minimal valid dual-carry observation (accepted): a fixed
+    known-good single-diamond barrel frame whose canonical SNBT, fingerprint and
+    envelope digest were captured from the Java codec, with provenance filled in
+    dynamically to match the emitted source proof fields."""
     import copy
     import uuid
     value = copy.deepcopy(index)
     dimension = "minecraft:overworld"
     identity = [value['server'], dimension, [0, 64, 0]]
+    if physical_version == 2:
+        source = {'id': 'c:' + hashlib.sha256(json.dumps(identity, separators=(',', ':')).encode()).hexdigest(),
+            'dimension': dimension, 'parts': [[0, 64, 0]], 'kind': 'minecraft:barrel', 'size': 27,
+            'state': 'FRESH', 'session': str(uuid.uuid4()), 'sequence': 1, 'baseRevision': 0, 'epoch': '',
+            'observedAt': int(time.time() * 1000), 'fingerprint': hashlib.sha256(json.dumps(value['items'], sort_keys=True).encode()).hexdigest(),
+            'items': value['items'], 'shulkers': value.get('shulkers', []),
+            'slots': [], 'slotVariants': []}
+        value['physicalVersion'] = 2
+        value['physicalSources'] = [source]
+        return value
+    if physical_version == 4:
+        return protocol_observation_v4(value)
+    if physical_version != 1:
+        raise ValueError("unsupported synthetic physical version: %r" % (physical_version,))
     source = {'id': 'c:' + hashlib.sha256(json.dumps(identity, separators=(',', ':')).encode()).hexdigest(),
         'dimension': dimension, 'parts': [[0, 64, 0]], 'kind': 'minecraft:barrel', 'size': 27,
         'state': 'FRESH', 'session': str(uuid.uuid4()), 'sequence': 1, 'baseRevision': 0, 'epoch': '',
@@ -538,6 +563,59 @@ def protocol_observation(index):
     value['physicalVersion'] = 1
     value['physicalSources'] = [source]
     return value
+
+
+# Fixed known-good v4 frame (single diamond in slot 0 of a 27-slot barrel),
+# captured from the Java codec: the Manager recomputes every digest and the
+# envelope from the SNBT authority, so these bytes must stay exactly as emitted.
+_V4_FRAME_SNBT = ('{"schema":2,"size":27,"slots":[{"capacity":0,"children":[],"group":"",'
+    '"key":"minecraft:diamond","kind":"ITEM","maxStack":64,"slot":0,'
+    '"stack":{"components":{},"count":1,"id":"minecraft:diamond"}}]}')
+_V4_FINGERPRINT = "e52968319aa89373095ecb8660d52c0c2d3c1f295c4d953dff1fc99fd21a69c7"
+_V4_ITEM_SNBT = '{"components":{},"id":"minecraft:diamond"}'
+_V4_DIGEST = "e0a4ea7e942cea0ffe3f419971a453459942436dbfe2354c8752945c93af849d"
+
+
+def protocol_observation_v4(index):
+    """Minimal valid dual-carry observation for negotiation smoke tests."""
+    import copy
+    import uuid
+    value = copy.deepcopy(index)
+    dimension = "minecraft:overworld"
+    identity = [value['server'], dimension, [0, 64, 0]]
+    observed_at = int(time.time() * 1000)
+    session = str(uuid.uuid4())
+    source = {'id': 'c:' + hashlib.sha256(json.dumps(identity, separators=(',', ':')).encode()).hexdigest(),
+        'dimension': dimension, 'parts': [[0, 64, 0]], 'kind': 'minecraft:barrel', 'size': 27,
+        'state': 'FRESH', 'session': session, 'sequence': 1, 'baseRevision': 0, 'epoch': '',
+        'observedAt': observed_at, 'fingerprint': _V4_FINGERPRINT, 'snbt': _V4_FRAME_SNBT,
+        'items': [{'key': 'minecraft:diamond', 'id': 'minecraft:diamond', 'count': 1}], 'shulkers': [],
+        'envelope': {'wireVersion': 1, 'kind': 'BARREL', 'capacity': 27,
+            'slots': [{'slot': 0, 'itemSnbt': _V4_ITEM_SNBT, 'count': 1}], 'storageMeta': {},
+            'provenance': {'server': value['server'], 'dimension': dimension, 'session': session,
+                'sequence': 1, 'observedAt': observed_at, 'registryContext': '26.3'},
+            'snapshotDigest': _V4_DIGEST}}
+    minimal = {'version': 1, 'server': value['server'], 'stash': value['stash'],
+        'items': [{'key': 'minecraft:diamond', 'id': 'minecraft:diamond', 'count': 1}], 'shulkers': [],
+        'physicalVersion': 4, 'physicalSources': [source]}
+    return minimal
+
+
+def negotiate(c):
+    """Physical wire negotiation (#227, smoke-only and explicitly not #230 proof):
+    v4 dual-carry is accepted, v2 is rejected, v1 aggregate-only is accepted
+    but not authoritative. Returns the failure labels (empty on success)."""
+    failures = []
+    for version, want, label in (
+            (4, 200, "v4 dual-carry accepted"),
+            (2, 400, "v2 legacy tree rejected"),
+            (1, 200, "v1 aggregate-only accepted but not authoritative")):
+        status, _ = c.post("/api/v1/index", protocol_observation(build_index(), physical_version=version))
+        print(("ok" if status == want else "FAIL") + ": physicalVersion %d -> HTTP %d (want %d): %s"
+              % (version, status, want, label))
+        if status != want:
+            failures.append(label)
+    return failures
 
 if __name__ == "__main__":
     main()

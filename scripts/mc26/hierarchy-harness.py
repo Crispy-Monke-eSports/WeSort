@@ -491,7 +491,12 @@ class HierarchyHarness(stock.StockHarness):
             require('changed' in removed.lower(), 'Failed to clear the one-off menu fixture')
             before = {str(x): self.rcon.command(f'data get block {x} 64 -3 Items') for x in [0, 6]}
             initial = self.command('state')['state']['index']
-            require(initial['physicalVersion'] == 2 and initial['slotVariants'], 'Actual client omitted physical tree')
+            require(initial['physicalVersion'] == 4, 'Actual client did not send the v4 dual-carry wire')
+            fresh = [s for s in initial.get('physicalSources', []) if s.get('state') == 'FRESH']
+            require(fresh and all(isinstance(s.get('envelope'), dict)
+                                  and s['envelope'].get('wireVersion') == 1
+                                  and isinstance(s.get('snbt'), str) for s in fresh)
+                    and 'slotVariants' not in initial, 'Actual client omitted dual-carry envelope')
             self.server_name = initial['server']
             self.command('publish', url=f'http://127.0.0.1:{self.manager_port}', key=self.key)
             observed = self.wait(lambda s: all((row := self.source(s, x, -3)) is not None and row['state'] == 'FRESH' for x in [0, 6]), 'Native hierarchy did not reach Manager')
